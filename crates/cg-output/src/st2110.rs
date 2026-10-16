@@ -1,0 +1,310 @@
+//! SMPTE ST 2110-20 (uncompressed video over RTP, RFC 4175) sender.
+//!
+//! Fill and key are sent as two separate essence streams (one thread and
+//! socket each), as broadcast keyers expect. This is a pure software implementation:
+//! - packets are paced evenly across the frame period (close to the 2110-21
+//!   "wide" sender model) from a dedicated thread;
+//! - RTP timestamps derive from the system clock. For production use the host
+//!   must be PTP-disciplined (ptp4l + phc2sys) so system time follows the
+//!   facility grandmaster; kernel-bypass NICs (DPDK / Rivermax) are on the
+//!   roadmap for tighter pacing at UHD rates.
+
+use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
+use std::sync::Arc;
+use std::time::{Duration, Instant, UNIX_EPOCH};
+
+use cg_render::Frame;
+use serde::{Deserialize, Serialize};
+use socket2::{Domain, Protocol, Socket, Type};
+
+use crate::colorspace::pack_line_422_10;
+use crate::{OutputError, OutputSink};
+
+/// RTP payload bytes per packet. 1200 = 240 pgroups (480 px), fits a 1500 MTU
+/// with RTP + RFC 4175 headers and divides 1920/1280/3840 line widths.
+const PAYLOAD_BYTES: usize = 1200;
+const RTP_CLOCK: f64 = 90_000.0;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct St2110Config {
+    pub name: String,
+    /// Multicast group (or unicast) for the fill stream.
+    pub fill: SocketAddrV4,
+    /// Optional key (alpha) stream.
+    #[serde(default)]
+    pub key: Option<SocketAddrV4>,
+    /// Local interface address to send from.
+    #[serde(default)]
+    pub interface: Option<Ipv4Addr>,
+    #[serde(default = "default_ttl")]
+    pub ttl: u32,
+    #[serde(default = "default_pt")]
+    pub payload_type: u8,
+}
+
+fn default_ttl() -> u32 {
+    32
+}
+fn default_pt() -> u8 {
+    96
+}
+
+impl St2110Config {
+    /// Session description for one essence (`key = true` for the alpha stream).
+    pub fn sdp(&self, width: u32, height: u32, rate: (u32, u32), key: bool) -> Option<String> {
+        let dest = if key { self.key? } else { self.fill };
+        let src = self.interface.unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let rate = if rate.1 == 1 {
+            rate.0.to_string()
+        } else {
+            format!("{}/{}", rate.0, rate.1)
+        };
+        let label = if key { "key" } else { "fill" };
+        Some(format!(
+            "v=0\r\n\
+             o=- {sess} 0 IN IP4 {src}\r\n\
+             s={name} ({label})\r\n\
+             t=0 0\r\n\
+             m=video {port} RTP/AVP {pt}\r\n\
+             c=IN IP4 {ip}/{ttl}\r\n\
+             a=source-filter: incl IN IP4 {ip} {src}\r\n\
+             a=rtpmap:{pt} raw/90000\r\n\
+             a=fmtp:{pt} sampling=YCbCr-4:2:2; width={width}; height={height}; exactframerate={rate}; depth=10; TCS=SDR; colorimetry=BT709; PM=2110GPM; SSN=ST2110-20:2017; TP=2110TPW; \r\n\
+             a=ts-refclk:ptp=IEEE1588-2008:traceable\r\n\
+             a=mediaclk:direct=0\r\n",
+            sess = u32::from(dest.ip().to_owned()) ^ dest.port() as u32,
+            name = self.name,
+            port = dest.port(),
+            pt = self.payload_type,
+            ip = dest.ip(),
+            ttl = self.ttl,
+        ))
+    }
+}
+
+/// RTP packets of one frame, stored back to back in a single buffer.
+#[derive(Default)]
+pub struct Packets {
+    buf: Vec<u8>,
+    ends: Vec<usize>,
+}
+
+impl Packets {
+    pub fn len(&self) -> usize {
+        self.ends.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.ends.is_empty()
+    }
+    pub fn get(&self, i: usize) -> &[u8] {
+        let start = if i == 0 { 0 } else { self.ends[i - 1] };
+        &self.buf[start..self.ends[i]]
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &[u8]> {
+        (0..self.len()).map(|i| self.get(i))
+    }
+}
+
+/// Splits a frame into RFC 4175 RTP packets (single line segment per packet).
+pub fn packetize_into(
+    frame: &Frame,
+    key: bool,
+    pt: u8,
+    seq: &mut u32,
+    timestamp: u32,
+    out: &mut Packets,
+    line: &mut Vec<u8>,
+) {
+    let (w, h) = (frame.width as usize, frame.height as usize);
+    out.buf.clear();
+    out.ends.clear();
+    for y in 0..h {
+        pack_line_422_10(&frame.data[y * w * 4..(y + 1) * w * 4], line, key);
+        let mut offset_bytes = 0;
+        while offset_bytes < line.len() {
+            let len = PAYLOAD_BYTES.min(line.len() - offset_bytes);
+            let last = y == h - 1 && offset_bytes + len >= line.len();
+            let p = &mut out.buf;
+            // RTP header
+            p.push(0x80);
+            p.push(if last { 0x80 | pt } else { pt });
+            p.extend_from_slice(&(*seq as u16).to_be_bytes());
+            p.extend_from_slice(&timestamp.to_be_bytes());
+            p.extend_from_slice(&0x2110_0000u32.to_be_bytes()); // SSRC
+                                                                // RFC 4175 payload header
+            p.extend_from_slice(&((*seq >> 16) as u16).to_be_bytes()); // extended seq
+            p.extend_from_slice(&(len as u16).to_be_bytes());
+            p.extend_from_slice(&((y as u16) & 0x7fff).to_be_bytes()); // F=0, line
+            let pixel_offset = (offset_bytes / 5 * 2) as u16;
+            p.extend_from_slice(&(pixel_offset & 0x7fff).to_be_bytes()); // C=0
+            p.extend_from_slice(&line[offset_bytes..offset_bytes + len]);
+            out.ends.push(p.len());
+            *seq = seq.wrapping_add(1);
+            offset_bytes += len;
+        }
+    }
+}
+
+pub fn packetize(frame: &Frame, key: bool, pt: u8, seq: &mut u32, timestamp: u32) -> Packets {
+    let mut out = Packets::default();
+    packetize_into(frame, key, pt, seq, timestamp, &mut out, &mut Vec::new());
+    out
+}
+
+fn open_socket(cfg: &St2110Config) -> std::io::Result<UdpSocket> {
+    let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
+    s.set_multicast_ttl_v4(cfg.ttl)?;
+    if let Some(ip) = cfg.interface {
+        s.set_multicast_if_v4(&ip)?;
+        s.bind(&SocketAddrV4::new(ip, 0).into())?;
+    }
+    s.set_send_buffer_size(8 << 20).ok();
+    Ok(s.into())
+}
+
+/// One essence (fill or key) = one socket + one pacing thread.
+struct Essence {
+    tx: SyncSender<Arc<Frame>>,
+}
+
+pub struct St2110Sender {
+    essences: Vec<Essence>,
+    config: St2110Config,
+}
+
+impl St2110Sender {
+    pub fn start(config: St2110Config, frame_period: Duration) -> Result<Self, OutputError> {
+        let mut essences = Vec::new();
+        let streams = std::iter::once((config.fill, false)).chain(config.key.map(|k| (k, true)));
+        for (dest, key) in streams {
+            let socket = open_socket(&config).map_err(OutputError::Io)?;
+            let (tx, rx) = sync_channel::<Arc<Frame>>(2);
+            let (name, pt) = (config.name.clone(), config.payload_type);
+            std::thread::Builder::new()
+                .name(format!(
+                    "st2110-{}-{}",
+                    config.name,
+                    if key { "key" } else { "fill" }
+                ))
+                .spawn(move || run(name, socket, dest, key, pt, rx, frame_period))
+                .map_err(OutputError::Io)?;
+            essences.push(Essence { tx });
+        }
+        tracing::info!(fill = %config.fill, key = ?config.key, "ST 2110-20 sender started");
+        Ok(Self { essences, config })
+    }
+
+    pub fn config(&self) -> &St2110Config {
+        &self.config
+    }
+}
+
+fn run(
+    name: String,
+    socket: UdpSocket,
+    dest: SocketAddrV4,
+    key: bool,
+    pt: u8,
+    rx: Receiver<Arc<Frame>>,
+    period: Duration,
+) {
+    let mut seq = 0u32;
+    let (mut packets, mut line) = (Packets::default(), Vec::new());
+    let (mut frames, mut stats_at) = (0u32, Instant::now());
+    while let Ok(frame) = rx.recv() {
+        let start = Instant::now();
+        frames += 1;
+        if stats_at.elapsed() >= Duration::from_secs(5) {
+            tracing::debug!(
+                name,
+                key,
+                fps = frames as f64 / stats_at.elapsed().as_secs_f64(),
+                "ST 2110 send rate"
+            );
+            (frames, stats_at) = (0, Instant::now());
+        }
+        // Fill and key threads derive the same timestamp from the frame's
+        // capture time so receivers can pair them.
+        let ts = (frame_time(&frame).as_secs_f64() * RTP_CLOCK) as u64 as u32;
+        packetize_into(&frame, key, pt, &mut seq, ts, &mut packets, &mut line);
+        // Pace across what is left of ~90% of the frame period.
+        let budget = period.mul_f64(0.9).saturating_sub(start.elapsed());
+        let send_start = Instant::now();
+        let n = packets.len();
+        for (i, p) in packets.iter().enumerate() {
+            let _ = socket.send_to(p, dest);
+            if i % 64 == 63 {
+                let due = budget.mul_f64((i + 1) as f64 / n as f64);
+                let elapsed = send_start.elapsed();
+                if due > elapsed {
+                    std::thread::sleep(due - elapsed);
+                }
+            }
+        }
+    }
+    tracing::info!(name, key, "ST 2110 sender stopped");
+}
+
+fn frame_time(frame: &Frame) -> Duration {
+    frame
+        .captured_at
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+}
+
+impl OutputSink for St2110Sender {
+    fn name(&self) -> &str {
+        &self.config.name
+    }
+
+    fn push(&mut self, frame: &Frame) -> Result<(), OutputError> {
+        let frame = Arc::new(frame.clone());
+        let mut result = Ok(());
+        for e in &self.essences {
+            match e.tx.try_send(frame.clone()) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_)) => result = Err(OutputError::Dropped),
+                Err(TrySendError::Disconnected(_)) => return Err(OutputError::Closed),
+            }
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packet_count_and_marker() {
+        let f = Frame::blank(1920, 1080);
+        let mut seq = 0;
+        let pkts = packetize(&f, false, 96, &mut seq, 1234);
+        // 1920 px * 2.5 B = 4800 B per line = 4 packets.
+        assert_eq!(pkts.len(), 1080 * 4);
+        assert_eq!(seq, 1080 * 4);
+        let last = pkts.get(pkts.len() - 1);
+        assert_eq!(last[1], 0x80 | 96);
+        assert_eq!(pkts.get(0)[1], 96);
+        assert_eq!(pkts.get(0).len(), 12 + 8 + 1200);
+        // Second packet of line 0 starts at pixel 480.
+        assert_eq!(u16::from_be_bytes([pkts.get(1)[18], pkts.get(1)[19]]), 480);
+    }
+
+    #[test]
+    fn sdp_contains_format() {
+        let cfg = St2110Config {
+            name: "CG1".into(),
+            fill: "239.10.0.1:5004".parse().unwrap(),
+            key: Some("239.10.0.2:5004".parse().unwrap()),
+            interface: Some("10.0.0.5".parse().unwrap()),
+            ttl: 16,
+            payload_type: 96,
+        };
+        let sdp = cfg.sdp(1920, 1080, (60000, 1001), true).unwrap();
+        assert!(sdp.contains("c=IN IP4 239.10.0.2/16"));
+        assert!(sdp.contains("exactframerate=60000/1001"));
+    }
+}

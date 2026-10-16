@@ -1,0 +1,16 @@
+[package]
+name = "cg-output"
+version.workspace = true
+edition.workspace = true
+
+[features]
+# Blackmagic DeckLink SDI output. Requires the DeckLink SDK / Desktop Video
+# drivers on the build machine (see crates/cg-output/src/sdi.rs).
+decklink = []
+
+[dependencies]
+cg-render.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+socket2 = { version = "0.5", features = ["all"] }
