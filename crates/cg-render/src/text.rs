@@ -8,6 +8,32 @@ use ab_glyph::{Font, FontArc, OutlineCurve, ScaleFont};
 use cg_core::{TextAlign, VerticalAlign};
 use tiny_skia::{Path as SkPath, PathBuilder};
 
+/// Fonts shipped inside the binary so rendering is identical on Linux,
+/// macOS and Windows whatever is installed (Inter, SIL OFL 1.1). The server
+/// also serves them to the web app under `/fonts/`.
+pub const BUNDLED_FONTS: &[(&str, &[u8])] = &[
+    (
+        "Inter-Regular.otf",
+        include_bytes!("../../../assets/fonts/Inter-Regular.otf"),
+    ),
+    (
+        "Inter-Medium.otf",
+        include_bytes!("../../../assets/fonts/Inter-Medium.otf"),
+    ),
+    (
+        "Inter-SemiBold.otf",
+        include_bytes!("../../../assets/fonts/Inter-SemiBold.otf"),
+    ),
+    (
+        "Inter-Bold.otf",
+        include_bytes!("../../../assets/fonts/Inter-Bold.otf"),
+    ),
+    (
+        "Inter-ExtraBold.otf",
+        include_bytes!("../../../assets/fonts/Inter-ExtraBold.otf"),
+    ),
+];
+
 pub struct FontStore {
     db: fontdb::Database,
     cache: HashMap<fontdb::ID, FontArc>,
@@ -16,6 +42,9 @@ pub struct FontStore {
 impl FontStore {
     pub fn new(extra_dir: Option<&Path>) -> Self {
         let mut db = fontdb::Database::new();
+        for (_, data) in BUNDLED_FONTS {
+            db.load_font_data(data.to_vec());
+        }
         db.load_system_fonts();
         if let Some(dir) = extra_dir {
             db.load_fonts_dir(dir);

@@ -1,0 +1,93 @@
+name: Release
+
+# Builds self-contained server packages for Linux, macOS and Windows.
+# Push a tag `v*` to publish a GitHub release, or run manually for artifacts.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+  build:
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl binaries: run on any distribution.
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, platform: linux-x86_64, pkg: linux }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, platform: linux-arm64, pkg: linux }
+          - { os: macos-latest, target: aarch64-apple-darwin, platform: macos-arm64, pkg: macos }
+          - { os: macos-latest, target: x86_64-apple-darwin, platform: macos-x86_64, pkg: macos }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, platform: windows-x86_64, pkg: windows }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked -p cg-server --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          [ "$GITHUB_REF_TYPE" = tag ] || VERSION=dev-${GITHUB_SHA::7}
+          NAME=pulse-cg-$VERSION-${{ matrix.platform }}
+          mkdir -p "dist/$NAME"
+          EXT=""; [ "${{ matrix.pkg }}" = windows ] && EXT=.exe
+          cp "target/${{ matrix.target }}/release/cg-server$EXT" "dist/$NAME/"
+          cp packaging/${{ matrix.pkg }}/* "dist/$NAME/"
+          cp docs/INSTALL.md assets/fonts/OFL.txt "dist/$NAME/"
+          cp docs/outputs.example.json "dist/$NAME/"
+          cd dist
+          if [ "${{ matrix.pkg }}" = windows ]; then
+            7z a "$NAME.zip" "$NAME" >/dev/null
+          else
+            tar czf "$NAME.tar.gz" "$NAME"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulse-cg-${{ matrix.platform }}
+          path: dist/*.*z*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pulse-cg-*
+          merge-multiple: true
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

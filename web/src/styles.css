@@ -1,4 +1,34 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+/* Inter is bundled in the server binary: works offline, identical to the Rust renderer. */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-display: block;
+  src: url('/fonts/Inter-Regular.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 500;
+  font-display: block;
+  src: url('/fonts/Inter-Medium.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 600;
+  font-display: block;
+  src: url('/fonts/Inter-SemiBold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  font-display: block;
+  src: url('/fonts/Inter-Bold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 800;
+  font-display: block;
+  src: url('/fonts/Inter-ExtraBold.otf') format('opentype');
+}
 
 :root {
   --bg: #0b0c12;
@@ -19,7 +49,7 @@
   --warn: #f5a524;
   --key: #f5c542;
   --radius: 8px;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', monospace;
   color-scheme: dark;
 }
 

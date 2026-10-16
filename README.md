@@ -10,36 +10,47 @@ Le moteur est écrit en **Rust**. Il produit trois types de sortie : **HTML5**, 
 
 Architecture, choix techniques et feuille de route : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Démarrage rapide
+## Installation sur un serveur (Linux, macOS, Windows)
 
-Pré-requis : Rust stable (1.80 ou plus), Node 22. Polices conseillées : `fonts-inter`.
+Le serveur est distribué sous la forme d'**un exécutable autonome** par plateforme : il embarque l'UI web, les polices et le moteur. Il s'installe en **service natif** : systemd sous Linux, launchd sous macOS, service Windows.
 
 ```bash
-# 1. Web app (Designer + Opérateur + sortie HTML5)
+sudo ./install.sh                  # Linux / macOS, depuis l'archive de release
+.\install.ps1                      # Windows (PowerShell administrateur) ou double-clic sur install.cmd
+```
+
+Les commandes `cg-server service install | uninstall | start | stop | status` sont identiques sur les trois OS. Le guide complet est dans [`docs/INSTALL.md`](docs/INSTALL.md).
+
+## Développement
+
+Pré-requis : Rust stable (1.80 ou plus) et Node 22.
+
+```bash
+# 1. Web app (Designer + Opérateur + sortie HTML5), embarquée ensuite dans le binaire
 cd web && npm install && npm run build && cd ..
 
 # 2. Serveur (API, WebSocket, playout, sorties)
-cargo run --release -p cg-server
+cargo run --release -p cg-server -- --data-dir data
 # → http://localhost:8080/designer
 # → http://localhost:8080/operator
 # → http://localhost:8080/output        (sortie HTML5 transparente)
 ```
 
-En développement, lancez `npm run dev` dans `web/` (Vite sur le port 5173, qui proxifie l'API vers le port 8080).
+En développement de l'UI, lancez `npm run dev` dans `web/` : Vite sert l'UI sur le port 5173 et proxifie l'API vers le port 8080.
 
-Au premier lancement, un projet de démo est créé dans `data/project.json` (lower third + score bug).
+Au premier lancement, un projet de démo est créé dans `<data>/project.json` (lower third + score bug).
 
 ### Options du serveur
 
 | Option | Variable | Défaut |
 | --- | --- | --- |
 | `--bind` | `CG_BIND` | `0.0.0.0:8080` |
-| `--data-dir` | `CG_DATA_DIR` | `data` (`project.json`, `outputs.json`, `assets/`) |
-| `--web-dir` | `CG_WEB_DIR` | `web/dist` |
+| `--data-dir` | `CG_DATA_DIR` | dossier de données de l'utilisateur ; pour le service : `/var/lib/pulse-cg`, `/Library/Application Support/PulseCG` ou `%ProgramData%\PulseCG` |
+| `--web-dir` | `CG_WEB_DIR` | UI embarquée (option utile pour servir `web/dist` en développement) |
 
 ### Sorties baseband
 
-Créez `data/outputs.json` (voir [`docs/outputs.example.json`](docs/outputs.example.json)) :
+Créez `outputs.json` dans le dossier de données (voir [`docs/outputs.example.json`](docs/outputs.example.json)) :
 
 ```json
 {
@@ -93,7 +104,9 @@ crates/
   cg-core     modèle, keyframes et easing, logique de playout (sans I/O)
   cg-render   moteur de rendu logiciel (tiny-skia, texte vectoriel)
   cg-output   ST 2110-20 (RFC 4175, fill + key, SDP), SDI DeckLink
-  cg-server   axum : REST, WebSocket, horloge de playout, fichiers statiques
+  cg-server   axum : REST, WebSocket, horloge de playout, UI embarquée, services OS
+assets/fonts  polices Inter (OFL) embarquées : rendu identique sur tous les OS
+packaging/   scripts d'installation Linux / macOS / Windows
 web/          React + TypeScript : Designer, Opérateur, sortie HTML5
 docs/         architecture, exemples de configuration
 ```

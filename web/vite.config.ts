@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       '/api': server,
       '/assets': server,
+      '/fonts': server,
       '/ws': { target: server.replace(/^http/, 'ws'), ws: true },
     },
   },

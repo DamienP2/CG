@@ -21,3 +21,4 @@ cg-output = { path = "crates/cg-output" }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+strip = true

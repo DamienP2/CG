@@ -14,7 +14,7 @@ use cg_core::anim::{resolve_layer, Data, ResolvedLayer};
 use cg_core::{ChannelState, Color, ImageFit, LayerKind, Project, Prop, Template};
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 
-pub use text::FontStore;
+pub use text::{FontStore, BUNDLED_FONTS};
 
 /// A rendered video frame, RGBA 8-bit **premultiplied** alpha.
 #[derive(Clone)]
