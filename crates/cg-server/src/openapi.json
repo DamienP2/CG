@@ -2068,6 +2068,69 @@
        "type": "object",
        "additionalProperties": true
       }
+     },
+     "logic": {
+      "type": "object",
+      "description": "Relations between values (node graph), evaluated every frame after animation and bindings. Node `type`: `layerProp` {layer, prop}, `textSize` {layer, metric: width|height|lines|chars}, `field` {key}, `constant` {value}, `math` {op: add|sub|mul|div|min|max|abs|round|floor|ceil; inputs a, b}, `clamp` {min, max; input in}, `condition` {cmp: gt|ge|lt|le|eq|ne|empty|notEmpty; inputs a, b, then, else}, `target` {layer, prop, mode: set|add|multiply; input in}. Edges connect a node's output to an input `port` of another node.",
+      "properties": {
+       "nodes": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "id",
+          "type"
+         ],
+         "properties": {
+          "id": {
+           "type": "string"
+          },
+          "type": {
+           "type": "string",
+           "enum": [
+            "layerProp",
+            "textSize",
+            "field",
+            "constant",
+            "math",
+            "clamp",
+            "condition",
+            "target"
+           ]
+          },
+          "x": {
+           "type": "number"
+          },
+          "y": {
+           "type": "number"
+          }
+         },
+         "additionalProperties": true
+        }
+       },
+       "edges": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "from",
+          "to",
+          "port"
+         ],
+         "properties": {
+          "from": {
+           "type": "string"
+          },
+          "to": {
+           "type": "string"
+          },
+          "port": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
      }
     }
    },

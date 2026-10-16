@@ -1,4 +1,4 @@
-import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, Plus, Timer, Trash2, Upload } from 'lucide-react';
+import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, Link2, Plus, Timer, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
@@ -73,8 +73,14 @@ function Section({ title, children, actions }: { title: string; children: React.
 function KeyControls({ layer, prop }: { layer: Layer; prop: Prop }) {
   const { frame, update } = useDesigner();
   const animated = isAnimated(layer, prop);
+  const driven = useDesigner((s) => s.template?.logic?.nodes.some((n) => n.type === 'target' && n.layer === layer.id && n.prop === prop));
   return (
     <div className="key-controls">
+      {driven && (
+        <span className="logic-badge" title="Driven by a Logic relation (Logic button in the toolbar)">
+          <Link2 size={11} />
+        </span>
+      )}
       <button
         className={`icon-btn ghost ${animated ? 'on accent' : ''}`}
         title={animated ? 'Disable animation' : 'Animate this property'}

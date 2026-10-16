@@ -333,6 +333,7 @@ mod tests {
             height: 1080,
             frame_rate: FrameRate::default(),
             templates: vec![Template {
+                logic: Default::default(),
                 id: "t".into(),
                 name: "t".into(),
                 duration: 100.0,

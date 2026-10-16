@@ -184,6 +184,7 @@ pub fn lower_third() -> Template {
     );
 
     Template {
+        logic: Default::default(),
         zone: String::new(),
         id: "lower-third".into(),
         name: "Lower third".into(),
@@ -297,6 +298,7 @@ pub fn score_bug() -> Template {
     );
     score.props.insert(AnchorX, n(0.5));
     Template {
+        logic: Default::default(),
         zone: String::new(),
         id: "score-bug".into(),
         name: "Score bug".into(),
@@ -418,6 +420,7 @@ pub fn clock() -> Template {
     );
     fade(&mut time, 4.0, 30.0);
     Template {
+        logic: Default::default(),
         zone: String::new(),
         id: "clock".into(),
         name: "Clock".into(),
@@ -514,6 +517,7 @@ pub fn ticker() -> Template {
     );
     crawl.tracks.insert(Y, bar.tracks[&Y].clone());
     Template {
+        logic: Default::default(),
         zone: String::new(),
         id: "ticker".into(),
         name: "News ticker".into(),
@@ -571,6 +575,7 @@ pub fn credits() -> Template {
     );
     fade(&mut roll, 0.0, 60.0);
     Template {
+        logic: Default::default(),
         zone: String::new(),
         id: "credits".into(),
         name: "Credits roll".into(),
@@ -593,6 +598,7 @@ pub fn credits() -> Template {
 
 fn simple(id: &str, name: &str, duration: f64, fields: Vec<Field>, layers: Vec<Layer>) -> Template {
     Template {
+        logic: Default::default(),
         zone: String::new(),
         id: id.into(),
         name: name.into(),

@@ -559,6 +559,9 @@ pub struct Template {
     /// Zone the template plays in by default (see [`Zone`]).
     #[serde(default)]
     pub zone: String,
+    /// Relations between values (node graph), see [`crate::logic`].
+    #[serde(default, skip_serializing_if = "crate::logic::Logic::is_empty")]
+    pub logic: crate::logic::Logic,
 }
 
 impl Template {

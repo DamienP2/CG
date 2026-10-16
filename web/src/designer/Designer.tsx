@@ -1,4 +1,4 @@
-import { ChevronDown, LayoutGrid, Circle, Copy, Folder, Grid3x3, Image, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
+import { ChevronDown, LayoutGrid, Circle, Copy, Folder, Grid3x3, Image, Link2, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
@@ -9,6 +9,7 @@ import { ICONS, LayersPanel } from './LayersPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
+import { LogicEditor } from './LogicEditor';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
@@ -244,6 +245,8 @@ export function Designer() {
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
   const [showSafe, setShowSafe] = useState(true);
   const [zonesOpen, setZonesOpen] = useState(false);
+  const [logicOpen, setLogicOpen] = useState(false);
+  const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
   // Panel sizes, adjustable with the splitters.
   const [layout, setLayout] = useLayout('pulse.designerLayout', { left: 250, right: 340, timeline: 300, templates: 260 });
   const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('studio');
@@ -318,6 +321,9 @@ export function Designer() {
           <button className="btn small" onClick={() => setZonesOpen(true)} title="Screen zones of the project: one template at a time per zone">
             <LayoutGrid size={13} /> Zones
           </button>
+          <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
+            <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
+          </button>
           <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas">
             <Grid3x3 size={13} /> Safe
           </button>
@@ -339,6 +345,7 @@ export function Designer() {
         <Inspector />
       </aside>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
+      {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
     </div>
   );
 }

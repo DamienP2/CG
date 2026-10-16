@@ -138,6 +138,37 @@ export interface Template {
   layers: Layer[];
   /** Default zone (id). */
   zone: string;
+  /** Relations between values (node graph). */
+  logic?: Logic;
+}
+
+export type TextMetric = 'width' | 'height' | 'lines' | 'chars';
+export type MathOp = 'add' | 'sub' | 'mul' | 'div' | 'min' | 'max' | 'abs' | 'round' | 'floor' | 'ceil';
+export type Cmp = 'gt' | 'ge' | 'lt' | 'le' | 'eq' | 'ne' | 'empty' | 'notEmpty';
+export type TargetMode = 'set' | 'add' | 'multiply';
+
+export type LogicNodeKind =
+  | { type: 'layerProp'; layer: string; prop: Prop }
+  | { type: 'textSize'; layer: string; metric: TextMetric }
+  | { type: 'field'; key: string }
+  | { type: 'constant'; value: number }
+  | { type: 'math'; op: MathOp }
+  | { type: 'clamp'; min: number; max: number }
+  | { type: 'condition'; cmp: Cmp }
+  | { type: 'target'; layer: string; prop: Prop; mode: TargetMode };
+
+export type LogicNode = LogicNodeKind & { id: string; x: number; y: number };
+
+export interface LogicEdge {
+  from: string;
+  to: string;
+  /** Input port of `to`: a, b, in, then, else. */
+  port: string;
+}
+
+export interface Logic {
+  nodes: LogicNode[];
+  edges: LogicEdge[];
 }
 
 export type ZoneTransition = 'sequential' | 'cut';

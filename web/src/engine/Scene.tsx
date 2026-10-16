@@ -4,6 +4,8 @@ import { createContext, memo, useContext, useEffect, useReducer, type CSSPropert
 import { col, cssColor, holdFrame, interpolateText, num, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
+import { applyLogic, measureLayer } from './logic';
+import { useFonts } from './fonts';
 
 /** Time seen by widgets; provided per playout layer (or by the designer). */
 export const TimeContext = createContext<W.TimeCtx>({ nowMs: Date.now(), ageSecs: 0, defaultTz: '' });
@@ -34,8 +36,11 @@ interface SceneProps {
 
 export const LINE_HEIGHT = 1.2;
 
-function layerStyle(layer: Layer, frame: number, data: Data, hold: number): { style: CSSProperties; text?: string; src?: string } {
-  const r = resolveLayer(layer, frame, data, hold);
+/** Layers changed by the template's logic graph (resolved values). */
+const LogicContext = createContext<Map<string, Resolved>>(new Map());
+
+function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic?: Resolved): { style: CSSProperties; text?: string; src?: string } {
+  const r = logic ?? resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);
   const style: CSSProperties = {
@@ -197,7 +202,7 @@ function QrCode({ content, w, h, fill, background }: { content: string; w: numbe
 /** Content of a widget layer; reads the time context so only it re-renders. */
 function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: number; data: Data; hold: number }) {
   const time = useContext(TimeContext);
-  const r = resolveLayer(layer, frame, data, hold);
+  const r = useContext(LogicContext).get(layer.id) ?? resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);
   const age = time.ageSecs;
@@ -344,7 +349,8 @@ const LayerNode = memo(function LayerNode({
   hold: number;
   interactive?: boolean;
 }) {
-  const { style, text, src } = layerStyle(layer, frame, data, hold);
+  const logic = useContext(LogicContext).get(layer.id);
+  const { style, text, src } = layerStyle(layer, frame, data, hold, logic);
   const kids = childrenOf.get(layer.id) ?? [];
   return (
     <div style={style} data-layer-id={interactive ? layer.id : undefined}>
@@ -387,12 +393,21 @@ export function childrenMap(layers: Layer[], includeHidden = false): Map<string 
 export const Scene = memo(function Scene({ template, frame, data, interactive }: SceneProps) {
   const childrenOf = childrenMap(template.layers);
   const hold = holdFrame(template);
+  // Text measured by the logic changes when fonts finish loading.
+  useFonts((s) => s.ready);
+  // Relations: resolve every layer, run the graph, keep the changed ones.
+  const logic = new Map<string, Resolved>();
+  if (template.logic?.nodes.length) {
+    const values = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
+    applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText));
+    for (const n of template.logic.nodes) if (n.type === 'target' && values.has(n.layer)) logic.set(n.layer, values.get(n.layer)!);
+  }
   return (
-    <>
+    <LogicContext.Provider value={logic}>
       {(childrenOf.get(null) ?? []).map((l) => (
         <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ))}
-    </>
+    </LogicContext.Provider>
   );
 });
 

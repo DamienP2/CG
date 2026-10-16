@@ -9,7 +9,11 @@ export interface FontFamily {
   source: 'bundled' | 'uploaded' | 'system';
 }
 
-export const useFonts = create<{ families: FontFamily[] }>(() => ({ families: [] }));
+export const useFonts = create<{ families: FontFamily[]; /** Bumped when a font finishes loading (text measurements change). */ ready: number }>(() => ({ families: [], ready: 0 }));
+
+if (typeof document !== 'undefined' && document.fonts) {
+  document.fonts.addEventListener('loadingdone', () => useFonts.setState((s) => ({ ready: s.ready + 1 })));
+}
 
 const cssEsc = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 

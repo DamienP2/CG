@@ -76,6 +76,8 @@ struct Ctx<'a> {
     frame: f64,
     data: &'a Data,
     time: TimeCtx<'a>,
+    /// Values of the layers changed by the template's logic graph.
+    logic: HashMap<String, std::collections::BTreeMap<Prop, Value>>,
 }
 
 /// Output raster of a channel. Projects designed for another size are
@@ -112,6 +114,77 @@ impl Renderer {
             self.fonts = FontStore::new(Some(&self.assets_dir.join("fonts")));
             self.font_generation = g;
         }
+    }
+
+    /// Runs the template's logic graph; returns the layers it changed.
+    fn logic_values(
+        &mut self,
+        t: &Template,
+        frame: f64,
+        data: &Data,
+    ) -> HashMap<String, std::collections::BTreeMap<Prop, Value>> {
+        if t.logic.is_empty() {
+            return HashMap::new();
+        }
+        let hold = t.hold_frame();
+        let mut values: cg_core::logic::Values = t
+            .layers
+            .iter()
+            .map(|l| (l.id.clone(), resolve_layer(l, frame, data, hold).values))
+            .collect();
+        let fonts = &mut self.fonts;
+        let mut measure = |id: &str,
+                           v: &std::collections::BTreeMap<Prop, Value>,
+                           metric: cg_core::logic::TextMetric|
+         -> f64 {
+            let Some(LayerKind::Text {
+                text,
+                font_family,
+                font_weight,
+                uppercase,
+                ..
+            }) = t.layers.iter().find(|l| l.id == id).map(|l| &l.kind)
+            else {
+                return 0.0;
+            };
+            let mut content = interpolate_text(text, data);
+            if *uppercase {
+                content = content.to_uppercase();
+            }
+            let num = |p: Prop| v.get(&p).and_then(Value::as_number).unwrap_or(0.0);
+            let size = num(Prop::FontSize);
+            let lines = content.split('\n').count() as f64;
+            match metric {
+                cg_core::logic::TextMetric::Lines => lines,
+                cg_core::logic::TextMetric::Chars => content.chars().count() as f64,
+                cg_core::logic::TextMetric::Height => {
+                    if content.is_empty() {
+                        0.0
+                    } else {
+                        lines * size * text::LINE_HEIGHT as f64
+                    }
+                }
+                cg_core::logic::TextMetric::Width => match fonts.font(font_family, *font_weight) {
+                    Some(f) if !content.is_empty() => {
+                        text::text_width(&f, &content, size as f32, num(Prop::LetterSpacing) as f32)
+                            as f64
+                    }
+                    _ => 0.0,
+                },
+            }
+        };
+        cg_core::logic::apply(&t.logic, &mut values, data, &mut measure);
+        let targeted: std::collections::HashSet<&str> = t
+            .logic
+            .nodes
+            .iter()
+            .filter_map(|n| match &n.kind {
+                cg_core::logic::NodeKind::Target { layer, .. } => Some(layer.as_str()),
+                _ => None,
+            })
+            .collect();
+        values.retain(|k, _| targeted.contains(k.as_str()));
+        values
     }
 
     pub fn font_families(&mut self) -> Vec<FontFamily> {
@@ -160,11 +233,13 @@ impl Renderer {
                     age_secs: item.age / fps,
                     default_tz,
                 };
+                let logic = self.logic_values(&t, item.frame, &item.data);
                 let ctx = Ctx {
                     template: &t,
                     frame: item.frame,
                     data: &item.data,
                     time,
+                    logic,
                 };
                 self.draw_children(&mut pm, &ctx, None, root, 1.0, None);
             }
@@ -201,11 +276,13 @@ impl Renderer {
             age_secs: frame / project.frame_rate.as_f64().max(1.0),
             default_tz: "",
         };
+        let logic = self.logic_values(template, frame, data);
         let ctx = Ctx {
             template,
             frame,
             data,
             time,
+            logic,
         };
         self.draw_children(&mut pm, &ctx, None, Transform::identity(), 1.0, None);
         Frame {
@@ -232,7 +309,10 @@ impl Renderer {
             .filter(|l| l.visible && l.parent.as_deref() == parent)
             .collect();
         for layer in children {
-            let r = resolve_layer(layer, ctx.frame, ctx.data, ctx.template.hold_frame());
+            let mut r = resolve_layer(layer, ctx.frame, ctx.data, ctx.template.hold_frame());
+            if let Some(v) = ctx.logic.get(&layer.id) {
+                r.values = v.clone();
+            }
             let opacity = parent_opacity * r.num(Prop::Opacity).clamp(0.0, 1.0) as f32;
             if opacity <= 0.0 {
                 continue;
