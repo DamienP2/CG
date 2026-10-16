@@ -34,6 +34,10 @@ pub struct PlayoutItem {
     /// Rundown item that triggered it, if any (for operator tally).
     #[serde(default)]
     pub rundown_id: Option<String>,
+    /// Frames spent on air since the take, including holds (drives tickers,
+    /// rolls and timers).
+    #[serde(default)]
+    pub age: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,6 +111,7 @@ impl ChannelState {
                         target: hold_target(t, 0.0),
                         phase: Phase::Playing,
                         rundown_id,
+                        age: 0.0,
                     },
                 );
             }
@@ -163,9 +168,12 @@ impl ChannelState {
     }
 
     /// Advances every playing item by `frames`. Returns true if anything changed.
+    /// Advances every item by `frames`. Returns true if a timeline moved
+    /// (holding items only age, which clients extrapolate on their own).
     pub fn tick(&mut self, frames: f64) -> bool {
         let mut changed = false;
         self.layers.retain(|_, item| {
+            item.age += frames;
             if item.phase == Phase::Holding {
                 return true;
             }
@@ -196,6 +204,7 @@ mod tests {
         Project {
             id: "p".into(),
             name: "p".into(),
+            description: String::new(),
             width: 1920,
             height: 1080,
             frame_rate: FrameRate::default(),

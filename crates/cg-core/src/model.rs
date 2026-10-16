@@ -204,6 +204,232 @@ pub enum LayerKind {
         #[serde(default)]
         fit: ImageFit,
     },
+    /// Live clock / countdown / timer.
+    #[serde(rename_all = "camelCase")]
+    Clock {
+        #[serde(default)]
+        mode: ClockMode,
+        /// Tokens: yyyy yy MM M dd d HH H hh h mm m ss s f A (see widgets.rs).
+        #[serde(default = "default_clock_format")]
+        format: String,
+        /// IANA time zone ("Europe/Paris"); empty = the server's zone.
+        #[serde(default)]
+        timezone: String,
+        /// Countdown: "HH:mm[:ss]" (today) or "yyyy-MM-ddTHH:mm:ss";
+        /// timer: duration "[HH:]mm:ss". `{{field}}` allowed.
+        #[serde(default)]
+        target: String,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+    /// Horizontal crawl: one item per line of `text`, joined by `separator`.
+    #[serde(rename_all = "camelCase")]
+    Ticker {
+        text: String,
+        #[serde(default = "default_separator")]
+        separator: String,
+        /// Pixels per second.
+        #[serde(default = "default_ticker_speed")]
+        speed: f64,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+    /// Vertical roll (credits, lists): lines scroll upwards.
+    #[serde(rename_all = "camelCase")]
+    Roll {
+        text: String,
+        #[serde(default = "default_roll_speed")]
+        speed: f64,
+        /// Start again from the bottom once everything has scrolled past.
+        #[serde(default = "yes", rename = "loop")]
+        looping: bool,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+    /// Clock face with hands.
+    #[serde(rename_all = "camelCase")]
+    AnalogClock {
+        /// IANA time zone; empty = the server's zone.
+        #[serde(default)]
+        timezone: String,
+        #[serde(default = "yes")]
+        seconds: bool,
+        /// Second hand colour (face = fill, hands and ticks = stroke).
+        #[serde(default = "default_accent")]
+        accent: String,
+    },
+    /// Number counting from `from` to `to` once on air (scores, results…).
+    #[serde(rename_all = "camelCase")]
+    Counter {
+        #[serde(default)]
+        from: String,
+        to: String,
+        /// Seconds.
+        #[serde(default = "default_two")]
+        duration: f64,
+        #[serde(default)]
+        decimals: u8,
+        #[serde(default)]
+        prefix: String,
+        #[serde(default)]
+        suffix: String,
+        /// Thousands separator.
+        #[serde(default = "yes")]
+        grouping: bool,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+    /// Horizontal bar filled to `value` / `max`, animated from empty.
+    #[serde(rename_all = "camelCase")]
+    Progress {
+        value: String,
+        #[serde(default = "default_hundred")]
+        max: String,
+        #[serde(default = "default_one")]
+        duration: f64,
+        /// Colour of the empty part (the bar uses the fill colour).
+        #[serde(default = "default_track")]
+        track: String,
+    },
+    /// Shows the lines of `text` one after another with a cross-fade.
+    #[serde(rename_all = "camelCase")]
+    Rotator {
+        text: String,
+        /// Seconds per line.
+        #[serde(default = "default_four")]
+        interval: f64,
+        #[serde(default = "default_half")]
+        fade: f64,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+    /// Reveals `text` letter by letter.
+    #[serde(rename_all = "camelCase")]
+    Typewriter {
+        text: String,
+        /// Characters per second.
+        #[serde(default = "default_twenty")]
+        speed: f64,
+        #[serde(default = "yes")]
+        cursor: bool,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+    /// Cycles through images (one asset path per line) with a cross-fade.
+    #[serde(rename_all = "camelCase")]
+    Slideshow {
+        images: String,
+        #[serde(default = "default_five")]
+        interval: f64,
+        #[serde(default = "default_fade")]
+        fade: f64,
+        #[serde(default)]
+        fit: ImageFit,
+    },
+    /// QR code of `data` (URL, text…); modules use the fill colour.
+    #[serde(rename_all = "camelCase")]
+    QrCode {
+        data: String,
+        #[serde(default = "default_white")]
+        background: String,
+    },
+    /// Horizontal bar chart / poll: one "Label: value" per line.
+    #[serde(rename_all = "camelCase")]
+    BarChart {
+        text: String,
+        /// Show values as a percentage of the total.
+        #[serde(default = "yes")]
+        percent: bool,
+        #[serde(default = "default_one")]
+        duration: f64,
+        #[serde(default = "default_track")]
+        track: String,
+        /// Labels and values (the bars use the fill colour).
+        #[serde(default = "default_white")]
+        text_color: String,
+        #[serde(flatten)]
+        font: FontStyle,
+    },
+}
+
+fn default_accent() -> String {
+    "#ff3b5c".into()
+}
+fn default_track() -> String {
+    "#ffffff33".into()
+}
+fn default_white() -> String {
+    "#ffffff".into()
+}
+fn default_hundred() -> String {
+    "100".into()
+}
+fn default_half() -> f64 {
+    0.5
+}
+fn default_one() -> f64 {
+    1.0
+}
+fn default_two() -> f64 {
+    2.0
+}
+fn default_four() -> f64 {
+    4.0
+}
+fn default_five() -> f64 {
+    5.0
+}
+fn default_fade() -> f64 {
+    0.8
+}
+fn default_twenty() -> f64 {
+    20.0
+}
+
+/// Font settings shared by the text-based widgets.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FontStyle {
+    #[serde(default = "default_font")]
+    pub font_family: String,
+    #[serde(default = "default_weight")]
+    pub font_weight: u16,
+    #[serde(default)]
+    pub align: TextAlign,
+    #[serde(default)]
+    pub vertical_align: VerticalAlign,
+    #[serde(default)]
+    pub uppercase: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ClockMode {
+    /// Time of day.
+    #[default]
+    Time,
+    /// Remaining time until `target` (time of day or date-time).
+    Countdown,
+    /// Time since the graphic was taken on air.
+    Elapsed,
+    /// Counts down from the `target` duration once on air.
+    Timer,
+}
+
+fn default_font() -> String {
+    "Inter".into()
+}
+fn default_clock_format() -> String {
+    "HH:mm:ss".into()
+}
+fn default_separator() -> String {
+    "   •   ".into()
+}
+fn default_ticker_speed() -> f64 {
+    180.0
+}
+fn default_roll_speed() -> f64 {
+    60.0
 }
 
 fn default_weight() -> u16 {
@@ -352,9 +578,13 @@ pub struct RundownItem {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// A show project: the templates and the rundown of one programme,
+/// designed for one video format (channels scale it to their own format).
 pub struct Project {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
     pub width: u32,
     pub height: u32,
     pub frame_rate: FrameRate,

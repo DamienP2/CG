@@ -1,11 +1,14 @@
 mod api;
+mod auth;
 mod config;
 mod engine;
+mod library;
 mod paths;
 mod service;
 mod state;
 mod web;
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::IsTerminal;
 use std::net::SocketAddr;
@@ -19,7 +22,7 @@ use tokio::sync::{broadcast, watch, Notify, RwLock};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
-use crate::state::{AppState, Shared};
+use crate::state::{AppState, ChannelRt, Shared};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -42,6 +45,134 @@ enum Cmd {
     /// Manage the background service (systemd, launchd or Windows service).
     #[command(subcommand)]
     Service(ServiceCmd),
+    /// Manage user accounts (works while the server runs).
+    #[command(subcommand)]
+    User(UserCmd),
+}
+
+#[derive(Subcommand, Debug)]
+enum UserCmd {
+    /// Create a user (prompts for the password).
+    Add {
+        username: String,
+        #[arg(long, value_enum, default_value = "admin")]
+        role: CliRole,
+        #[arg(long, env = "CG_DATA_DIR")]
+        data_dir: Option<PathBuf>,
+    },
+    /// List users.
+    List {
+        #[arg(long, env = "CG_DATA_DIR")]
+        data_dir: Option<PathBuf>,
+    },
+    /// Change a user's password (prompts for it).
+    Passwd {
+        username: String,
+        #[arg(long, env = "CG_DATA_DIR")]
+        data_dir: Option<PathBuf>,
+    },
+    /// Delete a user.
+    Delete {
+        username: String,
+        #[arg(long, env = "CG_DATA_DIR")]
+        data_dir: Option<PathBuf>,
+    },
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+enum CliRole {
+    Admin,
+    Designer,
+    Operator,
+    Viewer,
+}
+
+impl From<CliRole> for auth::Role {
+    fn from(r: CliRole) -> Self {
+        match r {
+            CliRole::Admin => auth::Role::Admin,
+            CliRole::Designer => auth::Role::Designer,
+            CliRole::Operator => auth::Role::Operator,
+            CliRole::Viewer => auth::Role::Viewer,
+        }
+    }
+}
+
+/// The data directory a CLI command acts on: explicit, else the installed
+/// service's when it exists, else the per-user one.
+fn cli_data_dir(explicit: Option<PathBuf>) -> PathBuf {
+    explicit.unwrap_or_else(|| {
+        let system = paths::system_data_dir();
+        if system.join("config.json").exists() {
+            system
+        } else {
+            paths::user_data_dir()
+        }
+    })
+}
+
+fn prompt_password() -> anyhow::Result<String> {
+    let pw = rpassword::prompt_password("Password: ")?;
+    auth::validate_password(&pw).map_err(|e| anyhow::anyhow!(e))?;
+    if rpassword::prompt_password("Repeat:   ")? != pw {
+        anyhow::bail!("passwords do not match");
+    }
+    Ok(pw)
+}
+
+fn user_command(cmd: UserCmd) -> anyhow::Result<()> {
+    let err = |e: String| anyhow::anyhow!(e);
+    match cmd {
+        UserCmd::Add {
+            username,
+            role,
+            data_dir,
+        } => {
+            let dir = cli_data_dir(data_dir);
+            std::fs::create_dir_all(&dir)?;
+            let password = prompt_password()?;
+            let a = auth::Auth::load(&dir);
+            let input = auth::UserInput {
+                username,
+                display_name: String::new(),
+                role: role.into(),
+                projects: None,
+                channels: None,
+                disabled: false,
+                password,
+            };
+            let u = a.create(input).map_err(err)?;
+            println!("User `{}` created in {}.", u.username, dir.display());
+        }
+        UserCmd::List { data_dir } => {
+            for u in auth::Auth::load(&cli_data_dir(data_dir)).users() {
+                println!(
+                    "{:<24} {:<10} {}{}",
+                    u.username,
+                    format!("{:?}", u.role).to_lowercase(),
+                    u.display_name,
+                    if u.disabled { " (disabled)" } else { "" }
+                );
+            }
+        }
+        UserCmd::Passwd { username, data_dir } => {
+            let a = auth::Auth::load(&cli_data_dir(data_dir));
+            let pw = prompt_password()?;
+            a.set_password(&username, &pw).map_err(err)?;
+            println!("Password changed.");
+        }
+        UserCmd::Delete { username, data_dir } => {
+            let a = auth::Auth::load(&cli_data_dir(data_dir));
+            let u = a
+                .users()
+                .into_iter()
+                .find(|u| u.username.eq_ignore_ascii_case(&username))
+                .ok_or_else(|| anyhow::anyhow!("no such user"))?;
+            a.delete(&u.id).map_err(err)?;
+            println!("User `{}` deleted.", u.username);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Args, Debug, Clone)]
@@ -53,7 +184,7 @@ pub struct RunArgs {
     /// Address used when the saved settings do not set one (installers).
     #[arg(long, hide = true)]
     default_bind: Option<SocketAddr>,
-    /// Directory holding project.json, config.json and assets/
+    /// Directory holding projects/, config.json, users.json and assets/
     /// [default: per-user application data directory].
     #[arg(long, env = "CG_DATA_DIR")]
     data_dir: Option<PathBuf>,
@@ -132,6 +263,13 @@ fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Some(Cmd::User(cmd)) => {
+            if let Err(e) = user_command(cmd) {
+                eprintln!("error: {e:#}");
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Some(Cmd::Run(args)) => run(args),
         None => run(cli.run),
     }
@@ -186,6 +324,11 @@ pub async fn serve(
     });
     let started_at = SystemTime::now();
     let fallback: SocketAddr = DEFAULT_BIND.parse()?;
+    // Sessions survive engine restarts.
+    let auth = Arc::new(auth::Auth::load(&data_dir));
+    if auth.needs_setup() {
+        tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
+    }
 
     // Each iteration is one engine "cycle"; settings changes end the cycle
     // and the loop rebuilds everything with the new configuration.
@@ -212,21 +355,40 @@ pub async fn serve(
             tracing::warn!("cannot write runtime.json: {e}");
         }
 
+        let library = library::Library::load(&data_dir)?;
+        let mut channels = BTreeMap::new();
+        for c in &config.channels {
+            // Fresh installs show the first project; a deleted one unloads.
+            let pid = match &c.project_id {
+                Some(id) if library.get(id).is_some() => Some(id.clone()),
+                Some(_) => None,
+                None => library.first_id(),
+            };
+            channels.insert(
+                c.id.clone(),
+                Arc::new(ChannelRt {
+                    config: c.clone(),
+                    project_id: RwLock::new(pid),
+                    state: RwLock::new(Default::default()),
+                }),
+            );
+        }
         let (events, _) = broadcast::channel(256);
         let (closing, _) = watch::channel(false);
         let shared: Shared = Arc::new(AppState {
             data_dir: data_dir.clone(),
-            project: RwLock::new(Arc::new(state::load_project(&data_dir))),
-            channel: RwLock::new(Default::default()),
+            library: RwLock::new(library),
+            channels,
             events,
             renderer: Mutex::new(cg_render::Renderer::new(data_dir.join("assets"))),
+            auth: auth.clone(),
             config,
             bind,
             started_at,
             restart: Notify::new(),
             closing,
         });
-        let engine = tokio::spawn(engine::run(shared.clone()));
+        let engine = engine::start(&shared);
 
         let app = api::router()
             .route("/fonts/{name}", get(web::font))
@@ -242,20 +404,27 @@ pub async fn serve(
             .layer(CorsLayer::permissive())
             .with_state(shared.clone());
 
-        tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 output: /output");
+        tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 output: /output/<channel>");
         let stop = state::until_true(stop_rx.clone());
         let cycle = shared.clone();
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                tokio::select! {
-                    _ = stop => {}
-                    _ = cycle.restart.notified() => {}
-                }
-                let _ = cycle.closing.send(true);
-            })
-            .await?;
-        engine.abort();
-        let _ = engine.await;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            tokio::select! {
+                _ = stop => {}
+                _ = cycle.restart.notified() => {}
+            }
+            let _ = cycle.closing.send(true);
+        })
+        .await?;
+        for h in &engine {
+            h.abort();
+        }
+        for h in engine {
+            let _ = h.await;
+        }
         if *stop_rx.borrow() {
             break;
         }

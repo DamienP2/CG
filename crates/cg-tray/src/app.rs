@@ -186,7 +186,7 @@ fn poll(proxy: EventLoopProxy<UserEvent>) {
         loop {
             let port = discover_port();
             let status = agent
-                .get(format!("{}/api/system", base_url(port)))
+                .get(format!("{}/api/health", base_url(port)))
                 .call()
                 .ok()
                 .and_then(|mut r| r.body_mut().read_to_string().ok())
@@ -194,7 +194,7 @@ fn poll(proxy: EventLoopProxy<UserEvent>) {
                 .map(|j| Status {
                     running: true,
                     name: j
-                        .pointer("/config/name")
+                        .get("name")
                         .and_then(|n| n.as_str())
                         .unwrap_or("Pulse CG")
                         .to_string(),

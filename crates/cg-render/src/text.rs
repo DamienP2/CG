@@ -92,6 +92,27 @@ pub struct TextStyle {
 /// Line height multiplier — must match the web renderer (`line-height: 1.2`).
 pub const LINE_HEIGHT: f32 = 1.2;
 
+/// Width of the widest line, matching [`layout_text`]'s advances.
+pub fn text_width(font: &FontArc, text: &str, size: f32, letter_spacing: f32) -> f32 {
+    let upem = font.units_per_em().unwrap_or(1000.0);
+    let scaled = font.as_scaled(ab_glyph::PxScale::from(
+        size * font.height_unscaled() / upem,
+    ));
+    text.split('\n')
+        .map(|line| {
+            let glyphs: Vec<_> = line.chars().map(|c| font.glyph_id(c)).collect();
+            let mut width = 0.0;
+            for (j, g) in glyphs.iter().enumerate() {
+                width += scaled.h_advance(*g);
+                if j + 1 < glyphs.len() {
+                    width += scaled.kern(*g, glyphs[j + 1]) + letter_spacing;
+                }
+            }
+            width
+        })
+        .fold(0.0, f32::max)
+}
+
 /// Builds a single path containing all glyphs, in layer-local coordinates.
 pub fn layout_text(font: &FontArc, text: &str, style: &TextStyle) -> Option<SkPath> {
     // CSS `font-size` is the em size; ab_glyph's PxScale is ascent-descent.

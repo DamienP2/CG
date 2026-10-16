@@ -6,6 +6,7 @@ pub mod easing;
 pub mod model;
 pub mod playout;
 pub mod sample;
+pub mod widgets;
 
 pub use anim::{resolve_template, Data, ResolvedLayer};
 pub use easing::Easing;
