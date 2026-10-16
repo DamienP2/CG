@@ -175,6 +175,47 @@ struct Session {
     expires: Instant,
 }
 
+/// Permanent token for automation (Companion, MOS gateways, scripts). It
+/// acts with the rights of its user; only a SHA-256 of it is stored.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiKey {
+    pub id: String,
+    pub name: String,
+    pub user_id: String,
+    /// First characters, to recognise a key in lists.
+    pub prefix: String,
+    pub created_at: i64,
+    hash: String,
+}
+
+/// An API key as listed to clients (never the secret).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicApiKey {
+    pub id: String,
+    pub name: String,
+    pub user_id: String,
+    pub prefix: String,
+    pub created_at: i64,
+    pub last_used: Option<i64>,
+}
+
+pub const API_KEY_PREFIX: &str = "pcg_";
+
+fn sha256_hex(s: &str) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(s.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+struct Keys {
+    list: Vec<ApiKey>,
+    mtime: Option<SystemTime>,
+}
+
 struct Users {
     list: Vec<User>,
     mtime: Option<SystemTime>,
@@ -184,6 +225,10 @@ pub struct Auth {
     path: PathBuf,
     users: RwLock<Users>,
     sessions: Mutex<HashMap<String, Session>>,
+    keys_path: PathBuf,
+    keys: RwLock<Keys>,
+    /// Key id -> last use (ms), kept in memory.
+    key_use: Mutex<HashMap<String, i64>>,
 }
 
 fn mtime(path: &Path) -> Option<SystemTime> {
@@ -194,6 +239,8 @@ impl Auth {
     pub fn load(data_dir: &Path) -> Self {
         let path = data_dir.join("users.json");
         let list = Self::read(&path);
+        let keys_path = data_dir.join("api_keys.json");
+        let keys = Self::read(&keys_path);
         Self {
             users: RwLock::new(Users {
                 list,
@@ -201,13 +248,19 @@ impl Auth {
             }),
             path,
             sessions: Mutex::new(HashMap::new()),
+            keys: RwLock::new(Keys {
+                list: keys,
+                mtime: mtime(&keys_path),
+            }),
+            keys_path,
+            key_use: Mutex::new(HashMap::new()),
         }
     }
 
-    fn read(path: &Path) -> Vec<User> {
+    fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
         match std::fs::read(path) {
             Ok(b) => serde_json::from_slice(&b).unwrap_or_else(|e| {
-                tracing::error!("invalid users.json: {e}");
+                tracing::error!(?path, "invalid file: {e}");
                 Vec::new()
             }),
             Err(_) => Vec::new(),
@@ -233,15 +286,20 @@ impl Auth {
         }
     }
 
-    fn save(&self, list: Vec<User>) -> anyhow::Result<()> {
-        let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(&list)?)?;
+    fn write_private<T: Serialize>(path: &Path, list: &[T]) -> anyhow::Result<()> {
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec_pretty(list)?)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
         }
-        std::fs::rename(&tmp, &self.path)?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    }
+
+    fn save(&self, list: Vec<User>) -> anyhow::Result<()> {
+        Self::write_private(&self.path, &list)?;
         let mut u = self
             .users
             .write()
@@ -342,7 +400,116 @@ impl Auth {
         }
         self.save(list).map_err(|e| e.to_string())?;
         self.drop_sessions_of(id);
+        // Their API keys go with them.
+        let keys: Vec<ApiKey> = self
+            .api_keys_raw()
+            .into_iter()
+            .filter(|k| k.user_id != id)
+            .collect();
+        self.save_keys(keys).map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    fn api_keys_raw(&self) -> Vec<ApiKey> {
+        let current = mtime(&self.keys_path);
+        let stale = self.keys.read().map(|k| k.mtime != current).unwrap_or(true);
+        if stale {
+            let list = Self::read(&self.keys_path);
+            if let Ok(mut k) = self.keys.write() {
+                *k = Keys {
+                    list,
+                    mtime: current,
+                };
+            }
+        }
+        self.keys.read().map(|k| k.list.clone()).unwrap_or_default()
+    }
+
+    fn save_keys(&self, list: Vec<ApiKey>) -> anyhow::Result<()> {
+        Self::write_private(&self.keys_path, &list)?;
+        let mut k = self
+            .keys
+            .write()
+            .map_err(|_| anyhow::anyhow!("lock poisoned"))?;
+        *k = Keys {
+            list,
+            mtime: mtime(&self.keys_path),
+        };
+        Ok(())
+    }
+
+    pub fn api_keys(&self) -> Vec<PublicApiKey> {
+        let uses = self.key_use.lock().map(|m| m.clone()).unwrap_or_default();
+        self.api_keys_raw()
+            .into_iter()
+            .map(|k| PublicApiKey {
+                last_used: uses.get(&k.id).copied(),
+                id: k.id,
+                name: k.name,
+                user_id: k.user_id,
+                prefix: k.prefix,
+                created_at: k.created_at,
+            })
+            .collect()
+    }
+
+    /// Creates a key for `user_id`; the secret is returned once.
+    pub fn create_api_key(
+        &self,
+        user_id: &str,
+        name: &str,
+    ) -> Result<(String, PublicApiKey), String> {
+        if !self.users().iter().any(|u| u.id == user_id) {
+            return Err("no such user".into());
+        }
+        let name = name.trim();
+        if name.is_empty() || name.len() > 80 {
+            return Err("give the key a name (what uses it)".into());
+        }
+        let secret = format!(
+            "{API_KEY_PREFIX}{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        );
+        let key = ApiKey {
+            id: cg_core::new_id(),
+            name: name.into(),
+            user_id: user_id.into(),
+            prefix: secret[..API_KEY_PREFIX.len() + 6].into(),
+            created_at: crate::state::now_ms(),
+            hash: sha256_hex(&secret),
+        };
+        let mut list = self.api_keys_raw();
+        list.push(key.clone());
+        self.save_keys(list).map_err(|e| e.to_string())?;
+        let public = PublicApiKey {
+            id: key.id,
+            name: key.name,
+            user_id: key.user_id,
+            prefix: key.prefix,
+            created_at: key.created_at,
+            last_used: None,
+        };
+        Ok((secret, public))
+    }
+
+    pub fn delete_api_key(&self, id: &str) -> Result<ApiKey, String> {
+        let mut list = self.api_keys_raw();
+        let idx = list.iter().position(|k| k.id == id).ok_or("no such key")?;
+        let key = list.remove(idx);
+        self.save_keys(list).map_err(|e| e.to_string())?;
+        Ok(key)
+    }
+
+    fn user_for_api_key(&self, secret: &str) -> Option<User> {
+        let hash = sha256_hex(secret);
+        let key = self.api_keys_raw().into_iter().find(|k| k.hash == hash)?;
+        if let Ok(mut m) = self.key_use.lock() {
+            m.insert(key.id.clone(), crate::state::now_ms());
+        }
+        self.users()
+            .into_iter()
+            .find(|u| u.id == key.user_id && !u.disabled)
     }
 
     /// Sets a password from the command line.
@@ -398,6 +565,9 @@ impl Auth {
     }
 
     pub fn user_for_token(&self, token: &str) -> Option<User> {
+        if token.starts_with(API_KEY_PREFIX) {
+            return self.user_for_api_key(token);
+        }
         let user_id = {
             let mut s = self.sessions.lock().ok()?;
             let session = s.get_mut(token)?;
@@ -511,9 +681,20 @@ mod tests {
         assert!(op.can_operate("studio-a") && !op.can_operate("studio-b"));
         assert!(op.can_edit_rundown("news") && !op.can_design("news") && !op.sees_project("sport"));
 
+        // API keys act as their user and die with it.
+        let (secret, key) = auth.create_api_key(&op.id, "Companion").unwrap();
+        assert!(secret.starts_with(API_KEY_PREFIX) && secret.starts_with(&key.prefix));
+        assert_eq!(auth.user_for_token(&secret).unwrap().id, op.id);
+        assert!(auth.user_for_token("pcg_wrong").is_none());
+        assert!(!std::fs::read_to_string(dir.join("api_keys.json"))
+            .unwrap()
+            .contains(&secret));
+        auth.delete(&op.id).unwrap();
+        assert!(auth.user_for_token(&secret).is_none() && auth.api_keys().is_empty());
+
         // The last admin cannot be removed; data survives a reload.
         assert!(auth.delete(&admin.id).is_err());
-        assert_eq!(Auth::load(&dir).users().len(), 2);
+        assert_eq!(Auth::load(&dir).users().len(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

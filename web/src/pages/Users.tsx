@@ -2,6 +2,7 @@ import { KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserRound, X } from 'lucid
 import { useEffect, useState } from 'react';
 import type { Role, User } from '../engine/types';
 import { api, useApp } from '../store';
+import { ApiKeys } from './ApiKeys';
 
 const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: 'admin', label: 'Admin', hint: 'Everything: users, channels, server settings.' },
@@ -194,6 +195,7 @@ export function Users() {
             ))}
           </tbody>
         </table>
+        <ApiKeys users={users} />
       </div>
       {editing && <UserDialog initial={editing} onClose={() => setEditing(null)} onSaved={load} />}
     </div>

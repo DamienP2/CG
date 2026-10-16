@@ -29,6 +29,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/users", get(list_users).post(create_user))
         .route("/api/users/{id}", put(update_user).delete(delete_user))
+        .route("/api/keys", get(list_keys).post(create_key))
+        .route("/api/keys/{id}", axum::routing::delete(delete_key))
+        .route("/api/openapi.json", get(openapi))
         .route("/api/projects", get(list_projects).post(create_project))
         .route("/api/projects/import", post(import_project))
         .route(
@@ -52,6 +55,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/channels/{id}/state", get(channel_state))
         .route("/api/channels/{id}/project", put(load_project))
         .route("/api/channels/{id}/command", post(channel_command))
+        .route(
+            "/api/channels/{id}/items/{item}/{action}",
+            post(item_command),
+        )
         .route("/api/channels/{id}/preview.png", get(channel_preview))
         .route("/api/channels/{id}/outputs/{name}/{essence}", get(get_sdp))
         .route("/api/assets", get(list_assets))
@@ -272,6 +279,74 @@ async fn delete_user(
     }
     s.auth.delete(&id).map_err(bad)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// -------------------------------------------------------------- API keys ----
+
+async fn list_keys(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> Json<Vec<auth::PublicApiKey>> {
+    Json(
+        s.auth
+            .api_keys()
+            .into_iter()
+            .filter(|k| me.is_admin() || k.user_id == me.id)
+            .collect(),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NewKey {
+    name: String,
+    /// Admins can create keys for any user (e.g. a service account).
+    #[serde(default)]
+    user_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CreatedKey {
+    key: auth::PublicApiKey,
+    /// Shown once: store it in the automation system.
+    secret: String,
+}
+
+async fn create_key(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(n): Json<NewKey>,
+) -> ApiResult<Json<CreatedKey>> {
+    let owner = n.user_id.unwrap_or_else(|| me.id.clone());
+    require(me.is_admin() || (owner == me.id && me.role != Role::Viewer))?;
+    let (secret, key) = s.auth.create_api_key(&owner, &n.name).map_err(bad)?;
+    tracing::info!(by = me.username, key = key.name, "API key created");
+    Ok(Json(CreatedKey { key, secret }))
+}
+
+async fn delete_key(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let key = s
+        .auth
+        .api_keys()
+        .into_iter()
+        .find(|k| k.id == id)
+        .ok_or_else(|| not_found("key"))?;
+    require(me.is_admin() || key.user_id == me.id)?;
+    s.auth.delete_api_key(&id).map_err(bad)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The API description (OpenAPI 3.1), for code generators and the docs page.
+async fn openapi() -> Response {
+    let spec = include_str!("openapi.json").replace(
+        "\"version\": \"0.0.0\"",
+        &format!("\"version\": \"{}\"", env!("CARGO_PKG_VERSION")),
+    );
+    ([(header::CONTENT_TYPE, "application/json")], spec).into_response()
 }
 
 // -------------------------------------------------------------- projects ----
@@ -653,6 +728,68 @@ async fn channel_command(
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    s.command(&id, cmd).await.map(Json).map_err(bad)
+}
+
+#[derive(Deserialize, Default)]
+struct ItemBody {
+    #[serde(default)]
+    data: Option<BTreeMap<String, String>>,
+}
+
+/// Plays a rundown item of the project loaded on the channel, by id: what a
+/// Stream Deck button or a newsroom system needs (`take`, `continue`,
+/// `out`, `update`, `clear`).
+async fn item_command(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, item, action)): Path<(String, String, String)>,
+    body: Option<Json<ItemBody>>,
+) -> ApiResult<impl IntoResponse> {
+    visible_channel(&me, &id)?;
+    require(me.can_operate(&id))?;
+    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let pid = ch
+        .project_id
+        .read()
+        .await
+        .clone()
+        .ok_or_else(|| bad("no project loaded on this channel"))?;
+    let project = s.project(&pid).await.ok_or_else(|| not_found("project"))?;
+    let it = project
+        .rundown
+        .iter()
+        .find(|r| r.id == item || r.name.eq_ignore_ascii_case(&item))
+        .ok_or_else(|| not_found("rundown item"))?;
+    let zone = project.item_zone(it).map(|z| z.id.clone());
+    let data = body.and_then(|b| b.0.data);
+    let cmd = match action.as_str() {
+        "take" => {
+            let mut merged = it.data.clone();
+            merged.extend(data.unwrap_or_default());
+            Command::Take {
+                zone,
+                layer: None,
+                template_id: it.template_id.clone(),
+                data: Some(merged),
+                rundown_id: Some(it.id.clone()),
+            }
+        }
+        "continue" => Command::Continue { zone, layer: None },
+        "out" => Command::TakeOut { zone, layer: None },
+        "update" => Command::Update {
+            zone,
+            layer: None,
+            data: data.unwrap_or_else(|| it.data.clone()),
+        },
+        "clear" => Command::Clear { zone, layer: None },
+        _ => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                "actions: take, continue, out, update, clear".into(),
+            ))
+        }
+    };
     s.command(&id, cmd).await.map(Json).map_err(bad)
 }
 

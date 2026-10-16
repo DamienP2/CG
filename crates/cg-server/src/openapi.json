@@ -1,0 +1,2086 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Pulse CG API",
+  "version": "0.0.0",
+  "description": "Everything the web app does goes through this API: automation systems (Companion / Stream Deck, newsroom MOS gateways, sports data feeds) have the same power as the UI.\n\n**Authentication**: `Authorization: Bearer <API key>` (create one in *Users → API keys*), or the `cg_session` cookie of the web app.\n\n**Real time**: `GET /ws` (WebSocket) pushes `hello`, `project`, `projectDeleted`, `channels` and `channel` events, and accepts `{\"type\":\"command\",\"channelId\":\"main\",\"command\":{…}}`. `/ws?channel=<id>` follows one channel (HTML5 output pages; public when *public outputs* is on).\n\nUnits: frames are project frames; times are Unix milliseconds."
+ },
+ "servers": [
+  {
+   "url": "/"
+  }
+ ],
+ "security": [
+  {
+   "bearer": []
+  },
+  {
+   "cookie": []
+  }
+ ],
+ "tags": [
+  {
+   "name": "Authentication"
+  },
+  {
+   "name": "Users & API keys"
+  },
+  {
+   "name": "Projects"
+  },
+  {
+   "name": "Channels & playout"
+  },
+  {
+   "name": "Assets"
+  },
+  {
+   "name": "System"
+  },
+  {
+   "name": "Updates"
+  }
+ ],
+ "paths": {
+  "/api/auth/state": {
+   "get": {
+    "tags": [
+     "Authentication"
+    ],
+    "summary": "Who am I",
+    "description": "Public.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "needsSetup": {
+           "type": "boolean"
+          },
+          "user": {
+           "oneOf": [
+            {
+             "$ref": "#/components/schemas/User"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "serverName": {
+           "type": "string"
+          },
+          "publicOutputs": {
+           "type": "boolean"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/auth/login": {
+   "post": {
+    "tags": [
+     "Authentication"
+    ],
+    "summary": "Log in",
+    "description": "Sets the `cg_session` cookie and returns a session token (14 days, lost when the server restarts). For automation prefer an API key.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "username",
+         "password"
+        ],
+        "properties": {
+         "username": {
+          "type": "string"
+         },
+         "password": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "user": {
+           "$ref": "#/components/schemas/User"
+          },
+          "token": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "Wrong user name or password"
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/auth/logout": {
+   "post": {
+    "tags": [
+     "Authentication"
+    ],
+    "summary": "Log out",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/auth/setup": {
+   "post": {
+    "tags": [
+     "Authentication"
+    ],
+    "summary": "Create the first admin",
+    "description": "Only while no user exists, and only from the server itself (loopback).",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "username": {
+          "type": "string"
+         },
+         "password": {
+          "type": "string"
+         },
+         "displayName": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/users": {
+   "get": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "List users",
+    "description": "**Rights:** admin.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/User"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Create a user",
+    "description": "**Rights:** admin.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/User"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/users/{id}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Edit a user",
+    "description": "**Rights:** admin.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UserInput"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/User"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Delete a user",
+    "description": "Also revokes their API keys. The last active admin cannot be removed.\n\n**Rights:** admin.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/keys": {
+   "get": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "List API keys",
+    "description": "Admins see every key, others their own.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ApiKey"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Create an API key",
+    "description": "The `secret` is returned **once**: use it as `Authorization: Bearer pcg_…`. The key acts with the rights of its user (create a dedicated operator account for automation).\n\n**Rights:** admin for any user; designers and operators for themselves.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "name"
+        ],
+        "properties": {
+         "name": {
+          "type": "string",
+          "example": "Companion régie A"
+         },
+         "userId": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "key": {
+           "$ref": "#/components/schemas/ApiKey"
+          },
+          "secret": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/keys/{id}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "delete": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Revoke an API key",
+    "description": "**Rights:** admin or the key's user.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects": {
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "List projects",
+    "description": "Only the projects in the caller's scope.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ProjectSummary"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Create a project",
+    "description": "With `from`, duplicates an existing project.\n\n**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "name"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "description": {
+          "type": "string"
+         },
+         "width": {
+          "type": "integer"
+         },
+         "height": {
+          "type": "integer"
+         },
+         "frameRate": {
+          "$ref": "#/components/schemas/FrameRate"
+         },
+         "from": {
+          "type": "string"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectSummary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/import": {
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Import a project",
+    "description": "**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Project"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectSummary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Get a project",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Project"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Edit name, description and format",
+    "description": "**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "description": {
+          "type": "string"
+         },
+         "width": {
+          "type": "integer"
+         },
+         "height": {
+          "type": "integer"
+         },
+         "frameRate": {
+          "$ref": "#/components/schemas/FrameRate"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Delete a project",
+    "description": "Unloads it from the channels showing it.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/export": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Export (.pulsecg.json)",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Project"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/rundown": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Replace the rundown",
+    "description": "**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/RundownItem"
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/zones": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Replace the zones",
+    "description": "Zones still used by templates or rundown items cannot be removed. Graphics on air follow their zone when its stacking order changes.\n\n**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/Zone"
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/templates/{tid}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "tid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Template id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Create or replace a template",
+    "description": "**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Template"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Delete a template",
+    "description": "Also removes its rundown items.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/templates/{tid}/thumbnail.png": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "tid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "schema": {
+      "type": "number"
+     },
+     "description": "Default: first hold point."
+    }
+   ],
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Render a template (PNG)",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "image/png": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels": {
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "List channels",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ChannelInfo"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/state": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "What is on air",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelState"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/project": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Load a project on the channel",
+    "description": "Clears what is on air. `null` unloads.\n\n**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "projectId": {
+          "type": [
+           "string",
+           "null"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/command": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Playout command",
+    "description": "**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Command"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelState"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/items/{item}/{action}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    },
+    {
+     "name": "item",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Rundown item id (or its name)"
+    },
+    {
+     "name": "action",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "enum": [
+       "take",
+       "continue",
+       "out",
+       "update",
+       "clear"
+      ]
+     }
+    }
+   ],
+   "post": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Play a rundown item",
+    "description": "The simplest call for buttons (Stream Deck / Companion) and newsroom systems: the item's template, zone and data come from the project loaded on the channel. An optional body overrides data for `take` and `update`.\n\n**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": false,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "data": {
+          "$ref": "#/components/schemas/Data"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelState"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/preview.png": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Program snapshot (PNG, Rust renderer)",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "image/png": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/outputs/{name}/{essence}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    },
+    {
+     "name": "name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "ST 2110 output name"
+    },
+    {
+     "name": "essence",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string",
+      "enum": [
+       "fill.sdp",
+       "key.sdp"
+      ]
+     }
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "SDP of an ST 2110 output",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/sdp": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/assets": {
+   "get": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "List media",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         },
+         "example": [
+          "/assets/logo.png"
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/assets/{name}": {
+   "parameters": [
+    {
+     "name": "name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Upload a media file",
+    "description": "Raw body. Letters, digits, `.`, `-`, `_`.\n\n**Rights:** everyone but viewers.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/octet-stream": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "src": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/health": {
+   "get": {
+    "tags": [
+     "System"
+    ],
+    "summary": "Health",
+    "description": "Public: monitoring and the desktop app.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "name": {
+           "type": "string"
+          },
+          "version": {
+           "type": "string"
+          },
+          "bind": {
+           "type": "string"
+          },
+          "channels": {
+           "type": "integer"
+          },
+          "needsSetup": {
+           "type": "boolean"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/qr": {
+   "get": {
+    "tags": [
+     "System"
+    ],
+    "summary": "QR modules",
+    "description": "Public: lets the HTML5 renderer draw the same QR codes as the Rust one.",
+    "parameters": [
+     {
+      "name": "data",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "size": {
+           "type": "integer"
+          },
+          "modules": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "security": []
+   }
+  },
+  "/api/system": {
+   "get": {
+    "tags": [
+     "System"
+    ],
+    "summary": "Server information",
+    "description": "`config` is only filled for admins.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/system/config": {
+   "put": {
+    "tags": [
+     "System"
+    ],
+    "summary": "Save settings and restart the engine",
+    "description": "**Rights:** admin.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ServerConfig"
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Restarting"
+     }
+    }
+   }
+  },
+  "/api/system/restart": {
+   "post": {
+    "tags": [
+     "System"
+    ],
+    "summary": "Restart the engine",
+    "description": "**Rights:** admin (or a request from the server itself).",
+    "responses": {
+     "202": {
+      "description": "Restarting"
+     }
+    }
+   }
+  },
+  "/api/system/update": {
+   "get": {
+    "tags": [
+     "Updates"
+    ],
+    "summary": "Update status",
+    "description": "**Rights:** admin.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/UpdateInfo"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/system/update/settings": {
+   "put": {
+    "tags": [
+     "Updates"
+    ],
+    "summary": "Update source",
+    "description": "**Rights:** admin.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "repo": {
+          "type": "string"
+         },
+         "token": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "description": "null keeps the stored token, \"\" removes it."
+         },
+         "autoCheck": {
+          "type": "boolean"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/system/update/check": {
+   "post": {
+    "tags": [
+     "Updates"
+    ],
+    "summary": "Look for the latest release",
+    "description": "**Rights:** admin.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Release"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/system/update/install": {
+   "post": {
+    "tags": [
+     "Updates"
+    ],
+    "summary": "Download and install the latest release",
+    "description": "Runs in the background; follow `GET /api/system/update`. The server restarts.\n\n**Rights:** admin.",
+    "responses": {
+     "202": {
+      "description": "Started"
+     }
+    }
+   }
+  },
+  "/api/system/update/upload": {
+   "post": {
+    "tags": [
+     "Updates"
+    ],
+    "summary": "Install an uploaded release archive",
+    "description": "Body: the `pulse-cg-<version>-<platform>` .tar.gz / .zip. The server restarts.\n\n**Rights:** admin.",
+    "parameters": [
+     {
+      "name": "allowOlder",
+      "in": "query",
+      "schema": {
+       "type": "boolean"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/octet-stream": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "version": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/system/update/rollback": {
+   "post": {
+    "tags": [
+     "Updates"
+    ],
+    "summary": "Go back to the previous version",
+    "description": "**Rights:** admin.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "version": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "securitySchemes": {
+   "bearer": {
+    "type": "http",
+    "scheme": "bearer",
+    "description": "API key (pcg_…) or session token"
+   },
+   "cookie": {
+    "type": "apiKey",
+    "in": "cookie",
+    "name": "cg_session"
+   }
+  },
+  "schemas": {
+   "Error": {
+    "type": "string",
+    "description": "Plain-text message (HTTP 4xx/5xx)."
+   },
+   "FrameRate": {
+    "type": "object",
+    "required": [
+     "num",
+     "den"
+    ],
+    "properties": {
+     "num": {
+      "type": "integer",
+      "example": 50
+     },
+     "den": {
+      "type": "integer",
+      "example": 1
+     }
+    }
+   },
+   "Data": {
+    "type": "object",
+    "additionalProperties": {
+     "type": "string"
+    },
+    "description": "Template field values by key.",
+    "example": {
+     "name": "Ada Lovelace",
+     "title": "Mathematician"
+    }
+   },
+   "Role": {
+    "type": "string",
+    "enum": [
+     "admin",
+     "designer",
+     "operator",
+     "viewer"
+    ]
+   },
+   "User": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "username": {
+      "type": "string"
+     },
+     "displayName": {
+      "type": "string"
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "projects": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "Project scope; null = all."
+     },
+     "channels": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "Channel scope; null = all."
+     },
+     "disabled": {
+      "type": "boolean"
+     }
+    }
+   },
+   "UserInput": {
+    "type": "object",
+    "required": [
+     "username",
+     "role"
+    ],
+    "properties": {
+     "username": {
+      "type": "string"
+     },
+     "displayName": {
+      "type": "string"
+     },
+     "role": {
+      "$ref": "#/components/schemas/Role"
+     },
+     "projects": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      }
+     },
+     "channels": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      }
+     },
+     "disabled": {
+      "type": "boolean"
+     },
+     "password": {
+      "type": "string",
+      "description": "Required on creation (8+ characters); empty keeps the current one on edit."
+     }
+    }
+   },
+   "ApiKey": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "userId": {
+      "type": "string"
+     },
+     "prefix": {
+      "type": "string",
+      "example": "pcg_3f9a2c"
+     },
+     "createdAt": {
+      "type": "integer",
+      "description": "Unix ms"
+     },
+     "lastUsed": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    }
+   },
+   "Zone": {
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "layer"
+    ],
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "lower-third"
+     },
+     "name": {
+      "type": "string",
+      "example": "Lower third"
+     },
+     "layer": {
+      "type": "integer",
+      "description": "Stacking order (higher = in front); also the playout layer.",
+      "example": 10
+     },
+     "color": {
+      "type": "string",
+      "example": "#7c5cff"
+     },
+     "transition": {
+      "type": "string",
+      "enum": [
+       "sequential",
+       "cut"
+      ],
+      "description": "sequential: the graphic on air goes out before the new one comes in."
+     }
+    }
+   },
+   "RundownItem": {
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "templateId"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "templateId": {
+      "type": "string"
+     },
+     "zone": {
+      "type": "string",
+      "description": "Zone id; empty = the template's zone."
+     },
+     "playlist": {
+      "type": "string"
+     },
+     "layer": {
+      "type": "integer",
+      "deprecated": true
+     },
+     "data": {
+      "$ref": "#/components/schemas/Data"
+     }
+    }
+   },
+   "Template": {
+    "type": "object",
+    "description": "A graphic: timeline (frames), markers, data fields and layers. See web/src/engine/types.ts for the full layer model.",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "duration": {
+      "type": "number"
+     },
+     "zone": {
+      "type": "string"
+     },
+     "markers": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "frame": {
+         "type": "number"
+        },
+        "name": {
+         "type": "string"
+        },
+        "kind": {
+         "type": "string",
+         "enum": [
+          "pause",
+          "out",
+          "label"
+         ]
+        }
+       }
+      }
+     },
+     "fields": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "key": {
+         "type": "string"
+        },
+        "label": {
+         "type": "string"
+        },
+        "kind": {
+         "type": "string",
+         "enum": [
+          "text",
+          "multiline",
+          "number",
+          "color",
+          "image"
+         ]
+        },
+        "default": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "layers": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "additionalProperties": true
+      }
+     }
+    }
+   },
+   "Project": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     },
+     "width": {
+      "type": "integer"
+     },
+     "height": {
+      "type": "integer"
+     },
+     "frameRate": {
+      "$ref": "#/components/schemas/FrameRate"
+     },
+     "templates": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Template"
+      }
+     },
+     "rundown": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/RundownItem"
+      }
+     },
+     "zones": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Zone"
+      }
+     }
+    }
+   },
+   "ProjectSummary": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     },
+     "width": {
+      "type": "integer"
+     },
+     "height": {
+      "type": "integer"
+     },
+     "frameRate": {
+      "$ref": "#/components/schemas/FrameRate"
+     },
+     "templates": {
+      "type": "integer"
+     },
+     "rundown": {
+      "type": "integer"
+     }
+    }
+   },
+   "ChannelInfo": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "main"
+     },
+     "name": {
+      "type": "string"
+     },
+     "width": {
+      "type": "integer"
+     },
+     "height": {
+      "type": "integer"
+     },
+     "frameRate": {
+      "$ref": "#/components/schemas/FrameRate"
+     },
+     "projectId": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "outputs": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "PlayoutItem": {
+    "type": "object",
+    "properties": {
+     "templateId": {
+      "type": "string"
+     },
+     "data": {
+      "$ref": "#/components/schemas/Data"
+     },
+     "frame": {
+      "type": "number"
+     },
+     "target": {
+      "type": "number"
+     },
+     "phase": {
+      "type": "string",
+      "enum": [
+       "playing",
+       "holding",
+       "out"
+      ]
+     },
+     "rundownId": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "age": {
+      "type": "number",
+      "description": "Project frames on air since the take."
+     },
+     "next": {
+      "type": [
+       "object",
+       "null"
+      ],
+      "description": "Take waiting for this graphic to go out (sequential zones)."
+     }
+    }
+   },
+   "ChannelState": {
+    "type": "object",
+    "properties": {
+     "layers": {
+      "type": "object",
+      "description": "Playout layer (zone stacking order) → graphic on air.",
+      "additionalProperties": {
+       "$ref": "#/components/schemas/PlayoutItem"
+      }
+     }
+    }
+   },
+   "Command": {
+    "type": "object",
+    "required": [
+     "action"
+    ],
+    "description": "Target a zone by id (`zone`) or a raw playout layer (`layer`). A take without either plays in the template's zone; a clear without either clears everything.",
+    "properties": {
+     "action": {
+      "type": "string",
+      "enum": [
+       "take",
+       "continue",
+       "takeOut",
+       "update",
+       "clear"
+      ]
+     },
+     "zone": {
+      "type": "string"
+     },
+     "layer": {
+      "type": "integer"
+     },
+     "templateId": {
+      "type": "string",
+      "description": "take"
+     },
+     "data": {
+      "$ref": "#/components/schemas/Data"
+     },
+     "rundownId": {
+      "type": "string",
+      "description": "take: rundown item, for tally"
+     }
+    },
+    "example": {
+     "action": "take",
+     "zone": "lower-third",
+     "templateId": "lower-third",
+     "data": {
+      "name": "Ada Lovelace"
+     }
+    }
+   },
+   "Release": {
+    "type": "object",
+    "properties": {
+     "version": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "notes": {
+      "type": "string"
+     },
+     "publishedAt": {
+      "type": "string"
+     },
+     "url": {
+      "type": "string"
+     },
+     "assetName": {
+      "type": "string"
+     },
+     "size": {
+      "type": "integer"
+     },
+     "digest": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    }
+   },
+   "UpdateInfo": {
+    "type": "object",
+    "properties": {
+     "current": {
+      "type": "string"
+     },
+     "platform": {
+      "type": "string"
+     },
+     "repo": {
+      "type": "string"
+     },
+     "hasToken": {
+      "type": "boolean"
+     },
+     "autoCheck": {
+      "type": "boolean"
+     },
+     "previous": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "history": {
+      "type": [
+       "object",
+       "null"
+      ]
+     },
+     "supervised": {
+      "type": "boolean"
+     },
+     "status": {
+      "type": "object",
+      "properties": {
+       "phase": {
+        "type": "string",
+        "enum": [
+         "idle",
+         "checking",
+         "downloading",
+         "installing",
+         "restarting",
+         "error"
+        ]
+       },
+       "progress": {
+        "type": "number"
+       },
+       "message": {
+        "type": "string"
+       },
+       "latest": {
+        "$ref": "#/components/schemas/Release"
+       },
+       "lastCheck": {
+        "type": [
+         "integer",
+         "null"
+        ]
+       }
+      }
+     }
+    }
+   },
+   "ServerConfig": {
+    "type": "object",
+    "description": "config.json: name, bind, publicOutputs, timezone and channels (format, outputs, loaded project).",
+    "additionalProperties": true
+   }
+  }
+ }
+}

@@ -1,8 +1,9 @@
-import { Clapperboard, FolderOpen, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { BookOpen, Clapperboard, FolderOpen, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
 import { Operator } from './operator/Operator';
 import { Output } from './output/Output';
+import { ApiDocs } from './pages/ApiDocs';
 import { Login } from './pages/Login';
 import { Projects } from './pages/Projects';
 import { Users } from './pages/Users';
@@ -118,6 +119,9 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' }> }) {
         <div className="user-menu" title={`${user.username} · ${user.role}`}>
           <span className="avatar">{(user.displayName || user.username).slice(0, 1).toUpperCase()}</span>
           <span className="user-name">{user.displayName || user.username}</span>
+          <a className="icon-btn ghost" title="API documentation" href="/api-docs" onClick={(e) => (e.preventDefault(), navigate('/api-docs'))}>
+            <BookOpen size={14} />
+          </a>
           <button className="icon-btn ghost" title="Sign out" onClick={logout}>
             <LogOut size={14} />
           </button>
@@ -129,6 +133,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' }> }) {
         {route.page === 'operator' && (operatedChannel ? <Operator key={operatedChannel.id} channelId={operatedChannel.id} /> : <div className="loading">{connected && !channels.length ? 'No channel you can access.' : 'Connecting…'}</div>)}
         {route.page === 'settings' && <Settings />}
         {route.page === 'users' && <Users />}
+        {route.page === 'apiDocs' && <ApiDocs />}
       </div>
       <div className="toasts">
         {toasts.map((t) => (
