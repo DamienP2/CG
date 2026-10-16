@@ -137,10 +137,18 @@ export function Timeline({ fps }: { fps: number }) {
     window.addEventListener('pointerup', up);
   };
 
-  const addMarker = (kind: MarkerKind) =>
+  const addMarker = (kind: MarkerKind | 'onair') =>
     st.update((t) => {
+      const f = Math.round(frame);
+      const pauses = t.markers.filter((m) => m.kind === 'pause').sort((a, b) => a.frame - b.frame);
+      if (kind === 'onair') {
+        // The On air point is the first pause: move it, or create it.
+        if (pauses[0]) pauses[0].frame = f;
+        else t.markers.push({ id: newId(), frame: f, name: 'On air', kind: 'pause' });
+        return;
+      }
       if (kind === 'out') t.markers = t.markers.filter((m) => m.kind !== 'out');
-      t.markers.push({ id: newId(), frame: Math.round(frame), name: kind === 'out' ? 'Out' : t.markers.some((m) => m.kind === 'pause') ? 'Pause' : 'On air', kind });
+      t.markers.push({ id: newId(), frame: f, name: kind === 'out' ? 'Out' : pauses.length ? 'Pause' : 'On air', kind });
     });
 
   /** ◀ ◆ ▶ of a timeline row: previous key, key at the playhead, next key. */
@@ -268,10 +276,13 @@ export function Timeline({ fps }: { fps: number }) {
           <Repeat size={13} /> Loop
         </button>
         <div className="spacer" />
-        <button className="btn small" title="Add a stop at the playhead: the first one is On air, the next ones are pauses resumed by Continue" onClick={() => addMarker('pause')}>
+        <button className="btn small mk-onair" title="Set the On air point at the playhead: the take stops here" onClick={() => addMarker('onair')}>
+          <Flag size={13} /> On air
+        </button>
+        <button className="btn small mk-pause" title="Add an extra stop at the playhead, resumed by Continue (a second line, a next step…)" onClick={() => addMarker('pause')}>
           <Flag size={13} /> Pause
         </button>
-        <button className="btn small" title="Set the out marker at the playhead" onClick={() => addMarker('out')}>
+        <button className="btn small mk-out" title="Set the Out point at the playhead: Take out jumps here and plays to the end" onClick={() => addMarker('out')}>
           <LogOut size={13} /> Out
         </button>
         <label className="zoom">

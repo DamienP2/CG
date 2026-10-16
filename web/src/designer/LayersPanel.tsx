@@ -1,8 +1,8 @@
-import { BarChart3, ChevronDown, ChevronRight, Circle, Clock, Eye, EyeOff, Folder, GalleryHorizontal, Hash, Image, Keyboard, Lock, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Trash2, Type, Unlock, Watch } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, Circle, Clock, Copy, Eye, EyeOff, Folder, GalleryHorizontal, Hash, Image, Keyboard, Lock, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Trash2, Type, Unlock, Watch } from 'lucide-react';
 import { useState } from 'react';
 import { childrenMap } from '../engine/Scene';
 import type { Layer, LayerType, Template } from '../engine/types';
-import { descendants, findLayer, useDesigner } from './designerStore';
+import { descendants, duplicateLayers, findLayer, useDesigner } from './designerStore';
 
 export const ICONS: Record<LayerType, typeof Square> = {
   group: Folder,
@@ -128,6 +128,16 @@ export function LayersPanel() {
             }}
           >
             {l.locked ? <Lock size={13} /> : <Unlock size={13} />}
+          </button>
+          <button
+            className="icon-btn ghost del"
+            title="Duplicate (Ctrl+D)"
+            onClick={(e) => {
+              e.stopPropagation();
+              duplicateLayers([l.id]);
+            }}
+          >
+            <Copy size={13} />
           </button>
           <button
             className="icon-btn ghost del"

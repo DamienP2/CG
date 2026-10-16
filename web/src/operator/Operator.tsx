@@ -168,10 +168,10 @@ function ZoneStrip({
   const card = (key: string, label: React.ReactNode, color: string, p: PlayoutItem | undefined, target: { zone?: string; layer?: number }, cued: boolean) => {
     const t = p && project.templates.find((x) => x.id === p.templateId);
     return (
-      <div key={key} className={`zone-card ${p ? p.phase : 'empty'} ${cued ? 'cued' : ''}`} style={{ ['--zone' as string]: color }}>
+      <div key={key} className={`zone-card ${p ? p.phase : 'empty'} ${p && isPaused(p, project) ? 'paused' : ''} ${cued ? 'cued' : ''}`} style={{ ['--zone' as string]: color }}>
         <div className="zone-head">
           <span className="zone-name">{label}</span>
-          {p && <span className="air-phase">{phaseLabel(p)}</span>}
+          {p && <span className="air-phase">{phaseLabel(p, project)}</span>}
         </div>
         <div className="zone-body">
           {p ? <strong>{rundownName(project, p.rundownId) ?? t?.name}</strong> : <span className="muted">Free</span>}
@@ -202,8 +202,16 @@ function ZoneStrip({
 
 const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
 
-function phaseLabel(p: PlayoutItem) {
-  return p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' ? 'OUT' : 'PLAYING';
+/** Holding on the first pause is On air; on a later pause it waits for Continue. */
+function isPaused(p: PlayoutItem, project: Project) {
+  if (p.phase !== 'holding') return false;
+  const t = project.templates.find((x) => x.id === p.templateId);
+  const first = t?.markers.filter((m) => m.kind === 'pause').sort((a, b) => a.frame - b.frame)[0];
+  return !!first && p.frame > first.frame + 0.5;
+}
+
+function phaseLabel(p: PlayoutItem, project: Project) {
+  return isPaused(p, project) ? 'PAUSE' : p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' ? 'OUT' : 'PLAYING';
 }
 
 /** Channel picker + project loaded on it. */
@@ -407,7 +415,7 @@ export function Operator({ channelId }: { channelId: string }) {
                     <ZoneTag zone={zoneOf(r)} /> {t?.name ?? 'missing template'}
                   </span>
                 </div>
-                {air && <span className="tally">{phaseLabel(air)}</span>}
+                {air && <span className={`tally ${isPaused(air, project) ? 'paused' : ''}`}>{phaseLabel(air, project)}</span>}
                 {!air && queued.has(r.id) && <span className="tally next">NEXT</span>}
                 {operate && (
                   <div className="ri-play" onClick={(e) => e.stopPropagation()}>

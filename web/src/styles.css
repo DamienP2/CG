@@ -2490,11 +2490,11 @@ select.small {
   border-right: 2px solid var(--m);
 }
 .layer-row .del {
-  opacity: 0;
+  display: none;
 }
 .layer-row:hover .del,
 .layer-row.selected .del {
-  opacity: 1;
+  display: inline-flex;
 }
 
 /* ---------- playlists & row take / out ---------- */
@@ -3186,4 +3186,104 @@ body.resizing-y * {
 }
 .bg-swatch.bg-checker {
   background: repeating-conic-gradient(#8a8fa8 0 25%, #4a4e63 0 50%) 0 0 / 6px 6px;
+}
+.template-item .tpl-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.template-item .tpl-text > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-zone {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tpl-zone::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--zc);
+}
+/* What lies outside the template's zone looks faded. */
+.zone-veil {
+  position: absolute;
+  inset: 0;
+  box-shadow: 0 0 0 9999px rgba(11, 12, 18, 0.55);
+  pointer-events: none;
+}
+.btn.mk-onair svg {
+  color: var(--pvw);
+}
+.btn.mk-pause svg {
+  color: #ff8a1f;
+}
+.btn.mk-out svg {
+  color: var(--live);
+}
+.zone-card.paused {
+  border-color: rgba(255, 138, 31, 0.6);
+  background: linear-gradient(180deg, rgba(255, 138, 31, 0.1), var(--panel) 70%);
+}
+.zone-card.paused .air-phase,
+.tally.paused {
+  color: #ff8a1f;
+  border-color: rgba(255, 138, 31, 0.6);
+  background: rgba(255, 138, 31, 0.14);
+}
+.zones-menu {
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+.zm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.zm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+.zm-zone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.zm-zone.mine {
+  background: color-mix(in srgb, var(--zc) 14%, transparent);
+}
+.zm-zone em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.zm-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--zc);
+}
+.zm-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-3);
 }

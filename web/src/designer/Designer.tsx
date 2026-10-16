@@ -1,9 +1,9 @@
-import { ChevronDown, LayoutGrid, Circle, Copy, FileUp, Folder, Grid3x3, Image, Link2, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
+import { ChevronDown, LayoutGrid, Circle, Copy, FileUp, Folder, Grid3x3, Image, Link2, Plus, Settings2, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
-import { descendants, findLayer, makeLayer, newTemplate, setProp, useDesigner, WIDGET_PRESETS } from './designerStore';
+import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner, WIDGET_PRESETS } from './designerStore';
 import { Inspector } from './Inspector';
 import { ICONS, LayersPanel } from './LayersPanel';
 import { Stage } from './Stage';
@@ -144,21 +144,66 @@ function useShortcuts() {
 }
 
 function duplicateSelection() {
-  const st = useDesigner.getState();
-  if (!st.template || !st.selected.length) return;
-  const newIds: string[] = [];
-  st.update((t) => {
-    for (const id of st.selected) {
-      const ids = [id, ...descendants(t, id)];
-      const map = new Map(ids.map((x) => [x, newId()]));
-      const clones = t.layers
-        .filter((l) => ids.includes(l.id))
-        .map((l) => ({ ...structuredClone(l), id: map.get(l.id)!, parent: l.id === id ? l.parent : map.get(l.parent!) ?? l.parent, name: l.id === id ? `${l.name} copy` : l.name }));
-      t.layers.push(...clones);
-      newIds.push(map.get(id)!);
-    }
-  });
-  st.select(newIds);
+  duplicateLayers(useDesigner.getState().selected);
+}
+
+/** Zones button: show them on the stage, see the list, manage them. */
+function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show: boolean; onShow: (v: boolean) => void; onManage: () => void }) {
+  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
+  const current = useDesigner((s) => s.template?.zone);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+  return (
+    <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
+      <button
+        className={`btn small ${show ? 'on' : ''}`}
+        title="Screen zones"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setOpen(open ? null : { left: Math.min(r.left, window.innerWidth - 260), top: r.bottom + 6 });
+        }}
+      >
+        <LayoutGrid size={13} /> Zones <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="menu zones-menu" style={{ position: 'fixed', left: open.left, top: open.top }}>
+          <label className="zm-toggle">
+            <input type="checkbox" checked={show} onChange={(e) => onShow(e.target.checked)} />
+            Show on the stage
+          </label>
+          <div className="zm-list">
+            {[...project.zones]
+              .sort((a, b) => b.layer - a.layer)
+              .map((z) => (
+                <div key={z.id} className={`zm-zone ${z.id === current ? 'mine' : ''}`} style={{ ['--zc' as string]: z.color }}>
+                  <span className="zm-dot" />
+                  <span>{z.name}</span>
+                  <em>{z.id === current ? 'this template' : `layer ${z.layer}`}</em>
+                </div>
+              ))}
+          </div>
+          <p className="zm-hint">On the stage, drag a zone by its name and resize it with its handles.</p>
+          <button
+            className="btn small"
+            onClick={() => {
+              setOpen(null);
+              onManage();
+            }}
+          >
+            <Settings2 size={13} /> Manage zones…
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const BG_LABELS = { checker: 'transparent', black: 'black', studio: 'studio' } as const;
@@ -211,7 +256,17 @@ function TemplateList({ project }: { project: Project }) {
       {project.templates.map((t) => (
         <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={() => template?.id !== t.id && load(t)}>
           <img src={thumbnailUrl(project.id, t, format)} alt="" loading="lazy" />
-          <span>{t.name}</span>
+          <span className="tpl-text">
+            <span>{t.name}</span>
+            {(() => {
+              const z = project.zones.find((z) => z.id === t.zone);
+              return z ? (
+                <em className="tpl-zone" style={{ ['--zc' as string]: z.color }}>
+                  {z.name}
+                </em>
+              ) : null;
+            })()}
+          </span>
           <div className="item-actions">
             <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
               <Copy size={12} />
@@ -363,14 +418,7 @@ export function Designer() {
           </div>
           <FormatBar project={project} />
           <div className="spacer" />
-          <div className="btn-pair">
-            <button className={`btn small ${showZones ? 'on' : ''}`} onClick={() => setShowZones(!showZones)} title="Show the screen zones on the stage: drag a zone by its name, resize it with its handles">
-              <LayoutGrid size={13} /> Zones
-            </button>
-            <button className="btn small" onClick={() => setZonesOpen(true)} title="Manage zones (add, rename, layers, transitions)">
-              …
-            </button>
-          </div>
+          <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
             <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
           </button>

@@ -363,3 +363,25 @@ export function markerRole(t: Template, m: Marker): 'onair' | 'pause' | 'out' | 
   const first = t.markers.filter((x) => x.kind === 'pause').sort((a, b) => a.frame - b.frame)[0];
   return first?.id === m.id ? 'onair' : 'pause';
 }
+
+/** Duplicates layers (with their children) just above the originals and selects the copies. */
+export function duplicateLayers(ids: string[]) {
+  const st = useDesigner.getState();
+  if (!st.template || !ids.length) return;
+  const newIds: string[] = [];
+  st.update((t) => {
+    for (const id of ids) {
+      if (!t.layers.some((l) => l.id === id)) continue;
+      const sub = [id, ...descendants(t, id)];
+      const map = new Map(sub.map((x) => [x, newId()]));
+      const clones = t.layers
+        .filter((l) => sub.includes(l.id))
+        .map((l) => ({ ...structuredClone(l), id: map.get(l.id)!, parent: l.id === id ? l.parent : (map.get(l.parent!) ?? l.parent), name: l.id === id ? `${l.name} copy` : l.name }));
+      // Paint order: right above the original.
+      const last = Math.max(...sub.map((x) => t.layers.findIndex((l) => l.id === x)));
+      t.layers.splice(last + 1, 0, ...clones);
+      newIds.push(map.get(id)!);
+    }
+  });
+  st.select(newIds);
+}

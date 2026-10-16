@@ -96,6 +96,7 @@ export function ZoneOverlay({ zones, format, width, height, scale, current }: { 
               className={`zone-box ${mine ? 'mine' : ''} ${active === z.id ? 'active' : ''}`}
               style={{ left: area.x * W, top: area.y * H, width: area.width * W, height: area.height * H, ['--zc' as string]: z.color }}
             >
+              {mine && !whole && <span className="zone-veil" />}
               <span className="zone-tab" title="Drag to move the zone (Shift: 1% steps)" onPointerDown={(e) => begin(e, z, 'move', area)}>
                 {z.name}
                 {draft?.id === z.id && <em>{`${Math.round(area.width * width)}×${Math.round(area.height * height)}`}</em>}
