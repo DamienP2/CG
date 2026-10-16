@@ -370,6 +370,7 @@ mod tests {
                 layer: 1,
                 color: String::new(),
                 transition: ZoneTransition::Sequential,
+                areas: Default::default(),
             }],
         }
     }

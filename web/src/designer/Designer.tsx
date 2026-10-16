@@ -24,10 +24,12 @@ function usePlayback(fps: number) {
       const st = useDesigner.getState();
       const t = st.template;
       if (!t) return;
-      const dt = ((now - last) / 1000) * fps;
+      // The first rAF timestamp can precede the effect: never step back.
+      const dt = (Math.max(0, now - last) / 1000) * fps;
       last = now;
       let next = st.frame + dt;
-      if (st.playoutPreview) {
+      // Like on air: stop on the On air, pause and Out markers (Loop plays through).
+      if (!st.loop) {
         const stop = t.markers.filter((m) => (m.kind === 'pause' || m.kind === 'out') && m.frame > st.frame + 1e-3 && m.frame <= next).sort((a, b) => a.frame - b.frame)[0];
         if (stop) {
           useDesigner.setState({ frame: stop.frame, playing: false });
@@ -35,7 +37,7 @@ function usePlayback(fps: number) {
         }
       }
       if (next >= t.duration) {
-        if (st.loop && !st.playoutPreview) next = 0;
+        if (st.loop) next = 0;
         else {
           useDesigner.setState({ frame: t.duration, playing: false });
           return;
@@ -92,7 +94,9 @@ function useShortcuts() {
         duplicateSelection();
       } else if (e.key === ' ') {
         e.preventDefault();
-        st.setPlaying(!st.playing);
+        // A focused button would also "click" on Space.
+        if (target.closest('button')) (target as HTMLElement).blur();
+        if (!e.repeat) st.setPlaying(!st.playing);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (st.selectedKeys.length) {
           st.update((d) => {
@@ -156,6 +160,8 @@ function duplicateSelection() {
   });
   st.select(newIds);
 }
+
+const BG_LABELS = { checker: 'transparent', black: 'black', studio: 'studio' } as const;
 
 function TemplateList({ project }: { project: Project }) {
   const { template, load, format } = useDesigner();
@@ -230,27 +236,37 @@ function TemplateList({ project }: { project: Project }) {
 }
 
 function WidgetMenu({ onPick }: { onPick: (w: (typeof WIDGET_PRESETS)[number]) => void }) {
-  const [open, setOpen] = useState(false);
+  // Fixed position: the toolbar scrolls sideways and would clip the menu.
+  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
+    const close = () => setOpen(null);
     window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('resize', close);
+    };
   }, [open]);
   return (
     <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={`tool wide ${open ? 'on' : ''}`} title="Prefab widgets" onClick={() => setOpen(!open)}>
+      <button className={`tool wide ${open ? 'on' : ''}`} title="Prefab widgets"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setOpen(open ? null : { left: Math.max(8, Math.min(r.left, window.innerWidth - 650)), top: r.bottom + 6 });
+        }}
+      >
         <Sparkles size={15} /> Widgets <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="menu widget-menu">
+        <div className="menu widget-menu" style={{ position: 'fixed', left: open.left, top: open.top }}>
           {WIDGET_PRESETS.map((w) => {
             const Icon = ICONS[w.type];
             return (
               <button
                 key={w.key}
                 onClick={() => {
-                  setOpen(false);
+                  setOpen(null);
                   onPick(w);
                 }}
               >
@@ -273,11 +289,12 @@ export function Designer() {
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
   const [showSafe, setShowSafe] = useState(true);
   const [zonesOpen, setZonesOpen] = useState(false);
+  const [showZones, setShowZones] = useState(true);
   const [logicOpen, setLogicOpen] = useState(false);
   const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
   // Panel sizes, adjustable with the splitters.
   const [layout, setLayout] = useLayout('pulse.designerLayout', { left: 250, right: 340, timeline: 300, templates: 260 });
-  const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('studio');
+  const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('checker');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
   useShortcuts();
@@ -346,23 +363,30 @@ export function Designer() {
           </div>
           <FormatBar project={project} />
           <div className="spacer" />
-          <button className="btn small" onClick={() => setZonesOpen(true)} title="Screen zones of the project: one template at a time per zone">
-            <LayoutGrid size={13} /> Zones
-          </button>
+          <div className="btn-pair">
+            <button className={`btn small ${showZones ? 'on' : ''}`} onClick={() => setShowZones(!showZones)} title="Show the screen zones on the stage: drag a zone by its name, resize it with its handles">
+              <LayoutGrid size={13} /> Zones
+            </button>
+            <button className="btn small" onClick={() => setZonesOpen(true)} title="Manage zones (add, rename, layers, transitions)">
+              …
+            </button>
+          </div>
           <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
             <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
           </button>
-          <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas">
-            <Grid3x3 size={13} /> Safe
+          <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas (action 5 %, title 10 %)">
+            <Grid3x3 size={13} />
           </button>
-          <select value={background} onChange={(e) => setBackground(e.target.value as typeof background)} title="Stage background">
-            <option value="studio">Studio</option>
-            <option value="checker">Transparent</option>
-            <option value="black">Black</option>
-          </select>
+          <button
+            className="btn small bg-toggle"
+            title={`Stage background: ${BG_LABELS[background]} (click to change)`}
+            onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}
+          >
+            <span className={`bg-swatch stage-frame bg-${background}`} />
+          </button>
           <span className={`save-state ${saveState}`}>{saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
         </div>
-        <Stage project={project} size={formatById(project, format)} showSafe={showSafe} background={background} />
+        <Stage project={project} size={formatById(project, format)} showSafe={showSafe} showZones={showZones} background={background} />
         <div className="timeline-wrap">
           <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={120} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
           <Timeline fps={fps} />

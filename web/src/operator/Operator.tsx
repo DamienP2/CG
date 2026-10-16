@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, MonitorPlay, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
 import type { Command, Field, PlayoutItem, Playlist, Project, RundownItem, Zone } from '../engine/types';
@@ -8,7 +8,44 @@ import { formatFor, inFormat } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
 import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
+import { useWheelSteps } from '../ui/fields';
 import { navigate } from '../router';
+
+/** Number field: − / + buttons, arrow keys and the mouse wheel once clicked. */
+function NumberStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const live = useRef(value);
+  live.current = value;
+  const bump = (d: number) => {
+    const v = +((parseFloat(live.current) || 0) + d).toFixed(3);
+    live.current = String(v);
+    onChange(String(v));
+  };
+  useWheelSteps(ref, (steps, e) => bump(steps * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1)));
+  return (
+    <div className="stepper">
+      <button className="btn small" onClick={() => bump(-1)}>
+        −
+      </button>
+      <input
+        ref={ref}
+        value={value}
+        title="Click, then use the mouse wheel or trackpad (Shift ×10, Alt ×0.1)"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            bump((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
+          }
+        }}
+      />
+      <button className="btn small" onClick={() => bump(1)}>
+        +
+      </button>
+    </div>
+  );
+}
 
 export function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
   const toast = useApp((s) => s.toast);
@@ -16,17 +53,7 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
     case 'multiline':
       return <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
     case 'number':
-      return (
-        <div className="stepper">
-          <button className="btn small" onClick={() => onChange(String((parseFloat(value) || 0) - 1))}>
-            −
-          </button>
-          <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-          <button className="btn small" onClick={() => onChange(String((parseFloat(value) || 0) + 1))}>
-            +
-          </button>
-        </div>
-      );
+      return <NumberStepper value={value} onChange={onChange} />;
     case 'color':
       return (
         <div className="row">

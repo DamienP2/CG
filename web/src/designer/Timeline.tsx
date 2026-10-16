@@ -1,9 +1,9 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Diamond, Flag, LogOut, Pause, Play, Repeat, SkipBack, SkipForward, StepBack, StepForward, Tv } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Diamond, Flag, LogOut, Pause, Play, Repeat, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { childrenMap } from '../engine/Scene';
 import { newId } from '../engine/evaluate';
 import { PROPS, type Keyframe, type Layer, type MarkerKind, type Prop, type Template } from '../engine/types';
-import { findLayer, toggleKeyAt, useDesigner, type KeyRef } from './designerStore';
+import { findLayer, markerRole, toggleKeyAt, useDesigner, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 
 const LEFT_W = 260;
@@ -38,7 +38,7 @@ const sameKey = (a: KeyRef, b: KeyRef) => a.layerId === b.layerId && a.prop === 
 
 export function Timeline({ fps }: { fps: number }) {
   const st = useDesigner();
-  const { template, frame, zoom, expanded, selectedKeys, playing, loop, playoutPreview, selected } = st;
+  const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
   const scrollRef = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => (template ? flatten(template) : []), [template]);
 
@@ -264,14 +264,11 @@ export function Timeline({ fps }: { fps: number }) {
             {Math.round(frame)} / {template.duration}
           </span>
         </div>
-        <button className={`btn small ${loop ? 'on' : ''}`} title="Loop playback" onClick={() => st.set({ loop: !loop })}>
+        <button className={`btn small ${loop ? 'on' : ''}`} title="Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (Space resumes)." onClick={() => st.set({ loop: !loop })}>
           <Repeat size={13} /> Loop
         </button>
-        <button className={`btn small ${playoutPreview ? 'on' : ''}`} title="Stop on pause markers, like on air" onClick={() => st.set({ playoutPreview: !playoutPreview })}>
-          <Tv size={13} /> Playout preview
-        </button>
         <div className="spacer" />
-        <button className="btn small" title="Add a pause marker at the playhead" onClick={() => addMarker('pause')}>
+        <button className="btn small" title="Add a stop at the playhead: the first one is On air, the next ones are pauses resumed by Continue" onClick={() => addMarker('pause')}>
           <Flag size={13} /> Pause
         </button>
         <button className="btn small" title="Set the out marker at the playhead" onClick={() => addMarker('out')}>
@@ -298,7 +295,7 @@ export function Timeline({ fps }: { fps: number }) {
               {markers.map((m) => (
                 <div
                   key={m.id}
-                  className={`tl-marker ${m.kind}`}
+                  className={`tl-marker ${markerRole(template, m)}`}
                   style={{ left: m.frame * zoom }}
                   title={`${m.name} (${m.kind}) @ ${m.frame} — drag to move`}
                   onPointerDown={(e) => dragMarker(e, m.id)}
@@ -311,7 +308,7 @@ export function Timeline({ fps }: { fps: number }) {
             <div className="tl-rows" onPointerDown={() => st.selectKeys([])}>
               {outF !== undefined && <div className="out-zone" style={{ left: outF * zoom, width: (template.duration - outF) * zoom }} />}
               {markers.map((m) => (
-                <div key={m.id} className={`marker-line ${m.kind}`} style={{ left: m.frame * zoom }} />
+                <div key={m.id} className={`marker-line ${markerRole(template, m)}`} style={{ left: m.frame * zoom }} />
               ))}
               {body}
               <div className="tl-end" style={{ left: template.duration * zoom }} />

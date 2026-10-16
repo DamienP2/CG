@@ -180,6 +180,16 @@ export interface Zone {
   layer: number;
   color: string;
   transition: ZoneTransition;
+  /** Area by format id, in fractions of the frame (designer guide). */
+  areas?: Record<string, Area>;
+}
+
+/** A rectangle in fractions of the frame (0..1). */
+export interface Area {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface RundownItem {

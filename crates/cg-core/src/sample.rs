@@ -891,6 +891,7 @@ fn zone(id: &str, name: &str, layer: u32, color: &str) -> Zone {
         layer,
         color: color.into(),
         transition: ZoneTransition::Sequential,
+        areas: Default::default(),
     }
 }
 

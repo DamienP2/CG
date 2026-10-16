@@ -7,7 +7,7 @@ import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
-import { findLayer, isAnimated, LABELS, setProp, toggleStopwatch, useDesigner } from './designerStore';
+import { findLayer, isAnimated, LABELS, markerRole, setProp, toggleStopwatch, useDesigner } from './designerStore';
 
 interface PropSpec {
   prop: Prop;
@@ -900,31 +900,36 @@ function TemplateInspector({ template }: { template: Template }) {
         actions={
           <button
             className="icon-btn ghost"
-            title="Add pause marker at playhead"
-            onClick={() => update((t) => void t.markers.push({ id: crypto.randomUUID().slice(0, 8), frame: Math.round(frame), name: 'Pause', kind: 'pause' }))}
+            title="Add a stop at the playhead"
+            onClick={() => update((t) => void t.markers.push({ id: crypto.randomUUID().slice(0, 8), frame: Math.round(frame), name: t.markers.some((m) => m.kind === 'pause') ? 'Pause' : 'On air', kind: 'pause' }))}
           >
             <Plus size={14} />
           </button>
         }
       >
-        <p className="hint">Pause: playout holds here, “Continue” resumes. Out: “Take out” jumps here and plays to the end.</p>
+        <p className="hint">
+          <b className="c-onair">On air</b>: the take stops here. <b className="c-pause">Pause</b>: an extra stop, “Continue” resumes (a second line, a next step…). <b className="c-out">Out</b>: “Take out” jumps here and plays to the end.
+        </p>
         {[...template.markers]
           .sort((a, b) => a.frame - b.frame)
-          .map((m) => (
-            <div key={m.id} className="row">
-              <span className={`marker-dot ${m.kind}`} />
-              <TextInput value={m.name} commitOnBlur onChange={(v) => update((t) => void (t.markers.find((x) => x.id === m.id)!.name = v))} />
-              <NumberField value={m.frame} min={0} max={template.duration} onChange={(v) => update((t) => void (t.markers.find((x) => x.id === m.id)!.frame = Math.round(v)), `marker-${m.id}`)} />
-              <select value={m.kind} onChange={(e) => update((t) => void (t.markers.find((x) => x.id === m.id)!.kind = e.target.value as MarkerKind))}>
-                <option value="pause">pause</option>
-                <option value="out">out</option>
-                <option value="label">label</option>
-              </select>
-              <button className="icon-btn ghost" onClick={() => update((t) => void (t.markers = t.markers.filter((x) => x.id !== m.id)))}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
+          .map((m) => {
+            const role = markerRole(template, m);
+            return (
+              <div key={m.id} className="row marker-row">
+                <span className={`marker-dot ${role}`} title={role === 'onair' ? 'On air' : role} />
+                <TextInput value={m.name} commitOnBlur onChange={(v) => update((t) => void (t.markers.find((x) => x.id === m.id)!.name = v))} />
+                <NumberField value={m.frame} min={0} max={template.duration} onChange={(v) => update((t) => void (t.markers.find((x) => x.id === m.id)!.frame = Math.round(v)), `marker-${m.id}`)} />
+                <select value={m.kind} onChange={(e) => update((t) => void (t.markers.find((x) => x.id === m.id)!.kind = e.target.value as MarkerKind))}>
+                  <option value="pause">{role === 'onair' ? 'On air' : 'Pause'}</option>
+                  <option value="out">Out</option>
+                  {m.kind === 'label' && <option value="label">Label</option>}
+                </select>
+                <button className="icon-btn ghost" onClick={() => update((t) => void (t.markers = t.markers.filter((x) => x.id !== m.id)))}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })}
       </Section>
     </>
   );

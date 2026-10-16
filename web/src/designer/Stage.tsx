@@ -4,6 +4,7 @@ import { hasLiveWidgets, Scene, Viewport } from '../engine/Scene';
 import { num, propValue } from '../engine/evaluate';
 import type { Project } from '../engine/types';
 import { findLayer, setProp, useDesigner } from './designerStore';
+import { ZoneOverlay } from './ZoneOverlay';
 
 interface Box {
   id: string;
@@ -17,9 +18,9 @@ type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 /** The canvas, at the size of the format being edited. */
-export function Stage({ project: _project, size, showSafe, background }: { project: Project; size: { width: number; height: number }; showSafe: boolean; background: string }) {
+export function Stage({ project: _project, size, showSafe, showZones, background }: { project: Project; size: { width: number; height: number }; showSafe: boolean; showZones: boolean; background: string }) {
   const project = { ..._project, width: size.width, height: size.height };
-  const { template, frame, previewData, selected } = useDesigner();
+  const { template, frame, previewData, selected, format } = useDesigner();
   const wrapRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
@@ -159,6 +160,7 @@ export function Stage({ project: _project, size, showSafe, background }: { proje
               <div className="safe-area title" style={{ inset: '10%' }} />
             </>
           )}
+          {showZones && <ZoneOverlay zones={_project.zones ?? []} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
               {selected.length === 1 &&

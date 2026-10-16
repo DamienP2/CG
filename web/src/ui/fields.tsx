@@ -2,6 +2,37 @@ import { useEffect, useRef, useState } from 'react';
 import { parseHex, toHex } from '../engine/evaluate';
 import type { Color } from '../engine/types';
 
+/**
+ * Mouse wheel / trackpad steps on a focused input (the page does not scroll
+ * meanwhile). A wheel notch is one step; trackpad deltas accumulate.
+ */
+export function useWheelSteps(ref: React.RefObject<HTMLInputElement | null>, onSteps: (steps: number, e: WheelEvent) => void) {
+  const cb = useRef(onSteps);
+  cb.current = onSteps;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let acc = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (document.activeElement !== el) return;
+      e.preventDefault();
+      const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+      let steps = 0;
+      if (Math.abs(dy) >= 50) steps = -Math.sign(dy);
+      else {
+        acc += dy;
+        while (Math.abs(acc) >= 24) {
+          steps -= Math.sign(acc);
+          acc -= Math.sign(acc) * 24;
+        }
+      }
+      if (steps) cb.current(steps, e);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [ref]);
+}
+
 /** Number input with AE-style scrubbing on its label. */
 export function NumberField({
   label,
@@ -35,6 +66,21 @@ export function NumberField({
   }, [shown]);
 
   const clamp = (v: number) => Math.min(max ?? Infinity, Math.max(min ?? -Infinity, v));
+
+  // Mouse wheel / trackpad on a focused field: ±step (Shift ×10, Alt ×0.1).
+  const inputRef = useRef<HTMLInputElement>(null);
+  const live = useRef({ value, onChange, clamp, step, display, precision });
+  live.current = { value, onChange, clamp, step, display, precision };
+  useWheelSteps(inputRef, (steps, e) => {
+    const l = live.current;
+    const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+    const digits = Math.max(l.precision, mult < 1 ? 1 : 0);
+    const next = l.clamp(l.value + (steps * l.step * mult) / l.display);
+    const rounded = +(next * l.display).toFixed(digits) / l.display;
+    l.value = rounded;
+    setText(String(+(rounded * l.display).toFixed(digits)));
+    l.onChange(rounded);
+  });
   const commit = (s: string) => {
     // Allow simple expressions: "100+20", "1920/2".
     const expr = s.replace(/[^-+*/().\d\s]/g, '');
@@ -73,7 +119,9 @@ export function NumberField({
         </span>
       )}
       <input
+        ref={inputRef}
         value={text}
+        title="Click, then use the mouse wheel or trackpad to adjust (Shift ×10, Alt ×0.1)"
         onFocus={(e) => {
           focused.current = true;
           e.target.select();
@@ -89,7 +137,9 @@ export function NumberField({
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             const d = (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1);
-            onChange(clamp(value + d / display));
+            const next = clamp(value + d / display);
+            setText(String(+(next * display).toFixed(precision)));
+            onChange(next);
           }
         }}
       />

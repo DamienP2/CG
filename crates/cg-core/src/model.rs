@@ -680,6 +680,21 @@ pub struct Zone {
     pub color: String,
     #[serde(default)]
     pub transition: ZoneTransition,
+    /// Where the zone sits, by format id (fractions of the frame), shown as
+    /// a guide in the designer. A format without its own area uses the main
+    /// one, else a default derived from the zone id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub areas: BTreeMap<String, Area>,
+}
+
+/// A rectangle in fractions of the frame (0..1).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Area {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl Zone {
@@ -700,6 +715,7 @@ impl Zone {
             layer: *layer,
             color: ZONE_COLORS[i].into(),
             transition: ZoneTransition::Sequential,
+            areas: Default::default(),
         })
         .collect()
     }
@@ -795,6 +811,7 @@ impl Project {
                         layer,
                         color: ZONE_COLORS[self.zones.len() % ZONE_COLORS.len()].into(),
                         transition: ZoneTransition::Sequential,
+                        areas: Default::default(),
                     };
                     let id = z.id.clone();
                     self.zones.push(z);
@@ -811,6 +828,7 @@ impl Project {
                 layer: 10,
                 color: ZONE_COLORS[0].into(),
                 transition: ZoneTransition::Sequential,
+                areas: Default::default(),
             });
             changed = true;
         }

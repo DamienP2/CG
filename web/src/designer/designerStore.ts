@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
 import { fromFormatView, inFormat } from '../engine/formats';
-import { MAIN_FORMAT, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template, type Value } from '../engine/types';
 
 export interface KeyRef {
   layerId: string;
@@ -23,8 +23,6 @@ interface DesignerStore {
   frame: number;
   playing: boolean;
   loop: boolean;
-  /** Stop on pause markers while playing, like on air. */
-  playoutPreview: boolean;
   selected: string[];
   selectedKeys: KeyRef[];
   expanded: Record<string, boolean>;
@@ -59,8 +57,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   lastCoalesce: null,
   frame: 0,
   playing: false,
-  loop: true,
-  playoutPreview: false,
+  loop: false,
   selected: [],
   selectedKeys: [],
   expanded: {},
@@ -130,7 +127,12 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
     const max = t?.duration ?? 0;
     set({ frame: Math.max(0, Math.min(max, f)) });
   },
-  setPlaying: (playing) => set({ playing }),
+  setPlaying(playing) {
+    const t = get().template;
+    // Playing again from the end starts over.
+    if (playing && t && get().frame >= t.duration - 1e-3) set({ frame: 0 });
+    set({ playing });
+  },
   select: (selected) => set({ selected }),
   selectKeys: (selectedKeys) => set({ selectedKeys }),
   toggleExpanded: (id) => set({ expanded: { ...get().expanded, [id]: !get().expanded[id] } }),
@@ -352,4 +354,12 @@ export function newTemplate(name: string, zone = ''): Template {
     fields: [],
     layers: [],
   };
+}
+
+/** How a marker reads: the first pause is the On air point (green), later
+ *  pauses are extra stops resumed by "Continue" (orange), then Out (red). */
+export function markerRole(t: Template, m: Marker): 'onair' | 'pause' | 'out' | 'label' {
+  if (m.kind !== 'pause') return m.kind;
+  const first = t.markers.filter((x) => x.kind === 'pause').sort((a, b) => a.frame - b.frame)[0];
+  return first?.id === m.id ? 'onair' : 'pause';
 }

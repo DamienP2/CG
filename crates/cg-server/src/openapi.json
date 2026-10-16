@@ -2042,6 +2042,27 @@
        "cut"
       ],
       "description": "sequential: the graphic on air goes out before the new one comes in."
+     },
+     "areas": {
+      "type": "object",
+      "description": "Area of the zone by format id (\"main\", \"9x16\"…), in fractions of the frame; a designer guide.",
+      "additionalProperties": {
+       "type": "object",
+       "properties": {
+        "x": {
+         "type": "number"
+        },
+        "y": {
+         "type": "number"
+        },
+        "width": {
+         "type": "number"
+        },
+        "height": {
+         "type": "number"
+        }
+       }
+      }
      }
     }
    },
