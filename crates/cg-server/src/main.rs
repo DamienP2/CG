@@ -2,6 +2,7 @@ mod ae_import;
 mod api;
 mod auth;
 mod config;
+mod datasources;
 mod engine;
 mod library;
 mod mos;
@@ -350,6 +351,7 @@ pub async fn serve(
     // Sessions survive engine restarts.
     let auth = Arc::new(auth::Auth::load(&data_dir));
     let mos_store = Arc::new(mos::Store::load(&data_dir));
+    let data_hub = Arc::new(datasources::Hub::load(&data_dir));
     if auth.needs_setup() {
         tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
     }
@@ -407,6 +409,7 @@ pub async fn serve(
             renderer: Mutex::new(cg_render::Renderer::new(data_dir.join("assets"))),
             auth: auth.clone(),
             mos: mos_store.clone(),
+            data: data_hub.clone(),
             config,
             bind,
             started_at,
@@ -415,6 +418,7 @@ pub async fn serve(
         });
         let mut engine = engine::start(&shared);
         engine.push(tokio::spawn(mos::serve(shared.clone())));
+        engine.push(tokio::spawn(datasources::run(shared.clone())));
 
         let app = api::router()
             .route("/fonts/{name}", get(web::font))

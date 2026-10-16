@@ -2,6 +2,7 @@
 //! No rendering or I/O here so it can be reused by every output.
 
 pub mod anim;
+pub mod datapath;
 pub mod easing;
 pub mod logic;
 pub mod lottie;

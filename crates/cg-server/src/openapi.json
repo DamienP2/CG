@@ -45,6 +45,10 @@
   },
   {
    "name": "Post-production"
+  },
+  {
+   "name": "Data",
+   "description": "Data connectors (JSON API, CSV / Google Sheets, RSS, XML, push) and field bindings."
   }
  ],
  "paths": {
@@ -1842,6 +1846,277 @@
      }
     }
    }
+  },
+  "/api/data/sources": {
+   "get": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "List data sources with their status",
+    "responses": {
+     "200": {
+      "description": "Sources",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/DataSource"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Create a data source",
+    "description": "**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DataSource"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Created",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DataSource"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/data/sources/{id}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Replace a data source",
+    "description": "**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DataSource"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Delete a data source",
+    "description": "Bound fields keep their last value. **Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/data/sources/{id}/value": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "get": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Current value of a source (as JSON)",
+    "description": "CSV becomes `{columns, rows:[{column: value}]}`, RSS / Atom `{title, items:[{title, description, link, date}]}`, XML `{root: {child: …, \"@attr\": …}}`.",
+    "responses": {
+     "200": {
+      "description": "Value",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Push the value of a push source",
+    "description": "Body in the source format (JSON, CSV or XML). Graphics on air bound to it update at once.\n\n**Rights:** admin, designer, operator (or an API key).",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {}
+      },
+      "text/csv": {
+       "schema": {
+        "type": "string"
+       }
+      },
+      "application/xml": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/data/sources/{id}/refresh": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "post": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Fetch a source now",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/data/test": {
+   "post": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Fetch a source once without saving it",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DataSource"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Value or error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "value": {},
+          "bytes": {
+           "type": "integer"
+          },
+          "error": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/data/lookup": {
+   "post": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Resolve a binding path",
+    "description": "Paths: `a.b`, `items[0]`, `items[-1]`, `rows[{row}]` (`{key}` from `data`), `players[number=10]`, `items[*].title` (all, one per line), `items.length`.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "source",
+         "path"
+        ],
+        "properties": {
+         "source": {
+          "type": "string"
+         },
+         "path": {
+          "type": "string"
+         },
+         "data": {
+          "$ref": "#/components/schemas/Data"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Value (null when nothing is there)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "value": {
+           "type": "string",
+           "nullable": true
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2163,6 +2438,18 @@
         },
         "default": {
          "type": "string"
+        },
+        "binding": {
+         "type": "object",
+         "description": "Live value from a data source; replaces what the operator types while the source has a value at the path.",
+         "properties": {
+          "source": {
+           "type": "string"
+          },
+          "path": {
+           "type": "string"
+          }
+         }
         }
        }
       }
@@ -2647,6 +2934,74 @@
      "height": {
       "type": "integer",
       "example": 1920
+     }
+    }
+   },
+   "DataSource": {
+    "type": "object",
+    "required": [
+     "name",
+     "type"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "json",
+       "csv",
+       "rss",
+       "xml",
+       "push"
+      ]
+     },
+     "url": {
+      "type": "string",
+      "description": "json, csv, rss, xml. A Google Sheets link is read as CSV (sheet shared with anyone who has the link)."
+     },
+     "headers": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "json, xml: request headers (API keys…)"
+     },
+     "header": {
+      "type": "boolean",
+      "description": "csv: the first line names the columns (default true)"
+     },
+     "format": {
+      "type": "string",
+      "enum": [
+       "json",
+       "csv",
+       "xml"
+      ],
+      "description": "push: format of the values sent"
+     },
+     "interval": {
+      "type": "integer",
+      "description": "Seconds between fetches (default 30, min 2)"
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "updatedAt": {
+      "type": "integer",
+      "readOnly": true
+     },
+     "checkedAt": {
+      "type": "integer",
+      "readOnly": true
+     },
+     "error": {
+      "type": "string",
+      "readOnly": true
      }
     }
    }

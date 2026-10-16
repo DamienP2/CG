@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { ChannelInfo, ChannelState, Command, Project, ProjectSummary, RundownItem, Template, User, Zone } from './engine/types';
+import { useData } from './data/dataStore';
+import type { ChannelInfo, ChannelState, Command, DataStatus, Project, ProjectSummary, RundownItem, Template, User, Zone } from './engine/types';
 
 type ServerEvent =
   | { type: 'hello'; user: User | null; serverName: string; serverTime: number; timezone: string; channels: ChannelInfo[]; projects: ProjectSummary[] }
@@ -7,6 +8,7 @@ type ServerEvent =
   | { type: 'projectDeleted'; id: string }
   | { type: 'channels'; channels: ChannelInfo[] }
   | { type: 'channel'; channelId: string; state: ChannelState; serverTime: number }
+  | { type: 'data'; source: string; status: DataStatus }
   | { type: 'error'; message: string };
 
 interface Toast {
@@ -196,6 +198,9 @@ export const useApp = create<AppStore>((set, get) => {
               break;
             case 'channel':
               set({ live: { ...get().live, [msg.channelId]: { state: msg.state, at: now } }, serverOffset: msg.serverTime - now });
+              break;
+            case 'data':
+              useData.getState().onStatus(msg.source, msg.status);
               break;
             case 'error':
               get().toast(msg.message, 'error');

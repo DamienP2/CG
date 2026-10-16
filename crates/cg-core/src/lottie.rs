@@ -1114,6 +1114,7 @@ impl Converter {
                 FieldKind::Text
             },
             default: text,
+            binding: None,
         });
         Some((
             LayerKind::Text {

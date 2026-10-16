@@ -543,6 +543,20 @@ pub struct Field {
     pub kind: FieldKind,
     #[serde(default)]
     pub default: String,
+    /// Live value from a data source (see [`crate::datapath`]); it
+    /// replaces what the operator types while the source has a value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<FieldBinding>,
+}
+
+/// Where a field takes its value: a data source and a path in it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldBinding {
+    pub source: String,
+    /// `items[0].title`, `rows[{row}].name`, `players[number={num}].name`,
+    /// `items[*].title` (all, one per line), `items.length`.
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

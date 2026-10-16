@@ -35,6 +35,12 @@ pub enum Event {
         state: ChannelState,
         server_time: i64,
     },
+    /// A data source was checked or changed (the value itself is fetched
+    /// with GET /api/data/sources/{id}/value).
+    Data {
+        source: String,
+        status: crate::datasources::Status,
+    },
     Error {
         message: String,
     },
@@ -127,6 +133,8 @@ pub struct AppState {
     pub auth: Arc<Auth>,
     /// Running orders received from the newsroom system (MOS).
     pub mos: Arc<crate::mos::Store>,
+    /// Data connectors and their latest values.
+    pub data: Arc<crate::datasources::Hub>,
     /// Settings this engine cycle was started with.
     pub config: ServerConfig,
     /// Address actually bound by this cycle.
@@ -280,9 +288,11 @@ impl AppState {
             .project(&pid)
             .await
             .ok_or("the loaded project no longer exists")?;
+        let store = self.data.store();
         let snapshot = {
             let mut st = ch.state.write().await;
             st.apply(&project, cmd).map_err(|e| e.to_string())?;
+            bind_state(&project, &mut st, &store, None);
             st.clone()
         };
         let _ = self.events.send(Event::Channel {
@@ -291,6 +301,55 @@ impl AppState {
             server_time: now_ms(),
         });
         Ok(snapshot)
+    }
+}
+
+/// Fills fields bound to data sources into the graphics on air (and the
+/// ones queued); `only` limits it to templates reading that source.
+pub fn bind_state(
+    project: &Project,
+    st: &mut ChannelState,
+    store: &cg_core::datapath::Store,
+    only: Option<&str>,
+) -> bool {
+    let mut changed = false;
+    for item in st.layers.values_mut() {
+        let mut one = |template_id: &str, data: &mut cg_core::Data| {
+            let Some(t) = project.template(template_id) else {
+                return;
+            };
+            if only.is_some_and(|src| !cg_core::datapath::sources(t).any(|s| s == src)) {
+                return;
+            }
+            changed |= cg_core::datapath::bind(t, data, store);
+        };
+        one(&item.template_id, &mut item.data);
+        if let Some(q) = &mut item.next {
+            one(&q.template_id, &mut q.data);
+        }
+    }
+    changed
+}
+
+impl AppState {
+    /// Re-applies data bindings on every channel after a source changed.
+    pub async fn rebind(&self, source: Option<&str>) {
+        let store = self.data.store();
+        for ch in self.channels.values() {
+            let Some(pid) = ch.project_id.read().await.clone() else {
+                continue;
+            };
+            let Some(project) = self.project(&pid).await else {
+                continue;
+            };
+            let changed = {
+                let mut st = ch.state.write().await;
+                bind_state(&project, &mut st, &store, source)
+            };
+            if changed {
+                self.broadcast_channel(ch).await;
+            }
+        }
     }
 }
 

@@ -129,7 +129,39 @@ export interface Field {
   label: string;
   kind: FieldKind;
   default: string;
+  /** Live value from a data source. */
+  binding?: FieldBinding | null;
 }
+
+/** A data source and a path in its value (`rows[{row}].name`, `items[*].title`…). */
+export interface FieldBinding {
+  source: string;
+  path: string;
+}
+
+export type DataSourceKind =
+  | { type: 'json'; url: string; headers?: Record<string, string> }
+  | { type: 'csv'; url: string; header?: boolean }
+  | { type: 'rss'; url: string }
+  | { type: 'xml'; url: string; headers?: Record<string, string> }
+  | { type: 'push'; format?: 'json' | 'csv' | 'xml' };
+
+export type DataSource = DataSourceKind & {
+  id: string;
+  name: string;
+  /** Seconds between fetches. */
+  interval: number;
+  enabled: boolean;
+};
+
+export interface DataStatus {
+  updatedAt?: number | null;
+  checkedAt?: number | null;
+  error?: string | null;
+  bytes?: number;
+}
+
+export type DataSourceInfo = DataSource & DataStatus;
 
 export interface Template {
   id: string;

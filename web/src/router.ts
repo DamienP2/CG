@@ -5,6 +5,7 @@ export type Route =
   | { page: 'operator'; channelId: string | null }
   | { page: 'settings' }
   | { page: 'users' }
+  | { page: 'data' }
   | { page: 'apiDocs' }
   | { page: 'mosPlugin' }
   | { page: 'output'; channelId: string | null; rendition: string | null };
@@ -20,6 +21,8 @@ export function parseRoute(path = location.pathname): Route {
       return { page: 'settings' };
     case 'users':
       return { page: 'users' };
+    case 'data':
+      return { page: 'data' };
     case 'mos':
       return second === 'plugin' ? { page: 'mosPlugin' } : { page: 'projects' };
     case 'api-docs':

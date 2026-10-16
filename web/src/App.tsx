@@ -1,4 +1,4 @@
-import { BookOpen, Clapperboard, FolderOpen, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { BookOpen, Clapperboard, Database, FolderOpen, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
 import { Operator } from './operator/Operator';
@@ -8,6 +8,7 @@ import { Login } from './pages/Login';
 import { MosPlugin } from './mos/Plugin';
 import { Projects } from './pages/Projects';
 import { Users } from './pages/Users';
+import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, type Route } from './router';
 import { Settings } from './settings/Settings';
 import { can, useApp } from './store';
@@ -105,6 +106,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
           {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
           {can.design(user) && tab('designer', lastProject ? `/designer/${encodeURIComponent(lastProject)}` : '/designer', <PenTool size={14} />, 'Designer')}
           {tab('operator', '/operator', <Radio size={14} />, 'Operator')}
+          {can.design(user) && tab('data', '/data', <Database size={14} />, 'Data')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
           {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
         </div>
@@ -135,6 +137,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
         {route.page === 'operator' && (operatedChannel ? <Operator key={operatedChannel.id} channelId={operatedChannel.id} /> : <div className="loading">{connected && !channels.length ? 'No channel you can access.' : 'Connecting…'}</div>)}
         {route.page === 'settings' && <Settings />}
         {route.page === 'users' && <Users />}
+        {route.page === 'data' && <DataPage />}
         {route.page === 'apiDocs' && <ApiDocs />}
       </div>
       <div className="toasts">

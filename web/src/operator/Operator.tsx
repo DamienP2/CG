@@ -10,6 +10,7 @@ import { api, can, uploadAsset, useApp } from '../store';
 import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
+import { useBoundData, useSources } from '../data/dataStore';
 import { navigate } from '../router';
 
 /** Number field: − / + buttons, arrow keys and the mouse wheel once clicked. */
@@ -317,6 +318,9 @@ export function Operator({ channelId }: { channelId: string }) {
     if ((!cued || !items.some((r) => r.id === cued)) && items.length) setCued(items[0].id);
   }, [cued, activeList, items.length]);
 
+  // Fields bound to data sources show their live value.
+  const boundDraft = useBoundData(template, draft);
+
   // Draft data follows the cued item.
   useEffect(() => {
     if (item && template) setDraft({ ...defaultData(template), ...item.data });
@@ -329,6 +333,8 @@ export function Operator({ channelId }: { channelId: string }) {
   }, [channel]);
   const queued = useMemo(() => new Set(Object.values(channel.layers).flatMap((p) => (p.next?.rundownId ? [p.next.rundownId] : []))), [channel]);
 
+  const sources = useSources();
+  const sourceName = (id: string) => sources.find((x) => x.id === id)?.name ?? id;
   const dirty = item ? JSON.stringify({ ...defaultData(template!), ...item.data }) !== JSON.stringify(draft) : false;
 
   const persistDraft = () => {
@@ -501,7 +507,7 @@ export function Operator({ channelId }: { channelId: string }) {
           <Monitor width={previewFormat.width} height={previewFormat.height} label="Preview" tally="pvw" extra={template && <span className="muted">{template.name}</span>}>
             {template && (
               <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
-                <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={draft} />
+                <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={boundDraft} />
               </LiveTime>
             )}
           </Monitor>
@@ -592,7 +598,14 @@ export function Operator({ channelId }: { channelId: string }) {
             {template.fields.map((f) => (
               <label key={f.key} className="form-row">
                 <span>{f.label}</span>
-                <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />
+                {f.binding ? (
+                  <span className="bound-field" title={`Live from ${sourceName(f.binding.source)} · ${f.binding.path}`}>
+                    <span className="live-dot" />
+                    <strong>{boundDraft[f.key] ?? '…'}</strong>
+                  </span>
+                ) : (
+                  <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />
+                )}
               </label>
             ))}
             <div className="row">

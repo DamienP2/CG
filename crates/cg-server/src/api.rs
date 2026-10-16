@@ -83,6 +83,22 @@ pub fn router() -> Router<Shared> {
         .route("/api/system/config", put(put_system_config))
         .route("/api/system/restart", post(post_restart))
         .route("/api/mos/status", get(mos_status))
+        .route("/api/data/sources", get(list_sources).post(create_source))
+        .route(
+            "/api/data/sources/{id}",
+            put(put_source).delete(delete_source),
+        )
+        .route(
+            "/api/data/sources/{id}/value",
+            get(source_value)
+                .put(push_value)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    crate::datasources::MAX_BYTES as usize,
+                )),
+        )
+        .route("/api/data/sources/{id}/refresh", post(refresh_source))
+        .route("/api/data/test", post(test_source))
+        .route("/api/data/lookup", post(data_lookup))
         .route("/api/mos/info", get(mos_info))
         .route("/api/system/update", get(update_info))
         .route("/api/system/update/settings", put(update_settings))
@@ -1331,6 +1347,172 @@ async fn mos_status(
     Ok(Json(crate::mos::status(&s.mos)))
 }
 
+// ------------------------------------------------------------------ data ----
+
+use crate::datasources::{Source, SourceInfo};
+
+async fn list_sources(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+) -> Json<Vec<SourceInfo>> {
+    Json(s.data.list())
+}
+
+fn check_source(src: &mut Source) -> ApiResult<()> {
+    src.name = src.name.trim().to_string();
+    if src.name.is_empty() {
+        return Err(bad("a data source needs a name"));
+    }
+    src.interval = src.interval.clamp(2, 86_400);
+    Ok(())
+}
+
+async fn create_source(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(mut src): Json<Source>,
+) -> ApiResult<Json<SourceInfo>> {
+    require(me.can_create_projects())?;
+    check_source(&mut src)?;
+    if !valid_id(&src.id) || s.data.get(&src.id).is_some() {
+        src.id = cg_core::new_id();
+    }
+    let id = src.id.clone();
+    s.data.put(src).map_err(internal)?;
+    s.data.refresh(&id);
+    let info = s
+        .data
+        .list()
+        .into_iter()
+        .find(|x| x.source.id == id)
+        .ok_or_else(|| internal("lost"))?;
+    Ok(Json(info))
+}
+
+async fn put_source(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(mut src): Json<Source>,
+) -> ApiResult<StatusCode> {
+    require(me.can_create_projects())?;
+    check_source(&mut src)?;
+    if s.data.get(&id).is_none() {
+        return Err(not_found("data source"));
+    }
+    src.id = id.clone();
+    s.data.put(src).map_err(internal)?;
+    s.data.refresh(&id);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_source(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    require(me.can_create_projects())?;
+    if !s.data.delete(&id).map_err(internal)? {
+        return Err(not_found("data source"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn source_value(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    Ok(Json(s.data.value(&id).unwrap_or(serde_json::Value::Null)))
+}
+
+/// Automation sends the value of a push source (JSON, CSV or XML).
+async fn push_value(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> ApiResult<StatusCode> {
+    require(me.role != Role::Viewer)?;
+    let src = s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    let crate::datasources::Kind::Push { format } = src.kind else {
+        return Err(bad(
+            "this source fetches its data itself; only push sources take values",
+        ));
+    };
+    let v = crate::datasources::parse_push(format, &body).map_err(bad)?;
+    let changed = s.data.record(&id, Ok((v, body.len())));
+    crate::datasources::updated(&s, &id, changed).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn refresh_source(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    s.data.refresh(&id);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TestResult {
+    value: Option<serde_json::Value>,
+    bytes: usize,
+    error: Option<String>,
+}
+
+/// Fetches a source once without saving it (the "Test" button).
+async fn test_source(
+    CurrentUser(me): CurrentUser,
+    Json(src): Json<Source>,
+) -> ApiResult<Json<TestResult>> {
+    require(me.can_create_projects())?;
+    let res = tokio::task::spawn_blocking(move || crate::datasources::fetch(&src))
+        .await
+        .map_err(internal)?;
+    Ok(Json(match res {
+        Ok((v, n)) => TestResult {
+            value: Some(v),
+            bytes: n,
+            error: None,
+        },
+        Err(e) => TestResult {
+            value: None,
+            bytes: 0,
+            error: Some(e),
+        },
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LookupQuery {
+    source: String,
+    path: String,
+    #[serde(default)]
+    data: cg_core::Data,
+}
+
+/// Resolves a binding path against a source's current value.
+async fn data_lookup(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+    Json(q): Json<LookupQuery>,
+) -> ApiResult<Json<BTreeMap<&'static str, Option<String>>>> {
+    let v = s
+        .data
+        .value(&q.source)
+        .ok_or_else(|| not_found("value for this data source"))?;
+    Ok(Json(BTreeMap::from([(
+        "value",
+        cg_core::datapath::lookup(&v, &q.path, &q.data),
+    )])))
+}
+
 // --------------------------------------------------------------- update ----
 
 async fn update_info(
@@ -1605,6 +1787,8 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                     },
                     Event::ProjectDeleted { id } => viewer.user.as_ref().is_some_and(|u| u.sees_project(id)),
                     Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
+                    // Signed-in users (designer, operator, settings), not output pages.
+                    Event::Data { .. } => viewer.user.is_some(),
                     Event::Channels { channels } => {
                         // An output page switches project with its channel.
                         if let Some(c) = viewer.channel.as_ref().and_then(|id| channels.iter().find(|c| &c.id == id)) {

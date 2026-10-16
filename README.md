@@ -120,6 +120,13 @@ Mise en service : [`docs/MOS.md`](docs/MOS.md).
 ### Post-production (Adobe Premiere Pro)
 Le panneau Premiere Pro rend un habillage au format et à la cadence de la séquence, en QuickTime avec alpha, puis le pose à la tête de lecture. Voir [`integrations/premiere/README.md`](integrations/premiere/README.md). La même fonction est disponible pour tout outil via `POST /api/render`.
 
+### Données (connecteurs et liaisons)
+Onglet **Data** : les sources de données du serveur, relues à intervalle régulier ou poussées par l'automation.
+- **JSON API** (scores, météo, élections…, avec en-têtes pour une clé d'API), **CSV / Google Sheets** (un lien de feuille partagée « à toute personne disposant du lien » suffit), **flux RSS / Atom** (titres pour un ticker), **XML** (flux sportifs), **Push** : la valeur est envoyée par `PUT /api/data/sources/{id}/value` (JSON, CSV ou XML) ou en déposant un fichier.
+- Chaque source est convertie en JSON et affichée en arbre : un clic sur une valeur donne son chemin.
+- Dans le Designer, chaque champ de données peut être **lié** à une source (*Link to data*) : choix de la source, chemin pris dans l'arbre, valeur en direct. Chemins : `match.home.score`, `items[0].title`, `items[-1]`, `items[*].title` (tous, un par ligne, pour un ticker), `rows[{row}].name` (l'opérateur choisit la ligne avec un champ `row`), `players[number={num}].name`, `items.length`.
+- À l'antenne, le serveur remplit les champs liés et **met à jour le graphique dès que la source change** (un but marqué change le score sans intervention). Dans l'Opérateur, les champs liés sont affichés en lecture seule avec leur valeur en direct.
+
 ### Utilisateurs et droits
 | Rôle | Peut |
 | --- | --- |

@@ -5,6 +5,7 @@ import { num, propValue } from '../engine/evaluate';
 import type { Project } from '../engine/types';
 import { findLayer, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
+import { useBoundData } from '../data/dataStore';
 
 interface Box {
   id: string;
@@ -21,6 +22,8 @@ const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 export function Stage({ project: _project, size, showSafe, showZones, background }: { project: Project; size: { width: number; height: number }; showSafe: boolean; showZones: boolean; background: string }) {
   const project = { ..._project, width: size.width, height: size.height };
   const { template, frame, previewData, selected, format } = useDesigner();
+  // Bound fields show their live value, like on air.
+  const data = useBoundData(template, previewData);
   const wrapRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
@@ -151,7 +154,7 @@ export function Stage({ project: _project, size, showSafe, showZones, background
           <Viewport width={project.width} height={project.height} scale={scale}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
             <LiveTime ageSecs={frame / fps} clientNow={now}>
-              <Scene template={template} frame={frame} data={previewData} interactive />
+              <Scene template={template} frame={frame} data={data} interactive />
             </LiveTime>
           </Viewport>
           {showSafe && (

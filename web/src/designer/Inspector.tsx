@@ -4,6 +4,7 @@ import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '..
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
 import { isTimed } from '../engine/widgets';
+import { BindingEditor } from '../data/BindingEditor';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
@@ -898,10 +899,19 @@ function TemplateInspector({ template }: { template: Template }) {
                 <Trash2 size={13} />
               </button>
             </div>
-            <div className="row">
-              <span className="prop-label">Preview</span>
-              <TextInput value={previewData[f.key] ?? ''} onChange={(v) => set({ previewData: { ...previewData, [f.key]: v } })} />
-            </div>
+            {!f.binding && (
+              <div className="row">
+                <span className="prop-label">Preview</span>
+                <TextInput value={previewData[f.key] ?? ''} onChange={(v) => set({ previewData: { ...previewData, [f.key]: v } })} />
+              </div>
+            )}
+            <BindingEditor
+              field={f}
+              template={template}
+              data={previewData}
+              onChange={(b) => editField(i, (x) => void (b ? (x.binding = b) : delete x.binding))}
+              onAddField={(nf) => update((t) => void (t.fields.some((x) => x.key === nf.key) || t.fields.push(nf)))}
+            />
           </div>
         ))}
       </Section>
