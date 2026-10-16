@@ -77,3 +77,4 @@ if [ -n "${MACOS_INSTALLER_IDENTITY:-}" ]; then SIGN="--sign"; fi
 productbuild --distribution "$WORK/Distribution.xml" --resources "$HERE/resources" \
   --package-path "$WORK" ${SIGN:+$SIGN "$MACOS_INSTALLER_IDENTITY"} "$OUT"
 echo "built $OUT"
+exit 0

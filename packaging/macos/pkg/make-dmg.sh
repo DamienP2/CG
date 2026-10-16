@@ -7,7 +7,12 @@ PKG=$1 VERSION=$2 OUT=$3
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 WORK=$(mktemp -d)
-trap 'hdiutil detach "$WORK/mnt" -quiet 2>/dev/null; rm -rf "$WORK"' EXIT
+cleanup() {
+  [ -d "$WORK/mnt/.fseventsd" ] && hdiutil detach "$WORK/mnt" -quiet 2>/dev/null
+  rm -rf "$WORK"
+  return 0
+}
+trap cleanup EXIT
 
 # Icon from the artwork.
 mkdir -p "$WORK/icon.iconset"
@@ -33,3 +38,4 @@ hdiutil detach -quiet "$WORK/mnt"
 rm -f "$OUT"
 hdiutil convert -quiet "$WORK/rw.dmg" -format UDZO -o "$OUT"
 echo "built $OUT"
+exit 0
