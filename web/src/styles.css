@@ -3055,3 +3055,7 @@ body.resizing-y * {
   color: var(--pvw);
   padding: 0 2px;
 }
+.template-list .header-actions {
+  display: flex;
+  gap: 2px;
+}

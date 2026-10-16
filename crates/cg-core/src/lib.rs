@@ -4,6 +4,7 @@
 pub mod anim;
 pub mod easing;
 pub mod logic;
+pub mod lottie;
 pub mod model;
 pub mod playout;
 pub mod sample;

@@ -53,6 +53,11 @@ pub fn router() -> Router<Shared> {
             "/api/projects/{id}/templates/{tid}/thumbnail.png",
             get(template_thumbnail),
         )
+        .route(
+            "/api/projects/{id}/import/after-effects",
+            post(import_after_effects)
+                .layer(axum::extract::DefaultBodyLimit::max(256 * 1024 * 1024)),
+        )
         .route("/api/render", post(render_video))
         .route("/api/channels", get(list_channels))
         .route("/api/channels/{id}/state", get(channel_state))
@@ -556,6 +561,66 @@ async fn put_template(
     }
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ImportQuery {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportResult {
+    template: Template,
+    warnings: Vec<String>,
+}
+
+/// Imports an After Effects composition exported with Bodymovin /
+/// LottieFiles (`.json`, `.zip`, `.lottie`) as a new template.
+async fn import_after_effects(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Query(q): Query<ImportQuery>,
+    body: Bytes,
+) -> ApiResult<Json<ImportResult>> {
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let opts = cg_core::lottie::Options {
+        width: p.width as f64,
+        height: p.height as f64,
+        fps: p.frame_rate.as_f64(),
+        zone: p.zones.first().map(|z| z.id.clone()).unwrap_or_default(),
+    };
+    let out = tokio::task::spawn_blocking(move || crate::ae_import::import(&body, &opts))
+        .await
+        .map_err(internal)?
+        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e))?;
+    if !out.files.is_empty() {
+        tokio::fs::create_dir_all(s.assets_dir())
+            .await
+            .map_err(internal)?;
+        for (name, bytes) in &out.files {
+            tokio::fs::write(s.assets_dir().join(name), bytes)
+                .await
+                .map_err(internal)?;
+        }
+        s.renderer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .invalidate_assets();
+    }
+    let mut template = out.imported.template;
+    if let Some(name) = q.name.filter(|n| !n.trim().is_empty()) {
+        template.name = name.trim().to_string();
+    }
+    p.templates.push(template.clone());
+    s.save_project(p).await.map_err(internal)?;
+    Ok(Json(ImportResult {
+        template,
+        warnings: out.imported.warnings,
+    }))
 }
 
 async fn delete_template(

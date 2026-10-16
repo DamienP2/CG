@@ -1758,6 +1758,90 @@
      }
     }
    }
+  },
+  "/api/projects/{id}/import/after-effects": {
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Import an After Effects composition",
+    "description": "Creates a template from an After Effects composition exported with the Bodymovin or LottieFiles extension: the `.json`, a `.zip` with `data.json` and `images/`, or a `.lottie`. Rectangles, ellipses, solids, texts (each becomes a data field), images, null objects, parenting, precomps, transforms and keyframes with their easing are converted; markers named “pause” / “on air” / “out” become playout markers. Unsupported features are listed in `warnings`. A `.mogrt` is refused with an explanation: it wraps a binary After Effects project.\n\n**Rights:** admin, designer.",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "name",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Template name (default: the composition name)."
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "description": "Bodymovin / Lottie JSON"
+       }
+      },
+      "application/zip": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      },
+      "application/octet-stream": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The new template and what could not be converted.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "template": {
+           "$ref": "#/components/schemas/Template"
+          },
+          "warnings": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Not a convertible file (the message explains why).",
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {

@@ -1,8 +1,8 @@
-import { ChevronDown, LayoutGrid, Circle, Copy, Folder, Grid3x3, Image, Link2, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
+import { ChevronDown, LayoutGrid, Circle, Copy, FileUp, Folder, Grid3x3, Image, Link2, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
-import { thumbnailUrl, useApp } from '../store';
+import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, findLayer, makeLayer, newTemplate, setProp, useDesigner, WIDGET_PRESETS } from './designerStore';
 import { Inspector } from './Inspector';
 import { ICONS, LayersPanel } from './LayersPanel';
@@ -160,6 +160,8 @@ function duplicateSelection() {
 function TemplateList({ project }: { project: Project }) {
   const { template, load, format } = useDesigner();
   const { saveTemplate, deleteTemplate, toast } = useApp();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
   const create = async (base?: Template) => {
     const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${project.templates.length + 1}`, project.zones[0]?.id);
     // Open it at once; the save follows.
@@ -170,9 +172,35 @@ function TemplateList({ project }: { project: Project }) {
     <div className="template-list">
       <header>
         <span>Templates</span>
-        <button className="icon-btn ghost" title="New template" onClick={() => create()}>
-          <Plus size={14} />
-        </button>
+        <div className="header-actions">
+          <button className="icon-btn ghost" title="Import an After Effects composition (Bodymovin / LottieFiles .json, .zip, .lottie)" onClick={() => fileRef.current?.click()} disabled={importing}>
+            <FileUp size={14} />
+          </button>
+          <button className="icon-btn ghost" title="New template" onClick={() => create()}>
+            <Plus size={14} />
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,.zip,.lottie,.mogrt"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            setImporting(true);
+            try {
+              const { template: t, warnings } = await importAfterEffects(project.id, f);
+              load(t);
+              toast(warnings.length ? `Imported “${t.name}” — not converted: ${warnings.join('; ')}` : `Imported “${t.name}”`, 'info');
+            } catch (err) {
+              toast(String(err instanceof Error ? err.message : err), 'error');
+            } finally {
+              setImporting(false);
+            }
+          }}
+        />
       </header>
       {project.templates.map((t) => (
         <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={() => template?.id !== t.id && load(t)}>

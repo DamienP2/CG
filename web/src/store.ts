@@ -291,6 +291,19 @@ export async function uploadAsset(file: File): Promise<string> {
   return ((await res.json()) as { src: string }).src;
 }
 
+/** Imports an After Effects composition (Bodymovin / LottieFiles export) as a new template. */
+export async function importAfterEffects(projectId: string, file: File): Promise<{ template: Template; warnings: string[] }> {
+  const name = file.name.replace(/\.(json|zip|lottie|mogrt)$/i, '');
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/import/after-effects?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    body: file,
+    credentials: 'same-origin',
+    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+  });
+  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  return res.json();
+}
+
 /** Rights, mirroring crates/cg-server/src/auth.rs. */
 export const can = {
   design: (u: User | null | undefined) => u?.role === 'admin' || u?.role === 'designer',

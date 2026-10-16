@@ -38,6 +38,7 @@ sha2 = "0.10"
 flate2 = "1"
 tar = "0.4"
 roxmltree = "0.20"
+base64 = "0.22"
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [target.'cfg(windows)'.dependencies]
