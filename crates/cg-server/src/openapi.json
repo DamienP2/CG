@@ -42,6 +42,9 @@
   },
   {
    "name": "Newsroom (MOS)"
+  },
+  {
+   "name": "Post-production"
   }
  ],
  "paths": {
@@ -781,6 +784,14 @@
       "type": "string"
      },
      "description": "Project format id (default: main)."
+    },
+    {
+     "name": "data",
+     "in": "query",
+     "schema": {
+      "type": "string"
+     },
+     "description": "Field values as JSON over the defaults."
     }
    ],
    "get": {
@@ -1604,6 +1615,75 @@
     "responses": {
      "200": {
       "description": "OK"
+     }
+    }
+   }
+  },
+  "/api/render": {
+   "post": {
+    "tags": [
+     "Post-production"
+    ],
+    "summary": "Render a graphic to a video file with alpha",
+    "description": "QuickTime (.mov), PNG codec with alpha (Premiere, After Effects, Resolve, Avid). The clip plays the template like on air: animation in, `hold` seconds on air, then the out animation (`includeOut`). The project format closest to width × height is used (9:16 sequences get the 9:16 layout). At most 300 s.\n\n**Rights:** everyone but viewers.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "projectId",
+         "templateId",
+         "width",
+         "height",
+         "frameRate"
+        ],
+        "properties": {
+         "projectId": {
+          "type": "string"
+         },
+         "templateId": {
+          "type": "string"
+         },
+         "data": {
+          "$ref": "#/components/schemas/Data"
+         },
+         "width": {
+          "type": "integer",
+          "example": 1920
+         },
+         "height": {
+          "type": "integer",
+          "example": 1080
+         },
+         "frameRate": {
+          "$ref": "#/components/schemas/FrameRate"
+         },
+         "hold": {
+          "type": "number",
+          "default": 5
+         },
+         "includeOut": {
+          "type": "boolean",
+          "default": true
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The clip",
+      "content": {
+       "video/quicktime": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
      }
     }
    }

@@ -53,6 +53,7 @@ pub fn router() -> Router<Shared> {
             "/api/projects/{id}/templates/{tid}/thumbnail.png",
             get(template_thumbnail),
         )
+        .route("/api/render", post(render_video))
         .route("/api/channels", get(list_channels))
         .route("/api/channels/{id}/state", get(channel_state))
         .route("/api/channels/{id}/project", put(load_project))
@@ -693,6 +694,8 @@ struct ThumbQuery {
     frame: Option<f64>,
     /// Project format id (default: main).
     format: Option<String>,
+    /// Field values as JSON, over the template defaults.
+    data: Option<String>,
 }
 
 async fn template_thumbnail(
@@ -713,6 +716,14 @@ async fn template_thumbnail(
             .or(template.out_frame())
             .unwrap_or(template.duration)
     });
+    let mut data = template.default_data();
+    if let Some(extra) = q
+        .data
+        .as_deref()
+        .and_then(|j| serde_json::from_str::<cg_core::Data>(j).ok())
+    {
+        data.extend(extra);
+    }
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
@@ -721,13 +732,53 @@ async fn template_thumbnail(
             &template,
             q.format.as_deref().unwrap_or(cg_core::MAIN_FORMAT),
             frame,
-            &template.default_data(),
+            &data,
         )
         .to_png()
     })
     .await
     .map_err(internal)?;
     Ok(png(bytes))
+}
+
+/// Renders a graphic to a QuickTime file with alpha (post-production).
+async fn render_video(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(req): Json<crate::render::RenderRequest>,
+) -> ApiResult<Response> {
+    require(me.role != Role::Viewer)?;
+    let p = visible_project(&s, &me, &req.project_id).await?;
+    let name: String = p
+        .template(&req.template_id)
+        .map(|t| t.name.clone())
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let assets = s.assets_dir();
+    let tz = s.config.timezone.clone();
+    let started = std::time::Instant::now();
+    let mov =
+        tokio::task::spawn_blocking(move || crate::render::render_clip(&p, &req, assets, &tz))
+            .await
+            .map_err(internal)?
+            .map_err(bad)?;
+    tracing::info!(
+        user = me.username,
+        bytes = mov.len(),
+        ms = started.elapsed().as_millis() as u64,
+        "clip rendered"
+    );
+    let disposition = format!("attachment; filename=\"{name}.mov\"");
+    Ok((
+        [
+            (header::CONTENT_TYPE, "video/quicktime".to_string()),
+            (header::CONTENT_DISPOSITION, disposition),
+        ],
+        mov,
+    )
+        .into_response())
 }
 
 // -------------------------------------------------------------- channels ----

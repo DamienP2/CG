@@ -5,6 +5,7 @@ mod engine;
 mod library;
 mod mos;
 mod paths;
+mod render;
 mod service;
 mod state;
 mod update;

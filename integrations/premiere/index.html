@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pulse CG</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header>
+      <span class="logo">▣</span><strong>Pulse</strong><em>CG</em>
+      <span class="spacer"></span>
+      <button id="toggleSettings" class="ghost" title="Server settings">⚙</button>
+    </header>
+
+    <section id="settings" class="card hidden">
+      <label>Server <input id="server" placeholder="http://cg-server:8080" /></label>
+      <label>API key <input id="key" type="password" placeholder="pcg_…" /></label>
+      <p class="hint">Create the key in Pulse CG: Users → API keys (a designer or operator account).</p>
+      <button id="saveSettings" class="primary">Connect</button>
+    </section>
+
+    <section id="main" class="hidden">
+      <div class="row">
+        <select id="project"></select>
+        <button id="refresh" class="ghost" title="Reload projects">↻</button>
+      </div>
+      <div id="templates" class="templates"></div>
+      <div id="editor" class="hidden">
+        <img id="preview" class="preview" alt="" />
+        <div id="fields"></div>
+        <div class="row three">
+          <label>On air (s) <input id="hold" type="number" min="0" step="0.5" value="5" /></label>
+          <label>Track <select id="track"></select></label>
+          <label class="check"><input id="withOut" type="checkbox" checked /> Out</label>
+        </div>
+        <div id="sequence" class="hint"></div>
+        <div class="row">
+          <button id="insert" class="primary grow">Render &amp; insert at playhead</button>
+          <button id="toBin" title="Render and import into the bin only">Bin</button>
+        </div>
+        <div id="progress" class="progress hidden"><div></div></div>
+      </div>
+    </section>
+    <div id="status" class="status"></div>
+
+    <script src="panel.js"></script>
+  </body>
+</html>

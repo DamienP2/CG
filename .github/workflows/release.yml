@@ -173,9 +173,27 @@ jobs:
             dist/*.dmg
             dist/*.pkg
 
+  premiere-panel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package the Premiere Pro panel
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          [ "$GITHUB_REF_TYPE" = tag ] || VERSION=dev-${GITHUB_SHA::7}
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            sed -i "s/ExtensionBundleVersion=\"[^\"]*\"/ExtensionBundleVersion=\"$VERSION\"/" integrations/premiere/CSXS/manifest.xml
+          fi
+          mkdir -p dist
+          (cd integrations && zip -qr "../dist/pulse-cg-premiere-panel-$VERSION.zip" premiere)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulse-cg-premiere-panel
+          path: dist/*.zip
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, macos-installer]
+    needs: [build, macos-installer, premiere-panel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

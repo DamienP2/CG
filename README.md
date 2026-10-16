@@ -117,6 +117,9 @@ Pulse CG est un **MOS device 2.8** pour Saga (Fonn Group), iNews, ENPS, Octopus�
 
 Mise en service : [`docs/MOS.md`](docs/MOS.md).
 
+### Post-production (Adobe Premiere Pro)
+Le panneau Premiere Pro rend un habillage au format et à la cadence de la séquence, en QuickTime avec alpha, puis le pose à la tête de lecture. Voir [`integrations/premiere/README.md`](integrations/premiere/README.md). La même fonction est disponible pour tout outil via `POST /api/render`.
+
 ### Utilisateurs et droits
 | Rôle | Peut |
 | --- | --- |

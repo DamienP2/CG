@@ -5,6 +5,7 @@
 //! the web engine, which is what OBS / vMix / CasparCG browser sources expect.
 
 pub mod colorspace;
+pub mod mov;
 pub mod sdi;
 pub mod st2110;
 
