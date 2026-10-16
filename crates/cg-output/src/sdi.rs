@@ -54,7 +54,7 @@ impl DeckLinkOutput {
     pub fn to_bgra(frame: &Frame, out: &mut Vec<u8>) {
         out.clear();
         out.reserve(frame.data.len());
-        for px in frame.data.chunks_exact(4) {
+        for px in frame.data.as_chunks::<4>().0 {
             out.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
         }
     }

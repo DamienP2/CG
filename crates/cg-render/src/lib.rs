@@ -324,7 +324,7 @@ fn load_image(assets_dir: &Path, src: &str) -> Option<Pixmap> {
     let img = image::open(assets_dir.join(name)).ok()?.to_rgba8();
     let (w, h) = img.dimensions();
     let mut data = img.into_raw();
-    for px in data.chunks_exact_mut(4) {
+    for px in data.as_chunks_mut::<4>().0 {
         let a = px[3] as u16;
         for c in &mut px[..3] {
             *c = ((*c as u16 * a + 127) / 255) as u8;
