@@ -596,12 +596,14 @@ fn take_messages(buf: &mut Vec<u8>, enc: Encoding) -> Vec<String> {
             Encoding::Utf8 => String::from_utf8_lossy(&chunk).into_owned(),
             Encoding::Utf16Be | Encoding::Utf16Le => {
                 let units: Vec<u16> = chunk
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| {
                         if enc == Encoding::Utf16Be {
-                            u16::from_be_bytes([c[0], c[1]])
+                            u16::from_be_bytes(*c)
                         } else {
-                            u16::from_le_bytes([c[0], c[1]])
+                            u16::from_le_bytes(*c)
                         }
                     })
                     .collect();
