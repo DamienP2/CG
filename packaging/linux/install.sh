@@ -16,4 +16,7 @@ cp "$HERE"/*.md "$HERE"/OFL.txt "$PREFIX/" 2>/dev/null || true
 ln -sf "$PREFIX/cg-server" /usr/local/bin/cg-server
 
 "$PREFIX/cg-server" service install "$@"
+# Web updates (Settings > Updates) replace the program in place: let the
+# service account write its own folder (and nothing else on the system).
+chown -R pulse-cg:pulse-cg "$PREFIX"
 echo "Logs: journalctl -u pulse-cg -f"

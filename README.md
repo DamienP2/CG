@@ -18,6 +18,8 @@ Le serveur est distribué sous la forme d'**un exécutable autonome** par platef
 - **macOS** : installateur `.pkg` universel (Apple Silicon + Intel) avec l'app **Pulse CG** (barre des menus).
 - **Linux** : archive avec binaire statique et `sudo ./install.sh` (systemd).
 
+Les mises à jour suivantes se font **sans désinstaller**, depuis **Réglages → Mises à jour** : en ligne (releases GitHub) ou en déposant l'archive de la version (serveurs hors ligne), avec retour automatique à la version précédente si la nouvelle ne démarre pas.
+
 Les commandes `cg-server service install | uninstall | start | stop | status` sont identiques sur les trois OS. Le guide complet est dans [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Développement
@@ -132,6 +134,10 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
 
 ### Opérateur
 - **Chaîne** : choix de la chaîne opérée et du projet chargé dessus ; lien vers sa sortie HTML5.
+- **Zones** : chaque projet découpe l'écran en zones, par exemple *Bas d'écran*, *Bug haut gauche*, *Ticker*, *Plein écran*.
+  - Une zone n'affiche qu'**un template à la fois**, et les zones passent à l'antenne indépendamment les unes des autres.
+  - Prendre un template dans une zone occupée fait d'abord sortir le graphique en place (animation de sortie), puis entrer le nouveau. En mode *Cut*, le remplacement est immédiat.
+  - Le tableau des zones montre, pour chacune, le graphique à l'antenne et celui qui attend son tour, avec Continue / Out / Clear par zone.
 - **Rundown** : liste d'éléments (template + données + couche de playout), tally *ON AIR*.
 - **Preview / Program** : la preview affiche l'élément cué, le program affiche ce qui est réellement à l'antenne.
 - **TAKE** (`F1` / `Entrée`), **CONTINUE** (`F2` / `Espace`), **OUT** (`F3`), **UPDATE** à chaud, **CLEAR ALL** (`F12`).
@@ -153,6 +159,8 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
 | `POST` | `/api/channels/{id}/command` | commandes de playout (voir ci-dessous) |
 | `GET` / `PUT` | `/api/assets` · `/api/assets/{nom}` | médias |
 | `GET` | `/api/health` | état public (supervision, app de la barre des menus) |
+| `GET` / `POST` | `/api/system/update` · `/check` · `/install` · `/upload` · `/rollback` | mises à jour OTA (admin) |
+| `PUT` | `/api/projects/{id}/zones` | zones d'écran du projet |
 | `WS` | `/ws` · `/ws?channel={id}` | évènements temps réel et commandes |
 
 ```bash
@@ -160,8 +168,9 @@ TOKEN=$(curl -s localhost:8080/api/auth/login -H 'content-type: application/json
   -d '{"username":"automation","password":"…"}' | jq -r .token)
 curl -X POST localhost:8080/api/channels/main/command -H "Authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"action":"take","layer":10,"templateId":"lower-third","data":{"name":"Ada Lovelace"}}'
-# actions : take | continue | takeOut | update | clear
+  -d '{"action":"take","zone":"lower-third","templateId":"lower-third","data":{"name":"Ada Lovelace"}}'
+# actions : take | continue | takeOut | update | clear — ciblées par "zone" (ou "layer")
+# un take sans zone joue dans la zone par défaut du template
 ```
 
 ## Arborescence

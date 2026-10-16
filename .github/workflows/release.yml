@@ -52,6 +52,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - name: musl C toolchain (ring, used for HTTPS update checks)
+        if: matrix.pkg == 'linux'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+          echo "CC_$(echo '${{ matrix.target }}' | tr '-' '_')=musl-gcc" >> "$GITHUB_ENV"
       - name: Build
         # The tray app ships with the Windows installer (macOS builds it in macos-installer).
         run: cargo build --release --locked -p cg-server ${{ matrix.pkg == 'windows' && '-p cg-tray' || '' }} --target ${{ matrix.target }}

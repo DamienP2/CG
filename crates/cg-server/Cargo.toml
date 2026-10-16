@@ -32,6 +32,12 @@ jiff = "0.2"
 argon2 = "0.5"
 uuid.workspace = true
 rpassword = "7"
+# Over-the-air updates: GitHub releases client and package extraction.
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"

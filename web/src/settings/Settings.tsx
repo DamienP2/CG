@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Cpu, ExternalLink, MonitorPlay, Network, Plu
 import { useEffect, useMemo, useState } from 'react';
 import type { FrameRate } from '../engine/types';
 import { api, useApp } from '../store';
+import { Updates } from './Updates';
 
 interface St2110Output {
   name: string;
@@ -488,6 +489,8 @@ export function Settings() {
             />
           ))}
         </Card>
+
+        <Updates Card={Card} />
 
         <Card icon={<Cpu size={16} />} title="System">
           <dl className="sys-list">

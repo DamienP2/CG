@@ -61,6 +61,15 @@ pub fn router() -> Router<Shared> {
         .route("/api/system", get(get_system))
         .route("/api/system/config", put(put_system_config))
         .route("/api/system/restart", post(post_restart))
+        .route("/api/system/update", get(update_info))
+        .route("/api/system/update/settings", put(update_settings))
+        .route("/api/system/update/check", post(update_check))
+        .route("/api/system/update/install", post(update_install))
+        .route(
+            "/api/system/update/upload",
+            post(update_upload).layer(axum::extract::DefaultBodyLimit::max(512 * 1024 * 1024)),
+        )
+        .route("/api/system/update/rollback", post(update_rollback))
         .route("/output", get(output_redirect))
         .route("/ws", get(ws_upgrade))
 }
@@ -880,6 +889,140 @@ async fn post_restart(
     require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
     s.restart.notify_one();
     Ok(StatusCode::ACCEPTED)
+}
+
+// --------------------------------------------------------------- update ----
+
+async fn update_info(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<crate::update::Info>> {
+    require(me.is_admin())?;
+    let dir = s.data_dir.clone();
+    Ok(Json(
+        tokio::task::spawn_blocking(move || crate::update::info(&dir))
+            .await
+            .map_err(internal)?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateSettingsInput {
+    repo: String,
+    /// None = keep the stored token, "" = remove it.
+    #[serde(default)]
+    token: Option<String>,
+    #[serde(default = "yes")]
+    auto_check: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+async fn update_settings(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(i): Json<UpdateSettingsInput>,
+) -> ApiResult<StatusCode> {
+    require(me.is_admin())?;
+    let repo = i
+        .repo
+        .trim()
+        .trim_start_matches("https://github.com/")
+        .trim_end_matches('/')
+        .to_string();
+    if repo.split('/').count() != 2 || repo.split('/').any(|p| p.is_empty()) {
+        return Err(bad("the repository is written owner/name"));
+    }
+    let mut cfg = crate::update::Settings::load(&s.data_dir);
+    cfg.repo = repo;
+    cfg.auto_check = i.auto_check;
+    if let Some(t) = i.token {
+        cfg.token = t.trim().to_string();
+    }
+    cfg.save(&s.data_dir).map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn update_check(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<crate::update::Release>> {
+    require(me.is_admin())?;
+    let dir = s.data_dir.clone();
+    tokio::task::spawn_blocking(move || crate::update::check(&dir))
+        .await
+        .map_err(internal)?
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("{e:#}")))
+}
+
+/// Downloads and installs the latest release in the background; follow
+/// progress with GET /api/system/update.
+async fn update_install(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<StatusCode> {
+    require(me.is_admin())?;
+    tracing::warn!(user = me.username, "installing the latest release");
+    let dir = s.data_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let _ = crate::update::install_latest(&dir);
+    });
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UploadQuery {
+    /// Install even if it is not newer (downgrade / reinstall).
+    #[serde(default)]
+    allow_older: bool,
+}
+
+/// Installs a release archive uploaded by an admin (offline servers).
+async fn update_upload(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Query(q): Query<UploadQuery>,
+    body: Bytes,
+) -> ApiResult<Json<serde_json::Value>> {
+    require(me.is_admin())?;
+    tracing::warn!(
+        user = me.username,
+        bytes = body.len(),
+        "installing an uploaded package"
+    );
+    let dir = s.data_dir.clone();
+    let version = tokio::task::spawn_blocking(move || {
+        let r = crate::update::extract_binary(&body)
+            .and_then(|b| crate::update::install(&dir, &b, q.allow_older));
+        if let Err(e) = &r {
+            crate::update::fail(e);
+        }
+        r
+    })
+    .await
+    .map_err(internal)?
+    .map_err(|e| bad(format!("{e:#}")))?;
+    crate::update::restart_soon();
+    Ok(Json(serde_json::json!({ "version": version })))
+}
+
+async fn update_rollback(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<serde_json::Value>> {
+    require(me.is_admin())?;
+    let dir = s.data_dir.clone();
+    let version = tokio::task::spawn_blocking(move || crate::update::rollback(&dir, "rolled back"))
+        .await
+        .map_err(internal)?
+        .map_err(|e| bad(format!("{e:#}")))?;
+    crate::update::restart_soon();
+    Ok(Json(serde_json::json!({ "version": version })))
 }
 
 // ------------------------------------------------------------- websocket ----

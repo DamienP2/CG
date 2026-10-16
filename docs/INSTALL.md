@@ -90,6 +90,26 @@ Adresses utiles :
 
 Les sorties ST 2110 / SDI se configurent dans la page **Réglages** (`/settings`).
 
+## Mettre à jour sans désinstaller (OTA)
+
+La carte **Mises à jour** de la page **Réglages** (admins) met le serveur à jour sur place : les données, les comptes et les réglages ne bougent pas.
+
+- **En ligne** : *Vérifier* interroge les releases GitHub du projet. Le dépôt étant privé, il faut saisir une fois un **token GitHub fine-grained** avec l'accès en lecture seule *Contents* sur ce dépôt. Le token reste sur le serveur, dans `<données>/update/`. La vérification automatique (toutes les 6 heures) ne fait que signaler une nouvelle version ; l'installation reste toujours une décision manuelle.
+- **Hors ligne** : téléchargez l'archive `pulse-cg-<version>-<plateforme>.tar.gz` (ou `.zip` sous Windows) depuis la page de la release, puis déposez-la avec *Importer un paquet*.
+
+Le serveur :
+
+1. vérifie l'empreinte SHA-256 publiée par GitHub ;
+2. lance le nouveau programme pour s'assurer qu'il fonctionne sur cette machine ;
+3. garde l'ancien programme à côté (`cg-server.previous`) ;
+4. redémarre : les graphiques à l'antenne sont coupés quelques secondes.
+
+Si la nouvelle version n'arrive pas à démarrer trois fois de suite, l'ancienne est **restaurée automatiquement**. Le bouton *Revenir à …* permet aussi de revenir en arrière à la main.
+
+Sous Linux, l'installateur donne au compte de service le droit d'écrire dans `/opt/pulse-cg`. Une installation antérieure à la 0.3 doit relancer une fois `sudo ./install.sh`. La mise à jour web remplace le serveur, qui embarque l'interface web. L'application de la barre des menus se met à jour avec l'installateur `.pkg` / `.msi`.
+
+L'API correspondante : `GET /api/system/update`, `POST /api/system/update/check`, `POST /api/system/update/install`, `POST /api/system/update/upload` (corps = l'archive), `POST /api/system/update/rollback`.
+
 ## Gérer le service
 
 Les mêmes commandes fonctionnent sur les trois OS (avec `sudo` ou dans un terminal administrateur) :

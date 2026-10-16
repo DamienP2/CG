@@ -6,6 +6,7 @@ mod library;
 mod paths;
 mod service;
 mod state;
+mod update;
 mod web;
 
 use std::collections::BTreeMap;
@@ -276,6 +277,7 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn run(args: RunArgs) -> anyhow::Result<()> {
+    update::set_supervised(args.service);
     if args.service {
         // Windows services have no console: log next to the data.
         let data = args.data_dir.clone().unwrap_or_else(paths::system_data_dir);
@@ -309,6 +311,20 @@ async fn shutdown_signal() {
 
 pub const DEFAULT_BIND: &str = "0.0.0.0:8080";
 
+/// After an update the previous process may still hold the port briefly.
+async fn bind_retry(addr: SocketAddr) -> std::io::Result<tokio::net::TcpListener> {
+    let mut attempt = 0;
+    loop {
+        match tokio::net::TcpListener::bind(addr).await {
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && attempt < 20 => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            r => return r,
+        }
+    }
+}
+
 pub async fn serve(
     args: RunArgs,
     shutdown: impl Future<Output = ()> + Send + 'static,
@@ -324,6 +340,10 @@ pub async fn serve(
     });
     let started_at = SystemTime::now();
     let fallback: SocketAddr = DEFAULT_BIND.parse()?;
+    // A fresh update that keeps failing is rolled back here.
+    update::startup_guard(&data_dir);
+    update::confirm_after(data_dir.clone(), std::time::Duration::from_secs(60));
+    update::spawn_auto_check(data_dir.clone());
     // Sessions survive engine restarts.
     let auth = Arc::new(auth::Auth::load(&data_dir));
     if auth.needs_setup() {
@@ -339,7 +359,7 @@ pub async fn serve(
             .or(config.bind)
             .or(args.default_bind)
             .unwrap_or(fallback);
-        let listener = match tokio::net::TcpListener::bind(wanted).await {
+        let listener = match bind_retry(wanted).await {
             Ok(l) => l,
             // Keep the UI reachable so the setting can be fixed.
             Err(e) if wanted != fallback => {
