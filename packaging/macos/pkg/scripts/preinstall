@@ -1,0 +1,4 @@
+#!/bin/sh
+# Upgrade: stop the running daemon; data is kept.
+launchctl bootout system/com.pulsecg.server 2>/dev/null || true
+exit 0

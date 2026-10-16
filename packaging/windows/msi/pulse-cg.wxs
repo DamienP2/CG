@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pulse CG Server — Windows Installer package (WiX Toolset v5).
+  Build: wix build pulse-cg.wxs -arch x64 -ext WixToolset.Util.wixext -ext WixToolset.Firewall.wixext
+         -d Version=0.1.0 -d BinDir=<dir with cg-server.exe> -d DocsDir=<repo root> -o PulseCG.msi
+  Silent install with a custom port: msiexec /i PulseCG.msi /qn PORT=80
+  (LISTEN_ADDR restricts the interface, e.g. LISTEN_ADDR=10.10.0.21)
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall">
+  <Package Name="Pulse CG Server"
+           Manufacturer="Pulse CG"
+           Version="$(var.Version)"
+           UpgradeCode="c38ad561-9f05-45ea-ab99-17ee287adb85"
+           Scope="perMachine"
+           Compressed="yes">
+    <SummaryInformation Description="Pulse CG broadcast graphics server" />
+    <MajorUpgrade DowngradeErrorMessage="Une version plus récente de [ProductName] est déjà installée." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Listening address of the service; override with msiexec PORT=... LISTEN_ADDR=... -->
+    <Property Id="LISTEN_ADDR" Value="0.0.0.0" Secure="yes" />
+    <Property Id="PORT" Value="8080" Secure="yes" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="PulseCG" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="MenuFolder" Name="Pulse CG" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Product" Directory="INSTALLFOLDER">
+      <Component Id="Server">
+        <File Id="CgServerExe" Source="$(var.BinDir)\cg-server.exe" KeyPath="yes">
+          <fire:FirewallException Id="FirewallServer" Name="Pulse CG Server" Scope="any" Profile="all" />
+        </File>
+        <ServiceInstall Id="ServiceInstall"
+                        Name="pulse-cg"
+                        DisplayName="Pulse CG Server"
+                        Description="Broadcast character generator: HTML5, SDI and SMPTE ST 2110 graphics playout"
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Vital="yes"
+                        Arguments="run --service --bind [LISTEN_ADDR]:[PORT] --data-dir &quot;[CommonAppDataFolder]PulseCG&quot;">
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="2"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+        <ServiceControl Id="ServiceControl" Name="pulse-cg" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+      </Component>
+      <Component Id="Docs">
+        <File Id="InstallMd" Source="$(var.DocsDir)\docs\INSTALL.md" KeyPath="yes" />
+        <File Id="OutputsExample" Source="$(var.DocsDir)\docs\outputs.example.json" />
+        <File Id="FontLicense" Source="$(var.DocsDir)\assets\fonts\OFL.txt" />
+      </Component>
+      <Component Id="StartMenu" Directory="MenuFolder">
+        <util:InternetShortcut Id="DesignerShortcut" Name="Pulse CG Designer" Target="http://localhost:[PORT]/designer" Type="url" />
+        <util:InternetShortcut Id="OperatorShortcut" Name="Pulse CG Operator" Target="http://localhost:[PORT]/operator" Type="url" />
+        <RemoveFolder Id="RemoveMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\PulseCG" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="Pulse CG Server">
+      <ComponentGroupRef Id="Product" />
+    </Feature>
+  </Package>
+</Wix>

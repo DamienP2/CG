@@ -5,10 +5,32 @@ Le serveur tient dans **un seul exécutable**, `cg-server`. Il contient le moteu
 | OS | Paquet | Service | Données | Journaux |
 | --- | --- | --- | --- | --- |
 | Linux x86_64 / arm64 (toutes distributions, binaire statique) | `pulse-cg-<version>-linux-*.tar.gz` | systemd `pulse-cg` (compte système dédié) | `/var/lib/pulse-cg` | `journalctl -u pulse-cg -f` |
-| macOS 11 ou plus récent (Apple Silicon / Intel) | `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
-| Windows Server 2016 ou plus récent / Windows 10+ x64 | `pulse-cg-<version>-windows-x86_64.zip` | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
+| macOS 11 ou plus récent (Apple Silicon / Intel) | **`PulseCG-<version>-macos-universal.pkg`** ou `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
+| Windows Server 2016 ou plus récent / Windows 10+ x64 | **`PulseCG-<version>-windows-x64.msi`** ou `pulse-cg-<version>-windows-x86_64.zip` | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
 
 Les paquets sont produits par la CI (`.github/workflows/release.yml`) à chaque tag `v*`.
+
+## Windows : installateur MSI (recommandé)
+
+Double-cliquez sur **`PulseCG-<version>-windows-x64.msi`**. Le MSI :
+- copie le binaire dans `C:\Program Files\PulseCG` et l'ajoute au `PATH` ;
+- crée le service `pulse-cg` (démarrage automatique, redémarrage en cas d'échec) et le démarre ;
+- ajoute la règle de pare-feu et les raccourcis *Pulse CG Designer* / *Operator* dans le menu Démarrer ;
+- se met à jour en installant simplement une version plus récente (données conservées) ; se désinstalle depuis *Paramètres → Applications*.
+
+Déploiement silencieux (GPO, Intune, SCCM) :
+```powershell
+msiexec /i PulseCG-0.1.0-windows-x64.msi /qn PORT=8080 LISTEN_ADDR=0.0.0.0
+```
+Lors d'une mise à jour silencieuse, repassez `PORT` si vous l'aviez changé.
+
+## macOS : installateur .pkg (recommandé)
+
+Double-cliquez sur **`PulseCG-<version>-macos-universal.pkg`** (Apple Silicon et Intel) et suivez l'assistant. Le binaire va dans `/usr/local/pulse-cg` ; le service launchd est enregistré et démarré à la fin. Une mise à jour conserve les données.
+
+> Tant que le paquet n'est pas signé avec un certificat Apple *Developer ID* et notarisé, macOS affiche « développeur non identifié » : faites **clic droit → Ouvrir**, ou *Réglages Système → Confidentialité et sécurité → Ouvrir quand même*. La CI signe et notarise automatiquement dès que les secrets `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD`, `MACOS_APP_IDENTITY`, `MACOS_INSTALLER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` sont configurés dans le dépôt.
+
+Désinstallation : `sudo /usr/local/pulse-cg/uninstall.sh` (`--purge` pour supprimer aussi les données).
 
 ## Linux
 
@@ -16,27 +38,12 @@ Les paquets sont produits par la CI (`.github/workflows/release.yml`) à chaque 
 tar xzf pulse-cg-*-linux-x86_64.tar.gz && cd pulse-cg-*/
 sudo ./install.sh                      # options : --bind 0.0.0.0:80 --data-dir /srv/pulse-cg
 ```
-Le binaire est copié dans `/opt/pulse-cg`, avec un lien `/usr/local/bin/cg-server`. Le service tourne sous l'utilisateur `pulse-cg`, avec une priorité augmentée (`Nice=-10`) ; il peut écouter sur un port inférieur à 1024.
-Désinstallation : `sudo ./uninstall.sh` (ajoutez `--purge` pour supprimer aussi les données).
+Le binaire est copié dans `/opt/pulse-cg` (lien `/usr/local/bin/cg-server`) ; le service tourne sous l'utilisateur `pulse-cg`, en priorité élevée (`Nice=-10`), et peut écouter sur un port < 1024.
+Désinstallation : `sudo ./uninstall.sh` (`--purge` pour supprimer aussi les données).
 
-## macOS
+## Archives sans installateur (macOS / Windows)
 
-```bash
-tar xzf pulse-cg-*-macos-arm64.tar.gz && cd pulse-cg-*/
-sudo ./install.sh
-```
-Le binaire est copié dans `/usr/local/pulse-cg`. Le script retire l'attribut de quarantaine Gatekeeper, car le paquet n'est pas encore signé ni notarisé. Le service démarre au boot.
-Désinstallation : `sudo ./uninstall.sh [--purge]`.
-
-## Windows
-
-1. Dézippez l'archive.
-2. Double-cliquez sur **`install.cmd`** (une élévation administrateur est demandée), ou lancez dans un PowerShell administrateur :
-   ```powershell
-   .\install.ps1 -Bind 0.0.0.0:8080
-   ```
-Le binaire est copié dans `C:\Program Files\PulseCG`. Le script crée le service `pulse-cg` (compte LocalSystem, démarrage automatique, redémarrage en cas d'échec) et ajoute une règle de pare-feu entrante pour l'exécutable.
-Désinstallation : `.\uninstall.ps1 [-Purge]`.
+Les archives `.tar.gz` / `.zip` restent disponibles pour une installation scriptée : `sudo ./install.sh` sur macOS, `install.cmd` ou `.\install.ps1` (PowerShell administrateur) sur Windows.
 
 ## Après l'installation
 

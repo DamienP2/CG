@@ -14,10 +14,9 @@ Architecture, choix techniques et feuille de route : [`docs/ARCHITECTURE.md`](do
 
 Le serveur est distribué sous la forme d'**un exécutable autonome** par plateforme : il embarque l'UI web, les polices et le moteur. Il s'installe en **service natif** : systemd sous Linux, launchd sous macOS, service Windows.
 
-```bash
-sudo ./install.sh                  # Linux / macOS, depuis l'archive de release
-.\install.ps1                      # Windows (PowerShell administrateur) ou double-clic sur install.cmd
-```
+- **Windows** : installateur `.msi` (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
+- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel).
+- **Linux** : archive avec binaire statique et `sudo ./install.sh` (systemd).
 
 Les commandes `cg-server service install | uninstall | start | stop | status` sont identiques sur les trois OS. Le guide complet est dans [`docs/INSTALL.md`](docs/INSTALL.md).
 

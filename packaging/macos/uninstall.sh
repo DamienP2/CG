@@ -5,6 +5,7 @@ set -eu
 /usr/local/pulse-cg/cg-server service uninstall || true
 rm -f /usr/local/bin/cg-server
 rm -rf /usr/local/pulse-cg
+pkgutil --forget com.pulsecg.server >/dev/null 2>&1 || true
 if [ "${1:-}" = "--purge" ]; then
   rm -rf "/Library/Application Support/PulseCG" /Library/Logs/PulseCG
 fi

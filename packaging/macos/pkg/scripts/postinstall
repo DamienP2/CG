@@ -1,0 +1,8 @@
+#!/bin/sh
+# Runs as root after the payload is copied to /usr/local/pulse-cg.
+set -e
+PREFIX=/usr/local/pulse-cg
+mkdir -p /usr/local/bin
+ln -sf "$PREFIX/cg-server" /usr/local/bin/cg-server
+"$PREFIX/cg-server" service install
+exit 0
