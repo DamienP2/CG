@@ -1,10 +1,27 @@
-import { ChevronDown, ChevronRight, Circle, Eye, EyeOff, Folder, Image, Lock, Square, Type, Unlock } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, Circle, Clock, Eye, EyeOff, Folder, GalleryHorizontal, Hash, Image, Keyboard, Lock, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Type, Unlock, Watch } from 'lucide-react';
 import { useState } from 'react';
 import { childrenMap } from '../engine/Scene';
 import type { Layer, LayerType, Template } from '../engine/types';
 import { descendants, findLayer, useDesigner } from './designerStore';
 
-const ICONS: Record<LayerType, typeof Square> = { group: Folder, rect: Square, ellipse: Circle, text: Type, image: Image };
+export const ICONS: Record<LayerType, typeof Square> = {
+  group: Folder,
+  rect: Square,
+  ellipse: Circle,
+  text: Type,
+  image: Image,
+  clock: Clock,
+  ticker: MoveHorizontal,
+  roll: MoveVertical,
+  analogClock: Watch,
+  counter: Hash,
+  progress: SlidersHorizontal,
+  rotator: Repeat,
+  typewriter: Keyboard,
+  slideshow: GalleryHorizontal,
+  qrCode: QrCode,
+  barChart: BarChart3,
+};
 
 type DropPos = 'above' | 'below' | 'into';
 

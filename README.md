@@ -30,14 +30,19 @@ cd web && npm install && npm run build && cd ..
 
 # 2. Serveur (API, WebSocket, playout, sorties)
 cargo run --release -p cg-server -- --data-dir data
-# → http://localhost:8080/designer
-# → http://localhost:8080/operator
-# → http://localhost:8080/output        (sortie HTML5 transparente)
+# → http://localhost:8080/              (création du compte admin au premier lancement)
+# → http://localhost:8080/output/main   (sortie HTML5 transparente de la chaîne « main »)
 ```
 
 En développement de l'UI, lancez `npm run dev` dans `web/` : Vite sert l'UI sur le port 5173 et proxifie l'API vers le port 8080.
 
-Au premier lancement, un projet de démo est créé dans `<data>/project.json` (lower third + score bug).
+Au premier lancement :
+
+- la page d'accueil, ouverte **sur le serveur lui-même** (`http://localhost:8080`), propose de créer le compte administrateur. À distance, utilisez `cg-server user add admin` ;
+- un projet de démo est créé dans `<data>/projects/` : lower third, score bug et un exemple de chaque widget ;
+- une chaîne de sortie `main` (1080p50) est créée.
+
+Une installation 0.1 est migrée automatiquement : `project.json` devient le premier projet, et `outputs.json` (ou les `outputs` de `config.json`) passe dans la première chaîne.
 
 ### Options du serveur
 
@@ -47,27 +52,77 @@ Au premier lancement, un projet de démo est créé dans `<data>/project.json` (
 | `--data-dir` | `CG_DATA_DIR` | dossier de données de l'utilisateur ; pour le service : `/var/lib/pulse-cg`, `/Library/Application Support/PulseCG` ou `%ProgramData%\PulseCG` |
 | `--web-dir` | `CG_WEB_DIR` | UI embarquée (option utile pour servir `web/dist` en développement) |
 
-### Réglages et sorties baseband
+### Comptes utilisateurs en ligne de commande
 
-Port, format vidéo et sorties se règlent dans la page **Réglages** (`/settings`), sans redémarrer le service. Ils sont enregistrés dans `config.json`, dans le dossier de données :
+```bash
+cg-server user add <nom> [--role admin|designer|operator|viewer]   # demande le mot de passe
+cg-server user list
+cg-server user passwd <nom>
+cg-server user delete <nom>
+```
+
+Ces commandes agissent sur le dossier de données du service s'il existe (sinon sur le dossier utilisateur, ou sur `--data-dir`). Elles fonctionnent aussi pendant que le serveur tourne.
+
+### Réglages, chaînes et sorties baseband
+
+Le serveur, les chaînes et leurs sorties se règlent dans la page **Réglages** (`/settings`, réservée aux admins), sans redémarrer le service. Ils sont enregistrés dans `config.json`, dans le dossier de données :
 
 ```json
 {
-  "name": "Régie 1",
+  "name": "Pulse CG",
   "bind": "0.0.0.0:8080",
-  "outputs": {
-    "st2110": [{ "name": "CG1", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
-    "sdi": [{ "name": "CG1-SDI", "device": 0, "externalKey": true }]
-  }
+  "publicOutputs": true,
+  "timezone": "Europe/Paris",
+  "channels": [
+    {
+      "id": "studio-a", "name": "Studio A", "width": 1920, "height": 1080, "frameRate": { "num": 50, "den": 1 },
+      "projectId": "journal-20h",
+      "outputs": {
+        "st2110": [{ "name": "CG1", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
+        "sdi": [{ "name": "CG1-SDI", "device": 0, "externalKey": true }]
+      }
+    },
+    { "id": "regie-sport", "name": "Régie sport", "width": 1920, "height": 1080, "frameRate": { "num": 50, "den": 1 }, "projectId": "match", "outputs": { "st2110": [], "sdi": [] } }
+  ]
 }
 ```
 
-Les SDP se récupèrent sur `GET /api/outputs/CG1/fill.sdp` et `/key.sdp` (à importer dans le contrôleur NMOS ou le récepteur).
+Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/CG1/fill.sdp` et `/key.sdp` (à importer dans le contrôleur NMOS ou le récepteur).
 
 ## Utilisation
 
+### Projets
+Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. La page **Projets** permet de créer un projet (dans le format de son choix), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`), de le supprimer et de le charger sur une chaîne.
+
+### Chaînes de sortie
+Une **chaîne** est un programme indépendant, par exemple une par studio ou par régie. Chaque chaîne a son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne, ses sorties ST 2110 / SDI et sa page HTML5 `/output/<id>`. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
+
+### Utilisateurs et droits
+| Rôle | Peut |
+| --- | --- |
+| **Admin** | tout : utilisateurs, chaînes, réglages du serveur |
+| **Designer** | créer et modifier des projets et des templates, et opérer |
+| **Operator** | charger un projet sur une chaîne, jouer les graphiques, modifier le rundown et ses données |
+| **Viewer** | consulter les projets et les monitors program |
+
+Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains projets** et à **certaines chaînes**. Les mots de passe sont hachés avec Argon2 (`users.json`). Le navigateur garde la session dans un cookie HttpOnly. L'automation peut utiliser `Authorization: Bearer <token>` (jeton renvoyé par `POST /api/auth/login`). Les pages `/output/<chaîne>` restent accessibles sans connexion pour les browser sources ; l'option se désactive dans les Réglages.
+
 ### Designer
-- Barre d'outils : rectangle, ellipse, texte, image, groupe (avec masque *clip*).
+- Barre d'outils : rectangle, ellipse, texte, image, groupe (avec masque *clip*), et le menu **Widgets**.
+- **Widgets préfabriqués** : ils sont rendus à l'identique en HTML5 et par le moteur Rust, animables (position, opacité, crop…) et reliables aux champs de données `{{clé}}` :
+  - **Horloge** (heure dans n'importe quel fuseau, date) ;
+  - **Compte à rebours** vers une heure ou une date ;
+  - **Minuteur** et **chronomètre** qui démarrent au take ;
+  - **Horloge analogique** ;
+  - **Ticker / crawl** horizontal ;
+  - **Générique** défilant verticalement ;
+  - **Rotator** (messages en fondu enchaîné) ;
+  - **Machine à écrire** ;
+  - **Compteur animé** (scores, résultats, montants) ;
+  - **Barre de progression** ;
+  - **Graphique en barres / sondage** ;
+  - **Diaporama** d'images ;
+  - **QR code**.
 - **Scène** : sélection, déplacement, poignées de redimensionnement, zones de sécurité, fond studio, transparent ou noir.
 - **Inspecteur** : chaque propriété a un **chronomètre** (comme dans After Effects) qui active l'animation. Ensuite, toute modification à la tête de lecture crée ou met à jour une keyframe (auto-key). Les flèches ◀ ◆ ▶ permettent de naviguer entre les keyframes. Faire glisser le libellé d'un champ modifie la valeur (Maj = ×10, Alt = ×0,1). Les champs numériques acceptent des expressions (`1920/2`).
 - **Timeline** : règle avec scrub, keyframes déplaçables (multi-sélection avec Maj), easing par keyframe (linéaire, easy ease, bezier libre, back, elastic, bounce, hold) avec aperçu de la courbe, marqueurs *Pause* (vert) et *Out* (rouge) déplaçables, zoom, boucle, mode *Playout preview* qui s'arrête sur les pauses.
@@ -76,6 +131,7 @@ Les SDP se récupèrent sur `GET /api/outputs/CG1/fill.sdp` et `/key.sdp` (à im
 - Sauvegarde automatique.
 
 ### Opérateur
+- **Chaîne** : choix de la chaîne opérée et du projet chargé dessus ; lien vers sa sortie HTML5.
 - **Rundown** : liste d'éléments (template + données + couche de playout), tally *ON AIR*.
 - **Preview / Program** : la preview affiche l'élément cué, le program affiche ce qui est réellement à l'antenne.
 - **TAKE** (`F1` / `Entrée`), **CONTINUE** (`F2` / `Espace`), **OUT** (`F3`), **UPDATE** à chaud, **CLEAR ALL** (`F12`).
@@ -85,17 +141,25 @@ Les SDP se récupèrent sur `GET /api/outputs/CG1/fill.sdp` et `/key.sdp` (à im
 
 | Méthode | Route | Rôle |
 | --- | --- | --- |
-| `GET` / `PUT` | `/api/project` | projet complet |
-| `PUT` / `DELETE` | `/api/templates/{id}` | créer, mettre à jour ou supprimer un template |
-| `GET` | `/api/templates/{id}/thumbnail.png?frame=` | rendu serveur d'un template |
-| `PUT` | `/api/rundown` | playlist |
-| `POST` | `/api/channel/command` | commandes de playout (voir ci-dessous) |
-| `GET` | `/api/channel` · `/api/channel/preview.png` | état et rendu du program |
+| `POST` | `/api/auth/login` · `/api/auth/logout` | session (cookie et jeton Bearer) |
+| `GET` / `POST` / `PUT` / `DELETE` | `/api/users[/{id}]` | utilisateurs (admin) |
+| `GET` / `POST` | `/api/projects` · `/api/projects/import` | liste, création (ou duplication avec `from`), import |
+| `GET` / `PUT` / `DELETE` | `/api/projects/{id}` · `/export` | projet complet, réglages, suppression, export |
+| `PUT` / `DELETE` | `/api/projects/{id}/templates/{tid}` | créer, mettre à jour ou supprimer un template |
+| `GET` | `/api/projects/{id}/templates/{tid}/thumbnail.png?frame=` | rendu serveur d'un template |
+| `PUT` | `/api/projects/{id}/rundown` | playlist |
+| `GET` | `/api/channels` · `/api/channels/{id}/state` · `/preview.png` | chaînes, état et rendu du program |
+| `PUT` | `/api/channels/{id}/project` | charger un projet sur une chaîne |
+| `POST` | `/api/channels/{id}/command` | commandes de playout (voir ci-dessous) |
 | `GET` / `PUT` | `/api/assets` · `/api/assets/{nom}` | médias |
-| `WS` | `/ws` | évènements temps réel et commandes |
+| `GET` | `/api/health` | état public (supervision, app de la barre des menus) |
+| `WS` | `/ws` · `/ws?channel={id}` | évènements temps réel et commandes |
 
 ```bash
-curl -X POST localhost:8080/api/channel/command -H 'content-type: application/json' \
+TOKEN=$(curl -s localhost:8080/api/auth/login -H 'content-type: application/json' \
+  -d '{"username":"automation","password":"…"}' | jq -r .token)
+curl -X POST localhost:8080/api/channels/main/command -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
   -d '{"action":"take","layer":10,"templateId":"lower-third","data":{"name":"Ada Lovelace"}}'
 # actions : take | continue | takeOut | update | clear
 ```
@@ -104,13 +168,13 @@ curl -X POST localhost:8080/api/channel/command -H 'content-type: application/js
 
 ```
 crates/
-  cg-core     modèle, keyframes et easing, logique de playout (sans I/O)
+  cg-core     modèle, keyframes et easing, widgets, logique de playout (sans I/O)
   cg-render   moteur de rendu logiciel (tiny-skia, texte vectoriel)
   cg-output   ST 2110-20 (RFC 4175, fill + key, SDP), SDI DeckLink
-  cg-server   axum : REST, WebSocket, horloge de playout, UI embarquée, services OS
+  cg-server   axum : REST, WebSocket, chaînes, projets, utilisateurs, UI embarquée, services OS
 assets/fonts  polices Inter (OFL) embarquées : rendu identique sur tous les OS
 packaging/   scripts d'installation Linux / macOS / Windows
-web/          React + TypeScript : Designer, Opérateur, sortie HTML5
+web/          React + TypeScript : Projets, Designer, Opérateur, Réglages, Utilisateurs, sortie HTML5
 docs/         architecture, exemples de configuration
 ```
 

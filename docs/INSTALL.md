@@ -66,19 +66,27 @@ Elle se trouve aussi dans *Applications* (macOS) et dans le menu Démarrer (Wind
 
 Toute la configuration se fait dans la page **Réglages** (`http://<serveur>:8080/settings`) et s'applique sans réinstaller : le moteur redémarre en une seconde environ.
 
-- **Serveur** : nom, interface réseau et port d'écoute de l'interface web et de l'API (la page vous suit sur le nouveau port).
-- **Format vidéo** : 1080p 25/29.97/50/59.94/60, 720p, 2160p (UHD).
-- **Sorties ST 2110** : destinations multicast fill et key, choix de la carte du réseau média, TTL ; liens vers les fichiers SDP.
-- **Sorties SDI** (DeckLink) : périphérique et mode de keying.
+- **Serveur** : nom, interface réseau et port d'écoute de l'interface web et de l'API (la page vous suit sur le nouveau port), fuseau horaire par défaut des horloges, accès libre ou non aux pages de sortie HTML5.
+- **Chaînes de sortie** : une par studio ou par régie, chacune avec :
+  - son **format vidéo** : 1080p 25/29.97/50/59.94/60, 720p, 2160p (UHD) ;
+  - ses **sorties ST 2110** : destinations multicast fill et key, choix de la carte du réseau média, TTL ; liens vers les fichiers SDP ;
+  - ses **sorties SDI** (DeckLink) : périphérique et mode de keying.
 - **Système** : version, dossier de données, durée de fonctionnement, liens utiles.
 
-Ces réglages sont enregistrés dans `config.json`, dans le dossier de données. Un ancien `outputs.json` est migré automatiquement.
+Ces réglages sont enregistrés dans `config.json`, dans le dossier de données. Les réglages d'une version 0.1 (`outputs.json`, `project.json`) sont migrés automatiquement.
+
+La page **Réglages** est réservée aux administrateurs. Les comptes se gèrent dans la page **Utilisateurs**.
 
 ## Après l'installation
 
-- Designer : `http://<serveur>:8080/designer`
-- Opérateur : `http://<serveur>:8080/operator`
-- Sortie HTML5 (OBS, vMix, CasparCG) : `http://<serveur>:8080/output`
+1. Ouvrez `http://localhost:8080` **sur le serveur** et créez le compte administrateur. Sur un serveur sans écran, lancez plutôt `sudo cg-server user add admin` (dans un terminal administrateur sous Windows).
+2. Dans **Utilisateurs**, créez les comptes des designers et des opérateurs, avec si besoin les projets et les chaînes auxquels ils ont accès.
+3. Dans **Réglages**, créez une chaîne par studio ou par régie, avec ses sorties.
+
+Adresses utiles :
+
+- Web app (projets, designer, opérateur) : `http://<serveur>:8080/`
+- Sortie HTML5 d'une chaîne (OBS, vMix, CasparCG) : `http://<serveur>:8080/output/<chaîne>`, par exemple `/output/main`
 
 Les sorties ST 2110 / SDI se configurent dans la page **Réglages** (`/settings`).
 
@@ -106,4 +114,5 @@ Le dossier utilisateur par défaut est `~/.local/share/pulsecg` (Linux), `~/Libr
 
 - **ST 2110** : la machine doit être synchronisée en PTP. Sous Linux, utilisez `ptp4l` + `phc2sys`. Sous Windows Server 2019 ou plus récent, utilisez le service PTP de Windows ou l'agent du fabricant de la carte réseau. Sous macOS, le PTP n'est pas disponible nativement : préférez Linux pour le 2110.
 - **SDI** : installez le pilote Blackmagic Desktop Video. La sortie DeckLink nécessite un binaire compilé avec la feature `decklink` (voir `docs/ARCHITECTURE.md`).
-- **Multicast** : sur une machine qui a plusieurs interfaces, renseignez `interface` dans `outputs.json` pour choisir la carte du réseau média.
+- **Multicast** : sur une machine qui a plusieurs interfaces, choisissez la carte du réseau média de chaque sortie dans la page **Réglages**.
+- **Mot de passe perdu** : `cg-server user passwd <nom>` sur le serveur.

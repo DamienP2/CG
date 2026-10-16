@@ -1,10 +1,10 @@
 import { AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, Diamond, Link2, Plus, Timer, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { applyEasing, col, num, propValue, sortKeys } from '../engine/evaluate';
-import type { Easing, Field, FieldKind, Layer, MarkerKind, Prop, Template, Value } from '../engine/types';
+import { applyEasing, col, num, parseHex, propValue, sortKeys, toHex } from '../engine/evaluate';
+import { TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { findLayer, isAnimated, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
+import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
 
 interface PropSpec {
   prop: Prop;
@@ -222,12 +222,334 @@ function AssetPicker({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
+type Attrs = Record<string, unknown>;
+
+/** Inserts `{{field}}` placeholders into a text attribute. */
+function FieldChips({ template, onInsert }: { template: Template; onInsert: (token: string) => void }) {
+  if (!template.fields.length) return null;
+  return (
+    <div className="chips">
+      {template.fields.map((f) => (
+        <button key={f.key} className="chip" onClick={() => onInsert(`{{${f.key}}}`)}>
+          + {f.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="row">
+      <span className="prop-label">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function Num({ value, onChange, min, max, step, precision, suffix }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; precision?: number; suffix?: string }) {
+  return <NumberField value={value} onChange={onChange} min={min} max={max} step={step ?? 1} precision={precision ?? 0} suffix={suffix} />;
+}
+
+const CLOCK_FORMATS = ['HH:mm:ss', 'HH:mm', 'h:mm A', 'mm:ss', 'mm:ss.f', 'H:mm:ss', 'dd/MM/yyyy', 'dd/MM/yy HH:mm', 'yyyy-MM-dd'];
+const ZONES: string[] = (() => {
+  try {
+    return (Intl as unknown as { supportedValuesOf(k: string): string[] }).supportedValuesOf('timeZone');
+  } catch {
+    return ['UTC', 'Europe/Paris', 'Europe/London', 'America/New_York', 'Asia/Tokyo'];
+  }
+})();
+
+function ZoneInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <>
+      <input list="insp-zones" value={value} placeholder="Server zone" onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+      <datalist id="insp-zones">
+        {ZONES.map((z) => (
+          <option key={z} value={z} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
+function HexInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const c = parseHex(value) ?? [0, 0, 0, 0];
+  return <ColorField value={c} onChange={(v) => onChange(toHex(v, v[3] < 1))} />;
+}
+
+/** Settings of prefab widgets. */
+function WidgetSettings({ layer, template, set }: { layer: Layer; template: Template; set: (key: string, v: unknown, coalesce?: boolean) => void }) {
+  const a = layer as unknown as Attrs;
+  const text = (key: string, multiline = false, placeholder?: string) => (
+    <>
+      <TextInput multiline={multiline} value={String(a[key] ?? '')} placeholder={placeholder} onChange={(v) => set(key, v, true)} />
+      <FieldChips template={template} onInsert={(tok) => set(key, `${a[key] ?? ''}${tok}`)} />
+    </>
+  );
+  const check = (key: string, label: string) => (
+    <label className="check">
+      <input type="checkbox" checked={!!a[key]} onChange={(e) => set(key, e.target.checked)} />
+      {label}
+    </label>
+  );
+  switch (layer.type) {
+    case 'clock':
+      return (
+        <>
+          <Row label="Mode">
+            <select value={layer.mode} onChange={(e) => set('mode', e.target.value)}>
+              <option value="time">Time of day</option>
+              <option value="countdown">Countdown to…</option>
+              <option value="timer">Timer (from take)</option>
+              <option value="elapsed">Stopwatch (since take)</option>
+            </select>
+          </Row>
+          <Row label="Format">
+            <input list="clock-formats" value={layer.format} onChange={(e) => set('format', e.target.value, true)} onKeyDown={(e) => e.stopPropagation()} />
+            <datalist id="clock-formats">
+              {CLOCK_FORMATS.map((f) => (
+                <option key={f} value={f} />
+              ))}
+            </datalist>
+          </Row>
+          {(layer.mode === 'time' || layer.mode === 'countdown') && (
+            <Row label="Time zone">
+              <ZoneInput value={layer.timezone} onChange={(v) => set('timezone', v, true)} />
+            </Row>
+          )}
+          {layer.mode === 'countdown' && (
+            <>
+              <span className="prop-label">Target — “20:00” today or “2026-12-31T23:59:59”</span>
+              {text('target', false, '20:00')}
+            </>
+          )}
+          {layer.mode === 'timer' && (
+            <>
+              <span className="prop-label">Duration — “5:00” or “1:30:00”</span>
+              {text('target', false, '5:00')}
+            </>
+          )}
+          <p className="hint">Tokens: yyyy yy MM M dd d HH H hh h mm m ss s f (tenths) A (AM/PM).</p>
+        </>
+      );
+    case 'ticker':
+      return (
+        <>
+          <span className="prop-label">Items (one per line)</span>
+          {text('text', true)}
+          <Row label="Separator">
+            <input value={layer.separator} onChange={(e) => set('separator', e.target.value, true)} onKeyDown={(e) => e.stopPropagation()} />
+          </Row>
+          <Row label="Speed">
+            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" px/s" />
+          </Row>
+        </>
+      );
+    case 'roll':
+      return (
+        <>
+          <span className="prop-label">Text (scrolls upwards)</span>
+          {text('text', true)}
+          <Row label="Speed">
+            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" px/s" />
+          </Row>
+          {check('loop', 'Loop')}
+        </>
+      );
+    case 'analogClock':
+      return (
+        <>
+          <Row label="Time zone">
+            <ZoneInput value={layer.timezone} onChange={(v) => set('timezone', v, true)} />
+          </Row>
+          {check('seconds', 'Second hand')}
+          <Row label="Accent">
+            <HexInput value={layer.accent} onChange={(v) => set('accent', v, true)} />
+          </Row>
+          <p className="hint">Face = fill colour, hands and ticks = stroke colour.</p>
+        </>
+      );
+    case 'counter':
+      return (
+        <>
+          <Row label="From">
+            <TextInput value={layer.from} onChange={(v) => set('from', v, true)} />
+          </Row>
+          <span className="prop-label">To</span>
+          {text('to')}
+          <Row label="Duration">
+            <Num value={layer.duration} onChange={(v) => set('duration', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
+          </Row>
+          <Row label="Decimals">
+            <Num value={layer.decimals} onChange={(v) => set('decimals', Math.round(v), true)} min={0} max={6} />
+          </Row>
+          <Row label="Prefix">
+            <TextInput value={layer.prefix} onChange={(v) => set('prefix', v, true)} />
+          </Row>
+          <Row label="Suffix">
+            <TextInput value={layer.suffix} onChange={(v) => set('suffix', v, true)} />
+          </Row>
+          {check('grouping', 'Thousands separator')}
+        </>
+      );
+    case 'progress':
+      return (
+        <>
+          <span className="prop-label">Value</span>
+          {text('value')}
+          <Row label="Max">
+            <TextInput value={layer.max} onChange={(v) => set('max', v, true)} />
+          </Row>
+          <Row label="Animation">
+            <Num value={layer.duration} onChange={(v) => set('duration', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
+          </Row>
+          <Row label="Track">
+            <HexInput value={layer.track} onChange={(v) => set('track', v, true)} />
+          </Row>
+        </>
+      );
+    case 'rotator':
+      return (
+        <>
+          <span className="prop-label">Lines (shown one after another)</span>
+          {text('text', true)}
+          <Row label="Each">
+            <Num value={layer.interval} onChange={(v) => set('interval', v, true)} min={0.5} step={0.1} precision={1} suffix=" s" />
+          </Row>
+          <Row label="Fade">
+            <Num value={layer.fade} onChange={(v) => set('fade', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
+          </Row>
+        </>
+      );
+    case 'typewriter':
+      return (
+        <>
+          {text('text', true)}
+          <Row label="Speed">
+            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" char/s" />
+          </Row>
+          {check('cursor', 'Blinking cursor')}
+        </>
+      );
+    case 'slideshow':
+      return (
+        <>
+          <span className="prop-label">Images (one asset per line)</span>
+          {text('images', true, '/assets/photo1.jpg')}
+          <AssetPicker value="" onChange={(v) => v && set('images', `${layer.images.trim() ? layer.images.trim() + '\n' : ''}${v}`)} />
+          <Row label="Each">
+            <Num value={layer.interval} onChange={(v) => set('interval', v, true)} min={0.5} step={0.1} precision={1} suffix=" s" />
+          </Row>
+          <Row label="Fade">
+            <Num value={layer.fade} onChange={(v) => set('fade', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
+          </Row>
+          <Row label="Fit">
+            <Segmented
+              value={layer.fit}
+              onChange={(v) => set('fit', v)}
+              options={[
+                { value: 'contain', label: 'Contain' },
+                { value: 'cover', label: 'Cover' },
+                { value: 'stretch', label: 'Stretch' },
+              ]}
+            />
+          </Row>
+        </>
+      );
+    case 'qrCode':
+      return (
+        <>
+          <span className="prop-label">Content (URL, text…)</span>
+          {text('data')}
+          <Row label="Background">
+            <HexInput value={layer.background} onChange={(v) => set('background', v, true)} />
+          </Row>
+        </>
+      );
+    case 'barChart':
+      return (
+        <>
+          <span className="prop-label">Rows — “Label: value”, one per line</span>
+          {text('text', true)}
+          {check('percent', 'Show as % of total')}
+          <Row label="Animation">
+            <Num value={layer.duration} onChange={(v) => set('duration', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
+          </Row>
+          <Row label="Track">
+            <HexInput value={layer.track} onChange={(v) => set('track', v, true)} />
+          </Row>
+          <Row label="Labels">
+            <HexInput value={layer.textColor} onChange={(v) => set('textColor', v, true)} />
+          </Row>
+        </>
+      );
+    default:
+      return null;
+  }
+}
+
+function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
+  return (
+    <>
+      <div className="row">
+        <span className="prop-label">Font</span>
+        <select value={layer.fontFamily} onChange={(e) => set('fontFamily', e.target.value)}>
+          {[...new Set([layer.fontFamily, ...FONTS])].map((f) => (
+            <option key={f}>{f}</option>
+          ))}
+        </select>
+        <select value={layer.fontWeight} onChange={(e) => set('fontWeight', +e.target.value)}>
+          {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="row">
+        <Segmented
+          value={layer.align}
+          onChange={(v) => set('align', v)}
+          options={[
+            { value: 'left', label: <AlignLeft size={13} /> },
+            { value: 'center', label: <AlignCenter size={13} /> },
+            { value: 'right', label: <AlignRight size={13} /> },
+          ]}
+        />
+        <Segmented
+          value={layer.verticalAlign}
+          onChange={(v) => set('verticalAlign', v)}
+          options={[
+            { value: 'top', label: 'Top' },
+            { value: 'middle', label: 'Mid' },
+            { value: 'bottom', label: 'Bot' },
+          ]}
+        />
+        <button className={`btn small ${layer.uppercase ? 'on' : ''}`} onClick={() => set('uppercase', !layer.uppercase)}>
+          AA
+        </button>
+      </div>
+    </>
+  );
+}
+
+const FILL_LABEL: Partial<Record<LayerType, string>> = {
+  progress: 'Bar',
+  barChart: 'Bars',
+  analogClock: 'Face',
+  qrCode: 'Modules',
+};
+
 function LayerInspector({ layer, template }: { layer: Layer; template: Template }) {
   const { update } = useDesigner();
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
+  const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
+  const textLike = TEXT_LIKE.has(layer.type);
+  const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
   return (
     <>
-      <Section title={layer.type.toUpperCase()}>
+      <Section title={LABELS[layer.type].toUpperCase()}>
         <div className="row">
           <span className="prop-label">Name</span>
           <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
@@ -240,56 +562,12 @@ function LayerInspector({ layer, template }: { layer: Layer; template: Template 
         )}
         {layer.type === 'text' && (
           <>
-            <TextInput multiline value={layer.text} onChange={(v) => edit((l) => void (l.type === 'text' && (l.text = v)), `text-${layer.id}`)} />
-            {template.fields.length > 0 && (
-              <div className="chips">
-                {template.fields.map((f) => (
-                  <button key={f.key} className="chip" onClick={() => edit((l) => void (l.type === 'text' && (l.text += `{{${f.key}}}`)))}>
-                    + {f.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="row">
-              <span className="prop-label">Font</span>
-              <select value={layer.fontFamily} onChange={(e) => edit((l) => void (l.type === 'text' && (l.fontFamily = e.target.value)))}>
-                {[...new Set([layer.fontFamily, ...FONTS])].map((f) => (
-                  <option key={f}>{f}</option>
-                ))}
-              </select>
-              <select value={layer.fontWeight} onChange={(e) => edit((l) => void (l.type === 'text' && (l.fontWeight = +e.target.value)))}>
-                {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="row">
-              <Segmented
-                value={layer.align}
-                onChange={(v) => edit((l) => void (l.type === 'text' && (l.align = v)))}
-                options={[
-                  { value: 'left', label: <AlignLeft size={13} /> },
-                  { value: 'center', label: <AlignCenter size={13} /> },
-                  { value: 'right', label: <AlignRight size={13} /> },
-                ]}
-              />
-              <Segmented
-                value={layer.verticalAlign}
-                onChange={(v) => edit((l) => void (l.type === 'text' && (l.verticalAlign = v)))}
-                options={[
-                  { value: 'top', label: 'Top' },
-                  { value: 'middle', label: 'Mid' },
-                  { value: 'bottom', label: 'Bot' },
-                ]}
-              />
-              <button className={`btn small ${layer.uppercase ? 'on' : ''}`} onClick={() => edit((l) => void (l.type === 'text' && (l.uppercase = !l.uppercase)))}>
-                AA
-              </button>
-            </div>
+            <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
+            <FieldChips template={template} onInsert={(tok) => set('text', layer.text + tok)} />
           </>
         )}
+        <WidgetSettings layer={layer} template={template} set={set} />
+        {textLike && <FontControls layer={layer as Layer & FontStyle} set={set} />}
         {layer.type === 'image' && (
           <>
             <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />
@@ -313,16 +591,16 @@ function LayerInspector({ layer, template }: { layer: Layer; template: Template 
           <PropRow key={s.prop} layer={layer} spec={s} template={template} />
         ))}
       </Section>
-      {layer.type !== 'image' && (
+      {layer.type !== 'image' && layer.type !== 'slideshow' && (
         <Section title="Appearance">
-          <ColorRow layer={layer} prop="fill" label={layer.type === 'text' ? 'Color' : 'Fill'} template={template} />
-          <ColorRow layer={layer} prop="stroke" label="Stroke" template={template} />
-          {STYLE.filter((s) => s.prop !== 'cornerRadius' || layer.type === 'rect' || layer.type === 'group').map((s) => (
+          <ColorRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} template={template} />
+          {layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} template={template} />}
+          {STYLE.filter((s) => (s.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((s) => (
             <PropRow key={s.prop} layer={layer} spec={s} template={template} />
           ))}
         </Section>
       )}
-      {layer.type === 'text' && (
+      {textLike && (
         <Section title="Typography">
           {TEXT.map((s) => (
             <PropRow key={s.prop} layer={layer} spec={s} template={template} />

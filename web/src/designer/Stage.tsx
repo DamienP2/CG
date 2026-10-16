@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Scene, Viewport } from '../engine/Scene';
+import { LiveTime, useTicker } from '../engine/LiveTime';
+import { hasLiveWidgets, Scene, Viewport } from '../engine/Scene';
 import { num, propValue } from '../engine/evaluate';
 import type { Project } from '../engine/types';
 import { findLayer, setProp, useDesigner } from './designerStore';
@@ -21,6 +22,8 @@ export function Stage({ project, showSafe, background }: { project: Project; sho
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
   const [boxes, setBoxes] = useState<Box[]>([]);
+  const now = useTicker(!!template && hasLiveWidgets(template));
+  const fps = project.frameRate.num / project.frameRate.den || 1;
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -143,7 +146,10 @@ export function Stage({ project, showSafe, background }: { project: Project; sho
       <div className={`stage-frame bg-${background}`} onPointerDown={(e) => e.stopPropagation()}>
         <div ref={sceneRef} onPointerDown={onPointerDown} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale}>
-            <Scene template={template} frame={frame} data={previewData} interactive />
+            {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
+            <LiveTime ageSecs={frame / fps} clientNow={now}>
+              <Scene template={template} frame={frame} data={previewData} interactive />
+            </LiveTime>
           </Viewport>
           {showSafe && (
             <>

@@ -13,14 +13,14 @@
 
 ```
              ┌──────────── Web app (React/TS) ─────────────┐
-             │ Designer      Opérateur      /output (HTML5)│
+             │ Projets · Designer · Opérateur · /output/<ch> │
              └──────┬──────────────┬───────────────▲───────┘
                 REST│ (templates)  │WS (commandes) │WS (état 50 Hz)
              ┌──────▼──────────────▼───────────────┴───────┐
              │                 cg-server (axum)            │
-             │  project store ─ ChannelState ─ horloge fps │
+             │ projets · utilisateurs · N chaînes (horloge)│
              └───────────────────────┬─────────────────────┘
-                                     │ (Project, ChannelState) par frame
+                                     │ (Project, ChannelState) par frame et par chaîne
                              ┌───────▼────────┐
                              │   cg-render    │  tiny-skia, texte vectoriel
                              └───────┬────────┘
@@ -33,9 +33,11 @@
 ```
 
 ### `cg-core` : le contrat
-- **Modèle** (`model.rs`) : `Project`, puis `Template`, puis `Layer` (group, rect, ellipse, text, image), avec ses `props` statiques, ses `tracks` de keyframes et ses `bindings` vers des champs de données. Le modèle est sérialisé en JSON camelCase ; il a un miroir TypeScript dans `web/src/engine/types.ts`.
+- **Modèle** (`model.rs`) : `Project`, puis `Template`, puis `Layer` (group, rect, ellipse, text, image et les widgets), avec ses `props` statiques, ses `tracks` de keyframes et ses `bindings` vers des champs de données. Le modèle est sérialisé en JSON camelCase ; il a un miroir TypeScript dans `web/src/engine/types.ts`.
 - **Animation** (`anim.rs`, `easing.rs`) : chaque keyframe porte l'easing du segment qui en part (sémantique After Effects). Les fonctions d'easing sont implémentées à l'identique en Rust et en TypeScript (`web/src/engine/evaluate.ts`), y compris les bezier façon CSS.
 - **Playout** (`playout.rs`) : logique MXMZ. *Take* joue jusqu'à la première pause, *Continue* jusqu'à la suivante (ou jusqu'au marqueur out), *Take out* saute au marqueur out puis joue jusqu'à la fin, après quoi le graphique est retiré. Les commandes s'appliquent par **couche de playout**, ce qui permet d'avoir plusieurs graphiques simultanément.
+
+- **Widgets** (`widgets.rs`) : horloge, compte à rebours, minuteur, chronomètre, horloge analogique, ticker, générique, rotator, machine à écrire, compteur, barre de progression, graphique en barres, diaporama et QR code. Chaque widget est une **fonction pure** de l'heure du serveur et du temps passé à l'antenne (`PlayoutItem.age`, qui continue d'avancer pendant les pauses). Le rendu Rust et le rendu HTML5 (`web/src/engine/widgets.ts`) sont donc identiques. Les clients HTML5 reçoivent l'heure du serveur et extrapolent le temps à l'antenne entre deux évènements. Le QR code est calculé par le serveur (`/api/qr`) pour que les deux moteurs dessinent les mêmes modules.
 
 ### Conventions de rendu (communes aux deux moteurs)
 - `x` et `y` désignent le coin haut-gauche de la boîte dans le repère du parent ; les enfants d'un groupe sont relatifs au groupe.
@@ -51,10 +53,15 @@ Rasteriseur CPU (tiny-skia) : headless, déterministe, environ 1,5 ms par frame 
 ### `cg-output`
 - **ST 2110-20** : YCbCr 4:2:2 10 bits BT.709 (narrow range), RFC 4175 avec un segment de ligne par paquet de 1 200 octets, marker bit en fin de frame, horloge RTP à 90 kHz dérivée de l'heure système, SDP générés. Le fill et la key sont deux flux, chacun avec son thread et sa socket ; les paquets sont étalés sur la période trame (modèle d'émetteur proche de 2110-21 « wide »). Débit mesuré : 50 i/s en 1080p fill + key sur 4 vCPU.
 - **SDI** : interface `DeckLinkOutput` (BGRA prémultiplié vers le keyer externe de la carte). Le pont FFI vers le SDK Blackmagic est à brancher derrière la feature `decklink`, car le SDK n'est pas redistribuable.
-- **HTML5** : la page `/output` reçoit l'état du canal par WebSocket et rend avec le moteur DOM. Elle est transparente, s'adapte à la taille de la fenêtre (ou reste en 1:1 avec `?scale=1`) et convient aux browser sources.
+- **HTML5** : la page `/output/<chaîne>` reçoit le projet et l'état de sa chaîne par WebSocket et rend avec le moteur DOM. Elle est transparente, s'adapte à la taille de la fenêtre (ou reste en 1:1 avec `?scale=1`) et convient aux browser sources.
 
 ### `cg-server`
-axum et tokio. L'horloge de playout tourne à la cadence du projet ; l'état est diffusé à tous les clients WebSocket ; le rendu baseband se fait sur un thread dédié (une frame est abandonnée plutôt que d'accumuler de la latence). Le projet est persisté en JSON avec une écriture atomique.
+Le serveur repose sur axum et tokio.
+
+- **Chaînes** : chaque chaîne a sa tâche d'horloge, cadencée au format de la chaîne, son `ChannelState` et son thread de rendu. Ses sorties ne reçoivent que ses frames. Quand l'image n'est pas prête à temps, la frame est abandonnée plutôt que d'accumuler de la latence. Les timelines sont avancées de `fps projet / fps chaîne` par tick, et le projet est mis à l'échelle au format de la chaîne.
+- **Projets** : la bibliothèque `data/projects/<id>.json` est écrite de façon atomique. Le projet chargé sur chaque chaîne est mémorisé dans `config.json`.
+- **Utilisateurs** : `users.json` stocke des hachages Argon2 et est relu s'il change sur disque (CLI `cg-server user`). Les sessions sont gardées en mémoire et survivent aux redémarrages du moteur. Chaque route vérifie le rôle de l'appelant et son périmètre de projets et de chaînes. Le WebSocket filtre les évènements selon ce que l'utilisateur peut voir.
+- **Redémarrage à chaud** : une modification des réglages reconstruit les chaînes et le listener sans arrêter le processus.
 
 ## Feuille de route
 
@@ -69,12 +76,14 @@ axum et tokio. L'horloge de playout tourne à la cadence du projet ; l'état est
 **Designer**
 - [ ] Éditeur de courbes de valeur et de vitesse (graph editor), poignées bezier dans la timeline.
 - [ ] Ombres, dégradés, flou, modes de fusion, masques par calque (track matte).
-- [ ] Animations de texte par caractère, texte auto-fit et ticker / crawl.
+- [x] Widgets préfabriqués : horloges, compte à rebours, ticker, générique, compteur, sondage, QR code…
+- [ ] Animations de texte par caractère, texte auto-fit.
 - [ ] Séquences d'images et vidéo (alpha), compositions imbriquées (pré-compositions).
 - [ ] Import de fichiers Lottie / After Effects (bodymovin).
 
 **Exploitation et données**
 - [ ] Sources de données (Google Sheets, JSON/HTTP polling, CSV, webhooks) avec mapping vers les champs, comme dans Flowics.
 - [ ] MOS (iNews, ENPS, Octopus), Companion / Stream Deck, raccourcis configurables.
-- [ ] Multi-canaux, multi-utilisateurs, droits (designer / opérateur / lecture seule), journal de diffusion.
-- [ ] Versionnage des templates, import et export de packages.
+- [x] Multi-chaînes, multi-utilisateurs, droits (admin / designer / opérateur / lecture seule).
+- [x] Bibliothèque de projets, import et export.
+- [ ] Journal de diffusion, versionnage des templates, SSO (OIDC / LDAP).

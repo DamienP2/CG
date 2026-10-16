@@ -1,11 +1,13 @@
-import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, MonitorPlay, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
 import type { Field, PlayoutItem, RundownItem } from '../engine/types';
-import { uploadAsset, useApp } from '../store';
+import { LiveTime } from '../engine/LiveTime';
+import { can, uploadAsset, useApp } from '../store';
 import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
+import { navigate } from '../router';
 
 function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
   const toast = useApp((s) => s.toast);
@@ -58,8 +60,61 @@ function phaseLabel(p: PlayoutItem) {
   return p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' ? 'OUT' : 'PLAYING';
 }
 
-export function Operator() {
-  const { project, channel, command, saveRundown } = useApp();
+/** Channel picker + project loaded on it. */
+function ChannelBar({ channelId }: { channelId: string }) {
+  const { channels, projects, auth, loadOnChannel } = useApp();
+  const ch = channels.find((c) => c.id === channelId);
+  const operate = can.operate(auth?.user);
+  return (
+    <div className="channel-bar">
+      <MonitorPlay size={15} />
+      <select
+        value={channelId}
+        onChange={(e) => navigate(`/operator/${encodeURIComponent(e.target.value)}`)}
+      >
+        {channels.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      {ch && (
+        <span className="muted">
+          {ch.width}×{ch.height} · {+(ch.frameRate.num / ch.frameRate.den).toFixed(2)} fps{ch.outputs.length ? ` · ${ch.outputs.join(', ')}` : ''}
+        </span>
+      )}
+      <div className="spacer" />
+      <FolderOpen size={14} />
+      <select
+        value={ch?.projectId ?? ''}
+        disabled={!operate}
+        title="Project loaded on this channel"
+        onChange={(e) => {
+          const onAir = Object.keys(useApp.getState().live[channelId]?.state.layers ?? {}).length;
+          if (onAir && !confirm('Loading another project clears the graphics on air. Continue?')) return;
+          loadOnChannel(channelId, e.target.value || null);
+        }}
+      >
+        <option value="">— no project —</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      <a className="btn small" href={`/output/${encodeURIComponent(channelId)}`} target="_blank" rel="noreferrer">
+        HTML5 output ↗
+      </a>
+    </div>
+  );
+}
+
+export function Operator({ channelId }: { channelId: string }) {
+  const { project, command: send, saveRundown, auth } = useApp();
+  const liveState = useApp((s) => s.live[channelId]);
+  const channel = liveState?.state ?? { layers: {} };
+  const operate = can.operate(auth?.user);
+  const command: typeof send = (cmd) => operate && send(cmd, channelId);
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
@@ -121,7 +176,14 @@ export function Operator() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  if (!project) return <div className="loading">Connecting…</div>;
+  if (!project)
+    return (
+      <div className="operator empty-op">
+        <ChannelBar channelId={channelId} />
+        <div className="loading">No project loaded on this channel. Pick one above.</div>
+      </div>
+    );
+  const fps = project.frameRate.num / project.frameRate.den || 1;
 
   const addItem = (templateId: string) => {
     const t = project.templates.find((x) => x.id === templateId)!;
@@ -215,27 +277,32 @@ export function Operator() {
       </aside>
 
       <main className="op-center">
+        <ChannelBar channelId={channelId} />
         <div className="monitors">
           <Monitor width={project.width} height={project.height} label="Preview" tally="pvw" extra={template && <span className="muted">{template.name}</span>}>
-            {template && <Scene template={template} frame={holdFrame(template)} data={draft} />}
+            {template && (
+              <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
+                <Scene template={template} frame={holdFrame(template)} data={draft} />
+              </LiveTime>
+            )}
           </Monitor>
-          <Monitor width={project.width} height={project.height} label="Program" tally="pgm" extra={<a className="muted link" href="/output" target="_blank" rel="noreferrer">Open HTML5 output ↗</a>}>
-            <Program project={project} channel={channel} />
+          <Monitor width={project.width} height={project.height} label="Program" tally="pgm">
+            <Program project={project} live={liveState} />
           </Monitor>
         </div>
 
         <div className="transport-bar">
-          <button className="big-btn take" disabled={!item} onClick={take} title="F1 / Enter">
+          <button className="big-btn take" disabled={!item || !operate} onClick={take} title="F1 / Enter">
             <Play size={20} /> TAKE
           </button>
-          <button className="big-btn continue" disabled={!item || !live} onClick={cont} title="F2 / Space">
+          <button className="big-btn continue" disabled={!item || !live || !operate} onClick={cont} title="F2 / Space">
             <ChevronsRight size={20} /> CONTINUE
           </button>
-          <button className="big-btn out" disabled={!item || !live} onClick={out} title="F3">
+          <button className="big-btn out" disabled={!item || !live || !operate} onClick={out} title="F3">
             <CircleStop size={20} /> OUT
           </button>
           <div className="spacer" />
-          <button className="big-btn update" disabled={!item || !liveIsThis} onClick={updateLive} title="Push edited data to the graphic on air">
+          <button className="big-btn update" disabled={!item || !liveIsThis || !operate} onClick={updateLive} title="Push edited data to the graphic on air">
             <RefreshCw size={18} /> UPDATE
           </button>
           <button className="big-btn clear" onClick={() => command({ action: 'clear' })} title="F12 — clear everything">

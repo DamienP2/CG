@@ -20,6 +20,20 @@ use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, S
 
 pub use text::{FontStore, BUNDLED_FONTS};
 
+/// QR modules of `content` (row-major, true = dark) and the side length,
+/// shared with the HTML5 renderer so both draw the same code.
+pub fn qr_modules(content: &str) -> Option<(usize, Vec<bool>)> {
+    let code =
+        qrcode::QrCode::with_error_correction_level(content.as_bytes(), qrcode::EcLevel::M).ok()?;
+    Some((
+        code.width(),
+        code.to_colors()
+            .into_iter()
+            .map(|c| c == qrcode::Color::Dark)
+            .collect(),
+    ))
+}
+
 /// A rendered video frame, RGBA 8-bit **premultiplied** alpha.
 #[derive(Clone)]
 pub struct Frame {
@@ -622,13 +636,9 @@ impl Renderer {
             }
             LayerKind::QrCode { data, background } => {
                 let content = interpolate_text(data, ctx.data);
-                let Ok(code) = qrcode::QrCode::with_error_correction_level(
-                    content.as_bytes(),
-                    qrcode::EcLevel::M,
-                ) else {
+                let Some((n, modules)) = qr_modules(&content) else {
                     return;
                 };
-                let n = code.width();
                 let side = w.min(h);
                 let cell = side / (n + 8) as f32; // 4-module quiet zone
                 let (ox, oy) = ((w - side) / 2.0 + 4.0 * cell, (h - side) / 2.0 + 4.0 * cell);
@@ -637,8 +647,8 @@ impl Renderer {
                     pm.fill_rect(rc, &bg, tf, mask);
                 }
                 let mut pb = PathBuilder::new();
-                for (i, c) in code.to_colors().iter().enumerate() {
-                    if *c == qrcode::Color::Dark {
+                for (i, dark) in modules.iter().enumerate() {
+                    if *dark {
                         let (x, y) = ((i % n) as f32, (i / n) as f32);
                         if let Some(rc) =
                             Rect::from_xywh(ox + x * cell, oy + y * cell, cell + 0.02, cell + 0.02)

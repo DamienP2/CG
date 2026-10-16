@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
-import type { Data, Keyframe, Layer, LayerType, Prop, Template, Value } from '../engine/types';
+import type { Data, FontStyle, Keyframe, Layer, LayerType, Prop, Template, Value } from '../engine/types';
 
 export interface KeyRef {
   layerId: string;
@@ -172,13 +172,45 @@ export function descendants(t: Template, id: string): string[] {
   return out;
 }
 
-const LABELS: Record<LayerType, string> = {
+export const LABELS: Record<LayerType, string> = {
   group: 'Group',
   rect: 'Rectangle',
   ellipse: 'Ellipse',
   text: 'Text',
   image: 'Image',
+  clock: 'Clock',
+  ticker: 'Ticker',
+  roll: 'Credits roll',
+  analogClock: 'Analog clock',
+  counter: 'Counter',
+  progress: 'Progress bar',
+  rotator: 'Rotator',
+  typewriter: 'Typewriter',
+  slideshow: 'Slideshow',
+  qrCode: 'QR code',
+  barChart: 'Bar chart / poll',
 };
+
+/** Widget presets offered in the toolbar menu (a type plus overrides). */
+export const WIDGET_PRESETS: { key: string; label: string; hint: string; type: LayerType; patch?: Partial<Record<string, unknown>> }[] = [
+  { key: 'clock', label: 'Clock', hint: 'Time of day, any time zone', type: 'clock' },
+  { key: 'date', label: 'Date', hint: 'dd/MM/yyyy', type: 'clock', patch: { format: 'dd/MM/yyyy' } },
+  { key: 'countdown', label: 'Countdown', hint: 'To a time of day or a date', type: 'clock', patch: { mode: 'countdown', target: '20:00', format: 'HH:mm:ss' } },
+  { key: 'timer', label: 'Timer', hint: 'Counts down a duration once on air', type: 'clock', patch: { mode: 'timer', target: '5:00', format: 'mm:ss' } },
+  { key: 'elapsed', label: 'Stopwatch', hint: 'Time since the take', type: 'clock', patch: { mode: 'elapsed', format: 'mm:ss.f' } },
+  { key: 'analogClock', label: 'Analog clock', hint: 'Face with hands', type: 'analogClock' },
+  { key: 'ticker', label: 'Ticker', hint: 'Horizontal crawl', type: 'ticker' },
+  { key: 'roll', label: 'Credits roll', hint: 'Vertical scroll', type: 'roll' },
+  { key: 'rotator', label: 'Rotator', hint: 'Lines one after another', type: 'rotator' },
+  { key: 'typewriter', label: 'Typewriter', hint: 'Letter-by-letter reveal', type: 'typewriter' },
+  { key: 'counter', label: 'Counter', hint: 'Animated number', type: 'counter' },
+  { key: 'progress', label: 'Progress bar', hint: 'Value / max, animated', type: 'progress' },
+  { key: 'barChart', label: 'Bar chart / poll', hint: 'Label: value lines', type: 'barChart' },
+  { key: 'slideshow', label: 'Slideshow', hint: 'Images with cross-fade', type: 'slideshow' },
+  { key: 'qrCode', label: 'QR code', hint: 'URL or text', type: 'qrCode' },
+];
+
+const font = (align: FontStyle['align'] = 'left', weight = 700): FontStyle => ({ fontFamily: 'Inter', fontWeight: weight, align, verticalAlign: 'middle', uppercase: false });
 
 export function makeLayer(type: LayerType, width: number, height: number, parent?: string | null): Layer {
   const base = {
@@ -212,6 +244,66 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
       };
     case 'image':
       return { ...base, type, src: '', fit: 'contain', props: centered(400, 300) };
+    case 'clock':
+      return { ...base, type, mode: 'time', format: 'HH:mm:ss', timezone: '', target: '', ...font('center'), props: { ...centered(300, 90), fontSize: 64, fill: DEFAULTS.fill } };
+    case 'ticker':
+      return {
+        ...base,
+        type,
+        text: 'First headline of the ticker\nSecond headline\nThird headline',
+        separator: '   •   ',
+        speed: 180,
+        ...font('left', 600),
+        props: { x: 0, y: parent ? 0 : height - 140, width: parent ? 1000 : width, height: 64, fontSize: 36, fill: DEFAULTS.fill },
+      };
+    case 'roll':
+      return {
+        ...base,
+        type,
+        text: 'PRESENTED BY\nJane Doe\n\nDIRECTED BY\nJohn Smith\n\nPRODUCED BY\nPulse CG',
+        speed: 60,
+        loop: true,
+        ...font('center', 600),
+        props: { ...centered(900, 800), fontSize: 44, fill: DEFAULTS.fill },
+      };
+    case 'analogClock':
+      return { ...base, type, timezone: '', seconds: true, accent: '#ff3b5c', props: { ...centered(300, 300), fill: [1, 1, 1, 1], stroke: [0.07, 0.08, 0.12, 1] } };
+    case 'counter':
+      return {
+        ...base,
+        type,
+        from: '0',
+        to: '12500',
+        duration: 2,
+        decimals: 0,
+        prefix: '',
+        suffix: '',
+        grouping: true,
+        ...font('center', 800),
+        props: { ...centered(500, 140), fontSize: 110, fill: DEFAULTS.fill },
+      };
+    case 'progress':
+      return { ...base, type, value: '65', max: '100', duration: 1, track: '#ffffff33', props: { ...centered(800, 24), cornerRadius: 12, fill: [0.486, 0.361, 1, 1] } };
+    case 'rotator':
+      return { ...base, type, text: 'First message\nSecond message\nThird message', interval: 4, fade: 0.5, ...font('left', 600), props: { ...centered(900, 80), fontSize: 48, fill: DEFAULTS.fill } };
+    case 'typewriter':
+      return { ...base, type, text: 'Breaking news: type your text here', speed: 20, cursor: true, ...font('left', 600), props: { ...centered(1100, 90), fontSize: 52, fill: DEFAULTS.fill } };
+    case 'slideshow':
+      return { ...base, type, images: '', interval: 5, fade: 0.8, fit: 'cover', props: centered(640, 360) };
+    case 'qrCode':
+      return { ...base, type, data: 'https://example.com', background: '#ffffff', props: { ...centered(260, 260), fill: [0.05, 0.05, 0.08, 1] } };
+    case 'barChart':
+      return {
+        ...base,
+        type,
+        text: 'Yes: 58\nNo: 34\nNo opinion: 8',
+        percent: true,
+        duration: 1.2,
+        track: '#ffffff22',
+        textColor: '#ffffff',
+        ...font('left', 600),
+        props: { ...centered(900, 260), fontSize: 36, fill: [0.486, 0.361, 1, 1] },
+      };
   }
 }
 

@@ -342,7 +342,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "cg-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "jiff",
  "serde",
@@ -353,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "cg-output"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "cg-render",
  "serde",
@@ -364,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "cg-render"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "ab_glyph",
  "cg-core",
@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "cg-server"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -405,7 +405,7 @@ dependencies = [
 
 [[package]]
 name = "cg-tray"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "tao",

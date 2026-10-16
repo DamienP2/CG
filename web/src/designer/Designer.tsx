@@ -1,11 +1,11 @@
-import { Circle, Copy, Folder, Grid3x3, Image, Plus, Redo2, Square, Trash2, Type, Undo2 } from 'lucide-react';
+import { ChevronDown, Circle, Copy, Folder, Grid3x3, Image, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
-import type { LayerType, Project, Template } from '../engine/types';
-import { useApp } from '../store';
-import { descendants, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
+import type { Layer, LayerType, Project, Template } from '../engine/types';
+import { thumbnailUrl, useApp } from '../store';
+import { descendants, findLayer, makeLayer, newTemplate, setProp, useDesigner, WIDGET_PRESETS } from './designerStore';
 import { Inspector } from './Inspector';
-import { LayersPanel } from './LayersPanel';
+import { ICONS, LayersPanel } from './LayersPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 
@@ -169,7 +169,7 @@ function TemplateList({ project }: { project: Project }) {
       </header>
       {project.templates.map((t) => (
         <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={() => template?.id !== t.id && load(t)}>
-          <img src={`/api/templates/${encodeURIComponent(t.id)}/thumbnail.png?v=${encodeURIComponent(JSON.stringify(t).length)}`} alt="" loading="lazy" />
+          <img src={thumbnailUrl(project.id, t)} alt="" loading="lazy" />
           <span>{t.name}</span>
           <div className="item-actions">
             <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
@@ -194,6 +194,45 @@ function TemplateList({ project }: { project: Project }) {
   );
 }
 
+function WidgetMenu({ onPick }: { onPick: (w: (typeof WIDGET_PRESETS)[number]) => void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  return (
+    <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
+      <button className={`tool wide ${open ? 'on' : ''}`} title="Prefab widgets" onClick={() => setOpen(!open)}>
+        <Sparkles size={15} /> Widgets <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="menu widget-menu">
+          {WIDGET_PRESETS.map((w) => {
+            const Icon = ICONS[w.type];
+            return (
+              <button
+                key={w.key}
+                onClick={() => {
+                  setOpen(false);
+                  onPick(w);
+                }}
+              >
+                <Icon size={15} />
+                <span>
+                  <strong>{w.label}</strong>
+                  <em>{w.hint}</em>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Designer() {
   const project = useApp((s) => s.project);
   const { template, load, update, undo, redo, past, future, selected, select } = useDesigner();
@@ -204,15 +243,22 @@ export function Designer() {
   useShortcuts();
   const saveState = useAutosave();
 
+  // Opening another project: start on its first template.
+  const openedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (project && !template && project.templates.length) load(project.templates[0]);
+    if (!project) return;
+    if (openedFor.current !== project.id) {
+      openedFor.current = project.id;
+      if (!template || !project.templates.some((t) => t.id === template.id)) load(project.templates[0] ?? null);
+    } else if (!template && project.templates.length) load(project.templates[0]);
   }, [project, template, load]);
 
   if (!project) return <div className="loading">Connecting…</div>;
 
-  const add = (type: LayerType) => {
+  const add = (type: LayerType, patch?: Record<string, unknown>, name?: string) => {
     const parent = selected.length === 1 && template && findLayer(template, selected[0])?.type === 'group' ? selected[0] : null;
-    const l = makeLayer(type, project.width, project.height, parent);
+    const l = { ...makeLayer(type, project.width, project.height, parent), ...patch } as Layer;
+    if (name) l.name = name;
     update((t) => void t.layers.push(l));
     select([l.id]);
   };
@@ -242,6 +288,7 @@ export function Designer() {
             <button className="tool" title="Group" onClick={() => add('group')}>
               <Folder size={16} />
             </button>
+            <WidgetMenu onPick={(w) => add(w.type, w.patch, w.label)} />
           </div>
           <div className="tool-group">
             <button className="tool" title="Undo (Ctrl+Z)" disabled={!past.length} onClick={undo}>

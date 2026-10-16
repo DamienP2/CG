@@ -56,9 +56,11 @@ pub fn router() -> Router<Shared> {
         .route("/api/assets", get(list_assets))
         .route("/api/assets/{name}", put(put_asset))
         .route("/api/health", get(health))
+        .route("/api/qr", get(qr))
         .route("/api/system", get(get_system))
         .route("/api/system/config", put(put_system_config))
         .route("/api/system/restart", post(post_restart))
+        .route("/output", get(output_redirect))
         .route("/ws", get(ws_upgrade))
 }
 
@@ -794,6 +796,31 @@ async fn health(State(s): State<Shared>) -> Json<serde_json::Value> {
         "channels": s.channels.len(),
         "needsSetup": s.auth.needs_setup(),
     }))
+}
+
+#[derive(Deserialize)]
+struct QrQuery {
+    data: String,
+}
+
+/// QR modules for the HTML5 renderer (public: output pages need it).
+async fn qr(Query(q): Query<QrQuery>) -> ApiResult<Json<serde_json::Value>> {
+    if q.data.len() > 2048 {
+        return Err(bad("too long for a QR code"));
+    }
+    let (size, modules) = cg_render::qr_modules(&q.data).ok_or_else(|| bad("cannot encode"))?;
+    let modules: String = modules.iter().map(|d| if *d { '1' } else { '0' }).collect();
+    Ok(Json(
+        serde_json::json!({ "size": size, "modules": modules }),
+    ))
+}
+
+/// `/output` without a channel: the first channel (tray app, old links).
+async fn output_redirect(State(s): State<Shared>) -> Response {
+    match s.channels.keys().next() {
+        Some(id) => axum::response::Redirect::temporary(&format!("/output/{id}")).into_response(),
+        None => not_found("channel").into_response(),
+    }
 }
 
 /// Admins, or the tray app on the server itself.
