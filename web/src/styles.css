@@ -2062,3 +2062,130 @@ select.small {
   font-size: 12.5px;
   font-weight: 600;
 }
+
+/* ---------- zones ---------- */
+.zone-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.zone-tag::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--zone, var(--text-3));
+}
+.tally.next {
+  background: var(--warn);
+  color: #1a1200;
+}
+.zone-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.zone-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px 6px 12px;
+  border-radius: 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  min-width: 0;
+}
+.zone-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--zone);
+}
+.zone-card.holding,
+.zone-card.playing {
+  border-color: rgba(255, 59, 92, 0.5);
+  background: linear-gradient(180deg, rgba(255, 59, 92, 0.08), var(--panel) 70%);
+}
+.zone-card.out {
+  border-color: rgba(245, 165, 36, 0.5);
+}
+.zone-card.cued {
+  box-shadow: 0 0 0 1px var(--pvw) inset;
+}
+.zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.zone-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.zone-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 34px;
+  font-size: 12.5px;
+}
+.zone-body strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.zone-next {
+  font-size: 11px;
+  color: var(--warn);
+}
+.zone-card progress {
+  width: 100%;
+  height: 3px;
+  accent-color: var(--live);
+}
+.zone-card.empty progress {
+  visibility: hidden;
+}
+.zone-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.zone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zone-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--zone);
+}
+.zone-row input[type='color'] {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.zone-name-input {
+  flex: 1;
+  min-width: 0;
+}

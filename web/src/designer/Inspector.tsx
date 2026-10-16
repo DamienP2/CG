@@ -4,6 +4,7 @@ import { applyEasing, col, num, parseHex, propValue, sortKeys, toHex } from '../
 import { TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
+import { ZonesDialog } from './ZonesDialog';
 import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
 
 interface PropSpec {
@@ -702,6 +703,8 @@ function KeyframeInspector() {
 function TemplateInspector({ template }: { template: Template }) {
   const { update, previewData, set, frame } = useDesigner();
   const fps = useApp((s) => s.project?.frameRate);
+  const zones = useApp((s) => s.project?.zones ?? []);
+  const [zonesOpen, setZonesOpen] = useState(false);
   const rate = fps ? fps.num / fps.den : 50;
   const editField = (i: number, fn: (f: Field) => void) => update((t) => fn(t.fields[i]));
   return (
@@ -715,7 +718,25 @@ function TemplateInspector({ template }: { template: Template }) {
           <NumberField label="Duration" value={template.duration} min={1} suffix="fr" onChange={(v) => update((t) => void (t.duration = Math.round(v)), 'duration')} />
           <span className="muted">{(template.duration / rate).toFixed(2)} s</span>
         </div>
+        <div className="row">
+          <span className="prop-label">Zone</span>
+          <select value={template.zone} onChange={(e) => update((t) => void (t.zone = e.target.value))} title="Where this template plays by default">
+            {!zones.some((z) => z.id === template.zone) && <option value={template.zone}>—</option>}
+            {[...zones]
+              .sort((a, b) => b.layer - a.layer)
+              .map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+          </select>
+          <button className="btn small" onClick={() => setZonesOpen(true)}>
+            Zones…
+          </button>
+        </div>
+        <p className="hint">One template at a time per zone; zones are on air together.</p>
       </Section>
+      {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       <Section
         title="Data fields"
         actions={

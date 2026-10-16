@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChannelInfo, ChannelState, Command, Project, ProjectSummary, RundownItem, Template, User } from './engine/types';
+import type { ChannelInfo, ChannelState, Command, Project, ProjectSummary, RundownItem, Template, User, Zone } from './engine/types';
 
 type ServerEvent =
   | { type: 'hello'; user: User | null; serverName: string; serverTime: number; timezone: string; channels: ChannelInfo[]; projects: ProjectSummary[] }
@@ -58,6 +58,7 @@ interface AppStore {
   saveTemplate: (t: Template) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
   saveRundown: (r: RundownItem[]) => Promise<void>;
+  saveZones: (z: Zone[]) => Promise<boolean>;
   toast: (message: string, kind?: Toast['kind']) => void;
 }
 
@@ -252,6 +253,18 @@ export const useApp = create<AppStore>((set, get) => {
         await api('PUT', `/api/projects/${encodeURIComponent(p.id)}/rundown`, r);
       } catch (e) {
         get().toast(`Save failed: ${errText(e)}`, 'error');
+      }
+    },
+
+    async saveZones(zones) {
+      const p = get().project;
+      if (!p) return false;
+      try {
+        await api('PUT', `/api/projects/${encodeURIComponent(p.id)}/zones`, zones);
+        return true;
+      } catch (e) {
+        get().toast(errText(e), 'error');
+        return false;
       }
     },
 

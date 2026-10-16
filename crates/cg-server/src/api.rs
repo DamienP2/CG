@@ -39,6 +39,7 @@ pub fn router() -> Router<Shared> {
         )
         .route("/api/projects/{id}/export", get(export_project))
         .route("/api/projects/{id}/rundown", put(put_rundown))
+        .route("/api/projects/{id}/zones", put(put_zones))
         .route(
             "/api/projects/{id}/templates/{tid}",
             put(put_template).delete(delete_template),
@@ -343,6 +344,7 @@ async fn create_project(
             frame_rate: FrameRate::new(50, 1),
             templates: Vec::new(),
             rundown: Vec::new(),
+            zones: cg_core::Zone::defaults(),
         },
     };
     p.id = cg_core::new_id();
@@ -486,6 +488,52 @@ async fn put_rundown(
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     p.rundown = r;
     s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Replaces the zones of a project. Zones still used by templates or the
+/// rundown cannot be removed; graphics on air follow their zone's new layer.
+async fn put_zones(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(zones): Json<Vec<cg_core::Zone>>,
+) -> ApiResult<StatusCode> {
+    require(me.can_design(&id))?;
+    Project::validate_zones(&zones).map_err(bad)?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let kept = |z: &str| zones.iter().any(|x| x.id == z);
+    if let Some(t) = p.templates.iter().find(|t| !kept(&t.zone)) {
+        return Err(bad(format!(
+            "template “{}” still plays in a removed zone; move it first",
+            t.name
+        )));
+    }
+    if let Some(r) = p
+        .rundown
+        .iter()
+        .find(|r| !r.zone.is_empty() && !kept(&r.zone))
+    {
+        return Err(bad(format!(
+            "rundown item “{}” still plays in a removed zone; move it first",
+            r.name
+        )));
+    }
+    let moves: Vec<(u32, u32)> = p
+        .zones
+        .iter()
+        .filter_map(|old| {
+            zones
+                .iter()
+                .find(|n| n.id == old.id && n.layer != old.layer)
+                .map(|n| (old.layer, n.layer))
+        })
+        .collect();
+    p.zones = zones;
+    s.save_project(p).await.map_err(internal)?;
+    if !moves.is_empty() {
+        s.move_layers(&id, &moves).await;
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

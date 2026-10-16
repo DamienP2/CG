@@ -183,6 +183,7 @@ pub fn lower_third() -> Template {
     );
 
     Template {
+        zone: String::new(),
         id: "lower-third".into(),
         name: "Lower third".into(),
         duration: 125.0,
@@ -295,6 +296,7 @@ pub fn score_bug() -> Template {
     );
     score.props.insert(AnchorX, n(0.5));
     Template {
+        zone: String::new(),
         id: "score-bug".into(),
         name: "Score bug".into(),
         duration: 60.0,
@@ -415,6 +417,7 @@ pub fn clock() -> Template {
     );
     fade(&mut time, 4.0, 30.0);
     Template {
+        zone: String::new(),
         id: "clock".into(),
         name: "Clock".into(),
         duration: 45.0,
@@ -510,6 +513,7 @@ pub fn ticker() -> Template {
     );
     crawl.tracks.insert(Y, bar.tracks[&Y].clone());
     Template {
+        zone: String::new(),
         id: "ticker".into(),
         name: "News ticker".into(),
         duration: 80.0,
@@ -566,6 +570,7 @@ pub fn credits() -> Template {
     );
     fade(&mut roll, 0.0, 60.0);
     Template {
+        zone: String::new(),
         id: "credits".into(),
         name: "Credits roll".into(),
         duration: 75.0,
@@ -587,6 +592,7 @@ pub fn credits() -> Template {
 
 fn simple(id: &str, name: &str, duration: f64, fields: Vec<Field>, layers: Vec<Layer>) -> Template {
     Template {
+        zone: String::new(),
         id: id.into(),
         name: name.into(),
         duration,
@@ -871,7 +877,46 @@ pub fn countdown() -> Template {
     )
 }
 
+fn zone(id: &str, name: &str, layer: u32, color: &str) -> Zone {
+    Zone {
+        id: id.into(),
+        name: name.into(),
+        layer,
+        color: color.into(),
+        transition: ZoneTransition::Sequential,
+    }
+}
+
 pub fn demo_project() -> Project {
+    let mut p = demo_project_layers();
+    p.zones = vec![
+        zone("lower-third", "Lower third", 10, "#7c5cff"),
+        zone("top-left", "Top left", 20, "#ff3b5c"),
+        zone("top-right", "Top right", 30, "#22c55e"),
+        zone("ticker", "Ticker", 40, "#f5a524"),
+        zone("full-screen", "Full screen", 50, "#38bdf8"),
+        zone("bottom-right", "Bottom right", 70, "#e879f9"),
+    ];
+    // Two graphics share a corner: taking one takes the other out first.
+    let zone_of = |template: &str| match template {
+        "lower-third" => "lower-third",
+        "score-bug" | "analog-clock" => "top-left",
+        "clock" => "top-right",
+        "ticker" => "ticker",
+        "qr-code" => "bottom-right",
+        _ => "full-screen",
+    };
+    for t in &mut p.templates {
+        t.zone = zone_of(&t.id).into();
+    }
+    for r in &mut p.rundown {
+        r.zone = zone_of(&r.template_id).into();
+    }
+    p.ensure_zones();
+    p
+}
+
+fn demo_project_layers() -> Project {
     let mut data = BTreeMap::new();
     data.insert("name".to_string(), "Marie Curie".to_string());
     data.insert("title".to_string(), "Physicist & chemist".to_string());
@@ -882,6 +927,7 @@ pub fn demo_project() -> Project {
         width: 1920,
         height: 1080,
         frame_rate: FrameRate::new(50, 1),
+        zones: Vec::new(),
         templates: vec![
             lower_third(),
             score_bug(),
@@ -895,6 +941,7 @@ pub fn demo_project() -> Project {
         ],
         rundown: vec![
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "LT – Marie Curie".into(),
                 template_id: "lower-third".into(),
@@ -902,6 +949,7 @@ pub fn demo_project() -> Project {
                 data,
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Score PSG – OM".into(),
                 template_id: "score-bug".into(),
@@ -912,6 +960,7 @@ pub fn demo_project() -> Project {
                     .collect(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Clock".into(),
                 template_id: "clock".into(),
@@ -919,6 +968,7 @@ pub fn demo_project() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Ticker – headlines".into(),
                 template_id: "ticker".into(),
@@ -926,6 +976,7 @@ pub fn demo_project() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Credits".into(),
                 template_id: "credits".into(),
@@ -933,6 +984,7 @@ pub fn demo_project() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Analog clock".into(),
                 template_id: "analog-clock".into(),
@@ -940,6 +992,7 @@ pub fn demo_project() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Poll".into(),
                 template_id: "poll".into(),
@@ -947,6 +1000,7 @@ pub fn demo_project() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "QR code".into(),
                 template_id: "qr-code".into(),
@@ -954,6 +1008,7 @@ pub fn demo_project() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                zone: String::new(),
                 id: new_id(),
                 name: "Countdown".into(),
                 template_id: "countdown".into(),

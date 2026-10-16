@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, Monito
 import { useEffect, useMemo, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import type { Field, PlayoutItem, RundownItem } from '../engine/types';
+import type { Command, Field, PlayoutItem, Project, RundownItem, Zone } from '../engine/types';
 import { LiveTime } from '../engine/LiveTime';
 import { can, uploadAsset, useApp } from '../store';
 import { Monitor } from '../ui/Monitor';
@@ -55,6 +55,69 @@ function FieldInput({ field, value, onChange }: { field: Field; value: string; o
       return <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
   }
 }
+
+function ZoneTag({ zone }: { zone?: Zone }) {
+  if (!zone) return <span className="zone-tag">no zone</span>;
+  return (
+    <span className="zone-tag" style={{ ['--zone' as string]: zone.color }}>
+      {zone.name}
+    </span>
+  );
+}
+
+/** Every zone of the project with what it has on air, front-most first. */
+function ZoneStrip({
+  project,
+  layers,
+  cuedZone,
+  command,
+}: {
+  project: Project;
+  layers: Record<string, PlayoutItem>;
+  cuedZone?: string;
+  command: (c: Command) => void;
+}) {
+  const zones = [...project.zones].sort((a, b) => b.layer - a.layer);
+  const known = new Set(zones.map((z) => String(z.layer)));
+  // Graphics taken on raw layers through the API.
+  const extra = Object.keys(layers).filter((l) => !known.has(l));
+  const name = (id?: string | null) => project.templates.find((t) => t.id === id)?.name ?? id;
+  const card = (key: string, label: React.ReactNode, color: string, p: PlayoutItem | undefined, target: { zone?: string; layer?: number }, cued: boolean) => {
+    const t = p && project.templates.find((x) => x.id === p.templateId);
+    return (
+      <div key={key} className={`zone-card ${p ? p.phase : 'empty'} ${cued ? 'cued' : ''}`} style={{ ['--zone' as string]: color }}>
+        <div className="zone-head">
+          <span className="zone-name">{label}</span>
+          {p && <span className="air-phase">{phaseLabel(p)}</span>}
+        </div>
+        <div className="zone-body">
+          {p ? <strong>{rundownName(project, p.rundownId) ?? t?.name}</strong> : <span className="muted">Free</span>}
+          {p?.next && <span className="zone-next">then {rundownName(project, p.next.rundownId) ?? name(p.next.templateId)}</span>}
+        </div>
+        {p && <progress max={t?.duration ?? 1} value={p.frame} />}
+        <div className="zone-actions">
+          <button className="icon-btn ghost" title="Continue" disabled={!p} onClick={() => command({ action: 'continue', ...target })}>
+            <ChevronsRight size={13} />
+          </button>
+          <button className="icon-btn ghost" title="Take out" disabled={!p} onClick={() => command({ action: 'takeOut', ...target })}>
+            <CircleStop size={13} />
+          </button>
+          <button className="icon-btn ghost" title="Clear now (no animation)" disabled={!p} onClick={() => command({ action: 'clear', ...target })}>
+            <X size={13} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="zone-strip">
+      {zones.map((z) => card(z.id, z.name, z.color, layers[String(z.layer)], { zone: z.id }, z.id === cuedZone))}
+      {extra.map((l) => card(`l${l}`, `Layer ${l}`, '#6b7090', layers[l], { layer: Number(l) }, false))}
+    </div>
+  );
+}
+
+const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
 
 function phaseLabel(p: PlayoutItem) {
   return p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' ? 'OUT' : 'PLAYING';
@@ -137,6 +200,7 @@ export function Operator({ channelId }: { channelId: string }) {
     for (const p of Object.values(channel.layers)) if (p.rundownId) m.set(p.rundownId, p);
     return m;
   }, [channel]);
+  const queued = useMemo(() => new Set(Object.values(channel.layers).flatMap((p) => (p.next?.rundownId ? [p.next.rundownId] : []))), [channel]);
 
   const dirty = item ? JSON.stringify({ ...defaultData(template!), ...item.data }) !== JSON.stringify(draft) : false;
 
@@ -148,17 +212,17 @@ export function Operator({ channelId }: { channelId: string }) {
   const take = () => {
     if (!item) return;
     persistDraft();
-    command({ action: 'take', layer: item.layer, templateId: item.templateId, data: draft, rundownId: item.id });
+    command({ action: 'take', zone: zoneOf(item)?.id, templateId: item.templateId, data: draft, rundownId: item.id });
     // Cue the next item, like a playlist.
     const idx = rundown.findIndex((r) => r.id === item.id);
     if (idx >= 0 && idx < rundown.length - 1) setCued(rundown[idx + 1].id);
   };
-  const cont = () => item && command({ action: 'continue', layer: item.layer });
-  const out = () => item && command({ action: 'takeOut', layer: item.layer });
+  const cont = () => item && command({ action: 'continue', zone: zoneOf(item)?.id });
+  const out = () => item && command({ action: 'takeOut', zone: zoneOf(item)?.id });
   const updateLive = () => {
     if (!item) return;
     persistDraft();
-    command({ action: 'update', layer: item.layer, data: draft });
+    command({ action: 'update', zone: zoneOf(item)?.id, data: draft });
   };
 
   useEffect(() => {
@@ -187,8 +251,8 @@ export function Operator({ channelId }: { channelId: string }) {
 
   const addItem = (templateId: string) => {
     const t = project.templates.find((x) => x.id === templateId)!;
-    const used = new Set(rundown.map((r) => r.layer));
-    const it: RundownItem = { id: newId(), name: t.name, templateId, layer: rundown.find((r) => r.templateId === templateId)?.layer ?? (Math.max(0, ...used) + 10), data: defaultData(t) };
+    const z = project.zones.find((x) => x.id === t.zone);
+    const it: RundownItem = { id: newId(), name: t.name, templateId, zone: t.zone, layer: z?.layer ?? 0, data: defaultData(t) };
     saveRundown([...rundown, it]);
     setCued(it.id);
     setAdding(false);
@@ -202,7 +266,9 @@ export function Operator({ channelId }: { channelId: string }) {
     saveRundown(next);
   };
 
-  const live = item ? channel.layers[String(item.layer)] : undefined;
+  const zoneOf = (r: RundownItem) => project.zones.find((z) => z.id === r.zone) ?? project.zones.find((z) => z.id === project.templates.find((t) => t.id === r.templateId)?.zone);
+  const itemZone = item ? zoneOf(item) : undefined;
+  const live = itemZone ? channel.layers[String(itemZone.layer)] : undefined;
   const liveIsThis = live?.rundownId === item?.id;
 
   return (
@@ -233,10 +299,11 @@ export function Operator({ channelId }: { channelId: string }) {
                 <div className="ri-main">
                   <span className="ri-name">{r.name}</span>
                   <span className="ri-meta">
-                    {t?.name ?? 'missing template'} · L{r.layer}
+                    <ZoneTag zone={zoneOf(r)} /> {t?.name ?? 'missing template'}
                   </span>
                 </div>
                 {air && <span className="tally">{phaseLabel(air)}</span>}
+                {!air && queued.has(r.id) && <span className="tally next">NEXT</span>}
                 <div className="item-actions">
                   <button className="icon-btn ghost" onClick={(e) => (e.stopPropagation(), move(r.id, -1))}>
                     <ArrowUp size={12} />
@@ -310,28 +377,7 @@ export function Operator({ channelId }: { channelId: string }) {
           </button>
         </div>
 
-        <div className="on-air-strip">
-          {Object.entries(channel.layers).length === 0 && <span className="muted">Nothing on air</span>}
-          {Object.entries(channel.layers)
-            .sort(([a], [b]) => Number(a) - Number(b))
-            .map(([layer, p]) => {
-              const t = project.templates.find((x) => x.id === p.templateId);
-              return (
-                <div key={layer} className={`air-chip ${p.phase}`}>
-                  <span className="air-layer">L{layer}</span>
-                  <span>{t?.name}</span>
-                  <span className="air-phase">{phaseLabel(p)}</span>
-                  <progress max={t?.duration ?? 1} value={p.frame} />
-                  <button className="icon-btn ghost" title="Continue" onClick={() => command({ action: 'continue', layer: Number(layer) })}>
-                    <ChevronsRight size={13} />
-                  </button>
-                  <button className="icon-btn ghost" title="Take out" onClick={() => command({ action: 'takeOut', layer: Number(layer) })}>
-                    <CircleStop size={13} />
-                  </button>
-                </div>
-              );
-            })}
-        </div>
+        <ZoneStrip project={project} layers={channel.layers} cuedZone={itemZone?.id} command={command} />
       </main>
 
       <aside className="panel right data-panel">
@@ -346,8 +392,20 @@ export function Operator({ channelId }: { channelId: string }) {
               <input value={item.name} onChange={(e) => saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, name: e.target.value } : r)))} onKeyDown={(e) => e.stopPropagation()} />
             </label>
             <label className="form-row">
-              <span>Playout layer</span>
-              <input type="number" value={item.layer} onChange={(e) => saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, layer: Math.max(0, +e.target.value | 0) } : r)))} onKeyDown={(e) => e.stopPropagation()} />
+              <span>Zone</span>
+              <select
+                value={itemZone?.id ?? ''}
+                onChange={(e) => {
+                  const z = project.zones.find((x) => x.id === e.target.value);
+                  if (z) saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, zone: z.id, layer: z.layer } : r)));
+                }}
+              >
+                {project.zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <hr />
             {template.fields.length === 0 && <p className="hint">This template has no data fields.</p>}

@@ -117,12 +117,28 @@ export interface Template {
   markers: Marker[];
   fields: Field[];
   layers: Layer[];
+  /** Default zone (id). */
+  zone: string;
+}
+
+export type ZoneTransition = 'sequential' | 'cut';
+
+/** Screen area showing one template at a time; `layer` is the stacking order. */
+export interface Zone {
+  id: string;
+  name: string;
+  layer: number;
+  color: string;
+  transition: ZoneTransition;
 }
 
 export interface RundownItem {
   id: string;
   name: string;
   templateId: string;
+  /** Zone id ("" = the template's zone). */
+  zone: string;
+  /** Legacy playout layer, kept in step with the zone by the server. */
   layer: number;
   data: Record<string, string>;
 }
@@ -141,6 +157,7 @@ export interface Project {
   frameRate: FrameRate;
   templates: Template[];
   rundown: RundownItem[];
+  zones: Zone[];
 }
 
 export type Phase = 'playing' | 'holding' | 'out';
@@ -154,18 +171,23 @@ export interface PlayoutItem {
   rundownId?: string | null;
   /** Project frames since the take (keeps counting while holding). */
   age?: number;
+  /** Waiting for this graphic to finish going out (sequential zones). */
+  next?: { templateId: string; data: Record<string, string>; rundownId?: string | null; target: number } | null;
 }
 
 export interface ChannelState {
   layers: Record<string, PlayoutItem>;
 }
 
+/** Commands address a zone by id, or a raw playout layer. */
+type Target = { zone?: string; layer?: number };
+
 export type Command =
-  | { action: 'take'; layer: number; templateId: string; data?: Record<string, string>; rundownId?: string }
-  | { action: 'continue'; layer: number }
-  | { action: 'takeOut'; layer: number }
-  | { action: 'update'; layer: number; data: Record<string, string> }
-  | { action: 'clear'; layer?: number | null };
+  | ({ action: 'take'; templateId: string; data?: Record<string, string>; rundownId?: string } & Target)
+  | ({ action: 'continue' } & Target)
+  | ({ action: 'takeOut' } & Target)
+  | ({ action: 'update'; data: Record<string, string> } & Target)
+  | ({ action: 'clear' } & Target);
 
 export type Data = Record<string, string>;
 

@@ -527,6 +527,9 @@ pub struct Template {
     /// Layers in paint order (first = bottom).
     #[serde(default)]
     pub layers: Vec<Layer>,
+    /// Zone the template plays in by default (see [`Zone`]).
+    #[serde(default)]
+    pub zone: String,
 }
 
 impl Template {
@@ -569,12 +572,72 @@ pub struct RundownItem {
     pub id: String,
     pub name: String,
     pub template_id: String,
-    /// Playout layer: graphics on different layers can be on air together.
+    /// Zone the item plays in ("" = the template's zone).
+    #[serde(default)]
+    pub zone: String,
+    /// Playout layer of pre-zone projects; replaced by `zone` on load.
     #[serde(default)]
     pub layer: u32,
     #[serde(default)]
     pub data: BTreeMap<String, String>,
 }
+
+/// What happens when a graphic is taken in a zone that is already on air.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ZoneTransition {
+    /// The graphic on air plays its out animation, then the new one comes in.
+    #[default]
+    Sequential,
+    /// The new graphic replaces the old one immediately.
+    Cut,
+}
+
+/// An area of the screen that shows one template at a time (lower third,
+/// bug, ticker, full screen…). Zones are on air independently of each other.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Zone {
+    pub id: String,
+    pub name: String,
+    /// Playout layer, also the stacking order: higher is in front.
+    pub layer: u32,
+    #[serde(default = "default_zone_color")]
+    pub color: String,
+    #[serde(default)]
+    pub transition: ZoneTransition,
+}
+
+impl Zone {
+    /// Starting layout of a new project.
+    pub fn defaults() -> Vec<Zone> {
+        [
+            ("lower-third", "Lower third", 10),
+            ("top-left", "Top left", 20),
+            ("top-right", "Top right", 30),
+            ("ticker", "Ticker", 40),
+            ("full-screen", "Full screen", 50),
+        ]
+        .iter()
+        .enumerate()
+        .map(|(i, (id, name, layer))| Zone {
+            id: (*id).into(),
+            name: (*name).into(),
+            layer: *layer,
+            color: ZONE_COLORS[i].into(),
+            transition: ZoneTransition::Sequential,
+        })
+        .collect()
+    }
+}
+
+fn default_zone_color() -> String {
+    "#7c5cff".into()
+}
+
+const ZONE_COLORS: [&str; 8] = [
+    "#7c5cff", "#ff3b5c", "#22c55e", "#f5a524", "#38bdf8", "#e879f9", "#14b8a6", "#f97316",
+];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -592,9 +655,120 @@ pub struct Project {
     pub templates: Vec<Template>,
     #[serde(default)]
     pub rundown: Vec<RundownItem>,
+    /// Screen zones, one graphic on air at a time in each.
+    #[serde(default)]
+    pub zones: Vec<Zone>,
 }
 
 impl Project {
+    pub fn zone(&self, id: &str) -> Option<&Zone> {
+        self.zones.iter().find(|z| z.id == id)
+    }
+
+    pub fn zone_at(&self, layer: u32) -> Option<&Zone> {
+        self.zones.iter().find(|z| z.layer == layer)
+    }
+
+    /// Zone of a rundown item: its own, else its template's.
+    pub fn item_zone(&self, item: &RundownItem) -> Option<&Zone> {
+        self.zone(&item.zone).or_else(|| {
+            self.template(&item.template_id)
+                .and_then(|t| self.zone(&t.zone))
+        })
+    }
+
+    /// Gives every rundown item and template a zone. Pre-zone projects get
+    /// one zone per playout layer they used. Returns true if anything changed.
+    pub fn ensure_zones(&mut self) -> bool {
+        let mut changed = false;
+        for i in 0..self.rundown.len() {
+            if self.zone(&self.rundown[i].zone).is_some() {
+                continue;
+            }
+            let layer = self.rundown[i].layer;
+            let id = match self.zone_at(layer) {
+                Some(z) => z.id.clone(),
+                None => {
+                    let z = Zone {
+                        id: format!("layer-{layer}"),
+                        name: format!("Layer {layer}"),
+                        layer,
+                        color: ZONE_COLORS[self.zones.len() % ZONE_COLORS.len()].into(),
+                        transition: ZoneTransition::Sequential,
+                    };
+                    let id = z.id.clone();
+                    self.zones.push(z);
+                    id
+                }
+            };
+            self.rundown[i].zone = id;
+            changed = true;
+        }
+        if self.zones.is_empty() {
+            self.zones.push(Zone {
+                id: "main".into(),
+                name: "Main".into(),
+                layer: 10,
+                color: ZONE_COLORS[0].into(),
+                transition: ZoneTransition::Sequential,
+            });
+            changed = true;
+        }
+        for t in 0..self.templates.len() {
+            if self.zone(&self.templates[t].zone).is_some() {
+                continue;
+            }
+            let tid = self.templates[t].id.clone();
+            let zone = self
+                .rundown
+                .iter()
+                .find(|r| r.template_id == tid)
+                .map(|r| r.zone.clone())
+                .unwrap_or_else(|| self.zones[0].id.clone());
+            self.templates[t].zone = zone;
+            changed = true;
+        }
+        // Keep the legacy layer number in step for older clients.
+        for i in 0..self.rundown.len() {
+            if let Some(l) = self.zone(&self.rundown[i].zone).map(|z| z.layer) {
+                if self.rundown[i].layer != l {
+                    self.rundown[i].layer = l;
+                    changed = true;
+                }
+            }
+        }
+        self.zones.sort_by_key(|z| z.layer);
+        changed
+    }
+
+    pub fn validate_zones(zones: &[Zone]) -> Result<(), String> {
+        let mut ids = std::collections::HashSet::new();
+        let mut layers = std::collections::HashSet::new();
+        for z in zones {
+            let valid = !z.id.is_empty()
+                && z.id.len() <= 64
+                && z.id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            if !valid || !ids.insert(z.id.as_str()) {
+                return Err(format!(
+                    "zone ids must be unique and use letters, digits, - or _ (`{}`)",
+                    z.id
+                ));
+            }
+            if z.name.trim().is_empty() {
+                return Err("every zone needs a name".into());
+            }
+            if !layers.insert(z.layer) {
+                return Err(format!("two zones share the stacking position {}", z.layer));
+            }
+        }
+        if zones.is_empty() {
+            return Err("a project needs at least one zone".into());
+        }
+        Ok(())
+    }
+
     pub fn template(&self, id: &str) -> Option<&Template> {
         self.templates.iter().find(|t| t.id == id)
     }

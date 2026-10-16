@@ -307,10 +307,11 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
   }
 }
 
-export function newTemplate(name: string): Template {
+export function newTemplate(name: string, zone = ''): Template {
   return {
     id: newId(),
     name,
+    zone,
     duration: 150,
     markers: [
       { id: newId(), frame: 50, name: 'On air', kind: 'pause' },

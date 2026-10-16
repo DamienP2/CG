@@ -155,7 +155,7 @@ function TemplateList({ project }: { project: Project }) {
   const { template, load } = useDesigner();
   const { saveTemplate, deleteTemplate, toast } = useApp();
   const create = async (base?: Template) => {
-    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${project.templates.length + 1}`);
+    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${project.templates.length + 1}`, project.zones[0]?.id);
     await saveTemplate(t);
     load(t);
   };

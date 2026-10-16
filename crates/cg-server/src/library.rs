@@ -65,8 +65,14 @@ impl Library {
                 continue;
             }
             match std::fs::read(&path).map(|b| serde_json::from_slice::<Project>(&b)) {
-                Ok(Ok(p)) if valid_id(&p.id) => {
-                    lib.projects.insert(p.id.clone(), Arc::new(p));
+                Ok(Ok(mut p)) if valid_id(&p.id) => {
+                    // Pre-zone projects: one zone per playout layer used.
+                    if p.ensure_zones() {
+                        tracing::info!(id = p.id, "project migrated to zones");
+                        lib.save(p)?;
+                    } else {
+                        lib.projects.insert(p.id.clone(), Arc::new(p));
+                    }
                 }
                 Ok(Ok(_)) => tracing::error!(?path, "project with an invalid id ignored"),
                 Ok(Err(e)) => tracing::error!(?path, "invalid project: {e}"),
@@ -77,6 +83,7 @@ impl Library {
         if legacy.exists() {
             match std::fs::read(&legacy).map(|b| serde_json::from_slice::<Project>(&b)) {
                 Ok(Ok(mut p)) => {
+                    p.ensure_zones();
                     if !valid_id(&p.id) {
                         p.id = cg_core::new_id();
                     }

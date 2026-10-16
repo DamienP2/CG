@@ -1015,7 +1015,8 @@ mod tests {
                 .apply(
                     &project,
                     Command::Take {
-                        layer,
+                        zone: None,
+                        layer: Some(layer),
                         template_id: id.into(),
                         data: None,
                         rundown_id: None,
@@ -1056,7 +1057,8 @@ mod tests {
             .apply(
                 &project,
                 Command::Take {
-                    layer: 1,
+                    zone: None,
+                    layer: Some(1),
                     template_id: "lower-third".into(),
                     data: None,
                     rundown_id: None,

@@ -150,7 +150,8 @@ impl AppState {
         out
     }
 
-    pub async fn save_project(&self, project: Project) -> anyhow::Result<Arc<Project>> {
+    pub async fn save_project(&self, mut project: Project) -> anyhow::Result<Arc<Project>> {
+        project.ensure_zones();
         let p = self.library.write().await.save(project)?;
         let _ = self.events.send(Event::Project { project: p.clone() });
         Ok(p)
@@ -196,6 +197,26 @@ impl AppState {
             channels: self.channel_infos().await,
         });
         Ok(())
+    }
+
+    /// Re-keys graphics on air after zones of a project changed layer.
+    pub async fn move_layers(&self, project_id: &str, moves: &[(u32, u32)]) {
+        for ch in self.channels.values() {
+            if ch.project_id.read().await.as_deref() != Some(project_id) {
+                continue;
+            }
+            {
+                let mut st = ch.state.write().await;
+                let mut taken: Vec<(u32, cg_core::PlayoutItem)> = moves
+                    .iter()
+                    .filter_map(|(from, to)| st.layers.remove(from).map(|i| (*to, i)))
+                    .collect();
+                for (to, item) in taken.drain(..) {
+                    st.layers.insert(to, item);
+                }
+            }
+            self.broadcast_channel(ch).await;
+        }
     }
 
     /// Remembers which project each channel shows across restarts.

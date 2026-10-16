@@ -17,7 +17,8 @@ fn main() {
             .apply(
                 &project,
                 Command::Take {
-                    layer,
+                    zone: None,
+                    layer: Some(layer),
                     template_id: id.into(),
                     data: None,
                     rundown_id: None,
