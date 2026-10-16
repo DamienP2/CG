@@ -197,7 +197,7 @@ impl Renderer {
             .filter(|l| l.visible && l.parent.as_deref() == parent)
             .collect();
         for layer in children {
-            let r = resolve_layer(layer, ctx.frame, ctx.data);
+            let r = resolve_layer(layer, ctx.frame, ctx.data, ctx.template.hold_frame());
             let opacity = parent_opacity * r.num(Prop::Opacity).clamp(0.0, 1.0) as f32;
             if opacity <= 0.0 {
                 continue;

@@ -1,4 +1,4 @@
-import { BarChart3, ChevronDown, ChevronRight, Circle, Clock, Eye, EyeOff, Folder, GalleryHorizontal, Hash, Image, Keyboard, Lock, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Type, Unlock, Watch } from 'lucide-react';
+import { BarChart3, ChevronDown, ChevronRight, Circle, Clock, Eye, EyeOff, Folder, GalleryHorizontal, Hash, Image, Keyboard, Lock, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Trash2, Type, Unlock, Watch } from 'lucide-react';
 import { useState } from 'react';
 import { childrenMap } from '../engine/Scene';
 import type { Layer, LayerType, Template } from '../engine/types';
@@ -128,6 +128,22 @@ export function LayersPanel() {
             }}
           >
             {l.locked ? <Lock size={13} /> : <Unlock size={13} />}
+          </button>
+          <button
+            className="icon-btn ghost del"
+            title="Delete (Del)"
+            onClick={(e) => {
+              e.stopPropagation();
+              const kids = descendants(template, l.id).length;
+              if (kids && !confirm(`Delete “${l.name}” and the ${kids} layer(s) inside it?`)) return;
+              update((t) => {
+                const ids = new Set([l.id, ...descendants(t, l.id)]);
+                t.layers = t.layers.filter((x) => !ids.has(x.id));
+              });
+              select(selected.filter((s) => s !== l.id));
+            }}
+          >
+            <Trash2 size={13} />
           </button>
         </div>
         {!collapsed[l.id] && kids.map((k) => row(k, depth + 1))}

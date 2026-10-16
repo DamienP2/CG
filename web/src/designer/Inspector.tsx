@@ -1,6 +1,6 @@
-import { AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, Diamond, Link2, Plus, Timer, Trash2, Upload } from 'lucide-react';
+import { SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, Diamond, Plus, Timer, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { applyEasing, col, num, parseHex, propValue, sortKeys, toHex } from '../engine/evaluate';
+import { applyEasing, col, holdFrame, num, parseHex, propValue, sortKeys, toHex } from '../engine/evaluate';
 import { TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
@@ -108,30 +108,75 @@ function KeyControls({ layer, prop }: { layer: Layer; prop: Prop }) {
   );
 }
 
+/** Field key from a label: "Name plate X" -> "namePlateX". */
+function fieldKey(label: string, taken: Set<string>): string {
+  const words = label
+    .normalize('NFD')
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  let key = words.map((w, i) => (i ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase())).join('') || 'field';
+  if (/^\d/.test(key)) key = `f${key}`;
+  let k = key;
+  for (let n = 2; taken.has(k); n++) k = `${key}${n}`;
+  return k;
+}
+
+/** Makes a property an operator variable (a data field bound to it). */
 function BindButton({ layer, prop, template }: { layer: Layer; prop: Prop; template: Template }) {
   const { update } = useDesigner();
   const bound = layer.bindings[prop];
+  const field = template.fields.find((f) => f.key === bound);
   const [open, setOpen] = useState(false);
-  if (!template.fields.length) return null;
+  const isColor = prop === 'fill' || prop === 'stroke';
+  const expose = () => {
+    update((t) => {
+      const l = findLayer(t, layer.id)!;
+      const label = `${l.name} · ${PROP_LABELS[prop]}`;
+      const key = fieldKey(`${l.name} ${PROP_LABELS[prop]}`, new Set(t.fields.map((f) => f.key)));
+      // Default: what is seen on air.
+      const v = propValue(l, prop, holdFrame(t));
+      const def = isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3));
+      t.fields.push({ key, label, kind: isColor ? 'color' : 'number', default: def });
+      l.bindings[prop] = key;
+    });
+    setOpen(false);
+  };
+  const unbind = (removeField: boolean) => {
+    update((t) => {
+      delete findLayer(t, layer.id)!.bindings[prop];
+      const stillUsed = t.layers.some((l) => Object.values(l.bindings).includes(bound!));
+      if (removeField && !stillUsed) t.fields = t.fields.filter((f) => f.key !== bound);
+    });
+    setOpen(false);
+  };
+  const others = template.fields.filter((f) => f.key !== bound && (isColor ? f.kind === 'color' : f.kind === 'number' || f.kind === 'text'));
   return (
     <div className="bind">
-      <button className={`icon-btn ghost ${bound ? 'on accent' : ''}`} title={bound ? `Bound to {{${bound}}}` : 'Bind to a data field'} onClick={() => setOpen(!open)}>
-        <Link2 size={12} />
+      <button className={`icon-btn ghost ${bound ? 'on accent' : ''}`} title={bound ? `Operator variable “${field?.label ?? bound}”` : 'Make it an operator variable'} onClick={() => setOpen(!open)}>
+        <SlidersHorizontal size={12} />
       </button>
       {open && (
         <div className="popover" onMouseLeave={() => setOpen(false)}>
-          <button
-            onClick={() => {
-              update((t) => void delete findLayer(t, layer.id)!.bindings[prop]);
-              setOpen(false);
-            }}
-          >
-            — None —
-          </button>
-          {template.fields.map((f) => (
+          {bound ? (
+            <>
+              <div className="popover-note">
+                The operator sets this value in the field <strong>{field?.label ?? bound}</strong>
+                {isAnimated(layer, prop) && !isColor ? ' — the value on air; the animation moves relative to it' : ''}.
+              </div>
+              <button onClick={() => unbind(true)}>Stop exposing (remove the field)</button>
+              <button onClick={() => unbind(false)}>Unbind, keep the field</button>
+            </>
+          ) : (
+            <button className="primary" onClick={expose}>
+              + Expose to the operator
+            </button>
+          )}
+          {others.length > 0 && <div className="popover-note">Or use an existing field:</div>}
+          {others.map((f) => (
             <button
               key={f.key}
-              className={bound === f.key ? 'on' : ''}
               onClick={() => {
                 update((t) => void (findLayer(t, layer.id)!.bindings[prop] = f.key));
                 setOpen(false);

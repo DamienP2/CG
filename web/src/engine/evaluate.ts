@@ -151,7 +151,9 @@ export function cssColor(c: Color): string {
 
 export type Resolved = Record<Prop, Value>;
 
-export function resolveLayer(layer: Layer, frame: number, data: Data): Resolved {
+/** Mirror of anim::resolve_layer: a value bound to an animated number sets
+ * what is seen at the hold frame; the animation moves relative to it. */
+export function resolveLayer(layer: Layer, frame: number, data: Data, hold = 0): Resolved {
   const out = {} as Resolved;
   for (const p of PROPS) {
     const key = layer.bindings?.[p];
@@ -159,7 +161,12 @@ export function resolveLayer(layer: Layer, frame: number, data: Data): Resolved 
     if (key && data[key] !== undefined) {
       bound = COLOR_PROPS.has(p) ? parseHex(data[key]) : Number.isFinite(parseFloat(data[key])) ? parseFloat(data[key]) : undefined;
     }
-    out[p] = bound ?? sampleTrack(layer.tracks?.[p], frame) ?? layer.props?.[p] ?? DEFAULTS[p];
+    const track = layer.tracks?.[p];
+    const animated = sampleTrack(track, frame);
+    if (typeof bound === 'number' && typeof animated === 'number') {
+      const atHold = sampleTrack(track, hold);
+      out[p] = animated + bound - (typeof atHold === 'number' ? atHold : animated);
+    } else out[p] = bound ?? animated ?? layer.props?.[p] ?? DEFAULTS[p];
   }
   return out;
 }

@@ -1,7 +1,7 @@
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
 import { createContext, memo, useContext, useEffect, useReducer, type CSSProperties } from 'react';
-import { col, cssColor, interpolateText, num, parseHex, resolveLayer, type Resolved } from './evaluate';
+import { col, cssColor, holdFrame, interpolateText, num, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
 
@@ -34,8 +34,8 @@ interface SceneProps {
 
 export const LINE_HEIGHT = 1.2;
 
-function layerStyle(layer: Layer, frame: number, data: Data): { style: CSSProperties; text?: string; src?: string } {
-  const r = resolveLayer(layer, frame, data);
+function layerStyle(layer: Layer, frame: number, data: Data, hold: number): { style: CSSProperties; text?: string; src?: string } {
+  const r = resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);
   const style: CSSProperties = {
@@ -195,9 +195,9 @@ function QrCode({ content, w, h, fill, background }: { content: string; w: numbe
 }
 
 /** Content of a widget layer; reads the time context so only it re-renders. */
-function WidgetContent({ layer, frame, data }: { layer: Layer; frame: number; data: Data }) {
+function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: number; data: Data; hold: number }) {
   const time = useContext(TimeContext);
-  const r = resolveLayer(layer, frame, data);
+  const r = resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);
   const age = time.ageSecs;
@@ -334,15 +334,17 @@ const LayerNode = memo(function LayerNode({
   childrenOf,
   frame,
   data,
+  hold,
   interactive,
 }: {
   layer: Layer;
   childrenOf: Map<string | null, Layer[]>;
   frame: number;
   data: Data;
+  hold: number;
   interactive?: boolean;
 }) {
-  const { style, text, src } = layerStyle(layer, frame, data);
+  const { style, text, src } = layerStyle(layer, frame, data, hold);
   const kids = childrenOf.get(layer.id) ?? [];
   return (
     <div style={style} data-layer-id={interactive ? layer.id : undefined}>
@@ -360,9 +362,9 @@ const LayerNode = memo(function LayerNode({
           style={{ width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, display: 'block' }}
         />
       )}
-      {LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} /> : null}
+      {LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
       {kids.map((k) => (
-        <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} interactive={interactive} />
+        <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ))}
     </div>
   );
@@ -384,10 +386,11 @@ export function childrenMap(layers: Layer[], includeHidden = false): Map<string 
 /** Renders a template at native resolution (the caller scales it). */
 export const Scene = memo(function Scene({ template, frame, data, interactive }: SceneProps) {
   const childrenOf = childrenMap(template.layers);
+  const hold = holdFrame(template);
   return (
     <>
       {(childrenOf.get(null) ?? []).map((l) => (
-        <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} interactive={interactive} />
+        <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ))}
     </>
   );

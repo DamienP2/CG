@@ -312,10 +312,11 @@ export function newTemplate(name: string, zone = ''): Template {
     id: newId(),
     name,
     zone,
-    duration: 150,
+    duration: 100,
+    // Back to back: animate in up to 50, out from 50 to the end.
     markers: [
       { id: newId(), frame: 50, name: 'On air', kind: 'pause' },
-      { id: newId(), frame: 100, name: 'Out', kind: 'out' },
+      { id: newId(), frame: 50, name: 'Out', kind: 'out' },
     ],
     fields: [],
     layers: [],

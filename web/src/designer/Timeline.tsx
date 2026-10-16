@@ -1,9 +1,9 @@
-import { ChevronDown, ChevronRight, Flag, LogOut, Pause, Play, Repeat, SkipBack, SkipForward, StepBack, StepForward, Tv } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Diamond, Flag, LogOut, Pause, Play, Repeat, SkipBack, SkipForward, StepBack, StepForward, Tv } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { childrenMap } from '../engine/Scene';
 import { newId } from '../engine/evaluate';
 import { PROPS, type Keyframe, type Layer, type MarkerKind, type Prop, type Template } from '../engine/types';
-import { findLayer, useDesigner, type KeyRef } from './designerStore';
+import { findLayer, toggleKeyAt, useDesigner, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 
 const LEFT_W = 260;
@@ -120,9 +120,14 @@ export function Timeline({ fps }: { fps: number }) {
   const dragMarker = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
     useDesigner.setState({ lastCoalesce: null });
+    // "On air" and "Out" on the same frame move together (Alt: just this one).
+    const m0 = template.markers.find((m) => m.id === id)!;
+    const linked = e.altKey ? [id] : template.markers.filter((m) => m.frame === m0.frame && m.kind !== 'label').map((m) => m.id);
     const move = (ev: PointerEvent) => {
       const f = Math.max(0, Math.min(template.duration, Math.round(frameAt(ev.clientX))));
-      useDesigner.getState().update((t) => void (t.markers.find((m) => m.id === id)!.frame = f), `marker-${id}`);
+      useDesigner.getState().update((t) => {
+        for (const m of t.markers) if (linked.includes(m.id)) m.frame = f;
+      }, `marker-${id}`);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -135,8 +140,35 @@ export function Timeline({ fps }: { fps: number }) {
   const addMarker = (kind: MarkerKind) =>
     st.update((t) => {
       if (kind === 'out') t.markers = t.markers.filter((m) => m.kind !== 'out');
-      t.markers.push({ id: newId(), frame: Math.round(frame), name: kind === 'out' ? 'Out' : 'Pause', kind });
+      t.markers.push({ id: newId(), frame: Math.round(frame), name: kind === 'out' ? 'Out' : t.markers.some((m) => m.kind === 'pause') ? 'Pause' : 'On air', kind });
     });
+
+  /** ◀ ◆ ▶ of a timeline row: previous key, key at the playhead, next key. */
+  const keyNav = (layer: Layer, props: Prop[], canToggle: boolean) => {
+    const frames = [...new Set(props.flatMap((p) => (layer.tracks[p] ?? []).map((k) => k.frame)))].sort((a, b) => a - b);
+    const prev = [...frames].reverse().find((f) => f < frame - 0.5);
+    const next = frames.find((f) => f > frame + 0.5);
+    const here = frames.some((f) => Math.abs(f - frame) < 0.5);
+    return (
+      <span className="tl-keynav" onClick={(e) => e.stopPropagation()}>
+        <button title="Previous keyframe" disabled={prev === undefined} onClick={() => prev !== undefined && st.setFrame(prev)}>
+          <ChevronLeft size={12} />
+        </button>
+        {canToggle && (
+          <button
+            className={here ? 'on' : ''}
+            title={here ? 'Remove the keyframe at the playhead' : 'Add a keyframe at the playhead'}
+            onClick={() => st.update((t) => toggleKeyAt(findLayer(t, layer.id)!, props[0], frame))}
+          >
+            <Diamond size={11} fill={here ? 'currentColor' : 'none'} />
+          </button>
+        )}
+        <button title="Next keyframe" disabled={next === undefined} onClick={() => next !== undefined && st.setFrame(next)}>
+          <ChevronRight size={12} />
+        </button>
+      </span>
+    );
+  };
 
   const markers = [...template.markers].sort((a, b) => a.frame - b.frame);
   const jumpMarker = (dir: 1 | -1) => {
@@ -178,6 +210,7 @@ export function Timeline({ fps }: { fps: number }) {
         </span>
         <span className="layer-name">{layer.name}</span>
         {animated.length > 0 && <span className="badge">{animated.length}</span>}
+        {animated.length > 0 && keyNav(layer, animated, false)}
       </div>,
     );
     const allFrames = new Map<number, Keyframe>();
@@ -193,6 +226,7 @@ export function Timeline({ fps }: { fps: number }) {
         labels.push(
           <div key={`${layer.id}-${p}`} className="tl-label prop" style={{ paddingLeft: 30 + depth * 14 }}>
             <span className="prop-name">{PROP_LABELS[p]}</span>
+            {keyNav(layer, [p], true)}
           </div>,
         );
         body.push(

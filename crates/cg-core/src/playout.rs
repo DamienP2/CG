@@ -239,10 +239,14 @@ impl ChannelState {
                 let t = project
                     .template(&item.template_id)
                     .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
-                // Continue from where we will stop (skip ahead if still moving).
+                // Continue from where we will stop (skip ahead if still moving)
+                // to the next pause, or the out marker; nothing ahead: no-op
+                // (the "On air" and "Out" points are often the same frame).
                 let from = item.target.max(item.frame);
-                let next = hold_target(t, from);
-                if next > from {
+                let next = t
+                    .next_pause_after(from)
+                    .or_else(|| t.out_frame().filter(|&o| o > from + 1e-6));
+                if let Some(next) = next {
                     item.frame = from;
                     item.target = next;
                     item.phase = Phase::Playing;

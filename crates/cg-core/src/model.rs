@@ -533,6 +533,13 @@ pub struct Template {
 }
 
 impl Template {
+    /// First on-air frame: first pause, else the out marker, else the end.
+    pub fn hold_frame(&self) -> f64 {
+        self.next_pause_after(0.0)
+            .or(self.out_frame())
+            .unwrap_or(self.duration)
+    }
+
     pub fn layer(&self, id: &str) -> Option<&Layer> {
         self.layers.iter().find(|l| l.id == id)
     }

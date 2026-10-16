@@ -1,4 +1,4 @@
-import { ChevronDown, Circle, Copy, Folder, Grid3x3, Image, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
+import { ChevronDown, LayoutGrid, Circle, Copy, Folder, Grid3x3, Image, Plus, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
@@ -8,6 +8,7 @@ import { Inspector } from './Inspector';
 import { ICONS, LayersPanel } from './LayersPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
+import { ZonesDialog } from './ZonesDialog';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -156,8 +157,9 @@ function TemplateList({ project }: { project: Project }) {
   const { saveTemplate, deleteTemplate, toast } = useApp();
   const create = async (base?: Template) => {
     const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${project.templates.length + 1}`, project.zones[0]?.id);
-    await saveTemplate(t);
+    // Open it at once; the save follows.
     load(t);
+    await saveTemplate(t);
   };
   return (
     <div className="template-list">
@@ -237,6 +239,7 @@ export function Designer() {
   const project = useApp((s) => s.project);
   const { template, load, update, undo, redo, past, future, selected, select } = useDesigner();
   const [showSafe, setShowSafe] = useState(true);
+  const [zonesOpen, setZonesOpen] = useState(false);
   const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('studio');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
@@ -299,6 +302,9 @@ export function Designer() {
             </button>
           </div>
           <div className="spacer" />
+          <button className="btn small" onClick={() => setZonesOpen(true)} title="Screen zones of the project: one template at a time per zone">
+            <LayoutGrid size={13} /> Zones
+          </button>
           <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas">
             <Grid3x3 size={13} /> Safe
           </button>
@@ -315,6 +321,7 @@ export function Designer() {
       <aside className="panel right">
         <Inspector />
       </aside>
+      {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
     </div>
   );
 }

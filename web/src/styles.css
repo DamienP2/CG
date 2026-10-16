@@ -2422,3 +2422,64 @@ select.small {
 .api-resp {
   margin-bottom: 6px;
 }
+.popover {
+  min-width: 250px;
+}
+.popover-note {
+  padding: 6px 8px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.popover button.primary {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+/* Timeline: per-property keyframe navigator, like After Effects. */
+.tl-keynav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.tl-keynav button {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.tl-keynav button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.tl-keynav button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.tl-keynav button.on {
+  color: var(--key);
+}
+/* "On air" flags point left (the animation in ends there), "Out" flags point
+   right: on the same frame they sit back to back. */
+.tl-marker.pause {
+  transform: translateX(-100%);
+  border-radius: 4px 0 0 4px;
+  padding: 0 4px 0 6px;
+}
+.tl-marker.pause::before {
+  left: auto;
+  right: 0;
+  border-left: none;
+  border-right: 2px solid var(--m);
+}
+.layer-row .del {
+  opacity: 0;
+}
+.layer-row:hover .del,
+.layer-row.selected .del {
+  opacity: 1;
+}

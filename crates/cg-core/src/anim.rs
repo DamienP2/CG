@@ -126,7 +126,16 @@ fn binding_value(prop: Prop, raw: &str) -> Option<Value> {
     }
 }
 
-pub fn resolve_layer<'a>(layer: &'a Layer, frame: f64, data: &Data) -> ResolvedLayer<'a> {
+/// Resolves a layer at `frame`. `hold` is the template's on-air frame: a
+/// data value bound to an animated number sets the value seen on air and the
+/// animation moves relative to it (an operator changes where a lower third
+/// sits, its slide-in still works). Colours and static values are replaced.
+pub fn resolve_layer<'a>(
+    layer: &'a Layer,
+    frame: f64,
+    data: &Data,
+    hold: f64,
+) -> ResolvedLayer<'a> {
     let values = Prop::ALL
         .iter()
         .map(|&p| {
@@ -135,10 +144,24 @@ pub fn resolve_layer<'a>(layer: &'a Layer, frame: f64, data: &Data) -> ResolvedL
                 .get(&p)
                 .and_then(|key| data.get(key))
                 .and_then(|raw| binding_value(p, raw));
-            let v = bound
-                .or_else(|| layer.tracks.get(&p).and_then(|t| sample_track(t, frame)))
-                .or_else(|| layer.props.get(&p).copied())
-                .unwrap_or_else(|| default_value(p));
+            let track = layer.tracks.get(&p).filter(|t| !t.is_empty());
+            let animated = track.and_then(|t| sample_track(t, frame));
+            let v = match (bound, animated) {
+                (Some(Value::Number(b)), Some(Value::Number(a))) => {
+                    let at_hold = track
+                        .and_then(|t| sample_track(t, hold))
+                        .and_then(|v| v.as_number())
+                        .unwrap_or(a);
+                    Value::Number(a + b - at_hold)
+                }
+                (Some(b), _) => b,
+                (None, Some(a)) => a,
+                (None, None) => layer
+                    .props
+                    .get(&p)
+                    .copied()
+                    .unwrap_or_else(|| default_value(p)),
+            };
             (p, v)
         })
         .collect();
@@ -170,7 +193,7 @@ pub fn resolve_template<'a>(
         .layers
         .iter()
         .filter(|l| l.visible)
-        .map(|l| resolve_layer(l, frame, data))
+        .map(|l| resolve_layer(l, frame, data, template.hold_frame()))
         .collect()
 }
 
@@ -203,6 +226,31 @@ mod tests {
         let track = vec![kf(0.0, 1.0, Easing::Hold), kf(10.0, 2.0, Easing::Linear)];
         assert_eq!(sample_track(&track, 9.9), Some(Value::Number(1.0)));
         assert_eq!(sample_track(&track, 10.0), Some(Value::Number(2.0)));
+    }
+
+    #[test]
+    fn bound_animated_number_is_an_offset() {
+        let mut layer: Layer =
+            serde_json::from_str(r#"{"id":"a","name":"a","type":"rect"}"#).unwrap();
+        // Slides in from x=-500 to x=100 by the hold frame 20.
+        layer.tracks.insert(
+            Prop::X,
+            vec![
+                kf(0.0, -500.0, Easing::Linear),
+                kf(20.0, 100.0, Easing::Linear),
+            ],
+        );
+        layer.bindings.insert(Prop::X, "x".into());
+        let mut d = Data::new();
+        d.insert("x".into(), "300".into());
+        let x = |f: f64| resolve_layer(&layer, f, &d, 20.0).num(Prop::X);
+        assert_eq!(x(20.0), 300.0);
+        assert_eq!(x(0.0), -300.0);
+        // Without the field the animation is unchanged.
+        assert_eq!(
+            resolve_layer(&layer, 0.0, &Data::new(), 20.0).num(Prop::X),
+            -500.0
+        );
     }
 
     #[test]
