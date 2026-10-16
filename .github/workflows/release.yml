@@ -63,7 +63,7 @@ jobs:
           mkdir -p "dist/$NAME"
           EXT=""; [ "${{ matrix.pkg }}" = windows ] && EXT=.exe
           cp "target/${{ matrix.target }}/release/cg-server$EXT" "dist/$NAME/"
-          find packaging/${{ matrix.pkg }} -maxdepth 1 -type f -exec cp {} "dist/$NAME/" ;
+          find packaging/${{ matrix.pkg }} -maxdepth 1 -type f -exec cp {} "dist/$NAME/" \;
           cp docs/INSTALL.md assets/fonts/OFL.txt "dist/$NAME/"
           cp docs/outputs.example.json "dist/$NAME/"
           cd dist
