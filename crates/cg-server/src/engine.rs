@@ -14,9 +14,13 @@ use tokio::time::{interval, MissedTickBehavior};
 use crate::config::ChannelConfig;
 use crate::state::{ChannelRt, Shared};
 
-fn open_outputs(cfg: &ChannelConfig, period: Duration) -> Vec<Box<dyn OutputSink>> {
+fn open_outputs(
+    cfg: &ChannelConfig,
+    outputs: &crate::config::OutputsConfig,
+    period: Duration,
+) -> Vec<Box<dyn OutputSink>> {
     let mut sinks: Vec<Box<dyn OutputSink>> = Vec::new();
-    for o in &cfg.outputs.st2110 {
+    for o in &outputs.st2110 {
         match St2110Sender::start(o.clone(), period) {
             Ok(s) => sinks.push(Box::new(s)),
             Err(e) => tracing::error!(
@@ -26,7 +30,7 @@ fn open_outputs(cfg: &ChannelConfig, period: Duration) -> Vec<Box<dyn OutputSink
             ),
         }
     }
-    for o in &cfg.outputs.sdi {
+    for o in &outputs.sdi {
         match DeckLinkOutput::open(o.clone()) {
             Ok(s) => sinks.push(Box::new(s)),
             Err(e) => tracing::error!(
@@ -54,25 +58,24 @@ type RenderJob = (Option<Arc<Project>>, ChannelState);
 async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
     let cfg = &ch.config;
     let period = cfg.frame_rate.frame_duration();
-    let sinks = open_outputs(cfg, period);
-
-    // Raster outputs render on a dedicated thread so the clock never blocks.
-    let render_tx = if sinks.is_empty() {
-        None
-    } else {
+    // One render thread per picture (main + renditions) that has baseband
+    // outputs, so the clock never blocks and each output gets its own size.
+    let mut render_txs = Vec::new();
+    for (id, width, height, outputs) in cfg.pictures() {
+        let sinks = open_outputs(cfg, outputs, period);
+        if sinks.is_empty() {
+            continue;
+        }
         let (tx, rx) = mpsc::sync_channel::<RenderJob>(1);
         let assets = state.assets_dir();
-        let out = OutputFormat {
-            width: cfg.width,
-            height: cfg.height,
-        };
+        let out = OutputFormat { width, height };
         let tz = state.config.timezone.clone();
         std::thread::Builder::new()
-            .name(format!("cg-render-{}", cfg.id))
+            .name(format!("cg-render-{}-{id}", cfg.id))
             .spawn(move || render_loop(Renderer::new(assets), out, tz, rx, sinks))
             .expect("spawn render thread");
-        Some(tx)
-    };
+        render_txs.push(tx);
+    }
 
     let channel_fps = cfg.frame_rate.as_f64().max(1.0);
     let mut ticker = interval(period);
@@ -97,9 +100,9 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
         if changed {
             state.broadcast_channel(&ch).await;
         }
-        if let Some(tx) = &render_tx {
-            // Drop the frame if the renderer is late rather than queueing latency.
-            let _ = tx.try_send((project, snapshot));
+        // Drop the frame if a renderer is late rather than queueing latency.
+        for tx in &render_txs {
+            let _ = tx.try_send((project.clone(), snapshot.clone()));
         }
     }
 }

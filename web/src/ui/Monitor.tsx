@@ -32,7 +32,7 @@ export function Monitor({
         <span className="monitor-label">{label}</span>
         {extra}
       </div>
-      <div className="monitor-screen" ref={ref} style={{ ['--ratio' as string]: `${width} / ${height}` }}>
+      <div className={`monitor-screen ${height > width ? 'portrait' : ''}`} ref={ref} style={{ ['--ratio' as string]: `${width} / ${height}` }}>
         <Viewport width={width} height={height} scale={scale} className="monitor-viewport">
           {children}
         </Viewport>

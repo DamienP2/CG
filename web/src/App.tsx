@@ -40,7 +40,7 @@ function useRoute(): Route {
 
 export function App() {
   const route = useRoute();
-  if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} />;
+  if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} rendition={route.rendition} />;
   return <Studio route={route} />;
 }
 

@@ -466,7 +466,36 @@ pub struct Layer {
     /// Bind a property (colour or number) to a data field key.
     #[serde(default)]
     pub bindings: BTreeMap<Prop, String>,
+    /// Changes in the project's other formats (9:16, 1:1…), by format id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<String, LayerOverride>,
 }
+
+/// How a layer differs in one format: its own static values, animations
+/// and visibility; anything not listed is inherited from the main format.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerOverride {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub props: BTreeMap<Prop, Value>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tracks: BTreeMap<Prop, Vec<Keyframe>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+}
+
+/// An alternative layout of a project, e.g. 9:16 for social media. The
+/// main format is the project's own width × height (id "main").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Format {
+    pub id: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub const MAIN_FORMAT: &str = "main";
 
 fn yes() -> bool {
     true
@@ -533,6 +562,30 @@ pub struct Template {
 }
 
 impl Template {
+    /// The template as laid out in `format` (overrides applied); the main
+    /// format, or a format without overrides, borrows it unchanged.
+    pub fn in_format(&self, format: &str) -> std::borrow::Cow<'_, Template> {
+        if format == MAIN_FORMAT || !self.layers.iter().any(|l| l.overrides.contains_key(format)) {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut t = self.clone();
+        for l in &mut t.layers {
+            if let Some(o) = l.overrides.get(format) {
+                for (p, v) in &o.props {
+                    l.props.insert(*p, *v);
+                    l.tracks.remove(p);
+                }
+                for (p, k) in &o.tracks {
+                    l.tracks.insert(*p, k.clone());
+                }
+                if let Some(v) = o.visible {
+                    l.visible = v;
+                }
+            }
+        }
+        std::borrow::Cow::Owned(t)
+    }
+
     /// First on-air frame: first pause, else the out marker, else the end.
     pub fn hold_frame(&self) -> f64 {
         self.next_pause_after(0.0)
@@ -679,9 +732,32 @@ pub struct Project {
     /// Sections of the rundown, in display order.
     #[serde(default)]
     pub playlists: Vec<Playlist>,
+    /// Alternative layouts (the main one is width × height).
+    #[serde(default)]
+    pub formats: Vec<Format>,
 }
 
 impl Project {
+    /// The project format closest in aspect ratio to a `width` × `height`
+    /// output: (format id, design width, design height).
+    pub fn format_for(&self, width: u32, height: u32) -> (&str, u32, u32) {
+        let target = (width.max(1) as f64 / height.max(1) as f64).ln();
+        let main = (MAIN_FORMAT, self.width, self.height);
+        std::iter::once(main)
+            .chain(
+                self.formats
+                    .iter()
+                    .map(|f| (f.id.as_str(), f.width, f.height)),
+            )
+            .min_by(|a, b| {
+                let d = |f: &(&str, u32, u32)| {
+                    ((f.1.max(1) as f64 / f.2.max(1) as f64).ln() - target).abs()
+                };
+                d(a).total_cmp(&d(b))
+            })
+            .unwrap_or(main)
+    }
+
     pub fn zone(&self, id: &str) -> Option<&Zone> {
         self.zones.iter().find(|z| z.id == id)
     }

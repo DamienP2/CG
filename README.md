@@ -99,6 +99,16 @@ Un **projet** correspond à une émission : ses templates, ses widgets et son ru
 ### Chaînes de sortie
 Une **chaîne** est un programme indépendant, par exemple une par studio ou par régie. Chaque chaîne a son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne, ses sorties ST 2110 / SDI et sa page HTML5 `/output/<id>`. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
 
+### Formats multiples (16:9, 9:16, 1:1…)
+Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et un 9:16 pour les réseaux sociaux.
+
+- **Ajouter un format** (bouton **+** à côté des formats, dans le Designer) : chaque template reçoit automatiquement une première mise en page.
+  - Chaque élément garde son ancrage (coin, bord, centre).
+  - Les bandeaux pleine largeur s'étirent avec leur contenu.
+  - Les tailles s'adaptent à la zone de sécurité, et les animations sont conservées.
+- **Affiner** : on bascule sur le format, puis on déplace, redimensionne ou ré-anime les éléments. Ces changements ne valent **que pour ce format** : une pastille sur la propriété permet de revenir à la mise en page principale, et *Re-adapt* régénère la mise en page. Les textes, les données et les nouveaux calques sont communs à tous les formats.
+- **Diffusion** : une chaîne peut avoir des **déclinaisons** (Réglages → chaîne → *Autres formats*), chacune avec sa page HTML5 `/output/<chaîne>/<format>` et ses sorties ST 2110 / SDI. **Un seul TAKE** joue partout, et chaque image utilise le format du projet le plus proche de ses proportions. Le moniteur Program de l'opérateur passe d'un format à l'autre.
+
 ### Utilisateurs et droits
 | Rôle | Peut |
 | --- | --- |

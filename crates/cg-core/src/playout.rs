@@ -362,6 +362,7 @@ mod tests {
             }],
             rundown: vec![],
             playlists: vec![],
+            formats: vec![],
             zones: vec![crate::model::Zone {
                 id: "z".into(),
                 name: "Zone".into(),

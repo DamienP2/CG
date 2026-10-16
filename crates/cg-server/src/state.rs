@@ -62,6 +62,18 @@ pub struct ChannelInfo {
     pub frame_rate: cg_core::FrameRate,
     pub project_id: Option<String>,
     pub outputs: Vec<String>,
+    /// Extra pictures of the channel (9:16…), each with its HTML5 page
+    /// /output/<channel>/<rendition>.
+    pub renditions: Vec<RenditionInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenditionInfo {
+    pub id: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 pub struct ChannelRt {
@@ -74,11 +86,14 @@ impl ChannelRt {
     pub async fn info(&self) -> ChannelInfo {
         let c = &self.config;
         let outputs = c
-            .outputs
-            .st2110
-            .iter()
-            .map(|o| format!("ST 2110 · {}", o.name))
-            .chain(c.outputs.sdi.iter().map(|o| format!("SDI · {}", o.name)))
+            .pictures()
+            .into_iter()
+            .flat_map(|(_, _, _, o)| {
+                o.st2110
+                    .iter()
+                    .map(|o| format!("ST 2110 · {}", o.name))
+                    .chain(o.sdi.iter().map(|o| format!("SDI · {}", o.name)))
+            })
             .collect();
         ChannelInfo {
             id: c.id.clone(),
@@ -88,6 +103,16 @@ impl ChannelRt {
             frame_rate: c.frame_rate,
             project_id: self.project_id.read().await.clone(),
             outputs,
+            renditions: c
+                .renditions
+                .iter()
+                .map(|r| RenditionInfo {
+                    id: r.id.clone(),
+                    name: r.name.clone(),
+                    width: r.width,
+                    height: r.height,
+                })
+                .collect(),
         }
     }
 }

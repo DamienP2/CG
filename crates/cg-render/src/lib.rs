@@ -118,25 +118,28 @@ impl Renderer {
         default_tz: &str,
     ) -> Frame {
         let mut pm = Pixmap::new(out.width.max(1), out.height.max(1)).expect("valid size");
-        let sx = out.width as f32 / project.width.max(1) as f32;
-        let sy = out.height as f32 / project.height.max(1) as f32;
+        // The project layout (16:9, 9:16…) closest to this output's shape.
+        let (format, dw, dh) = project.format_for(out.width, out.height);
+        let sx = out.width as f32 / dw.max(1) as f32;
+        let sy = out.height as f32 / dh.max(1) as f32;
         let scale = sx.min(sy);
         let root = Transform::from_translate(
-            (out.width as f32 - project.width as f32 * scale) / 2.0,
-            (out.height as f32 - project.height as f32 * scale) / 2.0,
+            (out.width as f32 - dw as f32 * scale) / 2.0,
+            (out.height as f32 - dh as f32 * scale) / 2.0,
         )
         .pre_scale(scale, scale);
         let fps = project.frame_rate.as_f64().max(1.0);
         let now = now_ms();
         for item in state.layers.values() {
             if let Some(t) = project.template(&item.template_id) {
+                let t = t.in_format(format);
                 let time = TimeCtx {
                     now_ms: now,
                     age_secs: item.age / fps,
                     default_tz,
                 };
                 let ctx = Ctx {
-                    template: t,
+                    template: &t,
                     frame: item.frame,
                     data: &item.data,
                     time,
@@ -153,14 +156,23 @@ impl Renderer {
     }
 
     /// Renders a single template at `frame` (used for thumbnails / previews).
+    /// Renders a template in one of the project formats ("main", "vertical"…).
     pub fn render_template(
         &mut self,
         project: &Project,
         template: &Template,
+        format: &str,
         frame: f64,
         data: &Data,
     ) -> Frame {
-        let mut pm = Pixmap::new(project.width, project.height).expect("valid size");
+        let (width, height) = project
+            .formats
+            .iter()
+            .find(|f| f.id == format)
+            .map(|f| (f.width, f.height))
+            .unwrap_or((project.width, project.height));
+        let template = &*template.in_format(format);
+        let mut pm = Pixmap::new(width.max(1), height.max(1)).expect("valid size");
         let time = TimeCtx {
             now_ms: now_ms(),
             age_secs: frame / project.frame_rate.as_f64().max(1.0),
@@ -174,8 +186,8 @@ impl Renderer {
         };
         self.draw_children(&mut pm, &ctx, None, Transform::identity(), 1.0, None);
         Frame {
-            width: project.width,
-            height: project.height,
+            width: width.max(1),
+            height: height.max(1),
             data: pm.take(),
             captured_at: SystemTime::now(),
         }

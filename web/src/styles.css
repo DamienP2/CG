@@ -2560,3 +2560,87 @@ select.small {
 .rundown-item .item-actions {
   right: 70px;
 }
+
+/* ---------- formats ---------- */
+.format-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.format-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.format-bar button.on {
+  background: var(--accent);
+  color: white;
+}
+.format-bar button:hover:not(.on) {
+  background: var(--panel-3);
+}
+.format-bar .tool-link.danger:hover {
+  color: var(--live);
+}
+.format-note {
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  font-size: 11.5px;
+  color: var(--text-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.override-mark {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+}
+.monitor-tabs {
+  display: inline-flex;
+  gap: 2px;
+}
+.monitor-tabs button {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  border-radius: 5px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+.monitor-tabs button.on {
+  background: var(--live-soft);
+  border-color: var(--live);
+  color: var(--text);
+}
+/* Portrait pictures (9:16): fit the height instead of the width. */
+.monitor-screen.portrait {
+  height: 42vh;
+  width: auto;
+  align-self: center;
+}

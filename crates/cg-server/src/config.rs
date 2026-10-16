@@ -18,6 +18,20 @@ pub struct OutputsConfig {
     pub sdi: Vec<SdiConfig>,
 }
 
+/// Another shape of the same program (e.g. 9:16 for social media): same
+/// playout, its own size and outputs. The project format closest in aspect
+/// ratio is used, so one take drives every rendition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rendition {
+    pub id: String,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    #[serde(default)]
+    pub outputs: OutputsConfig,
+}
+
 /// One independent output channel (a studio, a control room…): its own
 /// playout clock, video format, baseband outputs and HTML5 output page.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,9 +47,24 @@ pub struct ChannelConfig {
     pub project_id: Option<String>,
     #[serde(default)]
     pub outputs: OutputsConfig,
+    /// Extra renditions (9:16, 1:1…) driven by the same playout.
+    #[serde(default)]
+    pub renditions: Vec<Rendition>,
 }
 
 impl ChannelConfig {
+    /// (rendition id, width, height, outputs): the main picture ("main")
+    /// then the extra renditions.
+    pub fn pictures(&self) -> Vec<(&str, u32, u32, &OutputsConfig)> {
+        std::iter::once(("main", self.width, self.height, &self.outputs))
+            .chain(
+                self.renditions
+                    .iter()
+                    .map(|r| (r.id.as_str(), r.width, r.height, &r.outputs)),
+            )
+            .collect()
+    }
+
     pub fn new(id: &str, name: &str) -> Self {
         Self {
             id: id.into(),
@@ -45,6 +74,7 @@ impl ChannelConfig {
             frame_rate: FrameRate::new(50, 1),
             project_id: None,
             outputs: OutputsConfig::default(),
+            renditions: Vec::new(),
         }
     }
 }
@@ -174,39 +204,62 @@ impl ServerConfig {
             if ch.frame_rate.num == 0 || ch.frame_rate.den == 0 || ch.frame_rate.as_f64() > 120.0 {
                 return Err(format!("channel `{}`: invalid frame rate", ch.name));
             }
-            let mut names = HashSet::new();
-            for o in &ch.outputs.st2110 {
-                if o.name.trim().is_empty() || !names.insert(o.name.as_str()) {
+            let mut rendition_ids = HashSet::from(["main"]);
+            for r in &ch.renditions {
+                let ok = !r.id.is_empty()
+                    && r.id
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                if !ok || !rendition_ids.insert(r.id.as_str()) {
                     return Err(format!(
-                        "channel `{}`: output names must be unique and non-empty",
+                        "channel `{}`: rendition ids must be unique (letters, digits, - or _)",
                         ch.name
                     ));
                 }
-                if o.fill.port() == 0 || o.key.is_some_and(|k| k.port() == 0) {
-                    return Err(format!(
-                        "output `{}`: a destination port is missing",
-                        o.name
-                    ));
-                }
-                if Some(o.fill) == o.key {
-                    return Err(format!(
-                        "output `{}`: fill and key must use different destinations",
-                        o.name
-                    ));
+                if !(16..=7680).contains(&r.width) || !(16..=7680).contains(&r.height) {
+                    return Err(format!("rendition `{}`: invalid resolution", r.name));
                 }
             }
-            for o in &ch.outputs.sdi {
-                if o.name.trim().is_empty() || !names.insert(o.name.as_str()) {
-                    return Err(format!(
-                        "channel `{}`: output names must be unique and non-empty",
-                        ch.name
-                    ));
+            let mut names = HashSet::new();
+            for (_, _, _, outputs) in ch.pictures() {
+                for o in &outputs.st2110 {
+                    if o.name.trim().is_empty() || !names.insert(o.name.as_str()) {
+                        return Err(format!(
+                            "channel `{}`: output names must be unique and non-empty",
+                            ch.name
+                        ));
+                    }
+                    if o.fill.port() == 0 || o.key.is_some_and(|k| k.port() == 0) {
+                        return Err(format!(
+                            "output `{}`: a destination port is missing",
+                            o.name
+                        ));
+                    }
+                    if Some(o.fill) == o.key {
+                        return Err(format!(
+                            "output `{}`: fill and key must use different destinations",
+                            o.name
+                        ));
+                    }
+                }
+                for o in &outputs.sdi {
+                    if o.name.trim().is_empty() || !names.insert(o.name.as_str()) {
+                        return Err(format!(
+                            "channel `{}`: output names must be unique and non-empty",
+                            ch.name
+                        ));
+                    }
                 }
             }
         }
         // The same multicast destination on two channels is always a mistake.
         let mut dests = HashSet::new();
-        for o in self.channels.iter().flat_map(|c| &c.outputs.st2110) {
+        for o in self
+            .channels
+            .iter()
+            .flat_map(|c| c.pictures())
+            .flat_map(|(_, _, _, outputs)| &outputs.st2110)
+        {
             for d in std::iter::once(o.fill).chain(o.key) {
                 if !dests.insert(d) {
                     return Err(format!("destination {d} is used by two outputs"));

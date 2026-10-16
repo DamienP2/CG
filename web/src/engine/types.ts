@@ -90,7 +90,26 @@ export type Layer = LayerKind & {
   props: Partial<Record<Prop, Value>>;
   tracks: Partial<Record<Prop, Keyframe[]>>;
   bindings: Partial<Record<Prop, string>>;
+  /** Per-format changes (9:16…), by format id. */
+  overrides?: Record<string, LayerOverride>;
 };
+
+/** How a layer differs in one format; anything absent is inherited. */
+export interface LayerOverride {
+  props?: Partial<Record<Prop, Value>>;
+  tracks?: Partial<Record<Prop, Keyframe[]>>;
+  visible?: boolean;
+}
+
+/** Alternative layout of a project; the main one is width × height ("main"). */
+export interface Format {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+}
+
+export const MAIN_FORMAT = 'main';
 
 export type MarkerKind = 'pause' | 'out' | 'label';
 
@@ -161,6 +180,7 @@ export interface Project {
   rundown: RundownItem[];
   zones: Zone[];
   playlists: Playlist[];
+  formats: Format[];
 }
 
 export interface Playlist {
@@ -218,6 +238,7 @@ export interface ChannelInfo {
   frameRate: FrameRate;
   projectId: string | null;
   outputs: string[];
+  renditions: { id: string; name: string; width: number; height: number }[];
 }
 
 export type Role = 'admin' | 'designer' | 'operator' | 'viewer';

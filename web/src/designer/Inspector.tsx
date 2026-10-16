@@ -1,10 +1,11 @@
-import { SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, Diamond, Plus, Timer, Trash2, Upload } from 'lucide-react';
+import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, Diamond, Plus, Timer, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { applyEasing, col, holdFrame, num, parseHex, propValue, sortKeys, toHex } from '../engine/evaluate';
-import { TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
+import { isOverridden, resetOverride } from '../engine/formats';
 import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
 
 interface PropSpec {
@@ -191,6 +192,17 @@ function BindButton({ layer, prop, template }: { layer: Layer; prop: Prop; templ
   );
 }
 
+/** Dot on a property changed in the current format; click to inherit again. */
+function OverrideMark({ layer, prop }: { layer: Layer; prop: Prop }) {
+  const { format, updateBase } = useDesigner();
+  if (format === MAIN_FORMAT || !isOverridden(layer, format, prop)) return null;
+  return (
+    <button className="override-mark" title="Changed in this format — click to use the main layout again" onClick={() => updateBase((t) => resetOverride(findLayer(t, layer.id)!, format, prop))}>
+      <RotateCcw size={10} />
+    </button>
+  );
+}
+
 function PropRow({ layer, spec, template }: { layer: Layer; spec: PropSpec; template: Template }) {
   const { frame, update } = useDesigner();
   const v = num(propValue(layer, spec.prop, frame));
@@ -208,6 +220,7 @@ function PropRow({ layer, spec, template }: { layer: Layer; spec: PropSpec; temp
         max={spec.max}
         onChange={(nv) => update((t) => setProp(findLayer(t, layer.id)!, spec.prop, nv, frame), `prop-${layer.id}-${spec.prop}`)}
       />
+      <OverrideMark layer={layer} prop={spec.prop} />
       <BindButton layer={layer} prop={spec.prop} template={template} />
     </div>
   );
@@ -220,6 +233,7 @@ function ColorRow({ layer, prop, label, template }: { layer: Layer; prop: 'fill'
       <KeyControls layer={layer} prop={prop} />
       <span className="prop-label">{label}</span>
       <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
+      <OverrideMark layer={layer} prop={prop} />
       <BindButton layer={layer} prop={prop} template={template} />
     </div>
   );
@@ -587,6 +601,28 @@ const FILL_LABEL: Partial<Record<LayerType, string>> = {
   qrCode: 'Modules',
 };
 
+/** In another format than main: what is specific to it, and a reset. */
+function FormatNote({ layer }: { layer: Layer }) {
+  const { format, updateBase } = useDesigner();
+  const project = useApp((s) => s.project);
+  if (format === MAIN_FORMAT || !project) return null;
+  const name = project.formats.find((f) => f.id === format)?.name ?? format;
+  const o = layer.overrides?.[format];
+  const n = Object.keys(o?.props ?? {}).length + Object.keys(o?.tracks ?? {}).length + (o?.visible !== undefined ? 1 : 0);
+  return (
+    <div className="format-note">
+      <span>
+        Editing the <strong>{name}</strong> layout: changes apply to {name} only. Texts, data and new layers are shared.
+      </span>
+      {n > 0 && (
+        <button className="btn small" onClick={() => updateBase((t) => resetOverride(findLayer(t, layer.id)!, format))}>
+          <RotateCcw size={12} /> Reset {n} change{n > 1 ? 's' : ''}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function LayerInspector({ layer, template }: { layer: Layer; template: Template }) {
   const { update } = useDesigner();
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
@@ -595,6 +631,7 @@ function LayerInspector({ layer, template }: { layer: Layer; template: Template 
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
   return (
     <>
+      <FormatNote layer={layer} />
       <Section title={LABELS[layer.type].toUpperCase()}>
         <div className="row">
           <span className="prop-label">Name</span>

@@ -9,6 +9,8 @@ import { ICONS, LayersPanel } from './LayersPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
+import { FormatBar } from './Formats';
+import { formatById } from '../engine/formats';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -46,7 +48,8 @@ function usePlayback(fps: number) {
 }
 
 function useAutosave() {
-  const template = useDesigner((s) => s.template);
+  // The saved form (every format), not the view being edited.
+  const template = useDesigner((s) => s.base);
   const saveTemplate = useApp((s) => s.saveTemplate);
   const first = useRef(true);
   const [state, setState] = useState<'saved' | 'pending'>('saved');
@@ -153,7 +156,7 @@ function duplicateSelection() {
 }
 
 function TemplateList({ project }: { project: Project }) {
-  const { template, load } = useDesigner();
+  const { template, load, format } = useDesigner();
   const { saveTemplate, deleteTemplate, toast } = useApp();
   const create = async (base?: Template) => {
     const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${project.templates.length + 1}`, project.zones[0]?.id);
@@ -171,7 +174,7 @@ function TemplateList({ project }: { project: Project }) {
       </header>
       {project.templates.map((t) => (
         <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={() => template?.id !== t.id && load(t)}>
-          <img src={thumbnailUrl(project.id, t)} alt="" loading="lazy" />
+          <img src={thumbnailUrl(project.id, t, format)} alt="" loading="lazy" />
           <span>{t.name}</span>
           <div className="item-actions">
             <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
@@ -237,7 +240,7 @@ function WidgetMenu({ onPick }: { onPick: (w: (typeof WIDGET_PRESETS)[number]) =
 
 export function Designer() {
   const project = useApp((s) => s.project);
-  const { template, load, update, undo, redo, past, future, selected, select } = useDesigner();
+  const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
   const [showSafe, setShowSafe] = useState(true);
   const [zonesOpen, setZonesOpen] = useState(false);
   const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('studio');
@@ -260,7 +263,8 @@ export function Designer() {
 
   const add = (type: LayerType, patch?: Record<string, unknown>, name?: string) => {
     const parent = selected.length === 1 && template && findLayer(template, selected[0])?.type === 'group' ? selected[0] : null;
-    const l = { ...makeLayer(type, project.width, project.height, parent), ...patch } as Layer;
+    const size = formatById(project, useDesigner.getState().format);
+    const l = { ...makeLayer(type, size.width, size.height, parent), ...patch } as Layer;
     if (name) l.name = name;
     update((t) => void t.layers.push(l));
     select([l.id]);
@@ -301,6 +305,7 @@ export function Designer() {
               <Redo2 size={16} />
             </button>
           </div>
+          <FormatBar project={project} />
           <div className="spacer" />
           <button className="btn small" onClick={() => setZonesOpen(true)} title="Screen zones of the project: one template at a time per zone">
             <LayoutGrid size={13} /> Zones
@@ -315,7 +320,7 @@ export function Designer() {
           </select>
           <span className={`save-state ${saveState}`}>{saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
         </div>
-        <Stage project={project} showSafe={showSafe} background={background} />
+        <Stage project={project} size={formatById(project, format)} showSafe={showSafe} background={background} />
         <Timeline fps={fps} />
       </main>
       <aside className="panel right">

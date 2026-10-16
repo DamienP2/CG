@@ -6,10 +6,10 @@ export type Route =
   | { page: 'settings' }
   | { page: 'users' }
   | { page: 'apiDocs' }
-  | { page: 'output'; channelId: string | null };
+  | { page: 'output'; channelId: string | null; rendition: string | null };
 
 export function parseRoute(path = location.pathname): Route {
-  const [first, second] = path.split('/').filter(Boolean).map(decodeURIComponent);
+  const [first, second, third] = path.split('/').filter(Boolean).map(decodeURIComponent);
   switch (first) {
     case 'designer':
       return { page: 'designer', projectId: second ?? null };
@@ -22,7 +22,7 @@ export function parseRoute(path = location.pathname): Route {
     case 'api-docs':
       return { page: 'apiDocs' };
     case 'output':
-      return { page: 'output', channelId: second ?? null };
+      return { page: 'output', channelId: second ?? null, rendition: third ?? null };
     default:
       return { page: 'projects' };
   }

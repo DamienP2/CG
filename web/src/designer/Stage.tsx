@@ -16,7 +16,9 @@ interface Box {
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
-export function Stage({ project, showSafe, background }: { project: Project; showSafe: boolean; background: string }) {
+/** The canvas, at the size of the format being edited. */
+export function Stage({ project: _project, size, showSafe, background }: { project: Project; size: { width: number; height: number }; showSafe: boolean; background: string }) {
+  const project = { ..._project, width: size.width, height: size.height };
   const { template, frame, previewData, selected } = useDesigner();
   const wrapRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);

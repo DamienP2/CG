@@ -34,6 +34,7 @@ fn layer(
         props: props.iter().copied().collect(),
         tracks: BTreeMap::new(),
         bindings: BTreeMap::new(),
+        overrides: BTreeMap::new(),
     }
 }
 
@@ -944,6 +945,7 @@ fn demo_project_layers() -> Project {
         frame_rate: FrameRate::new(50, 1),
         zones: Vec::new(),
         playlists: Vec::new(),
+        formats: Vec::new(),
         templates: vec![
             lower_third(),
             score_bug(),
@@ -1046,6 +1048,41 @@ fn demo_project_layers() -> Project {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn formats_pick_by_aspect_and_apply_overrides() {
+        use crate::model::*;
+        let mut p = super::demo_project();
+        p.formats.push(Format {
+            id: "vertical".into(),
+            name: "9:16".into(),
+            width: 1080,
+            height: 1920,
+        });
+        assert_eq!(p.format_for(1920, 1080), ("main", 1920, 1080));
+        assert_eq!(p.format_for(720, 1280), ("vertical", 1080, 1920));
+        assert_eq!(p.format_for(1080, 1080).0, "main");
+        let t = &mut p.templates[0];
+        let id = t.layers[0].id.clone();
+        t.layers[0].overrides.insert(
+            "vertical".into(),
+            LayerOverride {
+                props: [(Prop::X, Value::Number(42.0))].into(),
+                ..Default::default()
+            },
+        );
+        let v = t.in_format("vertical");
+        let l = v.layers.iter().find(|l| l.id == id).unwrap();
+        assert_eq!(l.props.get(&Prop::X), Some(&Value::Number(42.0)));
+        assert!(!l.tracks.contains_key(&Prop::X));
+        assert!(matches!(t.in_format("main"), std::borrow::Cow::Borrowed(_)));
+        // Overrides survive JSON, and are omitted when empty.
+        let json = serde_json::to_string(&p).unwrap();
+        assert_eq!(serde_json::from_str::<Project>(&json).unwrap(), p);
+        assert!(!serde_json::to_string(&super::demo_project())
+            .unwrap()
+            .contains("overrides"));
+    }
+
     #[test]
     fn demo_roundtrips_through_json() {
         let p = super::demo_project();

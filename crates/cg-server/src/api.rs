@@ -44,6 +44,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/rundown", put(put_rundown))
         .route("/api/projects/{id}/zones", put(put_zones))
         .route("/api/projects/{id}/playlists", put(put_playlists))
+        .route("/api/projects/{id}/formats", put(put_formats))
         .route(
             "/api/projects/{id}/templates/{tid}",
             put(put_template).delete(delete_template),
@@ -431,6 +432,7 @@ async fn create_project(
             rundown: Vec::new(),
             zones: cg_core::Zone::defaults(),
             playlists: Vec::new(),
+            formats: Vec::new(),
         },
     };
     p.id = cg_core::new_id();
@@ -646,6 +648,33 @@ async fn put_playlists(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Replaces the alternative formats (9:16, 1:1…). Removing a format drops
+/// its layer overrides.
+async fn put_formats(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(formats): Json<Vec<cg_core::Format>>,
+) -> ApiResult<StatusCode> {
+    require(me.can_design(&id))?;
+    let mut ids = std::collections::HashSet::from([cg_core::MAIN_FORMAT.to_string()]);
+    for f in &formats {
+        if !valid_id(&f.id) || !ids.insert(f.id.clone()) || f.name.trim().is_empty() {
+            return Err(bad("formats need a unique id and a name"));
+        }
+        check_format(f.width, f.height, FrameRate::new(1, 1))?;
+    }
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    for t in &mut p.templates {
+        for l in &mut t.layers {
+            l.overrides.retain(|k, _| ids.contains(k));
+        }
+    }
+    p.formats = formats;
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn png(bytes: Vec<u8>) -> Response {
     (
         [
@@ -660,6 +689,8 @@ fn png(bytes: Vec<u8>) -> Response {
 #[derive(Deserialize)]
 struct ThumbQuery {
     frame: Option<f64>,
+    /// Project format id (default: main).
+    format: Option<String>,
 }
 
 async fn template_thumbnail(
@@ -683,8 +714,14 @@ async fn template_thumbnail(
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
-        r.render_template(&p, &template, frame, &template.default_data())
-            .to_png()
+        r.render_template(
+            &p,
+            &template,
+            q.format.as_deref().unwrap_or(cg_core::MAIN_FORMAT),
+            frame,
+            &template.default_data(),
+        )
+        .to_png()
     })
     .await
     .map_err(internal)?;
@@ -818,10 +855,17 @@ async fn item_command(
     s.command(&id, cmd).await.map(Json).map_err(bad)
 }
 
+#[derive(Deserialize)]
+struct PreviewQuery {
+    /// Rendition id (default: the main picture).
+    rendition: Option<String>,
+}
+
 async fn channel_preview(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
+    Query(q): Query<PreviewQuery>,
 ) -> ApiResult<Response> {
     visible_channel(&me, &id)?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?.clone();
@@ -830,10 +874,14 @@ async fn channel_preview(
         None => None,
     };
     let state = ch.state.read().await.clone();
-    let out = cg_render::OutputFormat {
-        width: ch.config.width,
-        height: ch.config.height,
-    };
+    let wanted = q.rendition.as_deref().unwrap_or("main");
+    let (_, width, height, _) = ch
+        .config
+        .pictures()
+        .into_iter()
+        .find(|p| p.0 == wanted)
+        .ok_or_else(|| not_found("rendition"))?;
+    let out = cg_render::OutputFormat { width, height };
     let tz = s.config.timezone.clone();
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || match project {
@@ -858,11 +906,17 @@ async fn get_sdp(
     visible_channel(&me, &id)?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let c = &ch.config;
-    let cfg = c
-        .outputs
-        .st2110
-        .iter()
-        .find(|o| o.name == name)
+    // Output names are unique across the channel's pictures.
+    let (width, height, cfg) = c
+        .pictures()
+        .into_iter()
+        .find_map(|(_, w, h, outputs)| {
+            outputs
+                .st2110
+                .iter()
+                .find(|o| o.name == name)
+                .map(|o| (w, h, o))
+        })
         .ok_or_else(|| not_found("output"))?;
     let key = match essence.as_str() {
         "fill.sdp" => false,
@@ -870,7 +924,7 @@ async fn get_sdp(
         _ => return Err((StatusCode::NOT_FOUND, "use fill.sdp or key.sdp".into())),
     };
     let sdp = cfg
-        .sdp(c.width, c.height, (c.frame_rate.num, c.frame_rate.den), key)
+        .sdp(width, height, (c.frame_rate.num, c.frame_rate.den), key)
         .ok_or_else(|| not_found("key stream"))?;
     Ok(([(header::CONTENT_TYPE, "application/sdp")], sdp).into_response())
 }

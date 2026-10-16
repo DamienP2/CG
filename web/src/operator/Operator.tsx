@@ -4,6 +4,7 @@ import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
 import type { Command, Field, PlayoutItem, Playlist, Project, RundownItem, Zone } from '../engine/types';
 import { LiveTime } from '../engine/LiveTime';
+import { formatFor, inFormat } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
 import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
@@ -237,6 +238,8 @@ export function Operator({ channelId }: { channelId: string }) {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
+  const [pictureId, setPictureId] = useState('main');
+  const channelInfo = useApp((s) => s.channels.find((c) => c.id === channelId));
 
   const rundown = project?.rundown ?? [];
   const playlists = project?.playlists ?? [];
@@ -315,6 +318,10 @@ export function Operator({ channelId }: { channelId: string }) {
       </div>
     );
   const fps = project.frameRate.num / project.frameRate.den || 1;
+  // Pictures of the channel (main + renditions such as 9:16): one take drives all.
+  const pictures = [{ id: 'main', name: channelInfo ? `${channelInfo.width}×${channelInfo.height}` : 'Main', width: channelInfo?.width ?? project.width, height: channelInfo?.height ?? project.height }, ...(channelInfo?.renditions ?? [])];
+  const picture = pictures.find((p) => p.id === pictureId) ?? pictures[0];
+  const previewFormat = formatFor(project, picture.width, picture.height);
 
   const addItem = (templateId: string) => {
     const t = project.templates.find((x) => x.id === templateId)!;
@@ -427,15 +434,31 @@ export function Operator({ channelId }: { channelId: string }) {
       <main className="op-center">
         <ChannelBar channelId={channelId} />
         <div className="monitors">
-          <Monitor width={project.width} height={project.height} label="Preview" tally="pvw" extra={template && <span className="muted">{template.name}</span>}>
+          <Monitor width={previewFormat.width} height={previewFormat.height} label="Preview" tally="pvw" extra={template && <span className="muted">{template.name}</span>}>
             {template && (
               <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
-                <Scene template={template} frame={holdFrame(template)} data={draft} />
+                <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={draft} />
               </LiveTime>
             )}
           </Monitor>
-          <Monitor width={project.width} height={project.height} label="Program" tally="pgm">
-            <Program project={project} live={liveState} />
+          <Monitor
+            width={picture.width}
+            height={picture.height}
+            label="Program"
+            tally="pgm"
+            extra={
+              pictures.length > 1 && (
+                <span className="monitor-tabs">
+                  {pictures.map((p) => (
+                    <button key={p.id} className={p.id === picture.id ? 'on' : ''} onClick={() => setPictureId(p.id)} title={`${p.width}×${p.height}`}>
+                      {p.name}
+                    </button>
+                  ))}
+                </span>
+              )
+            }
+          >
+            <Program project={project} live={liveState} width={picture.width} height={picture.height} />
           </Monitor>
         </div>
 

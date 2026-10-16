@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
-import type { Data, FontStyle, Keyframe, Layer, LayerType, Prop, Template, Value } from '../engine/types';
+import { fromFormatView, inFormat } from '../engine/formats';
+import { MAIN_FORMAT, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 
 export interface KeyRef {
   layerId: string;
@@ -9,6 +10,12 @@ export interface KeyRef {
 }
 
 interface DesignerStore {
+  /** The template being edited, as saved (all formats). */
+  base: Template | null;
+  /** Format being edited ("main", "vertical"…). */
+  format: string;
+  /** What the editors show and edit: `base` laid out in `format`. Edits in
+   *  another format than main are stored as that format's overrides. */
   template: Template | null;
   past: Template[];
   future: Template[];
@@ -26,6 +33,9 @@ interface DesignerStore {
 
   load: (t: Template | null) => void;
   update: (recipe: (t: Template) => void, coalesceKey?: string) => void;
+  /** Edits the saved template directly (all formats at once). */
+  updateBase: (recipe: (t: Template) => void) => void;
+  setFormat: (format: string) => void;
   undo: () => void;
   redo: () => void;
   setFrame: (f: number) => void;
@@ -38,7 +48,11 @@ interface DesignerStore {
 
 const HISTORY = 200;
 
+const view = (base: Template | null, format: string) => (base ? structuredClone(inFormat(base, format)) : null);
+
 export const useDesigner = create<DesignerStore>((set, get) => ({
+  base: null,
+  format: MAIN_FORMAT,
   template: null,
   past: [],
   future: [],
@@ -54,8 +68,10 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   previewData: {},
 
   load(t) {
+    const base = t ? structuredClone(t) : null;
     set({
-      template: t ? structuredClone(t) : null,
+      base,
+      template: view(base, get().format),
       past: [],
       future: [],
       frame: 0,
@@ -68,30 +84,45 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   },
 
   update(recipe, coalesceKey) {
-    const { template, past, lastCoalesce } = get();
-    if (!template) return;
-    const next = structuredClone(template);
-    recipe(next);
+    const { base, format, past, lastCoalesce } = get();
+    if (!base) return;
+    const edited = view(base, format)!;
+    recipe(edited);
+    const next = format === MAIN_FORMAT ? edited : fromFormatView(base, edited, format);
     const now = performance.now();
     const coalesce = coalesceKey && lastCoalesce?.key === coalesceKey && now - lastCoalesce.at < 800;
     set({
-      template: next,
-      past: coalesce ? past : [...past.slice(-HISTORY), template],
+      base: next,
+      template: view(next, format),
+      past: coalesce ? past : [...past.slice(-HISTORY), base],
       future: [],
       lastCoalesce: coalesceKey ? { key: coalesceKey, at: now } : null,
     });
   },
 
+  updateBase(recipe) {
+    const { base, format, past } = get();
+    if (!base) return;
+    const next = structuredClone(base);
+    recipe(next);
+    set({ base: next, template: view(next, format), past: [...past.slice(-HISTORY), base], future: [], lastCoalesce: null });
+  },
+
+  setFormat(format) {
+    set({ format, template: view(get().base, format), selectedKeys: [] });
+  },
+
   undo() {
-    const { past, template, future } = get();
-    if (!past.length || !template) return;
-    set({ template: past[past.length - 1], past: past.slice(0, -1), future: [template, ...future], lastCoalesce: null });
+    const { past, base, future, format } = get();
+    if (!past.length || !base) return;
+    const prev = past[past.length - 1];
+    set({ base: prev, template: view(prev, format), past: past.slice(0, -1), future: [base, ...future], lastCoalesce: null });
   },
 
   redo() {
-    const { past, template, future } = get();
-    if (!future.length || !template) return;
-    set({ template: future[0], future: future.slice(1), past: [...past, template], lastCoalesce: null });
+    const { past, base, future, format } = get();
+    if (!future.length || !base) return;
+    set({ base: future[0], template: view(future[0], format), future: future.slice(1), past: [...past, base], lastCoalesce: null });
   },
 
   setFrame(f) {

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/cg-core", "crates/cg-render", "crates/cg-output", "crates/cg-server", "crates/cg-tray"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 license = "UNLICENSED"
 

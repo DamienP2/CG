@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Cpu, ExternalLink, MonitorPlay, Network, Plus, RotateCcw, Save, Server, Trash2, Tv } from 'lucide-react';
+import { Smartphone, ChevronDown, ChevronRight, Cpu, ExternalLink, MonitorPlay, Network, Plus, RotateCcw, Save, Server, Trash2, Tv } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { FrameRate } from '../engine/types';
 import { api, useApp } from '../store';
@@ -19,6 +19,14 @@ interface SdiOutput {
   externalKey: boolean;
 }
 
+interface Rendition {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  outputs: { st2110: St2110Output[]; sdi: SdiOutput[] };
+}
+
 interface ChannelConfig {
   id: string;
   name: string;
@@ -27,6 +35,7 @@ interface ChannelConfig {
   frameRate: FrameRate;
   projectId?: string | null;
   outputs: { st2110: St2110Output[]; sdi: SdiOutput[] };
+  renditions?: Rendition[];
 }
 
 interface ServerConfig {
@@ -127,88 +136,24 @@ function SubCard({ icon, title, children, actions }: { icon: React.ReactNode; ti
 const fmtMatch = (c: { width: number; height: number; frameRate: FrameRate }) =>
   FORMATS.findIndex((f) => f.width === c.width && f.height === c.height && f.rate.num === c.frameRate.num && f.rate.den === c.frameRate.den);
 
-function ChannelEditor({
-  channel,
-  saved,
-  index,
-  info,
-  onChange,
-  onRemove,
-}: {
-  channel: ChannelConfig;
-  saved?: ChannelConfig;
-  index: number;
-  info: SystemInfo;
-  onChange: (c: ChannelConfig) => void;
-  onRemove?: () => void;
-}) {
-  const [open, setOpen] = useState(index === 0);
-  const projects = useApp((s) => s.projects);
-  const editCh = (fn: (c: ChannelConfig) => void) => {
-    const next = structuredClone(channel);
+
+interface OutputsConfig {
+  st2110: St2110Output[];
+  sdi: SdiOutput[];
+}
+
+/** ST 2110 and SDI outputs of a channel picture. */
+function OutputsEditor({ outputs, saved: savedOutputs, channelId, index, info, onChange }: { outputs: OutputsConfig; saved?: OutputsConfig; channelId: string; index: number; info: SystemInfo; onChange: (o: OutputsConfig) => void }) {
+  // Same shapes as the channel editor this was extracted from.
+  const channel = { id: channelId, outputs };
+  const saved = savedOutputs ? { outputs: savedOutputs } : undefined;
+  const editCh = (fn: (ch: { outputs: OutputsConfig }) => void) => {
+    const next = { outputs: structuredClone(outputs) };
     fn(next);
-    onChange(next);
+    onChange(next.outputs);
   };
-  const fmt = fmtMatch(channel);
-  const project = projects.find((p) => p.id === channel.projectId);
   return (
-    <div className={`channel-card ${open ? 'open' : ''}`}>
-      <header onClick={() => setOpen(!open)}>
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <MonitorPlay size={15} />
-        <strong>{channel.name || 'Unnamed channel'}</strong>
-        <span className="muted">
-          {channel.width}×{channel.height} · {+(channel.frameRate.num / channel.frameRate.den).toFixed(2)} fps · {channel.outputs.st2110.length + channel.outputs.sdi.length} output(s)
-          {project ? ` · ${project.name}` : ''}
-        </span>
-        <div className="spacer" />
-        {saved && (
-          <a className="btn small" href={`/output/${encodeURIComponent(channel.id)}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-            <ExternalLink size={12} /> HTML5 output
-          </a>
-        )}
-        {onRemove && (
-          <button
-            className="btn small"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirm(`Remove channel “${channel.name}”? Its outputs stop when you save.`)) onRemove();
-            }}
-          >
-            <Trash2 size={12} />
-          </button>
-        )}
-      </header>
-      {open && (
-        <div className="channel-body">
-          <div className="set-grid">
-            <Field label="Name" hint="Studio, control room…">
-              <input value={channel.name} onChange={(e) => editCh((c) => void (c.name = e.target.value))} />
-            </Field>
-            <Field label="Identifier" hint="Used in URLs (/output/<id>) and the API.">
-              <input value={channel.id} disabled={!!saved} onChange={(e) => editCh((c) => void (c.id = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '-')))} />
-            </Field>
-            <Field label="Video format" hint="Projects in another format are scaled to fit.">
-              <select
-                value={fmt}
-                onChange={(e) => {
-                  const f = FORMATS[+e.target.value];
-                  if (f) editCh((c) => Object.assign(c, { width: f.width, height: f.height, frameRate: f.rate }));
-                }}
-              >
-                {fmt < 0 && (
-                  <option value={-1}>
-                    Custom — {channel.width}×{channel.height} @ {+(channel.frameRate.num / channel.frameRate.den).toFixed(3)}
-                  </option>
-                )}
-                {FORMATS.map((f, i) => (
-                  <option key={f.label} value={i}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+    <>
         <SubCard
             icon={<Network size={14} />}
             title="SMPTE ST 2110 outputs"
@@ -337,6 +282,167 @@ function ChannelEditor({
               </div>
             ))}
           </SubCard>
+    </>
+  );
+}
+
+const RENDITION_PRESETS = [
+  { id: 'vertical', name: '9:16', width: 1080, height: 1920 },
+  { id: 'square', name: '1:1', width: 1080, height: 1080 },
+  { id: 'portrait', name: '4:5', width: 1080, height: 1350 },
+  { id: 'hd', name: '720p', width: 1280, height: 720 },
+];
+
+/** Extra pictures of a channel (9:16 for social…), driven by the same takes. */
+function RenditionsEditor({ channel, saved, index, info, onChange }: { channel: ChannelConfig; saved?: ChannelConfig; index: number; info: SystemInfo; onChange: (r: Rendition[]) => void }) {
+  const list = channel.renditions ?? [];
+  const edit = (i: number, patch: Partial<Rendition>) => onChange(list.map((r, j) => (i === j ? { ...r, ...patch } : r)));
+  return (
+    <SubCard
+      icon={<Smartphone size={14} />}
+      title="Other formats of this channel"
+      actions={
+        <select
+          className="small"
+          value=""
+          onChange={(e) => {
+            const p = RENDITION_PRESETS.find((x) => x.id === e.target.value);
+            if (!p) return;
+            let id = p.id;
+            for (let n = 2; list.some((r) => r.id === id); n++) id = `${p.id}-${n}`;
+            onChange([...list, { id, name: p.name, width: p.width, height: p.height, outputs: { st2110: [], sdi: [] } }]);
+          }}
+        >
+          <option value="">+ Add a format…</option>
+          {RENDITION_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} ({p.width}×{p.height})
+            </option>
+          ))}
+        </select>
+      }
+    >
+      {list.length === 0 && <p className="hint">Same program in another shape, e.g. 9:16 for social media: one take plays everywhere, each picture uses the project layout made for its shape.</p>}
+      {list.map((r, i) => {
+        const wasSaved = saved?.renditions?.some((x) => x.id === r.id);
+        return (
+          <div key={i} className="output-card">
+            <div className="set-grid">
+              <Field label="Name">
+                <input value={r.name} onChange={(e) => edit(i, { name: e.target.value })} />
+              </Field>
+              <Field label="Width">
+                <input type="number" value={r.width} onChange={(e) => edit(i, { width: +e.target.value })} />
+              </Field>
+              <Field label="Height">
+                <input type="number" value={r.height} onChange={(e) => edit(i, { height: +e.target.value })} />
+              </Field>
+            </div>
+            <OutputsEditor outputs={r.outputs} saved={saved?.renditions?.find((x) => x.id === r.id)?.outputs} channelId={channel.id} index={index * 10 + i + 1} info={info} onChange={(o) => edit(i, { outputs: o })} />
+            <div className="output-foot">
+              {wasSaved ? (
+                <a href={`/output/${encodeURIComponent(channel.id)}/${encodeURIComponent(r.id)}`} target="_blank" rel="noreferrer">
+                  HTML5: /output/{channel.id}/{r.id}
+                </a>
+              ) : (
+                <span className="muted">Save to get its HTML5 page.</span>
+              )}
+              <div className="spacer" />
+              <button className="btn small" onClick={() => onChange(list.filter((_, j) => j !== i))}>
+                <Trash2 size={13} /> Remove
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </SubCard>
+  );
+}
+
+function ChannelEditor({
+  channel,
+  saved,
+  index,
+  info,
+  onChange,
+  onRemove,
+}: {
+  channel: ChannelConfig;
+  saved?: ChannelConfig;
+  index: number;
+  info: SystemInfo;
+  onChange: (c: ChannelConfig) => void;
+  onRemove?: () => void;
+}) {
+  const [open, setOpen] = useState(index === 0);
+  const projects = useApp((s) => s.projects);
+  const editCh = (fn: (c: ChannelConfig) => void) => {
+    const next = structuredClone(channel);
+    fn(next);
+    onChange(next);
+  };
+  const fmt = fmtMatch(channel);
+  const project = projects.find((p) => p.id === channel.projectId);
+  return (
+    <div className={`channel-card ${open ? 'open' : ''}`}>
+      <header onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <MonitorPlay size={15} />
+        <strong>{channel.name || 'Unnamed channel'}</strong>
+        <span className="muted">
+          {channel.width}×{channel.height} · {+(channel.frameRate.num / channel.frameRate.den).toFixed(2)} fps · {channel.outputs.st2110.length + channel.outputs.sdi.length} output(s)
+          {project ? ` · ${project.name}` : ''}
+        </span>
+        <div className="spacer" />
+        {saved && (
+          <a className="btn small" href={`/output/${encodeURIComponent(channel.id)}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+            <ExternalLink size={12} /> HTML5 output
+          </a>
+        )}
+        {onRemove && (
+          <button
+            className="btn small"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (confirm(`Remove channel “${channel.name}”? Its outputs stop when you save.`)) onRemove();
+            }}
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </header>
+      {open && (
+        <div className="channel-body">
+          <div className="set-grid">
+            <Field label="Name" hint="Studio, control room…">
+              <input value={channel.name} onChange={(e) => editCh((c) => void (c.name = e.target.value))} />
+            </Field>
+            <Field label="Identifier" hint="Used in URLs (/output/<id>) and the API.">
+              <input value={channel.id} disabled={!!saved} onChange={(e) => editCh((c) => void (c.id = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '-')))} />
+            </Field>
+            <Field label="Video format" hint="Projects in another format are scaled to fit.">
+              <select
+                value={fmt}
+                onChange={(e) => {
+                  const f = FORMATS[+e.target.value];
+                  if (f) editCh((c) => Object.assign(c, { width: f.width, height: f.height, frameRate: f.rate }));
+                }}
+              >
+                {fmt < 0 && (
+                  <option value={-1}>
+                    Custom — {channel.width}×{channel.height} @ {+(channel.frameRate.num / channel.frameRate.den).toFixed(3)}
+                  </option>
+                )}
+                {FORMATS.map((f, i) => (
+                  <option key={f.label} value={i}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <OutputsEditor outputs={channel.outputs} saved={saved?.outputs} channelId={channel.id} index={index} info={info} onChange={(o) => editCh((c) => void (c.outputs = o))} />
+          <RenditionsEditor channel={channel} saved={saved} index={index} info={info} onChange={(r) => editCh((c) => void (c.renditions = r))} />
 
         </div>
       )}

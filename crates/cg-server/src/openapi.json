@@ -770,6 +770,14 @@
       "type": "number"
      },
      "description": "Default: first hold point."
+    },
+    {
+     "name": "format",
+     "in": "query",
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project format id (default: main)."
     }
    ],
    "get": {
@@ -1031,7 +1039,17 @@
        }
       }
      }
-    }
+    },
+    "parameters": [
+     {
+      "name": "rendition",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "description": "Rendition id (default: main picture)."
+     }
+    ]
    }
   },
   "/api/channels/{id}/outputs/{name}/{essence}": {
@@ -1501,6 +1519,43 @@
      }
     }
    }
+  },
+  "/api/projects/{id}/formats": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Replace the alternative formats",
+    "description": "Removing a format drops its layer overrides. The web designer lays every template out automatically when a format is added.\n\n**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/Format"
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1858,6 +1913,12 @@
       "items": {
        "$ref": "#/components/schemas/Playlist"
       }
+     },
+     "formats": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Format"
+      }
      }
     }
    },
@@ -1919,6 +1980,27 @@
       "type": "array",
       "items": {
        "type": "string"
+      }
+     },
+     "renditions": {
+      "type": "array",
+      "description": "Other pictures of the channel (9:16…), driven by the same takes; HTML5 at /output/<channel>/<rendition>.",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "width": {
+         "type": "integer"
+        },
+        "height": {
+         "type": "integer"
+        }
+       }
       }
      }
     }
@@ -2136,6 +2218,34 @@
      },
      "name": {
       "type": "string"
+     }
+    }
+   },
+   "Format": {
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "width",
+     "height"
+    ],
+    "description": "Alternative layout of a project (the main one is the project's width × height, id \"main\"). Layers carry per-format overrides; each output uses the format closest to its aspect ratio.",
+    "properties": {
+     "id": {
+      "type": "string",
+      "example": "vertical"
+     },
+     "name": {
+      "type": "string",
+      "example": "9:16"
+     },
+     "width": {
+      "type": "integer",
+      "example": 1080
+     },
+     "height": {
+      "type": "integer",
+      "example": 1920
      }
     }
    }

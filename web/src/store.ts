@@ -290,5 +290,5 @@ export const can = {
   admin: (u: User | null | undefined) => u?.role === 'admin',
 };
 
-export const thumbnailUrl = (projectId: string, t: Template) =>
-  `/api/projects/${encodeURIComponent(projectId)}/templates/${encodeURIComponent(t.id)}/thumbnail.png?v=${JSON.stringify(t).length}`;
+export const thumbnailUrl = (projectId: string, t: Template, format = 'main') =>
+  `/api/projects/${encodeURIComponent(projectId)}/templates/${encodeURIComponent(t.id)}/thumbnail.png?format=${encodeURIComponent(format)}&v=${JSON.stringify(t).length}`;
