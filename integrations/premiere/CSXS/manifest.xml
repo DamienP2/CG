@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Pulse CG panel for Adobe Premiere Pro (CEP). -->
-<ExtensionManifest Version="9.0" ExtensionBundleId="io.pulsecg.premiere" ExtensionBundleVersion="0.6.0" ExtensionBundleName="Pulse CG">
+<ExtensionManifest Version="9.0" ExtensionBundleId="io.pulsecg.premiere" ExtensionBundleVersion="0.7.1" ExtensionBundleName="Pulse CG">
   <ExtensionList>
-    <Extension Id="io.pulsecg.premiere.panel" Version="0.6.0" />
+    <Extension Id="io.pulsecg.premiere.panel" Version="0.7.1" />
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
