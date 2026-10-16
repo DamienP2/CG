@@ -83,34 +83,68 @@ fn open_url(url: &str) {
     }
 }
 
-/// Runs `cg-server service <action>` with administrator rights.
+/// Shows a native error dialog (the tray has no window of its own).
+fn alert(message: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "display alert \"Pulse CG\" message \"{}\" as critical",
+            esc(message)
+        );
+        let _ = Command::new("osascript").args(["-e", &script]).spawn();
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let ps = format!(
+            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Pulse CG', 'OK', 'Error')",
+            message.replace('\'', "''")
+        );
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+}
+
+/// Runs `cg-server service <action>` with administrator rights and reports
+/// failures (cancelling the password prompt is not an error).
 fn service(action: &'static str) {
     let exe = server_exe();
     std::thread::spawn(move || {
         #[cfg(target_os = "macos")]
-        let r = {
-            let cmd = format!("'{}' service {action}", exe.display());
+        let result: Result<(), String> = {
+            let cmd = format!("'{}' service {action} 2>&1", exe.display());
             let script = format!(
                 "do shell script \"{}\" with administrator privileges",
                 cmd.replace('\\', "\\\\").replace('"', "\\\"")
             );
-            Command::new("osascript").args(["-e", &script]).status()
+            match Command::new("osascript").args(["-e", &script]).output() {
+                Ok(o) if o.status.success() => Ok(()),
+                // -128: the user cancelled the authentication dialog.
+                Ok(o) if String::from_utf8_lossy(&o.stderr).contains("-128") => Ok(()),
+                Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+                Err(e) => Err(e.to_string()),
+            }
         };
         #[cfg(windows)]
-        let r = {
-            let ps = format!(
-                "Start-Process -Verb RunAs -WindowStyle Hidden -Wait -FilePath '{}' -ArgumentList 'service','{action}'",
-                exe.display().to_string().replace('\'', "''")
-            );
+        let result: Result<(), String> = {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            Command::new("powershell")
-                .args(["-NoProfile", "-Command", &ps])
-                .creation_flags(CREATE_NO_WINDOW)
-                .status()
+            let ps = format!(
+                "$p = Start-Process -Verb RunAs -WindowStyle Hidden -Wait -PassThru -FilePath '{}' -ArgumentList 'service','{action}'; exit $p.ExitCode",
+                exe.display().to_string().replace('\'', "''")
+            );
+            match Command::new("powershell").args(["-NoProfile", "-Command", &ps]).creation_flags(CREATE_NO_WINDOW).status() {
+                Ok(s) if s.success() => Ok(()),
+                Ok(s) => Err(format!("cg-server service {action} exited with {s}. See C:\\ProgramData\\PulseCG\\logs\\cg-server.log")),
+                Err(e) => Err(e.to_string()),
+            }
         };
-        if let Err(e) = r {
-            eprintln!("service {action} failed: {e}");
+        if let Err(e) = result {
+            alert(&format!("Could not {action} the Pulse CG server.\n\n{e}"));
         }
     });
 }

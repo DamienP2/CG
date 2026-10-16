@@ -22,12 +22,19 @@ fn exe() -> Result<PathBuf> {
 
 #[allow(dead_code)]
 fn run(cmd: &str, args: &[&str]) -> Result<()> {
-    let status = Command::new(cmd)
+    let out = Command::new(cmd)
         .args(args)
-        .status()
+        .output()
         .with_context(|| format!("cannot run `{cmd}`"))?;
-    if !status.success() {
-        bail!("`{cmd} {}` failed ({status})", args.join(" "));
+    print!("{}", String::from_utf8_lossy(&out.stdout));
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        bail!(
+            "`{cmd} {}` failed ({}): {}",
+            args.join(" "),
+            out.status,
+            err.trim()
+        );
     }
     Ok(())
 }
@@ -191,16 +198,60 @@ mod imp {
 </plist>
 "#
         );
-        // Replace a previous installation cleanly.
+        // Replace a previous installation cleanly. launchd unloads
+        // asynchronously, so wait for it before loading the new definition.
         let _ = Command::new("launchctl")
-            .args(["bootout", &format!("system/{LABEL}")])
+            .args(["bootout", &target()])
             .output();
+        wait_unloaded();
         std::fs::write(PLIST, plist).map_err(|e| permission_hint(e.into(), Path::new(PLIST)))?;
-        run("launchctl", &["bootstrap", "system", PLIST])
+        bootstrap()
+    }
+
+    fn target() -> String {
+        format!("system/{LABEL}")
+    }
+
+    fn loaded() -> bool {
+        Command::new("launchctl")
+            .args(["print", &target()])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn wait_unloaded() {
+        for _ in 0..50 {
+            if !loaded() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
+    /// `launchctl bootstrap` fails with "5: Input/output error" while a
+    /// previous instance is still unloading: retry for a few seconds.
+    fn bootstrap() -> Result<()> {
+        let mut last = String::new();
+        for _ in 0..8 {
+            let out = Command::new("launchctl")
+                .args(["bootstrap", "system", PLIST])
+                .output()
+                .context("cannot run launchctl")?;
+            if out.status.success() || loaded() {
+                return Ok(());
+            }
+            last = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            std::thread::sleep(std::time::Duration::from_millis(750));
+        }
+        bail!("launchctl bootstrap failed: {last}")
     }
 
     pub fn uninstall() -> Result<()> {
-        let _ = run("launchctl", &["bootout", &format!("system/{LABEL}")]);
+        let _ = Command::new("launchctl")
+            .args(["bootout", &target()])
+            .output();
+        wait_unloaded();
         match std::fs::remove_file(PLIST) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -209,16 +260,21 @@ mod imp {
     }
 
     pub fn start() -> Result<()> {
-        run(
-            "launchctl",
-            &["kickstart", "-k", &format!("system/{LABEL}")],
-        )
+        if !Path::new(PLIST).exists() {
+            bail!("the service is not installed — run `sudo cg-server service install`");
+        }
+        // Loading the daemon starts it (RunAtLoad); if it is already loaded
+        // but stopped, kickstart it.
+        if !loaded() {
+            return bootstrap();
+        }
+        run("launchctl", &["kickstart", "-k", &target()])
     }
     pub fn stop() -> Result<()> {
-        run(
-            "launchctl",
-            &["kill", "SIGTERM", &format!("system/{LABEL}")],
-        )
+        if !loaded() {
+            return Ok(());
+        }
+        run("launchctl", &["kill", "SIGTERM", &target()])
     }
     pub fn status() -> Result<()> {
         run("launchctl", &["print", &format!("system/{LABEL}")])
