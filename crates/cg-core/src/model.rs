@@ -582,11 +582,22 @@ pub struct RundownItem {
     /// Zone the item plays in ("" = the template's zone).
     #[serde(default)]
     pub zone: String,
+    /// Playlist (rundown section) the item belongs to.
+    #[serde(default)]
+    pub playlist: String,
     /// Playout layer of pre-zone projects; replaced by `zone` on load.
     #[serde(default)]
     pub layer: u32,
     #[serde(default)]
     pub data: BTreeMap<String, String>,
+}
+
+/// A named list of rundown items (show segment, sport block, breaking news…).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Playlist {
+    pub id: String,
+    pub name: String,
 }
 
 /// What happens when a graphic is taken in a zone that is already on air.
@@ -665,6 +676,9 @@ pub struct Project {
     /// Screen zones, one graphic on air at a time in each.
     #[serde(default)]
     pub zones: Vec<Zone>,
+    /// Sections of the rundown, in display order.
+    #[serde(default)]
+    pub playlists: Vec<Playlist>,
 }
 
 impl Project {
@@ -745,6 +759,26 @@ impl Project {
             }
         }
         self.zones.sort_by_key(|z| z.layer);
+        changed | self.ensure_playlists()
+    }
+
+    /// At least one playlist, and every rundown item in an existing one.
+    pub fn ensure_playlists(&mut self) -> bool {
+        let mut changed = false;
+        if self.playlists.is_empty() {
+            self.playlists.push(Playlist {
+                id: "main".into(),
+                name: "Main".into(),
+            });
+            changed = true;
+        }
+        let first = self.playlists[0].id.clone();
+        for r in &mut self.rundown {
+            if !self.playlists.iter().any(|p| p.id == r.playlist) {
+                r.playlist = first.clone();
+                changed = true;
+            }
+        }
         changed
     }
 

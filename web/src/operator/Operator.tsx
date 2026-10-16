@@ -2,9 +2,9 @@ import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, Monito
 import { useEffect, useMemo, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import type { Command, Field, PlayoutItem, Project, RundownItem, Zone } from '../engine/types';
+import type { Command, Field, PlayoutItem, Playlist, Project, RundownItem, Zone } from '../engine/types';
 import { LiveTime } from '../engine/LiveTime';
-import { can, uploadAsset, useApp } from '../store';
+import { api, can, uploadAsset, useApp } from '../store';
 import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
 import { navigate } from '../router';
@@ -54,6 +54,61 @@ function FieldInput({ field, value, onChange }: { field: Field; value: string; o
     default:
       return <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
   }
+}
+
+/** Rundown sections: tabs to switch, add, rename (double-click) and remove. */
+function PlaylistTabs({ project, active, onSelect, editable }: { project: Project; active: string; onSelect: (id: string) => void; editable: boolean }) {
+  const toast = useApp((s) => s.toast);
+  const save = (lists: Playlist[]) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
+  const count = (id: string) => project.rundown.filter((r) => r.playlist === id).length;
+  return (
+    <div className="playlist-tabs">
+      {project.playlists.map((p) => (
+        <button
+          key={p.id}
+          className={p.id === active ? 'on' : ''}
+          onClick={() => onSelect(p.id)}
+          onDoubleClick={() => {
+            if (!editable) return;
+            const name = prompt('Playlist name', p.name)?.trim();
+            if (name) save(project.playlists.map((x) => (x.id === p.id ? { ...x, name } : x)));
+          }}
+          title={editable ? 'Double-click to rename' : undefined}
+        >
+          {p.name} <span className="count">{count(p.id)}</span>
+          {editable && project.playlists.length > 1 && p.id === active && (
+            <span
+              className="tab-x"
+              title="Remove the playlist (its items move to the first one)"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm(`Remove the playlist “${p.name}”? Its ${count(p.id)} item(s) move to “${project.playlists.find((x) => x.id !== p.id)!.name}”.`)) {
+                  save(project.playlists.filter((x) => x.id !== p.id));
+                  onSelect(project.playlists.find((x) => x.id !== p.id)!.id);
+                }
+              }}
+            >
+              <X size={11} />
+            </span>
+          )}
+        </button>
+      ))}
+      {editable && (
+        <button
+          className="add"
+          title="New playlist"
+          onClick={() => {
+            const name = prompt('New playlist', `Playlist ${project.playlists.length + 1}`)?.trim();
+            if (!name) return;
+            const id = newId();
+            save([...project.playlists, { id, name }]).then(() => onSelect(id));
+          }}
+        >
+          <Plus size={13} />
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ZoneTag({ zone }: { zone?: Zone }) {
@@ -181,14 +236,19 @@ export function Operator({ channelId }: { channelId: string }) {
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
+  const [playlistId, setPlaylistId] = useState<string | null>(null);
 
   const rundown = project?.rundown ?? [];
+  const playlists = project?.playlists ?? [];
+  const activeList = playlists.find((p) => p.id === playlistId)?.id ?? playlists[0]?.id ?? '';
+  // The items of the playlist shown.
+  const items = rundown.filter((r) => r.playlist === activeList || !playlists.some((p) => p.id === r.playlist));
   const item = rundown.find((r) => r.id === cued) ?? null;
   const template = item && project?.templates.find((t) => t.id === item.templateId);
 
   useEffect(() => {
-    if (!cued && rundown.length) setCued(rundown[0].id);
-  }, [cued, rundown]);
+    if ((!cued || !items.some((r) => r.id === cued)) && items.length) setCued(items[0].id);
+  }, [cued, activeList, items.length]);
 
   // Draft data follows the cued item.
   useEffect(() => {
@@ -213,10 +273,17 @@ export function Operator({ channelId }: { channelId: string }) {
     if (!item) return;
     persistDraft();
     command({ action: 'take', zone: zoneOf(item)?.id, templateId: item.templateId, data: draft, rundownId: item.id });
-    // Cue the next item, like a playlist.
-    const idx = rundown.findIndex((r) => r.id === item.id);
-    if (idx >= 0 && idx < rundown.length - 1) setCued(rundown[idx + 1].id);
+    // Cue the next item of the playlist.
+    const idx = items.findIndex((r) => r.id === item.id);
+    if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
   };
+  /** Take / out straight from a rundown row. */
+  const takeItem = (r: RundownItem) => {
+    if (r.id === item?.id) return take();
+    const t = project?.templates.find((x) => x.id === r.templateId);
+    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: { ...(t ? defaultData(t) : {}), ...r.data }, rundownId: r.id });
+  };
+  const outItem = (r: RundownItem) => command({ action: 'takeOut', zone: zoneOf(r)?.id });
   const cont = () => item && command({ action: 'continue', zone: zoneOf(item)?.id });
   const out = () => item && command({ action: 'takeOut', zone: zoneOf(item)?.id });
   const updateLive = () => {
@@ -228,13 +295,13 @@ export function Operator({ channelId }: { channelId: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input, textarea, select')) return;
-      const idx = rundown.findIndex((r) => r.id === cued);
+      const idx = items.findIndex((r) => r.id === cued);
       if (e.key === 'F1' || e.key === 'Enter') (e.preventDefault(), take());
       else if (e.key === 'F2' || e.key === ' ') (e.preventDefault(), cont());
       else if (e.key === 'F3') (e.preventDefault(), out());
       else if (e.key === 'F12') (e.preventDefault(), command({ action: 'clear' }));
-      else if (e.key === 'ArrowDown' && idx < rundown.length - 1) setCued(rundown[idx + 1].id);
-      else if (e.key === 'ArrowUp' && idx > 0) setCued(rundown[idx - 1].id);
+      else if (e.key === 'ArrowDown' && idx < items.length - 1) setCued(items[idx + 1].id);
+      else if (e.key === 'ArrowUp' && idx > 0) setCued(items[idx - 1].id);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -252,15 +319,18 @@ export function Operator({ channelId }: { channelId: string }) {
   const addItem = (templateId: string) => {
     const t = project.templates.find((x) => x.id === templateId)!;
     const z = project.zones.find((x) => x.id === t.zone);
-    const it: RundownItem = { id: newId(), name: t.name, templateId, zone: t.zone, layer: z?.layer ?? 0, data: defaultData(t) };
+    const it: RundownItem = { id: newId(), name: t.name, templateId, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t) };
     saveRundown([...rundown, it]);
     setCued(it.id);
     setAdding(false);
   };
+  /** Moves an item up / down within its playlist. */
   const move = (id: string, d: -1 | 1) => {
+    const k = items.findIndex((r) => r.id === id);
+    const other = items[k + d];
+    if (k < 0 || !other) return;
     const i = rundown.findIndex((r) => r.id === id);
-    const j = i + d;
-    if (j < 0 || j >= rundown.length) return;
+    const j = rundown.findIndex((r) => r.id === other.id);
     const next = [...rundown];
     [next[i], next[j]] = [next[j], next[i]];
     saveRundown(next);
@@ -289,8 +359,9 @@ export function Operator({ channelId }: { channelId: string }) {
             ))}
           </div>
         )}
+        <PlaylistTabs project={project} active={activeList} onSelect={setPlaylistId} editable={operate} />
         <div className="rundown-list">
-          {rundown.map((r, i) => {
+          {items.map((r, i) => {
             const t = project.templates.find((x) => x.id === r.templateId);
             const air = onAirByItem.get(r.id);
             return (
@@ -304,6 +375,16 @@ export function Operator({ channelId }: { channelId: string }) {
                 </div>
                 {air && <span className="tally">{phaseLabel(air)}</span>}
                 {!air && queued.has(r.id) && <span className="tally next">NEXT</span>}
+                {operate && (
+                  <div className="ri-play" onClick={(e) => e.stopPropagation()}>
+                    <button className="ri-take" title="Take" onClick={() => takeItem(r)}>
+                      <Play size={13} />
+                    </button>
+                    <button className="ri-out" title="Out" disabled={!air} onClick={() => outItem(r)}>
+                      <CircleStop size={13} />
+                    </button>
+                  </div>
+                )}
                 <div className="item-actions">
                   <button className="icon-btn ghost" onClick={(e) => (e.stopPropagation(), move(r.id, -1))}>
                     <ArrowUp size={12} />
@@ -318,7 +399,7 @@ export function Operator({ channelId }: { channelId: string }) {
                       e.stopPropagation();
                       const copy = { ...structuredClone(r), id: newId(), name: `${r.name} copy` };
                       const next = [...rundown];
-                      next.splice(i + 1, 0, copy);
+                      next.splice(rundown.indexOf(r) + 1, 0, copy);
                       saveRundown(next);
                     }}
                   >
@@ -339,7 +420,7 @@ export function Operator({ channelId }: { channelId: string }) {
               </div>
             );
           })}
-          {rundown.length === 0 && <div className="empty">Empty rundown. Add items from your templates.</div>}
+          {items.length === 0 && <div className="empty">Empty playlist. Add items from your templates with +.</div>}
         </div>
       </aside>
 
@@ -407,6 +488,18 @@ export function Operator({ channelId }: { channelId: string }) {
                 ))}
               </select>
             </label>
+            {playlists.length > 1 && (
+              <label className="form-row">
+                <span>Playlist</span>
+                <select value={item.playlist} onChange={(e) => saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, playlist: e.target.value } : r)))}>
+                  {playlists.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <hr />
             {template.fields.length === 0 && <p className="hint">This template has no data fields.</p>}
             {template.fields.map((f) => (

@@ -138,6 +138,8 @@ export interface RundownItem {
   templateId: string;
   /** Zone id ("" = the template's zone). */
   zone: string;
+  /** Playlist (rundown section) id. */
+  playlist: string;
   /** Legacy playout layer, kept in step with the zone by the server. */
   layer: number;
   data: Record<string, string>;
@@ -158,6 +160,12 @@ export interface Project {
   templates: Template[];
   rundown: RundownItem[];
   zones: Zone[];
+  playlists: Playlist[];
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
 }
 
 export type Phase = 'playing' | 'holding' | 'out';

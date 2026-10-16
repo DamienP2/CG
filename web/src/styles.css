@@ -2483,3 +2483,80 @@ select.small {
 .layer-row.selected .del {
   opacity: 1;
 }
+
+/* ---------- playlists & row take / out ---------- */
+.playlist-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+.playlist-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  border-radius: 7px 7px 0 0;
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.playlist-tabs button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.playlist-tabs button.add {
+  border-style: dashed;
+  background: none;
+}
+.playlist-tabs .count {
+  font-size: 10px;
+  color: var(--text-3);
+}
+.playlist-tabs .tab-x {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--text-3);
+}
+.playlist-tabs .tab-x:hover {
+  color: var(--live);
+}
+.ri-play {
+  display: flex;
+  gap: 3px;
+}
+.ri-play button {
+  width: 26px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-3);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.ri-play .ri-take:hover {
+  background: var(--live);
+  border-color: var(--live);
+  color: white;
+}
+.ri-play .ri-out:hover:not(:disabled) {
+  background: var(--panel);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.ri-play button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Row tools sit above take / out on hover. */
+.rundown-item .item-actions {
+  right: 70px;
+}

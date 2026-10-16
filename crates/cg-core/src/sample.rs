@@ -909,8 +909,23 @@ pub fn demo_project() -> Project {
     for t in &mut p.templates {
         t.zone = zone_of(&t.id).into();
     }
+    p.playlists = vec![
+        Playlist {
+            id: "show".into(),
+            name: "Show".into(),
+        },
+        Playlist {
+            id: "widgets".into(),
+            name: "Widgets".into(),
+        },
+    ];
     for r in &mut p.rundown {
         r.zone = zone_of(&r.template_id).into();
+        r.playlist = match r.template_id.as_str() {
+            "lower-third" | "score-bug" | "ticker" | "credits" => "show",
+            _ => "widgets",
+        }
+        .into();
     }
     p.ensure_zones();
     p
@@ -928,6 +943,7 @@ fn demo_project_layers() -> Project {
         height: 1080,
         frame_rate: FrameRate::new(50, 1),
         zones: Vec::new(),
+        playlists: Vec::new(),
         templates: vec![
             lower_third(),
             score_bug(),
@@ -941,6 +957,7 @@ fn demo_project_layers() -> Project {
         ],
         rundown: vec![
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "LT – Marie Curie".into(),
@@ -949,6 +966,7 @@ fn demo_project_layers() -> Project {
                 data,
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Score PSG – OM".into(),
@@ -960,6 +978,7 @@ fn demo_project_layers() -> Project {
                     .collect(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Clock".into(),
@@ -968,6 +987,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Ticker – headlines".into(),
@@ -976,6 +996,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Credits".into(),
@@ -984,6 +1005,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Analog clock".into(),
@@ -992,6 +1014,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Poll".into(),
@@ -1000,6 +1023,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "QR code".into(),
@@ -1008,6 +1032,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
                 name: "Countdown".into(),

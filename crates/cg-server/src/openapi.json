@@ -1464,6 +1464,43 @@
      }
     }
    }
+  },
+  "/api/projects/{id}/playlists": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Replace the playlists (rundown sections)",
+    "description": "Items of a removed playlist move to the first one.\n\n**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "array",
+        "items": {
+         "$ref": "#/components/schemas/Playlist"
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1815,6 +1852,12 @@
       "items": {
        "$ref": "#/components/schemas/Zone"
       }
+     },
+     "playlists": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Playlist"
+      }
      }
     }
    },
@@ -2080,6 +2123,21 @@
     "type": "object",
     "description": "config.json: name, bind, publicOutputs, timezone and channels (format, outputs, loaded project).",
     "additionalProperties": true
+   },
+   "Playlist": {
+    "type": "object",
+    "required": [
+     "id",
+     "name"
+    ],
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     }
+    }
    }
   }
  }

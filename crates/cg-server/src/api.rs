@@ -43,6 +43,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/export", get(export_project))
         .route("/api/projects/{id}/rundown", put(put_rundown))
         .route("/api/projects/{id}/zones", put(put_zones))
+        .route("/api/projects/{id}/playlists", put(put_playlists))
         .route(
             "/api/projects/{id}/templates/{tid}",
             put(put_template).delete(delete_template),
@@ -429,6 +430,7 @@ async fn create_project(
             templates: Vec::new(),
             rundown: Vec::new(),
             zones: cg_core::Zone::defaults(),
+            playlists: Vec::new(),
         },
     };
     p.id = cg_core::new_id();
@@ -618,6 +620,29 @@ async fn put_zones(
     if !moves.is_empty() {
         s.move_layers(&id, &moves).await;
     }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Replaces the playlists (rundown sections). Items of a removed playlist
+/// move to the first one.
+async fn put_playlists(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(lists): Json<Vec<cg_core::Playlist>>,
+) -> ApiResult<StatusCode> {
+    require(me.can_edit_rundown(&id))?;
+    let mut ids = std::collections::HashSet::new();
+    if lists.is_empty()
+        || lists
+            .iter()
+            .any(|l| l.name.trim().is_empty() || !valid_id(&l.id) || !ids.insert(l.id.clone()))
+    {
+        return Err(bad("playlists need a unique id and a name"));
+    }
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    p.playlists = lists;
+    s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
