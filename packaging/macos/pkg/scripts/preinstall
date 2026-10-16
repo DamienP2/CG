@@ -5,4 +5,7 @@ USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
 if [ "$USER_ID" != "0" ]; then
   launchctl bootout "gui/$USER_ID/com.pulsecg.tray" 2>/dev/null || true
 fi
+pkill -x pulse-cg-tray 2>/dev/null || true
+# Versions up to 0.1.2 installed the app directly in /Applications.
+rm -rf "/Applications/Pulse CG.app"
 exit 0

@@ -149,6 +149,22 @@ fn service(action: &'static str) {
     });
 }
 
+/// Opens the platform uninstaller: our uninstaller app on macOS, the
+/// "Installed apps" settings page on Windows (the MSI owns uninstall there).
+fn uninstall() {
+    #[cfg(target_os = "macos")]
+    let r = Command::new("open")
+        .arg("/Applications/Pulse CG/Uninstall Pulse CG.app")
+        .spawn();
+    #[cfg(windows)]
+    let r = Command::new("explorer.exe")
+        .arg("ms-settings:appsfeatures")
+        .spawn();
+    if let Err(e) = r {
+        alert(&format!("Cannot open the uninstaller: {e}"));
+    }
+}
+
 fn restart_engine(port: u16) {
     std::thread::spawn(move || {
         let _ = agent()
@@ -223,6 +239,7 @@ struct Items {
     output: MenuItem,
     restart: MenuItem,
     start_stop: MenuItem,
+    uninstall: MenuItem,
     quit: MenuItem,
 }
 
@@ -236,6 +253,7 @@ impl Items {
             output: MenuItem::new("Open HTML5 Output", false, None),
             restart: MenuItem::new("Restart Engine", false, None),
             start_stop: MenuItem::new("Start Server", true, None),
+            uninstall: MenuItem::new("Uninstall Pulse CG…", true, None),
             quit: MenuItem::new("Quit Pulse CG", true, None),
         };
         let menu = Menu::new();
@@ -251,6 +269,7 @@ impl Items {
             &items.start_stop,
             &PredefinedMenuItem::separator(),
             &MenuItem::new(format!("Version {VERSION}"), false, None),
+            &items.uninstall,
             &items.quit,
         ]);
         (menu, items)
@@ -369,6 +388,8 @@ pub fn run() {
                     restart_engine(status.port);
                 } else if id == items.start_stop.id() {
                     service(if status.running { "stop" } else { "start" });
+                } else if id == items.uninstall.id() {
+                    uninstall();
                 } else if id == items.quit.id() {
                     tray.take();
                     *control_flow = ControlFlow::Exit;

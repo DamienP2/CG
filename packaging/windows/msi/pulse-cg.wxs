@@ -14,6 +14,7 @@
            Version="$(var.Version)"
            UpgradeCode="c38ad561-9f05-45ea-ab99-17ee287adb85"
            Scope="perMachine"
+           Codepage="1252"
            Compressed="yes">
     <SummaryInformation Description="Pulse CG broadcast graphics server" />
     <MajorUpgrade DowngradeErrorMessage="Une version plus récente de [ProductName] est déjà installée." />
@@ -23,6 +24,9 @@
     <Property Id="LISTEN_ADDR" Value="0.0.0.0" Secure="yes" />
     <Property Id="PORT" Value="8080" Secure="yes" />
     <Property Id="ARPNOMODIFY" Value="1" />
+    <!-- Icon in "Installed apps" / Add-Remove Programs. -->
+    <Icon Id="PulseCG.ico" SourceFile="$(var.DocsDir)\assets\icons\pulse-cg.ico" />
+    <Property Id="ARPPRODUCTICON" Value="PulseCG.ico" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="PulseCG" />
@@ -71,6 +75,7 @@
       </Component>
       <Component Id="StartMenu" Directory="MenuFolder">
         <Shortcut Id="TrayShortcut" Name="Pulse CG" Description="Pulse CG server status, settings and shortcuts" Target="[#TrayExe]" WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="UninstallShortcut" Name="Uninstall Pulse CG" Description="Remove Pulse CG (your data is kept)" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]" Icon="PulseCG.ico" />
         <util:InternetShortcut Id="DesignerShortcut" Name="Pulse CG Designer" Target="http://localhost:[PORT]/designer" Type="url" />
         <util:InternetShortcut Id="OperatorShortcut" Name="Pulse CG Operator" Target="http://localhost:[PORT]/operator" Type="url" />
         <RemoveFolder Id="RemoveMenuFolder" On="uninstall" />

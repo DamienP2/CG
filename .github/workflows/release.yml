@@ -146,7 +146,9 @@ jobs:
           [ "$GITHUB_REF_TYPE" = tag ] && VERSION=${GITHUB_REF_NAME#v}
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
           packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/PulseCG-$SUFFIX-macos-universal.pkg"
-          pkgutil --payload-files dist/*.pkg | head -20
+          pkgutil --payload-files dist/*.pkg | grep -E "Applications|cg-server$"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
       - name: Notarize
         if: env.HAS_NOTARY == 'true'
         env:
@@ -156,10 +158,15 @@ jobs:
         run: |
           xcrun notarytool submit dist/*.pkg --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple dist/*.pkg
+      # Disk image: keeps the custom icons on the download (after notarization).
+      - name: Disk image
+        run: packaging/macos/pkg/make-dmg.sh dist/PulseCG-$SUFFIX-macos-universal.pkg "$VERSION" "dist/PulseCG-$SUFFIX-macos-universal.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: pulse-cg-macos-installer
-          path: dist/*.pkg
+          path: |
+            dist/*.dmg
+            dist/*.pkg
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')

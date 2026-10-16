@@ -1,16 +1,26 @@
 #!/bin/sh
-# Removes the service and binaries. Data in /Library/Application Support/PulseCG is kept unless --purge.
-set -eu
+# Removes Pulse CG (service, menu bar app, uninstaller, command line tool).
+# Data in /Library/Application Support/PulseCG is kept unless --purge.
+set -u
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root: sudo $0 $*" >&2; exit 1; }
-/usr/local/pulse-cg/cg-server service uninstall || true
+
+/usr/local/pulse-cg/cg-server service uninstall 2>/dev/null || launchctl bootout system/com.pulsecg.server 2>/dev/null || true
+rm -f /Library/LaunchDaemons/com.pulsecg.server.plist
+
 USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
-[ "$USER_ID" != "0" ] && launchctl bootout "gui/$USER_ID/com.pulsecg.tray" 2>/dev/null || true
+[ "$USER_ID" != "0" ] && launchctl bootout "gui/$USER_ID/com.pulsecg.tray" 2>/dev/null
+pkill -x pulse-cg-tray 2>/dev/null
 rm -f /Library/LaunchAgents/com.pulsecg.tray.plist
-rm -rf "/Applications/Pulse CG.app"
+
+rm -rf "/Applications/Pulse CG" "/Applications/Pulse CG.app"
 rm -f /usr/local/bin/cg-server
 rm -rf /usr/local/pulse-cg
-pkgutil --forget com.pulsecg.server >/dev/null 2>&1 || true
+pkgutil --forget com.pulsecg.server >/dev/null 2>&1
+
 if [ "${1:-}" = "--purge" ]; then
   rm -rf "/Library/Application Support/PulseCG" /Library/Logs/PulseCG
+  echo "Pulse CG and its data have been removed."
+else
+  echo "Pulse CG removed. Data kept in /Library/Application Support/PulseCG."
 fi
-echo "Pulse CG removed."
+exit 0

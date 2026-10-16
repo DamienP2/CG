@@ -5,7 +5,7 @@ Le serveur tient dans **un seul exécutable**, `cg-server`. Il contient le moteu
 | OS | Paquet | Service | Données | Journaux |
 | --- | --- | --- | --- | --- |
 | Linux x86_64 / arm64 (toutes distributions, binaire statique) | `pulse-cg-<version>-linux-*.tar.gz` | systemd `pulse-cg` (compte système dédié) | `/var/lib/pulse-cg` | `journalctl -u pulse-cg -f` |
-| macOS 11 ou plus récent (Apple Silicon / Intel) | **`PulseCG-<version>-macos-universal.pkg`** ou `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
+| macOS 11 ou plus récent (Apple Silicon / Intel) | **`PulseCG-<version>-macos-universal.dmg`** ou `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
 | Windows Server 2016 ou plus récent / Windows 10+ x64 | **`PulseCG-<version>-windows-x64.msi`** ou `pulse-cg-<version>-windows-x86_64.zip` | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
 
 Les paquets sont produits par la CI (`.github/workflows/release.yml`) à chaque tag `v*`.
@@ -16,7 +16,7 @@ Double-cliquez sur **`PulseCG-<version>-windows-x64.msi`**. Le MSI :
 - copie le binaire dans `C:\Program Files\PulseCG` et l'ajoute au `PATH` ;
 - crée le service `pulse-cg` (démarrage automatique, redémarrage en cas d'échec) et le démarre ;
 - ajoute la règle de pare-feu et les raccourcis *Pulse CG Designer* / *Operator* dans le menu Démarrer ;
-- se met à jour en installant simplement une version plus récente (données conservées) ; se désinstalle depuis *Paramètres → Applications*.
+- se met à jour en installant simplement une version plus récente (données conservées) ; se désinstalle depuis *Paramètres → Applications*, le raccourci *Uninstall Pulse CG* du menu Démarrer ou le menu de l'icône Pulse CG.
 
 Déploiement silencieux (GPO, Intune, SCCM) :
 ```powershell
@@ -24,13 +24,20 @@ msiexec /i PulseCG-0.1.0-windows-x64.msi /qn PORT=8080 LISTEN_ADDR=0.0.0.0
 ```
 Lors d'une mise à jour silencieuse, repassez `PORT` si vous l'aviez changé.
 
-## macOS : installateur .pkg (recommandé)
+## macOS : image disque .dmg (recommandé)
 
-Double-cliquez sur **`PulseCG-<version>-macos-universal.pkg`** (Apple Silicon et Intel) et suivez l'assistant. Le binaire va dans `/usr/local/pulse-cg` ; le service launchd est enregistré et démarré à la fin. Une mise à jour conserve les données.
+1. Ouvrez **`PulseCG-<version>-macos-universal.dmg`** (Apple Silicon et Intel).
+2. Double-cliquez sur **Install Pulse CG <version>.pkg** et suivez l'assistant (en français ou en anglais selon la langue du Mac).
 
-> Tant que le paquet n'est pas signé avec un certificat Apple *Developer ID* et notarisé, macOS affiche « développeur non identifié » : faites **clic droit → Ouvrir**, ou *Réglages Système → Confidentialité et sécurité → Ouvrir quand même*. La CI signe et notarise automatiquement dès que les secrets `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD`, `MACOS_APP_IDENTITY`, `MACOS_INSTALLER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` sont configurés dans le dépôt.
+L'installateur range tout dans **Applications ▸ Pulse CG** :
+- **Pulse CG** : l'application de la barre des menus (état du serveur, Designer, Opérateur, Réglages) ;
+- **Désinstaller Pulse CG** : supprime Pulse CG en proposant de garder ou d'effacer les données.
 
-Désinstallation : `sudo /usr/local/pulse-cg/uninstall.sh` (`--purge` pour supprimer aussi les données).
+Le serveur tourne comme service système (launchd) et démarre avec le Mac ; l'application de la barre des menus démarre à l'ouverture de session. Une mise à jour s'installe par-dessus et conserve les données.
+
+> Tant que le paquet n'est pas signé avec un certificat Apple *Developer ID* et notarisé, macOS affiche « développeur non identifié » : ouvrez *Réglages Système → Confidentialité et sécurité* et cliquez sur **Ouvrir quand même**, ou installez en ligne de commande : `sudo installer -pkg "/Volumes/Pulse CG <version>/Install Pulse CG <version>.pkg" -target /`. La CI signe et notarise automatiquement dès que les secrets `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD`, `MACOS_APP_IDENTITY`, `MACOS_INSTALLER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` sont configurés dans le dépôt.
+
+Désinstallation : **Applications ▸ Pulse CG ▸ Désinstaller Pulse CG**, le menu *Uninstall Pulse CG…* de l'icône, ou en ligne de commande `sudo /usr/local/pulse-cg/uninstall.sh` (`--purge` pour effacer aussi les données).
 
 ## Linux
 
