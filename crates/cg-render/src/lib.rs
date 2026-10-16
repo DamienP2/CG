@@ -78,6 +78,23 @@ struct Ctx<'a> {
     time: TimeCtx<'a>,
     /// Values of the layers changed by the template's logic graph.
     logic: HashMap<String, std::collections::BTreeMap<Prop, Value>>,
+    /// The graphic on air (widget clocks the operator controls), and the
+    /// project frame rate its ages are counted in.
+    item: Option<&'a cg_core::PlayoutItem>,
+    fps: f64,
+}
+
+impl Ctx<'_> {
+    /// Time inputs of one layer: its own clock when the operator controls it.
+    fn time_for(&self, layer: &cg_core::Layer) -> TimeCtx<'_> {
+        match self.item {
+            Some(item) => TimeCtx {
+                age_secs: item.layer_age(layer) / self.fps,
+                ..self.time
+            },
+            None => self.time,
+        }
+    }
 }
 
 /// Output raster of a channel. Projects designed for another size are
@@ -240,6 +257,8 @@ impl Renderer {
                     data: &item.data,
                     time,
                     logic,
+                    item: Some(item),
+                    fps,
                 };
                 self.draw_children(&mut pm, &ctx, None, root, 1.0, None);
             }
@@ -283,6 +302,8 @@ impl Renderer {
             data,
             time,
             logic,
+            item: None,
+            fps: project.frame_rate.as_f64().max(1.0),
         };
         self.draw_children(&mut pm, &ctx, None, Transform::identity(), 1.0, None);
         Frame {
@@ -358,6 +379,7 @@ impl Renderer {
         mask: Option<&Mask>,
     ) {
         let (w, h) = (r.num(Prop::Width) as f32, r.num(Prop::Height) as f32);
+        let time = ctx.time_for(r.layer);
         let fill = paint_for(r.color(Prop::Fill), opacity);
         let stroke_w = r.num(Prop::StrokeWidth) as f32;
         let stroke = paint_for(r.color(Prop::Stroke), opacity);
@@ -452,7 +474,7 @@ impl Renderer {
                 target,
                 font,
             } => {
-                let text = clock_text(*mode, format, timezone, target, ctx.data, &ctx.time);
+                let text = clock_text(*mode, format, timezone, target, ctx.data, &time);
                 let text = if font.uppercase {
                     text.to_uppercase()
                 } else {
@@ -500,7 +522,7 @@ impl Renderer {
                 else {
                     return;
                 };
-                for x in scroll_positions(w as f64, cycle as f64, speed * ctx.time.age_secs, true) {
+                for x in scroll_positions(w as f64, cycle as f64, speed * time.age_secs, true) {
                     let place = (TextAlign::Left, font.vertical_align);
                     self.draw_text(
                         pm,
@@ -534,9 +556,7 @@ impl Renderer {
                 else {
                     return;
                 };
-                for y in
-                    scroll_positions(h as f64, cycle as f64, speed * ctx.time.age_secs, *looping)
-                {
+                for y in scroll_positions(h as f64, cycle as f64, speed * time.age_secs, *looping) {
                     let place = (font.align, VerticalAlign::Top);
                     self.draw_text(
                         pm,
@@ -561,7 +581,7 @@ impl Renderer {
                 seconds,
                 accent,
             } => {
-                let (ha, ma, sa) = widgets::clock_hands(timezone, &ctx.time);
+                let (ha, ma, sa) = widgets::clock_hands(timezone, &time);
                 let d = w.min(h);
                 let (cx, cy, rad) = (w / 2.0, h / 2.0, d / 2.0);
                 if let Some(face) = PathBuilder::from_circle(cx, cy, rad) {
@@ -634,7 +654,7 @@ impl Renderer {
                     suffix,
                     *grouping,
                     ctx.data,
-                    ctx.time.age_secs,
+                    time.age_secs,
                 );
                 self.draw_text(
                     pm,
@@ -655,8 +675,7 @@ impl Renderer {
                 track,
             } => {
                 let ratio =
-                    widgets::progress_ratio(value, max, *duration, ctx.data, ctx.time.age_secs)
-                        as f32;
+                    widgets::progress_ratio(value, max, *duration, ctx.data, time.age_secs) as f32;
                 let radius = r.num(Prop::CornerRadius) as f32;
                 let track_paint = paint_for(
                     Color::from_hex(track).unwrap_or(Color::TRANSPARENT),
@@ -680,7 +699,7 @@ impl Renderer {
                     return;
                 }
                 let (idx, alpha) =
-                    widgets::rotator_state(items.len(), *interval, *fade, ctx.time.age_secs);
+                    widgets::rotator_state(items.len(), *interval, *fade, time.age_secs);
                 let item = if font.uppercase {
                     items[idx].to_uppercase()
                 } else {
@@ -705,7 +724,7 @@ impl Renderer {
                 font,
             } => {
                 let shown =
-                    widgets::typewriter_text(text, *speed, *cursor, ctx.data, ctx.time.age_secs);
+                    widgets::typewriter_text(text, *speed, *cursor, ctx.data, time.age_secs);
                 let shown = if font.uppercase {
                     shown.to_uppercase()
                 } else {
@@ -734,7 +753,7 @@ impl Renderer {
                     return;
                 }
                 let (cur, next, mix) =
-                    widgets::slideshow_state(list.len(), *interval, *fade, ctx.time.age_secs);
+                    widgets::slideshow_state(list.len(), *interval, *fade, time.age_secs);
                 self.draw_image(
                     pm,
                     &list[cur],
@@ -790,7 +809,7 @@ impl Renderer {
                 }
                 let total: f64 = rows.iter().map(|(_, v)| v.max(0.0)).sum();
                 let max = rows.iter().map(|(_, v)| *v).fold(0.0_f64, f64::max);
-                let grow = widgets::grow(*duration, ctx.time.age_secs) as f32;
+                let grow = widgets::grow(*duration, time.age_secs) as f32;
                 let row_h = h / rows.len() as f32;
                 let (label_w, value_w) = (w * 0.28, w * 0.16);
                 let bar_x = label_w + w * 0.02;

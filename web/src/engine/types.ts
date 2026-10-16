@@ -87,6 +87,8 @@ export type Layer = LayerKind & {
   parent?: string | null;
   visible: boolean;
   locked: boolean;
+  /** Timed widgets wait for the operator to start them. */
+  manualStart?: boolean;
   props: Partial<Record<Prop, Value>>;
   tracks: Partial<Record<Prop, Keyframe[]>>;
   bindings: Partial<Record<Prop, string>>;
@@ -242,7 +244,17 @@ export interface PlayoutItem {
   age?: number;
   /** Waiting for this graphic to finish going out (sequential zones). */
   next?: { templateId: string; data: Record<string, string>; rundownId?: string | null; target: number } | null;
+  /** Widgets started, paused or reset by the operator, by layer id. */
+  clocks?: Record<string, LayerClock>;
 }
+
+/** Own time of a widget layer, in frames on air. */
+export interface LayerClock {
+  offset: number;
+  pausedAt?: number | null;
+}
+
+export type WidgetControl = 'start' | 'pause' | 'toggle' | 'reset' | 'restart';
 
 export interface ChannelState {
   layers: Record<string, PlayoutItem>;
@@ -256,6 +268,7 @@ export type Command =
   | ({ action: 'continue' } & Target)
   | ({ action: 'takeOut' } & Target)
   | ({ action: 'update'; data: Record<string, string> } & Target)
+  | ({ action: 'widget'; target: string; control: WidgetControl } & Target)
   | ({ action: 'clear' } & Target);
 
 export type Data = Record<string, string>;

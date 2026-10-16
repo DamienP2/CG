@@ -3287,3 +3287,33 @@ body.resizing-y * {
   font-size: 11px;
   color: var(--text-3);
 }
+.widget-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px 2px 10px;
+  border-top: 1px solid var(--line);
+}
+.wc-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.wc-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.wc-row.running .wc-name::before {
+  content: '● ';
+  color: var(--pvw);
+}
+.wc-row.paused .wc-name::before {
+  content: '❚❚ ';
+  color: #ff8a1f;
+  font-size: 9px;
+}

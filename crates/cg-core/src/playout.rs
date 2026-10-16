@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
-use crate::model::{Project, Template, ZoneTransition};
+use crate::model::{Layer, LayerKind, Project, Template, ZoneTransition};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +53,57 @@ pub struct PlayoutItem {
     /// Comes in once this graphic has finished going out (sequential zones).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<QueuedTake>,
+    /// Widgets started, paused or reset by the operator, by layer id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub clocks: BTreeMap<String, LayerClock>,
+}
+
+/// Own time of a widget layer (timer, ticker, roll…), in frames on air.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayerClock {
+    /// Subtracted from the item's age.
+    #[serde(default)]
+    pub offset: f64,
+    /// Age at which the widget was paused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paused_at: Option<f64>,
+}
+
+/// What the operator does to a widget's internal animation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WidgetControl {
+    /// Runs (resumes where it was paused).
+    Start,
+    Pause,
+    /// Start when paused, pause when running.
+    Toggle,
+    /// Back to zero, keeping it running or paused.
+    Reset,
+    /// Back to zero and running.
+    Restart,
+}
+
+/// Widgets whose animation follows the time on air.
+pub fn is_timed(kind: &LayerKind) -> bool {
+    match kind {
+        LayerKind::Clock { mode, .. } => {
+            matches!(
+                mode,
+                crate::model::ClockMode::Elapsed | crate::model::ClockMode::Timer
+            )
+        }
+        LayerKind::Ticker { .. }
+        | LayerKind::Roll { .. }
+        | LayerKind::Counter { .. }
+        | LayerKind::Progress { .. }
+        | LayerKind::Rotator { .. }
+        | LayerKind::Typewriter { .. }
+        | LayerKind::Slideshow { .. }
+        | LayerKind::BarChart { .. } => true,
+        _ => false,
+    }
 }
 
 impl PlayoutItem {
@@ -66,6 +117,60 @@ impl PlayoutItem {
             rundown_id: q.rundown_id,
             age: 0.0,
             next: None,
+            clocks: BTreeMap::new(),
+        }
+    }
+
+    /// Time on air of one layer, in frames: the item's age, unless the
+    /// operator paused, reset or has yet to start (manual start) the widget.
+    pub fn layer_age(&self, layer: &Layer) -> f64 {
+        match self.clocks.get(&layer.id) {
+            Some(c) => (c.paused_at.unwrap_or(self.age) - c.offset).max(0.0),
+            None if layer.manual_start => 0.0,
+            None => self.age,
+        }
+    }
+
+    fn control(&mut self, layer: &Layer, control: WidgetControl) {
+        let age = self.age;
+        let c = self
+            .clocks
+            .entry(layer.id.clone())
+            .or_insert(if layer.manual_start {
+                LayerClock {
+                    offset: age,
+                    paused_at: Some(age),
+                }
+            } else {
+                LayerClock::default()
+            });
+        let running = c.paused_at.is_none();
+        match control {
+            WidgetControl::Start => {
+                if let Some(p) = c.paused_at.take() {
+                    c.offset += age - p;
+                }
+            }
+            WidgetControl::Pause => {
+                c.paused_at.get_or_insert(age);
+            }
+            WidgetControl::Toggle => {
+                if running {
+                    c.paused_at = Some(age);
+                } else if let Some(p) = c.paused_at.take() {
+                    c.offset += age - p;
+                }
+            }
+            WidgetControl::Reset => {
+                c.offset = age;
+                if !running {
+                    c.paused_at = Some(age);
+                }
+            }
+            WidgetControl::Restart => {
+                c.offset = age;
+                c.paused_at = None;
+            }
         }
     }
 }
@@ -106,6 +211,18 @@ pub enum Command {
         layer: Option<u32>,
         data: Data,
     },
+    /// Starts, pauses or resets the internal animation of widgets (timer,
+    /// stopwatch, ticker, roll, counter…) of the graphic on air. `target` is
+    /// a layer id or name; `*` means every timed widget of the graphic.
+    #[serde(rename_all = "camelCase")]
+    Widget {
+        #[serde(default)]
+        zone: Option<String>,
+        #[serde(default)]
+        layer: Option<u32>,
+        target: String,
+        control: WidgetControl,
+    },
     /// Removes the graphic(s) at once; without zone or layer, everything.
     Clear {
         #[serde(default)]
@@ -135,6 +252,8 @@ pub enum PlayoutError {
     UnknownZone(String),
     #[error("say which zone (or layer) to play in")]
     NoZone,
+    #[error("no timed widget `{0}` in the graphic on air")]
+    UnknownWidget(String),
     #[error("nothing on air on layer {0}")]
     EmptyLayer(u32),
 }
@@ -274,6 +393,36 @@ impl ChannelState {
                 match &mut item.next {
                     Some(q) => q.data.extend(data),
                     None => item.data.extend(data),
+                }
+            }
+            Command::Widget {
+                zone,
+                layer,
+                target,
+                control,
+            } => {
+                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let item = self
+                    .layers
+                    .get_mut(&layer)
+                    .ok_or(PlayoutError::EmptyLayer(layer))?;
+                let t = project
+                    .template(&item.template_id)
+                    .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
+                let all = target == "*";
+                let targets: Vec<&Layer> = t
+                    .layers
+                    .iter()
+                    .filter(|l| {
+                        is_timed(&l.kind)
+                            && (all || l.id == target || l.name.eq_ignore_ascii_case(target.trim()))
+                    })
+                    .collect();
+                if targets.is_empty() {
+                    return Err(PlayoutError::UnknownWidget(target));
+                }
+                for l in targets {
+                    item.control(l, control);
                 }
             }
             Command::Clear { zone, layer } => match resolve(project, &zone, layer)? {
@@ -508,5 +657,84 @@ mod tests {
             .all(|r| p.zone(&r.zone).map(|z| z.layer) == Some(r.layer)));
         assert!(p.templates.iter().all(|t| p.zone(&t.zone).is_some()));
         assert!(!p.ensure_zones());
+    }
+
+    #[test]
+    fn widget_clocks() {
+        let mut p = crate::sample::demo_project();
+        let ticker = p.template("ticker").unwrap().clone();
+        let crawl = ticker
+            .layers
+            .iter()
+            .find(|l| is_timed(&l.kind))
+            .unwrap()
+            .clone();
+        let mut ch = ChannelState::default();
+        ch.apply(&p, Command::take("ticker", "ticker")).unwrap();
+        let key = ch.layers.keys().next().copied().unwrap();
+        let zone = Some(key);
+        let ctl = |c| Command::Widget {
+            zone: None,
+            layer: zone,
+            target: crawl.name.clone(),
+            control: c,
+        };
+        let age = |ch: &ChannelState| ch.layers[&key].layer_age(&crawl);
+        ch.tick(10.0);
+        assert_eq!(age(&ch), 10.0);
+        ch.apply(&p, ctl(WidgetControl::Pause)).unwrap();
+        ch.tick(5.0);
+        assert_eq!(age(&ch), 10.0);
+        ch.apply(&p, ctl(WidgetControl::Toggle)).unwrap();
+        ch.tick(5.0);
+        assert_eq!(age(&ch), 15.0);
+        ch.apply(&p, ctl(WidgetControl::Reset)).unwrap();
+        ch.tick(3.0);
+        assert_eq!(age(&ch), 3.0);
+        assert!(matches!(
+            ch.apply(
+                &p,
+                Command::Widget {
+                    zone: None,
+                    layer: zone,
+                    target: "nope".into(),
+                    control: WidgetControl::Start
+                }
+            ),
+            Err(PlayoutError::UnknownWidget(_))
+        ));
+
+        // Manual start: waits at zero until started.
+        let t = p.templates.iter_mut().find(|t| t.id == "ticker").unwrap();
+        t.layers
+            .iter_mut()
+            .find(|l| l.id == crawl.id)
+            .unwrap()
+            .manual_start = true;
+        let crawl = p
+            .template("ticker")
+            .unwrap()
+            .layers
+            .iter()
+            .find(|l| l.id == crawl.id)
+            .unwrap()
+            .clone();
+        let mut ch = ChannelState::default();
+        ch.apply(&p, Command::take("ticker", "ticker")).unwrap();
+        ch.tick(20.0);
+        let item = |ch: &ChannelState| ch.layers.values().next().unwrap().layer_age(&crawl);
+        assert_eq!(item(&ch), 0.0);
+        ch.apply(
+            &p,
+            Command::Widget {
+                zone: None,
+                layer: zone,
+                target: "*".into(),
+                control: WidgetControl::Start,
+            },
+        )
+        .unwrap();
+        ch.tick(4.0);
+        assert_eq!(item(&ch), 4.0);
     }
 }

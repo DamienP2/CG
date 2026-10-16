@@ -458,6 +458,9 @@ pub struct Layer {
     pub visible: bool,
     #[serde(default)]
     pub locked: bool,
+    /// Timed widgets (timer, ticker…) wait for the operator to start them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub manual_start: bool,
     /// Static (base) values; a property with keyframes ignores its base value.
     #[serde(default)]
     pub props: BTreeMap<Prop, Value>,

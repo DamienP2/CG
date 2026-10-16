@@ -1,8 +1,9 @@
-import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, MonitorPlay, Play, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, MonitorPlay, Pause, Play, Plus, RotateCcw, RefreshCw, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import type { Command, Field, PlayoutItem, Playlist, Project, RundownItem, Zone } from '../engine/types';
+import type { Command, Field, PlayoutItem, Playlist, Project, RundownItem, Template, WidgetControl, Zone } from '../engine/types';
+import { isTimed } from '../engine/widgets';
 import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
@@ -178,6 +179,7 @@ function ZoneStrip({
           {p?.next && <span className="zone-next">then {rundownName(project, p.next.rundownId) ?? name(p.next.templateId)}</span>}
         </div>
         {p && <progress max={t?.duration ?? 1} value={p.frame} />}
+        {p && t && <WidgetControls item={p} template={t} onControl={(id, control) => command({ action: 'widget', target: id, control, ...target })} />}
         <div className="zone-actions">
           <button className="icon-btn ghost" title="Continue" disabled={!p} onClick={() => command({ action: 'continue', ...target })}>
             <ChevronsRight size={13} />
@@ -196,6 +198,33 @@ function ZoneStrip({
     <div className="zone-strip">
       {zones.map((z) => card(z.id, z.name, z.color, layers[String(z.layer)], { zone: z.id }, z.id === cuedZone))}
       {extra.map((l) => card(`l${l}`, `Layer ${l}`, '#6b7090', layers[l], { layer: Number(l) }, false))}
+    </div>
+  );
+}
+
+/** Start / pause / restart the timers, tickers, rolls… of the graphic on air. */
+function WidgetControls({ item, template, onControl }: { item: PlayoutItem; template: Template; onControl: (layerId: string, c: WidgetControl) => void }) {
+  const timed = template.layers.filter(isTimed);
+  if (!timed.length) return null;
+  return (
+    <div className="widget-controls">
+      {timed.map((l) => {
+        const c = item.clocks?.[l.id];
+        const running = c ? c.pausedAt == null : !l.manualStart;
+        return (
+          <div key={l.id} className={`wc-row ${running ? 'running' : 'paused'}`}>
+            <span className="wc-name" title={l.name}>
+              {l.name}
+            </span>
+            <button className="icon-btn ghost" title={running ? 'Pause' : 'Start'} onClick={() => onControl(l.id, 'toggle')}>
+              {running ? <Pause size={12} /> : <Play size={12} />}
+            </button>
+            <button className="icon-btn ghost" title="Restart from zero" onClick={() => onControl(l.id, running ? 'restart' : 'reset')}>
+              <RotateCcw size={12} />
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

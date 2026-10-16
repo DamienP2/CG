@@ -166,6 +166,7 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
   - Le tableau des zones montre, pour chacune, le graphique à l'antenne et celui qui attend son tour, avec Continue / Out / Clear par zone.
 - **Rundown** : liste d'éléments (template + données + couche de playout), tally *ON AIR*.
 - **Preview / Program** : la preview affiche l'élément cué, le program affiche ce qui est réellement à l'antenne.
+- **Animations internes** : la carte de zone d'un graphique à l'antenne liste ses widgets animés (minuteur, chronomètre, ticker, générique, compteur, barre de progression, rotator, machine à écrire, diaporama, graphique) avec ▶ / ⏸ et ⟲ (repartir de zéro). Dans le Designer, *Start manually* fait attendre le widget jusqu'au ▶ de l'opérateur. Par l'API : `{"action":"widget","zone":"ticker","target":"Crawl","control":"toggle"}` (`start`, `pause`, `toggle`, `reset`, `restart` ; `target` = nom ou id du calque, `*` pour tous).
 - **TAKE** (`F1` / `Entrée`), **CONTINUE** (`F2` / `Espace`), **OUT** (`F3`), **UPDATE** à chaud, **CLEAR ALL** (`F12`).
 - Plusieurs graphiques à l'antenne simultanément, sur des couches différentes.
 

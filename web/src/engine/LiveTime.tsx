@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../store';
 import { TimeContext } from './Scene';
+import type { Layer } from './types';
 
 /** Client clock that ticks every animation frame while `active`. */
 export function useTicker(active: boolean): number {
@@ -19,8 +20,8 @@ export function useTicker(active: boolean): number {
 }
 
 /** Provides widget time (server clock + time on air) to a scene. */
-export function LiveTime({ ageSecs, clientNow, children }: { ageSecs: number; clientNow: number; children: React.ReactNode }) {
+export function LiveTime({ ageSecs, clientNow, layerAge, children }: { ageSecs: number; clientNow: number; layerAge?: (l: Layer) => number; children: React.ReactNode }) {
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
-  return <TimeContext.Provider value={{ nowMs: clientNow + offset, ageSecs, defaultTz: tz }}>{children}</TimeContext.Provider>;
+  return <TimeContext.Provider value={{ nowMs: clientNow + offset, ageSecs, defaultTz: tz, layerAge }}>{children}</TimeContext.Provider>;
 }

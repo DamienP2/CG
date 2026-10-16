@@ -2414,6 +2414,21 @@
        "null"
       ],
       "description": "Take waiting for this graphic to go out (sequential zones)."
+     },
+     "clocks": {
+      "type": "object",
+      "description": "Widgets controlled by the operator, by layer id: offset and pausedAt in frames on air.",
+      "additionalProperties": {
+       "type": "object",
+       "properties": {
+        "offset": {
+         "type": "number"
+        },
+        "pausedAt": {
+         "type": "number"
+        }
+       }
+      }
      }
     }
    },
@@ -2443,6 +2458,7 @@
        "continue",
        "takeOut",
        "update",
+       "widget",
        "clear"
       ]
      },
@@ -2462,6 +2478,21 @@
      "rundownId": {
       "type": "string",
       "description": "take: rundown item, for tally"
+     },
+     "target": {
+      "type": "string",
+      "description": "widget: layer id or name of a timed widget (timer, stopwatch, ticker, roll, counter…), or `*` for all of them"
+     },
+     "control": {
+      "type": "string",
+      "enum": [
+       "start",
+       "pause",
+       "toggle",
+       "reset",
+       "restart"
+      ],
+      "description": "widget: start (resume), pause, toggle, reset (to zero, keeps running or paused), restart (to zero and running)"
      }
     },
     "example": {

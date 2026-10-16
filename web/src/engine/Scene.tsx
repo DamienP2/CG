@@ -201,7 +201,8 @@ function QrCode({ content, w, h, fill, background }: { content: string; w: numbe
 
 /** Content of a widget layer; reads the time context so only it re-renders. */
 function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: number; data: Data; hold: number }) {
-  const time = useContext(TimeContext);
+  const base = useContext(TimeContext);
+  const time = base.layerAge ? { ...base, ageSecs: base.layerAge(layer) } : base;
   const r = useContext(LogicContext).get(layer.id) ?? resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);

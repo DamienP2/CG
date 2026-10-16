@@ -2,7 +2,7 @@
 // everything is a pure function of (wall-clock time, time on air) so the
 // HTML5 output matches the Rust renderer.
 import { interpolateText } from './evaluate';
-import type { ClockMode, Data } from './types';
+import type { ClockMode, Data, Layer, PlayoutItem } from './types';
 
 export interface TimeCtx {
   /** Wall-clock time (server clock), Unix ms. */
@@ -11,6 +11,34 @@ export interface TimeCtx {
   ageSecs: number;
   /** Server zone, used when a widget does not set one. */
   defaultTz: string;
+  /** Time on air of one layer when the operator controls its widget. */
+  layerAge?: (layer: Layer) => number;
+}
+
+/** Widgets whose animation follows the time on air (mirrors playout::is_timed). */
+export function isTimed(l: Layer): boolean {
+  switch (l.type) {
+    case 'clock':
+      return l.mode === 'elapsed' || l.mode === 'timer';
+    case 'ticker':
+    case 'roll':
+    case 'counter':
+    case 'progress':
+    case 'rotator':
+    case 'typewriter':
+    case 'slideshow':
+    case 'barChart':
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** Mirrors PlayoutItem::layer_age (frames). */
+export function layerAgeFrames(item: PlayoutItem, age: number, layer: Layer): number {
+  const c = item.clocks?.[layer.id];
+  if (c) return Math.max(0, (c.pausedAt ?? age) - c.offset);
+  return layer.manualStart ? 0 : age;
 }
 
 interface Fields {

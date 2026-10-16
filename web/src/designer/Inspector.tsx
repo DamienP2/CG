@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
+import { isTimed } from '../engine/widgets';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
@@ -683,6 +684,15 @@ function LayerInspector({ layer, template }: { layer: Layer; template: Template 
           </>
         )}
         <WidgetSettings layer={layer} template={template} set={set} />
+        {isTimed(layer) && (
+          <>
+            <label className="check" title="The operator starts it with ▶ in the zone card (or API action widget)">
+              <input type="checkbox" checked={!!layer.manualStart} onChange={(e) => edit((l) => void (l.manualStart = e.target.checked || undefined))} />
+              Start manually (the operator presses ▶)
+            </label>
+            <p className="hint">On air, the operator can start, pause and restart this animation from its zone card; automation uses the command <code>{`{"action":"widget","target":"${layer.name}","control":"toggle"}`}</code>.</p>
+          </>
+        )}
         {textLike && <FontControls layer={layer as Layer & FontStyle} set={set} />}
         {layer.type === 'image' && (
           <>
