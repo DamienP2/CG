@@ -26,7 +26,7 @@ use crate::{OutputError, OutputSink};
 const PAYLOAD_BYTES: usize = 1200;
 const RTP_CLOCK: f64 = 90_000.0;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct St2110Config {
     pub name: String,

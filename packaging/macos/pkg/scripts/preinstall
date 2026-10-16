@@ -1,4 +1,8 @@
 #!/bin/sh
-# Upgrade: stop the running daemon; data is kept.
+# Upgrade: stop the running daemon and menu bar app; data is kept.
 launchctl bootout system/com.pulsecg.server 2>/dev/null || true
+USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
+if [ "$USER_ID" != "0" ]; then
+  launchctl bootout "gui/$USER_ID/com.pulsecg.tray" 2>/dev/null || true
+fi
 exit 0

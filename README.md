@@ -14,8 +14,8 @@ Architecture, choix techniques et feuille de route : [`docs/ARCHITECTURE.md`](do
 
 Le serveur est distribué sous la forme d'**un exécutable autonome** par plateforme : il embarque l'UI web, les polices et le moteur. Il s'installe en **service natif** : systemd sous Linux, launchd sous macOS, service Windows.
 
-- **Windows** : installateur `.msi` (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
-- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel).
+- **Windows** : installateur `.msi` avec l'app **Pulse CG** (zone de notification) (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
+- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel) avec l'app **Pulse CG** (barre des menus).
 - **Linux** : archive avec binaire statique et `sudo ./install.sh` (systemd).
 
 Les commandes `cg-server service install | uninstall | start | stop | status` sont identiques sur les trois OS. Le guide complet est dans [`docs/INSTALL.md`](docs/INSTALL.md).
@@ -47,14 +47,18 @@ Au premier lancement, un projet de démo est créé dans `<data>/project.json` (
 | `--data-dir` | `CG_DATA_DIR` | dossier de données de l'utilisateur ; pour le service : `/var/lib/pulse-cg`, `/Library/Application Support/PulseCG` ou `%ProgramData%\PulseCG` |
 | `--web-dir` | `CG_WEB_DIR` | UI embarquée (option utile pour servir `web/dist` en développement) |
 
-### Sorties baseband
+### Réglages et sorties baseband
 
-Créez `outputs.json` dans le dossier de données (voir [`docs/outputs.example.json`](docs/outputs.example.json)) :
+Port, format vidéo et sorties se règlent dans la page **Réglages** (`/settings`), sans redémarrer le service. Ils sont enregistrés dans `config.json`, dans le dossier de données :
 
 ```json
 {
-  "st2110": [{ "name": "CG1", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
-  "sdi": [{ "name": "CG1-SDI", "device": 0, "externalKey": true }]
+  "name": "Régie 1",
+  "bind": "0.0.0.0:8080",
+  "outputs": {
+    "st2110": [{ "name": "CG1", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
+    "sdi": [{ "name": "CG1-SDI", "device": 0, "externalKey": true }]
+  }
 }
 ```
 

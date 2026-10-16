@@ -26,6 +26,8 @@ clap = { version = "4", features = ["derive", "env"] }
 futures-util = "0.3"
 rust-embed = { version = "8", features = ["mime-guess"] }
 directories = "6"
+if-addrs = "0.15"
+gethostname = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"

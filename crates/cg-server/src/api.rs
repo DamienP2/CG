@@ -12,8 +12,9 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use cg_core::{Command, Project, RundownItem, Template};
 use futures_util::{SinkExt, StreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
+use crate::config::ServerConfig;
 use crate::state::{ClientMessage, Event, Shared};
 
 pub fn router() -> Router<Shared> {
@@ -32,6 +33,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/outputs/{name}/{essence}", get(get_sdp))
         .route("/api/assets", get(list_assets))
         .route("/api/assets/{name}", put(put_asset))
+        .route("/api/system", get(get_system))
+        .route("/api/system/config", put(put_system_config))
+        .route("/api/system/restart", post(post_restart))
         .route("/ws", get(ws_upgrade))
 }
 
@@ -53,7 +57,15 @@ async fn put_project(State(s): State<Shared>, Json(p): Json<Project>) -> ApiResu
     if p.width == 0 || p.height == 0 || p.width > 7680 || p.height > 4320 {
         return Err(bad("invalid resolution"));
     }
+    let before = s.project.read().await.clone();
+    let format_changed =
+        (before.width, before.height, before.frame_rate) != (p.width, p.height, p.frame_rate);
     s.set_project(p).await.map_err(internal)?;
+    // The playout clock and baseband outputs are built for one video format.
+    if format_changed {
+        tracing::info!("video format changed, restarting the engine");
+        s.restart.notify_one();
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -165,7 +177,7 @@ async fn template_thumbnail(
 }
 
 async fn get_outputs(State(s): State<Shared>) -> impl IntoResponse {
-    Json(s.outputs.clone())
+    Json(s.config.outputs.clone())
 }
 
 async fn get_sdp(
@@ -174,6 +186,7 @@ async fn get_sdp(
 ) -> ApiResult<Response> {
     let p = s.project.read().await.clone();
     let cfg = s
+        .config
         .outputs
         .st2110
         .iter()
@@ -245,6 +258,8 @@ async fn ws_upgrade(State(s): State<Shared>, ws: WebSocketUpgrade) -> Response {
 async fn ws_session(s: Shared, socket: WebSocket) {
     let (mut tx, mut rx) = socket.split();
     let mut events = s.events.subscribe();
+    let closing = crate::state::until_true(s.closing.subscribe());
+    tokio::pin!(closing);
     let hello = [
         Event::Project {
             project: s.project.read().await.clone(),
@@ -260,6 +275,8 @@ async fn ws_session(s: Shared, socket: WebSocket) {
     }
     loop {
         tokio::select! {
+            // Engine restart / shutdown: close so the client reconnects.
+            _ = &mut closing => break,
             ev = events.recv() => match ev {
                 Ok(ev) => if send(&mut tx, &ev).await.is_err() { break },
                 // Slow client: skip missed ticks, state messages are absolute.
@@ -292,4 +309,80 @@ where
 {
     let json = serde_json::to_string(ev).map_err(|_| ())?;
     tx.send(Message::Text(json.into())).await.map_err(|_| ())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NetInterface {
+    name: String,
+    ip: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemInfo {
+    version: &'static str,
+    os: &'static str,
+    arch: &'static str,
+    hostname: String,
+    cpus: usize,
+    data_dir: String,
+    bind: String,
+    uptime_secs: u64,
+    config: ServerConfig,
+    interfaces: Vec<NetInterface>,
+}
+
+async fn get_system(State(s): State<Shared>) -> Json<SystemInfo> {
+    let mut interfaces: Vec<NetInterface> = if_addrs::get_if_addrs()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| i.ip().is_ipv4())
+        .map(|i| NetInterface {
+            ip: i.ip().to_string(),
+            name: i.name,
+        })
+        .collect();
+    interfaces.sort_by(|a, b| a.name.cmp(&b.name));
+    Json(SystemInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        os: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
+        hostname: gethostname::gethostname().to_string_lossy().into_owned(),
+        cpus: std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1),
+        data_dir: s.data_dir.display().to_string(),
+        bind: s.bind.to_string(),
+        uptime_secs: s.started_at.elapsed().map(|d| d.as_secs()).unwrap_or(0),
+        config: s.config.clone(),
+        interfaces,
+    })
+}
+
+/// Saves the settings and restarts the engine (and listener) with them.
+async fn put_system_config(
+    State(s): State<Shared>,
+    Json(cfg): Json<ServerConfig>,
+) -> ApiResult<StatusCode> {
+    cfg.validate().map_err(bad)?;
+    if let Some(bind) = cfg.bind.filter(|b| *b != s.bind) {
+        // Fail early rather than restarting into an address we cannot use.
+        std::net::TcpListener::bind(bind)
+            .map_err(|e| bad(format!("cannot listen on {bind}: {e}")))?;
+    }
+    let dir = s.data_dir.clone();
+    let to_save = cfg.clone();
+    tokio::task::spawn_blocking(move || to_save.save(&dir))
+        .await
+        .map_err(internal)?
+        .map_err(internal)?;
+    tracing::info!("settings saved, restarting the engine");
+    s.restart.notify_one();
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn post_restart(State(s): State<Shared>) -> StatusCode {
+    s.restart.notify_one();
+    StatusCode::ACCEPTED
 }

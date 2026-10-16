@@ -45,13 +45,35 @@ Désinstallation : `sudo ./uninstall.sh` (`--purge` pour supprimer aussi les don
 
 Les archives `.tar.gz` / `.zip` restent disponibles pour une installation scriptée : `sudo ./install.sh` sur macOS, `install.cmd` ou `.\install.ps1` (PowerShell administrateur) sur Windows.
 
+## L'application « Pulse CG » (macOS et Windows)
+
+Les installateurs `.pkg` et `.msi` ajoutent l'application **Pulse CG** : une icône dans la barre des menus (macOS) ou la zone de notification (Windows). Elle démarre à l'ouverture de session et donne :
+
+- l'état du serveur (nom, port, en marche ou arrêté) ;
+- l'accès direct au **Designer**, à l'**Opérateur**, aux **Réglages** et à la sortie HTML5 ;
+- **Redémarrer le moteur**, **Démarrer / Arrêter le serveur** (le mot de passe administrateur est demandé).
+
+Elle se trouve aussi dans *Applications* (macOS) et dans le menu Démarrer (Windows). L'ouvrir depuis ces emplacements ouvre directement le Designer.
+
+## Réglages du serveur
+
+Toute la configuration se fait dans la page **Réglages** (`http://<serveur>:8080/settings`) et s'applique sans réinstaller : le moteur redémarre en une seconde environ.
+
+- **Serveur** : nom, interface réseau et port d'écoute de l'interface web et de l'API (la page vous suit sur le nouveau port).
+- **Format vidéo** : 1080p 25/29.97/50/59.94/60, 720p, 2160p (UHD).
+- **Sorties ST 2110** : destinations multicast fill et key, choix de la carte du réseau média, TTL ; liens vers les fichiers SDP.
+- **Sorties SDI** (DeckLink) : périphérique et mode de keying.
+- **Système** : version, dossier de données, durée de fonctionnement, liens utiles.
+
+Ces réglages sont enregistrés dans `config.json`, dans le dossier de données. Un ancien `outputs.json` est migré automatiquement.
+
 ## Après l'installation
 
 - Designer : `http://<serveur>:8080/designer`
 - Opérateur : `http://<serveur>:8080/operator`
 - Sortie HTML5 (OBS, vMix, CasparCG) : `http://<serveur>:8080/output`
 
-Pour configurer les sorties ST 2110 / SDI, copiez `outputs.example.json` vers `outputs.json` dans le dossier de données, adaptez-le, puis redémarrez le service.
+Les sorties ST 2110 / SDI se configurent dans la page **Réglages** (`/settings`).
 
 ## Gérer le service
 

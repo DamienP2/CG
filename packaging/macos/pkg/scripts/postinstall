@@ -1,8 +1,14 @@
 #!/bin/sh
-# Runs as root after the payload is copied to /usr/local/pulse-cg.
+# Runs as root after the payload is copied.
 set -e
 PREFIX=/usr/local/pulse-cg
 mkdir -p /usr/local/bin
 ln -sf "$PREFIX/cg-server" /usr/local/bin/cg-server
 "$PREFIX/cg-server" service install
+
+# Start the menu bar app for the logged-in user (it also starts at login).
+USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
+if [ "$USER_ID" != "0" ]; then
+  launchctl bootstrap "gui/$USER_ID" /Library/LaunchAgents/com.pulsecg.tray.plist 2>/dev/null || true
+fi
 exit 0

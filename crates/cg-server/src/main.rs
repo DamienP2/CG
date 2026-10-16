@@ -1,4 +1,5 @@
 mod api;
+mod config;
 mod engine;
 mod paths;
 mod service;
@@ -10,10 +11,11 @@ use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use axum::routing::get;
 use clap::{Args, Parser, Subcommand};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, watch, Notify, RwLock};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -44,10 +46,14 @@ enum Cmd {
 
 #[derive(Args, Debug, Clone)]
 pub struct RunArgs {
-    /// Address to listen on.
-    #[arg(long, env = "CG_BIND", default_value = "0.0.0.0:8080")]
-    bind: SocketAddr,
-    /// Directory holding project.json, outputs.json and assets/
+    /// Address to listen on, overriding the saved settings for this run
+    /// (services use the settings page instead).
+    #[arg(long, env = "CG_BIND")]
+    bind: Option<SocketAddr>,
+    /// Address used when the saved settings do not set one (installers).
+    #[arg(long, hide = true)]
+    default_bind: Option<SocketAddr>,
+    /// Directory holding project.json, config.json and assets/
     /// [default: per-user application data directory].
     #[arg(long, env = "CG_DATA_DIR")]
     data_dir: Option<PathBuf>,
@@ -163,49 +169,98 @@ async fn shutdown_signal() {
     ctrl_c.await;
 }
 
+pub const DEFAULT_BIND: &str = "0.0.0.0:8080";
+
 pub async fn serve(
     args: RunArgs,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
-    let data_dir = args.data_dir.unwrap_or_else(paths::user_data_dir);
+    let data_dir = args.data_dir.clone().unwrap_or_else(paths::user_data_dir);
     std::fs::create_dir_all(data_dir.join("assets"))?;
     tracing::info!(version = env!("CARGO_PKG_VERSION"), data_dir = %data_dir.display(), "starting Pulse CG");
 
-    let project = state::load_project(&data_dir);
-    let outputs = state::load_outputs(&data_dir);
-    let (events, _) = broadcast::channel(256);
-    let renderer = cg_render::Renderer::new(data_dir.join("assets"));
-    let shared: Shared = Arc::new(AppState {
-        data_dir: data_dir.clone(),
-        project: RwLock::new(Arc::new(project)),
-        channel: RwLock::new(Default::default()),
-        events,
-        renderer: Mutex::new(renderer),
-        outputs,
+    let (stop_tx, stop_rx) = watch::channel(false);
+    tokio::spawn(async move {
+        shutdown.await;
+        let _ = stop_tx.send(true);
     });
+    let started_at = SystemTime::now();
+    let fallback: SocketAddr = DEFAULT_BIND.parse()?;
 
-    tokio::spawn(engine::run(shared.clone()));
-
-    let app = api::router()
-        .route("/fonts/{name}", get(web::font))
-        .nest_service("/assets", ServeDir::new(data_dir.join("assets")));
-    let app = match args.web_dir {
-        Some(dir) => {
-            let index = dir.join("index.html");
-            app.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)))
+    // Each iteration is one engine "cycle"; settings changes end the cycle
+    // and the loop rebuilds everything with the new configuration.
+    loop {
+        let config = config::ServerConfig::load(&data_dir);
+        let wanted = args
+            .bind
+            .or(config.bind)
+            .or(args.default_bind)
+            .unwrap_or(fallback);
+        let listener = match tokio::net::TcpListener::bind(wanted).await {
+            Ok(l) => l,
+            // Keep the UI reachable so the setting can be fixed.
+            Err(e) if wanted != fallback => {
+                tracing::error!("cannot listen on {wanted} ({e}); falling back to {fallback}");
+                tokio::net::TcpListener::bind(fallback).await?
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let bind = listener.local_addr()?;
+        // Lets the desktop app find the server without parsing settings.
+        let runtime = serde_json::json!({ "bind": bind, "version": env!("CARGO_PKG_VERSION"), "pid": std::process::id() });
+        if let Err(e) = std::fs::write(data_dir.join("runtime.json"), runtime.to_string()) {
+            tracing::warn!("cannot write runtime.json: {e}");
         }
-        None => app.fallback(web::embedded),
-    };
-    let app = app.layer(CorsLayer::permissive()).with_state(shared);
 
-    let listener = tokio::net::TcpListener::bind(args.bind).await?;
-    tracing::info!(
-        "listening on http://{} — designer: /designer, operator: /operator, HTML5 output: /output",
-        args.bind
-    );
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await?;
+        let (events, _) = broadcast::channel(256);
+        let (closing, _) = watch::channel(false);
+        let shared: Shared = Arc::new(AppState {
+            data_dir: data_dir.clone(),
+            project: RwLock::new(Arc::new(state::load_project(&data_dir))),
+            channel: RwLock::new(Default::default()),
+            events,
+            renderer: Mutex::new(cg_render::Renderer::new(data_dir.join("assets"))),
+            config,
+            bind,
+            started_at,
+            restart: Notify::new(),
+            closing,
+        });
+        let engine = tokio::spawn(engine::run(shared.clone()));
+
+        let app = api::router()
+            .route("/fonts/{name}", get(web::font))
+            .nest_service("/assets", ServeDir::new(data_dir.join("assets")));
+        let app = match &args.web_dir {
+            Some(dir) => {
+                let index = dir.join("index.html");
+                app.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)))
+            }
+            None => app.fallback(web::embedded),
+        };
+        let app = app
+            .layer(CorsLayer::permissive())
+            .with_state(shared.clone());
+
+        tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 output: /output");
+        let stop = state::until_true(stop_rx.clone());
+        let cycle = shared.clone();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                tokio::select! {
+                    _ = stop => {}
+                    _ = cycle.restart.notified() => {}
+                }
+                let _ = cycle.closing.send(true);
+            })
+            .await?;
+        engine.abort();
+        let _ = engine.await;
+        if *stop_rx.borrow() {
+            break;
+        }
+        tracing::info!("restarting the engine with the new settings");
+    }
     tracing::info!("stopped");
     Ok(())
 }

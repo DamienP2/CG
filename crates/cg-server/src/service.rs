@@ -97,7 +97,7 @@ mod imp {
              After=network-online.target\n\
              Wants=network-online.target\n\n\
              [Service]\n\
-             ExecStart=\"{exe}\" run --bind {bind} --data-dir \"{data}\"\n\
+             ExecStart=\"{exe}\" run --default-bind {bind} --data-dir \"{data}\"\n\
              User={USER}\n\
              Restart=always\n\
              RestartSec=2\n\
@@ -164,7 +164,7 @@ mod imp {
         let args = [
             exe.to_string_lossy().into_owned(),
             "run".into(),
-            "--bind".into(),
+            "--default-bind".into(),
             o.bind.to_string(),
             "--data-dir".into(),
             o.data_dir.to_string_lossy().into_owned(),
@@ -264,7 +264,7 @@ mod imp {
             launch_arguments: [
                 "run",
                 "--service",
-                "--bind",
+                "--default-bind",
                 &o.bind.to_string(),
                 "--data-dir",
                 &o.data_dir.to_string_lossy(),

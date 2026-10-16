@@ -44,7 +44,7 @@
                         Start="auto"
                         ErrorControl="normal"
                         Vital="yes"
-                        Arguments="run --service --bind [LISTEN_ADDR]:[PORT] --data-dir &quot;[CommonAppDataFolder]PulseCG&quot;">
+                        Arguments="run --service --default-bind [LISTEN_ADDR]:[PORT] --data-dir &quot;[CommonAppDataFolder]PulseCG&quot;">
           <util:ServiceConfig FirstFailureActionType="restart"
                               SecondFailureActionType="restart"
                               ThirdFailureActionType="restart"
@@ -53,6 +53,11 @@
         </ServiceInstall>
         <ServiceControl Id="ServiceControl" Name="pulse-cg" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
         <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+      </Component>
+      <!-- Notification-area app, started at every logon. -->
+      <Component Id="TrayApp">
+        <File Id="TrayExe" Source="$(var.BinDir)\pulse-cg-tray.exe" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="Pulse CG" Type="string" Value="&quot;[#TrayExe]&quot; --background" />
       </Component>
       <!-- One unversioned file per component (auto-generated GUIDs). -->
       <Component Id="DocInstall">
@@ -65,12 +70,22 @@
         <File Id="FontLicense" Source="$(var.DocsDir)\assets\fonts\OFL.txt" KeyPath="yes" />
       </Component>
       <Component Id="StartMenu" Directory="MenuFolder">
+        <Shortcut Id="TrayShortcut" Name="Pulse CG" Description="Pulse CG server status, settings and shortcuts" Target="[#TrayExe]" WorkingDirectory="INSTALLFOLDER" />
         <util:InternetShortcut Id="DesignerShortcut" Name="Pulse CG Designer" Target="http://localhost:[PORT]/designer" Type="url" />
         <util:InternetShortcut Id="OperatorShortcut" Name="Pulse CG Operator" Target="http://localhost:[PORT]/operator" Type="url" />
         <RemoveFolder Id="RemoveMenuFolder" On="uninstall" />
         <RegistryValue Root="HKLM" Key="Software\PulseCG" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
+
+    <!-- Upgrades / uninstall: close the tray app so its exe can be replaced. -->
+    <util:CloseApplication Id="CloseTray" Target="pulse-cg-tray.exe" CloseMessage="yes" TerminateProcess="0" RebootPrompt="no" />
+
+    <!-- Start the tray app for the installing user right away. -->
+    <CustomAction Id="LaunchTray" FileRef="TrayExe" ExeCommand="--background" Return="asyncNoWait" Impersonate="yes" Execute="immediate" />
+    <InstallExecuteSequence>
+      <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT (REMOVE~=&quot;ALL&quot;)" />
+    </InstallExecuteSequence>
 
     <Feature Id="Main" Title="Pulse CG Server">
       <ComponentGroupRef Id="Product" />

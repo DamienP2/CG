@@ -53,7 +53,8 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release --locked -p cg-server --target ${{ matrix.target }}
+        # The tray app ships with the Windows installer (macOS builds it in macos-installer).
+        run: cargo build --release --locked -p cg-server ${{ matrix.pkg == 'windows' && '-p cg-tray' || '' }} --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
@@ -114,12 +115,14 @@ jobs:
           key: macos-universal
       - name: Build universal binary
         run: |
-          cargo build --release --locked -p cg-server --target aarch64-apple-darwin
-          cargo build --release --locked -p cg-server --target x86_64-apple-darwin
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked -p cg-server -p cg-tray --target $t
+          done
           mkdir -p dist
-          lipo -create -output dist/cg-server \
-            target/aarch64-apple-darwin/release/cg-server target/x86_64-apple-darwin/release/cg-server
-          lipo -info dist/cg-server
+          for b in cg-server pulse-cg-tray; do
+            lipo -create -output dist/$b target/aarch64-apple-darwin/release/$b target/x86_64-apple-darwin/release/$b
+            lipo -info dist/$b
+          done
       # Signing / notarization run only when the Apple secrets are configured.
       - name: Import signing certificates
         if: env.HAS_SIGNING == 'true'
@@ -142,7 +145,7 @@ jobs:
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           [ "$GITHUB_REF_TYPE" = tag ] && VERSION=${GITHUB_REF_NAME#v}
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
-          packaging/macos/pkg/build.sh dist/cg-server "$VERSION" "dist/PulseCG-$SUFFIX-macos-universal.pkg"
+          packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/PulseCG-$SUFFIX-macos-universal.pkg"
           pkgutil --payload-files dist/*.pkg | head -20
       - name: Notarize
         if: env.HAS_NOTARY == 'true'

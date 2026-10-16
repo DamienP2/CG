@@ -1,11 +1,14 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use cg_core::{ChannelState, Command, Project};
-use cg_output::st2110::St2110Config;
 use cg_render::Renderer;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, watch, Notify, RwLock};
+
+use crate::config::ServerConfig;
 
 /// Messages pushed to every WebSocket client.
 #[derive(Debug, Clone, Serialize)]
@@ -23,22 +26,21 @@ pub enum ClientMessage {
     Command { command: Command },
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OutputsConfig {
-    #[serde(default)]
-    pub st2110: Vec<St2110Config>,
-    #[serde(default)]
-    pub sdi: Vec<cg_output::sdi::SdiConfig>,
-}
-
 pub struct AppState {
     pub data_dir: PathBuf,
     pub project: RwLock<Arc<Project>>,
     pub channel: RwLock<ChannelState>,
     pub events: broadcast::Sender<Event>,
     pub renderer: Mutex<Renderer>,
-    pub outputs: OutputsConfig,
+    /// Settings this engine cycle was started with.
+    pub config: ServerConfig,
+    /// Address actually bound by this cycle.
+    pub bind: SocketAddr,
+    pub started_at: SystemTime,
+    /// Ask the server loop to rebuild the engine with fresh settings.
+    pub restart: Notify,
+    /// Flips to true when this cycle ends, so long-lived WebSockets close.
+    pub closing: watch::Sender<bool>,
 }
 
 pub type Shared = Arc<AppState>;
@@ -89,13 +91,11 @@ pub fn load_project(data_dir: &std::path::Path) -> Project {
     p
 }
 
-pub fn load_outputs(data_dir: &std::path::Path) -> OutputsConfig {
-    let path = data_dir.join("outputs.json");
-    match std::fs::read(&path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
-            tracing::error!(?path, "invalid outputs file: {e}");
-            OutputsConfig::default()
-        }),
-        Err(_) => OutputsConfig::default(),
+/// Resolves once the watched flag becomes true (or its sender is gone).
+pub async fn until_true(mut rx: watch::Receiver<bool>) {
+    while !*rx.borrow_and_update() {
+        if rx.changed().await.is_err() {
+            return;
+        }
     }
 }

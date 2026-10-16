@@ -15,13 +15,13 @@ use crate::state::{Event, Shared};
 
 pub fn open_outputs(state: &Shared, period: Duration) -> Vec<Box<dyn OutputSink>> {
     let mut sinks: Vec<Box<dyn OutputSink>> = Vec::new();
-    for cfg in &state.outputs.st2110 {
+    for cfg in &state.config.outputs.st2110 {
         match St2110Sender::start(cfg.clone(), period) {
             Ok(s) => sinks.push(Box::new(s)),
             Err(e) => tracing::error!(name = cfg.name, "cannot start ST 2110 output: {e}"),
         }
     }
-    for cfg in &state.outputs.sdi {
+    for cfg in &state.config.outputs.sdi {
         match DeckLinkOutput::open(cfg.clone()) {
             Ok(s) => sinks.push(Box::new(s)),
             Err(e) => tracing::error!(name = cfg.name, "cannot open SDI output: {e}"),
