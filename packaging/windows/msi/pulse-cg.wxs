@@ -54,10 +54,15 @@
         <ServiceControl Id="ServiceControl" Name="pulse-cg" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
         <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
       </Component>
-      <Component Id="Docs">
+      <!-- One unversioned file per component (auto-generated GUIDs). -->
+      <Component Id="DocInstall">
         <File Id="InstallMd" Source="$(var.DocsDir)\docs\INSTALL.md" KeyPath="yes" />
-        <File Id="OutputsExample" Source="$(var.DocsDir)\docs\outputs.example.json" />
-        <File Id="FontLicense" Source="$(var.DocsDir)\assets\fonts\OFL.txt" />
+      </Component>
+      <Component Id="DocOutputs">
+        <File Id="OutputsExample" Source="$(var.DocsDir)\docs\outputs.example.json" KeyPath="yes" />
+      </Component>
+      <Component Id="DocFontLicense">
+        <File Id="FontLicense" Source="$(var.DocsDir)\assets\fonts\OFL.txt" KeyPath="yes" />
       </Component>
       <Component Id="StartMenu" Directory="MenuFolder">
         <util:InternetShortcut Id="DesignerShortcut" Name="Pulse CG Designer" Target="http://localhost:[PORT]/designer" Type="url" />
