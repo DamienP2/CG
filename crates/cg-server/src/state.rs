@@ -125,6 +125,8 @@ pub struct AppState {
     pub renderer: Mutex<Renderer>,
     /// Users and sessions outlive engine restarts.
     pub auth: Arc<Auth>,
+    /// Running orders received from the newsroom system (MOS).
+    pub mos: Arc<crate::mos::Store>,
     /// Settings this engine cycle was started with.
     pub config: ServerConfig,
     /// Address actually bound by this cycle.

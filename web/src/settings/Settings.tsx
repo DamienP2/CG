@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FrameRate } from '../engine/types';
 import { api, useApp } from '../store';
 import { Updates } from './Updates';
+import { MosCard, type MosConfig } from './Mos';
 
 interface St2110Output {
   name: string;
@@ -44,6 +45,7 @@ interface ServerConfig {
   publicOutputs: boolean;
   timezone: string;
   channels: ChannelConfig[];
+  mos: MosConfig;
 }
 
 interface SystemInfo {
@@ -595,6 +597,8 @@ export function Settings() {
             />
           ))}
         </Card>
+
+        <MosCard mos={cfg.mos} onChange={(m) => edit((c) => void (c.mos = m))} Card={Card} Field={Field} />
 
         <Updates Card={Card} />
 

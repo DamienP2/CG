@@ -3,7 +3,7 @@
  "info": {
   "title": "Pulse CG API",
   "version": "0.0.0",
-  "description": "Everything the web app does goes through this API: automation systems (Companion / Stream Deck, newsroom MOS gateways, sports data feeds) have the same power as the UI.\n\n**Authentication**: `Authorization: Bearer <API key>` (create one in *Users → API keys*), or the `cg_session` cookie of the web app.\n\n**Real time**: `GET /ws` (WebSocket) pushes `hello`, `project`, `projectDeleted`, `channels` and `channel` events, and accepts `{\"type\":\"command\",\"channelId\":\"main\",\"command\":{…}}`. `/ws?channel=<id>` follows one channel (HTML5 output pages; public when *public outputs* is on).\n\nUnits: frames are project frames; times are Unix milliseconds."
+  "description": "Everything the web app does goes through this API: automation systems (Companion / Stream Deck, newsroom MOS gateways, sports data feeds) have the same power as the UI.\n\n**Authentication**: `Authorization: Bearer <API key>` (create one in *Users → API keys*), or the `cg_session` cookie of the web app.\n\n**Real time**: `GET /ws` (WebSocket) pushes `hello`, `project`, `projectDeleted`, `channels` and `channel` events, and accepts `{\"type\":\"command\",\"channelId\":\"main\",\"command\":{…}}`. `/ws?channel=<id>` follows one channel (HTML5 output pages; public when *public outputs* is on).\n\nUnits: frames are project frames; times are Unix milliseconds.\n\nPages embedded in other applications (newsroom MOS plugin `/mos/plugin`) may pass an API key as `?key=pcg_…`."
  },
  "servers": [
   {
@@ -39,6 +39,9 @@
   },
   {
    "name": "Updates"
+  },
+  {
+   "name": "Newsroom (MOS)"
   }
  ],
  "paths": {
@@ -1553,6 +1556,54 @@
     "responses": {
      "204": {
       "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/mos/info": {
+   "get": {
+    "tags": [
+     "Newsroom (MOS)"
+    ],
+    "summary": "MOS ID and schema for plugins",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "mosId": {
+           "type": "string"
+          },
+          "enabled": {
+           "type": "boolean"
+          },
+          "projectId": {
+           "type": "string"
+          },
+          "schema": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/mos/status": {
+   "get": {
+    "tags": [
+     "Newsroom (MOS)"
+    ],
+    "summary": "MOS device status and running orders",
+    "description": "The MOS 2.8 device itself listens on TCP (default 10540 / 10541, XML in UTF-16). Running orders become project playlists `mos-<roID>`; items whose payload is `<pulsecg project=… template=… zone=…><field key=…>…</field></pulsecg>` (schema https://pulsecg.io/mos/v1) become rundown items.\n\n**Rights:** admin.",
+    "responses": {
+     "200": {
+      "description": "OK"
      }
     }
    }

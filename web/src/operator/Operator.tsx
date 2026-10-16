@@ -10,7 +10,7 @@ import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
 import { navigate } from '../router';
 
-function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+export function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
   const toast = useApp((s) => s.toast);
   switch (field.kind) {
     case 'multiline':

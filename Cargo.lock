@@ -408,6 +408,7 @@ dependencies = [
  "gethostname",
  "if-addrs",
  "jiff",
+ "roxmltree",
  "rpassword",
  "rust-embed",
  "serde",

@@ -70,6 +70,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/system", get(get_system))
         .route("/api/system/config", put(put_system_config))
         .route("/api/system/restart", post(post_restart))
+        .route("/api/mos/status", get(mos_status))
+        .route("/api/mos/info", get(mos_info))
         .route("/api/system/update", get(update_info))
         .route("/api/system/update/settings", put(update_settings))
         .route("/api/system/update/check", post(update_check))
@@ -1105,6 +1107,23 @@ async fn post_restart(
     require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
     s.restart.notify_one();
     Ok(StatusCode::ACCEPTED)
+}
+
+// ------------------------------------------------------------------ MOS ----
+
+/// What the HTML5 MOS plugin needs to build items.
+async fn mos_info(State(s): State<Shared>, CurrentUser(_): CurrentUser) -> Json<serde_json::Value> {
+    Json(
+        serde_json::json!({ "mosId": s.config.mos.mos_id, "enabled": s.config.mos.enabled, "projectId": s.config.mos.project_id, "schema": crate::mos::SCHEMA }),
+    )
+}
+
+async fn mos_status(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<crate::mos::Status>> {
+    require(me.is_admin())?;
+    Ok(Json(crate::mos::status(&s.mos)))
 }
 
 // --------------------------------------------------------------- update ----

@@ -586,6 +586,15 @@ impl Auth {
 
 /// Session token from the cookie or an `Authorization: Bearer` header.
 pub fn token_from(parts: &Parts) -> Option<String> {
+    // `?key=pcg_…`: pages embedded in other applications (newsroom MOS
+    // plugin) cannot use our cookie; only API keys are accepted this way.
+    if let Some(q) = parts.uri.query() {
+        if let Some(k) = q.split('&').find_map(|kv| kv.strip_prefix("key=")) {
+            if k.starts_with(API_KEY_PREFIX) {
+                return Some(k.to_string());
+            }
+        }
+    }
     if let Some(v) = parts
         .headers
         .get(header::AUTHORIZATION)

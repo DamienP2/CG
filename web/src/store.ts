@@ -74,11 +74,19 @@ export class ApiError extends Error {
   }
 }
 
+/** API key used instead of the session cookie (pages embedded in other
+ *  applications: newsroom MOS plugin). */
+let apiKey: string | null = null;
+export const setApiKey = (k: string | null) => void (apiKey = k);
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   const res = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
@@ -278,7 +286,7 @@ export const useApp = create<AppStore>((set, get) => {
 
 export async function uploadAsset(file: File): Promise<string> {
   const name = file.name.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
-  const res = await fetch(`/api/assets/${encodeURIComponent(name)}`, { method: 'PUT', body: file, credentials: 'same-origin' });
+  const res = await fetch(`/api/assets/${encodeURIComponent(name)}`, { method: 'PUT', body: file, credentials: 'same-origin', headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined });
   if (!res.ok) throw new Error(await res.text());
   return ((await res.json()) as { src: string }).src;
 }

@@ -2644,3 +2644,97 @@ select.small {
   width: auto;
   align-self: center;
 }
+
+/* ---------- MOS plugin (inside the newsroom system) ---------- */
+.mos-plugin {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  font-size: 13px;
+}
+.mos-plugin header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mos-plugin header svg {
+  color: var(--live);
+}
+.mos-plugin header select {
+  margin-left: auto;
+}
+.mos-error {
+  color: var(--live);
+  justify-content: center;
+  align-items: center;
+}
+.mos-templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+}
+.mos-templates button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 11.5px;
+  text-align: left;
+}
+.mos-templates button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.mos-templates img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  border-radius: 4px;
+  background: repeating-conic-gradient(#1b1e2a 0 25%, #15171f 0 50%) 0 0 / 10px 10px;
+}
+.mos-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mos-preview {
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: repeating-conic-gradient(#1b1e2a 0 25%, #15171f 0 50%) 0 0 / 16px 16px;
+}
+.mos-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.mos-drag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+  cursor: grab;
+  color: var(--text-2);
+}
+.mos-plugin-url {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}

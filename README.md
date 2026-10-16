@@ -109,6 +109,14 @@ Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et 
 - **Affiner** : on bascule sur le format, puis on déplace, redimensionne ou ré-anime les éléments. Ces changements ne valent **que pour ce format** : une pastille sur la propriété permet de revenir à la mise en page principale, et *Re-adapt* régénère la mise en page. Les textes, les données et les nouveaux calques sont communs à tous les formats.
 - **Diffusion** : une chaîne peut avoir des **déclinaisons** (Réglages → chaîne → *Autres formats*), chacune avec sa page HTML5 `/output/<chaîne>/<format>` et ses sorties ST 2110 / SDI. **Un seul TAKE** joue partout, et chaque image utilise le format du projet le plus proche de ses proportions. Le moniteur Program de l'opérateur passe d'un format à l'autre.
 
+### Rédaction (MOS)
+Pulse CG est un **MOS device 2.8** pour Saga (Fonn Group), iNews, ENPS, Octopus…
+
+- Les journalistes placent les habillages dans leurs sujets avec le plugin HTML5 `/mos/plugin`.
+- Chaque conducteur envoyé par la rédaction devient une playlist du projet.
+
+Mise en service : [`docs/MOS.md`](docs/MOS.md).
+
 ### Utilisateurs et droits
 | Rôle | Peut |
 | --- | --- |

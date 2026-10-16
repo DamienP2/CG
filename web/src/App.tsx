@@ -5,6 +5,7 @@ import { Operator } from './operator/Operator';
 import { Output } from './output/Output';
 import { ApiDocs } from './pages/ApiDocs';
 import { Login } from './pages/Login';
+import { MosPlugin } from './mos/Plugin';
 import { Projects } from './pages/Projects';
 import { Users } from './pages/Users';
 import { navigate, parseRoute, type Route } from './router';
@@ -40,11 +41,12 @@ function useRoute(): Route {
 
 export function App() {
   const route = useRoute();
+  if (route.page === 'mosPlugin') return <MosPlugin />;
   if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} rendition={route.rendition} />;
   return <Studio route={route} />;
 }
 
-function Studio({ route }: { route: Exclude<Route, { page: 'output' }> }) {
+function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin' }> }) {
   const { auth, init, connect, connected, projects, channels, project, openProject, live, toasts, logout } = useApp();
   const user = auth?.user;
 
