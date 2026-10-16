@@ -1687,6 +1687,77 @@
      }
     }
    }
+  },
+  "/api/fonts": {
+   "get": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Fonts available to templates",
+    "description": "Bundled, uploaded and system fonts with their weights. Public: output pages load them.",
+    "security": [],
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/api/fonts/file/{family}/{weight}": {
+   "parameters": [
+    {
+     "name": "family",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    },
+    {
+     "name": "weight",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer"
+     }
+    }
+   ],
+   "get": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Font file used by the renderer",
+    "security": [],
+    "responses": {
+     "200": {
+      "description": "The font"
+     }
+    }
+   }
+  },
+  "/api/fonts/{name}": {
+   "parameters": [
+    {
+     "name": "name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Add a font (.ttf, .otf, .woff, .woff2)",
+    "description": "Raw body. Renderers pick it up without restart.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
   }
  },
  "components": {

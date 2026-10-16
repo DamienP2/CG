@@ -466,8 +466,11 @@ code {
 /* ---------- designer ---------- */
 .designer {
   display: grid;
-  grid-template-columns: 250px 1fr 340px;
+  grid-template-columns: var(--left-w, 250px) minmax(0, 1fr) var(--right-w, 340px);
   height: 100%;
+}
+.designer > .panel {
+  position: relative;
 }
 .center {
   display: flex;
@@ -478,6 +481,8 @@ code {
 .toolbar {
   height: 42px;
   flex: none;
+  overflow-x: auto;
+  overflow-y: hidden;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -523,7 +528,8 @@ code {
 
 .template-list {
   border-bottom: 1px solid var(--line);
-  max-height: 40%;
+  height: var(--tpl-h, 260px);
+  max-height: 70%;
   overflow: auto;
   flex: none;
   padding-bottom: 6px;
@@ -909,7 +915,7 @@ code {
 
 /* timeline */
 .timeline {
-  height: 300px;
+  height: var(--tl-h, 300px);
   flex: none;
   display: flex;
   flex-direction: column;
@@ -2737,4 +2743,60 @@ select.small {
   border-radius: 8px;
   background: var(--panel-2);
   border: 1px solid var(--line);
+}
+
+/* ---------- splitters ---------- */
+.splitter {
+  z-index: 20;
+  flex: none;
+}
+.splitter.x {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+}
+.splitter.edge-right {
+  right: 0;
+}
+.splitter.edge-left {
+  left: 0;
+}
+.splitter {
+  user-select: none;
+  touch-action: none;
+}
+.splitter.y {
+  height: 7px;
+  cursor: row-resize;
+}
+.splitter.inline {
+  margin: -4px 0;
+  position: relative;
+}
+.splitter.edge-top {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+}
+.splitter:hover,
+body.resizing-x .splitter.x:active,
+body.resizing-y .splitter.y:active {
+  background: rgba(124, 92, 255, 0.45);
+}
+body.resizing-x,
+body.resizing-x * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+body.resizing-y,
+body.resizing-y * {
+  cursor: row-resize !important;
+  user-select: none;
+}
+.timeline-wrap {
+  position: relative;
+  flex: none;
 }

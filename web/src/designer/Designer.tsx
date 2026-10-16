@@ -9,6 +9,7 @@ import { ICONS, LayersPanel } from './LayersPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
+import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
 
@@ -243,6 +244,8 @@ export function Designer() {
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
   const [showSafe, setShowSafe] = useState(true);
   const [zonesOpen, setZonesOpen] = useState(false);
+  // Panel sizes, adjustable with the splitters.
+  const [layout, setLayout] = useLayout('pulse.designerLayout', { left: 250, right: 340, timeline: 300, templates: 260 });
   const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('studio');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
@@ -271,9 +274,14 @@ export function Designer() {
   };
 
   return (
-    <div className="designer">
+    <div
+      className="designer"
+      style={{ ['--left-w' as string]: `${layout.left}px`, ['--right-w' as string]: `${layout.right}px`, ['--tl-h' as string]: `${layout.timeline}px`, ['--tpl-h' as string]: `${layout.templates}px` }}
+    >
       <aside className="panel left">
+        <Splitter axis="x" className="edge-right" value={layout.left} min={180} max={520} reset={250} onChange={(v) => setLayout('left', v)} />
         <TemplateList project={project} />
+        <Splitter axis="y" className="inline" value={layout.templates} min={60} max={800} reset={260} onChange={(v) => setLayout('templates', v)} />
         <div className="panel-title">Layers</div>
         <LayersPanel />
       </aside>
@@ -321,9 +329,13 @@ export function Designer() {
           <span className={`save-state ${saveState}`}>{saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
         </div>
         <Stage project={project} size={formatById(project, format)} showSafe={showSafe} background={background} />
-        <Timeline fps={fps} />
+        <div className="timeline-wrap">
+          <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={120} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
+          <Timeline fps={fps} />
+        </div>
       </main>
       <aside className="panel right">
+        <Splitter axis="x" className="edge-left" sign={-1} value={layout.right} min={260} max={620} reset={340} onChange={(v) => setLayout('right', v)} />
         <Inspector />
       </aside>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}

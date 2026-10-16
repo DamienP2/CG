@@ -1,12 +1,13 @@
-import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, ChevronLeft, ChevronRight, Diamond, Plus, Timer, Trash2, Upload } from 'lucide-react';
+import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, Plus, Timer, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { applyEasing, col, holdFrame, num, parseHex, propValue, sortKeys, toHex } from '../engine/evaluate';
+import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
 import { uploadAsset, useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
+import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
-import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
+import { findLayer, isAnimated, LABELS, setProp, toggleStopwatch, useDesigner } from './designerStore';
 
 interface PropSpec {
   prop: Prop;
@@ -53,7 +54,6 @@ export const PROP_LABELS: Record<Prop, string> = Object.fromEntries(
   ]),
 ) as Record<Prop, string>;
 
-const FONTS = ['Inter', 'Inter Display', 'DejaVu Sans', 'DejaVu Serif', 'FreeSans', 'Roboto', 'Montserrat', 'Oswald', 'Bebas Neue'];
 
 function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -68,13 +68,11 @@ function Section({ title, children, actions }: { title: string; children: React.
 }
 
 /** Stopwatch + keyframe navigation, the AE way. */
+/** The stopwatch (animate this property); keyframes are navigated in the
+ *  timeline, with ◀ ◆ ▶ on each row. */
 function KeyControls({ layer, prop }: { layer: Layer; prop: Prop }) {
-  const { frame, update, setFrame } = useDesigner();
+  const { frame, update } = useDesigner();
   const animated = isAnimated(layer, prop);
-  const keys = animated ? sortKeys(layer.tracks[prop]!) : [];
-  const onKey = keys.some((k) => k.frame === Math.round(frame));
-  const prev = [...keys].reverse().find((k) => k.frame < Math.round(frame));
-  const next = keys.find((k) => k.frame > Math.round(frame));
   return (
     <div className="key-controls">
       <button
@@ -88,23 +86,6 @@ function KeyControls({ layer, prop }: { layer: Layer; prop: Prop }) {
       >
         <Timer size={13} />
       </button>
-      {animated && (
-        <>
-          <button className="icon-btn ghost" disabled={!prev} onClick={() => prev && setFrame(prev.frame)} title="Previous keyframe">
-            <ChevronLeft size={12} />
-          </button>
-          <button
-            className={`icon-btn ghost key-diamond ${onKey ? 'on' : ''}`}
-            title={onKey ? 'Remove keyframe' : 'Add keyframe'}
-            onClick={() => update((t) => toggleKeyAt(findLayer(t, layer.id)!, prop, frame))}
-          >
-            <Diamond size={11} />
-          </button>
-          <button className="icon-btn ghost" disabled={!next} onClick={() => next && setFrame(next.frame)} title="Next keyframe">
-            <ChevronRight size={12} />
-          </button>
-        </>
-      )}
     </div>
   );
 }
@@ -549,23 +530,69 @@ function WidgetSettings({ layer, template, set }: { layer: Layer; template: Temp
   }
 }
 
+const WEIGHT_NAMES: Record<number, string> = { 100: 'Thin', 200: 'ExtraLight', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black' };
+
+/** Font picker: the fonts the server really has (bundled, uploaded, system). */
 function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
+  const families = useFonts((s) => s.families);
+  const toast = useApp((s) => s.toast);
+  const current = families.find((f) => f.family.toLowerCase() === layer.fontFamily.toLowerCase());
+  const weights = current?.weights ?? [400, 700];
+  const groups: [string, typeof families][] = [
+    ['Uploaded', families.filter((f) => f.source === 'uploaded')],
+    ['Built in', families.filter((f) => f.source === 'bundled')],
+    ['Server', families.filter((f) => f.source === 'system')],
+  ];
+  const upload = async (file: File) => {
+    const name = file.name.replace(/[^A-Za-z0-9._-]/g, '_');
+    try {
+      const res = await fetch(`/api/fonts/${encodeURIComponent(name)}`, { method: 'PUT', body: file, credentials: 'same-origin' });
+      if (!res.ok) throw new Error(await res.text());
+      await loadFonts();
+      toast(`Font ${file.name} added`, 'info');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
   return (
     <>
       <div className="row">
         <span className="prop-label">Font</span>
-        <select value={layer.fontFamily} onChange={(e) => set('fontFamily', e.target.value)}>
-          {[...new Set([layer.fontFamily, ...FONTS])].map((f) => (
-            <option key={f}>{f}</option>
-          ))}
+        <select
+          value={current?.family ?? layer.fontFamily}
+          onChange={(e) => {
+            const fam = families.find((f) => f.family === e.target.value);
+            set('fontFamily', e.target.value);
+            // Keep a weight that exists in the new family.
+            if (fam && !fam.weights.includes(layer.fontWeight)) set('fontWeight', nearestWeight(fam, layer.fontWeight));
+          }}
+          style={{ fontFamily: `"${current?.family ?? layer.fontFamily}"` }}
+        >
+          {!current && <option value={layer.fontFamily}>{layer.fontFamily} (missing on the server)</option>}
+          {groups
+            .filter(([, list]) => list.length)
+            .map(([label, list]) => (
+              <optgroup key={label} label={label}>
+                {list.map((f) => (
+                  <option key={f.family} value={f.family} style={{ fontFamily: `"${f.family}"` }}>
+                    {f.family}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
         </select>
         <select value={layer.fontWeight} onChange={(e) => set('fontWeight', +e.target.value)}>
-          {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => (
+          {[...new Set([...weights, layer.fontWeight])].sort((a, b) => a - b).map((w) => (
             <option key={w} value={w}>
-              {w}
+              {WEIGHT_NAMES[w] ?? w}
+              {weights.includes(w) ? '' : ' (n/a)'}
             </option>
           ))}
         </select>
+        <label className="icon-btn ghost" title="Add a font (.ttf, .otf, .woff)">
+          <Upload size={13} />
+          <input type="file" accept=".ttf,.otf,.woff,.woff2,.ttc" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+        </label>
       </div>
       <div className="row">
         <Segmented

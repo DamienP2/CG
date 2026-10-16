@@ -387,6 +387,7 @@ dependencies = [
  "fontdb",
  "image",
  "qrcode",
+ "serde",
  "tiny-skia",
  "tracing",
 ]

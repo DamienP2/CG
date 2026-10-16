@@ -64,6 +64,12 @@ pub fn router() -> Router<Shared> {
         )
         .route("/api/channels/{id}/preview.png", get(channel_preview))
         .route("/api/channels/{id}/outputs/{name}/{essence}", get(get_sdp))
+        .route("/api/fonts", get(list_fonts))
+        .route("/api/fonts/file/{family}/{weight}", get(font_file))
+        .route(
+            "/api/fonts/{name}",
+            put(upload_font).layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
         .route("/api/assets", get(list_assets))
         .route("/api/assets/{name}", put(put_asset))
         .route("/api/health", get(health))
@@ -980,6 +986,89 @@ async fn get_sdp(
         .sdp(width, height, (c.frame_rate.num, c.frame_rate.den), key)
         .ok_or_else(|| not_found("key stream"))?;
     Ok(([(header::CONTENT_TYPE, "application/sdp")], sdp).into_response())
+}
+
+// ----------------------------------------------------------------- fonts ----
+
+/// Fonts available to templates (public: output pages load them too).
+async fn list_fonts(State(s): State<Shared>) -> ApiResult<Json<Vec<cg_render::FontFamily>>> {
+    let st = s.clone();
+    let list = tokio::task::spawn_blocking(move || {
+        st.renderer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .font_families()
+    })
+    .await
+    .map_err(internal)?;
+    Ok(Json(list))
+}
+
+/// The font file the renderer uses, so browsers draw with the same font.
+async fn font_file(
+    State(s): State<Shared>,
+    Path((family, weight)): Path<(String, u16)>,
+) -> ApiResult<Response> {
+    let st = s.clone();
+    let bytes = tokio::task::spawn_blocking(move || {
+        st.renderer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .font_file(&family, weight)
+    })
+    .await
+    .map_err(internal)?
+    .ok_or_else(|| not_found("font"))?;
+    let kind = match bytes.get(..4) {
+        Some(b"OTTO") => "font/otf",
+        Some(b"wOFF") => "font/woff",
+        Some(b"wOF2") => "font/woff2",
+        _ => "font/ttf",
+    };
+    Ok((
+        [
+            (header::CONTENT_TYPE, kind),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// Adds a font (.ttf / .otf / .woff / .woff2) to the server.
+async fn upload_font(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(name): Path<String>,
+    body: Bytes,
+) -> ApiResult<Json<serde_json::Value>> {
+    require(matches!(me.role, Role::Admin | Role::Designer))?;
+    let lower = name.to_lowercase();
+    if !valid_asset_name(&name)
+        || ![".ttf", ".otf", ".woff", ".woff2", ".ttc"]
+            .iter()
+            .any(|e| lower.ends_with(e))
+    {
+        return Err(bad("upload a .ttf, .otf or .woff font"));
+    }
+    if ttf_magic(&body).is_none() {
+        return Err(bad("this is not a font file"));
+    }
+    let dir = s.assets_dir().join("fonts");
+    tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
+    tokio::fs::write(dir.join(&name), &body)
+        .await
+        .map_err(internal)?;
+    cg_render::fonts_changed();
+    Ok(Json(serde_json::json!({ "name": name })))
+}
+
+fn ttf_magic(b: &[u8]) -> Option<()> {
+    matches!(
+        b.get(..4)?,
+        [0, 1, 0, 0] | b"OTTO" | b"true" | b"ttcf" | b"wOFF" | b"wOF2"
+    )
+    .then_some(())
 }
 
 // ---------------------------------------------------------------- assets ----

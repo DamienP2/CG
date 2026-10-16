@@ -37,6 +37,28 @@ pub const BUNDLED_FONTS: &[(&str, &[u8])] = &[
 pub struct FontStore {
     db: fontdb::Database,
     cache: HashMap<fontdb::ID, FontArc>,
+    extra_dir: Option<std::path::PathBuf>,
+}
+
+/// A font family available to templates.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FontFamily {
+    pub family: String,
+    pub weights: Vec<u16>,
+    /// "bundled", "uploaded" or "system".
+    pub source: &'static str,
+}
+
+/// Bumped when fonts are added: renderers reload their font database.
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn fonts_changed() {
+    GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn font_generation() -> u64 {
+    GENERATION.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 impl FontStore {
@@ -54,7 +76,60 @@ impl FontStore {
         Self {
             db,
             cache: HashMap::new(),
+            extra_dir: extra_dir.map(Path::to_path_buf),
         }
+    }
+
+    /// Every family with its weights (regular styles only).
+    pub fn families(&self) -> Vec<FontFamily> {
+        let mut map: std::collections::BTreeMap<String, FontFamily> =
+            std::collections::BTreeMap::new();
+        for face in self.db.faces() {
+            if face.style != fontdb::Style::Normal {
+                continue;
+            }
+            let Some((name, _)) = face.families.first() else {
+                continue;
+            };
+            let source = match &face.source {
+                fontdb::Source::Binary(_) => "bundled",
+                fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _)
+                    if self.extra_dir.as_ref().is_some_and(|d| p.starts_with(d)) =>
+                {
+                    "uploaded"
+                }
+                _ => "system",
+            };
+            let e = map
+                .entry(name.to_lowercase())
+                .or_insert_with(|| FontFamily {
+                    family: name.clone(),
+                    weights: Vec::new(),
+                    source,
+                });
+            if !e.weights.contains(&face.weight.0) {
+                e.weights.push(face.weight.0);
+            }
+        }
+        let mut out: Vec<FontFamily> = map.into_values().collect();
+        for f in &mut out {
+            f.weights.sort_unstable();
+        }
+        out
+    }
+
+    /// The font file used for `family` at `weight` (exact family only), to
+    /// serve the same font to browsers.
+    pub fn file(&self, family: &str, weight: u16) -> Option<Vec<u8>> {
+        let families = [fontdb::Family::Name(family)];
+        let id = self.db.query(&fontdb::Query {
+            families: &families,
+            weight: fontdb::Weight(weight),
+            ..Default::default()
+        })?;
+        self.db
+            .with_face_data(id, |data, index| (index == 0).then(|| data.to_vec()))
+            .flatten()
     }
 
     pub fn font(&mut self, family: &str, weight: u16) -> Option<FontArc> {

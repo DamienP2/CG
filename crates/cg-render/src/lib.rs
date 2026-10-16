@@ -18,7 +18,7 @@ use cg_core::{
 };
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 
-pub use text::{FontStore, BUNDLED_FONTS};
+pub use text::{fonts_changed, FontFamily, FontStore, BUNDLED_FONTS};
 
 /// QR modules of `content` (row-major, true = dark) and the side length,
 /// shared with the HTML5 renderer so both draw the same code.
@@ -66,6 +66,7 @@ impl Frame {
 
 pub struct Renderer {
     fonts: FontStore,
+    font_generation: u64,
     assets_dir: PathBuf,
     images: HashMap<String, Option<Pixmap>>,
 }
@@ -98,9 +99,29 @@ impl Renderer {
         let fonts = FontStore::new(Some(&assets_dir.join("fonts")));
         Self {
             fonts,
+            font_generation: text::font_generation(),
             assets_dir,
             images: HashMap::new(),
         }
+    }
+
+    /// Picks up fonts added since the renderer was created.
+    fn refresh_fonts(&mut self) {
+        let g = text::font_generation();
+        if g != self.font_generation {
+            self.fonts = FontStore::new(Some(&self.assets_dir.join("fonts")));
+            self.font_generation = g;
+        }
+    }
+
+    pub fn font_families(&mut self) -> Vec<FontFamily> {
+        self.refresh_fonts();
+        self.fonts.families()
+    }
+
+    pub fn font_file(&mut self, family: &str, weight: u16) -> Option<Vec<u8>> {
+        self.refresh_fonts();
+        self.fonts.file(family, weight)
     }
 
     /// Forgets cached images (call after an asset upload).
@@ -117,6 +138,7 @@ impl Renderer {
         out: OutputFormat,
         default_tz: &str,
     ) -> Frame {
+        self.refresh_fonts();
         let mut pm = Pixmap::new(out.width.max(1), out.height.max(1)).expect("valid size");
         // The project layout (16:9, 9:16…) closest to this output's shape.
         let (format, dw, dh) = project.format_for(out.width, out.height);
@@ -165,6 +187,7 @@ impl Renderer {
         frame: f64,
         data: &Data,
     ) -> Frame {
+        self.refresh_fonts();
         let (width, height) = project
             .formats
             .iter()
