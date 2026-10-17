@@ -24,6 +24,9 @@ pub struct ProjectSummary {
     pub frame_rate: cg_core::FrameRate,
     pub templates: usize,
     pub rundown: usize,
+    /// Template shown on the project's card (the first one).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
 }
 
 impl From<&Project> for ProjectSummary {
@@ -37,6 +40,7 @@ impl From<&Project> for ProjectSummary {
             frame_rate: p.frame_rate,
             templates: p.templates.len(),
             rundown: p.rundown.len(),
+            cover: p.templates.first().map(|t| t.id.clone()),
         }
     }
 }

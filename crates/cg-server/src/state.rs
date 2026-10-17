@@ -50,6 +50,10 @@ pub enum Event {
         source: String,
         status: crate::datasources::Status,
     },
+    /// Folders of the project list changed.
+    Folders {
+        folders: crate::media::Folders,
+    },
     Error {
         message: String,
     },

@@ -6,6 +6,7 @@ mod datasources;
 mod engine;
 mod library;
 mod locks;
+mod media;
 mod mos;
 mod paths;
 mod render;

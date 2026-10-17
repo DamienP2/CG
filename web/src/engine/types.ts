@@ -318,6 +318,8 @@ export interface ProjectSummary {
   frameRate: FrameRate;
   templates: number;
   rundown: number;
+  /** Template shown on the card. */
+  cover?: string;
 }
 
 export interface ChannelInfo {

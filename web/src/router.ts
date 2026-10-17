@@ -1,9 +1,10 @@
 /** Minimal history router. */
-export type ProjectPage = 'designer' | 'operator' | 'data' | 'settings';
+export type ProjectPage = 'designer' | 'operator' | 'data' | 'media' | 'settings';
 
 export type Route =
   | { page: 'projects' }
   | { page: 'users' }
+  | { page: 'media' }
   | { page: 'settings' }
   | { page: 'apiDocs' }
   | {
@@ -18,7 +19,7 @@ export type Route =
   | { page: 'mosPlugin' }
   | { page: 'output'; channelId: string | null; rendition: string | null };
 
-const SUBS: ProjectPage[] = ['designer', 'operator', 'data', 'settings'];
+const SUBS: ProjectPage[] = ['designer', 'operator', 'data', 'media', 'settings'];
 
 export function parseRoute(path = location.pathname): Route {
   const [first, second, third, fourth] = path.split('/').filter(Boolean).map(decodeURIComponent);
@@ -39,6 +40,8 @@ export function parseRoute(path = location.pathname): Route {
       return { page: 'settings' };
     case 'users':
       return { page: 'users' };
+    case 'media':
+      return { page: 'media' };
     case 'mos':
       return second === 'plugin' ? { page: 'mosPlugin' } : { page: 'projects' };
     case 'api-docs':

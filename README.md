@@ -94,9 +94,14 @@ Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/CG1/fill.sdp` e
 ## Utilisation
 
 ### Projets
-Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. Après connexion, l'application montre seulement **Projects**, **Users** et **Settings** (ces deux derniers pour les admins). La page **Projects** permet de créer un projet (dans le format de son choix), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer.
+Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. Après connexion, l'application montre seulement **Projects**, **Media**, **Users** et **Settings** (ces deux derniers pour les admins). La page **Projects** permet de créer un projet (dans le format de son choix), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
 
-Chaque carte de projet montre son nom, sa description, son format d'origine, ses templates et les chaînes qui le jouent, avec quatre accès : **Designer**, **Operator**, **Data** et **Settings**. Un projet s'ouvre dans son propre onglet du navigateur (le rouvrir réutilise le même onglet), sous `/project/<id>/designer|operator|data|settings`. *Settings* y règle le nom, la description et le format d'origine. L'*Operator* d'un projet propose les chaînes qui le jouent ; si aucune ne le joue, on le charge sur une chaîne en un clic. L'indicateur *On air* n'apparaît que dans l'Operator.
+Les projets se rangent dans des **dossiers** (colonne de gauche : créer, renommer, supprimer un dossier ; glisser une carte sur un dossier, ou *… > Move to*). Supprimer un dossier ne supprime pas ses projets. Recherche et tri par nom ou nombre de templates.
+
+Chaque carte de projet montre son nom, sa description, son format d'origine, ses templates et les chaînes qui le jouent, un aperçu de son premier template, et cinq accès : **Designer**, **Operator**, **Data**, **Media** et **Settings**. Un projet s'ouvre dans son propre onglet du navigateur (le rouvrir réutilise le même onglet), sous `/project/<id>/designer|operator|data|media|settings`. *Settings* y règle le nom, la description et le format d'origine. L'*Operator* d'un projet propose les chaînes qui le jouent ; si aucune ne le joue, on le charge sur une chaîne en un clic. L'indicateur *On air* n'apparaît que dans l'Operator.
+
+### Médias
+Deux bibliothèques : les **médias partagés** (page *Media* de l'accueil, `/assets/<fichier>`), utilisables par tous les projets, et les **médias du projet** (onglet *Media* du projet, `/assets/projects/<id>/<fichier>`). On y téléverse images, vidéos, sons et polices (bouton *Upload* ou glisser-déposer, jusqu'à 2 Go par fichier, avec progression), on filtre par type, on cherche, on copie l'URL, on télécharge ou on supprime. Le sélecteur d'image du Designer propose les deux bibliothèques et téléverse dans celle du projet ; les images d'un import After Effects y vont aussi. Dupliquer un projet copie ses médias, le supprimer les supprime.
 
 ### Chaînes de sortie
 Une **chaîne** est un programme indépendant, par exemple une par studio ou par régie. Chaque chaîne a son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne, ses sorties ST 2110 / SDI et sa page HTML5 `/output/<id>`. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
@@ -192,6 +197,8 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
 | `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/publish` · `/draft` | publier vers l'Opérateur, abandonner le brouillon |
 | `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/lock` · `GET /api/projects/{id}/locks` | verrou d'édition (en-tête `X-Pulse-Client`, `force` pour reprendre la main) |
 | `GET` | `/api/projects/{id}/templates/{tid}/thumbnail.png?frame=` | rendu serveur d'un template |
+| `GET` / `PUT` / `DELETE` | `/api/media[/{nom}]` · `/api/projects/{id}/media[/{nom}]` | médias partagés, médias d'un projet |
+| `GET` / `PUT` | `/api/folders` | dossiers de la liste des projets |
 | `PUT` | `/api/projects/{id}/rundown` | playlist |
 | `GET` | `/api/channels` · `/api/channels/{id}/state` · `/preview.png` | chaînes, état et rendu du program |
 | `PUT` | `/api/channels/{id}/project` | charger un projet sur une chaîne |

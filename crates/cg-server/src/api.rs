@@ -23,6 +23,7 @@ use crate::state::{now_ms, ChannelInfo, ClientMessage, Event, Shared};
 
 pub fn router() -> Router<Shared> {
     Router::new()
+        .merge(crate::media::router())
         .route("/api/auth/state", get(auth_state))
         .route("/api/auth/setup", post(auth_setup))
         .route("/api/auth/login", post(auth_login))
@@ -126,15 +127,15 @@ pub fn router() -> Router<Shared> {
         .route("/ws", get(ws_upgrade))
 }
 
-type ApiResult<T> = Result<T, (StatusCode, String)>;
+pub(crate) type ApiResult<T> = Result<T, (StatusCode, String)>;
 
-fn bad(e: impl ToString) -> (StatusCode, String) {
+pub(crate) fn bad(e: impl ToString) -> (StatusCode, String) {
     (StatusCode::BAD_REQUEST, e.to_string())
 }
-fn internal(e: impl ToString) -> (StatusCode, String) {
+pub(crate) fn internal(e: impl ToString) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
 }
-fn not_found(what: &str) -> (StatusCode, String) {
+pub(crate) fn not_found(what: &str) -> (StatusCode, String) {
     (StatusCode::NOT_FOUND, format!("no such {what}"))
 }
 fn forbidden() -> (StatusCode, String) {
@@ -143,7 +144,7 @@ fn forbidden() -> (StatusCode, String) {
         "you do not have the rights for this".into(),
     )
 }
-fn require(ok: bool) -> ApiResult<()> {
+pub(crate) fn require(ok: bool) -> ApiResult<()> {
     if ok {
         Ok(())
     } else {
@@ -409,7 +410,11 @@ async fn list_projects(
     )
 }
 
-async fn visible_project(s: &Shared, me: &User, id: &str) -> ApiResult<std::sync::Arc<Project>> {
+pub(crate) async fn visible_project(
+    s: &Shared,
+    me: &User,
+    id: &str,
+) -> ApiResult<std::sync::Arc<Project>> {
     if !me.sees_project(id) {
         return Err(not_found("project"));
     }
@@ -492,8 +497,38 @@ async fn create_project(
         p.frame_rate = r;
     }
     check_format(p.width, p.height, p.frame_rate)?;
+    if let Some(src) = &n.from {
+        // The copy gets its own media, and its templates point to them.
+        copy_dir(
+            &crate::media::project_dir(&s, src),
+            &crate::media::project_dir(&s, &p.id),
+        )
+        .await
+        .map_err(internal)?;
+        let json = serde_json::to_string(&p).map_err(internal)?.replace(
+            &crate::media::project_prefix(src),
+            &crate::media::project_prefix(&p.id),
+        );
+        p = serde_json::from_str(&json).map_err(internal)?;
+    }
     let p = s.save_project(p).await.map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
+/// Copies the files of a directory (not recursive). A missing source is empty.
+async fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    let mut rd = match tokio::fs::read_dir(from).await {
+        Ok(d) => d,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    tokio::fs::create_dir_all(to).await?;
+    while let Some(e) = rd.next_entry().await? {
+        if e.file_type().await?.is_file() {
+            tokio::fs::copy(e.path(), to.join(e.file_name())).await?;
+        }
+    }
+    Ok(())
 }
 
 async fn import_project(
@@ -571,6 +606,7 @@ async fn delete_project(
     if !s.delete_project(&id).await.map_err(internal)? {
         return Err(not_found("project"));
     }
+    let _ = tokio::fs::remove_dir_all(crate::media::project_dir(&s, &id)).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -757,12 +793,13 @@ async fn import_after_effects(
         .await
         .map_err(internal)?
         .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e))?;
+    // Its images go to the project's media.
+    let mut template = out.imported.template;
     if !out.files.is_empty() {
-        tokio::fs::create_dir_all(s.assets_dir())
-            .await
-            .map_err(internal)?;
+        let dir = crate::media::project_dir(&s, &id);
+        tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
         for (name, bytes) in &out.files {
-            tokio::fs::write(s.assets_dir().join(name), bytes)
+            tokio::fs::write(dir.join(name), bytes)
                 .await
                 .map_err(internal)?;
         }
@@ -770,8 +807,15 @@ async fn import_after_effects(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .invalidate_assets();
+        let mut json = serde_json::to_string(&template).map_err(internal)?;
+        for (name, _) in &out.files {
+            json = json.replace(
+                &format!("\"/assets/{name}\""),
+                &format!("\"{}{name}\"", crate::media::project_prefix(&id)),
+            );
+        }
+        template = serde_json::from_str(&json).map_err(internal)?;
     }
-    let mut template = out.imported.template;
     if let Some(name) = q.name.filter(|n| !n.trim().is_empty()) {
         template.name = name.trim().to_string();
     }
@@ -1305,7 +1349,7 @@ fn ttf_magic(b: &[u8]) -> Option<()> {
 
 // ---------------------------------------------------------------- assets ----
 
-fn valid_asset_name(name: &str) -> bool {
+pub(crate) fn valid_asset_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() < 128
         && !name.starts_with('.')
@@ -1939,7 +1983,7 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                     Event::ProjectDeleted { id } => viewer.user.as_ref().is_some_and(|u| u.sees_project(id)),
                     Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
                     // Signed-in users (designer, operator, settings), not output pages.
-                    Event::Data { .. } => viewer.user.is_some(),
+                    Event::Data { .. } | Event::Folders { .. } => viewer.user.is_some(),
                     Event::Lock { project_id, .. } => viewer.user.as_ref().is_some_and(|u| u.sees_project(project_id)),
                     Event::Channels { channels } => {
                         // An output page switches project with its channel.

@@ -10,7 +10,14 @@ type ServerEvent =
   | { type: 'channel'; channelId: string; state: ChannelState; serverTime: number }
   | { type: 'data'; source: string; status: DataStatus }
   | { type: 'lock'; projectId: string; templateId: string; lock: EditLock | null; takenFrom: string | null }
+  | { type: 'folders'; folders: Folders }
   | { type: 'error'; message: string };
+
+/** Folders of the project list (one level) and the folder of each project. */
+export interface Folders {
+  folders: string[];
+  assign: Record<string, string>;
+}
 
 interface Toast {
   id: number;
@@ -40,6 +47,7 @@ interface AppStore {
   timezone: string;
   channels: ChannelInfo[];
   projects: ProjectSummary[];
+  folders: Folders;
   /** Full projects received so far. */
   full: Record<string, Project>;
   live: Record<string, Live>;
@@ -62,6 +70,7 @@ interface AppStore {
   deleteTemplate: (id: string) => Promise<void>;
   saveRundown: (r: RundownItem[]) => Promise<void>;
   saveZones: (z: Zone[]) => Promise<boolean>;
+  saveFolders: (f: Folders) => Promise<void>;
   toast: (message: string, kind?: Toast['kind']) => void;
 }
 
@@ -129,6 +138,7 @@ export const useApp = create<AppStore>((set, get) => {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     channels: [],
     projects: [],
+    folders: { folders: [], assign: {} },
     full: {},
     live: {},
     projectId: null,
@@ -188,7 +198,10 @@ export const useApp = create<AppStore>((set, get) => {
           switch (msg.type) {
             case 'hello': {
               set({ channels: msg.channels, timezone: msg.timezone, serverOffset: msg.serverTime - now });
-              if (!outputChannel) set({ projects: msg.projects });
+              if (!outputChannel) {
+                set({ projects: msg.projects });
+                api<Folders>('GET', '/api/folders').then((folders) => set({ folders }), () => {});
+              }
               // Refresh projects edited while we were away.
               const { projectId } = get();
               if (projectId && !outputChannel) get().openProject(projectId);
@@ -197,7 +210,7 @@ export const useApp = create<AppStore>((set, get) => {
             case 'project': {
               const full = { ...get().full, [msg.project.id]: msg.project };
               const { id, name, description, width, height, frameRate, templates, rundown } = msg.project;
-              const summary: ProjectSummary = { id, name, description: description ?? '', width, height, frameRate, templates: templates.length, rundown: rundown.length };
+              const summary: ProjectSummary = { id, name, description: description ?? '', width, height, frameRate, templates: templates.length, rundown: rundown.length, cover: templates[0]?.id };
               const projects = get().projects.some((p) => p.id === id) ? get().projects.map((p) => (p.id === id ? summary : p)) : [...get().projects, summary];
               set({ full, projects: outputChannel ? get().projects : projects, ...select(get().projectId, full) });
               break;
@@ -208,6 +221,9 @@ export const useApp = create<AppStore>((set, get) => {
               set({ full, projects: get().projects.filter((p) => p.id !== msg.id), ...select(get().projectId === msg.id ? null : get().projectId, full) });
               break;
             }
+            case 'folders':
+              set({ folders: msg.folders });
+              break;
             case 'channels':
               set({ channels: msg.channels });
               break;
@@ -299,6 +315,15 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
 
+    async saveFolders(f) {
+      set({ folders: f });
+      try {
+        set({ folders: await api<Folders>('PUT', '/api/folders', f) });
+      } catch (e) {
+        get().toast(errText(e), 'error');
+      }
+    },
+
     toast(message, kind = 'info') {
       const id = ++toastId;
       set({ toasts: [...get().toasts, { id, message, kind }] });
@@ -307,11 +332,35 @@ export const useApp = create<AppStore>((set, get) => {
   };
 });
 
-export async function uploadAsset(file: File): Promise<string> {
-  const name = file.name.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
-  const res = await fetch(`/api/assets/${encodeURIComponent(name)}`, { method: 'PUT', body: file, credentials: 'same-origin', headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined });
-  if (!res.ok) throw new Error(await res.text());
-  return ((await res.json()) as { src: string }).src;
+/** A file of a media library. */
+export interface MediaFile {
+  name: string;
+  src: string;
+  size: number;
+  modified: number;
+  kind: 'image' | 'video' | 'audio' | 'font' | 'other';
+}
+
+/** Media library URL: a project's, or the one shared by every project. */
+export const mediaUrl = (projectId?: string | null) => (projectId ? `/api/projects/${encodeURIComponent(projectId)}/media` : '/api/media');
+
+export const mediaName = (fileName: string) => fileName.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '') || 'file';
+
+/** Uploads a file to a media library (the project's when given) and returns its URL. */
+export async function uploadAsset(file: File, projectId?: string | null, onProgress?: (fraction: number) => void): Promise<string> {
+  const url = `${mediaUrl(projectId)}/${encodeURIComponent(mediaName(file.name))}`;
+  // XMLHttpRequest: fetch has no upload progress.
+  const xhr = new XMLHttpRequest();
+  const done = new Promise<string>((resolve, reject) => {
+    xhr.onload = () => (xhr.status < 300 ? resolve((JSON.parse(xhr.responseText) as MediaFile).src) : reject(new Error(xhr.responseText || xhr.statusText)));
+    xhr.onerror = () => reject(new Error('Upload failed'));
+  });
+  xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+  xhr.open('PUT', url);
+  xhr.withCredentials = true;
+  if (apiKey) xhr.setRequestHeader('Authorization', `Bearer ${apiKey}`);
+  xhr.send(file);
+  return done;
 }
 
 /** Imports an After Effects composition (Bodymovin / LottieFiles export) as a new template. */

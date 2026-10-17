@@ -49,6 +49,10 @@
   {
    "name": "Data",
    "description": "Data connectors (JSON API, CSV / Google Sheets, RSS, XML, push) and field bindings."
+  },
+  {
+   "name": "Media",
+   "description": "Shared and project media libraries"
   }
  ],
  "paths": {
@@ -2356,6 +2360,233 @@
      }
     }
    }
+  },
+  "/api/media": {
+   "get": {
+    "tags": [
+     "Media"
+    ],
+    "summary": "Shared media",
+    "description": "Files every project can use, served at `/assets/<name>`.",
+    "responses": {
+     "200": {
+      "description": "Files, newest first",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/MediaFile"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/media/{name}": {
+   "parameters": [
+    {
+     "name": "name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "File name (letters, digits, . - _)"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Media"
+    ],
+    "summary": "Upload a shared media file",
+    "description": "Replaces a file of the same name. Up to 2 GB.\n\n**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/octet-stream": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Stored",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MediaFile"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Media"
+    ],
+    "summary": "Delete a shared media file",
+    "description": "**Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/media": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Media"
+    ],
+    "summary": "Media of a project",
+    "description": "Served at `/assets/projects/<id>/<name>`. Duplicating a project copies them; deleting it deletes them.",
+    "responses": {
+     "200": {
+      "description": "Files, newest first",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/MediaFile"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/media/{name}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "File name (letters, digits, . - _)"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Media"
+    ],
+    "summary": "Upload a project media file",
+    "description": "Up to 2 GB.\n\n**Rights:** admin, designer, operator of the project.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/octet-stream": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Stored",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MediaFile"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Media"
+    ],
+    "summary": "Delete a project media file",
+    "description": "**Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/folders": {
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Folders of the project list",
+    "responses": {
+     "200": {
+      "description": "Folders",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Folders"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Replace the folders",
+    "description": "Folder names and the folder of each project (one level). A `folders` WebSocket event tells every client.\n\n**Rights:** admin, designer.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Folders"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Saved",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Folders"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -3259,6 +3490,53 @@
      "since": {
       "type": "integer",
       "description": "Unix ms"
+     }
+    }
+   },
+   "MediaFile": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "src": {
+      "type": "string",
+      "description": "URL used in templates"
+     },
+     "size": {
+      "type": "integer"
+     },
+     "modified": {
+      "type": "integer",
+      "description": "Unix ms"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "image",
+       "video",
+       "audio",
+       "font",
+       "other"
+      ]
+     }
+    }
+   },
+   "Folders": {
+    "type": "object",
+    "properties": {
+     "folders": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "assign": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      },
+      "description": "Project id → folder"
      }
     }
    }

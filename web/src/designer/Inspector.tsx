@@ -2,7 +2,7 @@ import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, Link2
 import { useEffect, useState } from 'react';
 import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type MarkerKind, type Prop, type Template, type Value } from '../engine/types';
-import { uploadAsset, useApp } from '../store';
+import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
 import { isTimed } from '../engine/widgets';
 import { BindingEditor } from '../data/BindingEditor';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
@@ -229,26 +229,47 @@ function ColorRow({ layer, prop, label, template }: { layer: Layer; prop: 'fill'
 }
 
 function AssetPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [assets, setAssets] = useState<string[]>([]);
+  const projectId = useApp((s) => s.projectId);
+  const [own, setOwn] = useState<MediaFile[]>([]);
+  const [shared, setShared] = useState<MediaFile[]>([]);
   const toast = useApp((s) => s.toast);
-  const refresh = () =>
-    fetch('/api/assets')
-      .then((r) => r.json())
-      .then(setAssets)
+  const refresh = () => {
+    const images = (l: MediaFile[]) => l.filter((m) => m.kind === 'image');
+    if (projectId)
+      api<MediaFile[]>('GET', mediaUrl(projectId))
+        .then((l) => setOwn(images(l)))
+        .catch(() => {});
+    api<MediaFile[]>('GET', mediaUrl(null))
+      .then((l) => setShared(images(l)))
       .catch(() => {});
-  useEffect(() => void refresh(), []);
+  };
+  useEffect(refresh, [projectId]);
+  const known = [...own, ...shared].some((m) => m.src === value);
   return (
     <div className="asset-picker">
       <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— choose an asset —</option>
-        {!assets.includes(value) && value && <option value={value}>{value}</option>}
-        {assets.map((a) => (
-          <option key={a} value={a}>
-            {a.replace('/assets/', '')}
-          </option>
-        ))}
+        <option value="">— choose an image —</option>
+        {!known && value && <option value={value}>{value}</option>}
+        {own.length > 0 && (
+          <optgroup label="Project media">
+            {own.map((m) => (
+              <option key={m.src} value={m.src}>
+                {m.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {shared.length > 0 && (
+          <optgroup label="Shared media">
+            {shared.map((m) => (
+              <option key={m.src} value={m.src}>
+                {m.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
-      <label className="btn small" title="Upload an image">
+      <label className="btn small" title="Upload an image to the project media">
         <Upload size={13} />
         <input
           type="file"
@@ -258,8 +279,8 @@ function AssetPicker({ value, onChange }: { value: string; onChange: (v: string)
             const f = e.target.files?.[0];
             if (!f) return;
             try {
-              const src = await uploadAsset(f);
-              await refresh();
+              const src = await uploadAsset(f, projectId);
+              refresh();
               onChange(src);
             } catch (err) {
               toast(`Upload failed: ${(err as Error).message}`, 'error');

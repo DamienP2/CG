@@ -75,7 +75,7 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
               hidden
               onChange={async (e) => {
                 const f = e.target.files?.[0];
-                if (f) uploadAsset(f).then(onChange, (err) => toast(String(err), 'error'));
+                if (f) uploadAsset(f, useApp.getState().projectId).then(onChange, (err) => toast(String(err), 'error'));
               }}
             />
           </label>

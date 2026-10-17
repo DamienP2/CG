@@ -1,4 +1,4 @@
-import { BookOpen, Clapperboard, Database, FolderOpen, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { BookOpen, Clapperboard, Database, FolderOpen, Images, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
 import { Operator } from './operator/Operator';
@@ -7,6 +7,7 @@ import { ApiDocs } from './pages/ApiDocs';
 import { Login } from './pages/Login';
 import { MosPlugin } from './mos/Plugin';
 import { Projects } from './pages/Projects';
+import { MediaLibrary } from './pages/Media';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
@@ -121,7 +122,7 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'users' | 'settings' | 'apiDocs' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'users' | 'settings' | 'apiDocs' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Pulse CG';
@@ -137,6 +138,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'users' | 
         <Brand />
         <div className="tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
+          {tab('media', '/media', <Images size={14} />, 'Media')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
           {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
         </div>
@@ -145,6 +147,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'users' | 
       </nav>
       <div className="content">
         {route.page === 'projects' && <Projects />}
+        {route.page === 'media' && <MediaLibrary />}
         {route.page === 'settings' && <Settings />}
         {route.page === 'users' && <Users />}
         {route.page === 'apiDocs' && <ApiDocs />}
@@ -170,7 +173,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   }, [summary?.name]);
 
   // Pages a role cannot see.
-  const allowed = (s: ProjectPage) => (s === 'operator' ? can.operate(user) : can.design(user));
+  const allowed = (s: ProjectPage) => (s === 'operator' || s === 'media' ? can.operate(user) : can.design(user));
   useEffect(() => {
     if (!allowed(sub)) navigate(projectPath(projectId, can.design(user) ? 'designer' : 'operator'), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +207,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   else if (!ready) page = <div className="loading">Opening the project…</div>;
   else if (sub === 'designer') page = <Designer key={project.id} />;
   else if (sub === 'data') page = <DataPage />;
+  else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
   else if (sub === 'settings') page = <ProjectSettings project={summary ?? { ...project, description: project.description ?? '' }} />;
   else if (operated && operated.projectId === projectId) page = <Operator key={operated.id} channelId={operated.id} />;
   else page = <ChannelPicker projectId={projectId} channel={operated} />;
@@ -219,6 +223,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           {tab('designer', <PenTool size={14} />, 'Designer')}
           {tab('operator', <Radio size={14} />, 'Operator')}
           {tab('data', <Database size={14} />, 'Data')}
+          {tab('media', <Images size={14} />, 'Media')}
           {tab('settings', <SettingsIcon size={14} />, 'Settings')}
         </div>
         <div className="spacer" />
