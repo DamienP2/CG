@@ -132,7 +132,7 @@ export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | {
 /** Marker model of templates made by this version (see Template.markerModel). */
 export const MARKER_MODEL = 2;
 
-export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image';
+export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean';
 
 export interface Field {
   key: string;
@@ -141,13 +141,36 @@ export interface Field {
   default: string;
   /** Live value from a data source. */
   binding?: FieldBinding | null;
+  /** Range of a number (slider). */
+  min?: number;
+  max?: number;
 }
 
 /** A data source and a path in its value (`rows[{row}].name`, `items[*].title`…). */
 export interface FieldBinding {
   source: string;
   path: string;
+  /** Applied in order to the value read (mirror of model::DataFilter). */
+  filters?: DataFilter[];
 }
+
+export type FilterOp = 'add' | 'sub' | 'mul' | 'div';
+
+export type DataFilter =
+  | { type: 'upper' }
+  | { type: 'lower' }
+  | { type: 'capitalize' }
+  | { type: 'trim' }
+  | { type: 'prefix'; text: string }
+  | { type: 'suffix'; text: string }
+  | { type: 'replace'; find: string; with: string }
+  | { type: 'truncate'; max: number }
+  | { type: 'lines'; from: number; count: number }
+  | { type: 'join'; separator: string }
+  | { type: 'number'; decimals: number; grouping: boolean }
+  | { type: 'math'; op: FilterOp; value: number }
+  | { type: 'default'; text: string }
+  | { type: 'map'; when: string; then: string };
 
 export type DataSourceKind =
   | { type: 'json'; url: string; headers?: Record<string, string> }

@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use serde_json::Value as Json;
 
 use crate::anim::Data;
-use crate::model::Template;
+use crate::model::{DataFilter, FilterOp, Template};
 
 /// Latest value of each data source, by source id.
 pub type Store = HashMap<String, Json>;
@@ -99,7 +99,7 @@ pub fn bind(template: &Template, data: &mut Data, store: &Store) -> bool {
         let Some(v) = store.get(&b.source) else {
             continue;
         };
-        let Some(text) = lookup(v, &b.path, data) else {
+        let Some(text) = lookup_filtered(v, &b.path, &b.filters, data) else {
             continue;
         };
         if data.get(&f.key) != Some(&text) {
@@ -108,6 +108,109 @@ pub fn bind(template: &Template, data: &mut Data, store: &Store) -> bool {
         }
     }
     changed
+}
+
+/// [`lookup`] then the filters; a missing value goes through them as an
+/// empty text only when one of them gives a default.
+pub fn lookup_filtered(
+    value: &Json,
+    path: &str,
+    filters: &[DataFilter],
+    data: &Data,
+) -> Option<String> {
+    let raw = match lookup(value, path, data) {
+        Some(t) => t,
+        None if filters
+            .iter()
+            .any(|f| matches!(f, DataFilter::Default { .. })) =>
+        {
+            String::new()
+        }
+        None => return None,
+    };
+    Some(filters.iter().fold(raw, |t, f| filter(&t, f)))
+}
+
+/// One filter step.
+pub fn filter(text: &str, f: &DataFilter) -> String {
+    let number = || text.trim().replace(',', ".").parse::<f64>().ok();
+    match f {
+        DataFilter::Upper => text.to_uppercase(),
+        DataFilter::Lower => text.to_lowercase(),
+        DataFilter::Capitalize => {
+            let mut out = String::with_capacity(text.len());
+            let mut start = true;
+            for c in text.chars() {
+                if start && c.is_alphabetic() {
+                    out.extend(c.to_uppercase());
+                    start = false;
+                } else {
+                    out.push(c);
+                    if c.is_whitespace() || c == '-' {
+                        start = true;
+                    }
+                }
+            }
+            out
+        }
+        DataFilter::Trim => text.trim().to_string(),
+        DataFilter::Prefix { text: p } => format!("{p}{text}"),
+        DataFilter::Suffix { text: s } => format!("{text}{s}"),
+        DataFilter::Replace { find, with } if !find.is_empty() => text.replace(find.as_str(), with),
+        DataFilter::Replace { .. } => text.to_string(),
+        DataFilter::Truncate { max } => {
+            if text.chars().count() > *max {
+                let mut t: String = text.chars().take(*max).collect();
+                t = t.trim_end().to_string();
+                t.push('…');
+                t
+            } else {
+                text.to_string()
+            }
+        }
+        DataFilter::Lines { from, count } => {
+            let lines: Vec<&str> = text.split('\n').collect();
+            let n = lines.len() as i64;
+            let start = if *from < 0 { n + from } else { from - 1 }.clamp(0, n) as usize;
+            let end = if *count == 0 {
+                lines.len()
+            } else {
+                (start + count).min(lines.len())
+            };
+            lines[start..end].join("\n")
+        }
+        DataFilter::Join { separator } => text
+            .split('\n')
+            .filter(|l| !l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join(separator),
+        DataFilter::Number { decimals, grouping } => match number() {
+            Some(v) => crate::widgets::format_number(v, *decimals, *grouping),
+            None => text.to_string(),
+        },
+        DataFilter::Math { op, value } => match number() {
+            Some(v) => {
+                let r = match op {
+                    FilterOp::Add => v + value,
+                    FilterOp::Sub => v - value,
+                    FilterOp::Mul => v * value,
+                    FilterOp::Div if *value != 0.0 => v / value,
+                    FilterOp::Div => v,
+                };
+                let r = (r * 1e6).round() / 1e6;
+                if r.fract() == 0.0 && r.abs() < 1e15 {
+                    format!("{}", r as i64)
+                } else {
+                    r.to_string()
+                }
+            }
+            None => text.to_string(),
+        },
+        DataFilter::Default { text: d } if text.trim().is_empty() => d.clone(),
+        DataFilter::Default { .. } => text.to_string(),
+        DataFilter::Map { when, then } if text.trim() == when.trim() => then.clone(),
+        DataFilter::Map { .. } => text.to_string(),
+    }
 }
 
 /// Sources a template reads.
@@ -262,6 +365,7 @@ mod tests {
         t.fields[2].binding = Some(crate::model::FieldBinding {
             source: "match".into(),
             path: "home.score".into(),
+            filters: vec![],
         });
         let mut store = Store::new();
         let mut data = d(&[("homeScore", "0")]);
@@ -272,5 +376,84 @@ mod tests {
         assert_eq!(data["homeScore"], "3");
         assert!(!bind(&t, &mut data, &store));
         assert_eq!(sources(&t).collect::<Vec<_>>(), vec!["match"]);
+    }
+
+    #[test]
+    fn filters_change_the_text() {
+        use crate::model::{DataFilter as F, FilterOp};
+        let v = json!({ "name": "  marie curie ", "items": ["a", "b", "c"], "n": "1234.5" });
+        let none = Data::new();
+        let run = |path: &str, fs: Vec<F>| lookup_filtered(&v, path, &fs, &none);
+        assert_eq!(
+            run("name", vec![F::Trim, F::Capitalize]).as_deref(),
+            Some("Marie Curie")
+        );
+        assert_eq!(
+            run(
+                "name",
+                vec![F::Trim, F::Upper, F::Prefix { text: "Dr ".into() }]
+            )
+            .as_deref(),
+            Some("Dr MARIE CURIE")
+        );
+        assert_eq!(
+            run("items[*]", vec![F::Lines { from: 2, count: 1 }]).as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            run(
+                "items[*]",
+                vec![
+                    F::Lines { from: -2, count: 0 },
+                    F::Join {
+                        separator: " · ".into()
+                    }
+                ]
+            )
+            .as_deref(),
+            Some("b · c")
+        );
+        assert_eq!(
+            run(
+                "n",
+                vec![F::Math {
+                    op: FilterOp::Mul,
+                    value: 2.0
+                }]
+            )
+            .as_deref(),
+            Some("2469")
+        );
+        assert_eq!(
+            run(
+                "n",
+                vec![F::Number {
+                    decimals: 1,
+                    grouping: true
+                }]
+            )
+            .as_deref(),
+            Some("1\u{202f}234,5")
+        );
+        assert_eq!(run("nope", vec![]), None);
+        assert_eq!(
+            run("nope", vec![F::Default { text: "—".into() }]).as_deref(),
+            Some("—")
+        );
+        assert_eq!(
+            run(
+                "items[0]",
+                vec![F::Map {
+                    when: "a".into(),
+                    then: "Alpha".into()
+                }]
+            )
+            .as_deref(),
+            Some("Alpha")
+        );
+        assert_eq!(
+            run("name", vec![F::Trim, F::Truncate { max: 5 }]).as_deref(),
+            Some("marie…")
+        );
     }
 }

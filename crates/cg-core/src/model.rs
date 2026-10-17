@@ -567,6 +567,8 @@ pub enum FieldKind {
     Number,
     Color,
     Image,
+    /// On / off ("true" / "false"; 1 / 0 for a number property).
+    Boolean,
 }
 
 /// A data input exposed to the operator (Singular "control node" / Flowics input).
@@ -582,16 +584,86 @@ pub struct Field {
     /// replaces what the operator types while the source has a value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub binding: Option<FieldBinding>,
+    /// Range of a number (slider in the editors).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
 }
 
 /// Where a field takes its value: a data source and a path in it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldBinding {
     pub source: String,
     /// `items[0].title`, `rows[{row}].name`, `players[number={num}].name`,
     /// `items[*].title` (all, one per line), `items.length`.
     pub path: String,
+    /// Applied in order to the value read (see [`crate::datapath::filter`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub filters: Vec<DataFilter>,
+}
+
+/// A step between a data source and a field: changes the text read.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DataFilter {
+    Upper,
+    Lower,
+    /// First letter of each word in capitals.
+    Capitalize,
+    Trim,
+    Prefix {
+        text: String,
+    },
+    Suffix {
+        text: String,
+    },
+    Replace {
+        find: String,
+        with: String,
+    },
+    /// At most `max` characters, then "…".
+    Truncate {
+        max: usize,
+    },
+    /// Lines `from` (1 = first, negative = from the end), `count` of them (0 = all).
+    Lines {
+        from: i64,
+        count: usize,
+    },
+    /// The lines joined with `separator` (a list on one line).
+    Join {
+        separator: String,
+    },
+    /// A number with `decimals` and thousands grouping.
+    Number {
+        decimals: u8,
+        grouping: bool,
+    },
+    /// A number: value `op` operand.
+    Math {
+        op: FilterOp,
+        value: f64,
+    },
+    /// `text` when the value is empty (or missing).
+    Default {
+        text: String,
+    },
+    /// `then` when the value equals `when`, else unchanged.
+    Map {
+        when: String,
+        then: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FilterOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1118,6 +1118,8 @@ impl Converter {
             },
             default: text,
             binding: None,
+            min: None,
+            max: None,
         });
         Some((
             LayerKind::Text {

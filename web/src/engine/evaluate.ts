@@ -159,7 +159,8 @@ export function resolveLayer(layer: Layer, frame: number, data: Data, hold = 0):
     const key = layer.bindings?.[p];
     let bound: Value | undefined;
     if (key && data[key] !== undefined) {
-      bound = COLOR_PROPS.has(p) ? parseHex(data[key]) : Number.isFinite(parseFloat(data[key])) ? parseFloat(data[key]) : undefined;
+      const raw = data[key].trim();
+      bound = COLOR_PROPS.has(p) ? parseHex(raw) : raw === 'true' ? 1 : raw === 'false' ? 0 : Number.isFinite(parseFloat(raw)) ? parseFloat(raw) : undefined;
     }
     const track = layer.tracks?.[p];
     const animated = sampleTrack(track, frame);

@@ -206,6 +206,8 @@ pub fn lower_third() -> Template {
                 kind: FieldKind::Text,
                 default: "Jane Doe".into(),
                 binding: None,
+                min: None,
+                max: None,
             },
             Field {
                 key: "title".into(),
@@ -213,6 +215,8 @@ pub fn lower_third() -> Template {
                 kind: FieldKind::Text,
                 default: "Special correspondent".into(),
                 binding: None,
+                min: None,
+                max: None,
             },
         ],
         layers: vec![group, accent, plate, sub, name, title],
@@ -325,6 +329,8 @@ pub fn score_bug() -> Template {
                 kind: FieldKind::Text,
                 default: "PSG".into(),
                 binding: None,
+                min: None,
+                max: None,
             },
             Field {
                 key: "away".into(),
@@ -332,6 +338,8 @@ pub fn score_bug() -> Template {
                 kind: FieldKind::Text,
                 default: "OM".into(),
                 binding: None,
+                min: None,
+                max: None,
             },
             Field {
                 key: "homeScore".into(),
@@ -339,6 +347,8 @@ pub fn score_bug() -> Template {
                 kind: FieldKind::Number,
                 default: "0".into(),
                 binding: None,
+                min: None,
+                max: None,
             },
             Field {
                 key: "awayScore".into(),
@@ -346,6 +356,8 @@ pub fn score_bug() -> Template {
                 kind: FieldKind::Number,
                 default: "0".into(),
                 binding: None,
+                min: None,
+                max: None,
             },
         ],
         layers: vec![
@@ -544,13 +556,13 @@ pub fn ticker() -> Template {
         duration: 80.0,
         markers: vec![marker(20.0, "On air", MarkerKind::Pause), marker(60.0, "Out", MarkerKind::Out)],
         fields: vec![
-            Field { key: "label".into(), label: "Label".into(), kind: FieldKind::Text, default: "Breaking".into(), binding: None },
+            Field { key: "label".into(), label: "Label".into(), kind: FieldKind::Text, default: "Breaking".into(), binding: None, min: None, max: None },
             Field {
                 key: "items".into(),
                 label: "Headlines (one per line)".into(),
                 kind: FieldKind::Multiline,
                 default: "Pulse CG renders HTML5, SDI and ST 2110 from one engine\nTickers, clocks and rolls are now built in\nOne project per show, one channel per studio".into(),
-                binding: None,
+                binding: None, min: None, max: None,
             },
         ],
         layers: vec![bar, label_bg, label, crawl],
@@ -615,6 +627,8 @@ pub fn credits() -> Template {
                 "PULSE CG\n\nDirector\nJane Doe\n\nGraphics\nPulse CG Engine\n\nThanks for watching"
                     .into(),
             binding: None,
+            min: None,
+            max: None,
         }],
         layers: vec![shade, roll],
     }
@@ -645,6 +659,8 @@ fn field(key: &str, label: &str, kind: FieldKind, default: &str) -> Field {
         kind,
         default: default.into(),
         binding: None,
+        min: None,
+        max: None,
     }
 }
 

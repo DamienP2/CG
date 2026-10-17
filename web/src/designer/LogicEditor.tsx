@@ -16,7 +16,7 @@ const NODE_W = 210;
 const HEAD = 30;
 const ROW = 24;
 
-const KINDS: { type: LogicNode['type']; label: string; hint: string; icon: typeof Hash }[] = [
+export const KINDS: { type: LogicNode['type']; label: string; hint: string; icon: typeof Hash }[] = [
   { type: 'layerProp', label: 'Layer property', hint: 'x, width, opacity… of a layer', icon: Crosshair },
   { type: 'textSize', label: 'Text size', hint: 'Measured width / height of a text', icon: Ruler },
   { type: 'field', label: 'Data field', hint: 'What the operator types', icon: TextCursorInput },
@@ -53,7 +53,7 @@ const CMP: { value: Cmp; label: string }[] = [
 
 const NUMERIC_PROPS = PROPS.filter((p) => p !== 'fill' && p !== 'stroke');
 
-function makeNode(type: LogicNode['type'], t: Template, x: number, y: number): LogicNode {
+export function makeNode(type: LogicNode['type'], t: Template, x: number, y: number): LogicNode {
   const first = t.layers[0]?.id ?? '';
   const text = t.layers.find((l) => l.type === 'text')?.id ?? first;
   const base = { id: newId(), x, y };
@@ -85,7 +85,7 @@ function curve(a: { x: number; y: number }, b: { x: number; y: number }) {
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
 }
 
-const fmt = (v: LVal | undefined) => (v === undefined ? '' : typeof v === 'number' ? String(+v.toFixed(2)) : `“${v.length > 18 ? `${v.slice(0, 18)}…` : v}”`);
+export const fmt = (v: LVal | undefined) => (v === undefined ? '' : typeof v === 'number' ? String(+v.toFixed(2)) : `“${v.length > 18 ? `${v.slice(0, 18)}…` : v}”`);
 
 /** "Fit a box to a text": text width + 2 × padding → box width. */
 function FitPreset({ template, onCreate, onClose }: { template: Template; onCreate: (nodes: LogicNode[], edges: Logic['edges']) => void; onClose: () => void }) {
@@ -156,6 +156,106 @@ function FitPreset({ template, onCreate, onClose }: { template: Template; onCrea
     </div>
   );
 }
+
+/** Settings of a logic node (layer, property, operation…), shared by the Logic and Data editors. */
+export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template: Template; setNode: (id: string, patch: Partial<LogicNode>, key?: string) => void }) {
+  const layerSelect = (n: LogicNode & { layer: string }, filter?: (type: string) => boolean) => (
+    <select value={n.layer} onChange={(e) => setNode(n.id, { layer: e.target.value } as Partial<LogicNode>)}>
+      {template.layers
+        .filter((l) => !filter || filter(l.type))
+        .map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.name}
+          </option>
+        ))}
+    </select>
+  );
+  const propSelect = (n: LogicNode & { prop: Prop }, list: readonly Prop[]) => (
+    <select value={n.prop} onChange={(e) => setNode(n.id, { prop: e.target.value as Prop } as Partial<LogicNode>)}>
+      {list.map((p) => (
+        <option key={p} value={p}>
+          {PROP_LABELS[p] ?? p}
+        </option>
+      ))}
+    </select>
+  );
+
+  switch (n.type) {
+    case 'layerProp':
+      return (
+        <>
+          {layerSelect(n)}
+          {propSelect(n, NUMERIC_PROPS)}
+        </>
+      );
+    case 'textSize':
+      return (
+        <>
+          {layerSelect(n, (t) => t === 'text')}
+          <select value={n.metric} onChange={(e) => setNode(n.id, { metric: e.target.value as TextMetric })}>
+            <option value="width">Width</option>
+            <option value="height">Height</option>
+            <option value="lines">Lines</option>
+            <option value="chars">Characters</option>
+          </select>
+        </>
+      );
+    case 'field':
+      return (
+        <select value={n.key} onChange={(e) => setNode(n.id, { key: e.target.value })}>
+          {!template.fields.some((f) => f.key === n.key) && <option value={n.key}>{n.key || '—'}</option>}
+          {template.fields.map((f) => (
+            <option key={f.key} value={f.key}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+      );
+    case 'constant':
+      return <input type="number" value={n.value} onChange={(e) => setNode(n.id, { value: +e.target.value }, `logic-v-${n.id}`)} />;
+    case 'math':
+      return (
+        <select value={n.op} onChange={(e) => setNode(n.id, { op: e.target.value as MathOp })}>
+          {MATH.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      );
+    case 'clamp':
+      return (
+        <div className="row">
+          <input type="number" value={n.min} title="Min" onChange={(e) => setNode(n.id, { min: +e.target.value }, `logic-v-${n.id}`)} />
+          <input type="number" value={n.max} title="Max" onChange={(e) => setNode(n.id, { max: +e.target.value }, `logic-v-${n.id}`)} />
+        </div>
+      );
+    case 'condition':
+      return (
+        <select value={n.cmp} onChange={(e) => setNode(n.id, { cmp: e.target.value as Cmp })}>
+          {CMP.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      );
+    case 'target':
+      return (
+        <>
+          {layerSelect(n)}
+          {propSelect(n, PROPS)}
+          <select value={n.mode} onChange={(e) => setNode(n.id, { mode: e.target.value as 'set' })}>
+            <option value="set">Set to</option>
+            <option value="add">Add to the animation</option>
+            <option value="multiply">Multiply the animation</option>
+          </select>
+        </>
+      );
+  }
+}
+
+export const inputLabel = (n: LogicNode, port: string) => (n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' ? port.toUpperCase() : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port);
 
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const { template, update, frame, previewData } = useDesigner();
@@ -244,106 +344,6 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
-
-  const layerSelect = (n: LogicNode & { layer: string }, filter?: (type: string) => boolean) => (
-    <select value={n.layer} onChange={(e) => setNode(n.id, { layer: e.target.value } as Partial<LogicNode>)}>
-      {template.layers
-        .filter((l) => !filter || filter(l.type))
-        .map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
-          </option>
-        ))}
-    </select>
-  );
-  const propSelect = (n: LogicNode & { prop: Prop }, list: readonly Prop[]) => (
-    <select value={n.prop} onChange={(e) => setNode(n.id, { prop: e.target.value as Prop } as Partial<LogicNode>)}>
-      {list.map((p) => (
-        <option key={p} value={p}>
-          {PROP_LABELS[p] ?? p}
-        </option>
-      ))}
-    </select>
-  );
-
-  const body = (n: LogicNode) => {
-    switch (n.type) {
-      case 'layerProp':
-        return (
-          <>
-            {layerSelect(n)}
-            {propSelect(n, NUMERIC_PROPS)}
-          </>
-        );
-      case 'textSize':
-        return (
-          <>
-            {layerSelect(n, (t) => t === 'text')}
-            <select value={n.metric} onChange={(e) => setNode(n.id, { metric: e.target.value as TextMetric })}>
-              <option value="width">Width</option>
-              <option value="height">Height</option>
-              <option value="lines">Lines</option>
-              <option value="chars">Characters</option>
-            </select>
-          </>
-        );
-      case 'field':
-        return (
-          <select value={n.key} onChange={(e) => setNode(n.id, { key: e.target.value })}>
-            {!template.fields.some((f) => f.key === n.key) && <option value={n.key}>{n.key || '—'}</option>}
-            {template.fields.map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        );
-      case 'constant':
-        return <input type="number" value={n.value} onChange={(e) => setNode(n.id, { value: +e.target.value }, `logic-v-${n.id}`)} />;
-      case 'math':
-        return (
-          <select value={n.op} onChange={(e) => setNode(n.id, { op: e.target.value as MathOp })}>
-            {MATH.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        );
-      case 'clamp':
-        return (
-          <div className="row">
-            <input type="number" value={n.min} title="Min" onChange={(e) => setNode(n.id, { min: +e.target.value }, `logic-v-${n.id}`)} />
-            <input type="number" value={n.max} title="Max" onChange={(e) => setNode(n.id, { max: +e.target.value }, `logic-v-${n.id}`)} />
-          </div>
-        );
-      case 'condition':
-        return (
-          <select value={n.cmp} onChange={(e) => setNode(n.id, { cmp: e.target.value as Cmp })}>
-            {CMP.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        );
-      case 'target':
-        return (
-          <>
-            {layerSelect(n)}
-            {propSelect(n, PROPS)}
-            <select value={n.mode} onChange={(e) => setNode(n.id, { mode: e.target.value as 'set' })}>
-              <option value="set">Set to</option>
-              <option value="add">Add to the animation</option>
-              <option value="multiply">Multiply the animation</option>
-            </select>
-          </>
-        );
-    }
-  };
-
-  const inputLabel = (n: LogicNode, port: string) =>
-    n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' ? port.toUpperCase() : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port;
 
   return (
     <div className="logic-editor" onKeyDown={(e) => e.stopPropagation()}>
@@ -436,7 +436,9 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                       <span>{inputLabel(n, port)}</span>
                     </div>
                   ))}
-                  <div className="ln-body">{body(n)}</div>
+                  <div className="ln-body">
+                    <LogicNodeBody n={n} template={template} setNode={setNode} />
+                  </div>
                 </div>
               );
             })}

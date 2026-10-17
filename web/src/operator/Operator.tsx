@@ -65,7 +65,21 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
     case 'multiline':
       return <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
     case 'number':
+      if (field.min !== undefined && field.max !== undefined && field.max > field.min)
+        return (
+          <div className="row slider-row">
+            <input type="range" min={field.min} max={field.max} step={(field.max - field.min) / 200} value={parseFloat(value) || 0} onChange={(e) => onChange(e.target.value)} />
+            <NumberStepper value={value} onChange={onChange} />
+          </div>
+        );
       return <NumberStepper value={value} onChange={onChange} />;
+    case 'boolean':
+      return (
+        <label className="switch">
+          <input type="checkbox" checked={value === 'true'} onChange={(e) => onChange(e.target.checked ? 'true' : 'false')} />
+          <span>{value === 'true' ? 'On' : 'Off'}</span>
+        </label>
+      );
     case 'color':
       return (
         <div className="row">
@@ -684,7 +698,7 @@ function DataBlock({
     const patch: Record<string, string> = {};
     await Promise.all(
       bound.map(async (f) => {
-        const v = await lookup(f.binding!.source, f.binding!.path, draft);
+        const v = await lookup(f.binding!.source, f.binding!.path, draft, f.binding!.filters);
         if (v !== null) patch[f.key] = v;
       }),
     );

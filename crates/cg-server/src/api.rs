@@ -1713,6 +1713,8 @@ struct LookupQuery {
     path: String,
     #[serde(default)]
     data: cg_core::Data,
+    #[serde(default)]
+    filters: Vec<cg_core::DataFilter>,
 }
 
 /// Resolves a binding path against a source's current value.
@@ -1727,7 +1729,7 @@ async fn data_lookup(
         .ok_or_else(|| not_found("value for this data source"))?;
     Ok(Json(BTreeMap::from([(
         "value",
-        cg_core::datapath::lookup(&v, &q.path, &q.data),
+        cg_core::datapath::lookup_filtered(&v, &q.path, &q.filters, &q.data),
     )])))
 }
 

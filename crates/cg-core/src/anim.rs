@@ -122,7 +122,11 @@ fn binding_value(prop: Prop, raw: &str) -> Option<Value> {
     if prop.is_color() {
         Color::from_hex(raw).map(Value::Color)
     } else {
-        raw.trim().parse::<f64>().ok().map(Value::Number)
+        match raw.trim() {
+            "true" => Some(Value::Number(1.0)),
+            "false" => Some(Value::Number(0.0)),
+            t => t.parse::<f64>().ok().map(Value::Number),
+        }
     }
 }
 
