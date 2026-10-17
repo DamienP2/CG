@@ -1,13 +1,13 @@
-import { RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, Spline, Unlink, Upload } from 'lucide-react';
+import { RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Braces, Link as LinkIcon, Link2, Unlink, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { applyEasing, col, num, parseHex, propValue, toHex } from '../engine/evaluate';
+import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
-import { findLayer, isAnimated, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
+import { findLayer, isAnimated, setProp, toggleKeyAt, useDesigner } from './designerStore';
 import { ICONS } from './LayersPanel';
 
 interface PropSpec {
@@ -138,12 +138,13 @@ function RowKeys({ layer, props }: { layer: Layer; props: Prop[] }) {
       <button
         className={here ? 'on' : ''}
         title={here ? 'Remove the keyframe at the playhead' : 'Add a keyframe at the playhead'}
-        onClick={() =>
+        onClick={() => {
           update((t) => {
             const l = findLayer(t, layer.id)!;
             for (const p of props) if (here === (l.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5)) toggleKeyAt(l, p, frame);
-          })
-        }
+          });
+          if (!here) useDesigner.setState((st) => ({ expanded: { ...st.expanded, [layer.id]: true } }));
+        }}
       >
         <Diamond size={11} fill={here ? 'currentColor' : 'none'} />
       </button>
@@ -154,32 +155,83 @@ function RowKeys({ layer, props }: { layer: Layer; props: Prop[] }) {
   );
 }
 
-/** Animate toggle of a row (all its properties), lit while animated. */
-function AnimateToggle({ layer, props }: { layer: Layer; props: Prop[] }) {
-  const { frame, update } = useDesigner();
-  const animated = props.some((p) => isAnimated(layer, p));
+/** Lit when a Logic relation drives one of the row's properties. */
+function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
   const driven = useDesigner((s) => s.template?.logic?.nodes.some((n) => n.type === 'target' && n.layer === layer.id && props.includes(n.prop as Prop)));
+  if (!driven) return null;
   return (
-    <>
-      {driven && (
-        <span className="logic-badge" title="Driven by a Logic relation (Logic button in the toolbar)">
-          <Link2 size={11} />
-        </span>
-      )}
-      <button
-        className={`pp-anim ${animated ? 'on' : ''}`}
-        title={animated ? 'Stop animating' : 'Animate (keyframes at the playhead)'}
-        onClick={() => {
-          update((t) => {
-            const l = findLayer(t, layer.id)!;
-            for (const p of props) if (isAnimated(l, p) === animated) toggleStopwatch(l, p, frame);
-          });
-          if (!animated) useDesigner.setState((st) => ({ expanded: { ...st.expanded, [layer.id]: true } }));
-        }}
-      >
-        <Spline size={14} />
+    <span className="logic-badge" title="Driven by a Logic relation (Logic button in the toolbar)">
+      <Link2 size={11} />
+    </span>
+  );
+}
+
+/** { } next to a field: makes this property a variable (the operator or a data source sets it). */
+function ExposeButton({ layer, prop }: { layer: Layer; prop: Prop }) {
+  const { update, template } = useDesigner();
+  const [open, setOpen] = useState(false);
+  if (!template) return null;
+  const bound = layer.bindings[prop];
+  const field = template.fields.find((f) => f.key === bound);
+  const isColor = prop === 'fill' || prop === 'stroke';
+  const name = PROP_LABELS[prop] ?? prop;
+  const expose = () => {
+    update((t) => {
+      const l = findLayer(t, layer.id)!;
+      const key = fieldKey(`${l.name} ${name}`, new Set(t.fields.map((f) => f.key)));
+      // Default: what is seen on air.
+      const v = propValue(l, prop, holdFrame(t));
+      const def = isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3));
+      t.fields.push({ key, label: `${l.name} · ${name}`, kind: isColor ? 'color' : 'number', default: def });
+      l.bindings[prop] = key;
+    });
+    setOpen(false);
+  };
+  const unbind = () => {
+    update((t) => {
+      const l = findLayer(t, layer.id)!;
+      delete l.bindings[prop];
+      // A field made for this binding and used nowhere else goes too.
+      const used = t.layers.some((x) => Object.values(x.bindings).includes(bound!)) || t.layers.some((x) => x.type === 'text' && x.text.includes(`{{${bound}}}`));
+      if (!used) t.fields = t.fields.filter((f) => f.key !== bound);
+    });
+    setOpen(false);
+  };
+  const others = template.fields.filter((f) => f.key !== bound && (isColor ? f.kind === 'color' : f.kind === 'number' || f.kind === 'text'));
+  return (
+    <span className="bind">
+      <button className={`pp-expose ${bound ? 'on' : ''}`} title={bound ? `Set by the variable “${field?.label ?? bound}”` : `Expose ${name} as a variable`} onClick={() => setOpen(!open)}>
+        <Braces size={12} />
       </button>
-    </>
+      {open && (
+        <div className="popover" onMouseLeave={() => setOpen(false)}>
+          {bound ? (
+            <>
+              <div className="popover-note">
+                {name} is set by the variable <strong>{field?.label ?? bound}</strong>.
+              </div>
+              <button onClick={unbind}>Stop exposing</button>
+            </>
+          ) : (
+            <button className="primary" onClick={expose}>
+              + Expose {name} as a variable
+            </button>
+          )}
+          {others.length > 0 && <div className="popover-note">Or use an existing variable:</div>}
+          {others.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => {
+                update((t) => void (findLayer(t, layer.id)!.bindings[prop] = f.key));
+                setOpen(false);
+              }}
+            >
+              {f.label} <code>{f.key}</code>
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -212,20 +264,22 @@ function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
       ) : (
         <span className="pp-lock-space" />
       )}
-      <AnimateToggle layer={layer} props={spec.props} />
+      <LogicBadge layer={layer} props={spec.props} />
       <div className={`pp-fields n${spec.props.length}`}>
         {spec.props.map((p, i) => (
-          <NumberField
-            key={p}
-            label={spec.fields?.[i]}
-            value={num(propValue(layer, p, frame))}
-            display={spec.display}
-            suffix={spec.suffix}
-            precision={spec.precision}
-            min={spec.min}
-            max={spec.max}
-            onChange={(nv) => setValue(p, nv)}
-          />
+          <span key={p} className="pp-field">
+            <NumberField
+              label={spec.fields?.[i]}
+              value={num(propValue(layer, p, frame))}
+              display={spec.display}
+              suffix={spec.suffix}
+              precision={spec.precision}
+              min={spec.min}
+              max={spec.max}
+              onChange={(nv) => setValue(p, nv)}
+            />
+            <ExposeButton layer={layer} prop={p} />
+          </span>
         ))}
       </div>
       {overridden && (
@@ -245,9 +299,12 @@ function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 's
       <RowKeys layer={layer} props={[prop]} />
       <span className="pp-label">{label}</span>
       <span className="pp-lock-space" />
-      <AnimateToggle layer={layer} props={[prop]} />
+      <LogicBadge layer={layer} props={[prop]} />
       <div className="pp-fields n1">
-        <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
+        <span className="pp-field">
+          <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
+          <ExposeButton layer={layer} prop={prop} />
+        </span>
       </div>
       <OverrideMark layer={layer} prop={prop} />
     </div>

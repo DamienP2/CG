@@ -326,7 +326,7 @@ export function Designer() {
   // Panel sizes, adjustable with the splitters.
   const [layout, setLayout] = useLayout('pulse.designerLayout', {
     left: 280,
-    right: 340,
+    right: 380,
     timeline: 300,
     templates: 260,
   });
@@ -410,7 +410,7 @@ export function Designer() {
         </div>
       </main>
       <aside className="panel right">
-        <Splitter axis="x" className="edge-left" sign={-1} value={layout.right} min={260} max={620} reset={340} onChange={(v) => setLayout('right', v)} />
+        <Splitter axis="x" className="edge-left" sign={-1} value={layout.right} min={300} max={620} reset={380} onChange={(v) => setLayout('right', v)} />
         <Inspector />
       </aside>
       <div className="timeline-wrap">

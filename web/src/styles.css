@@ -5310,7 +5310,7 @@ a.btn {
 }
 .pp-row {
   display: grid;
-  grid-template-columns: 50px minmax(68px, auto) 18px 22px minmax(0, 1fr) auto;
+  grid-template-columns: 48px minmax(64px, auto) 18px auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px;
   min-height: 30px;
@@ -5376,6 +5376,42 @@ a.btn {
 }
 .pp-lock-space {
   width: 18px;
+}
+.pp-field {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+.pp-field > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.pp-expose {
+  width: 18px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  color: var(--text-3);
+  opacity: 0.55;
+  cursor: pointer;
+  padding: 0;
+}
+.pp-row:hover .pp-expose {
+  opacity: 1;
+}
+.pp-expose:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.pp-expose.on {
+  color: #fff;
+  background: var(--accent);
+  opacity: 1;
 }
 .pp-fields {
   display: grid;
@@ -5541,4 +5577,8 @@ a.btn {
 }
 .tl-lock.on {
   color: var(--accent-2);
+}
+/* Two fields and their { } on one row: the row name gives the unit. */
+.pp-fields.n2 .num-field .suffix {
+  display: none;
 }
