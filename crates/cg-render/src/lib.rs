@@ -470,6 +470,7 @@ impl Renderer {
                 font_weight,
                 align,
                 vertical_align,
+                wrap,
                 ..
             } => {
                 let Some(content) = r.text.as_deref().filter(|t| !t.is_empty()) else {
@@ -486,6 +487,13 @@ impl Renderer {
                     vertical_align: *vertical_align,
                     box_w: w,
                     box_h: h,
+                };
+                let wrapped;
+                let content = if *wrap {
+                    wrapped = text::wrap_text(&font, content, style.size, style.letter_spacing, w);
+                    wrapped.as_str()
+                } else {
+                    content
                 };
                 if let Some(path) = text::layout_text(&font, content, &style) {
                     pm.fill_path(&path, &fill, FillRule::Winding, tf, mask);

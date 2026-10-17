@@ -188,6 +188,31 @@ pub fn text_width(font: &FontArc, text: &str, size: f32, letter_spacing: f32) ->
         .fold(0.0, f32::max)
 }
 
+/// Breaks the lines of `text` at spaces so that none is wider than
+/// `max_w` (a word longer than the box stays on its own line), like the
+/// web renderer's `white-space: pre-wrap`.
+pub fn wrap_text(font: &FontArc, text: &str, size: f32, letter_spacing: f32, max_w: f32) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for line in text.split('\n') {
+        let mut cur = String::new();
+        for word in line.split(' ') {
+            let candidate = if cur.is_empty() {
+                word.to_string()
+            } else {
+                format!("{cur} {word}")
+            };
+            if !cur.is_empty() && text_width(font, &candidate, size, letter_spacing) > max_w {
+                out.push(std::mem::take(&mut cur));
+                cur = word.to_string();
+            } else {
+                cur = candidate;
+            }
+        }
+        out.push(cur);
+    }
+    out.join("\n")
+}
+
 /// Builds a single path containing all glyphs, in layer-local coordinates.
 pub fn layout_text(font: &FontArc, text: &str, style: &TextStyle) -> Option<SkPath> {
     // CSS `font-size` is the em size; ab_glyph's PxScale is ascent-descent.

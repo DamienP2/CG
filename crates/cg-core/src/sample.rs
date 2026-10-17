@@ -42,6 +42,7 @@ fn layer(
 
 fn text(t: &str, weight: u16) -> LayerKind {
     LayerKind::Text {
+        wrap: false,
         text: t.into(),
         font_family: "Inter".into(),
         font_weight: weight,
@@ -253,6 +254,7 @@ pub fn score_bug() -> Template {
             id,
             name,
             LayerKind::Text {
+                wrap: false,
                 text: t.into(),
                 font_family: "Inter".into(),
                 font_weight: 700,
@@ -479,6 +481,7 @@ pub fn ticker() -> Template {
         "tk-label",
         "Label",
         LayerKind::Text {
+            wrap: false,
             text: "{{label}}".into(),
             font_family: "Inter".into(),
             font_weight: 800,

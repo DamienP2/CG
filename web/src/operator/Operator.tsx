@@ -272,7 +272,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const fps = project.frameRate.num / project.frameRate.den || 1;
 
   return (
-    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 6px minmax(0, 1fr) 6px ${layout.right}px` }}>
+    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
       {/* Left: playlists and graphics. */}
       <div className="opx-col">
         <section className="opx-pane" style={{ height: layout.lists, flex: 'none' }}>

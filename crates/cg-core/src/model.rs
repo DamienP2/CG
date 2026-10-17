@@ -196,6 +196,9 @@ pub enum LayerKind {
         vertical_align: VerticalAlign,
         #[serde(default)]
         uppercase: bool,
+        /// Paragraph: lines wrap at the box width.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wrap: bool,
     },
     #[serde(rename_all = "camelCase")]
     Image {

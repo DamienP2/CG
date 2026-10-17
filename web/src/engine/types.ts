@@ -65,7 +65,7 @@ export type LayerKind =
   | { type: 'group'; clip?: boolean }
   | { type: 'rect' }
   | { type: 'ellipse' }
-  | ({ type: 'text'; text: string } & FontStyle)
+  | ({ type: 'text'; text: string; /** Paragraph: lines wrap at the box width. */ wrap?: boolean } & FontStyle)
   | { type: 'image'; src: string; fit: ImageFit }
   | ({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle)
   | ({ type: 'ticker'; text: string; separator: string; speed: number } & FontStyle)

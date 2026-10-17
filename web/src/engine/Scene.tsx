@@ -101,7 +101,7 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
         fontSize: num(r.fontSize),
         letterSpacing: num(r.letterSpacing),
         lineHeight: LINE_HEIGHT,
-        whiteSpace: 'pre',
+        whiteSpace: layer.wrap ? 'pre-wrap' : 'pre',
         overflow: 'visible',
         fontKerning: 'normal',
       } satisfies CSSProperties);

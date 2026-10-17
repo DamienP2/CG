@@ -542,11 +542,9 @@ code {
 }
 
 .template-list {
-  border-bottom: 1px solid var(--line);
-  height: var(--tpl-h, 260px);
-  max-height: 70%;
   overflow: auto;
-  flex: none;
+  flex: 1;
+  min-height: 0;
   padding-bottom: 6px;
 }
 .template-item {
@@ -5723,9 +5721,8 @@ a.btn {
   display: grid;
   height: 100%;
   min-height: 0;
-  padding: 6px;
   box-sizing: border-box;
-  background: var(--bg);
+  background: var(--line);
   --op-1: #151722;
   --op-2: #1c1f2c;
   --op-3: #252938;
@@ -5746,17 +5743,22 @@ a.btn {
   top: auto;
   bottom: auto;
   margin: 0;
-  border-radius: 3px;
+  background: var(--line);
+}
+/* A thin line, grabbed a few pixels around it. */
+.splitter.opx-gap::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
 }
 .splitter.x.opx-gap {
-  width: 6px;
+  width: 1px;
 }
 .splitter.y.opx-gap {
-  height: 6px;
+  height: 1px;
 }
 .opx-pane {
-  background: var(--op-1);
-  border-radius: 6px;
+  background: var(--panel);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -5773,7 +5775,7 @@ a.btn {
   align-items: center;
   gap: 10px;
   padding: 0 10px 0 14px;
-  background: var(--op-2);
+  border-bottom: 1px solid var(--line);
 }
 .opx-head.tall {
   height: 50px;

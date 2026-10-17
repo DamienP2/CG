@@ -790,8 +790,6 @@ function FormatNote({ layer }: { layer: Layer }) {
   );
 }
 
-/** Right panel: the properties of the selected layer. Its content, widget
- *  settings and data live in the left panel (DataPanel). */
 /** What a layer shows: its text, picture, widget settings (and ▶ ❚❚ ⟲ to try a widget). */
 function LayerGeneral({ layer }: { layer: Layer }) {
   const { update, template } = useDesigner();
@@ -804,6 +802,10 @@ function LayerGeneral({ layer }: { layer: Layer }) {
         <>
           <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
           <FieldChips template={template} onInsert={(tok) => set('text', layer.text + tok)} />
+          <label className="check" title="Paragraph: the lines wrap at the width of the box">
+            <input type="checkbox" checked={!!layer.wrap} onChange={(e) => edit((l) => void (l.type === 'text' && (l.wrap = e.target.checked || undefined)))} />
+            Wrap lines (paragraph)
+          </label>
           <p className="hint">Insert a variable with {'{{key}}'}: the operator (or a data source) fills it.</p>
         </>
       )}

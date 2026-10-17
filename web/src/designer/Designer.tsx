@@ -6,7 +6,6 @@ import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 import { LockOverlay, PublishButton, useEditLock } from './Collab';
-import { DataPanel } from './DataPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
@@ -329,7 +328,6 @@ export function Designer() {
     left: 280,
     right: 380,
     timeline: 300,
-    templates: 260,
   });
   // Room for the timeline property values (two 5-digit fields).
   const left = Math.max(MIN_LEFT, layout.left);
@@ -372,14 +370,11 @@ export function Designer() {
         ['--left-w' as string]: `${left}px`,
         ['--right-w' as string]: `${layout.right}px`,
         ['--tl-h' as string]: `${layout.timeline}px`,
-        ['--tpl-h' as string]: `${layout.templates}px`,
       }}
     >
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={280} onChange={(v) => setLayout('left', v)} />
         <TemplateList project={project} />
-        <Splitter axis="y" className="inline" value={layout.templates} min={110} max={640} reset={260} onChange={(v) => setLayout('templates', v)} />
-        <DataPanel />
       </aside>
       <main className="center">
         <div className="toolbar">
@@ -394,10 +389,10 @@ export function Designer() {
           <FormatBar project={project} />
           <div className="spacer" />
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
-          <DataCanvasButton />
           <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
             <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
           </button>
+          <DataCanvasButton />
           <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas (action 5 %, title 10 %)">
             <Grid3x3 size={13} />
           </button>

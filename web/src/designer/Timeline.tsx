@@ -39,6 +39,7 @@ import {
   ChartLine,
   ChartPie,
   Map as MapIcon,
+  Pilcrow,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -769,6 +770,25 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       </button>
       <button className="tool" title="Text" onClick={() => onAdd('text')}>
         <Type size={15} />
+      </button>
+      <button
+        className="tool"
+        title="Paragraph (lines wrap at the box width)"
+        onClick={() =>
+          onAdd(
+            'text',
+            {
+              text: 'A paragraph of text: its lines wrap at the width of the box. Resize the box to reflow it.',
+              wrap: true,
+              fontWeight: 400,
+              verticalAlign: 'top',
+              props: { x: 160, y: 300, width: 900, height: 320, fontSize: 40, fill: [1, 1, 1, 1] },
+            },
+            'Paragraph',
+          )
+        }
+      >
+        <Pilcrow size={15} />
       </button>
       <button className="tool" title="Image" onClick={() => onAdd('image')}>
         <Image size={15} />
