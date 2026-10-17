@@ -252,46 +252,95 @@ function PauseResume({ p, project, onTrigger }: { p: PlayoutItem; project: Proje
   return null;
 }
 
-/** Channel picker + project loaded on it. */
-function ChannelBar({ channelId }: { channelId: string }) {
-  const { channels, projects, project } = useApp();
+/**
+ * The output (channel) the operator takes to. Another project's channel can
+ * be taken over after a confirmation; without one, the page still prepares
+ * the rundown and previews.
+ */
+function ChannelBar({ channelId }: { channelId: string | null }) {
+  const { channels, projects, project, live, loadOnChannel } = useApp();
   const ch = channels.find((c) => c.id === channelId);
+  const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name ?? 'another project';
+  const pick = async (id: string) => {
+    if (!project) return;
+    if (!id) return navigate(projectPath(project.id, 'operator', 'none'));
+    const c = channels.find((x) => x.id === id);
+    if (!c) return;
+    if (c.projectId !== project.id) {
+      const onAir = Object.keys(live[c.id]?.state.layers ?? {}).length;
+      if (c.projectId && !confirm(`${c.name} is used by “${projectName(c.projectId)}”${onAir ? ` (${onAir} graphics on air)` : ''}. Load “${project.name}” on it instead?`)) return;
+      await loadOnChannel(c.id, project.id);
+    }
+    navigate(projectPath(project.id, 'operator', c.id));
+  };
+  const own = channels.filter((c) => c.projectId === project?.id);
+  const free = channels.filter((c) => !c.projectId);
+  const other = channels.filter((c) => c.projectId && c.projectId !== project?.id);
   return (
     <div className="channel-bar">
       <MonitorPlay size={15} />
-      <select value={channelId} onChange={(e) => project && navigate(projectPath(project.id, 'operator', e.target.value))}>
-        {channels.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.projectId === project?.id ? c.name : `${c.name} (${c.projectId ? (projects.find((p) => p.id === c.projectId)?.name ?? 'other project') : 'free'})`}
-          </option>
-        ))}
+      <select value={channelId ?? ''} onChange={(e) => void pick(e.target.value)}>
+        <option value="">— No output (preview only) —</option>
+        {own.length > 0 && (
+          <optgroup label="This project">
+            {own.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {free.length > 0 && (
+          <optgroup label="Free">
+            {free.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {other.length > 0 && (
+          <optgroup label="Used by another project">
+            {other.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} — used by “{projectName(c.projectId)}”
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
-      {ch && (
+      {ch ? (
         <span className="muted">
           {ch.width}×{ch.height} · {+(ch.frameRate.num / ch.frameRate.den).toFixed(2)} fps
           {ch.outputs.length ? ` · ${ch.outputs.join(', ')}` : ''}
         </span>
+      ) : (
+        <span className="muted">Choose an output to take graphics on air.</span>
       )}
       <div className="spacer" />
-      <a className="btn small" href={`/output/${encodeURIComponent(channelId)}`} target="_blank" rel="noreferrer">
-        HTML5 output ↗
-      </a>
+      {ch && (
+        <a className="btn small" href={`/output/${encodeURIComponent(ch.id)}`} target="_blank" rel="noreferrer">
+          HTML5 output ↗
+        </a>
+      )}
     </div>
   );
 }
 
-export function Operator({ channelId }: { channelId: string }) {
+export function Operator({ channelId }: { channelId: string | null }) {
   const { project, command: send, saveRundown, auth } = useApp();
-  const liveState = useApp((s) => s.live[channelId]);
+  const liveState = useApp((s) => (channelId ? s.live[channelId] : undefined));
   const channel = liveState?.state ?? { layers: {} };
-  const operate = can.operate(auth?.user);
-  const command: typeof send = (cmd) => operate && send(cmd, channelId);
+  // Editing the rundown needs the rights; going on air also needs an output.
+  const canEdit = can.operate(auth?.user);
+  const operate = canEdit && !!channelId;
+  const command: typeof send = (cmd) => operate && send(cmd, channelId!);
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [pictureId, setPictureId] = useState('main');
-  const channelInfo = useApp((s) => s.channels.find((c) => c.id === channelId));
+  const channelInfo = useApp((s) => (channelId ? s.channels.find((c) => c.id === channelId) : undefined));
 
   const rundown = project?.rundown ?? [];
   const playlists = project?.playlists ?? [];
@@ -451,7 +500,7 @@ export function Operator({ channelId }: { channelId: string }) {
             ))}
           </div>
         )}
-        <PlaylistTabs project={project} active={activeList} onSelect={setPlaylistId} editable={operate} />
+        <PlaylistTabs project={project} active={activeList} onSelect={setPlaylistId} editable={canEdit} />
         <div className="rundown-list">
           {items.map((r, i) => {
             const t = project.templates.find((x) => x.id === r.templateId);
@@ -565,7 +614,7 @@ export function Operator({ channelId }: { channelId: string }) {
           <button className="big-btn update" disabled={!item || !liveIsThis || !operate} onClick={updateLive} title="Push edited data to the graphic on air">
             <RefreshCw size={18} /> UPDATE
           </button>
-          <button className="big-btn clear" onClick={() => command({ action: 'clear' })} title="F12 — clear everything">
+          <button className="big-btn clear" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12 — clear everything">
             <X size={18} /> CLEAR ALL
           </button>
         </div>

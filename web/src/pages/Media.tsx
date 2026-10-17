@@ -1,6 +1,6 @@
 import { Check, Copy, Download, File, FileAudio, Film, Image as ImageIcon, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, can, mediaName, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
+import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 
 type Kind = MediaFile['kind'];
 
@@ -48,6 +48,8 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     api<MediaFile[]>('GET', url)
       .then(setFiles)
       .catch((e) => toast((e as Error).message, 'error'));
+  // Uploads and deletions by other users.
+  useChanged(projectId ? `media:${projectId}` : 'media', () => void refresh());
   useEffect(() => {
     setFiles(null);
     void refresh();

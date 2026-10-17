@@ -1404,6 +1404,7 @@ async fn put_asset(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .invalidate_assets();
+    s.changed("media");
     Ok(Json(BTreeMap::from([("src", format!("/assets/{name}"))])))
 }
 
@@ -1482,6 +1483,7 @@ async fn put_system_config(
         .map_err(internal)?
         .map_err(internal)?;
     tracing::info!("settings saved, restarting the engine");
+    s.changed("config");
     s.restart.notify_one();
     Ok(StatusCode::ACCEPTED)
 }
@@ -1593,6 +1595,7 @@ async fn create_source(
     let id = src.id.clone();
     s.data.put(src).map_err(internal)?;
     s.data.refresh(&id);
+    s.changed("sources");
     let info = s
         .data
         .list()
@@ -1616,6 +1619,7 @@ async fn put_source(
     src.id = id.clone();
     s.data.put(src).map_err(internal)?;
     s.data.refresh(&id);
+    s.changed("sources");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1628,6 +1632,7 @@ async fn delete_source(
     if !s.data.delete(&id).map_err(internal)? {
         return Err(not_found("data source"));
     }
+    s.changed("sources");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -2002,6 +2007,7 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                     Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
                     // Signed-in users (designer, operator, settings), not output pages.
                     Event::Data { .. } | Event::Folders { .. } => viewer.user.is_some(),
+                    Event::Changed { what } => viewer.user.as_ref().is_some_and(|u| what.strip_prefix("media:").is_none_or(|p| u.sees_project(p))),
                     Event::Lock { project_id, .. } => viewer.user.as_ref().is_some_and(|u| u.sees_project(project_id)),
                     Event::Channels { channels } => {
                         // An output page switches project with its channel.

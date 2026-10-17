@@ -50,6 +50,11 @@ pub enum Event {
         source: String,
         status: crate::datasources::Status,
     },
+    /// A list other clients show changed and should be fetched again:
+    /// `media` (shared media), `media:<project>`, `sources`, `config`.
+    Changed {
+        what: String,
+    },
     /// Folders of the project list changed.
     Folders {
         folders: crate::media::Folders,
@@ -225,6 +230,11 @@ pub fn now_ms() -> i64 {
 }
 
 impl AppState {
+    /// Tells the clients that a list changed (see [`Event::Changed`]).
+    pub fn changed(&self, what: impl Into<String>) {
+        let _ = self.events.send(Event::Changed { what: what.into() });
+    }
+
     pub fn assets_dir(&self) -> PathBuf {
         self.data_dir.join("assets")
     }

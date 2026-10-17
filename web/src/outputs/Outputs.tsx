@@ -1,6 +1,6 @@
 import { Check, Copy, ExternalLink, Image as ImageIcon, MapPin, Network, Pencil, Play, Plus, Radio, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, can, useApp } from '../store';
+import { api, can, useApp, useChanged } from '../store';
 import { joinAddr, splitAddr, VIDEO_FORMATS, type ChannelConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type SystemInfo } from './types';
 
 /*
@@ -144,7 +144,16 @@ export function Outputs() {
     }
   }, [layout]);
 
+  // Another admin applied changes: follow them, unless we are editing.
+  const editing = useRef(false);
+  const appliedAt = useRef(0);
+  useChanged('config', () => {
+    if (Date.now() - appliedAt.current < 5000) return; // our own Apply
+    if (editing.current) toast('Another user changed the outputs. Discard your changes to see theirs.', 'info');
+    else load().catch(() => {});
+  });
   const dirty = useMemo(() => !!info && !!cfg && JSON.stringify(info.config) !== JSON.stringify(cfg), [info, cfg]);
+  editing.current = dirty;
   if (!can.admin(auth?.user)) return <div className="loading">Only administrators set up the outputs.</div>;
   if (!info || !cfg) return <div className="loading">Loading outputs…</div>;
 
@@ -346,6 +355,7 @@ export function Outputs() {
   const apply = async () => {
     setSaving(true);
     try {
+      appliedAt.current = Date.now();
       await api('PUT', '/api/system/config', cfg);
       toast('Outputs applied — the engine is restarting', 'info');
       setTimeout(() => load().catch(() => {}), 1500);

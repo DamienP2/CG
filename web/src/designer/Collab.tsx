@@ -81,45 +81,46 @@ export function useEditLock(project: Project | null, templateId: string | undefi
   return { state, takeOver: () => acquire(true) };
 }
 
-/** Banner over the stage while another designer holds the template. */
-export function LockBanner({ holder, onTakeOver }: { holder: EditLock; onTakeOver: () => void }) {
+/**
+ * Veil over the designer while another designer holds the template: their
+ * changes show live underneath; it cannot be dismissed, only taken over. The
+ * top menus and the template list stay usable.
+ */
+export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock; template: string; onTakeOver: () => void }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <>
-      <div className="lock-banner">
-        <Lock size={14} />
-        <span>
-          <b>{holder.userName}</b> is editing this template — read only
+    <div className="lock-overlay">
+      <div className="lock-card" role="alertdialog" aria-labelledby="lock-title">
+        <span className="lock-icon">
+          <Lock size={20} />
         </span>
-        <button className="btn small warn" onClick={() => setConfirm(true)}>
-          Take over
-        </button>
-      </div>
-      {confirm && (
-        <div className="modal-back" onPointerDown={() => setConfirm(false)}>
-          <div className="modal take-over" onPointerDown={(e) => e.stopPropagation()}>
-            <h2>Take over this template?</h2>
-            <p>
-              {holder.userName} is editing it. They switch to read only and are told that you took over; a change they made in the last second may be lost.
-            </p>
+        <h2 id="lock-title">
+          {holder.userName} is editing {template ? `“${template}”` : 'this template'}
+        </h2>
+        {confirm ? (
+          <>
+            <p>{holder.userName} switches to read only and is told that you took over. A change they made in the last second may be lost.</p>
             <div className="row end">
               <button className="btn" onClick={() => setConfirm(false)}>
                 Cancel
               </button>
-              <button
-                className="btn warn"
-                onClick={() => {
-                  setConfirm(false);
-                  onTakeOver();
-                }}
-              >
+              <button className="btn warn" onClick={onTakeOver}>
                 Take over
               </button>
             </div>
-          </div>
-        </div>
-      )}
-    </>
+          </>
+        ) : (
+          <>
+            <p>You see their changes live. Take over to edit it yourself, or open another template.</p>
+            <div className="row end">
+              <button className="btn warn" onClick={() => setConfirm(true)}>
+                Take over…
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

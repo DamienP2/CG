@@ -5066,3 +5066,48 @@ a.btn {
   overflow-wrap: anywhere;
   user-select: text;
 }
+/* Another designer holds the template: veil under the top menus. */
+.designer {
+  position: relative;
+}
+.lock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 9, 14, 0.62);
+}
+.designer.locked > .panel.left {
+  position: relative;
+  z-index: 61;
+}
+.lock-card {
+  width: min(440px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px;
+  border-radius: 14px;
+  background: var(--panel-2);
+  border: 1px solid #8a5a18;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.lock-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.lock-card p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.lock-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--warn);
+  background: rgba(245, 165, 36, 0.14);
+}

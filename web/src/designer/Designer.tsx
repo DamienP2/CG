@@ -5,7 +5,7 @@ import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
-import { LockBanner, PublishButton, useEditLock } from './Collab';
+import { LockOverlay, PublishButton, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
@@ -364,7 +364,7 @@ export function Designer() {
 
   return (
     <div
-      className="designer"
+      className={`designer ${lock.state.status === 'held' ? 'locked' : ''}`}
       style={{
         ['--left-w' as string]: `${left}px`,
         ['--right-w' as string]: `${layout.right}px`,
@@ -403,7 +403,6 @@ export function Designer() {
         </div>
         <div className="stage-holder">
           <Stage project={project} size={formatById(project, format)} showSafe={showSafe} showZones={showZones} background={background} />
-          {lock.state.status === 'held' && <LockBanner holder={lock.state.holder} onTakeOver={lock.takeOver} />}
         </div>
       </main>
       <aside className="panel right">
@@ -414,6 +413,7 @@ export function Designer() {
         <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
         <Timeline fps={fps} leftW={left} onAdd={add} />
       </div>
+      {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
     </div>

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
@@ -12,6 +13,7 @@ type ServerEvent =
   | { type: 'data'; source: string; status: DataStatus }
   | { type: 'lock'; projectId: string; templateId: string; lock: EditLock | null; takenFrom: string | null }
   | { type: 'folders'; folders: Folders }
+  | { type: 'changed'; what: string }
   | { type: 'error'; message: string };
 
 /** Folders of the project list (one level) and the folder of each project. */
@@ -102,6 +104,20 @@ export interface EditLock {
 
 /** Lock changes pushed by the server (`detail`: the event). */
 export const lockEvents = new EventTarget();
+
+/** Lists changed by another client (`media`, `media:<project>`, `sources`, `config`). */
+export const changeEvents = new EventTarget();
+
+/** Calls `fn` whenever another client changes `what`. */
+export function useChanged(what: string, fn: () => void) {
+  const ref = useRef(fn);
+  ref.current = fn;
+  useEffect(() => {
+    const h = () => ref.current();
+    changeEvents.addEventListener(what, h);
+    return () => changeEvents.removeEventListener(what, h);
+  }, [what]);
+}
 
 /** This browser tab, for designer edit locks. */
 export const clientId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random()).slice(2);
@@ -225,6 +241,10 @@ export const useApp = create<AppStore>((set, get) => {
             }
             case 'folders':
               set({ folders: msg.folders });
+              break;
+            case 'changed':
+              changeEvents.dispatchEvent(new CustomEvent(msg.what));
+              if (msg.what === 'sources') void useData.getState().load();
               break;
             case 'channels':
               set({ channels: msg.channels });

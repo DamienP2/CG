@@ -13,7 +13,7 @@ import { Outputs } from './outputs/Outputs';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
-import { ChannelPicker, ProjectSettings } from './pages/ProjectPages';
+import { ProjectSettings } from './pages/ProjectPages';
 import { Settings } from './settings/Settings';
 import { can, useApp } from './store';
 
@@ -213,8 +213,11 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   else if (sub === 'data') page = <DataPage />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
   else if (sub === 'settings') page = <ProjectSettings project={summary ?? { ...project, description: project.description ?? '' }} />;
-  else if (operated && operated.projectId === projectId) page = <Operator key={operated.id} channelId={operated.id} />;
-  else page = <ChannelPicker projectId={projectId} channel={operated} />;
+  else {
+    // Without an output of this project, the operator still prepares and previews.
+    const own = operated && operated.projectId === projectId ? operated.id : null;
+    page = <Operator key={own ?? 'none'} channelId={own} />;
+  }
 
   return (
     <>
@@ -236,7 +239,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
             {project.width}×{project.height} · {+(project.frameRate.num / project.frameRate.den).toFixed(2)} fps
           </span>
         )}
-        {sub === 'operator' && operated && (
+        {sub === 'operator' && operated && operated.projectId === projectId && (
           <span className={`air-indicator ${onAir ? 'live' : ''}`} title={operated.name}>
             <Tv size={13} /> {onAir ? `${onAir} on air` : 'Off air'}
           </span>

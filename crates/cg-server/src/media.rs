@@ -193,7 +193,9 @@ async fn put_shared(
     body: Body,
 ) -> ApiResult<Json<MediaFile>> {
     require(can_upload(&me))?;
-    store(&s, &s.assets_dir(), "/assets/", &name, body).await
+    let r = store(&s, &s.assets_dir(), "/assets/", &name, body).await?;
+    s.changed("media");
+    Ok(r)
 }
 
 async fn delete_shared(
@@ -202,7 +204,9 @@ async fn delete_shared(
     Path(name): Path<String>,
 ) -> ApiResult<StatusCode> {
     require(me.can_create_projects())?;
-    remove(&s, &s.assets_dir(), &name).await
+    let r = remove(&s, &s.assets_dir(), &name).await?;
+    s.changed("media");
+    Ok(r)
 }
 
 async fn list_project(
@@ -224,7 +228,9 @@ async fn put_project(
 ) -> ApiResult<Json<MediaFile>> {
     visible_project(&s, &me, &id).await?;
     require(can_upload(&me))?;
-    store(&s, &project_dir(&s, &id), &project_prefix(&id), &name, body).await
+    let r = store(&s, &project_dir(&s, &id), &project_prefix(&id), &name, body).await?;
+    s.changed(format!("media:{id}"));
+    Ok(r)
 }
 
 async fn delete_project(
@@ -234,7 +240,9 @@ async fn delete_project(
 ) -> ApiResult<StatusCode> {
     visible_project(&s, &me, &id).await?;
     require(me.can_design(&id))?;
-    remove(&s, &project_dir(&s, &id), &name).await
+    let r = remove(&s, &project_dir(&s, &id), &name).await?;
+    s.changed(format!("media:{id}"));
+    Ok(r)
 }
 
 // ---------------------------------------------------------------- folders ----

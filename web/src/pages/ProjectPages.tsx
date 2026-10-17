@@ -1,8 +1,8 @@
-import { Download, MonitorPlay, Save, Settings as SettingsIcon, Trash2 } from 'lucide-react';
+import { Download, Save, Settings as SettingsIcon, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { ChannelInfo, FrameRate } from '../engine/types';
-import { navigate, projectPath } from '../router';
-import { api, can, useApp } from '../store';
+import type { FrameRate } from '../engine/types';
+import { navigate } from '../router';
+import { api, useApp } from '../store';
 import { FORMATS } from './Projects';
 
 type ProjectMeta = {
@@ -16,50 +16,6 @@ type ProjectMeta = {
 
 const fps = (r: FrameRate) => +(r.num / r.den).toFixed(2);
 const formatIndex = (p: { width: number; height: number; frameRate: FrameRate }) => FORMATS.findIndex((f) => f.width === p.width && f.height === p.height && f.rate.num * p.frameRate.den === p.frameRate.num * f.rate.den);
-
-/** Operator of a project that no channel plays: load it on one. */
-export function ChannelPicker({ projectId, channel }: { projectId: string; channel: ChannelInfo | null }) {
-  const { channels, projects, live, auth, loadOnChannel } = useApp();
-  const operate = can.operate(auth?.user);
-  const name = projects.find((p) => p.id === projectId)?.name ?? 'This project';
-  const projectName = (id: string | null) => (id ? (projects.find((p) => p.id === id)?.name ?? 'another project') : null);
-  const load = async (c: ChannelInfo) => {
-    const onAir = Object.keys(live[c.id]?.state.layers ?? {}).length;
-    if (onAir && !confirm(`${c.name} has ${onAir} graphics on air. Loading “${name}” clears them. Continue?`)) return;
-    await loadOnChannel(c.id, projectId);
-    navigate(projectPath(projectId, 'operator', c.id), true);
-  };
-  const list = channel ? [channel] : channels;
-  return (
-    <div className="library">
-      <div className="library-inner narrow">
-        <div className="settings-head">
-          <div>
-            <h1>{channel ? `${channel.name} plays ${projectName(channel.projectId) ? `“${projectName(channel.projectId)}”` : 'nothing'}` : `${name} is not on air`}</h1>
-            <p className="muted">Load the project on an output channel to operate it.</p>
-          </div>
-        </div>
-        <div className="channel-pick">
-          {list.map((c) => (
-            <div key={c.id} className="channel-pick-row">
-              <MonitorPlay size={16} />
-              <div className="grow">
-                <strong>{c.name}</strong>
-                <span className="muted small">
-                  {c.width}×{c.height} · {fps(c.frameRate)} fps · {projectName(c.projectId) ? `plays “${projectName(c.projectId)}”` : 'free'}
-                </span>
-              </div>
-              <button className="btn small primary" disabled={!operate} onClick={() => load(c)}>
-                Load here
-              </button>
-            </div>
-          ))}
-          {!list.length && <p className="muted">No output channel you can access.</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /** Name, description and design format of a project. */
 export function ProjectSettings({ project }: { project: ProjectMeta }) {
