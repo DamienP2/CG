@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, FolderOpen, MonitorPlay, Pause, Play, Plus, RotateCcw, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, MonitorPlay, Pause, Play, Plus, RotateCcw, RefreshCw, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
@@ -11,7 +11,7 @@ import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
 import { useBoundData, useSources } from '../data/dataStore';
-import { navigate } from '../router';
+import { navigate, projectPath } from '../router';
 
 /** Number field: − / + buttons, arrow keys and the mouse wheel once clicked. */
 function NumberStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -151,17 +151,7 @@ function ZoneTag({ zone }: { zone?: Zone }) {
 }
 
 /** Every zone of the project with what it has on air, front-most first. */
-function ZoneStrip({
-  project,
-  layers,
-  cuedZone,
-  command,
-}: {
-  project: Project;
-  layers: Record<string, PlayoutItem>;
-  cuedZone?: string;
-  command: (c: Command) => void;
-}) {
+function ZoneStrip({ project, layers, cuedZone, command }: { project: Project; layers: Record<string, PlayoutItem>; cuedZone?: string; command: (c: Command) => void }) {
   const zones = [...project.zones].sort((a, b) => b.layer - a.layer);
   const known = new Set(zones.map((z) => String(z.layer)));
   // Graphics taken on raw layers through the API.
@@ -246,46 +236,25 @@ function phaseLabel(p: PlayoutItem, project: Project) {
 
 /** Channel picker + project loaded on it. */
 function ChannelBar({ channelId }: { channelId: string }) {
-  const { channels, projects, auth, loadOnChannel } = useApp();
+  const { channels, projects, project } = useApp();
   const ch = channels.find((c) => c.id === channelId);
-  const operate = can.operate(auth?.user);
   return (
     <div className="channel-bar">
       <MonitorPlay size={15} />
-      <select
-        value={channelId}
-        onChange={(e) => navigate(`/operator/${encodeURIComponent(e.target.value)}`)}
-      >
+      <select value={channelId} onChange={(e) => project && navigate(projectPath(project.id, 'operator', e.target.value))}>
         {channels.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.name}
+            {c.projectId === project?.id ? c.name : `${c.name} (${c.projectId ? (projects.find((p) => p.id === c.projectId)?.name ?? 'other project') : 'free'})`}
           </option>
         ))}
       </select>
       {ch && (
         <span className="muted">
-          {ch.width}×{ch.height} · {+(ch.frameRate.num / ch.frameRate.den).toFixed(2)} fps{ch.outputs.length ? ` · ${ch.outputs.join(', ')}` : ''}
+          {ch.width}×{ch.height} · {+(ch.frameRate.num / ch.frameRate.den).toFixed(2)} fps
+          {ch.outputs.length ? ` · ${ch.outputs.join(', ')}` : ''}
         </span>
       )}
       <div className="spacer" />
-      <FolderOpen size={14} />
-      <select
-        value={ch?.projectId ?? ''}
-        disabled={!operate}
-        title="Project loaded on this channel"
-        onChange={(e) => {
-          const onAir = Object.keys(useApp.getState().live[channelId]?.state.layers ?? {}).length;
-          if (onAir && !confirm('Loading another project clears the graphics on air. Continue?')) return;
-          loadOnChannel(channelId, e.target.value || null);
-        }}
-      >
-        <option value="">— no project —</option>
-        {projects.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
       <a className="btn small" href={`/output/${encodeURIComponent(channelId)}`} target="_blank" rel="noreferrer">
         HTML5 output ↗
       </a>
@@ -345,7 +314,13 @@ export function Operator({ channelId }: { channelId: string }) {
   const take = () => {
     if (!item) return;
     persistDraft();
-    command({ action: 'take', zone: zoneOf(item)?.id, templateId: item.templateId, data: draft, rundownId: item.id });
+    command({
+      action: 'take',
+      zone: zoneOf(item)?.id,
+      templateId: item.templateId,
+      data: draft,
+      rundownId: item.id,
+    });
     // Cue the next item of the playlist.
     const idx = items.findIndex((r) => r.id === item.id);
     if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
@@ -354,7 +329,13 @@ export function Operator({ channelId }: { channelId: string }) {
   const takeItem = (r: RundownItem) => {
     if (r.id === item?.id) return take();
     const t = project?.templates.find((x) => x.id === r.templateId);
-    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: { ...(t ? defaultData(t) : {}), ...r.data }, rundownId: r.id });
+    command({
+      action: 'take',
+      zone: zoneOf(r)?.id,
+      templateId: r.templateId,
+      data: { ...(t ? defaultData(t) : {}), ...r.data },
+      rundownId: r.id,
+    });
   };
   const outItem = (r: RundownItem) => command({ action: 'takeOut', zone: zoneOf(r)?.id });
   const cont = () => item && command({ action: 'continue', zone: zoneOf(item)?.id });
@@ -389,14 +370,30 @@ export function Operator({ channelId }: { channelId: string }) {
     );
   const fps = project.frameRate.num / project.frameRate.den || 1;
   // Pictures of the channel (main + renditions such as 9:16): one take drives all.
-  const pictures = [{ id: 'main', name: channelInfo ? `${channelInfo.width}×${channelInfo.height}` : 'Main', width: channelInfo?.width ?? project.width, height: channelInfo?.height ?? project.height }, ...(channelInfo?.renditions ?? [])];
+  const pictures = [
+    {
+      id: 'main',
+      name: channelInfo ? `${channelInfo.width}×${channelInfo.height}` : 'Main',
+      width: channelInfo?.width ?? project.width,
+      height: channelInfo?.height ?? project.height,
+    },
+    ...(channelInfo?.renditions ?? []),
+  ];
   const picture = pictures.find((p) => p.id === pictureId) ?? pictures[0];
   const previewFormat = formatFor(project, picture.width, picture.height);
 
   const addItem = (templateId: string) => {
     const t = project.templates.find((x) => x.id === templateId)!;
     const z = project.zones.find((x) => x.id === t.zone);
-    const it: RundownItem = { id: newId(), name: t.name, templateId, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t) };
+    const it: RundownItem = {
+      id: newId(),
+      name: t.name,
+      templateId,
+      zone: t.zone,
+      playlist: activeList,
+      layer: z?.layer ?? 0,
+      data: defaultData(t),
+    };
     saveRundown([...rundown, it]);
     setCued(it.id);
     setAdding(false);
@@ -474,7 +471,11 @@ export function Operator({ channelId }: { channelId: string }) {
                     title="Duplicate"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const copy = { ...structuredClone(r), id: newId(), name: `${r.name} copy` };
+                      const copy = {
+                        ...structuredClone(r),
+                        id: newId(),
+                        name: `${r.name} copy`,
+                      };
                       const next = [...rundown];
                       next.splice(rundown.indexOf(r) + 1, 0, copy);
                       saveRundown(next);
@@ -627,4 +628,3 @@ export function Operator({ channelId }: { channelId: string }) {
     </div>
   );
 }
-

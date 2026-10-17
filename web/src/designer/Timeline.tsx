@@ -1,7 +1,42 @@
 import {
-  AlarmClock, Calendar, ChevronDown, ChevronLeft, ChevronRight, Circle, Code, Copy, Diamond, Eye, EyeOff, Flag, Folder, Globe, Image, Lock, LogOut, Minus,
-  Pause, Play, Plus, Repeat, SkipBack, SkipForward, Sparkles, Square, StepBack, StepForward, Table, Trash2, Type, Unlock, Video,
-  ChartArea, ChartColumn, ChartLine, ChartPie, Map as MapIcon,
+  AlarmClock,
+  Calendar,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  Code,
+  Copy,
+  Diamond,
+  Eye,
+  EyeOff,
+  Flag,
+  Folder,
+  Globe,
+  Image,
+  Lock,
+  LogOut,
+  Minus,
+  Pause,
+  Play,
+  Plus,
+  Repeat,
+  SkipBack,
+  SkipForward,
+  Sparkles,
+  Square,
+  StepBack,
+  StepForward,
+  Table,
+  Trash2,
+  Type,
+  Unlock,
+  Video,
+  ChartArea,
+  ChartColumn,
+  ChartLine,
+  ChartPie,
+  Map as MapIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { childrenMap } from '../engine/Scene';
@@ -13,10 +48,22 @@ import { PROP_LABELS } from './Inspector';
 import { ICONS, moveLayer, type DropPos } from './LayersPanel';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
-const PROP_ROWS: { label: string; props: Prop[]; display?: number; suffix?: string; labels?: string[] }[] = [
+const PROP_ROWS: {
+  label: string;
+  props: Prop[];
+  display?: number;
+  suffix?: string;
+  labels?: string[];
+}[] = [
   { label: 'Position', props: ['x', 'y'], labels: ['X', 'Y'] },
   { label: 'Size', props: ['width', 'height'], labels: ['W', 'H'] },
-  { label: 'Scale', props: ['scaleX', 'scaleY'], display: 100, suffix: '%', labels: ['X', 'Y'] },
+  {
+    label: 'Scale',
+    props: ['scaleX', 'scaleY'],
+    display: 100,
+    suffix: '%',
+    labels: ['X', 'Y'],
+  },
   { label: 'Rotation', props: ['rotation'], suffix: '°' },
   { label: 'Opacity', props: ['opacity'], display: 100, suffix: '%' },
 ];
@@ -45,6 +92,9 @@ function flatten(t: Template): { layer: Layer; depth: number }[] {
   return out;
 }
 
+/** Room after the end of the template, for the end marker and its handle. */
+const TAIL = 24;
+
 function tickStep(zoom: number): number {
   for (const s of [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000]) if (s * zoom >= 56) return s;
   return 1000;
@@ -69,8 +119,29 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     if (x < el.scrollLeft || x > el.scrollLeft + el.clientWidth - LEFT_W - 40) el.scrollLeft = Math.max(0, x - 40);
   }, [frame, zoom, playing]);
 
+  // Default zoom: the whole template fits the visible width. It follows the
+  // panel size until the zoom is changed by hand, and again for each template.
+  const fitted = useRef(true);
+  const duration = template?.duration ?? 0;
+  useEffect(() => {
+    fitted.current = true;
+  }, [template?.id]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !duration) return;
+    const fit = () => {
+      if (!fitted.current) return;
+      const z = (el.clientWidth - LEFT_W - TAIL) / duration;
+      if (z > 0) useDesigner.setState({ zoom: Math.round(z * 100) / 100 });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [template?.id, duration, LEFT_W]);
+
   if (!template) return null;
-  const width = template.duration * zoom + 200;
+  const width = template.duration * zoom + TAIL;
   const step = tickStep(zoom);
   const outF = template.markers.find((m) => m.kind === 'out')?.frame;
 
@@ -81,6 +152,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   };
 
   const scrub = (e: React.PointerEvent) => {
+    e.preventDefault(); // no text selection while scrubbing
     st.setPlaying(false);
     st.setFrame(Math.round(frameAt(e.clientX)));
     const move = (ev: PointerEvent) => useDesigner.getState().setFrame(Math.round(frameAt(ev.clientX)));
@@ -119,7 +191,10 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           const frames = new Set(refs.map((r) => r.frame));
           const movedKeys: Keyframe[] = baseTrack
             .filter((k) => frames.has(k.frame))
-            .map((k) => ({ ...k, frame: Math.max(0, Math.min(t.duration, k.frame + delta)) }));
+            .map((k) => ({
+              ...k,
+              frame: Math.max(0, Math.min(t.duration, k.frame + delta)),
+            }));
           const newFrames = new Set(movedKeys.map((k) => k.frame));
           const kept = baseTrack.filter((k) => !frames.has(k.frame) && !newFrames.has(k.frame));
           findLayer(t, layerId)!.tracks[prop] = [...kept, ...movedKeys].sort((a, b) => a.frame - b.frame);
@@ -163,11 +238,22 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       if (kind === 'onair') {
         // The On air point is the first pause: move it, or create it.
         if (pauses[0]) pauses[0].frame = f;
-        else t.markers.push({ id: newId(), frame: f, name: 'On air', kind: 'pause' });
+        else
+          t.markers.push({
+            id: newId(),
+            frame: f,
+            name: 'On air',
+            kind: 'pause',
+          });
         return;
       }
       if (kind === 'out') t.markers = t.markers.filter((m) => m.kind !== 'out');
-      t.markers.push({ id: newId(), frame: f, name: kind === 'out' ? 'Out' : pauses.length ? 'Pause' : 'On air', kind });
+      t.markers.push({
+        id: newId(),
+        frame: f,
+        name: kind === 'out' ? 'Out' : pauses.length ? 'Pause' : 'On air',
+        kind,
+      });
     });
 
   /** ◀ ◆ ▶ of a timeline row: previous key, key at the playhead, next key. */
@@ -256,7 +342,10 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
           const y = (e.clientY - r.top) / r.height;
-          setDrop({ id: layer.id, pos: layer.type === 'group' && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below' });
+          setDrop({
+            id: layer.id,
+            pos: layer.type === 'group' && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below',
+          });
         }}
         onDragLeave={() => setDrop(null)}
         onDrop={(e) => {
@@ -341,7 +430,16 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     );
     if (!open) continue;
     const extra = animated.filter((p) => !IN_ROWS.has(p));
-    const groups = [...PROP_ROWS, ...extra.map((p) => ({ label: PROP_LABELS[p], props: [p] as Prop[], display: undefined, suffix: undefined, labels: undefined }))];
+    const groups = [
+      ...PROP_ROWS,
+      ...extra.map((p) => ({
+        label: PROP_LABELS[p],
+        props: [p] as Prop[],
+        display: undefined,
+        suffix: undefined,
+        labels: undefined,
+      })),
+    ];
     labels.push(
       <div key={`${layer.id}-tr`} className="tl-label group" style={{ paddingLeft: 22 + depth * 14 }}>
         Transform
@@ -357,16 +455,18 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <span className="prop-values">
             {g.props.map((p, i) =>
               COLOR_PROPS.has(p) ? (
-                <span key={p} className="prop-swatch" style={{ background: `rgba(${(propValue(layer, p, frame) as number[]).slice(0, 3).map((c) => Math.round(c * 255)).join(',')},${(propValue(layer, p, frame) as number[])[3]})` }} />
-              ) : (
-                <NumberField
+                <span
                   key={p}
-                  label={g.labels?.[i]}
-                  value={num(propValue(layer, p, frame))}
-                  display={g.display}
-                  suffix={g.suffix}
-                  onChange={(v) => st.update((t) => setProp(findLayer(t, layer.id)!, p, v, frame), `tl-${layer.id}-${p}`)}
+                  className="prop-swatch"
+                  style={{
+                    background: `rgba(${(propValue(layer, p, frame) as number[])
+                      .slice(0, 3)
+                      .map((c) => Math.round(c * 255))
+                      .join(',')},${(propValue(layer, p, frame) as number[])[3]})`,
+                  }}
                 />
+              ) : (
+                <NumberField key={p} label={g.labels?.[i]} value={num(propValue(layer, p, frame))} display={g.display} suffix={g.suffix} onChange={(v) => st.update((t) => setProp(findLayer(t, layer.id)!, p, v, frame), `tl-${layer.id}-${p}`)} />
               ),
             )}
           </span>
@@ -422,8 +522,32 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         </button>
         <label className="zoom">
           Zoom
-          <input type="range" min={1} max={40} step={0.5} value={zoom} onChange={(e) => st.set({ zoom: +e.target.value })} />
+          <input
+            type="range"
+            min={0.2}
+            max={40}
+            step={0.1}
+            value={zoom}
+            onChange={(e) => {
+              fitted.current = false;
+              st.set({ zoom: +e.target.value });
+            }}
+          />
         </label>
+        <button
+          className="btn small"
+          title="Fit the whole template in the timeline"
+          onClick={() => {
+            const el = scrollRef.current;
+            fitted.current = true;
+            if (el)
+              st.set({
+                zoom: Math.max(0.2, Math.round(((el.clientWidth - LEFT_W - TAIL) / template.duration) * 100) / 100),
+              });
+          }}
+        >
+          Fit
+        </button>
       </div>
       <div className="tl-scroll" ref={scrollRef}>
         <div className="tl-grid" style={{ width: LEFT_W + width }}>
@@ -452,7 +576,15 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
               ))}
             </div>
             <div className="tl-rows" onPointerDown={() => st.selectKeys([])}>
-              {outF !== undefined && <div className="out-zone" style={{ left: outF * zoom, width: (template.duration - outF) * zoom }} />}
+              {outF !== undefined && (
+                <div
+                  className="out-zone"
+                  style={{
+                    left: outF * zoom,
+                    width: (template.duration - outF) * zoom,
+                  }}
+                />
+              )}
               {markers.map((m) => (
                 <div key={m.id} className={`marker-line ${markerRole(template, m)}`} style={{ left: m.frame * zoom }} />
               ))}
@@ -467,8 +599,6 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   );
 }
 
-
-
 /** Shapes on hand above the layers; the rest behind "+". */
 function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
   return (
@@ -479,7 +609,25 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       <button className="tool" title="Ellipse" onClick={() => onAdd('ellipse')}>
         <Circle size={15} />
       </button>
-      <button className="tool" title="Line" onClick={() => onAdd('rect', { props: { x: 160, y: 540, width: 600, height: 4, fill: [1, 1, 1, 1] } }, 'Line')}>
+      <button
+        className="tool"
+        title="Line"
+        onClick={() =>
+          onAdd(
+            'rect',
+            {
+              props: {
+                x: 160,
+                y: 540,
+                width: 600,
+                height: 4,
+                fill: [1, 1, 1, 1],
+              },
+            },
+            'Line',
+          )
+        }
+      >
         <Minus size={15} />
       </button>
       <button className="tool" title="Text" onClick={() => onAdd('text')}>
@@ -497,7 +645,12 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
   );
 }
 
-type MenuItem = { label: string; icon: typeof Square; preset?: string; soon?: boolean };
+type MenuItem = {
+  label: string;
+  icon: typeof Square;
+  preset?: string;
+  soon?: boolean;
+};
 
 const BASICS: MenuItem[] = [
   { label: 'Clock', icon: AlarmClock, preset: 'clock' },
@@ -556,13 +709,28 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
         title="Basics and Pulse CG widgets"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          setOpen(open ? null : { left: Math.max(8, r.left), bottom: window.innerHeight - r.top + 6 });
+          setOpen(
+            open
+              ? null
+              : {
+                  left: Math.max(8, r.left),
+                  bottom: window.innerHeight - r.top + 6,
+                },
+          );
         }}
       >
         <Plus size={15} />
       </button>
       {open && (
-        <div className="menu add-menu" style={{ position: 'fixed', left: open.left, bottom: open.bottom, top: 'auto' }}>
+        <div
+          className="menu add-menu"
+          style={{
+            position: 'fixed',
+            left: open.left,
+            bottom: open.bottom,
+            top: 'auto',
+          }}
+        >
           <div className="add-tabs">
             <button className={tab === 'basics' ? 'on' : ''} onClick={() => setTab('basics')}>
               Basics

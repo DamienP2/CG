@@ -125,7 +125,12 @@ function useShortcuts() {
       else if (e.key.startsWith('Arrow') && st.selected.length) {
         e.preventDefault();
         const d = e.shiftKey ? 10 : 1;
-        const [dx, dy] = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key] ?? [0, 0];
+        const [dx, dy] = {
+          ArrowLeft: [-d, 0],
+          ArrowRight: [d, 0],
+          ArrowUp: [0, -d],
+          ArrowDown: [0, d],
+        }[e.key] ?? [0, 0];
         st.update((draft) => {
           for (const id of st.selected) {
             const l = findLayer(draft, id);
@@ -166,7 +171,14 @@ function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show
         title="Screen zones"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
-          setOpen(open ? null : { left: Math.min(r.left, window.innerWidth - 260), top: r.bottom + 6 });
+          setOpen(
+            open
+              ? null
+              : {
+                  left: Math.min(r.left, window.innerWidth - 260),
+                  top: r.bottom + 6,
+                },
+          );
         }}
       >
         <LayoutGrid size={13} /> Zones <ChevronDown size={12} />
@@ -204,7 +216,11 @@ function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show
   );
 }
 
-const BG_LABELS = { checker: 'transparent', black: 'black', studio: 'studio' } as const;
+const BG_LABELS = {
+  checker: 'transparent',
+  black: 'black',
+  studio: 'studio',
+} as const;
 
 function TemplateList({ project }: { project: Project }) {
   const { template, load, format } = useDesigner();
@@ -288,6 +304,8 @@ function TemplateList({ project }: { project: Project }) {
   );
 }
 
+const MIN_LEFT = 280;
+
 export function Designer() {
   const project = useApp((s) => s.project);
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
@@ -297,7 +315,14 @@ export function Designer() {
   const [logicOpen, setLogicOpen] = useState(false);
   const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
   // Panel sizes, adjustable with the splitters.
-  const [layout, setLayout] = useLayout('pulse.designerLayout', { left: 250, right: 340, timeline: 300, templates: 260 });
+  const [layout, setLayout] = useLayout('pulse.designerLayout', {
+    left: 280,
+    right: 340,
+    timeline: 300,
+    templates: 260,
+  });
+  // Room for the timeline property values (two 5-digit fields).
+  const left = Math.max(MIN_LEFT, layout.left);
   const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('checker');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
@@ -321,7 +346,10 @@ export function Designer() {
   const add = (type: LayerType, patch?: Record<string, unknown>, name?: string) => {
     const parent = selected.length === 1 && template && findLayer(template, selected[0])?.type === 'group' ? selected[0] : null;
     const size = formatById(project, useDesigner.getState().format);
-    const l = { ...makeLayer(type, size.width, size.height, parent), ...patch } as Layer;
+    const l = {
+      ...makeLayer(type, size.width, size.height, parent),
+      ...patch,
+    } as Layer;
     if (name) l.name = name;
     update((t) => void t.layers.push(l));
     select([l.id]);
@@ -330,10 +358,15 @@ export function Designer() {
   return (
     <div
       className="designer"
-      style={{ ['--left-w' as string]: `${layout.left}px`, ['--right-w' as string]: `${layout.right}px`, ['--tl-h' as string]: `${layout.timeline}px`, ['--tpl-h' as string]: `${layout.templates}px` }}
+      style={{
+        ['--left-w' as string]: `${left}px`,
+        ['--right-w' as string]: `${layout.right}px`,
+        ['--tl-h' as string]: `${layout.timeline}px`,
+        ['--tpl-h' as string]: `${layout.templates}px`,
+      }}
     >
       <aside className="panel left">
-        <Splitter axis="x" className="edge-right" value={layout.left} min={180} max={520} reset={250} onChange={(v) => setLayout('left', v)} />
+        <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={280} onChange={(v) => setLayout('left', v)} />
         <TemplateList project={project} />
       </aside>
       <main className="center">
@@ -355,11 +388,7 @@ export function Designer() {
           <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas (action 5 %, title 10 %)">
             <Grid3x3 size={13} />
           </button>
-          <button
-            className="btn small bg-toggle"
-            title={`Stage background: ${BG_LABELS[background]} (click to change)`}
-            onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}
-          >
+          <button className="btn small bg-toggle" title={`Stage background: ${BG_LABELS[background]} (click to change)`} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>
           <PublishButton project={project} readOnly={lock.state.status === 'held'} />
@@ -376,7 +405,7 @@ export function Designer() {
       </aside>
       <div className="timeline-wrap">
         <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
-        <Timeline fps={fps} leftW={layout.left} onAdd={add} />
+        <Timeline fps={fps} leftW={left} onAdd={add} />
       </div>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}

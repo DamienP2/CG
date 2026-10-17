@@ -1,18 +1,48 @@
-import { Copy, Download, FolderOpen, Layers, MonitorPlay, PenTool, Plus, Radio, Trash2, Upload, X } from 'lucide-react';
+import { Copy, Database, Download, Layers, MonitorPlay, PenTool, Plus, Radio, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
-import { navigate } from '../router';
+import { projectPath, projectTab, type ProjectPage } from '../router';
 
-export const FORMATS: { label: string; width: number; height: number; rate: FrameRate }[] = [
+export const FORMATS: {
+  label: string;
+  width: number;
+  height: number;
+  rate: FrameRate;
+}[] = [
   { label: '1080p 50', width: 1920, height: 1080, rate: { num: 50, den: 1 } },
   { label: '1080p 25', width: 1920, height: 1080, rate: { num: 25, den: 1 } },
-  { label: '1080p 59.94', width: 1920, height: 1080, rate: { num: 60000, den: 1001 } },
-  { label: '1080p 29.97', width: 1920, height: 1080, rate: { num: 30000, den: 1001 } },
+  {
+    label: '1080p 59.94',
+    width: 1920,
+    height: 1080,
+    rate: { num: 60000, den: 1001 },
+  },
+  {
+    label: '1080p 29.97',
+    width: 1920,
+    height: 1080,
+    rate: { num: 30000, den: 1001 },
+  },
   { label: '720p 50', width: 1280, height: 720, rate: { num: 50, den: 1 } },
-  { label: '2160p 50 (UHD)', width: 3840, height: 2160, rate: { num: 50, den: 1 } },
-  { label: 'Vertical 1080×1920 30', width: 1080, height: 1920, rate: { num: 30, den: 1 } },
-  { label: 'Square 1080×1080 30', width: 1080, height: 1080, rate: { num: 30, den: 1 } },
+  {
+    label: '2160p 50 (UHD)',
+    width: 3840,
+    height: 2160,
+    rate: { num: 50, den: 1 },
+  },
+  {
+    label: 'Vertical 1080×1920 30',
+    width: 1080,
+    height: 1920,
+    rate: { num: 30, den: 1 },
+  },
+  {
+    label: 'Square 1080×1080 30',
+    width: 1080,
+    height: 1080,
+    rate: { num: 30, den: 1 },
+  },
 ];
 
 const fps = (r: FrameRate) => +(r.num / r.den).toFixed(2);
@@ -28,9 +58,29 @@ function NewProject({ from, onClose }: { from?: ProjectSummary; onClose: () => v
     setBusy(true);
     const f = FORMATS[format];
     try {
-      const p = await api<ProjectSummary>('POST', '/api/projects', from ? { name, description, from: from.id } : { name, description, width: f.width, height: f.height, frameRate: f.rate });
+      // Opened now: a tab opened after the request would be blocked as a popup.
+      const tab = from ? null : window.open('about:blank');
+      const p = await api<ProjectSummary>(
+        'POST',
+        '/api/projects',
+        from
+          ? { name, description, from: from.id }
+          : {
+              name,
+              description,
+              width: f.width,
+              height: f.height,
+              frameRate: f.rate,
+            },
+      ).catch((e) => {
+        tab?.close();
+        throw e;
+      });
       onClose();
-      if (!from) navigate(`/designer/${p.id}`);
+      if (tab) {
+        tab.name = projectTab(p.id);
+        tab.location.href = projectPath(p.id);
+      }
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -106,7 +156,7 @@ export function Projects() {
         <div className="settings-head">
           <div>
             <h1>Projects</h1>
-            <p className="muted">One project per show: its templates, widgets and rundown. Load a project on an output channel to play it.</p>
+            <p className="muted">One project per show: its templates, data and rundown. A project opens in its own browser tab.</p>
           </div>
           <div className="spacer" />
           {can.design(user) && (
@@ -125,76 +175,59 @@ export function Projects() {
         <div className="project-grid">
           {projects.map((p) => {
             const on = channels.filter((c) => c.projectId === p.id);
+            const link = (sub: ProjectPage, icon: React.ReactNode, label: string, show = true) =>
+              show && (
+                <a className="project-link" href={projectPath(p.id, sub)} target={projectTab(p.id)}>
+                  {icon}
+                  <span>{label}</span>
+                </a>
+              );
+            const ratio = p.width / p.height;
             return (
               <div key={p.id} className="project-card">
-                <div className="project-top" onClick={() => navigate(can.design(user) ? `/designer/${p.id}` : on[0] ? `/operator/${on[0].id}` : `/designer/${p.id}`)}>
-                  <div className="project-icon">
-                    <FolderOpen size={22} />
+                <div className="project-top">
+                  <div className="project-format" title={`Design format ${p.width}×${p.height}`}>
+                    <div style={ratio >= 1 ? { width: 40, height: 40 / ratio } : { width: 40 * ratio, height: 40 }} />
                   </div>
                   <div className="project-text">
                     <strong>{p.name}</strong>
-                    <span className="muted">{p.description || 'No description'}</span>
+                    <span className="muted" title={p.description || undefined}>
+                      {p.description || 'No description'}
+                    </span>
+                  </div>
+                  <div className="project-tools">
+                    <a className="icon-btn ghost" title="Export" href={`/api/projects/${encodeURIComponent(p.id)}/export`}>
+                      <Download size={14} />
+                    </a>
+                    {can.design(user) && (
+                      <>
+                        <button className="icon-btn ghost" title="Duplicate" onClick={() => setDialog({ from: p })}>
+                          <Copy size={14} />
+                        </button>
+                        <button className="icon-btn ghost" title="Delete" onClick={() => remove(p)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="project-meta">
                   <span>
-                    <Layers size={12} /> {p.templates} templates
-                  </span>
-                  <span>
                     {p.width}×{p.height} · {fps(p.frameRate)} fps
                   </span>
+                  <span>
+                    <Layers size={12} /> {p.templates} template
+                    {p.templates === 1 ? '' : 's'}
+                  </span>
+                  <span className={on.length ? 'project-air' : ''}>
+                    <MonitorPlay size={12} /> {on.length ? on.map((c) => c.name).join(', ') : 'No channel'}
+                  </span>
                 </div>
-                <div className="project-channels">
-                  {on.length ? (
-                    on.map((c) => (
-                      <button key={c.id} className="chip live" onClick={() => navigate(`/operator/${c.id}`)} title="Open the operator on this channel">
-                        <MonitorPlay size={11} /> {c.name}
-                      </button>
-                    ))
-                  ) : (
-                    <span className="muted small">Not loaded on any channel</span>
-                  )}
-                </div>
-                <div className="project-actions">
-                  {can.design(user) && (
-                    <button className="btn small" onClick={() => navigate(`/designer/${p.id}`)}>
-                      <PenTool size={13} /> Design
-                    </button>
-                  )}
-                  {can.operate(user) && channels.length > 0 && (
-                    <select
-                      className="small"
-                      value=""
-                      title="Load on a channel"
-                      onChange={async (e) => {
-                        const cid = e.target.value;
-                        if (!cid) return;
-                        await useApp.getState().loadOnChannel(cid, p.id);
-                        navigate(`/operator/${cid}`);
-                      }}
-                    >
-                      <option value="">Load on…</option>
-                      {channels.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <div className="spacer" />
-                  <a className="icon-btn ghost" title="Export" href={`/api/projects/${encodeURIComponent(p.id)}/export`}>
-                    <Download size={14} />
-                  </a>
-                  {can.design(user) && (
-                    <>
-                      <button className="icon-btn ghost" title="Duplicate" onClick={() => setDialog({ from: p })}>
-                        <Copy size={14} />
-                      </button>
-                      <button className="icon-btn ghost" title="Delete" onClick={() => remove(p)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
+                <div className="project-links">
+                  {link('designer', <PenTool size={16} />, 'Designer', can.design(user))}
+                  {link('operator', <Radio size={16} />, 'Operator', can.operate(user))}
+                  {link('data', <Database size={16} />, 'Data', can.design(user))}
+                  {link('settings', <SettingsIcon size={16} />, 'Settings', can.design(user))}
                 </div>
               </div>
             );

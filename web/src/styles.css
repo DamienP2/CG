@@ -940,6 +940,7 @@ code {
   flex-direction: column;
   border-top: 1px solid var(--line);
   background: var(--panel);
+  user-select: none;
 }
 .tl-toolbar {
   display: flex;
@@ -1039,6 +1040,7 @@ code {
 }
 .tl-ruler {
   height: 30px;
+  user-select: none;
   position: sticky;
   top: 0;
   z-index: 3;
@@ -1808,36 +1810,52 @@ code {
 .project-top {
   display: flex;
   gap: 12px;
-  cursor: pointer;
+  align-items: flex-start;
 }
-.project-icon {
-  width: 44px;
-  height: 44px;
+.project-format {
+  width: 48px;
+  height: 48px;
   flex: none;
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, rgba(124, 92, 255, 0.35), rgba(255, 59, 140, 0.25));
-  color: white;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.3), rgba(255, 59, 140, 0.2));
+}
+.project-format > div {
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  border-radius: 3px;
 }
 .project-text {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  flex: 1;
 }
 .project-text strong {
   font-size: 15px;
 }
 .project-text .muted {
   font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.project-tools {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.project-card:hover .project-tools,
+.project-tools:focus-within {
+  opacity: 1;
 }
 .project-meta {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   font-size: 11.5px;
   color: var(--text-3);
 }
@@ -1846,12 +1864,69 @@ code {
   align-items: center;
   gap: 5px;
 }
-.project-channels {
+.project-meta .project-air {
+  color: var(--text-2);
+}
+.project-links {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.project-link {
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  min-height: 22px;
+  flex-direction: column;
   align-items: center;
+  gap: 5px;
+  padding: 9px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.project-link:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--panel-3);
+}
+.project-link svg {
+  color: var(--accent-2);
+}
+.project-title {
+  font-weight: 600;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-inner.narrow,
+.settings-inner.narrow {
+  max-width: 720px;
+}
+.channel-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.channel-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.channel-pick-row .grow {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .chip.live {
   border-style: solid;
@@ -1867,13 +1942,6 @@ code {
 select.small {
   padding: 3px 6px;
   font-size: 12px;
-}
-.project-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
 }
 .empty.big {
   grid-column: 1 / -1;
@@ -3934,6 +4002,7 @@ input.mono {
 .tl-label.prop {
   gap: 4px;
   background: #0f1118;
+  overflow: hidden;
 }
 .tl-label.prop .tl-keynav {
   margin-left: 0;
@@ -3947,17 +4016,23 @@ input.mono {
   color: var(--text);
 }
 .tl-label.prop .prop-values {
-  flex: 1;
-  min-width: 0;
+  margin-left: auto;
+  flex: none;
   display: flex;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-right: 4px;
 }
+/* Fixed width (5 digits), right aligned, so values line up in columns. */
 .tl-label.prop .num-field {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  gap: 2px;
   height: 20px;
 }
 .tl-label.prop .num-field input {
+  width: calc(5ch + 8px);
+  min-width: 0;
+  flex: none;
   height: 20px;
   font-size: 11.5px;
   padding: 0 4px;
@@ -3967,7 +4042,14 @@ input.mono {
 }
 .tl-label.prop .num-field .scrub {
   font-size: 10px;
-  min-width: 12px;
+  min-width: 9px;
+  text-align: right;
+}
+.tl-label.prop .num-field .suffix,
+.tl-label.prop .num-field:not(:has(.suffix))::after {
+  content: '';
+  width: 10px;
+  flex: none;
 }
 .prop-swatch {
   width: 20px;
@@ -4034,4 +4116,7 @@ input.mono {
   font-size: 12px;
   color: var(--pvw);
   white-space: nowrap;
+}
+a.btn {
+  text-decoration: none;
 }

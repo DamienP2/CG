@@ -9,7 +9,8 @@ import { MosPlugin } from './mos/Plugin';
 import { Projects } from './pages/Projects';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
-import { navigate, parseRoute, type Route } from './router';
+import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
+import { ChannelPicker, ProjectSettings } from './pages/ProjectPages';
 import { Settings } from './settings/Settings';
 import { can, useApp } from './store';
 
@@ -48,7 +49,7 @@ export function App() {
 }
 
 function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin' }> }) {
-  const { auth, init, connect, connected, projects, channels, project, openProject, live, toasts, logout } = useApp();
+  const { auth, init, connect, projects, channels, toasts } = useApp();
   const user = auth?.user;
 
   useEffect(() => void init(), [init]);
@@ -56,90 +57,28 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
     if (user) connect();
   }, [user, connect]);
 
-  // Resolve routes without an id, and keep the active project in sync.
-  const operatedChannel = route.page === 'operator' ? (channels.find((c) => c.id === route.channelId) ?? null) : null;
+  // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
     if ((route.page === 'settings' || route.page === 'users') && !can.admin(user)) return navigate('/projects', true);
-    if (route.page === 'designer') {
-      if (!can.design(user)) return navigate('/projects', true);
-      if (!route.projectId) {
-        if (!projects.length) return;
-        const last = recall(LAST_PROJECT);
-        return navigate(`/designer/${encodeURIComponent(projects.find((p) => p.id === last)?.id ?? projects[0].id)}`, true);
-      }
-      remember(LAST_PROJECT, route.projectId);
-      if (useApp.getState().projectId !== route.projectId) openProject(route.projectId);
+    if (route.page === 'legacyDesigner') {
+      const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
+      if (id) navigate(projectPath(id, 'designer'), true);
+      else if (projects.length || useApp.getState().connected) navigate('/projects', true);
     }
-    if (route.page === 'operator') {
+    if (route.page === 'legacyOperator') {
       if (!channels.length) return;
-      if (!operatedChannel) {
-        const last = recall(LAST_CHANNEL);
-        return navigate(`/operator/${encodeURIComponent(channels.find((c) => c.id === last)?.id ?? channels[0].id)}`, true);
-      }
-      remember(LAST_CHANNEL, operatedChannel.id);
-      useApp.getState().selectChannel(operatedChannel.id);
-      if (useApp.getState().projectId !== operatedChannel.projectId) openProject(operatedChannel.projectId);
+      const ch = channels.find((c) => c.id === route.channelId);
+      navigate(ch?.projectId ? projectPath(ch.projectId, 'operator', ch.id) : '/projects', true);
     }
-  }, [route, user, projects, channels, operatedChannel?.id, operatedChannel?.projectId, openProject]);
+  }, [route, user, projects, channels]);
 
   if (!auth) return <div className="loading">Connecting…</div>;
   if (!user) return <Login />;
 
-  const onAir = operatedChannel ? Object.keys(live[operatedChannel.id]?.state.layers ?? {}).length : Object.values(live).reduce((n, l) => n + Object.keys(l.state.layers).length, 0);
-  const lastProject = route.page === 'designer' ? route.projectId : recall(LAST_PROJECT);
-  const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
-    <button className={route.page === page ? 'on' : ''} onClick={() => navigate(path)}>
-      {icon} {label}
-    </button>
-  );
-
   return (
     <div className="app">
-      <nav className="topbar">
-        <div className="brand">
-          <Clapperboard size={18} />
-          <span>Pulse</span>
-          <em>CG</em>
-        </div>
-        <div className="tabs">
-          {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
-          {can.design(user) && tab('designer', lastProject ? `/designer/${encodeURIComponent(lastProject)}` : '/designer', <PenTool size={14} />, 'Designer')}
-          {tab('operator', '/operator', <Radio size={14} />, 'Operator')}
-          {can.design(user) && tab('data', '/data', <Database size={14} />, 'Data')}
-          {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
-          {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
-        </div>
-        <div className="spacer" />
-        {route.page === 'designer' && project && (
-          <span className="project-info">
-            {project.name} · {project.width}×{project.height} · {+(project.frameRate.num / project.frameRate.den).toFixed(2)} fps
-          </span>
-        )}
-        <span className={`air-indicator ${onAir ? 'live' : ''}`} title={operatedChannel ? operatedChannel.name : 'All channels'}>
-          <Tv size={13} /> {onAir ? `${onAir} on air` : 'Off air'}
-        </span>
-        <span className={`conn ${connected ? 'ok' : 'ko'}`} title={connected ? 'Connected to engine' : 'Reconnecting…'} />
-        <div className="user-menu" title={`${user.username} · ${user.role}`}>
-          <span className="avatar">{(user.displayName || user.username).slice(0, 1).toUpperCase()}</span>
-          <span className="user-name">{user.displayName || user.username}</span>
-          <a className="icon-btn ghost" title="API documentation" href="/api-docs" onClick={(e) => (e.preventDefault(), navigate('/api-docs'))}>
-            <BookOpen size={14} />
-          </a>
-          <button className="icon-btn ghost" title="Sign out" onClick={logout}>
-            <LogOut size={14} />
-          </button>
-        </div>
-      </nav>
-      <div className="content">
-        {route.page === 'projects' && <Projects />}
-        {route.page === 'designer' && (project && project.id === route.projectId ? <Designer key={project.id} /> : <div className="loading">{projects.length ? 'Opening the project…' : 'No project yet: create one in Projects.'}</div>)}
-        {route.page === 'operator' && (operatedChannel ? <Operator key={operatedChannel.id} channelId={operatedChannel.id} /> : <div className="loading">{connected && !channels.length ? 'No channel you can access.' : 'Connecting…'}</div>)}
-        {route.page === 'settings' && <Settings />}
-        {route.page === 'users' && <Users />}
-        {route.page === 'data' && <DataPage />}
-        {route.page === 'apiDocs' && <ApiDocs />}
-      </div>
+      {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">Opening…</div> : <Home route={route} />}
       <div className="toasts">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}>
@@ -148,5 +87,154 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
         ))}
       </div>
     </div>
+  );
+}
+
+function Brand() {
+  return (
+    <div className="brand">
+      <Clapperboard size={18} />
+      <span>Pulse</span>
+      <em>CG</em>
+    </div>
+  );
+}
+
+function UserMenu() {
+  const { auth, connected, logout } = useApp();
+  const user = auth!.user!;
+  return (
+    <>
+      <span className={`conn ${connected ? 'ok' : 'ko'}`} title={connected ? 'Connected to engine' : 'Reconnecting…'} />
+      <div className="user-menu" title={`${user.username} · ${user.role}`}>
+        <span className="avatar">{(user.displayName || user.username).slice(0, 1).toUpperCase()}</span>
+        <span className="user-name">{user.displayName || user.username}</span>
+        <a className="icon-btn ghost" title="API documentation" href="/api-docs" onClick={(e) => (e.preventDefault(), navigate('/api-docs'))}>
+          <BookOpen size={14} />
+        </a>
+        <button className="icon-btn ghost" title="Sign out" onClick={logout}>
+          <LogOut size={14} />
+        </button>
+      </div>
+    </>
+  );
+}
+
+/** Projects, users and server settings. A project opens in its own browser tab. */
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'users' | 'settings' | 'apiDocs' }> }) {
+  const user = useApp((s) => s.auth?.user);
+  useEffect(() => {
+    document.title = 'Pulse CG';
+  }, []);
+  const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
+    <button className={route.page === page ? 'on' : ''} onClick={() => navigate(path)}>
+      {icon} {label}
+    </button>
+  );
+  return (
+    <>
+      <nav className="topbar">
+        <Brand />
+        <div className="tabs">
+          {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
+          {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
+          {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
+        </div>
+        <div className="spacer" />
+        <UserMenu />
+      </nav>
+      <div className="content">
+        {route.page === 'projects' && <Projects />}
+        {route.page === 'settings' && <Settings />}
+        {route.page === 'users' && <Users />}
+        {route.page === 'apiDocs' && <ApiDocs />}
+      </div>
+    </>
+  );
+}
+
+/** The pages of one project: designer, operator, data and project settings. */
+function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> }) {
+  const { auth, connected, projects, channels, project, openProject, live } = useApp();
+  const user = auth!.user!;
+  const { projectId, sub } = route;
+  const summary = projects.find((p) => p.id === projectId);
+  const known = !!summary || !connected || !projects.length;
+
+  useEffect(() => {
+    remember(LAST_PROJECT, projectId);
+    if (useApp.getState().projectId !== projectId) openProject(projectId);
+  }, [projectId, openProject]);
+  useEffect(() => {
+    document.title = summary ? `${summary.name} · Pulse CG` : 'Pulse CG';
+  }, [summary?.name]);
+
+  // Pages a role cannot see.
+  const allowed = (s: ProjectPage) => (s === 'operator' ? can.operate(user) : can.design(user));
+  useEffect(() => {
+    if (!allowed(sub)) navigate(projectPath(projectId, can.design(user) ? 'designer' : 'operator'), true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub, projectId, user]);
+
+  // Operator: the channel playing this project (the last one used first).
+  const own = channels.filter((c) => c.projectId === projectId);
+  const operated = sub === 'operator' ? (channels.find((c) => c.id === route.channelId) ?? null) : null;
+  useEffect(() => {
+    if (sub !== 'operator' || route.channelId || !own.length) return;
+    const last = recall(LAST_CHANNEL);
+    navigate(projectPath(projectId, 'operator', (own.find((c) => c.id === last) ?? own[0]).id), true);
+  }, [sub, route.channelId, own.length, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!operated) return;
+    remember(LAST_CHANNEL, operated.id);
+    useApp.getState().selectChannel(operated.id);
+  }, [operated?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onAir = operated ? Object.keys(live[operated.id]?.state.layers ?? {}).length : 0;
+  const tab = (s: ProjectPage, icon: React.ReactNode, label: string) =>
+    allowed(s) && (
+      <button className={sub === s ? 'on' : ''} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
+        {icon} {label}
+      </button>
+    );
+  const ready = project && project.id === projectId;
+
+  let page: React.ReactNode;
+  if (!known) page = <div className="loading">This project does not exist or you cannot access it.</div>;
+  else if (!ready) page = <div className="loading">Opening the project…</div>;
+  else if (sub === 'designer') page = <Designer key={project.id} />;
+  else if (sub === 'data') page = <DataPage />;
+  else if (sub === 'settings') page = <ProjectSettings project={summary ?? { ...project, description: project.description ?? '' }} />;
+  else if (operated && operated.projectId === projectId) page = <Operator key={operated.id} channelId={operated.id} />;
+  else page = <ChannelPicker projectId={projectId} channel={operated} />;
+
+  return (
+    <>
+      <nav className="topbar">
+        <Brand />
+        <span className="project-title" title={summary?.description || undefined}>
+          {summary?.name ?? project?.name ?? '…'}
+        </span>
+        <div className="tabs">
+          {tab('designer', <PenTool size={14} />, 'Designer')}
+          {tab('operator', <Radio size={14} />, 'Operator')}
+          {tab('data', <Database size={14} />, 'Data')}
+          {tab('settings', <SettingsIcon size={14} />, 'Settings')}
+        </div>
+        <div className="spacer" />
+        {sub === 'designer' && project && (
+          <span className="project-info">
+            {project.width}×{project.height} · {+(project.frameRate.num / project.frameRate.den).toFixed(2)} fps
+          </span>
+        )}
+        {sub === 'operator' && operated && (
+          <span className={`air-indicator ${onAir ? 'live' : ''}`} title={operated.name}>
+            <Tv size={13} /> {onAir ? `${onAir} on air` : 'Off air'}
+          </span>
+        )}
+        <UserMenu />
+      </nav>
+      <div className="content">{page}</div>
+    </>
   );
 }
