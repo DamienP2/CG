@@ -3,6 +3,7 @@ import { formatFor, inFormat } from '../engine/formats';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { hasLiveWidgets, Scene } from '../engine/Scene';
 import { layerAgeFrames } from '../engine/widgets';
+import { areaClip, zoneArea } from '../engine/zones';
 import type { Project, Template } from '../engine/types';
 import type { Live } from '../store';
 
@@ -22,6 +23,10 @@ export function Program({ project, live, width, height }: { project: Project; li
   }));
   const fps = project.frameRate.num / project.frameRate.den || 1;
   const scale = Math.min(width / format.width, height / format.height);
+  const zoneOf = (layer: number) => {
+    const z = project.zones.find((x) => x.layer === layer);
+    return z && zoneArea(z, format.id, format.height > format.width);
+  };
   return (
     <div
       style={{
@@ -40,7 +45,8 @@ export function Program({ project, live, width, height }: { project: Project; li
         // The server only sends states when timelines move: extrapolate time on air.
         const age = (item.age ?? 0) / fps + Math.max(0, now - (live?.at ?? now)) / 1000;
         return (
-          <div key={layer} style={{ position: 'absolute', inset: 0 }}>
+          // Only what is inside the zone shows on air.
+          <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
             <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined}>
               <Scene template={t} frame={item.frame} data={item.data} />
             </LiveTime>

@@ -4,6 +4,7 @@ import { draftOf, publishState } from '../engine/drafts';
 import type { Project } from '../engine/types';
 import { api, clientId, lockEvents, useApp, type EditLock } from '../store';
 import { useDesigner } from './designerStore';
+import { confirmDialog } from '../ui/dialogs';
 
 /*
  * One designer at a time per template (edit lock, renewed while the template
@@ -147,7 +148,7 @@ export function PublishButton({ project, readOnly }: { project: Project; readOnl
     }
   };
   const discard = async () => {
-    if (!published || !confirm(`Discard the unpublished changes of “${base.name}” and go back to v${published.revision ?? 1}?`)) return;
+    if (!published || !(await confirmDialog({ title: 'Discard the unpublished changes?', message: `“${base.name}” goes back to v${published.revision ?? 1}, the version the Operator uses.`, confirm: 'Discard', danger: true }))) return;
     await api('DELETE', `${url}/draft`).catch((e) => toast((e as Error).message, 'error'));
     useDesigner.getState().load(published);
   };

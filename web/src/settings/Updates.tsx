@@ -1,6 +1,7 @@
 import { CloudDownload, History, KeyRound, RefreshCw, RotateCcw, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
+import { confirmDialog } from '../ui/dialogs';
 
 interface Release {
   version: string;
@@ -111,7 +112,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     load();
   };
   const install = async () => {
-    if (!latest || !confirm(`Install Pulse CG ${latest.version}?\n\n${restartNote}`)) return;
+    if (!latest || !(await confirmDialog({ title: `Install Pulse CG ${latest.version}?`, message: restartNote, confirm: 'Install' }))) return;
     await api('POST', '/api/system/update/install').catch((e) => toast((e as Error).message, 'error'));
     load();
     // The status poll turns into the "waiting for restart" poll.
@@ -127,7 +128,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     }, 700);
   };
   const upload = async (file: File) => {
-    if (!confirm(`Install the package “${file.name}”?\n\n${restartNote}`)) return;
+    if (!(await confirmDialog({ title: `Install the package “${file.name}”?`, message: restartNote, confirm: 'Install' }))) return;
     try {
       const res = await fetch(`/api/system/update/upload?allowOlder=${allowOlder}`, { method: 'POST', body: file, credentials: 'same-origin' });
       if (!res.ok) throw new Error(await res.text());
@@ -140,7 +141,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     }
   };
   const rollback = async () => {
-    if (!info.previous || !confirm(`Go back to version ${info.previous}?\n\n${restartNote}`)) return;
+    if (!info.previous || !(await confirmDialog({ title: `Go back to version ${info.previous}?`, message: restartNote, confirm: 'Roll back', danger: true }))) return;
     try {
       await api('POST', '/api/system/update/rollback');
       setWaiting(info.current);

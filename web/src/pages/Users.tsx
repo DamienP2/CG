@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { Role, User } from '../engine/types';
 import { api, useApp } from '../store';
 import { ApiKeys } from './ApiKeys';
+import { confirmDialog } from '../ui/dialogs';
 
 const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: 'admin', label: 'Admin', hint: 'Everything: users, channels, server settings.' },
@@ -182,7 +183,7 @@ export function Users() {
                       className="icon-btn ghost"
                       title="Delete"
                       onClick={async () => {
-                        if (!confirm(`Delete the user “${u.username}”?`)) return;
+                        if (!(await confirmDialog({ title: `Delete the user “${u.username}”?`, confirm: 'Delete', danger: true }))) return;
                         await api('DELETE', `/api/users/${encodeURIComponent(u.id)}`).catch((e) => toast((e as Error).message, 'error'));
                         load();
                       }}

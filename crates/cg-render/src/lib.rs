@@ -242,9 +242,24 @@ impl Renderer {
         .pre_scale(scale, scale);
         let fps = project.frame_rate.as_f64().max(1.0);
         let now = now_ms();
-        for item in state.layers.values() {
+        let portrait = dh > dw;
+        for (layer, item) in &state.layers {
             if let Some(t) = project.template(&item.template_id) {
                 let t = t.in_format(format);
+                // Only what is inside the zone shows on air.
+                let zone_mask = project
+                    .zone_at(*layer)
+                    .map(|z| z.area(format, portrait))
+                    .filter(|a| !a.is_full())
+                    .and_then(|a| {
+                        Rect::from_xywh(
+                            (a.x * dw as f64) as f32,
+                            (a.y * dh as f64) as f32,
+                            (a.width * dw as f64) as f32,
+                            (a.height * dh as f64) as f32,
+                        )
+                    })
+                    .map(|r| build_mask(&pm, None, r, root));
                 let time = TimeCtx {
                     now_ms: now,
                     age_secs: item.age / fps,
@@ -260,7 +275,7 @@ impl Renderer {
                     item: Some(item),
                     fps,
                 };
-                self.draw_children(&mut pm, &ctx, None, root, 1.0, None);
+                self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref());
             }
         }
         Frame {
@@ -305,7 +320,28 @@ impl Renderer {
             item: None,
             fps: project.frame_rate.as_f64().max(1.0),
         };
-        self.draw_children(&mut pm, &ctx, None, Transform::identity(), 1.0, None);
+        // As on air: only what is inside the template's zone.
+        let zone_mask = project
+            .zone(&template.zone)
+            .map(|z| z.area(format, height > width))
+            .filter(|a| !a.is_full())
+            .and_then(|a| {
+                Rect::from_xywh(
+                    (a.x * width as f64) as f32,
+                    (a.y * height as f64) as f32,
+                    (a.width * width as f64) as f32,
+                    (a.height * height as f64) as f32,
+                )
+            })
+            .map(|r| build_mask(&pm, None, r, Transform::identity()));
+        self.draw_children(
+            &mut pm,
+            &ctx,
+            None,
+            Transform::identity(),
+            1.0,
+            zone_mask.as_ref(),
+        );
         Frame {
             width: width.max(1),
             height: height.max(1),
@@ -1131,6 +1167,42 @@ mod tests {
         width: 1920,
         height: 1080,
     };
+
+    #[test]
+    fn only_the_zone_shows_on_air() {
+        let mut project = sample::demo_project();
+        // The credits (a full-frame shade) taken in a top-left zone.
+        project.zones = vec![cg_core::Zone {
+            id: "top-left".into(),
+            name: "Top left".into(),
+            layer: 50,
+            color: String::new(),
+            transition: cg_core::ZoneTransition::Cut,
+            areas: Default::default(),
+        }];
+        let mut state = ChannelState::default();
+        state
+            .apply(
+                &project,
+                Command::Take {
+                    zone: None,
+                    layer: Some(50),
+                    template_id: "credits".into(),
+                    data: None,
+                    rundown_id: None,
+                },
+            )
+            .unwrap();
+        for _ in 0..60 {
+            state.tick(1.0);
+        }
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_channel(&project, &state, OUT, "UTC");
+        let alpha = |x: usize, y: usize| f.data[(y * 1920 + x) * 4 + 3];
+        // Top-left zone: 4 %..28 % x 5 %..19 % of the frame.
+        assert!(alpha(200, 100) > 0);
+        assert_eq!(alpha(1500, 800), 0);
+    }
 
     #[test]
     fn widgets_render_and_scale() {

@@ -14,6 +14,7 @@ import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
 import { designTemplates } from '../engine/drafts';
+import { confirmDialog } from '../ui/dialogs';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -297,7 +298,7 @@ function TemplateList({ project }: { project: Project }) {
               disabled={designTemplates(project).length < 2}
               onClick={async (e) => {
                 e.stopPropagation();
-                if (!confirm(`Delete template “${t.name}”? Rundown items using it are removed too.`)) return;
+                if (!(await confirmDialog({ title: `Delete the template “${t.name}”?`, message: 'Rundown items using it are removed too.', confirm: 'Delete', danger: true }))) return;
                 await deleteTemplate(t.id).catch((err) => toast(String(err), 'error'));
                 if (template?.id === t.id) load(designTemplates(project).find((x) => x.id !== t.id) ?? null);
               }}

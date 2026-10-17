@@ -12,6 +12,8 @@ import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
 import { useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
+import { areaClip, zoneArea } from '../engine/zones';
+import { confirmDialog, promptDialog } from '../ui/dialogs';
 
 /** Number field: − / + buttons, arrow keys and the mouse wheel once clicked. */
 function NumberStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -98,9 +100,9 @@ function PlaylistTabs({ project, active, onSelect, editable }: { project: Projec
           key={p.id}
           className={p.id === active ? 'on' : ''}
           onClick={() => onSelect(p.id)}
-          onDoubleClick={() => {
+          onDoubleClick={async () => {
             if (!editable) return;
-            const name = prompt('Playlist name', p.name)?.trim();
+            const name = await promptDialog({ title: 'Rename the playlist', label: 'Name', value: p.name, confirm: 'Rename' });
             if (name) save(project.playlists.map((x) => (x.id === p.id ? { ...x, name } : x)));
           }}
           title={editable ? 'Double-click to rename' : undefined}
@@ -110,9 +112,9 @@ function PlaylistTabs({ project, active, onSelect, editable }: { project: Projec
             <span
               className="tab-x"
               title="Remove the playlist (its items move to the first one)"
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                if (confirm(`Remove the playlist “${p.name}”? Its ${count(p.id)} item(s) move to “${project.playlists.find((x) => x.id !== p.id)!.name}”.`)) {
+                if (await confirmDialog({ title: `Remove the playlist “${p.name}”?`, message: `Its ${count(p.id)} item(s) move to “${project.playlists.find((x) => x.id !== p.id)!.name}”.`, confirm: 'Remove', danger: true })) {
                   save(project.playlists.filter((x) => x.id !== p.id));
                   onSelect(project.playlists.find((x) => x.id !== p.id)!.id);
                 }
@@ -127,8 +129,8 @@ function PlaylistTabs({ project, active, onSelect, editable }: { project: Projec
         <button
           className="add"
           title="New playlist"
-          onClick={() => {
-            const name = prompt('New playlist', `Playlist ${project.playlists.length + 1}`)?.trim();
+          onClick={async () => {
+            const name = await promptDialog({ title: 'New playlist', label: 'Name', value: `Playlist ${project.playlists.length + 1}`, confirm: 'Create' });
             if (!name) return;
             const id = newId();
             save([...project.playlists, { id, name }]).then(() => onSelect(id));
@@ -268,7 +270,7 @@ function ChannelBar({ channelId }: { channelId: string | null }) {
     if (!c) return;
     if (c.projectId !== project.id) {
       const onAir = Object.keys(live[c.id]?.state.layers ?? {}).length;
-      if (c.projectId && !confirm(`${c.name} is used by “${projectName(c.projectId)}”${onAir ? ` (${onAir} graphics on air)` : ''}. Load “${project.name}” on it instead?`)) return;
+      if (c.projectId && !(await confirmDialog({ title: `${c.name} is used by “${projectName(c.projectId)}”`, message: `${onAir ? `${onAir} graphics are on air there and will be cleared. ` : ''}Load “${project.name}” on it instead?`, confirm: 'Load here', danger: onAir > 0 }))) return;
       await loadOnChannel(c.id, project.id);
     }
     navigate(projectPath(project.id, 'operator', c.id));
@@ -574,9 +576,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <div className="monitors">
           <Monitor width={previewFormat.width} height={previewFormat.height} label="Preview" tally="pvw" extra={template && <span className="muted">{template.name}</span>}>
             {template && (
-              <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
-                <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={boundDraft} />
-              </LiveTime>
+              <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
+                <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
+                  <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={boundDraft} />
+                </LiveTime>
+              </div>
             )}
           </Monitor>
           <Monitor

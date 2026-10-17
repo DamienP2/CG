@@ -5,13 +5,21 @@ import { adaptTemplate, projectFormats } from '../engine/formats';
 import { MAIN_FORMAT, type Format, type Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { useDesigner } from './designerStore';
+import { confirmDialog } from '../ui/dialogs';
 
 const PRESETS = [
   { id: 'vertical', name: '9:16', width: 1080, height: 1920, hint: 'Stories, Reels, TikTok, Shorts' },
-  { id: 'square', name: '1:1', width: 1080, height: 1080, hint: 'Feeds' },
+  { id: 'square', name: '1:1', width: 1080, height: 1080, hint: 'Square feeds' },
   { id: 'portrait', name: '4:5', width: 1080, height: 1350, hint: 'Instagram / Facebook feed' },
-  { id: 'landscape', name: '16:9', width: 1920, height: 1080, hint: 'TV, YouTube' },
+  { id: 'landscape', name: '16:9', width: 1920, height: 1080, hint: 'TV, YouTube, web players' },
+  { id: 'custom', name: 'Custom', width: 1280, height: 720, hint: 'Any size' },
 ];
+
+/** A frame drawn to the format's proportions. */
+function Shape({ width, height, size = 44 }: { width: number; height: number; size?: number }) {
+  const r = width / height;
+  return <span className="fmt-shape" style={r >= 1 ? { width: size, height: size / r } : { width: size * r, height: size }} />;
+}
 
 const shapeIcon = (f: { width: number; height: number }) => (f.width > f.height * 1.1 ? RectangleHorizontal : f.height > f.width * 1.1 ? RectangleVertical : Square);
 
@@ -28,15 +36,18 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
   const { toast } = useApp();
   const existing = projectFormats(project);
   const free = PRESETS.filter((p) => !existing.some((f) => f.width * p.height === f.height * p.width));
-  const [pick, setPick] = useState(free[0] ?? PRESETS[0]);
+  const [pick, setPick] = useState(free.find((p) => p.id !== 'custom') ?? PRESETS[PRESETS.length - 1]);
   const [name, setName] = useState(pick.name);
   const [w, setW] = useState(pick.width);
   const [h, setH] = useState(pick.height);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    setName(pick.name);
-    setW(pick.width);
-    setH(pick.height);
+    setName(pick.id === 'custom' ? `${w}×${h}` : pick.name);
+    if (pick.id !== 'custom') {
+      setW(pick.width);
+      setH(pick.height);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pick]);
   const create = async () => {
     setBusy(true);
@@ -62,48 +73,59 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
       setBusy(false);
     }
   };
+  const taken = (p: { width: number; height: number }) => existing.find((f) => f.width * p.height === f.height * p.width);
   return (
     <div className="modal-back" onPointerDown={onClose}>
-      <div className="modal" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <div className="modal wide add-format" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <header>
-          <h2>Add a format</h2>
-          <button className="icon-btn ghost" onClick={onClose}>
+          <h2>Add a format to “{project.name}”</h2>
+          <button className="icon-btn ghost" title="Close" onClick={onClose}>
             <X size={16} />
           </button>
         </header>
-        <p className="hint">
-          Every template gets a first layout in the new format: elements keep their corner or edge, bars stretch with their content, sizes fit the safe area, animations are kept. Then refine each template:
-          what you change in this format stays in this format.
-        </p>
-        <div className="role-pick">
+        <p className="hint">Each template gets a first layout in the new format, made from the main one. Refine it afterwards: changes made in a format stay in that format.</p>
+
+        <div className="fmt-grid">
           {PRESETS.map((p) => {
-            const Icon = shapeIcon(p);
+            const already = p.id !== 'custom' && taken(p);
             return (
-              <button type="button" key={p.id} className={pick.id === p.id ? 'on' : ''} onClick={() => setPick(p)}>
-                <strong>
-                  <Icon size={13} /> {p.name}
-                </strong>
-                <span>
-                  {p.width}×{p.height} · {p.hint}
-                </span>
+              <button type="button" key={p.id} className={`fmt-card ${pick.id === p.id ? 'on' : ''}`} disabled={!!already} onClick={() => setPick(p)}>
+                <span className="fmt-preview">{p.id === 'custom' ? <Shape width={w} height={h} /> : <Shape width={p.width} height={p.height} />}</span>
+                <strong>{p.name}</strong>
+                <span className="fmt-size">{p.id === 'custom' ? `${w}×${h}` : `${p.width}×${p.height}`}</span>
+                <span className="fmt-hint">{already ? `Already in the project (${already.name})` : p.hint}</span>
               </button>
             );
           })}
         </div>
-        <div className="set-grid">
+
+        <div className="fmt-fields">
           <label className="set-field">
             <span className="set-label">Name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="set-field">
             <span className="set-label">Width</span>
-            <input type="number" value={w} onChange={(e) => setW(+e.target.value)} />
+            <input type="number" min={16} max={7680} value={w} onChange={(e) => (setW(+e.target.value), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
           </label>
+          <span className="fmt-x">×</span>
           <label className="set-field">
             <span className="set-label">Height</span>
-            <input type="number" value={h} onChange={(e) => setH(+e.target.value)} />
+            <input type="number" min={16} max={7680} value={h} onChange={(e) => (setH(+e.target.value), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
           </label>
         </div>
+
+        <div className="fmt-compare">
+          <span>
+            <Shape width={project.width} height={project.height} size={34} /> Main {project.width}×{project.height}
+          </span>
+          <span className="arrow">→</span>
+          <span>
+            <Shape width={w || 1} height={h || 1} size={34} /> {name.trim() || pick.name} {w}×{h}
+          </span>
+          <span className="muted small">{designTemplates(project).length} templates to adapt</span>
+        </div>
+
         <footer>
           <button className="btn" onClick={onClose}>
             Cancel
@@ -151,7 +173,7 @@ export function FormatBar({ project }: { project: Project }) {
             className="tool-link"
             title="Generate this template's layout again from the main format (replaces its changes in this format)"
             onClick={async () => {
-              if (!confirm(`Re-adapt “${base.name}” to ${current.name}? Its changes in ${current.name} are replaced.`)) return;
+              if (!(await confirmDialog({ title: `Re-adapt “${base.name}” to ${current.name}?`, message: `Its changes in ${current.name} are replaced by a new layout made from the main format.`, confirm: 'Re-adapt', danger: true }))) return;
               const adapted = adaptTemplate(base, project, current);
               load(adapted);
               await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(base.id)}`, adapted).catch((e) => toast((e as Error).message, 'error'));
@@ -163,7 +185,7 @@ export function FormatBar({ project }: { project: Project }) {
             className="tool-link danger"
             title={`Remove the ${current.name} format from the project`}
             onClick={async () => {
-              if (!confirm(`Remove the ${current.name} format? Its layouts in every template are deleted.`)) return;
+              if (!(await confirmDialog({ title: `Remove the ${current.name} format?`, message: 'Its layouts in every template of the project are deleted.', confirm: 'Remove', danger: true }))) return;
               await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/formats`, (project.formats ?? []).filter((f) => f.id !== current.id)).catch((e) => toast((e as Error).message, 'error'));
               setFormat(MAIN_FORMAT);
             }}

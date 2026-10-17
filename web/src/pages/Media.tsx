@@ -1,6 +1,7 @@
 import { Check, Copy, Download, File, FileAudio, Film, Image as ImageIcon, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
+import { confirmDialog } from '../ui/dialogs';
 
 type Kind = MediaFile['kind'];
 
@@ -61,7 +62,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     if (!todo.length) return;
     const existing = new Set(files?.map((f) => f.name));
     const replaced = todo.filter((f) => existing.has(mediaName(f.name))).map((f) => mediaName(f.name));
-    if (replaced.length && !confirm(`Replace ${replaced.join(', ')}? Templates using ${replaced.length > 1 ? 'them' : 'it'} show the new file.`)) return;
+    if (replaced.length && !(await confirmDialog({ title: `Replace ${replaced.join(', ')}?`, message: `Templates using ${replaced.length > 1 ? 'them' : 'it'} show the new file.`, confirm: 'Replace' }))) return;
     setUploads((u) => [...u, ...todo.map((f) => ({ name: f.name, progress: 0 }))]);
     await Promise.all(
       todo.map(async (f) => {
@@ -78,7 +79,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   };
 
   const remove = async (m: MediaFile) => {
-    if (!confirm(`Delete “${m.name}”? Templates that use it will show nothing in its place.`)) return;
+    if (!(await confirmDialog({ title: `Delete “${m.name}”?`, message: 'Templates that use it will show nothing in its place.', confirm: 'Delete', danger: true }))) return;
     try {
       await api('DELETE', `${url}/${encodeURIComponent(m.name)}`);
       setFiles((l) => l?.filter((x) => x.src !== m.src) ?? null);

@@ -47,6 +47,7 @@ import { NumberField } from '../ui/fields';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 import { ICONS, moveLayer, type DropPos } from './LayersPanel';
+import { confirmDialog } from '../ui/dialogs';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -394,10 +395,10 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           </button>
           <button
             title="Delete (Del)"
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
               const kids = descendants(template, layer.id).length;
-              if (kids && !confirm(`Delete “${layer.name}” and the ${kids} layer(s) inside it?`)) return;
+              if (kids && !(await confirmDialog({ title: `Delete “${layer.name}”?`, message: `The ${kids} layer(s) inside it are deleted too.`, confirm: 'Delete', danger: true }))) return;
               st.update((t) => {
                 const ids = new Set([layer.id, ...descendants(t, layer.id)]);
                 t.layers = t.layers.filter((x) => !ids.has(x.id));

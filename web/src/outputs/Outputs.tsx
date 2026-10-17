@@ -2,6 +2,7 @@ import { Check, Copy, ExternalLink, Image as ImageIcon, MapPin, Network, Pencil,
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { joinAddr, splitAddr, VIDEO_FORMATS, type ChannelConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type SystemInfo } from './types';
+import { confirmDialog, promptDialog } from '../ui/dialogs';
 
 /*
  * Video outputs as a node canvas: each channel (an independent playout) feeds
@@ -265,7 +266,7 @@ export function Outputs() {
     setSel(`pic:${id}`);
   };
 
-  const removeSelected = () => {
+  const removeSelected = async () => {
     if (selDest) {
       editCh((c) => {
         const p = pictures(c).find((x) => x.id === selDest.picture)!;
@@ -276,7 +277,7 @@ export function Outputs() {
         );
       });
     } else if (selPic && selPic.id !== 'main') {
-      if (dests(selPic).length && !confirm(`Remove the picture “${selPic.name}” and its ${dests(selPic).length} destinations?`)) return;
+      if (dests(selPic).length && !(await confirmDialog({ title: `Remove the picture “${selPic.name}”?`, message: `Its ${dests(selPic).length} destinations are removed too.`, confirm: 'Remove', danger: true }))) return;
       editCh((c) => void (c.renditions = (c.renditions ?? []).filter((r) => r.id !== selPic.id)));
     }
     setSel('program');
@@ -306,26 +307,26 @@ export function Outputs() {
       if (item) fn(item as T);
     });
 
-  const addLocation = () => {
-    const name = prompt('Location name (a studio, a truck, the web desk…)')?.trim();
+  const addLocation = async () => {
+    const name = await promptDialog({ title: 'New location', label: 'Name', placeholder: 'A studio, a truck, the web desk…', confirm: 'Add' });
     if (!name) return;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
       c.locations.push({ id: unique(slug(name), new Set(c.locations.map((l) => l.id))), name });
     });
   };
-  const renameLocation = (id: string, old: string) => {
-    const name = prompt('Rename the location', old)?.trim();
+  const renameLocation = async (id: string, old: string) => {
+    const name = await promptDialog({ title: 'Rename the location', label: 'Name', value: old, confirm: 'Rename' });
     if (!name || name === old) return;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
       c.locations.find((l) => l.id === id)!.name = name;
     });
   };
-  const removeLocation = (id: string, name: string) => {
+  const removeLocation = async (id: string, name: string) => {
     if (locations.length < 2) return toast('Keep at least one location', 'error');
     const n = cfg.channels.filter((c) => c.location === id).length;
-    if (!confirm(`Remove the location “${name}”?${n ? ` Its ${n} channel${n > 1 ? 's move' : ' moves'} to “${locations.find((l) => l.id !== id)!.name}”.` : ''}`)) return;
+    if (!(await confirmDialog({ title: `Remove the location “${name}”?`, message: n ? `Its ${n} channel${n > 1 ? 's move' : ' moves'} to “${locations.find((l) => l.id !== id)!.name}”.` : undefined, confirm: 'Remove', danger: true }))) return;
     edit((c) => {
       c.locations = (c.locations?.length ? c.locations : [...locations]).filter((l) => l.id !== id);
       for (const x of c.channels) if (x.location === id) x.location = c.locations[0].id;
@@ -344,9 +345,9 @@ export function Outputs() {
     setCurrent(id);
     setSel('program');
   };
-  const removeChannel = () => {
+  const removeChannel = async () => {
     if (cfg.channels.length < 2) return;
-    if (!confirm(`Remove the channel “${ch.name}” and all its outputs?`)) return;
+    if (!(await confirmDialog({ title: `Remove the channel “${ch.name}”?`, message: 'All its outputs are removed too.', confirm: 'Remove', danger: true }))) return;
     edit((c) => void c.channels.splice(chIndex, 1));
     setCurrent(null);
     setSel('program');
@@ -658,7 +659,7 @@ export function Outputs() {
                         value={liveCh.projectId ?? ''}
                         onChange={async (e) => {
                           const onAir = Object.keys(liveState[ch.id]?.state.layers ?? {}).length;
-                          if (onAir && !confirm('Loading another project clears the graphics on air. Continue?')) return;
+                          if (onAir && !(await confirmDialog({ title: 'Load another project?', message: `The ${onAir} graphics on air on ${ch.name} are cleared.`, confirm: 'Load', danger: true }))) return;
                           await loadOnChannel(ch.id, e.target.value || null);
                         }}
                       >

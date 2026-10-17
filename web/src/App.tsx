@@ -1,5 +1,6 @@
 import { BookOpen, Database, FolderOpen, Images, MonitorPlay, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Logo } from './ui/Logo';
+import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
 import { Operator } from './operator/Operator';
@@ -82,6 +83,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   return (
     <div className="app">
       {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">Opening…</div> : <Home route={route} />}
+      <DialogHost />
       <div className="toasts">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.kind}`}>

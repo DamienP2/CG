@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
 import { projectPath, projectTab, type ProjectPage } from '../router';
+import { confirmDialog, promptDialog } from '../ui/dialogs';
 
 export const FORMATS: {
   label: string;
@@ -173,24 +174,24 @@ export function Projects() {
     else delete assign[id];
     void saveFolders({ ...folders, assign });
   };
-  const newFolder = () => {
-    const name = prompt('Folder name')?.trim();
+  const newFolder = async () => {
+    const name = await promptDialog({ title: 'New folder', label: 'Name', placeholder: 'Sport, News, Elections…', confirm: 'Create' });
     if (!name) return;
     if (folders.folders.includes(name)) return setView({ kind: 'folder', name });
     void saveFolders({ ...folders, folders: [...folders.folders, name].sort((a, b) => a.localeCompare(b)) });
     setView({ kind: 'folder', name });
   };
-  const renameFolder = (old: string) => {
-    const name = prompt('Rename the folder', old)?.trim();
+  const renameFolder = async (old: string) => {
+    const name = await promptDialog({ title: 'Rename the folder', label: 'Name', value: old, confirm: 'Rename' });
     if (!name || name === old) return;
     if (folders.folders.includes(name)) return toast(`A folder “${name}” already exists`, 'error');
     const assign = Object.fromEntries(Object.entries(folders.assign).map(([p, f]) => [p, f === old ? name : f]));
     void saveFolders({ folders: folders.folders.map((f) => (f === old ? name : f)).sort((a, b) => a.localeCompare(b)), assign });
     setView({ kind: 'folder', name });
   };
-  const deleteFolder = (name: string) => {
+  const deleteFolder = async (name: string) => {
     const n = count(name);
-    if (!confirm(`Delete the folder “${name}”?${n ? ` Its ${n} project${n > 1 ? 's go' : ' goes'} back to the top level (they are not deleted).` : ''}`)) return;
+    if (!(await confirmDialog({ title: `Delete the folder “${name}”?`, message: n ? `Its ${n} project${n > 1 ? 's go' : ' goes'} back to the top level (they are not deleted).` : undefined, confirm: 'Delete', danger: true }))) return;
     const assign = Object.fromEntries(Object.entries(folders.assign).filter(([, f]) => f !== name));
     void saveFolders({ folders: folders.folders.filter((f) => f !== name), assign });
     setView({ kind: 'all' });
@@ -207,8 +208,8 @@ export function Projects() {
   };
   const remove = async (p: ProjectSummary) => {
     const used = channels.filter((c) => c.projectId === p.id).map((c) => c.name);
-    const warn = used.length ? `\n\nIt is loaded on ${used.join(', ')} and will be unloaded.` : '';
-    if (!confirm(`Delete the project “${p.name}” with its ${p.templates} templates and its media? This cannot be undone.${warn}`)) return;
+    const warn = used.length ? ` It is loaded on ${used.join(', ')} and will be unloaded.` : '';
+    if (!(await confirmDialog({ title: `Delete the project “${p.name}”?`, message: `Its ${p.templates} templates and its media are deleted. This cannot be undone.${warn}`, confirm: 'Delete', danger: true }))) return;
     await api('DELETE', `/api/projects/${encodeURIComponent(p.id)}`).catch((e) => toast((e as Error).message, 'error'));
   };
 

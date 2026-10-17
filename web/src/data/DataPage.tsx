@@ -4,6 +4,7 @@ import type { DataSource, DataSourceInfo } from '../engine/types';
 import { api, can, useApp } from '../store';
 import { JsonTree } from './JsonTree';
 import { useData, useSources } from './dataStore';
+import { confirmDialog } from '../ui/dialogs';
 
 const KINDS: { type: DataSource['type']; label: string; hint: string; icon: typeof Database }[] = [
   { type: 'json', label: 'JSON API', hint: 'Any web service answering JSON (scores, weather, elections…)', icon: Braces },
@@ -271,7 +272,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             <button
               className="btn small danger"
               onClick={async () => {
-                if (!confirm(`Delete the data source “${s.name}”? Fields bound to it keep their last value.`)) return;
+                if (!(await confirmDialog({ title: `Delete the data source “${s.name}”?`, message: 'Fields bound to it keep their last value.', confirm: 'Delete', danger: true }))) return;
                 await api('DELETE', `/api/data/sources/${encodeURIComponent(s.id)}`);
                 await load();
                 onDeleted?.();

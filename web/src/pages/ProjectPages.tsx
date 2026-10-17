@@ -4,6 +4,7 @@ import type { FrameRate } from '../engine/types';
 import { navigate } from '../router';
 import { api, useApp } from '../store';
 import { FORMATS } from './Projects';
+import { confirmDialog } from '../ui/dialogs';
 
 type ProjectMeta = {
   id: string;
@@ -53,8 +54,8 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
   };
   const remove = async () => {
     const used = channels.filter((c) => c.projectId === project.id).map((c) => c.name);
-    const warn = used.length ? `\n\nIt is loaded on ${used.join(', ')} and will be unloaded.` : '';
-    if (!confirm(`Delete the project “${project.name}”? This cannot be undone.${warn}`)) return;
+    const warn = used.length ? ` It is loaded on ${used.join(', ')} and will be unloaded.` : '';
+    if (!(await confirmDialog({ title: `Delete the project “${project.name}”?`, message: `This cannot be undone.${warn}`, confirm: 'Delete', danger: true }))) return;
     try {
       await api('DELETE', url);
       window.close();

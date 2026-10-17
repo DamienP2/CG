@@ -2,6 +2,7 @@ import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { User } from '../engine/types';
 import { api, useApp } from '../store';
+import { confirmDialog } from '../ui/dialogs';
 
 interface ApiKey {
   id: string;
@@ -114,7 +115,7 @@ export function ApiKeys({ users }: { users: User[] }) {
                     className="icon-btn ghost"
                     title="Revoke"
                     onClick={async () => {
-                      if (!confirm(`Revoke the key “${k.name}”? Systems using it stop working at once.`)) return;
+                      if (!(await confirmDialog({ title: `Revoke the key “${k.name}”?`, message: 'Systems using it stop working at once.', confirm: 'Revoke', danger: true }))) return;
                       await api('DELETE', `/api/keys/${encodeURIComponent(k.id)}`).catch((e) => toast((e as Error).message, 'error'));
                       load();
                     }}

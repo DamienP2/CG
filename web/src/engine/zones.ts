@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { Area, Zone } from './types';
 
 /** Starting areas of the default zones, landscape and portrait. */
@@ -31,4 +32,11 @@ export function zoneArea(zone: Zone, format: string, portrait: boolean): Area {
   const d = DEFAULTS[zone.id];
   if (d) return d[portrait ? 1 : 0];
   return portrait ? { x: 0.1, y: 0.3, width: 0.8, height: 0.3 } : { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+}
+
+/** CSS that keeps only what is inside `area` (none when it is the whole frame). */
+export function areaClip(area: Area | undefined): CSSProperties | undefined {
+  if (!area || (area.x <= 1e-6 && area.y <= 1e-6 && area.x + area.width >= 1 - 1e-6 && area.y + area.height >= 1 - 1e-6)) return undefined;
+  const pc = (v: number) => `${(v * 100).toFixed(3)}%`;
+  return { clipPath: `inset(${pc(area.y)} ${pc(1 - area.x - area.width)} ${pc(1 - area.y - area.height)} ${pc(area.x)})` };
 }
