@@ -115,7 +115,7 @@ Chaque chaîne se règle sur un **canvas de nodes** : *Program* (la chaîne) →
 - **HTML5** : lien web `/output/<chaîne>[/<picture>]` (fond transparent, noir ou vert), pour OBS, vMix, CasparCG, un lecteur web ou un écran.
 - **SDI** : carte Blackmagic DeckLink, Fill + Key (keyer externe), keyer interne ou Fill seul, genlock. Nécessite Desktop Video et un serveur compilé avec la fonction `decklink`.
 - **ST 2110** : Fill + Key (deux flux ST 2110-20 YCbCr 4:2:2 10 bits + KEY), RGBA (un flux 4:4:4:4 8 bits) ou YCbCrA (un flux 4:2:2:4 10 bits) ; interface réseau, multicast, TTL, SDP. Le serveur doit être discipliné en PTP.
-- **NDI** : nom de source, groupes, avec ou sans alpha. Le runtime NDI est chargé au démarrage de la sortie : celui du NDI SDK ou de NDI Tools (sur macOS, `/usr/local/lib`, `/Library/NDI SDK for Apple/lib/macOS` ou une copie dans une app NDI de `/Applications`) ; `NDI_LIB_PATH` donne son chemin exact si besoin. Le détail de l'état de la sortie liste les emplacements essayés.
+- **NDI** : nom de source, groupes, avec ou sans alpha. Le runtime NDI est chargé au démarrage de la sortie : le chemin saisi dans le champ *NDI runtime* d'un node NDI (ou `NDI_LIB_PATH`), sinon celui du NDI SDK ou de NDI Tools (sur macOS, `/usr/local/lib`, `/Library/NDI SDK for Apple/lib/macOS`), sinon une copie livrée dans une application de `/Applications` (plugin NDI d'un autre logiciel, par exemple). Le détail de l'état de la sortie liste les emplacements essayés.
 
 ### Formats multiples (16:9, 9:16, 1:1…)
 Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et un 9:16 pour les réseaux sociaux.

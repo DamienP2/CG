@@ -75,6 +75,8 @@ export interface ServerConfig {
   bind?: string | null;
   publicOutputs: boolean;
   timezone: string;
+  /** Path of the NDI runtime library ("" = search for it). */
+  ndiLibrary?: string;
   locations?: Location[];
   channels: ChannelConfig[];
   mos: MosConfig;

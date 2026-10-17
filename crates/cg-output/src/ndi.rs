@@ -4,10 +4,12 @@
 //! linked at build time: the runtime library (installed with NDI Tools, or
 //! the SDK redistributable) is loaded when the first NDI output opens. Without
 //! it, opening an output returns `OutputError::Unsupported` with where it was
-//! looked for. `NDI_LIB_PATH` points to the library explicitly.
+//! looked for. The server settings (or `NDI_LIB_PATH`) point to the library
+//! explicitly; otherwise the usual install folders are searched, then copies
+//! shipped inside other applications.
 
 use std::ffi::{c_char, c_void, CString};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use cg_render::Frame;
 use serde::{Deserialize, Serialize};
@@ -112,8 +114,40 @@ fn app_bundles(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
     }
 }
 
+/// Copies of the runtime shipped inside other applications (plugins,
+/// players…): `libndi*.dylib` anywhere a few folders down `dir`.
+fn deep_scan(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        let Ok(ft) = e.file_type() else { continue };
+        if ft.is_dir() {
+            if depth > 0 && !name.starts_with('.') && name != "node_modules" {
+                deep_scan(&e.path(), depth - 1, out);
+            }
+        } else if name.starts_with("libndi") && name.ends_with(".dylib") {
+            out.push(e.path().to_string_lossy().into_owned());
+        }
+    }
+}
+
+/// Runtime path set in the server settings (tried first).
+static CONFIGURED: Mutex<String> = Mutex::new(String::new());
+
+/// Sets the runtime path from the server settings ("" = search for it).
+pub fn set_library_path(path: &str) {
+    *CONFIGURED.lock().unwrap_or_else(|e| e.into_inner()) = path.trim().to_string();
+}
+
 fn candidates() -> Vec<String> {
-    let mut c: Vec<String> = std::env::var("NDI_LIB_PATH").into_iter().collect();
+    let mut c: Vec<String> = Vec::new();
+    let configured = CONFIGURED.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if !configured.is_empty() {
+        c.push(configured);
+    }
+    c.extend(std::env::var("NDI_LIB_PATH"));
     let runtime_dirs: Vec<String> = [
         "NDI_RUNTIME_DIR_V6",
         "NDI_RUNTIME_DIR_V5",
@@ -151,6 +185,7 @@ fn candidates() -> Vec<String> {
             .map(String::from),
         );
         app_bundles(std::path::Path::new("/Applications"), 1, &mut c);
+        deep_scan(std::path::Path::new("/Applications"), 5, &mut c);
         if let Some(home) = std::env::var_os("HOME") {
             app_bundles(&std::path::Path::new(&home).join("Applications"), 1, &mut c);
         }
@@ -166,7 +201,8 @@ fn candidates() -> Vec<String> {
             "/usr/local/lib/libndi.so".into(),
         ]);
     }
-    c.dedup();
+    let mut seen = std::collections::HashSet::new();
+    c.retain(|p| seen.insert(p.clone()));
     c
 }
 
@@ -204,6 +240,7 @@ fn load() -> Result<Lib, String> {
                 .get(b"NDIlib_send_destroy\0")
                 .map_err(|e| e.to_string())?;
             tracing::info!(path, "NDI runtime loaded");
+            *LOADED.lock().unwrap_or_else(|e| e.into_inner()) = Some(path.clone());
             return Ok(Lib {
                 _lib: lib,
                 create,
@@ -224,12 +261,28 @@ fn load() -> Result<Lib, String> {
     ))
 }
 
+/// The runtime, loaded once it is found; looked for again at each output
+/// start until then (it may be installed or configured meanwhile).
 fn lib() -> Result<&'static Lib, OutputError> {
-    static LIB: OnceLock<Result<Lib, String>> = OnceLock::new();
-    LIB.get_or_init(load)
-        .as_ref()
-        .map_err(|e| OutputError::Unsupported(e.clone()))
+    static LIB: OnceLock<Lib> = OnceLock::new();
+    static LOADING: Mutex<()> = Mutex::new(());
+    if let Some(l) = LIB.get() {
+        return Ok(l);
+    }
+    let _guard = LOADING.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(l) = LIB.get() {
+        return Ok(l);
+    }
+    let l = load().map_err(OutputError::Unsupported)?;
+    Ok(LIB.get_or_init(|| l))
 }
+
+/// Path of the loaded runtime, if any.
+pub fn loaded_path() -> Option<String> {
+    LOADED.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+static LOADED: Mutex<Option<String>> = Mutex::new(None);
 
 pub struct NdiSender {
     config: NdiConfig,

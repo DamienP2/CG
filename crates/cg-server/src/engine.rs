@@ -61,6 +61,19 @@ fn open_outputs(
         let r = NdiSender::open(o.clone(), rate).map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "NDI", r);
     }
+    if let Some(path) = cg_output::ndi::loaded_path() {
+        for o in &outputs.ndi {
+            if sinks.iter().any(|s| s.id == o.id) {
+                status.set_detailed(
+                    &cfg.id,
+                    &o.id,
+                    true,
+                    "Running",
+                    format!("NDI runtime: {path}"),
+                );
+            }
+        }
+    }
     sinks
 }
 
@@ -74,6 +87,7 @@ fn short(e: &OutputError) -> String {
 
 /// Starts every channel; the returned handles are aborted on restart.
 pub fn start(state: &Shared) -> Vec<tokio::task::JoinHandle<()>> {
+    cg_output::ndi::set_library_path(&state.config.ndi_library);
     state
         .channels
         .values()

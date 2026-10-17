@@ -221,6 +221,9 @@ pub struct ServerConfig {
     /// Default IANA time zone of clocks ("" = the server's zone).
     #[serde(default)]
     pub timezone: String,
+    /// Path of the NDI runtime library ("" = search the usual places).
+    #[serde(default)]
+    pub ndi_library: String,
     /// Places the channels are sorted by.
     #[serde(default)]
     pub locations: Vec<Location>,
@@ -248,6 +251,7 @@ impl Default for ServerConfig {
             bind: None,
             public_outputs: true,
             timezone: String::new(),
+            ndi_library: String::new(),
             locations: Vec::new(),
             channels: Vec::new(),
             mos: MosConfig::default(),
