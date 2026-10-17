@@ -1,0 +1,1907 @@
+{
+ "demo": {
+  "id": "demo-12-live-poll",
+  "name": "12 · Live poll",
+  "level": 5,
+  "tags": [
+   "Poll",
+   "Stagger",
+   "Trigger",
+   "Typewriter",
+   "Progress",
+   "Counters"
+  ],
+  "description": "A designed poll: glowing background, the card swings in, the question types itself, the answers slide in one by one while a live vote counter runs. On the trigger \"results\" the bars fill to their share and the percentages count up."
+ },
+ "project": {
+  "id": "demo-12-live-poll",
+  "name": "12 · Live poll",
+  "description": "A designed poll: glowing background, the card swings in, the question types itself, the answers slide in one by one while a live vote counter runs. On the trigger \"results\" the bars fill to their share and the percentages count up.",
+  "width": 1920,
+  "height": 1080,
+  "frameRate": {
+   "num": 50,
+   "den": 1
+  },
+  "templates": [
+   {
+    "id": "poll",
+    "name": "Live poll",
+    "duration": 170.0,
+    "markers": [
+     {
+      "id": "poll-out",
+      "frame": 130.0,
+      "name": "On air",
+      "kind": "out"
+     },
+     {
+      "id": "poll-p1",
+      "frame": 70.0,
+      "name": "Votes open",
+      "kind": "pause",
+      "resume": {
+       "type": "trigger",
+       "name": "results"
+      }
+     }
+    ],
+    "fields": [
+     {
+      "key": "question",
+      "label": "Question",
+      "kind": "text",
+      "default": "Who will win the final?"
+     },
+     {
+      "key": "total",
+      "label": "Total votes",
+      "kind": "number",
+      "default": "48213"
+     },
+     {
+      "key": "aA",
+      "label": "Answer A",
+      "kind": "text",
+      "default": "Team Nova"
+     },
+     {
+      "key": "vA",
+      "label": "Answer A %",
+      "kind": "number",
+      "default": "46",
+      "min": 0,
+      "max": 100
+     },
+     {
+      "key": "aB",
+      "label": "Answer B",
+      "kind": "text",
+      "default": "Team Vortex"
+     },
+     {
+      "key": "vB",
+      "label": "Answer B %",
+      "kind": "number",
+      "default": "31",
+      "min": 0,
+      "max": 100
+     },
+     {
+      "key": "aC",
+      "label": "Answer C",
+      "kind": "text",
+      "default": "Draw"
+     },
+     {
+      "key": "vC",
+      "label": "Answer C %",
+      "kind": "number",
+      "default": "15",
+      "min": 0,
+      "max": 100
+     },
+     {
+      "key": "aD",
+      "label": "Answer D",
+      "kind": "text",
+      "default": "No idea"
+     },
+     {
+      "key": "vD",
+      "label": "Answer D %",
+      "kind": "number",
+      "default": "8",
+      "min": 0,
+      "max": 100
+     }
+    ],
+    "layers": [
+     {
+      "id": "poll-1",
+      "name": "Background",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1920.0,
+       "height": 1080.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 14.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 156.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 165.8,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "poll-2",
+      "name": "Dim",
+      "parent": "poll-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1920.0,
+       "height": 1080.0,
+       "fill": [
+        0.0196,
+        0.0157,
+        0.0588,
+        0.7
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "poll-3",
+      "name": "Glow 1",
+      "parent": "poll-1",
+      "type": "ellipse",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 1180.0,
+       "y": -220.0,
+       "width": 900.0,
+       "height": 900.0,
+       "fill": [
+        0.4863,
+        0.2275,
+        0.9294,
+        0.35
+       ]
+      },
+      "tracks": {
+       "rotation": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 170.0,
+         "value": 40,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ],
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0.6,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 40.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ],
+       "scaleY": [
+        {
+         "frame": 0.0,
+         "value": 0.6,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 40.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-4",
+      "name": "Glow 2",
+      "parent": "poll-1",
+      "type": "ellipse",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": -260.0,
+       "y": 520.0,
+       "width": 800.0,
+       "height": 800.0,
+       "fill": [
+        0.0235,
+        0.7137,
+        0.8314,
+        0.25
+       ]
+      },
+      "tracks": {
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0.5,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 50.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ],
+       "scaleY": [
+        {
+         "frame": 0.0,
+         "value": 0.5,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 50.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-5",
+      "name": "Card",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 360.0,
+       "y": 140.0,
+       "width": 1200.0,
+       "height": 800.0
+      },
+      "tracks": {
+       "y": [
+        {
+         "frame": 0.0,
+         "value": 1100,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 6.0,
+         "value": 1100,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 28.0,
+         "value": 140,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 140.0,
+         "value": 140,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 155.4,
+         "value": 1100,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ],
+       "rotation": [
+        {
+         "frame": 0.0,
+         "value": 6,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 6.0,
+         "value": 6,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 28.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 140.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 155.4,
+         "value": 6,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": true
+     },
+     {
+      "id": "poll-6",
+      "name": "Card plate",
+      "parent": "poll-5",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1200.0,
+       "height": 800.0,
+       "fill": [
+        0.0588,
+        0.0431,
+        0.1412,
+        0.96
+       ],
+       "cornerRadius": 32.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "poll-7",
+      "name": "Top line",
+      "parent": "poll-5",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1200.0,
+       "height": 10.0,
+       "fill": [
+        0.5451,
+        0.3608,
+        0.9647,
+        1.0
+       ],
+       "cornerRadius": 5.0
+      },
+      "tracks": {
+       "cropRight": [
+        {
+         "frame": 0.0,
+         "value": 1,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 20.0,
+         "value": 1,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 40.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 130.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 144.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-8",
+      "name": "Question",
+      "parent": "poll-5",
+      "type": "typewriter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 70.0,
+       "y": 40.0,
+       "width": 1060.0,
+       "height": 120.0,
+       "fontSize": 56.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{question}}",
+      "speed": 28.0,
+      "cursor": false,
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-9",
+      "name": "Live dot",
+      "parent": "poll-5",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 70.0,
+       "y": 180.0,
+       "width": 16.0,
+       "height": 16.0,
+       "fill": [
+        1.0,
+        0.2314,
+        0.3608,
+        1.0
+       ],
+       "cornerRadius": 8.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 40.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 55.0,
+         "value": 0.2,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 85.0,
+         "value": 0.2,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 100.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-10",
+      "name": "Votes",
+      "parent": "poll-5",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 100.0,
+       "y": 170.0,
+       "width": 600.0,
+       "height": 36.0,
+       "fontSize": 26.0,
+       "fill": [
+        0.7686,
+        0.7098,
+        0.9922,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "from": "0",
+      "to": "{{total}}",
+      "duration": 3.0,
+      "decimals": 0,
+      "prefix": "LIVE · ",
+      "suffix": " votes",
+      "grouping": true,
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-11",
+      "name": "Answer A",
+      "parent": "poll-5",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 70.0,
+       "y": 240.0,
+       "width": 1060.0,
+       "height": 110.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": -1200,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 40.0,
+         "value": -1200,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 58.0,
+         "value": 70,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 139.0,
+         "value": 70,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 151.6,
+         "value": -1200,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "poll-12",
+      "name": "Track",
+      "parent": "poll-11",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "poll-13",
+      "name": "Bar",
+      "parent": "poll-11",
+      "type": "progress",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        0.5451,
+        0.3608,
+        0.9647,
+        0.85
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 78.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "value": "{{vA}}",
+      "max": "100",
+      "duration": 1.6,
+      "track": "#00000000"
+     },
+     {
+      "id": "poll-14",
+      "name": "Letter",
+      "parent": "poll-11",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        0.5451,
+        0.3608,
+        0.9647,
+        1.0
+       ],
+       "cornerRadius": 18.0
+      },
+      "tracks": {
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 50.0,
+         "value": 0,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 62.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 130.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 138.4,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-15",
+      "name": "Letter text",
+      "parent": "poll-11",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "A",
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-16",
+      "name": "Label",
+      "parent": "poll-11",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 0.0,
+       "width": 700.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{aA}}",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-17",
+      "name": "Percent",
+      "parent": "poll-11",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 760.0,
+       "y": 0.0,
+       "width": 270.0,
+       "height": 110.0,
+       "fontSize": 48.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "opacity": 0.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 80.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "from": "0",
+      "to": "{{vA}}",
+      "duration": 1.6,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": " %",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-18",
+      "name": "Answer B",
+      "parent": "poll-5",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 70.0,
+       "y": 370.0,
+       "width": 1060.0,
+       "height": 110.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": -1200,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 46.0,
+         "value": -1200,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 64.0,
+         "value": 70,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 136.0,
+         "value": 70,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 148.6,
+         "value": -1200,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "poll-19",
+      "name": "Track",
+      "parent": "poll-18",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "poll-20",
+      "name": "Bar",
+      "parent": "poll-18",
+      "type": "progress",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        0.0235,
+        0.7137,
+        0.8314,
+        0.85
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 78.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "value": "{{vB}}",
+      "max": "100",
+      "duration": 1.6,
+      "track": "#00000000"
+     },
+     {
+      "id": "poll-21",
+      "name": "Letter",
+      "parent": "poll-18",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        0.0235,
+        0.7137,
+        0.8314,
+        1.0
+       ],
+       "cornerRadius": 18.0
+      },
+      "tracks": {
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 56.0,
+         "value": 0,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 68.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 130.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 138.4,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-22",
+      "name": "Letter text",
+      "parent": "poll-18",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "B",
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-23",
+      "name": "Label",
+      "parent": "poll-18",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 0.0,
+       "width": 700.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{aB}}",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-24",
+      "name": "Percent",
+      "parent": "poll-18",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 760.0,
+       "y": 0.0,
+       "width": 270.0,
+       "height": 110.0,
+       "fontSize": 48.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "opacity": 0.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 80.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "from": "0",
+      "to": "{{vB}}",
+      "duration": 1.6,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": " %",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-25",
+      "name": "Answer C",
+      "parent": "poll-5",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 70.0,
+       "y": 500.0,
+       "width": 1060.0,
+       "height": 110.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": -1200,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 52.0,
+         "value": -1200,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 70,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 133.0,
+         "value": 70,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 145.6,
+         "value": -1200,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "poll-26",
+      "name": "Track",
+      "parent": "poll-25",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "poll-27",
+      "name": "Bar",
+      "parent": "poll-25",
+      "type": "progress",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        0.9608,
+        0.6196,
+        0.0431,
+        0.85
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 78.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "value": "{{vC}}",
+      "max": "100",
+      "duration": 1.6,
+      "track": "#00000000"
+     },
+     {
+      "id": "poll-28",
+      "name": "Letter",
+      "parent": "poll-25",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        0.9608,
+        0.6196,
+        0.0431,
+        1.0
+       ],
+       "cornerRadius": 18.0
+      },
+      "tracks": {
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 62.0,
+         "value": 0,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 74.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 130.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 138.4,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-29",
+      "name": "Letter text",
+      "parent": "poll-25",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "C",
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-30",
+      "name": "Label",
+      "parent": "poll-25",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 0.0,
+       "width": 700.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{aC}}",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-31",
+      "name": "Percent",
+      "parent": "poll-25",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 760.0,
+       "y": 0.0,
+       "width": 270.0,
+       "height": 110.0,
+       "fontSize": 48.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "opacity": 0.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 80.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "from": "0",
+      "to": "{{vC}}",
+      "duration": 1.6,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": " %",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-32",
+      "name": "Answer D",
+      "parent": "poll-5",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 70.0,
+       "y": 630.0,
+       "width": 1060.0,
+       "height": 110.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": -1200,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 58.0,
+         "value": -1200,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 76.0,
+         "value": 70,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 130.0,
+         "value": 70,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 142.6,
+         "value": -1200,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "poll-33",
+      "name": "Track",
+      "parent": "poll-32",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "poll-34",
+      "name": "Bar",
+      "parent": "poll-32",
+      "type": "progress",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1060.0,
+       "height": 110.0,
+       "fill": [
+        0.3922,
+        0.4549,
+        0.5451,
+        0.85
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 78.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "value": "{{vD}}",
+      "max": "100",
+      "duration": 1.6,
+      "track": "#00000000"
+     },
+     {
+      "id": "poll-35",
+      "name": "Letter",
+      "parent": "poll-32",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        0.3922,
+        0.4549,
+        0.5451,
+        1.0
+       ],
+       "cornerRadius": 18.0
+      },
+      "tracks": {
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 68.0,
+         "value": 0,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 80.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 130.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 138.4,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {}
+     },
+     {
+      "id": "poll-36",
+      "name": "Letter text",
+      "parent": "poll-32",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 16.0,
+       "y": 16.0,
+       "width": 78.0,
+       "height": 78.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "D",
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-37",
+      "name": "Label",
+      "parent": "poll-32",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 0.0,
+       "width": 700.0,
+       "height": 110.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{aD}}",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "poll-38",
+      "name": "Percent",
+      "parent": "poll-32",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 760.0,
+       "y": 0.0,
+       "width": 270.0,
+       "height": 110.0,
+       "fontSize": 48.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "opacity": 0.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "hold"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 80.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "from": "0",
+      "to": "{{vD}}",
+      "duration": 1.6,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": " %",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "full",
+    "revision": 1,
+    "markerModel": 2
+   }
+  ],
+  "rundown": [
+   {
+    "id": "show-final-poll",
+    "name": "Final poll",
+    "templateId": "poll",
+    "zone": "full",
+    "playlist": "show",
+    "layer": 50,
+    "data": {}
+   }
+  ],
+  "zones": [
+   {
+    "id": "full",
+    "name": "Full screen",
+    "layer": 50,
+    "color": "#38bdf8",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+     }
+    }
+   }
+  ],
+  "playlists": [
+   {
+    "id": "show",
+    "name": "Show"
+   }
+  ],
+  "formats": []
+ }
+}

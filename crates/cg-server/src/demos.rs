@@ -21,18 +21,7 @@ struct DemoFile {
     project: Project,
 }
 
-const FILES: &[&str] = &[
-    include_str!("../demos/demo-01-lower-third.json"),
-    include_str!("../demos/demo-02-bug-clock.json"),
-    include_str!("../demos/demo-03-breaking-news.json"),
-    include_str!("../demos/demo-04-weather.json"),
-    include_str!("../demos/demo-05-election.json"),
-    include_str!("../demos/demo-06-football.json"),
-    include_str!("../demos/demo-07-markets.json"),
-    include_str!("../demos/demo-08-talk-show.json"),
-    include_str!("../demos/demo-09-esports.json"),
-    include_str!("../demos/demo-10-social-live.json"),
-];
+const FILES: &[&str] = include!("../demos/index.rs");
 
 fn all() -> impl Iterator<Item = DemoFile> {
     FILES

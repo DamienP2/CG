@@ -561,11 +561,185 @@ demos.append(project(
     guides={'vertical': [0.5], 'horizontal': [0.5], 'actionSafe': 0.05, 'titleSafe': 0.1, 'exclusions': [{'id': 'ui', 'name': 'Platform buttons (9:16)', 'x': 0.86, 'y': 0.55, 'width': 0.12, 'height': 0.35}]},
 ))
 
+
+# ------------------------------------------------ design: staggered motion --
+
+
+def stagger(prop, rest, start, delay, on_air, length=16, out_delay=0, ein='back', eout='easeIn'):
+    """`prop` from `start` to `rest` at `delay`, back to `start` after the on-air point."""
+    return {prop: keys((0, start, 'hold'), (delay, start, ein), (delay + length, rest, 'linear'), (on_air + out_delay, rest, eout), (on_air + out_delay + length * 0.7, start, 'linear'))}
+
+
+def merge(*tracks):
+    out = {}
+    for t in tracks:
+        out.update(t)
+    return out
+
+
+# ---------------------------------------------- 11. League standings --
+TEAMS = [
+    ('PSG', '#1d4ed8', 31, 74, 'WWDWW'), ('Monaco', '#dc2626', 31, 64, 'WLWWD'), ('Marseille', '#38bdf8', 31, 61, 'WWLWW'),
+    ('Lille', '#b91c1c', 31, 56, 'DWWLW'), ('Nice', '#111827', 31, 53, 'LWDWW'), ('Lyon', '#2563eb', 31, 52, 'WDLWL'),
+    ('Lens', '#facc15', 31, 49, 'DDWLW'), ('Rennes', '#ef4444', 31, 45, 'LWLDW'), ('Brest', '#e11d48', 31, 43, 'WLLDD'),
+    ('Nantes', '#eab308', 31, 38, 'LDLWL'),
+]
+st = T('standings', 'League standings', 'full', duration=150, on_air=110)
+st.field('title', 'Title', 'Ligue 1 · Matchday 31')
+st.field('highlight', 'Highlighted position', '3', kind='number', min=1, max=10)
+for i, (name, col, played, pts, form) in enumerate(TEAMS, 1):
+    st.field(f't{i}', f'#{i} team', name)
+    st.field(f'p{i}', f'#{i} points', str(pts), kind='number', min=0, max=114)
+board = st.group('Standings', 360, 90, 1200, 900, clip=True, tracks=stagger('opacity', 1, 0, 0, 110, 10, 20, 'easeOut'))
+st.rect('Panel', 0, 0, 1200, 900, hexc('0a0f24', 0.94), board, radius=22, tracks=merge(stagger('scaleY', 1, 0.2, 0, 110, 14, 20, 'easeOut')))
+head = st.group('Header', 0, 0, 1200, 120, board, clip=True)
+st.rect('Header band', 0, 0, 1200, 120, hexc('1d4ed8'), head, radius=22, tracks=stagger('cropRight', 0, 1, 4, 110, 18, 18, 'easeOut'))
+st.text('Title', '{{title}}', 50, 0, 900, 120, 48, head, weight=800, tracks=stagger('x', 50, -700, 10, 110, 18, 16), transform='upper')
+for x, label in ((870, 'PL'), (990, 'PTS'), (1090, 'FORM')):
+    st.text(label, label, x - 20, 0, 140, 120, 22, head, weight=700, align='center', color=hexc('bfdbfe'), tracks=stagger('opacity', 1, 0, 22, 110, 10, 10, 'easeOut'))
+ROW, TOP = 74, 130
+# Highlight bar (logic: its y follows the highlighted position).
+hl = st.rect('Highlight', 20, TOP, 1160, ROW - 6, hexc('facc15', 0.22), board, radius=12, tracks=stagger('opacity', 1, 0, 60, 110, 12, 4, 'easeOut'))
+for i, (name, col, played, pts, form) in enumerate(TEAMS, 1):
+    d = 14 + i * 4
+    row = st.group(f'Row {i}', 20, TOP + (i - 1) * ROW, 1160, ROW - 6, board, clip=True, tracks=merge(stagger('x', 20, 1260, d, 110, 18, (10 - i) * 1.5)))
+    st.rect('Row plate', 0, 0, 1160, ROW - 6, hexc('ffffff', 0.05 if i % 2 else 0.09), row, radius=12)
+    st.rect('Rank', 0, 0, 70, ROW - 6, hexc('1d4ed8') if i <= 3 else hexc('334155'), row, radius=12)
+    st.text('Rank n', str(i), 0, 0, 70, ROW - 6, 32, row, align='center', weight=900)
+    st.rect('Colour', 84, 14, 8, ROW - 34, hexc(col.lstrip('#')), row, radius=4, tracks=stagger('scaleY', 1, 0, d + 10, 110, 10))
+    st.text('Team', '{{t%d}}' % i, 110, 0, 600, ROW - 6, 34, row, weight=700)
+    st.text('Played', str(played), 850, 0, 100, ROW - 6, 30, row, align='center', weight=500, color=hexc('cbd5e1'))
+    f, p = st.font(34, 'center', 900)
+    st.widget('counter', 'Points', 920, 0, 140, ROW - 6, row, p, **{'from': '0', 'to': '{{p%d}}' % i, 'duration': 1.4, 'decimals': 0, 'prefix': '', 'suffix': '', 'grouping': False}, **f)
+    for k, r in enumerate(form):
+        c = {'W': GREEN, 'D': hexc('94a3b8'), 'L': ACCENT}[r]
+        st.ellipse(f'Form {k + 1}', 1075 + k * 16, (ROW - 6) / 2 - 6, 12, 12, c, row, tracks=stagger('opacity', 1, 0, d + 18 + k * 2, 110, 6))
+st.logic(
+    [
+        {'id': 'pos', 'type': 'field', 'key': 'highlight', 'x': 60, 'y': 80},
+        {'id': 'one', 'type': 'constant', 'value': 1, 'x': 60, 'y': 200},
+        {'id': 'idx', 'type': 'math', 'op': 'sub', 'x': 320, 'y': 100},
+        {'id': 'row', 'type': 'constant', 'value': ROW, 'x': 320, 'y': 240},
+        {'id': 'off', 'type': 'math', 'op': 'mul', 'x': 580, 'y': 120},
+        {'id': 'top', 'type': 'constant', 'value': TOP, 'x': 580, 'y': 260},
+        {'id': 'y', 'type': 'math', 'op': 'add', 'x': 840, 'y': 140},
+        {'id': 'set', 'type': 'target', 'layer': hl, 'prop': 'y', 'mode': 'set', 'x': 1100, 'y': 140},
+    ],
+    [{'from': 'pos', 'to': 'idx', 'port': 'a'}, {'from': 'one', 'to': 'idx', 'port': 'b'}, {'from': 'idx', 'to': 'off', 'port': 'a'}, {'from': 'row', 'to': 'off', 'port': 'b'},
+     {'from': 'off', 'to': 'y', 'port': 'a'}, {'from': 'top', 'to': 'y', 'port': 'b'}, {'from': 'y', 'to': 'set', 'port': 'in'}],
+)
+demos.append(project(
+    'demo-11-standings', '11 · League standings', 'A designed league table: the panel unfolds, the header wipes in, the ten rows fly in one after the other, the points count up and the form dots pop in; the rows leave in reverse order. A highlight bar moves to the position you choose (logic: (position − 1) × row height + top).',
+    4, ['Sport', 'Table', 'Stagger', 'Counters', 'Logic'],
+    [st.done()], [FULL], [('show', 'Show')],
+    [item('Standings matchday 31', 'standings', 'full', 'show', {}, 0), item('Standings · Marseille', 'standings', 'full', 'show', {'highlight': '3'}, 0), item('Standings · Lyon', 'standings', 'full', 'show', {'highlight': '6'}, 0)],
+))
+
+# ----------------------------------------------------- 12. Live poll --
+pq = T('poll', 'Live poll', 'full', duration=170, on_air=130)
+pq.field('question', 'Question', 'Who will win the final?')
+pq.field('total', 'Total votes', '48213', kind='number')
+ANS = [('A', 'Team Nova', '46', '#8b5cf6'), ('B', 'Team Vortex', '31', '#06b6d4'), ('C', 'Draw', '15', '#f59e0b'), ('D', 'No idea', '8', '#64748b')]
+for k, label, pc, col in ANS:
+    pq.field(f'a{k}', f'Answer {k}', label)
+    pq.field(f'v{k}', f'Answer {k} %', pc, kind='number', min=0, max=100)
+pq.pause(70, 'Votes open', {'type': 'trigger', 'name': 'results'})
+bg = pq.group('Background', 0, 0, 1920, 1080, tracks=stagger('opacity', 1, 0, 0, 130, 14, 26, 'easeOut'))
+pq.rect('Dim', 0, 0, 1920, 1080, hexc('05040f', 0.7), bg)
+pq.ellipse('Glow 1', 1180, -220, 900, 900, hexc('7c3aed', 0.35), bg, tracks={'rotation': keys((0, 0, 'linear'), (170, 40, 'linear')), 'scaleX': keys((0, 0.6, 'easeOut'), (40, 1, 'linear')), 'scaleY': keys((0, 0.6, 'easeOut'), (40, 1, 'linear'))})
+pq.ellipse('Glow 2', -260, 520, 800, 800, hexc('06b6d4', 0.25), bg, tracks={'scaleX': keys((0, 0.5, 'easeOut'), (50, 1, 'linear')), 'scaleY': keys((0, 0.5, 'easeOut'), (50, 1, 'linear'))})
+card = pq.group('Card', 360, 140, 1200, 800, clip=True, tracks=merge(stagger('y', 140, 1100, 6, 130, 22, 10), stagger('rotation', 0, 6, 6, 130, 22, 10)))
+pq.rect('Card plate', 0, 0, 1200, 800, hexc('0f0b24', 0.96), card, radius=32)
+pq.rect('Top line', 0, 0, 1200, 10, hexc('8b5cf6'), card, radius=5, tracks=stagger('cropRight', 0, 1, 20, 130, 20))
+pq.widget('typewriter', 'Question', 70, 40, 1060, 120, card, {'fontSize': 56.0, 'fill': WHITE}, text='{{question}}', speed=28.0, cursor=False, fontFamily='Inter', fontWeight=800, align='left', verticalAlign='middle', uppercase=False)
+LIVE_Y = 170
+pq.rect('Live dot', 70, LIVE_Y + 10, 16, 16, ACCENT, card, radius=8, tracks={'opacity': keys((0, 0, 'hold'), (40, 1, 'linear'), (55, 0.2, 'linear'), (70, 1, 'linear'), (85, 0.2, 'linear'), (100, 1, 'linear'))})
+f, p = pq.font(26, 'left', 600, hexc('c4b5fd'))
+pq.widget('counter', 'Votes', 100, LIVE_Y, 600, 36, card, p, **{'from': '0', 'to': '{{total}}', 'duration': 3.0, 'decimals': 0, 'prefix': 'LIVE · ', 'suffix': ' votes', 'grouping': True}, **f)
+for i, (k, label, pc, col) in enumerate(ANS):
+    y = 240 + i * 130
+    d = 40 + i * 6
+    ans = pq.group(f'Answer {k}', 70, y, 1060, 110, card, tracks=stagger('x', 70, -1200, d, 130, 18, (3 - i) * 3))
+    pq.rect('Track', 0, 0, 1060, 110, hexc('ffffff', 0.06), ans, radius=20)
+    # The bar fills to its share once the results are revealed (after the "results" trigger).
+    pq.widget('progress', 'Bar', 0, 0, 1060, 110, ans, {'fill': hexc(col.lstrip('#'), 0.85), 'cornerRadius': 20.0}, value='{{v%s}}' % k, max='100', duration=1.6, track='#00000000',
+              tracks={'opacity': keys((0, 0, 'hold'), (72, 0, 'linear'), (78, 1, 'linear'))})
+    pq.rect('Letter', 16, 16, 78, 78, hexc(col.lstrip('#')), ans, radius=18, tracks=stagger('scaleX', 1, 0, d + 10, 130, 12))
+    pq.text('Letter text', k, 16, 16, 78, 78, 40, ans, align='center', weight=900)
+    pq.text('Label', '{{a%s}}' % k, 120, 0, 700, 110, 40, ans, weight=700)
+    f, p = pq.font(48, 'right', 900)
+    pq.widget('counter', 'Percent', 760, 0, 270, 110, ans, dict(p, opacity=0.0), **{'from': '0', 'to': '{{v%s}}' % k, 'duration': 1.6, 'decimals': 0, 'prefix': '', 'suffix': ' %', 'grouping': False}, **f)
+    pq.t['layers'][-1]['tracks'] = {'opacity': keys((0, 0, 'hold'), (72, 0, 'linear'), (80, 1, 'linear'))}
+demos.append(project(
+    'demo-12-live-poll', '12 · Live poll', 'A designed poll: glowing background, the card swings in, the question types itself, the answers slide in one by one while a live vote counter runs. On the trigger "results" the bars fill to their share and the percentages count up.',
+    5, ['Poll', 'Stagger', 'Trigger', 'Typewriter', 'Progress', 'Counters'],
+    [pq.done()], [FULL], [('show', 'Show')],
+    [item('Final poll', 'poll', 'full', 'show', {}, 0)],
+))
+
+# ------------------------------------------- 13. Election hemicycle --
+import math
+PARTIES = [('Left', '#e11d48', 162), ('Greens', '#16a34a', 48), ('Centre', '#f59e0b', 171), ('Right', '#2563eb', 62), ('Far right', '#1e3a8a', 134)]
+TOTAL = sum(n for _, _, n in PARTIES)
+hc = T('hemicycle', 'Seats', 'full', duration=180, on_air=140)
+hc.field('title', 'Title', 'National Assembly · Projection')
+for i, (name, col, n) in enumerate(PARTIES):
+    hc.field(f'n{i}', name, name)
+    hc.field(f's{i}', f'{name} seats', str(n), kind='number', min=0, max=TOTAL)
+panel = hc.group('Results', 160, 80, 1600, 920, clip=True, tracks=stagger('opacity', 1, 0, 0, 140, 12, 30, 'easeOut'))
+hc.rect('Panel', 0, 0, 1600, 920, hexc('0b1020', 0.95), panel, radius=26)
+hc.text('Title', '{{title}}', 60, 20, 1480, 100, 50, panel, weight=800, tracks=stagger('opacity', 1, 0, 6, 140, 14))
+hc.text('Majority', f'Majority: {TOTAL // 2 + 1} seats', 60, 100, 1480, 50, 26, panel, weight=600, color=hexc('94a3b8'), tracks=stagger('opacity', 1, 0, 14, 140, 14))
+# Seats in rows of a half circle; each seat pops in, left to right.
+cx, cy = 800, 700
+rows = [(260 + r * 34, 0) for r in range(9)]
+counts = []
+remaining = 120  # dots drawn (one per ~5 seats)
+radii = [260 + r * 34 for r in range(9)]
+total_len = sum(radii)
+per_row = [round(120 * r / total_len) for r in radii]
+dots = []
+for r, n in zip(radii, per_row):
+    for j in range(n):
+        a = math.pi * (1 - j / max(1, n - 1))
+        dots.append((a, cx + r * math.cos(a), cy - r * math.sin(a)))
+dots.sort(key=lambda d: -d[0])  # left to right
+bounds, acc = [], 0
+for _, col, n in PARTIES:
+    acc += n
+    bounds.append((acc / TOTAL * len(dots), col))
+for i, (a, x, y) in enumerate(dots):
+    col = next(c for b, c in bounds if i < b)
+    hc.ellipse(f'Seat {i + 1}', x - 12, y - 12, 24, 24, hexc(col.lstrip('#')), panel,
+               tracks=merge(stagger('scaleX', 1, 0, 20 + i * 0.5, 140, 8, i * 0.15), stagger('scaleY', 1, 0, 20 + i * 0.5, 140, 8, i * 0.15)))
+hc.rect('Majority line', cx - 2, cy - 600, 4, 600, hexc('ffffff', 0.5), panel, tracks=stagger('scaleY', 1, 0, 90, 140, 16))
+# Party legend with counters.
+for i, (name, col, n) in enumerate(PARTIES):
+    x = 60 + i * 300
+    lg = hc.group(f'Legend {name}', x, 760, 280, 130, panel, tracks=stagger('y', 760, 960, 80 + i * 5, 140, 16, (4 - i) * 2))
+    hc.rect('Swatch', 0, 0, 280, 8, hexc(col.lstrip('#')), lg, radius=4)
+    hc.text('Party', '{{n%d}}' % i, 0, 14, 280, 44, 28, lg, weight=700)
+    f, p = hc.font(52, 'left', 900, hexc(col.lstrip('#')) if col not in ('#1e3a8a',) else hexc('93c5fd'))
+    hc.widget('counter', 'Seats', 0, 56, 280, 70, lg, p, **{'from': '0', 'to': '{{s%d}}' % i, 'duration': 1.8, 'decimals': 0, 'prefix': '', 'suffix': '', 'grouping': False}, **f)
+hc.pause(110, 'Projection shown', {'type': 'manual'})
+demos.append(project(
+    'demo-13-election-seats', '13 · Election: seats', 'A designed seat projection: ' + str(len(dots)) + ' seats of a half circle pop in one after the other in the colours of the parties, the majority line rises, and the legend slides up with the seat counters. Holds until Continue, then the seats leave in a wave.',
+    5, ['Elections', 'Hemicycle', 'Stagger', 'Counters', 'Pause'],
+    [hc.done()], [FULL], [('night', 'Election night')],
+    [item('Seats projection', 'hemicycle', 'full', 'night', {}, 0)],
+))
+
 os.makedirs(OUT, exist_ok=True)
 for old in os.listdir(OUT):
-    if old.endswith('.json'):
+    if old.endswith('.json') or old == 'index.rs':
         os.remove(os.path.join(OUT, old))
 for d in demos:
     with open(os.path.join(OUT, d['demo']['id'] + '.json'), 'w') as fh:
         json.dump(d, fh, ensure_ascii=False, indent=1)
+# The list the server embeds (crates/cg-server/src/demos.rs includes it).
+with open(os.path.join(OUT, 'index.rs'), 'w') as fh:
+    fh.write('// Generated by tools/demos/build.py.\n&[\n')
+    for d in demos:
+        fh.write(f'    include_str!("{d["demo"]["id"]}.json"),\n')
+    fh.write(']\n')
 print(f'{len(demos)} demo projects written to {os.path.normpath(OUT)}')
