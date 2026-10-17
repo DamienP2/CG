@@ -1,19 +1,27 @@
-import { ArrowDown, ArrowUp, ChevronsRight, Zap, CircleStop, Copy, MonitorPlay, Pause, Play, Plus, RotateCcw, RefreshCw, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Scene } from '../engine/Scene';
+import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, Undo2, X, Zap } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import type { Command, Field, Marker, PlayoutItem, Playlist, Project, RundownItem, Template, WidgetControl, Zone } from '../engine/types';
+import type { Command, Field, Marker, PlayoutItem, Project, ReadMode, RundownItem, Template, Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { LiveTime } from '../engine/LiveTime';
-import { formatFor, inFormat } from '../engine/formats';
+import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
-import { Monitor } from '../ui/Monitor';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
-import { useBoundData, useSources } from '../data/dataStore';
+import { lookup, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { Splitter, useLayout } from '../ui/Splitter';
+
+/*
+ * Operator page, four areas (each resizable):
+ *   left    playlists, and the graphics of the playlist with take / out
+ *   center  the preview of the selected graphic, and its variables and data
+ *   right   what is on air (the output's pictures), and the internal
+ *           controls of the graphics on air (widgets, values, triggers)
+ */
 
 /** Number field: − / + buttons, arrow keys and the mouse wheel once clicked. */
 function NumberStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -88,141 +96,6 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
   }
 }
 
-/** Rundown sections: tabs to switch, add, rename (double-click) and remove. */
-function PlaylistTabs({ project, active, onSelect, editable }: { project: Project; active: string; onSelect: (id: string) => void; editable: boolean }) {
-  const toast = useApp((s) => s.toast);
-  const save = (lists: Playlist[]) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
-  const count = (id: string) => project.rundown.filter((r) => r.playlist === id).length;
-  return (
-    <div className="playlist-tabs">
-      {project.playlists.map((p) => (
-        <button
-          key={p.id}
-          className={p.id === active ? 'on' : ''}
-          onClick={() => onSelect(p.id)}
-          onDoubleClick={async () => {
-            if (!editable) return;
-            const name = await promptDialog({ title: 'Rename the playlist', label: 'Name', value: p.name, confirm: 'Rename' });
-            if (name) save(project.playlists.map((x) => (x.id === p.id ? { ...x, name } : x)));
-          }}
-          title={editable ? 'Double-click to rename' : undefined}
-        >
-          {p.name} <span className="count">{count(p.id)}</span>
-          {editable && project.playlists.length > 1 && p.id === active && (
-            <span
-              className="tab-x"
-              title="Remove the playlist (its items move to the first one)"
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (await confirmDialog({ title: `Remove the playlist “${p.name}”?`, message: `Its ${count(p.id)} item(s) move to “${project.playlists.find((x) => x.id !== p.id)!.name}”.`, confirm: 'Remove', danger: true })) {
-                  save(project.playlists.filter((x) => x.id !== p.id));
-                  onSelect(project.playlists.find((x) => x.id !== p.id)!.id);
-                }
-              }}
-            >
-              <X size={11} />
-            </span>
-          )}
-        </button>
-      ))}
-      {editable && (
-        <button
-          className="add"
-          title="New playlist"
-          onClick={async () => {
-            const name = await promptDialog({ title: 'New playlist', label: 'Name', value: `Playlist ${project.playlists.length + 1}`, confirm: 'Create' });
-            if (!name) return;
-            const id = newId();
-            save([...project.playlists, { id, name }]).then(() => onSelect(id));
-          }}
-        >
-          <Plus size={13} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function ZoneTag({ zone }: { zone?: Zone }) {
-  if (!zone) return <span className="zone-tag">no zone</span>;
-  return (
-    <span className="zone-tag" style={{ ['--zone' as string]: zone.color }}>
-      {zone.name}
-    </span>
-  );
-}
-
-/** Every zone of the project with what it has on air, front-most first. */
-function ZoneStrip({ project, layers, cuedZone, command }: { project: Project; layers: Record<string, PlayoutItem>; cuedZone?: string; command: (c: Command) => void }) {
-  const zones = [...project.zones].sort((a, b) => b.layer - a.layer);
-  const known = new Set(zones.map((z) => String(z.layer)));
-  // Graphics taken on raw layers through the API.
-  const extra = Object.keys(layers).filter((l) => !known.has(l));
-  const name = (id?: string | null) => project.templates.find((t) => t.id === id)?.name ?? id;
-  const card = (key: string, label: React.ReactNode, color: string, p: PlayoutItem | undefined, target: { zone?: string; layer?: number }, cued: boolean) => {
-    const t = p && project.templates.find((x) => x.id === p.templateId);
-    return (
-      <div key={key} className={`zone-card ${p ? p.phase : 'empty'} ${p && isPaused(p, project) ? 'paused' : ''} ${cued ? 'cued' : ''}`} style={{ ['--zone' as string]: color }}>
-        <div className="zone-head">
-          <span className="zone-name">{label}</span>
-          {p && <span className="air-phase">{phaseLabel(p, project)}</span>}
-        </div>
-        <div className="zone-body">
-          {p ? <strong>{rundownName(project, p.rundownId) ?? t?.name}</strong> : <span className="muted">Free</span>}
-          {p?.next && <span className="zone-next">then {rundownName(project, p.next.rundownId) ?? name(p.next.templateId)}</span>}
-          {p && <PauseResume p={p} project={project} onTrigger={(n) => command({ action: 'trigger', name: n })} />}
-        </div>
-        {p && <progress max={t?.duration ?? 1} value={p.frame} />}
-        {p && t && <WidgetControls item={p} template={t} onControl={(id, control) => command({ action: 'widget', target: id, control, ...target })} />}
-        <div className="zone-actions">
-          <button className="icon-btn ghost" title="Continue" disabled={!p} onClick={() => command({ action: 'continue', ...target })}>
-            <ChevronsRight size={13} />
-          </button>
-          <button className="icon-btn ghost" title="Take out" disabled={!p} onClick={() => command({ action: 'takeOut', ...target })}>
-            <CircleStop size={13} />
-          </button>
-          <button className="icon-btn ghost" title="Clear now (no animation)" disabled={!p} onClick={() => command({ action: 'clear', ...target })}>
-            <X size={13} />
-          </button>
-        </div>
-      </div>
-    );
-  };
-  return (
-    <div className="zone-strip">
-      {zones.map((z) => card(z.id, z.name, z.color, layers[String(z.layer)], { zone: z.id }, z.id === cuedZone))}
-      {extra.map((l) => card(`l${l}`, `Layer ${l}`, '#6b7090', layers[l], { layer: Number(l) }, false))}
-    </div>
-  );
-}
-
-/** Start / pause / restart the timers, tickers, rolls… of the graphic on air. */
-function WidgetControls({ item, template, onControl }: { item: PlayoutItem; template: Template; onControl: (layerId: string, c: WidgetControl) => void }) {
-  const timed = template.layers.filter(isTimed);
-  if (!timed.length) return null;
-  return (
-    <div className="widget-controls">
-      {timed.map((l) => {
-        const c = item.clocks?.[l.id];
-        const running = c ? c.pausedAt == null : !l.manualStart;
-        return (
-          <div key={l.id} className={`wc-row ${running ? 'running' : 'paused'}`}>
-            <span className="wc-name" title={l.name}>
-              {l.name}
-            </span>
-            <button className="icon-btn ghost" title={running ? 'Pause' : 'Start'} onClick={() => onControl(l.id, 'toggle')}>
-              {running ? <Pause size={12} /> : <Play size={12} />}
-            </button>
-            <button className="icon-btn ghost" title="Restart from zero" onClick={() => onControl(l.id, running ? 'restart' : 'reset')}>
-              <RotateCcw size={12} />
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
 
 /** The pause marker the graphic holds on, if it holds on a pause (not on the On air point). */
@@ -232,36 +105,754 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
   return t?.markers.find((m) => m.kind === 'pause' && Math.abs(m.frame - p.frame) < 0.5);
 }
 
-function isPaused(p: PlayoutItem, project: Project) {
-  return !!pauseOf(p, project);
-}
+const isPaused = (p: PlayoutItem, project: Project) => !!pauseOf(p, project);
 
 function phaseLabel(p: PlayoutItem, project: Project) {
   if (isPaused(p, project)) return p.phase === 'outHold' ? 'OUT · PAUSE' : 'PAUSE';
   return p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' || p.phase === 'outHold' ? 'OUT' : 'PLAYING';
 }
 
-/** How the pause the graphic holds on resumes: a trigger to fire, or a delay. */
-function PauseResume({ p, project, onTrigger }: { p: PlayoutItem; project: Project; onTrigger: (name: string) => void }) {
-  const r = pauseOf(p, project)?.resume;
-  if (r?.type === 'trigger')
-    return (
-      <button className="chip trigger" title="Fire this trigger: every graphic waiting for it plays on" onClick={() => onTrigger(r.name)}>
-        <Zap size={11} /> {r.name}
-      </button>
-    );
-  if (r?.type === 'after') return <span className="chip">auto · {r.seconds}s</span>;
-  return null;
+/** Content scaled to fit its box (both ways), on a checkerboard. */
+function Screen({ width, height, children }: { width: number; height: number; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.2);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setScale(Math.max(0.01, Math.min(el.clientWidth / width, el.clientHeight / height))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [width, height]);
+  return (
+    <div className="opx-screen" ref={ref}>
+      <Viewport width={width} height={height} scale={scale} className="op-viewport">
+        {children}
+      </Viewport>
+    </div>
+  );
 }
 
-/**
- * The output (channel) the operator takes to. Another project's channel can
- * be taken over after a confirmation; without one, the page still prepares
- * the rundown and previews.
- */
-function ChannelBar({ channelId }: { channelId: string | null }) {
+const READ_MODES: { id: ReadMode; label: string; hint: string }[] = [
+  { id: 'manual', label: 'Manually', hint: 'Only when you press Read now: the values are saved in the item' },
+  { id: 'take', label: 'On take', hint: 'Once, when the graphic is taken' },
+  { id: 'live', label: 'Live', hint: 'On take, then every time the source changes, also on air' },
+];
+const INTERVALS = [2, 5, 10, 30, 60, 300];
+
+export function Operator({ channelId }: { channelId: string | null }) {
+  const { project, command: send, saveRundown, auth, channels, toast } = useApp();
+  const allSources = useSources();
+  const sourceName = (id: string) => allSources.find((s) => s.id === id)?.name ?? id;
+  const liveState = useApp((s) => (channelId ? s.live[channelId] : undefined));
+  const channel = liveState?.state ?? { layers: {} };
+  // Editing the rundown needs the rights; going on air also needs an output.
+  const canEdit = can.operate(auth?.user);
+  const operate = canEdit && !!channelId;
+  const command: typeof send = (cmd) => operate && send(cmd, channelId!);
+  const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200 });
+  const [cued, setCued] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [playlistId, setPlaylistId] = useState<string | null>(null);
+  const [shown, setShown] = useState<string[]>(['main']);
+  const [airSel, setAirSel] = useState<string | null>(null);
+  const original = useRef<{ id: string; data: Record<string, string> } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const channelInfo = channels.find((c) => c.id === channelId);
+
+  const rundown = project?.rundown ?? [];
+  const playlists = project?.playlists ?? [];
+  const activeList = playlists.find((p) => p.id === playlistId)?.id ?? playlists[0]?.id ?? '';
+  const items = rundown.filter((r) => r.playlist === activeList || !playlists.some((p) => p.id === r.playlist));
+  const item = rundown.find((r) => r.id === cued) ?? null;
+  const template = item ? project?.templates.find((t) => t.id === item.templateId) : undefined;
+  const readMode: ReadMode = item?.read ?? 'live';
+
+  useEffect(() => {
+    if ((!cued || !items.some((r) => r.id === cued)) && items.length) setCued(items[0].id);
+  }, [cued, activeList, items.length]);
+
+  // The draft follows the selected item; its data on selection is what Revert restores.
+  useEffect(() => {
+    if (!item || !template) return;
+    setDraft({ ...defaultData(template), ...item.data });
+    original.current = { id: item.id, data: structuredClone(item.data) };
+  }, [cued, template?.id]);
+
+  // Bound fields read live show the source's value (manual ones show what was read).
+  const boundDraft = useBoundData(readMode === 'manual' ? undefined : template, draft);
+  const previewData = { ...draft, ...boundDraft };
+
+  /** Saves the item's data a moment after the last edit. */
+  const saveData = (id: string, data: Record<string, string>) => {
+    clearTimeout(saveTimer.current);
+    setSaving(true);
+    saveTimer.current = setTimeout(async () => {
+      const cur = useApp.getState().project?.rundown ?? [];
+      await saveRundown(cur.map((r) => (r.id === id ? { ...r, data } : r)));
+      setSaving(false);
+    }, 500);
+  };
+  const editDraft = (patch: Record<string, string>) => {
+    if (!item) return;
+    const next = { ...draft, ...patch };
+    setDraft(next);
+    saveData(item.id, next);
+  };
+  const dirty = !!item && !!template && original.current?.id === item.id && JSON.stringify({ ...defaultData(template), ...original.current.data }) !== JSON.stringify(draft);
+  const revert = () => {
+    if (!item || !template || original.current?.id !== item.id) return;
+    const data = original.current.data;
+    setDraft({ ...defaultData(template), ...data });
+    saveData(item.id, data);
+  };
+  const setItem = (id: string, patch: Partial<RundownItem>) => saveRundown(rundown.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  const onAirByItem = useMemo(() => {
+    const m = new Map<string, PlayoutItem>();
+    for (const p of Object.values(channel.layers)) if (p.rundownId) m.set(p.rundownId, p);
+    return m;
+  }, [channel]);
+  const queued = useMemo(() => new Set(Object.values(channel.layers).flatMap((p) => (p.next?.rundownId ? [p.next.rundownId] : []))), [channel]);
+
+  const zoneOf = (r: RundownItem) => project?.zones.find((z) => z.id === r.zone) ?? project?.zones.find((z) => z.id === project.templates.find((t) => t.id === r.templateId)?.zone);
+  const dataOf = (r: RundownItem) => {
+    const t = project?.templates.find((x) => x.id === r.templateId);
+    return { ...(t ? defaultData(t) : {}), ...(r.id === item?.id ? draft : r.data) };
+  };
+  const takeItem = (r: RundownItem) => {
+    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: dataOf(r), rundownId: r.id });
+    const z = zoneOf(r);
+    if (z) setAirSel(z.id);
+  };
+  const take = () => {
+    if (!item) return;
+    takeItem(item);
+    // Select the next item of the playlist.
+    const idx = items.findIndex((r) => r.id === item.id);
+    if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
+  };
+  const outZone = (z: Zone | undefined) => z && command({ action: 'takeOut', zone: z.id });
+
+  // On air, front-most zone first; the internal controls show one of them.
+  const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
+  const busy = zones.filter((z) => channel.layers[String(z.layer)]);
+  const selZone = busy.find((z) => z.id === airSel) ?? busy[0];
+  const selItem = selZone ? channel.layers[String(selZone.layer)] : undefined;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest('input, textarea, select')) return;
+      const idx = items.findIndex((r) => r.id === cued);
+      if (e.key === 'F1' || e.key === 'Enter') (e.preventDefault(), take());
+      else if (e.key === 'F2' || e.key === ' ') (e.preventDefault(), item && command({ action: 'continue', zone: zoneOf(item)?.id }));
+      else if (e.key === 'F3') (e.preventDefault(), item && outZone(zoneOf(item)));
+      else if (e.key === 'F12') (e.preventDefault(), command({ action: 'clear' }));
+      else if (e.key === 'ArrowDown' && idx < items.length - 1) setCued(items[idx + 1].id);
+      else if (e.key === 'ArrowUp' && idx > 0) setCued(items[idx - 1].id);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  if (!project) return <div className="opx-empty">No project loaded.</div>;
+
+  // Pictures of the output (main + renditions); the ones without a format in the project are off.
+  const formats = projectFormats(project);
+  const designed = (w: number, h: number) => formats.some((f) => Math.abs(Math.log(f.width / f.height) - Math.log(w / h)) < 0.01);
+  const pictures = channelInfo
+    ? [{ id: 'main', name: `${channelInfo.width}×${channelInfo.height}`, width: channelInfo.width, height: channelInfo.height }, ...channelInfo.renditions]
+    : formats.map((f) => ({ id: f.id, name: f.id === 'main' ? 'Main' : f.name, width: f.width, height: f.height }));
+  const visible = pictures.filter((p) => shown.includes(p.id) && designed(p.width, p.height));
+  const programs = visible.length ? visible : pictures.slice(0, 1);
+  const main = pictures[0];
+  const previewFormat = formatFor(project, main.width, main.height);
+  const itemZone = item ? zoneOf(item) : undefined;
+  const fps = project.frameRate.num / project.frameRate.den || 1;
+
+  return (
+    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 6px minmax(0, 1fr) 6px ${layout.right}px` }}>
+      {/* Left: playlists and graphics. */}
+      <div className="opx-col">
+        <section className="opx-pane" style={{ height: layout.lists, flex: 'none' }}>
+          <header className="opx-head">
+            <span className="opx-title">Playlists</span>
+            {canEdit && (
+              <button
+                className="opx-add"
+                title="New playlist"
+                onClick={async () => {
+                  const name = await promptDialog({ title: 'New playlist', label: 'Name', value: `Playlist ${playlists.length + 1}`, confirm: 'Create' });
+                  if (!name) return;
+                  const id = newId();
+                  await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, [...playlists, { id, name }]).catch((e) => toast((e as Error).message, 'error'));
+                  setPlaylistId(id);
+                }}
+              >
+                <Plus size={15} />
+              </button>
+            )}
+          </header>
+          <div className="opx-scroll">
+            {playlists.map((p) => (
+              <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={() => setPlaylistId(p.id)} />
+            ))}
+          </div>
+        </section>
+        <Splitter axis="y" className="opx-gap" value={layout.lists} min={90} max={500} reset={200} onChange={(v) => setLayout('lists', v)} />
+        <section className="opx-pane grow">
+          <header className="opx-head">
+            <span className="opx-title">Graphics · {playlists.find((p) => p.id === activeList)?.name ?? ''}</span>
+            {canEdit && (
+              <button className="opx-add" title="Add a graphic from a template" onClick={() => setAdding(!adding)}>
+                <Plus size={15} />
+              </button>
+            )}
+          </header>
+          {adding && (
+            <div className="opx-addmenu">
+              {project.templates.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    const z = project.zones.find((x) => x.id === t.zone);
+                    const it: RundownItem = { id: newId(), name: t.name, templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t) };
+                    saveRundown([...rundown, it]);
+                    setCued(it.id);
+                    setAdding(false);
+                  }}
+                >
+                  {t.name}
+                  <span className="muted small">{project.zones.find((z) => z.id === t.zone)?.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="opx-scroll">
+            {items.map((r, i) => (
+              <GraphicRow
+                key={r.id}
+                project={project}
+                item={r}
+                zone={zoneOf(r)}
+                air={onAirByItem.get(r.id)}
+                next={queued.has(r.id)}
+                selected={r.id === cued}
+                operate={operate}
+                editable={canEdit}
+                onSelect={() => setCued(r.id)}
+                onTake={() => takeItem(r)}
+                onOut={() => outZone(zoneOf(r))}
+                onMove={(d) => {
+                  const other = items[i + d];
+                  if (!other) return;
+                  const a = rundown.indexOf(r);
+                  const b = rundown.indexOf(other);
+                  const next = [...rundown];
+                  [next[a], next[b]] = [next[b], next[a]];
+                  saveRundown(next);
+                }}
+                onDuplicate={() => {
+                  const next = [...rundown];
+                  next.splice(rundown.indexOf(r) + 1, 0, { ...structuredClone(r), id: newId(), name: `${r.name} copy` });
+                  saveRundown(next);
+                }}
+                onDelete={async () => {
+                  if (!(await confirmDialog({ title: `Remove “${r.name}”?`, message: 'It leaves the playlist (the template stays).', confirm: 'Remove', danger: true }))) return;
+                  saveRundown(rundown.filter((x) => x.id !== r.id));
+                  if (cued === r.id) setCued(null);
+                }}
+              />
+            ))}
+            {!items.length && <p className="opx-hint">Empty playlist: add graphics from your templates with +.</p>}
+          </div>
+          <footer className="opx-foot">
+            <button className="opx-btn red big" disabled={!item || !operate} onClick={take} title="F1 / Enter">
+              <Play size={15} fill="currentColor" /> Take
+            </button>
+            <button className="opx-btn" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12: everything out at once">
+              Clear all
+            </button>
+          </footer>
+        </section>
+      </div>
+
+      <Splitter axis="x" className="opx-gap" value={layout.left} min={260} max={560} reset={340} onChange={(v) => setLayout('left', v)} />
+
+      {/* Center: preview, then variables and data. */}
+      <div className="opx-col">
+        <section className="opx-pane" style={{ height: layout.preview, flex: 'none' }}>
+          <div className="opx-monitor">
+            <Screen width={previewFormat.width} height={previewFormat.height}>
+              {template && (
+                <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
+                  <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
+                    <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={previewData} />
+                  </LiveTime>
+                </div>
+              )}
+            </Screen>
+          </div>
+          <div className="opx-strip">Preview{itemZone ? ` · ${itemZone.name}` : ''}</div>
+        </section>
+        <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
+        <section className="opx-pane grow">
+          {item && template ? (
+            <>
+              <header className="opx-head tall">
+                <Pencil size={13} className="muted" />
+                <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title="Name in the playlist" />
+                <span className={`opx-save ${saving ? 'busy' : ''}`}>{saving ? 'Saving…' : '✓ Saved'}</span>
+                <button className="opx-btn small" disabled={!dirty || !canEdit} onClick={revert} title="Back to the values it had when you selected it">
+                  <Undo2 size={13} /> Revert
+                </button>
+                <button className="opx-btn red" disabled={!operate} onClick={take}>
+                  <Play size={13} fill="currentColor" /> Take
+                </button>
+              </header>
+              <div className="opx-edit">
+                <div className="opx-fields">
+                  {template.fields.length === 0 && <p className="opx-hint">This graphic has no variables: take it as it is.</p>}
+                  {template.fields.map((f) => {
+                    const live = f.binding && readMode !== 'manual';
+                    return (
+                      <label key={f.key} className="opx-field">
+                        <span className="opx-label">
+                          {f.label}
+                          {f.binding && <span className="opx-from">● from {sourceName(f.binding.source)}</span>}
+                        </span>
+                        {live ? (
+                          <span className="opx-bound" title={`${f.binding!.path} — read ${readMode === 'live' ? 'live' : 'on take'}`}>
+                            {boundDraft[f.key] ?? draft[f.key] ?? '…'}
+                          </span>
+                        ) : (
+                          <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => editDraft({ [f.key]: v })} />
+                        )}
+                      </label>
+                    );
+                  })}
+                  <span className="opx-hint">
+                    {template.name} · zone {itemZone?.name ?? '—'} (set in the Designer)
+                  </span>
+                </div>
+                <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />
+              </div>
+            </>
+          ) : (
+            <p className="opx-hint pad">Select a graphic in the playlist.</p>
+          )}
+        </section>
+      </div>
+
+      <Splitter axis="x" className="opx-gap" sign={-1} value={layout.right} min={320} max={760} reset={480} onChange={(v) => setLayout('right', v)} />
+
+      {/* Right: on air, then the internal controls of the graphics on air. */}
+      <div className="opx-col">
+        <section className="opx-pane" style={{ height: layout.air, flex: 'none' }}>
+          <header className="opx-head">
+            <span className={`opx-title ${busy.length ? 'live' : ''}`}>● On air</span>
+            <OutputSelect channelId={channelId} />
+          </header>
+          <div className="opx-pics">
+            {pictures.map((p) => {
+              const ok = designed(p.width, p.height);
+              const on = ok && (shown.includes(p.id) || (!visible.length && p === pictures[0]));
+              return (
+                <button
+                  key={p.id}
+                  className={on ? 'on' : ''}
+                  disabled={!ok}
+                  title={ok ? `${p.width}×${p.height}` : `${p.width}×${p.height}: not designed in this project (add the format in the Designer)`}
+                  onClick={() => setShown(on ? shown.filter((x) => x !== p.id) : [...shown, p.id])}
+                >
+                  {p.name}
+                </button>
+              );
+            })}
+            <div className="spacer" />
+            {channelInfo && (
+              <a className="opx-link" href={`/output/${encodeURIComponent(channelInfo.id)}`} target="_blank" rel="noreferrer">
+                HTML5 ↗
+              </a>
+            )}
+          </div>
+          <div className="opx-programs">
+            {channelId ? (
+              programs.map((p) => (
+                <div key={p.id} className="opx-monitor" style={{ flex: `${p.width / p.height} 1 0` }}>
+                  <Screen width={p.width} height={p.height}>
+                    <Program project={project} live={liveState} width={p.width} height={p.height} />
+                  </Screen>
+                </div>
+              ))
+            ) : (
+              <p className="opx-hint pad">No output: choose one above to take graphics on air. You can still prepare the playlists.</p>
+            )}
+          </div>
+          <div className={`opx-strip ${busy.length ? 'live' : ''}`}>{!channelId ? 'No output' : busy.length ? `Live · ${busy.length} on screen` : 'Off air'}</div>
+        </section>
+        <Splitter axis="y" className="opx-gap" value={layout.air} min={160} max={800} reset={330} onChange={(v) => setLayout('air', v)} />
+        <section className="opx-pane grow">
+          <header className="opx-head opx-tabs">
+            {busy.length ? (
+              busy.map((z) => {
+                const p = channel.layers[String(z.layer)];
+                return (
+                  <button key={z.id} className={z.id === selZone?.id ? 'on' : ''} onClick={() => setAirSel(z.id)}>
+                    {rundownName(project, p.rundownId) ?? project.templates.find((t) => t.id === p.templateId)?.name}
+                  </button>
+                );
+              })
+            ) : (
+              <span className="opx-title">Controls</span>
+            )}
+          </header>
+          {selItem && selZone ? (
+            <AirControls project={project} zone={selZone} item={selItem} command={command} onSaveData={(data) => selItem.rundownId && setItem(selItem.rundownId, { data })} />
+          ) : (
+            <p className="opx-hint pad">Nothing on air. The controls of the graphics on air show here: their widgets, values and triggers.</p>
+          )}
+          <div className="opx-subtitle">On screen</div>
+          <div className="opx-scroll onscreen">
+            {busy.map((z) => {
+              const p = channel.layers[String(z.layer)];
+              const t = project.templates.find((x) => x.id === p.templateId);
+              const paused = isPaused(p, project);
+              return (
+                <div key={z.id} className={`opx-onscreen ${z.id === selZone?.id ? 'sel' : ''}`} onClick={() => setAirSel(z.id)}>
+                  <button className={`opx-sq ${paused ? 'amber' : 'red'}`} title="Out" disabled={!operate} onClick={(e) => (e.stopPropagation(), outZone(z))}>
+                    <Square size={11} fill="currentColor" />
+                  </button>
+                  <span className="opx-os-main">
+                    <strong>{rundownName(project, p.rundownId) ?? t?.name}</strong>
+                    <span className="muted small">
+                      <span className="opx-dot" style={{ background: z.color }} /> {z.name}
+                      {p.next && ` · then ${rundownName(project, p.next.rundownId) ?? '…'}`}
+                    </span>
+                    <progress max={t?.duration ?? 1} value={p.frame} />
+                  </span>
+                  <span className={`opx-tally ${paused ? 'amber' : p.phase === 'out' || p.phase === 'outHold' ? 'grey' : 'red'}`}>{phaseLabel(p, project)}</span>
+                  <button className="opx-x" title="Cut (no animation)" disabled={!operate} onClick={(e) => (e.stopPropagation(), command({ action: 'clear', zone: z.id }))}>
+                    <X size={13} />
+                  </button>
+                </div>
+              );
+            })}
+            {!busy.length && <span className="opx-hint">—</span>}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function PlaylistRow({ project, id, active, editable, onSelect }: { project: Project; id: string; active: boolean; editable: boolean; onSelect: () => void }) {
+  const toast = useApp((s) => s.toast);
+  const [menu, setMenu] = useState(false);
+  const p = project.playlists.find((x) => x.id === id)!;
+  const count = project.rundown.filter((r) => r.playlist === id).length;
+  const save = (lists: Project['playlists']) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
+  return (
+    <div className={`opx-pl ${active ? 'on' : ''}`} onClick={onSelect}>
+      <span className="opx-name-cell">{p.name}</span>
+      <span className="muted small">
+        {count} item{count === 1 ? '' : 's'}
+      </span>
+      {editable && (
+        <span className="opx-more" onClick={(e) => e.stopPropagation()}>
+          <button className="opx-x" onClick={() => setMenu(!menu)} title="More">
+            <MoreHorizontal size={14} />
+          </button>
+          {menu && (
+            <div className="popover" onMouseLeave={() => setMenu(false)}>
+              <button
+                onClick={async () => {
+                  setMenu(false);
+                  const name = await promptDialog({ title: 'Rename the playlist', label: 'Name', value: p.name, confirm: 'Rename' });
+                  if (name) save(project.playlists.map((x) => (x.id === id ? { ...x, name } : x)));
+                }}
+              >
+                Rename…
+              </button>
+              {project.playlists.length > 1 && (
+                <button
+                  onClick={async () => {
+                    setMenu(false);
+                    const other = project.playlists.find((x) => x.id !== id)!;
+                    if (await confirmDialog({ title: `Remove the playlist “${p.name}”?`, message: `Its ${count} graphic(s) move to “${other.name}”.`, confirm: 'Remove', danger: true })) save(project.playlists.filter((x) => x.id !== id));
+                  }}
+                >
+                  Remove…
+                </button>
+              )}
+            </div>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function GraphicRow(props: {
+  project: Project;
+  item: RundownItem;
+  zone?: Zone;
+  air?: PlayoutItem;
+  next: boolean;
+  selected: boolean;
+  operate: boolean;
+  editable: boolean;
+  onSelect: () => void;
+  onTake: () => void;
+  onOut: () => void;
+  onMove: (d: -1 | 1) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const { project, item, zone, air } = props;
+  const t = project.templates.find((x) => x.id === item.templateId);
+  const paused = air && isPaused(air, project);
+  return (
+    <div className={`opx-gr ${props.selected ? 'on' : ''}`} onClick={props.onSelect}>
+      <button
+        className={`opx-sq big ${air ? (paused ? 'amber' : 'red') : ''}`}
+        disabled={!props.operate}
+        title={air ? 'Out' : 'Take'}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (air) props.onOut();
+          else props.onTake();
+        }}
+      >
+        {air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+      </button>
+      <span className="opx-gr-main">
+        <strong>{item.name}</strong>
+        <span className="muted small">
+          <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? 'no zone'} · {t?.name ?? 'missing template'}
+        </span>
+      </span>
+      {air && <span className={`opx-tally ${paused ? 'amber' : 'red'}`}>{phaseLabel(air, project)}</span>}
+      {!air && props.next && <span className="opx-tally green">NEXT</span>}
+      {props.editable && (
+        <span className="opx-hover" onClick={(e) => e.stopPropagation()}>
+          <button title="Up" onClick={() => props.onMove(-1)}>
+            <ArrowUp size={13} />
+          </button>
+          <button title="Down" onClick={() => props.onMove(1)}>
+            <ArrowDown size={13} />
+          </button>
+          <button className="violet" title="Duplicate" onClick={props.onDuplicate}>
+            <Copy size={13} />
+          </button>
+          <button className="red" title="Remove" onClick={props.onDelete}>
+            <Trash2 size={13} />
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Sources the graphic reads, when it reads them, and Read now. */
+function DataBlock({
+  template,
+  item,
+  draft,
+  canEdit,
+  onRead,
+  onMode,
+}: {
+  project: Project;
+  template: Template;
+  item: RundownItem;
+  draft: Record<string, string>;
+  canEdit: boolean;
+  onRead: (patch: Record<string, string>) => void;
+  onMode: (m: ReadMode) => void;
+}) {
+  const all = useSources();
+  const auth = useApp((s) => s.auth);
+  const toast = useApp((s) => s.toast);
+  const bound = template.fields.filter((f) => f.binding?.source);
+  const used = [...new Set(bound.map((f) => f.binding!.source))].map((id) => all.find((s) => s.id === id) ?? { id, name: id, interval: 0, updatedAt: null, error: 'not found' });
+  const mode: ReadMode = item.read ?? 'live';
+  const [reading, setReading] = useState(false);
+  const readNow = async () => {
+    setReading(true);
+    const patch: Record<string, string> = {};
+    await Promise.all(
+      bound.map(async (f) => {
+        const v = await lookup(f.binding!.source, f.binding!.path, draft);
+        if (v !== null) patch[f.key] = v;
+      }),
+    );
+    setReading(false);
+    onRead(patch);
+    toast(`${Object.keys(patch).length} value(s) read`, 'info');
+  };
+  const ago = (t?: number | null) => {
+    if (!t) return 'never read';
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    return s < 60 ? `read ${s} s ago` : `read ${Math.round(s / 60)} min ago`;
+  };
+  return (
+    <div className="opx-data">
+      <div className="opx-data-title">Data</div>
+      {!used.length ? (
+        <p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
+      ) : (
+        <>
+          {used.map((s) => (
+            <div key={s.id} className="opx-source">
+              <span className={`live-dot ${s.error ? 'err' : ''}`} />
+              <strong>{s.name}</strong>
+              <span className="muted small">{s.error ? s.error : ago(s.updatedAt)}</span>
+            </div>
+          ))}
+          <div>
+            <span className="opx-label">Read the data</span>
+            <div className="opx-seg">
+              {READ_MODES.map((m) => (
+                <button key={m.id} className={mode === m.id ? 'on' : ''} disabled={!canEdit} title={m.hint} onClick={() => onMode(m.id)}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {mode === 'live' && (
+            <div className="opx-every">
+              {used.map((s) => (
+                <label key={s.id}>
+                  <span className="muted small">{s.name} checked every</span>
+                  <select
+                    value={s.interval}
+                    disabled={!can.design(auth?.user) || !('type' in s)}
+                    title={can.design(auth?.user) ? 'How often the server reads the source (for every graphic using it)' : 'Set by a designer in Data'}
+                    onChange={async (e) => {
+                      const { updatedAt, checkedAt, error, bytes, ...src } = s as typeof s & { checkedAt?: number; bytes?: number };
+                      void updatedAt, checkedAt, error, bytes;
+                      await api('PUT', `/api/data/sources/${encodeURIComponent(s.id)}`, { ...src, interval: +e.target.value }).catch((err) => toast((err as Error).message, 'error'));
+                    }}
+                  >
+                    {[...new Set([...INTERVALS, s.interval])]
+                      .filter((v) => v > 0)
+                      .sort((a, b) => a - b)
+                      .map((v) => (
+                        <option key={v} value={v}>
+                          {v < 60 ? `${v} s` : `${v / 60} min`}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
+          <div>
+            <span className="opx-label">Fields fed by the sources</span>
+            {bound.map((f) => (
+              <div key={f.key} className="opx-map">
+                <span>{f.label}</span>
+                <code>{f.binding!.path || '(no path)'}</code>
+              </div>
+            ))}
+          </div>
+          {mode !== 'live' && (
+            <button className="opx-btn" disabled={reading || !canEdit} onClick={readNow} title={mode === 'manual' ? 'Read the sources now and keep the values in this item' : 'Read now to check; the take reads again'}>
+              <RefreshCw size={13} /> {reading ? 'Reading…' : 'Read now'}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Internal controls of one graphic on air: widgets, number values, triggers, continue / update / out. */
+function AirControls({ project, zone, item, command, onSaveData }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; onSaveData: (d: Record<string, string>) => void }) {
+  const t = project.templates.find((x) => x.id === item.templateId);
+  if (!t) return null;
+  const target = { zone: zone.id };
+  const timed = t.layers.filter(isTimed);
+  const numbers = t.fields.filter((f) => f.kind === 'number' && !f.binding);
+  const triggers = [...new Set(t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])))];
+  const waiting = pauseOf(item, project);
+  const setValue = (key: string, v: string) => {
+    const data = { ...item.data, [key]: v };
+    command({ action: 'update', ...target, data });
+    onSaveData(data);
+  };
+  const r = item.rundownId ? project.rundown.find((x) => x.id === item.rundownId) : undefined;
+  return (
+    <div className="opx-controls">
+      {timed.map((l) => {
+        const c = item.clocks?.[l.id];
+        const running = c ? c.pausedAt == null : !l.manualStart;
+        return (
+          <div key={l.id} className="opx-widget">
+            <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? 'Pause' : 'Start'} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
+              {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
+            </button>
+            <span className="opx-widget-name">
+              <strong>{l.name}</strong>
+              <span className="muted small">{running ? 'running' : 'stopped'}</span>
+            </span>
+            <button className="opx-sq" title="Back to the start" onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
+              <RotateCcw size={13} />
+            </button>
+          </div>
+        );
+      })}
+      {numbers.length > 0 && (
+        <div className="opx-numbers">
+          {numbers.map((f) => {
+            const v = item.data[f.key] ?? f.default;
+            const bump = (d: number) => setValue(f.key, String(+((parseFloat(v) || 0) + d).toFixed(3)));
+            return (
+              <div key={f.key} className="opx-number">
+                <span>{f.label}</span>
+                <button className="opx-mini" onClick={() => bump(-1)}>
+                  −
+                </button>
+                <strong>{v}</strong>
+                <button className="opx-mini" onClick={() => bump(1)}>
+                  +
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {triggers.length > 0 && (
+        <div className="opx-triggers">
+          <span className="opx-label">Triggers</span>
+          {triggers.map((n) => (
+            <button key={n} className={`opx-btn small ${waiting?.resume?.type === 'trigger' && waiting.resume.name === n ? 'amber' : ''}`} onClick={() => command({ action: 'trigger', name: n })} title="Every graphic waiting for this trigger plays on">
+              <Zap size={12} /> {n}
+            </button>
+          ))}
+        </div>
+      )}
+      {!timed.length && !numbers.length && !triggers.length && <p className="opx-hint">This graphic has no internal controls.</p>}
+      <div className="opx-actions">
+        <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title="F2 / Space">
+          <ChevronsRight size={14} /> Continue
+        </button>
+        <button className="opx-btn violet" disabled={!r} title="Send the item's saved data to the graphic on air" onClick={() => r && command({ action: 'update', ...target, data: { ...defaultData(t), ...r.data } })}>
+          <RefreshCw size={13} /> Update
+        </button>
+        <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
+          <CircleStop size={14} /> Out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The output the operator takes to; another project's output is taken over after a confirmation. */
+function OutputSelect({ channelId }: { channelId: string | null }) {
   const { channels, projects, project, live, loadOnChannel } = useApp();
-  const ch = channels.find((c) => c.id === channelId);
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name ?? 'another project';
   const pick = async (id: string) => {
     if (!project) return;
@@ -279,423 +870,35 @@ function ChannelBar({ channelId }: { channelId: string | null }) {
   const free = channels.filter((c) => !c.projectId);
   const other = channels.filter((c) => c.projectId && c.projectId !== project?.id);
   return (
-    <div className="channel-bar">
-      <MonitorPlay size={15} />
-      <select value={channelId ?? ''} onChange={(e) => void pick(e.target.value)}>
-        <option value="">— No output (preview only) —</option>
-        {own.length > 0 && (
-          <optgroup label="This project">
-            {own.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {free.length > 0 && (
-          <optgroup label="Free">
-            {free.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {other.length > 0 && (
-          <optgroup label="Used by another project">
-            {other.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} — used by “{projectName(c.projectId)}”
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
-      {ch ? (
-        <span className="muted">
-          {ch.width}×{ch.height} · {+(ch.frameRate.num / ch.frameRate.den).toFixed(2)} fps
-          {ch.outputs.length ? ` · ${ch.outputs.join(', ')}` : ''}
-        </span>
-      ) : (
-        <span className="muted">Choose an output to take graphics on air.</span>
+    <select className="opx-output" value={channelId ?? ''} onChange={(e) => void pick(e.target.value)} title="Output">
+      <option value="">No output (preview only)</option>
+      {own.length > 0 && (
+        <optgroup label="This project">
+          {own.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </optgroup>
       )}
-      <div className="spacer" />
-      {ch && (
-        <a className="btn small" href={`/output/${encodeURIComponent(ch.id)}`} target="_blank" rel="noreferrer">
-          HTML5 output ↗
-        </a>
+      {free.length > 0 && (
+        <optgroup label="Free">
+          {free.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </optgroup>
       )}
-    </div>
-  );
-}
-
-export function Operator({ channelId }: { channelId: string | null }) {
-  const { project, command: send, saveRundown, auth } = useApp();
-  const liveState = useApp((s) => (channelId ? s.live[channelId] : undefined));
-  const channel = liveState?.state ?? { layers: {} };
-  // Editing the rundown needs the rights; going on air also needs an output.
-  const canEdit = can.operate(auth?.user);
-  const operate = canEdit && !!channelId;
-  const command: typeof send = (cmd) => operate && send(cmd, channelId!);
-  const [cued, setCued] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [adding, setAdding] = useState(false);
-  const [playlistId, setPlaylistId] = useState<string | null>(null);
-  const [pictureId, setPictureId] = useState('main');
-  const channelInfo = useApp((s) => (channelId ? s.channels.find((c) => c.id === channelId) : undefined));
-
-  const rundown = project?.rundown ?? [];
-  const playlists = project?.playlists ?? [];
-  const activeList = playlists.find((p) => p.id === playlistId)?.id ?? playlists[0]?.id ?? '';
-  // The items of the playlist shown.
-  const items = rundown.filter((r) => r.playlist === activeList || !playlists.some((p) => p.id === r.playlist));
-  const item = rundown.find((r) => r.id === cued) ?? null;
-  const template = item && project?.templates.find((t) => t.id === item.templateId);
-
-  useEffect(() => {
-    if ((!cued || !items.some((r) => r.id === cued)) && items.length) setCued(items[0].id);
-  }, [cued, activeList, items.length]);
-
-  // Fields bound to data sources show their live value.
-  const boundDraft = useBoundData(template, draft);
-
-  // Draft data follows the cued item.
-  useEffect(() => {
-    if (item && template) setDraft({ ...defaultData(template), ...item.data });
-  }, [cued, template?.id]);
-
-  const onAirByItem = useMemo(() => {
-    const m = new Map<string, PlayoutItem>();
-    for (const p of Object.values(channel.layers)) if (p.rundownId) m.set(p.rundownId, p);
-    return m;
-  }, [channel]);
-  const queued = useMemo(() => new Set(Object.values(channel.layers).flatMap((p) => (p.next?.rundownId ? [p.next.rundownId] : []))), [channel]);
-
-  const sources = useSources();
-  const sourceName = (id: string) => sources.find((x) => x.id === id)?.name ?? id;
-  const dirty = item ? JSON.stringify({ ...defaultData(template!), ...item.data }) !== JSON.stringify(draft) : false;
-
-  const persistDraft = () => {
-    if (!item || !dirty) return;
-    saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, data: draft } : r)));
-  };
-
-  const take = () => {
-    if (!item) return;
-    persistDraft();
-    command({
-      action: 'take',
-      zone: zoneOf(item)?.id,
-      templateId: item.templateId,
-      data: draft,
-      rundownId: item.id,
-    });
-    // Cue the next item of the playlist.
-    const idx = items.findIndex((r) => r.id === item.id);
-    if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
-  };
-  /** Take / out straight from a rundown row. */
-  const takeItem = (r: RundownItem) => {
-    if (r.id === item?.id) return take();
-    const t = project?.templates.find((x) => x.id === r.templateId);
-    command({
-      action: 'take',
-      zone: zoneOf(r)?.id,
-      templateId: r.templateId,
-      data: { ...(t ? defaultData(t) : {}), ...r.data },
-      rundownId: r.id,
-    });
-  };
-  const outItem = (r: RundownItem) => command({ action: 'takeOut', zone: zoneOf(r)?.id });
-  const cont = () => item && command({ action: 'continue', zone: zoneOf(item)?.id });
-  const out = () => item && command({ action: 'takeOut', zone: zoneOf(item)?.id });
-  const updateLive = () => {
-    if (!item) return;
-    persistDraft();
-    command({ action: 'update', zone: zoneOf(item)?.id, data: draft });
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input, textarea, select')) return;
-      const idx = items.findIndex((r) => r.id === cued);
-      if (e.key === 'F1' || e.key === 'Enter') (e.preventDefault(), take());
-      else if (e.key === 'F2' || e.key === ' ') (e.preventDefault(), cont());
-      else if (e.key === 'F3') (e.preventDefault(), out());
-      else if (e.key === 'F12') (e.preventDefault(), command({ action: 'clear' }));
-      else if (e.key === 'ArrowDown' && idx < items.length - 1) setCued(items[idx + 1].id);
-      else if (e.key === 'ArrowUp' && idx > 0) setCued(items[idx - 1].id);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  });
-
-  if (!project)
-    return (
-      <div className="operator empty-op">
-        <ChannelBar channelId={channelId} />
-        <div className="loading">No project loaded on this channel. Pick one above.</div>
-      </div>
-    );
-  const fps = project.frameRate.num / project.frameRate.den || 1;
-  // Pictures of the channel (main + renditions such as 9:16): one take drives all.
-  const pictures = [
-    {
-      id: 'main',
-      name: channelInfo ? `${channelInfo.width}×${channelInfo.height}` : 'Main',
-      width: channelInfo?.width ?? project.width,
-      height: channelInfo?.height ?? project.height,
-    },
-    ...(channelInfo?.renditions ?? []),
-  ];
-  const picture = pictures.find((p) => p.id === pictureId) ?? pictures[0];
-  const previewFormat = formatFor(project, picture.width, picture.height);
-
-  const addItem = (templateId: string) => {
-    const t = project.templates.find((x) => x.id === templateId)!;
-    const z = project.zones.find((x) => x.id === t.zone);
-    const it: RundownItem = {
-      id: newId(),
-      name: t.name,
-      templateId,
-      zone: t.zone,
-      playlist: activeList,
-      layer: z?.layer ?? 0,
-      data: defaultData(t),
-    };
-    saveRundown([...rundown, it]);
-    setCued(it.id);
-    setAdding(false);
-  };
-  /** Moves an item up / down within its playlist. */
-  const move = (id: string, d: -1 | 1) => {
-    const k = items.findIndex((r) => r.id === id);
-    const other = items[k + d];
-    if (k < 0 || !other) return;
-    const i = rundown.findIndex((r) => r.id === id);
-    const j = rundown.findIndex((r) => r.id === other.id);
-    const next = [...rundown];
-    [next[i], next[j]] = [next[j], next[i]];
-    saveRundown(next);
-  };
-
-  const zoneOf = (r: RundownItem) => project.zones.find((z) => z.id === r.zone) ?? project.zones.find((z) => z.id === project.templates.find((t) => t.id === r.templateId)?.zone);
-  const itemZone = item ? zoneOf(item) : undefined;
-  const live = itemZone ? channel.layers[String(itemZone.layer)] : undefined;
-  const liveIsThis = live?.rundownId === item?.id;
-
-  return (
-    <div className="operator">
-      <aside className="panel left rundown">
-        <header className="panel-header">
-          <span>Rundown</span>
-          <button className="icon-btn ghost" title="Add an item" onClick={() => setAdding(!adding)}>
-            <Plus size={15} />
-          </button>
-        </header>
-        {adding && (
-          <div className="add-menu">
-            {project.templates.map((t) => (
-              <button key={t.id} onClick={() => addItem(t.id)}>
-                {t.name}
-              </button>
-            ))}
-          </div>
-        )}
-        <PlaylistTabs project={project} active={activeList} onSelect={setPlaylistId} editable={canEdit} />
-        <div className="rundown-list">
-          {items.map((r, i) => {
-            const t = project.templates.find((x) => x.id === r.templateId);
-            const air = onAirByItem.get(r.id);
-            return (
-              <div key={r.id} className={`rundown-item ${cued === r.id ? 'cued' : ''} ${air ? 'on-air' : ''}`} onClick={() => setCued(r.id)}>
-                <span className="idx">{i + 1}</span>
-                <div className="ri-main">
-                  <span className="ri-name">{r.name}</span>
-                  <span className="ri-meta">
-                    <ZoneTag zone={zoneOf(r)} /> {t?.name ?? 'missing template'}
-                  </span>
-                </div>
-                {air && <span className={`tally ${isPaused(air, project) ? 'paused' : ''}`}>{phaseLabel(air, project)}</span>}
-                {!air && queued.has(r.id) && <span className="tally next">NEXT</span>}
-                {operate && (
-                  <div className="ri-play" onClick={(e) => e.stopPropagation()}>
-                    <button className="ri-take" title="Take" onClick={() => takeItem(r)}>
-                      <Play size={13} />
-                    </button>
-                    <button className="ri-out" title="Out" disabled={!air} onClick={() => outItem(r)}>
-                      <CircleStop size={13} />
-                    </button>
-                  </div>
-                )}
-                <div className="item-actions">
-                  <button className="icon-btn ghost" onClick={(e) => (e.stopPropagation(), move(r.id, -1))}>
-                    <ArrowUp size={12} />
-                  </button>
-                  <button className="icon-btn ghost" onClick={(e) => (e.stopPropagation(), move(r.id, 1))}>
-                    <ArrowDown size={12} />
-                  </button>
-                  <button
-                    className="icon-btn ghost"
-                    title="Duplicate"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const copy = {
-                        ...structuredClone(r),
-                        id: newId(),
-                        name: `${r.name} copy`,
-                      };
-                      const next = [...rundown];
-                      next.splice(rundown.indexOf(r) + 1, 0, copy);
-                      saveRundown(next);
-                    }}
-                  >
-                    <Copy size={12} />
-                  </button>
-                  <button
-                    className="icon-btn ghost"
-                    title="Remove"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      saveRundown(rundown.filter((x) => x.id !== r.id));
-                      if (cued === r.id) setCued(null);
-                    }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          {items.length === 0 && <div className="empty">Empty playlist. Add items from your templates with +.</div>}
-        </div>
-      </aside>
-
-      <main className="op-center">
-        <ChannelBar channelId={channelId} />
-        <div className="monitors">
-          <Monitor width={previewFormat.width} height={previewFormat.height} label="Preview" tally="pvw" extra={template && <span className="muted">{template.name}</span>}>
-            {template && (
-              <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
-                <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
-                  <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={boundDraft} />
-                </LiveTime>
-              </div>
-            )}
-          </Monitor>
-          <Monitor
-            width={picture.width}
-            height={picture.height}
-            label="Program"
-            tally="pgm"
-            extra={
-              pictures.length > 1 && (
-                <span className="monitor-tabs">
-                  {pictures.map((p) => (
-                    <button key={p.id} className={p.id === picture.id ? 'on' : ''} onClick={() => setPictureId(p.id)} title={`${p.width}×${p.height}`}>
-                      {p.name}
-                    </button>
-                  ))}
-                </span>
-              )
-            }
-          >
-            <Program project={project} live={liveState} width={picture.width} height={picture.height} />
-          </Monitor>
-        </div>
-
-        <div className="transport-bar">
-          <button className="big-btn take" disabled={!item || !operate} onClick={take} title="F1 / Enter">
-            <Play size={20} /> TAKE
-          </button>
-          <button className="big-btn continue" disabled={!item || !live || !operate} onClick={cont} title="F2 / Space">
-            <ChevronsRight size={20} /> CONTINUE
-          </button>
-          <button className="big-btn out" disabled={!item || !live || !operate} onClick={out} title="F3">
-            <CircleStop size={20} /> OUT
-          </button>
-          <div className="spacer" />
-          <button className="big-btn update" disabled={!item || !liveIsThis || !operate} onClick={updateLive} title="Push edited data to the graphic on air">
-            <RefreshCw size={18} /> UPDATE
-          </button>
-          <button className="big-btn clear" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12 — clear everything">
-            <X size={18} /> CLEAR ALL
-          </button>
-        </div>
-
-        <ZoneStrip project={project} layers={channel.layers} cuedZone={itemZone?.id} command={command} />
-      </main>
-
-      <aside className="panel right data-panel">
-        <header className="panel-header">
-          <span>Data</span>
-          {dirty && <span className="badge warn">edited</span>}
-        </header>
-        {item && template ? (
-          <div className="data-form">
-            <label className="form-row">
-              <span>Item name</span>
-              <input value={item.name} onChange={(e) => saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, name: e.target.value } : r)))} onKeyDown={(e) => e.stopPropagation()} />
-            </label>
-            <label className="form-row">
-              <span>Zone</span>
-              <select
-                value={itemZone?.id ?? ''}
-                onChange={(e) => {
-                  const z = project.zones.find((x) => x.id === e.target.value);
-                  if (z) saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, zone: z.id, layer: z.layer } : r)));
-                }}
-              >
-                {project.zones.map((z) => (
-                  <option key={z.id} value={z.id}>
-                    {z.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {playlists.length > 1 && (
-              <label className="form-row">
-                <span>Playlist</span>
-                <select value={item.playlist} onChange={(e) => saveRundown(rundown.map((r) => (r.id === item.id ? { ...r, playlist: e.target.value } : r)))}>
-                  {playlists.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <hr />
-            {template.fields.length === 0 && <p className="hint">This template has no data fields.</p>}
-            {template.fields.map((f) => (
-              <label key={f.key} className="form-row">
-                <span>{f.label}</span>
-                {f.binding ? (
-                  <span className="bound-field" title={`Live from ${sourceName(f.binding.source)} · ${f.binding.path}`}>
-                    <span className="live-dot" />
-                    <strong>{boundDraft[f.key] ?? '…'}</strong>
-                  </span>
-                ) : (
-                  <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => setDraft({ ...draft, [f.key]: v })} />
-                )}
-              </label>
-            ))}
-            <div className="row">
-              <button className="btn" disabled={!dirty} onClick={persistDraft}>
-                Save to rundown
-              </button>
-              <button className="btn" disabled={!dirty} onClick={() => setDraft({ ...defaultData(template), ...item.data })}>
-                Revert
-              </button>
-            </div>
-            <p className="hint">
-              Shortcuts: <kbd>F1</kbd>/<kbd>Enter</kbd> take · <kbd>F2</kbd>/<kbd>Space</kbd> continue · <kbd>F3</kbd> out · <kbd>F12</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> cue
-            </p>
-          </div>
-        ) : (
-          <div className="empty">Select a rundown item.</div>
-        )}
-      </aside>
-    </div>
+      {other.length > 0 && (
+        <optgroup label="Used by another project">
+          {other.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} — used by “{projectName(c.projectId)}”
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </select>
   );
 }

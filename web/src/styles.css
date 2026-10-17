@@ -5718,3 +5718,741 @@ a.btn {
   background: var(--live);
   box-shadow: 0 0 0 3px var(--live-soft);
 }
+/* ---- Operator: four resizable areas ---- */
+.opx {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  padding: 6px;
+  box-sizing: border-box;
+  background: var(--bg);
+  --op-1: #151722;
+  --op-2: #1c1f2c;
+  --op-3: #252938;
+  --op-4: #2f3446;
+}
+.opx-empty {
+  padding: 30px;
+  color: var(--text-3);
+}
+.opx-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.splitter.opx-gap {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  margin: 0;
+  border-radius: 3px;
+}
+.splitter.x.opx-gap {
+  width: 6px;
+}
+.splitter.y.opx-gap {
+  height: 6px;
+}
+.opx-pane {
+  background: var(--op-1);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.opx-pane.grow {
+  flex: 1;
+}
+.opx-head {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 14px;
+  background: var(--op-2);
+}
+.opx-head.tall {
+  height: 50px;
+}
+.opx-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opx-title.live {
+  color: var(--live);
+}
+.opx-add {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: var(--op-3);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+.opx-add:hover {
+  background: var(--op-4);
+}
+.opx-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+.opx-hint {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+.opx-hint.pad {
+  padding: 16px 14px;
+}
+.opx-addmenu {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--op-2);
+  max-height: 260px;
+  overflow: auto;
+}
+.opx-addmenu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.opx-addmenu button:hover {
+  background: var(--op-3);
+}
+/* Playlists */
+.opx-pl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 8px 0 14px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.opx-pl:hover {
+  background: var(--op-2);
+}
+.opx-pl.on {
+  background: var(--op-3);
+  color: var(--text);
+}
+.opx-name-cell {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opx-more {
+  position: relative;
+}
+.opx-x {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+}
+.opx-x:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--op-4);
+}
+/* Graphics */
+.opx-gr {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+.opx-gr:hover {
+  background: var(--op-2);
+}
+.opx-gr.on {
+  background: var(--op-3);
+}
+.opx-gr-main,
+.opx-os-main,
+.opx-widget-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.opx-gr-main strong,
+.opx-os-main strong {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opx-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  vertical-align: 1px;
+}
+.opx-sq {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: none;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  background: var(--op-4);
+  color: #fff;
+}
+.opx-sq.big {
+  width: 36px;
+  height: 36px;
+}
+.opx-sq:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.opx-sq:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.opx-sq.red {
+  background: var(--live);
+}
+.opx-sq.amber {
+  background: var(--warn);
+  color: #241500;
+}
+.opx-sq.green {
+  background: var(--pvw);
+  color: #04210f;
+}
+.opx-tally {
+  flex: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.opx-tally.red {
+  background: var(--live);
+  color: #fff;
+}
+.opx-tally.amber {
+  background: var(--warn);
+  color: #241500;
+}
+.opx-tally.green {
+  background: var(--pvw);
+  color: #04210f;
+}
+.opx-tally.grey {
+  background: var(--op-4);
+  color: var(--text-2);
+}
+.opx-hover {
+  display: none;
+  gap: 2px;
+}
+.opx-gr:hover .opx-hover {
+  display: flex;
+}
+.opx-hover button {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: var(--op-4);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+.opx-hover button.violet {
+  background: var(--accent);
+}
+.opx-hover button.red {
+  background: var(--live);
+}
+.opx-foot {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  background: var(--op-2);
+}
+.opx-foot .big {
+  flex: 1;
+  justify-content: center;
+  height: 40px;
+}
+/* Buttons */
+.opx-btn {
+  height: 32px;
+  border: none;
+  border-radius: 5px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--op-4);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.opx-btn.small {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+.opx-btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.opx-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.opx-btn.red {
+  background: var(--live);
+  color: #fff;
+}
+.opx-btn.amber {
+  background: var(--warn);
+  color: #241500;
+}
+.opx-btn.violet {
+  background: var(--accent);
+  color: #fff;
+}
+/* Monitors */
+.opx-monitor {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  padding: 10px 10px 0;
+}
+.opx-screen {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+/* Sized by its box only, the scaled picture centred in it. */
+.opx-screen > * {
+  position: absolute !important;
+  inset: 0;
+  margin: auto;
+}
+.op-viewport {
+  background: repeating-conic-gradient(#20232f 0 25%, #181a24 0 50%) 0 0 / 20px 20px;
+}
+.opx-programs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 4px;
+}
+.opx-programs .opx-monitor {
+  padding: 8px 0 0;
+}
+.opx-programs .opx-monitor:first-child {
+  padding-left: 10px;
+}
+.opx-programs .opx-monitor:last-child {
+  padding-right: 10px;
+}
+.opx-strip {
+  flex: none;
+  margin: 0 10px 10px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--op-2);
+}
+.opx-strip.live {
+  color: var(--live);
+  background: rgba(255, 59, 92, 0.14);
+}
+.opx-output {
+  height: 28px;
+  max-width: 230px;
+  border: none;
+  border-radius: 5px;
+  background: var(--op-3);
+  color: var(--text);
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.opx-pics {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px 0;
+}
+.opx-pics button {
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 0 9px;
+  cursor: pointer;
+}
+.opx-pics button.on {
+  background: var(--op-4);
+  color: var(--text);
+}
+.opx-pics button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.opx-link {
+  font-size: 12px;
+  color: var(--accent-2);
+  text-decoration: none;
+}
+/* Item editor */
+.opx-name {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+.opx-name:focus {
+  outline: none;
+  background: var(--bg);
+}
+.opx-save {
+  font-size: 12px;
+  color: var(--pvw);
+  white-space: nowrap;
+}
+.opx-save.busy {
+  color: var(--warn);
+}
+.opx-edit {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.opx-fields {
+  overflow: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.opx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.opx-field input,
+.opx-field textarea,
+.opx-field select {
+  width: 100%;
+  box-sizing: border-box;
+}
+.opx-field > input,
+.opx-field > textarea {
+  min-height: 34px;
+  border: none;
+  border-radius: 5px;
+  background: var(--bg);
+  padding: 6px 11px;
+  font-size: 13.5px;
+}
+.opx-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 6px;
+}
+.opx-field .opx-label {
+  margin: 0;
+}
+.opx-from {
+  color: var(--pvw);
+  font-size: 11.5px;
+}
+.opx-bound {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--pvw);
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.opx-data {
+  overflow: auto;
+  padding: 14px 16px;
+  background: var(--op-2);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.opx-data > .opx-btn {
+  align-self: flex-start;
+}
+.opx-data-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.opx-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--bg);
+}
+.opx-source .muted {
+  margin-left: auto;
+}
+.opx-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 6px;
+  background: var(--bg);
+}
+.opx-seg button {
+  flex: 1;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-3);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+.opx-seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.opx-every {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.opx-every label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.opx-every select {
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 8px;
+}
+.opx-map {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+.opx-map code {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Controls of the graphics on air */
+.opx-tabs {
+  gap: 2px;
+  padding-left: 8px;
+  overflow-x: auto;
+}
+.opx-tabs button {
+  height: 40px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.opx-tabs button.on {
+  color: var(--text);
+  border-bottom-color: var(--live);
+}
+.opx-controls {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  max-height: 60%;
+  flex: none;
+}
+.opx-widget {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--op-2);
+}
+.opx-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+.opx-number {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--op-2);
+}
+.opx-number > span {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opx-number strong {
+  min-width: 36px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 18px;
+}
+.opx-mini {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: var(--op-4);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+.opx-mini:hover {
+  filter: brightness(1.15);
+}
+.opx-triggers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.opx-triggers .opx-label {
+  margin: 0 4px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+.opx-actions {
+  display: flex;
+  gap: 6px;
+}
+.opx-actions .opx-btn {
+  flex: 1;
+  justify-content: center;
+}
+.opx-subtitle {
+  padding: 8px 14px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.opx-scroll.onscreen {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.opx-onscreen {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--op-2);
+  cursor: pointer;
+}
+.opx-onscreen.sel {
+  background: var(--op-3);
+}
+.opx-onscreen progress {
+  width: 100%;
+  height: 3px;
+}

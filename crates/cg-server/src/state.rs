@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use cg_core::{ChannelState, Command, Project};
+use cg_core::{ChannelState, Command, Project, ReadMode};
 use cg_render::Renderer;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, watch, Notify, RwLock};
@@ -370,8 +370,12 @@ impl AppState {
         let store = self.data.store();
         let snapshot = {
             let mut st = ch.state.write().await;
+            let taken = match &cmd {
+                Command::Take { rundown_id, .. } => rundown_id.clone(),
+                _ => None,
+            };
             st.apply(&project, cmd).map_err(|e| e.to_string())?;
-            bind_state(&project, &mut st, &store, None);
+            bind_state(&project, &mut st, &store, None, taken.as_deref());
             st.clone()
         };
         let _ = self.events.send(Event::Channel {
@@ -384,27 +388,43 @@ impl AppState {
 }
 
 /// Fills fields bound to data sources into the graphics on air (and the
-/// ones queued); `only` limits it to templates reading that source.
+/// ones queued); `only` limits it to templates reading that source. Items
+/// read "on take" are only filled when `taken` (the rundown item just
+/// taken), items read "manually" never: the operator saved their values.
 pub fn bind_state(
     project: &Project,
     st: &mut ChannelState,
     store: &cg_core::datapath::Store,
     only: Option<&str>,
+    taken: Option<&str>,
 ) -> bool {
     let mut changed = false;
     for item in st.layers.values_mut() {
-        let mut one = |template_id: &str, data: &mut cg_core::Data| {
+        let mut one = |template_id: &str, rundown_id: Option<&str>, data: &mut cg_core::Data| {
             let Some(t) = project.template(template_id) else {
                 return;
             };
+            let mode = rundown_id
+                .and_then(|id| project.rundown.iter().find(|r| r.id == id))
+                .map(|r| r.read)
+                .unwrap_or_default();
+            match mode {
+                ReadMode::Live => {}
+                ReadMode::Take if taken.is_some() && taken == rundown_id => {}
+                _ => return,
+            }
             if only.is_some_and(|src| !cg_core::datapath::sources(t).any(|s| s == src)) {
                 return;
             }
             changed |= cg_core::datapath::bind(t, data, store);
         };
-        one(&item.template_id, &mut item.data);
+        one(
+            &item.template_id,
+            item.rundown_id.as_deref(),
+            &mut item.data,
+        );
         if let Some(q) = &mut item.next {
-            one(&q.template_id, &mut q.data);
+            one(&q.template_id, q.rundown_id.as_deref(), &mut q.data);
         }
     }
     changed
@@ -423,7 +443,7 @@ impl AppState {
             };
             let changed = {
                 let mut st = ch.state.write().await;
-                bind_state(&project, &mut st, &store, source)
+                bind_state(&project, &mut st, &store, source, None)
             };
             if changed {
                 self.broadcast_channel(ch).await;

@@ -251,7 +251,12 @@ export interface RundownItem {
   /** Legacy playout layer, kept in step with the zone by the server. */
   layer: number;
   data: Record<string, string>;
+  /** When bound fields read their source (default: live). */
+  read?: ReadMode;
 }
+
+/** `live`: on take and on every change of the source; `take`: once, on take; `manual`: when the operator asks. */
+export type ReadMode = 'live' | 'take' | 'manual';
 
 export interface FrameRate {
   num: number;

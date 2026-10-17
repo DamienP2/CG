@@ -817,6 +817,28 @@ pub struct RundownItem {
     pub layer: u32,
     #[serde(default)]
     pub data: BTreeMap<String, String>,
+    /// When the fields bound to data sources are read.
+    #[serde(default, skip_serializing_if = "ReadMode::is_live")]
+    pub read: ReadMode,
+}
+
+/// When a rundown item reads its data sources.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReadMode {
+    /// On take, then on every change of the source, also on air.
+    #[default]
+    Live,
+    /// Once, when the item is taken.
+    Take,
+    /// Only when the operator asks (the values are saved in the item).
+    Manual,
+}
+
+impl ReadMode {
+    pub fn is_live(&self) -> bool {
+        *self == ReadMode::Live
+    }
 }
 
 /// A named list of rundown items (show segment, sport block, breaking news…).

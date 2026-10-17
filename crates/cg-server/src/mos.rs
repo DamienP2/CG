@@ -311,6 +311,7 @@ pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usi
                 && p.template(&i.template).is_some()
         })
         .map(|(s, i)| RundownItem {
+            read: Default::default(),
             id: format!("mos:{}:{}:{}", ro.id, s.id, i.id),
             name: if i.slug.is_empty() {
                 s.slug.clone()

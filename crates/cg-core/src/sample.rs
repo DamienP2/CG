@@ -991,6 +991,7 @@ fn demo_project_layers() -> Project {
         ],
         rundown: vec![
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1000,6 +1001,7 @@ fn demo_project_layers() -> Project {
                 data,
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1012,6 +1014,7 @@ fn demo_project_layers() -> Project {
                     .collect(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1021,6 +1024,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1030,6 +1034,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1039,6 +1044,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1048,6 +1054,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1057,6 +1064,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
@@ -1066,6 +1074,7 @@ fn demo_project_layers() -> Project {
                 data: BTreeMap::new(),
             },
             RundownItem {
+                read: Default::default(),
                 playlist: String::new(),
                 zone: String::new(),
                 id: new_id(),
