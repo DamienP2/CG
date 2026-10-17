@@ -56,6 +56,7 @@ fn marker(frame: f64, name: &str, kind: MarkerKind) -> Marker {
         frame,
         name: name.into(),
         kind,
+        resume: Default::default(),
     }
 }
 
@@ -187,6 +188,7 @@ pub fn lower_third() -> Template {
     Template {
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
         zone: String::new(),
         id: "lower-third".into(),
         name: "Lower third".into(),
@@ -304,6 +306,7 @@ pub fn score_bug() -> Template {
     Template {
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
         zone: String::new(),
         id: "score-bug".into(),
         name: "Score bug".into(),
@@ -431,6 +434,7 @@ pub fn clock() -> Template {
     Template {
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
         zone: String::new(),
         id: "clock".into(),
         name: "Clock".into(),
@@ -529,6 +533,7 @@ pub fn ticker() -> Template {
     Template {
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
         zone: String::new(),
         id: "ticker".into(),
         name: "News ticker".into(),
@@ -589,6 +594,7 @@ pub fn credits() -> Template {
     Template {
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
         zone: String::new(),
         id: "credits".into(),
         name: "Credits roll".into(),
@@ -614,6 +620,7 @@ fn simple(id: &str, name: &str, duration: f64, fields: Vec<Field>, layers: Vec<L
     Template {
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
         zone: String::new(),
         id: id.into(),
         name: name.into(),

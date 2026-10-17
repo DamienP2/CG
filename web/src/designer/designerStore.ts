@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
 import { fromFormatView, inFormat } from '../engine/formats';
-import { MAIN_FORMAT, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, MARKER_MODEL, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template, type Value } from '../engine/types';
 
 export interface KeyRef {
   layerId: string;
@@ -361,22 +361,18 @@ export function newTemplate(name: string, zone = ''): Template {
     name,
     zone,
     duration: 100,
-    // Back to back: animate in up to 50, out from 50 to the end.
-    markers: [
-      { id: newId(), frame: 50, name: 'On air', kind: 'pause' },
-      { id: newId(), frame: 50, name: 'Out', kind: 'out' },
-    ],
+    // Animate in up to the On air point, out from there to the end.
+    markers: [{ id: newId(), frame: 50, name: 'On air', kind: 'out' }],
     fields: [],
     layers: [],
+    markerModel: MARKER_MODEL,
   };
 }
 
-/** How a marker reads: the first pause is the On air point (green), later
- *  pauses are extra stops resumed by "Continue" (orange), then Out (red). */
-export function markerRole(t: Template, m: Marker): 'onair' | 'pause' | 'out' | 'label' {
-  if (m.kind !== 'pause') return m.kind;
-  const first = t.markers.filter((x) => x.kind === 'pause').sort((a, b) => a.frame - b.frame)[0];
-  return first?.id === m.id ? 'onair' : 'pause';
+/** How a marker reads: the On air point (green; the out animation starts
+ *  there too), pauses (orange) and labels. */
+export function markerRole(_t: Template, m: Marker): 'onair' | 'pause' | 'label' {
+  return m.kind === 'out' ? 'onair' : m.kind;
 }
 
 /** Duplicates layers (with their children) just above the originals and selects the copies. */

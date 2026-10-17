@@ -187,15 +187,15 @@ export function outFrame(t: Template): number | undefined {
   return t.markers.find((m) => m.kind === 'out')?.frame;
 }
 
-export function nextPauseAfter(t: Template, frame: number): number | undefined {
-  const limit = outFrame(t) ?? t.duration;
-  const c = t.markers.filter((m) => m.kind === 'pause' && m.frame > frame + 1e-6 && m.frame <= limit).map((m) => m.frame);
-  return c.length ? Math.min(...c) : undefined;
+/** Where playback stops next after `frame`: a pause, the On air point, else the end. */
+export function nextStopAfter(t: Template, frame: number): number {
+  const stops = t.markers.filter((m) => (m.kind === 'pause' || m.kind === 'out') && m.frame > frame + 1e-6).map((m) => m.frame);
+  return Math.min(t.duration, ...stops);
 }
 
-/** First on-air frame, used for operator previews and thumbnails. */
+/** The On air frame (what the graphic looks like on air), for previews and thumbnails. */
 export function holdFrame(t: Template): number {
-  return nextPauseAfter(t, 0) ?? outFrame(t) ?? t.duration;
+  return outFrame(t) ?? t.duration;
 }
 
 export function newId(): string {

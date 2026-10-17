@@ -1,4 +1,5 @@
-import { Clapperboard, LogIn, ShieldCheck } from 'lucide-react';
+import { LogIn, ShieldCheck } from 'lucide-react';
+import { Logo } from '../ui/Logo';
 import { useState } from 'react';
 import { ApiError, useApp } from '../store';
 
@@ -32,7 +33,7 @@ export function Login() {
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
         <div className="brand big">
-          <Clapperboard size={26} />
+          <Logo size={30} />
           <span>Pulse</span>
           <em>CG</em>
         </div>

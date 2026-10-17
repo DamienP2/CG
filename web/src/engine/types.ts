@@ -119,8 +119,16 @@ export interface Marker {
   id: string;
   frame: number;
   name: string;
+  /** `out`: the On air point, where the out animation starts (one per template). */
   kind: MarkerKind;
+  /** How a pause resumes (default: the operator's Continue). */
+  resume?: Resume;
 }
+
+export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string };
+
+/** Marker model of templates made by this version (see Template.markerModel). */
+export const MARKER_MODEL = 2;
 
 export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image';
 
@@ -176,6 +184,8 @@ export interface Template {
   logic?: Logic;
   /** Published revision (0: never published). */
   revision?: number;
+  /** Marker model (MARKER_MODEL); older templates are converted by the server. */
+  markerModel?: number;
 }
 
 export type TextMetric = 'width' | 'height' | 'lines' | 'chars';
@@ -267,7 +277,7 @@ export interface Playlist {
   name: string;
 }
 
-export type Phase = 'playing' | 'holding' | 'out';
+export type Phase = 'playing' | 'holding' | 'out' | 'outHold';
 
 export interface PlayoutItem {
   templateId: string;
@@ -305,7 +315,8 @@ export type Command =
   | ({ action: 'takeOut' } & Target)
   | ({ action: 'update'; data: Record<string, string> } & Target)
   | ({ action: 'widget'; target: string; control: WidgetControl } & Target)
-  | ({ action: 'clear' } & Target);
+  | ({ action: 'clear' } & Target)
+  | { action: 'trigger'; name: string };
 
 export type Data = Record<string, string>;
 

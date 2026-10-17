@@ -1,26 +1,29 @@
 //! Playout state machine for an output channel.
 //!
 //! A channel holds several *playout layers* (z-ordered); each one can carry a
-//! graphic on air. Graphics follow the MXMZ model: take in plays until the
-//! first pause marker, continue plays to the next one, take out jumps to the
-//! out marker and plays to the end before the graphic is removed.
+//! graphic on air. Take in plays to the on-air marker, stopping at the pause
+//! markers on the way; take out plays from the on-air marker to the end,
+//! stopping at the pauses after it, before the graphic is removed. A pause
+//! resumes on Continue, after its delay, or on its trigger.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
-use crate::model::{Layer, LayerKind, Project, Template, ZoneTransition};
+use crate::model::{Layer, LayerKind, Project, Resume, Template, ZoneTransition};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Phase {
     /// Moving toward `target`.
     Playing,
-    /// Holding on a pause marker (or the out marker), on air.
+    /// Holding on a pause or on the on-air marker.
     Holding,
     /// Playing the out animation; removed when it reaches the end.
     Out,
+    /// Holding on a pause of the out animation.
+    OutHold,
 }
 
 /// A take waiting for the graphic on air in its zone to finish going out.
@@ -56,6 +59,12 @@ pub struct PlayoutItem {
     /// Widgets started, paused or reset by the operator, by layer id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub clocks: BTreeMap<String, LayerClock>,
+    /// Frames spent holding at the current stop (timed pauses).
+    #[serde(default)]
+    pub held: f64,
+    /// Out animation: `target` is a pause, not the end.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pause_ahead: bool,
 }
 
 /// Own time of a widget layer (timer, ticker, roll…), in frames on air.
@@ -118,6 +127,8 @@ impl PlayoutItem {
             age: 0.0,
             next: None,
             clocks: BTreeMap::new(),
+            held: 0.0,
+            pause_ahead: false,
         }
     }
 
@@ -223,6 +234,8 @@ pub enum Command {
         target: String,
         control: WidgetControl,
     },
+    /// Resumes every graphic holding on a pause that waits for this trigger.
+    Trigger { name: String },
     /// Removes the graphic(s) at once; without zone or layer, everything.
     Clear {
         #[serde(default)]
@@ -265,10 +278,33 @@ pub struct ChannelState {
 }
 
 fn hold_target(template: &Template, from: f64) -> f64 {
-    template
-        .next_pause_after(from)
-        .or_else(|| template.out_frame().filter(|&o| o > from + 1e-6))
-        .unwrap_or(template.duration)
+    template.next_stop_after(from)
+}
+
+/// Plays on from the stop the item holds at (or is heading to). Holding on
+/// air waits for Take out; nothing happens while the out animation moves.
+fn resume(t: &Template, item: &mut PlayoutItem) -> bool {
+    match item.phase {
+        Phase::Out => false,
+        Phase::OutHold => {
+            item.target = t.next_stop_after(item.frame);
+            item.pause_ahead = item.target < t.duration - 1e-6;
+            item.phase = Phase::Out;
+            item.held = 0.0;
+            true
+        }
+        Phase::Playing | Phase::Holding => {
+            let from = item.target.max(item.frame);
+            if from >= t.hold_frame() - 1e-6 {
+                return false;
+            }
+            item.frame = from;
+            item.target = t.next_stop_after(from).min(t.hold_frame());
+            item.phase = Phase::Playing;
+            item.held = 0.0;
+            true
+        }
+    }
 }
 
 fn resolve(
@@ -287,18 +323,24 @@ fn resolve(
 
 /// Starts the out animation; false if the template has none (remove now).
 fn begin_out(project: &Project, item: &mut PlayoutItem) -> bool {
-    let t = project.template(&item.template_id);
-    match t.and_then(|t| t.out_frame().map(|o| (o, t.duration))) {
-        Some((out, end)) if end > out => {
-            if item.phase != Phase::Out {
-                item.frame = item.frame.max(out);
-                item.target = end;
-                item.phase = Phase::Out;
-            }
-            true
-        }
-        _ => false,
+    let Some(t) = project.template(&item.template_id) else {
+        return false;
+    };
+    let out = t.hold_frame();
+    if t.duration <= out + 1e-6 {
+        return false;
     }
+    if matches!(item.phase, Phase::Out | Phase::OutHold) {
+        // Out again: straight to the end, through the pauses.
+        item.target = t.duration;
+    } else {
+        item.frame = item.frame.max(out);
+        item.target = t.next_stop_after(item.frame);
+    }
+    item.pause_ahead = item.target < t.duration - 1e-6;
+    item.phase = Phase::Out;
+    item.held = 0.0;
+    true
 }
 
 impl ChannelState {
@@ -352,23 +394,25 @@ impl ChannelState {
                     .layers
                     .get_mut(&layer)
                     .ok_or(PlayoutError::EmptyLayer(layer))?;
-                if item.phase == Phase::Out {
-                    return Ok(());
-                }
                 let t = project
                     .template(&item.template_id)
                     .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
-                // Continue from where we will stop (skip ahead if still moving)
-                // to the next pause, or the out marker; nothing ahead: no-op
-                // (the "On air" and "Out" points are often the same frame).
-                let from = item.target.max(item.frame);
-                let next = t
-                    .next_pause_after(from)
-                    .or_else(|| t.out_frame().filter(|&o| o > from + 1e-6));
-                if let Some(next) = next {
-                    item.frame = from;
-                    item.target = next;
-                    item.phase = Phase::Playing;
+                resume(t, item);
+            }
+            Command::Trigger { name } => {
+                for item in self.layers.values_mut() {
+                    if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                        continue;
+                    }
+                    let Some(t) = project.template(&item.template_id) else {
+                        continue;
+                    };
+                    let waits = t.pause_at(item.frame).is_some_and(|m| {
+                        matches!(&m.resume, Resume::Trigger { name: n } if n.trim().eq_ignore_ascii_case(name.trim()))
+                    });
+                    if waits {
+                        resume(t, item);
+                    }
                 }
             }
             Command::TakeOut { zone, layer } => {
@@ -442,14 +486,21 @@ impl ChannelState {
         let mut finished = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
             item.age += frames;
-            if item.phase == Phase::Holding {
+            if matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                item.held += frames;
                 continue;
             }
             changed = true;
             item.frame = (item.frame + frames).min(item.target);
             if item.frame >= item.target {
+                item.held = 0.0;
                 if item.phase == Phase::Out {
-                    finished.push(*layer);
+                    // A pause of the out animation stops it before the end.
+                    if item.pause_ahead {
+                        item.phase = Phase::OutHold;
+                    } else {
+                        finished.push(*layer);
+                    }
                 } else {
                     item.phase = Phase::Holding;
                 }
@@ -463,14 +514,38 @@ impl ChannelState {
         changed
     }
 
+    /// Resumes the pauses whose delay is over. `fps`: project frame rate.
+    pub fn auto_resume(&mut self, project: &Project) -> bool {
+        let fps = project.frame_rate.as_f64().max(1.0);
+        let mut changed = false;
+        for item in self.layers.values_mut() {
+            if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                continue;
+            }
+            let Some(t) = project.template(&item.template_id) else {
+                continue;
+            };
+            let due = t
+                .pause_at(item.frame)
+                .is_some_and(|m| matches!(m.resume, Resume::After { seconds } if item.held >= seconds.max(0.0) * fps));
+            if due {
+                changed |= resume(t, item);
+            }
+        }
+        changed
+    }
+
     pub fn is_animating(&self) -> bool {
-        self.layers.values().any(|i| i.phase != Phase::Holding)
+        self.layers
+            .values()
+            .any(|i| !matches!(i.phase, Phase::Holding | Phase::OutHold))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::Resume;
     use crate::model::{FrameRate, Marker, MarkerKind};
 
     fn project() -> Project {
@@ -484,6 +559,7 @@ mod tests {
             templates: vec![Template {
                 logic: Default::default(),
                 revision: 0,
+                marker_model: crate::model::MARKER_MODEL,
                 id: "t".into(),
                 name: "t".into(),
                 duration: 100.0,
@@ -493,18 +569,21 @@ mod tests {
                         frame: 20.0,
                         name: "in".into(),
                         kind: MarkerKind::Pause,
+                        resume: Default::default(),
                     },
                     Marker {
                         id: "b".into(),
                         frame: 40.0,
                         name: "step".into(),
                         kind: MarkerKind::Pause,
+                        resume: Default::default(),
                     },
                     Marker {
                         id: "c".into(),
                         frame: 80.0,
                         name: "out".into(),
                         kind: MarkerKind::Out,
+                        resume: Default::default(),
                     },
                 ],
                 fields: vec![],
@@ -585,6 +664,122 @@ mod tests {
             },
         )
         .unwrap();
+        for _ in 0..30 {
+            ch.tick(1.0);
+        }
+        assert!(ch.layers.is_empty());
+    }
+
+    fn take(ch: &mut ChannelState, p: &Project) {
+        ch.apply(
+            p,
+            Command::Take {
+                zone: None,
+                layer: Some(1),
+                template_id: "t".into(),
+                data: None,
+                rundown_id: None,
+            },
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn timed_and_triggered_pauses() {
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.markers[0].resume = Resume::After { seconds: 0.5 };
+        t.markers[1].resume = Resume::Trigger {
+            name: "Goal".into(),
+        };
+        let fps = p.frame_rate.as_f64();
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        for _ in 0..20 {
+            ch.tick(1.0);
+        }
+        assert_eq!(
+            (ch.layers[&1].frame, ch.layers[&1].phase),
+            (20.0, Phase::Holding)
+        );
+        // Resumes by itself after half a second.
+        for _ in 0..(fps * 0.5) as usize + 1 {
+            ch.tick(1.0);
+            ch.auto_resume(&p);
+        }
+        for _ in 0..25 {
+            ch.tick(1.0);
+            ch.auto_resume(&p);
+        }
+        assert_eq!(
+            (ch.layers[&1].frame, ch.layers[&1].phase),
+            (40.0, Phase::Holding)
+        );
+        // Waits for its trigger, whatever the delay.
+        ch.apply(
+            &p,
+            Command::Trigger {
+                name: "other".into(),
+            },
+        )
+        .unwrap();
+        ch.tick(1.0);
+        assert_eq!(ch.layers[&1].frame, 40.0);
+        ch.apply(
+            &p,
+            Command::Trigger {
+                name: "goal".into(),
+            },
+        )
+        .unwrap();
+        for _ in 0..50 {
+            ch.tick(1.0);
+        }
+        assert_eq!(
+            (ch.layers[&1].frame, ch.layers[&1].phase),
+            (80.0, Phase::Holding)
+        );
+    }
+
+    #[test]
+    fn pauses_in_the_out_animation() {
+        let mut p = project();
+        p.templates[0].markers.push(Marker {
+            id: "d".into(),
+            frame: 90.0,
+            name: "Pause".into(),
+            kind: MarkerKind::Pause,
+            resume: Resume::Manual,
+        });
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        let cont = Command::Continue {
+            zone: None,
+            layer: Some(1),
+        };
+        for _ in 0..3 {
+            for _ in 0..50 {
+                ch.tick(1.0);
+            }
+            ch.apply(&p, cont.clone()).unwrap();
+        }
+        assert_eq!(ch.layers[&1].frame, 80.0);
+        ch.apply(
+            &p,
+            Command::TakeOut {
+                zone: None,
+                layer: Some(1),
+            },
+        )
+        .unwrap();
+        for _ in 0..30 {
+            ch.tick(1.0);
+        }
+        assert_eq!(
+            (ch.layers[&1].frame, ch.layers[&1].phase),
+            (90.0, Phase::OutHold)
+        );
+        ch.apply(&p, cont).unwrap();
         for _ in 0..30 {
             ch.tick(1.0);
         }

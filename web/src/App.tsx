@@ -1,4 +1,5 @@
-import { BookOpen, Clapperboard, Database, FolderOpen, Images, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { BookOpen, Database, FolderOpen, Images, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Logo } from './ui/Logo';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
 import { Operator } from './operator/Operator';
@@ -94,7 +95,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
 function Brand() {
   return (
     <div className="brand">
-      <Clapperboard size={18} />
+      <Logo size={22} />
       <span>Pulse</span>
       <em>CG</em>
     </div>

@@ -3206,7 +3206,7 @@
     "required": [
      "action"
     ],
-    "description": "Target a zone by id (`zone`) or a raw playout layer (`layer`). A take without either plays in the template's zone; a clear without either clears everything.",
+    "description": "Target a zone by id (`zone`) or a raw playout layer (`layer`). A take without either plays in the template's zone; a clear without either clears everything. `trigger` (with `name`) applies to the whole channel.",
     "properties": {
      "action": {
       "type": "string",
@@ -3216,7 +3216,8 @@
        "takeOut",
        "update",
        "widget",
-       "clear"
+       "clear",
+       "trigger"
       ]
      },
      "zone": {
@@ -3250,6 +3251,10 @@
        "restart"
       ],
       "description": "widget: start (resume), pause, toggle, reset (to zero, keeps running or paused), restart (to zero and running)"
+     },
+     "name": {
+      "type": "string",
+      "description": "trigger: resumes every graphic holding on a pause that waits for this trigger"
      }
     },
     "example": {

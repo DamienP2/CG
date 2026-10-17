@@ -507,9 +507,13 @@ fn yes() -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MarkerKind {
-    /// Playback stops here; "Continue" resumes (MXMZ-style stop point).
+    /// Playback stops here and resumes as set by [`Marker::resume`]
+    /// (operator "Continue", after a delay, or on a trigger). Before the
+    /// on-air point they build the graphic in steps; after it, they stop
+    /// the out animation.
     Pause,
-    /// Start of the out animation; "Take out" jumps here.
+    /// The on-air point, which is also where the out animation starts: the
+    /// take holds here, "Take out" plays on from here. One per template.
     Out,
     /// Simple label, no playback effect.
     Label,
@@ -522,7 +526,32 @@ pub struct Marker {
     pub frame: f64,
     pub name: String,
     pub kind: MarkerKind,
+    /// How a pause resumes.
+    #[serde(default, skip_serializing_if = "Resume::is_manual")]
+    pub resume: Resume,
 }
+
+/// How playback resumes from a pause marker.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Resume {
+    /// The operator presses Continue.
+    #[default]
+    Manual,
+    /// By itself after a delay.
+    After { seconds: f64 },
+    /// When this trigger is fired (by the operator, the API, Companion…).
+    Trigger { name: String },
+}
+
+impl Resume {
+    pub fn is_manual(&self) -> bool {
+        matches!(self, Resume::Manual)
+    }
+}
+
+/// Current marker model: [`MarkerKind::Out`] is the on-air point.
+pub const MARKER_MODEL: u8 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -582,6 +611,10 @@ pub struct Template {
     /// Published revision (1, 2…); 0 for a template never published.
     #[serde(default)]
     pub revision: u32,
+    /// Marker model the template was made with ([`MARKER_MODEL`]); older
+    /// templates are converted by [`Template::normalize_markers`].
+    #[serde(default)]
+    pub marker_model: u8,
 }
 
 impl Template {
@@ -609,11 +642,116 @@ impl Template {
         std::borrow::Cow::Owned(t)
     }
 
-    /// First on-air frame: first pause, else the out marker, else the end.
+    /// The on-air frame (what the graphic looks like on air): the on-air /
+    /// out marker, else the end.
     pub fn hold_frame(&self) -> f64 {
-        self.next_pause_after(0.0)
-            .or(self.out_frame())
-            .unwrap_or(self.duration)
+        self.out_frame().unwrap_or(self.duration)
+    }
+
+    /// Where playback stops next after `frame`: the next pause or the
+    /// on-air point, else the end.
+    pub fn next_stop_after(&self, frame: f64) -> f64 {
+        let on_air = self.out_frame().filter(|&o| o > frame + 1e-6);
+        self.markers
+            .iter()
+            .filter(|m| m.kind == MarkerKind::Pause && m.frame > frame + 1e-6)
+            .map(|m| m.frame)
+            .chain(on_air)
+            .fold(self.duration, f64::min)
+    }
+
+    /// The pause marker at `frame`, if any.
+    pub fn pause_at(&self, frame: f64) -> Option<&Marker> {
+        self.markers
+            .iter()
+            .find(|m| m.kind == MarkerKind::Pause && (m.frame - frame).abs() < 1e-6)
+    }
+
+    /// Brings the markers to the current model: one on-air / out marker,
+    /// frames inside the timeline. Templates made when the on-air point was
+    /// the first pause (and the out marker could come later) get their last
+    /// stop as the on-air point, and the never-played frames between it and
+    /// the old out marker are cut. Returns true if anything changed.
+    pub fn normalize_markers(&mut self) -> bool {
+        let before = (self.markers.clone(), self.duration, self.marker_model);
+        if self.marker_model < MARKER_MODEL {
+            self.marker_model = MARKER_MODEL;
+            if let Some(out) = self.out_frame() {
+                let last_stop = self
+                    .markers
+                    .iter()
+                    .filter(|m| m.kind == MarkerKind::Pause && m.frame <= out + 1e-6)
+                    .map(|m| m.frame)
+                    .fold(None, |a: Option<f64>, f| Some(a.map_or(f, |a| a.max(f))));
+                if let Some(stop) = last_stop {
+                    self.markers.retain(|m| {
+                        !(m.kind == MarkerKind::Pause && (m.frame - stop).abs() < 1e-6)
+                    });
+                    if out > stop + 1e-6 {
+                        self.cut(stop, out);
+                    }
+                }
+            }
+            for m in &mut self.markers {
+                if m.kind == MarkerKind::Pause && m.name.eq_ignore_ascii_case("on air") {
+                    m.name = "Pause".into();
+                }
+            }
+        }
+        // Exactly one on-air / out marker.
+        let mut seen = false;
+        self.markers.retain(|m| {
+            let dup = m.kind == MarkerKind::Out && seen;
+            seen |= m.kind == MarkerKind::Out;
+            !dup
+        });
+        if !seen {
+            self.markers.push(Marker {
+                id: crate::model::new_id(),
+                frame: self.duration,
+                name: "On air".into(),
+                kind: MarkerKind::Out,
+                resume: Resume::Manual,
+            });
+        }
+        for m in &mut self.markers {
+            m.frame = m.frame.clamp(0.0, self.duration);
+            if m.kind == MarkerKind::Out {
+                m.name = "On air".into();
+                m.resume = Resume::Manual;
+            }
+        }
+        self.markers.sort_by(|a, b| a.frame.total_cmp(&b.frame));
+        before != (self.markers.clone(), self.duration, self.marker_model)
+    }
+
+    /// Removes the frames between `from` and `to`: later keyframes and
+    /// markers move back, keyframes inside are dropped.
+    fn cut(&mut self, from: f64, to: f64) {
+        let d = to - from;
+        let shift = |keys: &mut Vec<Keyframe>| {
+            keys.retain(|k| k.frame <= from + 1e-6 || k.frame >= to - 1e-6);
+            for k in keys.iter_mut() {
+                if k.frame >= to - 1e-6 {
+                    k.frame -= d;
+                }
+            }
+            keys.dedup_by(|b, a| (a.frame - b.frame).abs() < 1e-6);
+        };
+        for l in &mut self.layers {
+            l.tracks.values_mut().for_each(shift);
+            for o in l.overrides.values_mut() {
+                o.tracks.values_mut().for_each(shift);
+            }
+        }
+        for m in &mut self.markers {
+            if m.frame >= to - 1e-6 {
+                m.frame -= d;
+            } else if m.frame > from {
+                m.frame = from;
+            }
+        }
+        self.duration = (self.duration - d).max(1.0);
     }
 
     pub fn layer(&self, id: &str) -> Option<&Layer> {
@@ -625,18 +763,6 @@ impl Template {
             .iter()
             .find(|m| m.kind == MarkerKind::Out)
             .map(|m| m.frame)
-    }
-
-    /// The first pause marker strictly after `frame` (and before the out marker).
-    pub fn next_pause_after(&self, frame: f64) -> Option<f64> {
-        let limit = self.out_frame().unwrap_or(self.duration);
-        self.markers
-            .iter()
-            .filter(|m| m.kind == MarkerKind::Pause && m.frame > frame + 1e-6 && m.frame <= limit)
-            .map(|m| m.frame)
-            .fold(None, |acc: Option<f64>, f| {
-                Some(acc.map_or(f, |a| a.min(f)))
-            })
     }
 
     /// Default data built from field defaults.
@@ -718,26 +844,20 @@ pub struct Area {
 }
 
 impl Zone {
-    /// Starting layout of a new project.
+    /// Starting layout of a new project: one full-screen zone.
     pub fn defaults() -> Vec<Zone> {
-        [
-            ("lower-third", "Lower third", 10),
-            ("top-left", "Top left", 20),
-            ("top-right", "Top right", 30),
-            ("ticker", "Ticker", 40),
-            ("full-screen", "Full screen", 50),
-        ]
-        .iter()
-        .enumerate()
-        .map(|(i, (id, name, layer))| Zone {
-            id: (*id).into(),
-            name: (*name).into(),
-            layer: *layer,
-            color: ZONE_COLORS[i].into(),
-            transition: ZoneTransition::Sequential,
-            areas: Default::default(),
-        })
-        .collect()
+        [("full-screen", "Full screen", 10)]
+            .iter()
+            .enumerate()
+            .map(|(i, (id, name, layer))| Zone {
+                id: (*id).into(),
+                name: (*name).into(),
+                layer: *layer,
+                color: ZONE_COLORS[i].into(),
+                transition: ZoneTransition::Sequential,
+                areas: Default::default(),
+            })
+            .collect()
     }
 }
 
@@ -821,7 +941,11 @@ impl Project {
     /// Gives every rundown item and template a zone. Pre-zone projects get
     /// one zone per playout layer they used. Returns true if anything changed.
     pub fn ensure_zones(&mut self) -> bool {
+        // Also brings the templates to the current marker model.
         let mut changed = false;
+        for t in self.templates.iter_mut().chain(self.drafts.iter_mut()) {
+            changed |= t.normalize_markers();
+        }
         for i in 0..self.rundown.len() {
             if self.zone(&self.rundown[i].zone).is_some() {
                 continue;
@@ -983,4 +1107,56 @@ impl Project {
 
 pub fn new_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_markers_become_one_on_air_marker() {
+        // Before: on air at 40 (first pause), out animation from 100.
+        let mut t = crate::sample::lower_third();
+        assert_eq!(t.marker_model, 0);
+        let duration = t.duration;
+        let last_key = t
+            .layers
+            .iter()
+            .flat_map(|l| l.tracks.values().flatten())
+            .map(|k| k.frame)
+            .fold(0.0, f64::max);
+        assert!(t.normalize_markers());
+        let kinds: Vec<_> = t.markers.iter().map(|m| (m.kind, m.frame)).collect();
+        assert_eq!(kinds, vec![(MarkerKind::Out, 40.0)]);
+        // The 60 frames never played (40 → 100) are cut.
+        assert_eq!(t.duration, duration - 60.0);
+        let new_last = t
+            .layers
+            .iter()
+            .flat_map(|l| l.tracks.values().flatten())
+            .map(|k| k.frame)
+            .fold(0.0, f64::max);
+        assert_eq!(new_last, last_key - 60.0);
+        assert_eq!(t.hold_frame(), 40.0);
+        // Idempotent.
+        assert!(!t.normalize_markers());
+    }
+
+    #[test]
+    fn pauses_before_on_air_keep_their_role() {
+        let mut t = crate::sample::lower_third();
+        t.marker_model = MARKER_MODEL;
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        t.markers.push(Marker {
+            id: "p".into(),
+            frame: 10.0,
+            name: "Pause".into(),
+            kind: MarkerKind::Pause,
+            resume: Resume::Manual,
+        });
+        t.normalize_markers();
+        assert_eq!(t.next_stop_after(0.0), 10.0);
+        assert_eq!(t.next_stop_after(10.0), 100.0);
+        assert_eq!(t.hold_frame(), 100.0);
+    }
 }

@@ -29,11 +29,17 @@ function usePlayback(fps: number) {
       const dt = (Math.max(0, now - last) / 1000) * fps;
       last = now;
       let next = st.frame + dt;
-      // Like on air: stop on the On air, pause and Out markers (Loop plays through).
+      // Like on air: stop on the pauses and the On air point (Loop plays through).
       if (!st.loop) {
         const stop = t.markers.filter((m) => (m.kind === 'pause' || m.kind === 'out') && m.frame > st.frame + 1e-3 && m.frame <= next).sort((a, b) => a.frame - b.frame)[0];
         if (stop) {
           useDesigner.setState({ frame: stop.frame, playing: false });
+          // A timed pause plays on by itself, as on air.
+          if (stop.resume?.type === 'after')
+            setTimeout(() => {
+              const s = useDesigner.getState();
+              if (!s.playing && Math.abs(s.frame - stop.frame) < 1e-3) s.setPlaying(true);
+            }, stop.resume.seconds * 1000);
           return;
         }
       }
@@ -228,7 +234,7 @@ function TemplateList({ project }: { project: Project }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const create = async (base?: Template) => {
-    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${designTemplates(project).length + 1}`, project.zones[0]?.id);
+    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${designTemplates(project).length + 1}`, (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id);
     // Open it at once; the save follows.
     load(t);
     await saveTemplate(t);

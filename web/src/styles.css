@@ -2987,18 +2987,102 @@ select.small {
 .tl-keynav button.on {
   color: var(--key);
 }
-/* "On air" flags point left (the animation in ends there), "Out" flags point
-   right: on the same frame they sit back to back. */
-.tl-marker.pause {
-  transform: translateX(-100%);
-  border-radius: 4px 0 0 4px;
-  padding: 0 4px 0 6px;
+/* The On air point is one marker, half "On air" (the animation in ends
+   there), half "Out" (the out animation starts there), centred on its frame. */
+.tl-marker.onair {
+  transform: translateX(-50%);
+  display: flex;
+  padding: 0;
+  border-radius: 4px;
+  overflow: visible;
+  background: none;
 }
-.tl-marker.pause::before {
-  left: auto;
-  right: 0;
-  border-left: none;
-  border-right: 2px solid var(--m);
+.tl-marker.onair::before {
+  left: 50%;
+  margin-left: -1px;
+}
+.tl-marker.onair .mk-in,
+.tl-marker.onair .mk-out {
+  padding: 0 5px;
+  line-height: 14px;
+}
+.tl-marker.onair .mk-in {
+  background: var(--pvw);
+  border-radius: 4px 0 0 4px;
+}
+.tl-marker.onair .mk-out {
+  background: var(--live);
+  color: white;
+  border-radius: 0 4px 4px 0;
+}
+.tl-marker.moving,
+.tl-marker.editing {
+  z-index: 4;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+.tl-marker.onair.moving {
+  background: var(--pvw);
+  padding: 0 6px;
+}
+.tl-marker .mk-time {
+  font-family: var(--mono);
+  line-height: 14px;
+}
+.marker-editor {
+  width: 290px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.marker-editor header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.marker-editor .hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.me-field {
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.me-field > input,
+.me-field > .num-field,
+.me-field > .seg {
+  grid-column: 2 / -1;
+}
+.me-field > .num-field + em {
+  grid-column: 3;
+}
+.me-field:has(em) > .num-field {
+  grid-column: 2;
+}
+.me-field em {
+  font-style: normal;
+  font-family: var(--mono);
+  color: var(--text-3);
+  font-size: 11px;
+}
+.chip.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-color: rgba(245, 165, 36, 0.5);
+  color: var(--warn);
+  background: rgba(245, 165, 36, 0.1);
+}
+.chip.trigger:hover {
+  background: rgba(245, 165, 36, 0.2);
 }
 .layer-row .del {
   display: none;
@@ -4547,4 +4631,9 @@ input.mono {
 }
 a.btn {
   text-decoration: none;
+}
+.logo {
+  flex: none;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line-2);
 }

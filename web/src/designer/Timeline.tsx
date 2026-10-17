@@ -15,7 +15,6 @@ import {
   Globe,
   Image,
   Lock,
-  LogOut,
   Minus,
   Pause,
   Play,
@@ -29,6 +28,7 @@ import {
   StepForward,
   Table,
   Trash2,
+  X,
   Type,
   Unlock,
   Video,
@@ -39,9 +39,10 @@ import {
   Map as MapIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { childrenMap } from '../engine/Scene';
 import { newId, num, propValue } from '../engine/evaluate';
-import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type MarkerKind, type Prop, type Template } from '../engine/types';
+import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template } from '../engine/types';
 import { NumberField } from '../ui/fields';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
@@ -105,6 +106,8 @@ const sameKey = (a: KeyRef, b: KeyRef) => a.layerId === b.layerId && a.prop === 
 export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; onAdd: AddLayer }) {
   const LEFT_W = leftW;
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; frame: number } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; left: number; bottom: number } | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: DropPos } | null>(null);
   const st = useDesigner();
   const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
@@ -211,49 +214,42 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     window.addEventListener('pointerup', up);
   };
 
+  // A marker moves by dragging (its time shows meanwhile); a click edits it.
   const dragMarker = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
+    e.preventDefault();
     useDesigner.setState({ lastCoalesce: null });
-    // "On air" and "Out" on the same frame move together (Alt: just this one).
-    const m0 = template.markers.find((m) => m.id === id)!;
-    const linked = e.altKey ? [id] : template.markers.filter((m) => m.frame === m0.frame && m.kind !== 'label').map((m) => m.id);
+    const target = e.currentTarget as HTMLElement;
+    const startX = e.clientX;
+    let moved = false;
     const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - startX) < 3) return;
+      moved = true;
       const f = Math.max(0, Math.min(template.duration, Math.round(frameAt(ev.clientX))));
+      setDragging({ id, frame: f });
       useDesigner.getState().update((t) => {
-        for (const m of t.markers) if (linked.includes(m.id)) m.frame = f;
+        const m = t.markers.find((x) => x.id === id);
+        if (m) m.frame = f;
       }, `marker-${id}`);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      setDragging(null);
+      if (!moved) {
+        const r = target.getBoundingClientRect();
+        setEditing({ id, left: Math.min(r.left, window.innerWidth - 300), bottom: window.innerHeight - r.top + 6 });
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
 
-  const addMarker = (kind: MarkerKind | 'onair') =>
+  const addPause = () =>
     st.update((t) => {
       const f = Math.round(frame);
-      const pauses = t.markers.filter((m) => m.kind === 'pause').sort((a, b) => a.frame - b.frame);
-      if (kind === 'onair') {
-        // The On air point is the first pause: move it, or create it.
-        if (pauses[0]) pauses[0].frame = f;
-        else
-          t.markers.push({
-            id: newId(),
-            frame: f,
-            name: 'On air',
-            kind: 'pause',
-          });
-        return;
-      }
-      if (kind === 'out') t.markers = t.markers.filter((m) => m.kind !== 'out');
-      t.markers.push({
-        id: newId(),
-        frame: f,
-        name: kind === 'out' ? 'Out' : pauses.length ? 'Pause' : 'On air',
-        kind,
-      });
+      if (t.markers.some((m) => m.kind !== 'label' && Math.abs(m.frame - f) < 0.5)) return;
+      t.markers.push({ id: newId(), frame: f, name: 'Pause', kind: 'pause' });
     });
 
   /** ◀ ◆ ▶ of a timeline row: previous key, key at the playhead, next key. */
@@ -511,14 +507,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <Repeat size={13} /> Loop
         </button>
         <div className="spacer" />
-        <button className="btn small mk-onair" title="Set the On air point at the playhead: the take stops here" onClick={() => addMarker('onair')}>
-          <Flag size={13} /> On air
-        </button>
-        <button className="btn small mk-pause" title="Add an extra stop at the playhead, resumed by Continue (a second line, a next step…)" onClick={() => addMarker('pause')}>
+        <button className="btn small mk-pause" title="Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)" onClick={addPause}>
           <Flag size={13} /> Pause
-        </button>
-        <button className="btn small mk-out" title="Set the Out point at the playhead: Take out jumps here and plays to the end" onClick={() => addMarker('out')}>
-          <LogOut size={13} /> Out
         </button>
         <label className="zoom">
           Zoom
@@ -562,18 +552,34 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   <span>{i * step}</span>
                 </div>
               ))}
-              {markers.map((m) => (
-                <div
-                  key={m.id}
-                  className={`tl-marker ${markerRole(template, m)}`}
-                  style={{ left: m.frame * zoom }}
-                  title={`${m.name} (${m.kind}) @ ${m.frame} — drag to move`}
-                  onPointerDown={(e) => dragMarker(e, m.id)}
-                  onDoubleClick={() => st.setFrame(m.frame)}
-                >
-                  <span>{m.name}</span>
-                </div>
-              ))}
+              {markers.map((m) => {
+                const role = markerRole(template, m);
+                const moving = dragging?.id === m.id;
+                return (
+                  <div
+                    key={m.id}
+                    className={`tl-marker ${role} ${moving ? 'moving' : ''} ${editing?.id === m.id ? 'editing' : ''}`}
+                    style={{ left: m.frame * zoom }}
+                    title={`${role === 'onair' ? 'On air: the take holds here, the out animation starts here' : m.name} · ${formatTime(m.frame, fps)} — drag to move, click to edit, double-click to go there`}
+                    onPointerDown={(e) => dragMarker(e, m.id)}
+                    onDoubleClick={() => st.setFrame(m.frame)}
+                  >
+                    {moving ? (
+                      <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
+                    ) : role === 'onair' ? (
+                      <>
+                        <span className="mk-in">On air</span>
+                        <span className="mk-out">Out</span>
+                      </>
+                    ) : (
+                      <span>
+                        {m.name}
+                        {m.resume?.type === 'after' ? ` · ${m.resume.seconds}s` : m.resume?.type === 'trigger' ? ' · ⚡' : ''}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="tl-rows" onPointerDown={() => st.selectKeys([])}>
               {outF !== undefined && (
@@ -595,7 +601,118 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           </div>
         </div>
       </div>
+      {editing && template.markers.some((m) => m.id === editing.id) && <MarkerEditor id={editing.id} fps={fps} pos={editing} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+/** Popover of a marker: its time, and for a pause its name, how it resumes and delete. */
+function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos: { left: number; bottom: number }; onClose: () => void }) {
+  const st = useDesigner();
+  const t = st.template!;
+  const m = t.markers.find((x) => x.id === id)!;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('pointerdown', down);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('keydown', key);
+    };
+  }, [onClose]);
+  const edit = (fn: (x: Marker) => void, coalesce?: string) =>
+    st.update((tt) => {
+      const x = tt.markers.find((y) => y.id === id);
+      if (x) fn(x);
+    }, coalesce);
+  const onAir = m.kind === 'out';
+  const resume = m.resume ?? { type: 'manual' };
+  return createPortal(
+    <div ref={ref} className="menu marker-editor" style={{ position: 'fixed', left: Math.max(8, pos.left), bottom: pos.bottom, top: 'auto' }} onKeyDown={(e) => e.stopPropagation()}>
+      <header>
+        <span className={`marker-dot ${onAir ? 'onair' : 'pause'}`} />
+        <strong>{onAir ? 'On air · Out' : 'Pause'}</strong>
+        <div className="spacer" />
+        <button className="icon-btn ghost" title="Close" onClick={onClose}>
+          <X size={14} />
+        </button>
+      </header>
+      {onAir && <p className="hint">The take holds here; Take out plays on from here to the end. It cannot be removed.</p>}
+      {!onAir && (
+        <label className="me-field">
+          <span>Name</span>
+          <input value={m.name} onChange={(e) => edit((x) => void (x.name = e.target.value), `marker-name-${id}`)} />
+        </label>
+      )}
+      <label className="me-field">
+        <span>Time</span>
+        <NumberField value={m.frame} min={0} max={t.duration} suffix="fr" onChange={(v) => edit((x) => void (x.frame = Math.round(v)), `marker-${id}`)} />
+        <em>{formatTime(m.frame, fps)}</em>
+      </label>
+      {!onAir && (
+        <>
+          <div className="me-field">
+            <span>Resume</span>
+            <div className="seg">
+              {(
+                [
+                  ['manual', 'Operator'],
+                  ['after', 'After'],
+                  ['trigger', 'Trigger'],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  className={resume.type === k ? 'on' : ''}
+                  onClick={() =>
+                    edit((x) => {
+                      if (k === 'manual') delete x.resume;
+                      else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : 2 };
+                      else x.resume = { type: 'trigger', name: resume.type === 'trigger' ? resume.name : 'next' };
+                    })
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {resume.type === 'after' && (
+            <label className="me-field">
+              <span>Delay</span>
+              <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
+            </label>
+          )}
+          {resume.type === 'trigger' && (
+            <label className="me-field">
+              <span>Trigger</span>
+              <input value={resume.name} placeholder="goal, next, line2…" onChange={(e) => edit((x) => void (x.resume = { type: 'trigger', name: e.target.value }), `marker-trigger-${id}`)} />
+            </label>
+          )}
+          <p className="hint">
+            {resume.type === 'manual'
+              ? 'Holds until the operator presses Continue.'
+              : resume.type === 'after'
+                ? 'Holds, then plays on by itself after the delay.'
+                : 'Holds until this trigger is fired: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.'}
+          </p>
+          <div className="row end">
+            <button
+              className="btn small danger"
+              onClick={() => {
+                st.update((tt) => void (tt.markers = tt.markers.filter((x) => x.id !== id)));
+                onClose();
+              }}
+            >
+              <Trash2 size={13} /> Delete pause
+            </button>
+          </div>
+        </>
+      )}
+    </div>,
+    document.body,
   );
 }
 

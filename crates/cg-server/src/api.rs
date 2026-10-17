@@ -991,13 +991,8 @@ async fn template_thumbnail(
     }
     .cloned()
     .ok_or_else(|| not_found("template"))?;
-    // Default to the first hold point: that's what the graphic looks like on air.
-    let frame = q.frame.unwrap_or_else(|| {
-        template
-            .next_pause_after(0.0)
-            .or(template.out_frame())
-            .unwrap_or(template.duration)
-    });
+    // Default to the on-air point: that's what the graphic looks like on air.
+    let frame = q.frame.unwrap_or_else(|| template.hold_frame());
     let mut data = template.default_data();
     if let Some(extra) = q
         .data

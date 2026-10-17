@@ -1,4 +1,5 @@
-import { Clapperboard, GripVertical, Send } from 'lucide-react';
+import { GripVertical, Send } from 'lucide-react';
+import { Logo } from '../ui/Logo';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { defaultData, holdFrame } from '../engine/evaluate';
 import { LiveTime } from '../engine/LiveTime';
@@ -183,7 +184,7 @@ export function MosPlugin() {
   return (
     <div className="mos-plugin">
       <header>
-        <Clapperboard size={16} />
+        <Logo size={20} />
         <strong>Pulse CG</strong>
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           {projects.map((p) => (

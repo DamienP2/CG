@@ -135,6 +135,7 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
         zone: opts.zone.clone(),
         logic: Default::default(),
         revision: 0,
+        marker_model: 0,
     };
     template.markers = markers(json, &template, ip, fps / fr);
     let mut warnings: Vec<String> = cx
@@ -1274,6 +1275,7 @@ fn markers(json: &Json, t: &Template, ip: f64, scale: f64) -> Vec<Marker> {
                 name
             },
             kind,
+            resume: Default::default(),
         });
     }
     if out.iter().any(|m| m.kind == MarkerKind::Pause) {
@@ -1302,6 +1304,7 @@ fn markers(json: &Json, t: &Template, ip: f64, scale: f64) -> Vec<Marker> {
         frame: pause,
         name: "On air".into(),
         kind: MarkerKind::Pause,
+        resume: Default::default(),
     });
     if !out.iter().any(|m| m.kind == MarkerKind::Out) {
         out.push(Marker {
@@ -1309,6 +1312,7 @@ fn markers(json: &Json, t: &Template, ip: f64, scale: f64) -> Vec<Marker> {
             frame: out_frame.unwrap_or(pause),
             name: "Out".into(),
             kind: MarkerKind::Out,
+            resume: Default::default(),
         });
     }
     out

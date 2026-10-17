@@ -115,6 +115,23 @@ pub fn render_clip(
             break;
         }
         n += 1;
+        // A clip plays through the pauses: it only holds on the on-air point.
+        let at_pause = state.layers.get(&1).is_some_and(|i| {
+            i.phase == cg_core::Phase::OutHold
+                || (i.phase == cg_core::Phase::Holding
+                    && project
+                        .template(&i.template_id)
+                        .is_some_and(|t| i.frame < t.hold_frame() - 1e-6))
+        });
+        if at_pause {
+            let _ = state.apply(
+                project,
+                Command::Continue {
+                    zone: None,
+                    layer: Some(1),
+                },
+            );
+        }
         let item = state.layers.get(&1);
         match item {
             None => break,

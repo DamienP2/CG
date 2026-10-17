@@ -1,8 +1,8 @@
-import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, MonitorPlay, Pause, Play, Plus, RotateCcw, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronsRight, Zap, CircleStop, Copy, MonitorPlay, Pause, Play, Plus, RotateCcw, RefreshCw, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Scene } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import type { Command, Field, PlayoutItem, Playlist, Project, RundownItem, Template, WidgetControl, Zone } from '../engine/types';
+import type { Command, Field, Marker, PlayoutItem, Playlist, Project, RundownItem, Template, WidgetControl, Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat } from '../engine/formats';
@@ -168,6 +168,7 @@ function ZoneStrip({ project, layers, cuedZone, command }: { project: Project; l
         <div className="zone-body">
           {p ? <strong>{rundownName(project, p.rundownId) ?? t?.name}</strong> : <span className="muted">Free</span>}
           {p?.next && <span className="zone-next">then {rundownName(project, p.next.rundownId) ?? name(p.next.templateId)}</span>}
+          {p && <PauseResume p={p} project={project} onTrigger={(n) => command({ action: 'trigger', name: n })} />}
         </div>
         {p && <progress max={t?.duration ?? 1} value={p.frame} />}
         {p && t && <WidgetControls item={p} template={t} onControl={(id, control) => command({ action: 'widget', target: id, control, ...target })} />}
@@ -222,16 +223,33 @@ function WidgetControls({ item, template, onControl }: { item: PlayoutItem; temp
 
 const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
 
-/** Holding on the first pause is On air; on a later pause it waits for Continue. */
-function isPaused(p: PlayoutItem, project: Project) {
-  if (p.phase !== 'holding') return false;
+/** The pause marker the graphic holds on, if it holds on a pause (not on the On air point). */
+function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
+  if (p.phase !== 'holding' && p.phase !== 'outHold') return undefined;
   const t = project.templates.find((x) => x.id === p.templateId);
-  const first = t?.markers.filter((m) => m.kind === 'pause').sort((a, b) => a.frame - b.frame)[0];
-  return !!first && p.frame > first.frame + 0.5;
+  return t?.markers.find((m) => m.kind === 'pause' && Math.abs(m.frame - p.frame) < 0.5);
+}
+
+function isPaused(p: PlayoutItem, project: Project) {
+  return !!pauseOf(p, project);
 }
 
 function phaseLabel(p: PlayoutItem, project: Project) {
-  return isPaused(p, project) ? 'PAUSE' : p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' ? 'OUT' : 'PLAYING';
+  if (isPaused(p, project)) return p.phase === 'outHold' ? 'OUT · PAUSE' : 'PAUSE';
+  return p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' || p.phase === 'outHold' ? 'OUT' : 'PLAYING';
+}
+
+/** How the pause the graphic holds on resumes: a trigger to fire, or a delay. */
+function PauseResume({ p, project, onTrigger }: { p: PlayoutItem; project: Project; onTrigger: (name: string) => void }) {
+  const r = pauseOf(p, project)?.resume;
+  if (r?.type === 'trigger')
+    return (
+      <button className="chip trigger" title="Fire this trigger: every graphic waiting for it plays on" onClick={() => onTrigger(r.name)}>
+        <Zap size={11} /> {r.name}
+      </button>
+    );
+  if (r?.type === 'after') return <span className="chip">auto · {r.seconds}s</span>;
+  return null;
 }
 
 /** Channel picker + project loaded on it. */

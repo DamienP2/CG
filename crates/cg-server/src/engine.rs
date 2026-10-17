@@ -95,7 +95,11 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
             .unwrap_or(1.0);
         let (changed, snapshot) = {
             let mut st = ch.state.write().await;
-            (st.tick(step), st.clone())
+            let mut changed = st.tick(step);
+            if let Some(p) = &project {
+                changed |= st.auto_resume(p);
+            }
+            (changed, st.clone())
         };
         if changed {
             state.broadcast_channel(&ch).await;
