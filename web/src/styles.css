@@ -6456,3 +6456,10 @@ a.btn {
   width: 100%;
   height: 3px;
 }
+/* Properties panel > General: what the layer shows. */
+.pp-general {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 12px 26px;
+}

@@ -7,7 +7,9 @@ import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
-import { findLayer, isAnimated, setProp, toggleKeyAt, useDesigner } from './designerStore';
+import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, useDesigner } from './designerStore';
+import { isTimed } from '../engine/widgets';
+import { WidgetRunButtons } from './WidgetRun';
 import { ICONS } from './LayersPanel';
 
 interface PropSpec {
@@ -790,6 +792,41 @@ function FormatNote({ layer }: { layer: Layer }) {
 
 /** Right panel: the properties of the selected layer. Its content, widget
  *  settings and data live in the left panel (DataPanel). */
+/** What a layer shows: its text, picture, widget settings (and ▶ ❚❚ ⟲ to try a widget). */
+function LayerGeneral({ layer }: { layer: Layer }) {
+  const { update, template } = useDesigner();
+  if (!template) return null;
+  const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
+  const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
+  return (
+    <div className="pp-general">
+      {layer.type === 'text' && (
+        <>
+          <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
+          <FieldChips template={template} onInsert={(tok) => set('text', layer.text + tok)} />
+          <p className="hint">Insert a variable with {'{{key}}'}: the operator (or a data source) fills it.</p>
+        </>
+      )}
+      {layer.type === 'image' && <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />}
+      <WidgetSettings layer={layer} template={template} set={set} />
+      {isTimed(layer) && (
+        <div className="dp-run">
+          <span className="prop-label">Try it</span>
+          <WidgetRunButtons layer={layer} />
+        </div>
+      )}
+      {isTimed(layer) && (
+        <label className="check" title="The operator starts it with ▶ in the controls of the graphic on air (or API action widget)">
+          <input type="checkbox" checked={!!layer.manualStart} onChange={(e) => edit((l) => void (l.manualStart = e.target.checked || undefined))} />
+          Start manually (the operator presses ▶)
+        </label>
+      )}
+      {layer.type === 'group' && <p className="hint">A group holds layers; its properties apply to all of them.</p>}
+      {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{LABELS[layer.type]}</p>}
+    </div>
+  );
+}
+
 function LayerInspector({ layer }: { layer: Layer }) {
   const { update } = useDesigner();
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
@@ -807,6 +844,9 @@ function LayerInspector({ layer }: { layer: Layer }) {
         </span>
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
+      <Group id="general" title="General">
+        <LayerGeneral layer={layer} />
+      </Group>
       <Group id="properties" title="Properties">
         <Group id="transform" title="Transform" level={2}>
           {TRANSFORM_ROWS.map((r) => (

@@ -1,81 +1,25 @@
-import { Database, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import { BindingEditor } from '../data/BindingEditor';
-import type { Field, FieldKind, Layer, Template } from '../engine/types';
-import { isTimed } from '../engine/widgets';
+import type { Field, FieldKind, Template } from '../engine/types';
 import { TextInput } from '../ui/fields';
-import { findLayer, LABELS, useDesigner } from './designerStore';
-import { AssetPicker, FieldChips, WidgetSettings, type Attrs } from './Inspector';
-import { ICONS } from './LayersPanel';
+import { useDesigner } from './designerStore';
 import { DataCanvasButton } from './DataCanvas';
-import { WidgetRunButtons } from './WidgetRun';
 
 /*
- * Left panel, under the templates: what a layer shows (its text, its widget
- * settings, its picture) and the data: the template's variables (the fields
- * the operator fills in, or that a data source feeds). The right panel keeps
- * the layer's properties; the Data canvas wires sources, variables and layers.
+ * Left panel, under the templates: the template's variables (the fields the
+ * operator fills in, or that a data source feeds). What a layer shows is in
+ * the right panel (General); the Data canvas wires sources, variables and layers.
  */
 
 export function DataPanel() {
-  const { template, selected } = useDesigner();
-  const layer = template && selected.length === 1 ? findLayer(template, selected[0]) : undefined;
-  const [tab, setTab] = useState<'widget' | 'variables'>('widget');
+  const template = useDesigner((s) => s.template);
   if (!template) return null;
-  const active = layer ? tab : 'variables';
   return (
     <div className="data-panel">
-      <div className="dp-tabs" role="tablist">
-        <button role="tab" aria-selected={active === 'widget'} className={active === 'widget' ? 'on' : ''} disabled={!layer} onClick={() => setTab('widget')} title={layer ? undefined : 'Select a layer'}>
-          {layer ? (() => {
-            const Icon = ICONS[layer.type];
-            return <Icon size={13} />;
-          })() : <SlidersHorizontal size={13} />}
-          <span>{layer ? layer.name : 'Widget'}</span>
-        </button>
-        <button role="tab" aria-selected={active === 'variables'} className={active === 'variables' ? 'on' : ''} onClick={() => setTab('variables')}>
-          <Database size={13} /> Variables <span className="count">{template.fields.length}</span>
-        </button>
+      <div className="dp-body">
+        <Variables template={template} />
       </div>
-      <div className="dp-body">{active === 'widget' && layer ? <WidgetData layer={layer} template={template} /> : <Variables template={template} />}</div>
     </div>
-  );
-}
-
-/** The selected layer's content (its properties are in the right panel, with their { } buttons). */
-function WidgetData({ layer, template }: { layer: Layer; template: Template }) {
-  const { update } = useDesigner();
-  const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
-  const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
-  return (
-    <>
-      <div className="dp-section">
-        <div className="dp-title">{LABELS[layer.type]}</div>
-        {layer.type === 'text' && (
-          <>
-            <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
-            <FieldChips template={template} onInsert={(tok) => set('text', layer.text + tok)} />
-            <p className="hint">Insert a variable with {'{{key}}'}: the operator (or a data source) fills it.</p>
-          </>
-        )}
-        {layer.type === 'image' && <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />}
-        <WidgetSettings layer={layer} template={template} set={set} />
-        {isTimed(layer) && (
-          <div className="dp-run">
-            <span className="prop-label">Try it</span>
-            <WidgetRunButtons layer={layer} />
-          </div>
-        )}
-        {isTimed(layer) && (
-          <label className="check" title="The operator starts it with ▶ in the zone card (or API action widget)">
-            <input type="checkbox" checked={!!layer.manualStart} onChange={(e) => edit((l) => void (l.manualStart = e.target.checked || undefined))} />
-            Start manually (the operator presses ▶)
-          </label>
-        )}
-        {layer.type === 'group' && <p className="hint">A group holds layers; its properties apply to all of them.</p>}
-      </div>
-
-    </>
   );
 }
 
@@ -86,7 +30,7 @@ function Variables({ template }: { template: Template }) {
   return (
     <div className="dp-section">
       <div className="dp-title">
-        <span>Variables of “{template.name}”</span>
+        <span>Variables · {template.fields.length}</span>
         <DataCanvasButton className="btn small dp-canvas" />
         <button
           className="icon-btn ghost"
