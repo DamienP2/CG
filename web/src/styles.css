@@ -5582,3 +5582,139 @@ a.btn {
 .pp-fields.n2 .num-field .suffix {
   display: none;
 }
+/* ▶ ❚❚ ⟲ of a widget run by hand in the designer. */
+.widget-run {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.widget-run button {
+  height: 28px;
+  min-width: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--panel-3);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.widget-run button:hover {
+  background: var(--line-2);
+}
+.widget-run button.on {
+  background: var(--accent);
+  color: #fff;
+}
+.widget-run.compact button {
+  height: 24px;
+  min-width: 28px;
+}
+/* Data canvas: sources → variables → layers. */
+.dp-title .dp-canvas {
+  margin-left: auto;
+  margin-right: 4px;
+  height: 22px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.dp-run {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logic-node.kind-source,
+.logic-palette .kind-source {
+  --kind: #38bdf8;
+}
+.logic-node.kind-field,
+.logic-palette .kind-field {
+  --kind: var(--accent);
+}
+.logic-node.kind-layer,
+.logic-palette .kind-layer {
+  --kind: var(--pvw);
+}
+.logic-palette .kind-source > svg,
+.logic-palette .kind-field > svg,
+.logic-palette .kind-layer > svg {
+  color: var(--kind);
+  flex: none;
+}
+.dc-pal-title {
+  margin-top: 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.data-canvas .ln-head .port.in {
+  left: -7px;
+}
+.dc-title {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.dc-title:focus {
+  outline: none;
+  background: var(--bg);
+}
+.dc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.dc-key {
+  flex: none;
+  align-self: center;
+  font-size: 10.5px;
+  color: var(--accent-2);
+}
+.dc-value {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--bg);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dc-value.live {
+  color: var(--pvw);
+}
+.data-canvas .ln-input {
+  gap: 6px;
+}
+.dc-port-del {
+  margin-left: auto;
+  margin-right: 6px;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 2px;
+  display: none;
+}
+.data-canvas .ln-input:hover .dc-port-del {
+  display: inline-flex;
+}
+.live-dot.err {
+  background: var(--live);
+  box-shadow: 0 0 0 3px var(--live-soft);
+}

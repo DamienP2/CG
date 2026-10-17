@@ -3,7 +3,7 @@ import { LiveTime, useTicker } from '../engine/LiveTime';
 import { hasLiveWidgets, Scene, Viewport } from '../engine/Scene';
 import { num, propValue } from '../engine/evaluate';
 import type { Project } from '../engine/types';
-import { findLayer, setProp, useDesigner } from './designerStore';
+import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
 import { useBoundData } from '../data/dataStore';
 
@@ -28,7 +28,9 @@ export function Stage({ project: _project, size, showSafe, showZones, background
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
   const [boxes, setBoxes] = useState<Box[]>([]);
-  const now = useTicker(!!template && hasLiveWidgets(template));
+  const widgetRun = useDesigner((s) => s.widgetRun);
+  const running = Object.values(widgetRun).some((r) => r.pausedAge === undefined);
+  const now = useTicker((!!template && hasLiveWidgets(template)) || running);
   const fps = project.frameRate.num / project.frameRate.den || 1;
 
   useLayoutEffect(() => {
@@ -153,7 +155,7 @@ export function Stage({ project: _project, size, showSafe, showZones, background
         <div ref={sceneRef} onPointerDown={onPointerDown} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-            <LiveTime ageSecs={frame / fps} clientNow={now}>
+            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)}>
               <Scene template={template} frame={frame} data={data} interactive />
             </LiveTime>
           </Viewport>

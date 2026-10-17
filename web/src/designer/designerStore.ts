@@ -32,6 +32,8 @@ interface DesignerStore {
   readOnly: boolean;
   /** Counts user edits (autosave saves on change, not on load). */
   edits: number;
+  /** Widgets run by hand in the designer (▶ ❚❚ ⟲), apart from the playhead. */
+  widgetRun: Record<string, WidgetRun>;
 
   load: (t: Template | null) => void;
   /** Shows a newer version of the open template (read only) without resetting the view. */
@@ -48,7 +50,17 @@ interface DesignerStore {
   selectKeys: (keys: KeyRef[]) => void;
   toggleExpanded: (id: string) => void;
   set: (partial: Partial<DesignerStore>) => void;
+  controlWidget: (layerId: string, c: 'start' | 'pause' | 'reset' | 'playhead') => void;
 }
+
+/** A widget's own clock: running since `startedAt` (ms), or stopped at `pausedAge` seconds. */
+export interface WidgetRun {
+  startedAt: number;
+  pausedAge?: number;
+}
+
+/** Seconds a hand-run widget has been running. */
+export const runAge = (r: WidgetRun, now: number) => r.pausedAge ?? Math.max(0, (now - r.startedAt) / 1000);
 
 const HISTORY = 200;
 
@@ -71,6 +83,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   previewData: {},
   readOnly: false,
   edits: 0,
+  widgetRun: {},
 
   load(t) {
     const base = t ? structuredClone(t) : null;
@@ -85,6 +98,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
       selectedKeys: [],
       previewData: t ? defaultData(t) : {},
       lastCoalesce: null,
+      widgetRun: {},
     });
   },
 
@@ -152,6 +166,17 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   selectKeys: (selectedKeys) => set({ selectedKeys }),
   toggleExpanded: (id) => set({ expanded: { ...get().expanded, [id]: !get().expanded[id] } }),
   set: (partial) => set(partial),
+
+  controlWidget(id, c) {
+    const run = { ...get().widgetRun };
+    const now = Date.now();
+    const cur = run[id];
+    if (c === 'playhead') delete run[id];
+    else if (c === 'reset') run[id] = { startedAt: now, pausedAge: 0 };
+    else if (c === 'pause') run[id] = { startedAt: now, pausedAge: cur ? runAge(cur, now) : get().frame / 50 };
+    else run[id] = { startedAt: now - (cur ? runAge(cur, now) : 0) * 1000 };
+    set({ widgetRun: run });
+  },
 }));
 
 // ---------------------------------------------------------------------------

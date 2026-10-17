@@ -11,6 +11,7 @@ import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
+import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
@@ -393,6 +394,7 @@ export function Designer() {
           <FormatBar project={project} />
           <div className="spacer" />
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
+          <DataCanvasButton />
           <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
             <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
           </button>
@@ -420,6 +422,7 @@ export function Designer() {
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
+      <DataCanvas />
     </div>
   );
 }

@@ -113,7 +113,7 @@ export function BindingEditor({
   );
 }
 
-function PickDialog({ source, path, onPick, onClose }: { source: string; path: string; onPick: (p: string) => void; onClose: () => void }) {
+export function PickDialog({ source, path, onPick, onClose }: { source: string; path: string; onPick: (p: string) => void; onClose: () => void }) {
   const [value, setValue] = useState<unknown>(undefined);
   const name = useData((s) => s.sources.find((x) => x.id === source)?.name ?? source);
   useEffect(() => {
