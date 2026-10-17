@@ -6704,3 +6704,171 @@ a.btn {
 .pp-general .pp-row {
   margin-left: -26px;
 }
+/* Rulers, guides, areas to keep clear. */
+.ruler {
+  position: absolute;
+  background: var(--panel);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9px;
+  overflow: hidden;
+  cursor: copy;
+  user-select: none;
+  z-index: 3;
+}
+.ruler-x {
+  left: 0;
+  top: -20px;
+  height: 18px;
+  background-image: linear-gradient(to right, var(--line-2) 1px, transparent 1px);
+  background-size: 10px 5px;
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+}
+.ruler-y {
+  top: 0;
+  left: -20px;
+  width: 18px;
+  background-image: linear-gradient(to bottom, var(--line-2) 1px, transparent 1px);
+  background-size: 5px 10px;
+  background-repeat: repeat-y;
+  background-position: 100% 0;
+}
+.ruler-tick {
+  position: absolute;
+  white-space: nowrap;
+}
+.ruler-x .ruler-tick {
+  top: 1px;
+  padding-left: 3px;
+  border-left: 1px solid var(--text-3);
+  height: 17px;
+}
+.ruler-y .ruler-tick {
+  left: 1px;
+  padding-top: 2px;
+  border-top: 1px solid var(--text-3);
+  width: 17px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  transform-origin: center;
+}
+.guide {
+  position: absolute;
+  z-index: 2;
+}
+.guide::before {
+  content: '';
+  position: absolute;
+  background: #22d3ee;
+  opacity: 0.85;
+}
+.guide.v {
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  margin-left: -3px;
+  cursor: col-resize;
+}
+.guide.v::before {
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.guide.h {
+  left: 0;
+  right: 0;
+  height: 7px;
+  margin-top: -3px;
+  cursor: row-resize;
+}
+.guide.h::before {
+  top: 3px;
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.guide span {
+  display: none;
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #22d3ee;
+  color: #062b33;
+  font: 10px var(--mono);
+}
+.guide:hover span,
+body.dragging-guide .guide span {
+  display: block;
+}
+.exclusion {
+  position: absolute;
+  pointer-events: none;
+  background: repeating-linear-gradient(45deg, rgba(255, 59, 92, 0.22) 0 6px, rgba(255, 59, 92, 0.08) 6px 12px);
+  outline: 1px solid rgba(255, 59, 92, 0.7);
+}
+.exclusion span {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ff8a9b;
+  white-space: nowrap;
+}
+.guides-menu {
+  width: 320px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gm-row {
+  display: flex;
+  gap: 10px;
+}
+.gm-row label,
+.gm-xywh label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.gm-row input {
+  width: 56px;
+}
+.gm-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.gm-excl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.gm-excl .row input {
+  flex: 1;
+}
+.gm-xywh {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.gm-xywh input {
+  width: 100%;
+  min-width: 0;
+}

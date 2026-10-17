@@ -543,6 +543,64 @@ pub struct LayerOverride {
 }
 
 /// An alternative layout of a project, e.g. 9:16 for social media. The
+/// Designer aids of a project. Positions are fractions of the picture
+/// (0..1), so they hold in every format.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Guides {
+    /// Vertical guides (x).
+    #[serde(default)]
+    pub vertical: Vec<f64>,
+    /// Horizontal guides (y).
+    #[serde(default)]
+    pub horizontal: Vec<f64>,
+    /// Action safe and title safe margins (fractions, 0.05 = 5 %).
+    #[serde(default = "default_action_safe")]
+    pub action_safe: f64,
+    #[serde(default = "default_title_safe")]
+    pub title_safe: f64,
+    /// Areas graphics must leave clear (channel bug, sign language box…).
+    #[serde(default)]
+    pub exclusions: Vec<Exclusion>,
+}
+
+fn default_action_safe() -> f64 {
+    0.05
+}
+fn default_title_safe() -> f64 {
+    0.1
+}
+
+impl Default for Guides {
+    fn default() -> Self {
+        Guides {
+            vertical: Vec::new(),
+            horizontal: Vec::new(),
+            action_safe: default_action_safe(),
+            title_safe: default_title_safe(),
+            exclusions: Vec::new(),
+        }
+    }
+}
+
+impl Guides {
+    pub fn is_default(&self) -> bool {
+        *self == Guides::default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Exclusion {
+    pub id: String,
+    pub name: String,
+    /// Fractions of the picture.
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
 /// main format is the project's own width × height (id "main").
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1118,6 +1176,9 @@ pub struct Project {
     /// there. A draft without a published template is a new template.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drafts: Vec<Template>,
+    /// Designer aids: guides, safe areas, areas to keep clear.
+    #[serde(default, skip_serializing_if = "Guides::is_default")]
+    pub guides: Guides,
 }
 
 impl Project {

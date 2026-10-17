@@ -6,6 +6,7 @@ import type { Project } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
 import { useBoundData } from '../data/dataStore';
+import { snapShift, snapTargets, StageGuides, useGuidesView, useProjectGuides } from './Guides';
 
 interface Box {
   id: string;
@@ -19,7 +20,7 @@ type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 /** The canvas, at the size of the format being edited. */
-export function Stage({ project: _project, size, showSafe, showZones, background }: { project: Project; size: { width: number; height: number }; showSafe: boolean; showZones: boolean; background: string }) {
+export function Stage({ project: _project, size, showZones, background }: { project: Project; size: { width: number; height: number }; showZones: boolean; background: string }) {
   const project = { ..._project, width: size.width, height: size.height };
   const { template, frame, previewData, selected, format } = useDesigner();
   // Bound fields show their live value, like on air.
@@ -32,6 +33,11 @@ export function Stage({ project: _project, size, showSafe, showZones, background
   const running = Object.values(widgetRun).some((r) => r.pausedAge === undefined);
   const now = useTicker((!!template && hasLiveWidgets(template)) || running);
   const fps = project.frameRate.num / project.frameRate.den || 1;
+  // Snapping targets, read by the drag handler.
+  const [guides] = useProjectGuides(_project);
+  const view = useGuidesView();
+  const snapRef = useRef({ on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) });
+  snapRef.current = { on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) };
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -71,10 +77,27 @@ export function Stage({ project: _project, size, showSafe, showZones, background
       const d = drag.current;
       const st = useDesigner.getState();
       if (!d || !st.template) return;
-      const dx = (e.clientX - d.startX) / scale;
-      const dy = (e.clientY - d.startY) / scale;
+      let dx = (e.clientX - d.startX) / scale;
+      let dy = (e.clientY - d.startY) / scale;
       const snap = e.shiftKey ? 10 : 1;
       const r = (v: number) => Math.round(v / snap) * snap;
+      // Snap the box's edges (and centre when moving) to the guides, edges and areas.
+      const first = Object.values(d.start)[0];
+      if (first && snapRef.current.on && !e.altKey) {
+        const { x: tx, y: ty } = snapRef.current.targets;
+        const th = 6 / scale;
+        const nx = first.x + dx;
+        const ny = first.y + dy;
+        if (d.mode === 'move') {
+          dx += snapShift([nx, nx + first.w / 2, nx + first.w], tx, th);
+          dy += snapShift([ny, ny + first.h / 2, ny + first.h], ty, th);
+        } else {
+          if (d.mode.includes('e')) dx += snapShift([first.x + first.w + dx], tx, th);
+          if (d.mode.includes('w')) dx += snapShift([nx], tx, th);
+          if (d.mode.includes('s')) dy += snapShift([first.y + first.h + dy], ty, th);
+          if (d.mode.includes('n')) dy += snapShift([ny], ty, th);
+        }
+      }
       st.update((t) => {
         for (const [id, s] of Object.entries(d.start)) {
           const l = findLayer(t, id);
@@ -159,12 +182,7 @@ export function Stage({ project: _project, size, showSafe, showZones, background
               <Scene template={template} frame={frame} data={data} interactive />
             </LiveTime>
           </Viewport>
-          {showSafe && (
-            <>
-              <div className="safe-area" style={{ inset: '5%' }} />
-              <div className="safe-area title" style={{ inset: '10%' }} />
-            </>
-          )}
+          <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
           {showZones && <ZoneOverlay zones={_project.zones ?? []} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>

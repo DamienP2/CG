@@ -312,6 +312,26 @@ export interface Project {
   formats: Format[];
   /** Designer drafts not yet published (the operator uses `templates`). */
   drafts?: Template[];
+  /** Designer aids (mirror of model::Guides). */
+  guides?: Guides;
+}
+
+/** Guides, safe areas and areas to keep clear; fractions of the picture (0..1). */
+export interface Guides {
+  vertical: number[];
+  horizontal: number[];
+  actionSafe: number;
+  titleSafe: number;
+  exclusions: Exclusion[];
+}
+
+export interface Exclusion {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface Playlist {

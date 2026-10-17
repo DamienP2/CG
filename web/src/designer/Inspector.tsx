@@ -1067,7 +1067,7 @@ function TemplateInspector({ template }: { template: Template }) {
         <p className="hint">One template at a time per zone; zones are on air together.</p>
       </Section>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
-      <p className="hint pad">Variables and data are in the panel on the left, under the templates.</p>
+      <p className="hint pad">Variables, data sources and their wiring are in the Data canvas (Data button in the toolbar).</p>
     </>
   );
 }

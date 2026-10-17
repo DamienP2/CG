@@ -47,6 +47,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/zones", put(put_zones))
         .route("/api/projects/{id}/playlists", put(put_playlists))
         .route("/api/projects/{id}/formats", put(put_formats))
+        .route("/api/projects/{id}/guides", put(put_guides))
         .route(
             "/api/projects/{id}/templates/{tid}",
             put(put_template).delete(delete_template),
@@ -471,6 +472,7 @@ async fn create_project(
             p
         }
         None => Project {
+            guides: Default::default(),
             id: String::new(),
             name: String::new(),
             description: String::new(),
@@ -941,6 +943,34 @@ async fn put_playlists(
 
 /// Replaces the alternative formats (9:16, 1:1…). Removing a format drops
 /// its layer overrides.
+async fn put_guides(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(g): Json<cg_core::Guides>,
+) -> ApiResult<StatusCode> {
+    require(me.can_design(&id))?;
+    let frac = |v: f64| v.is_finite() && (-0.5..=1.5).contains(&v);
+    if !g.vertical.iter().chain(&g.horizontal).all(|v| frac(*v))
+        || !(0.0..0.5).contains(&g.action_safe)
+        || !(0.0..0.5).contains(&g.title_safe)
+        || !g.exclusions.iter().all(|e| {
+            frac(e.x)
+                && frac(e.y)
+                && e.width > 0.0
+                && e.height > 0.0
+                && e.width <= 1.0
+                && e.height <= 1.0
+        })
+    {
+        return Err(bad("guides out of the picture"));
+    }
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    p.guides = g;
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn put_formats(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,

@@ -996,6 +996,7 @@ fn demo_project_layers() -> Project {
     data.insert("name".to_string(), "Marie Curie".to_string());
     data.insert("title".to_string(), "Physicist & chemist".to_string());
     Project {
+        guides: Default::default(),
         id: "demo".into(),
         name: "Demo show".into(),
         description: String::new(),

@@ -550,6 +550,7 @@ mod tests {
 
     fn project() -> Project {
         Project {
+            guides: Default::default(),
             id: "p".into(),
             name: "p".into(),
             description: String::new(),

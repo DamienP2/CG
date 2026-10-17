@@ -1,4 +1,4 @@
-import { ChevronDown, LayoutGrid, Copy, FileUp, Grid3x3, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { ChevronDown, LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
@@ -11,6 +11,7 @@ import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
+import { GuidesMenu } from './Guides';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
@@ -318,7 +319,6 @@ const MIN_LEFT = 280;
 export function Designer() {
   const project = useApp((s) => s.project);
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
-  const [showSafe, setShowSafe] = useState(true);
   const [zonesOpen, setZonesOpen] = useState(false);
   const [showZones, setShowZones] = useState(true);
   const [logicOpen, setLogicOpen] = useState(false);
@@ -393,9 +393,7 @@ export function Designer() {
             <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
           </button>
           <DataCanvasButton />
-          <button className={`btn small ${showSafe ? 'on' : ''}`} onClick={() => setShowSafe(!showSafe)} title="Safe areas (action 5 %, title 10 %)">
-            <Grid3x3 size={13} />
-          </button>
+          <GuidesMenu project={project} />
           <button className="btn small bg-toggle" title={`Stage background: ${BG_LABELS[background]} (click to change)`} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>
@@ -403,7 +401,7 @@ export function Designer() {
           <span className={`save-state ${saveState}`}>{lock.state.status === 'held' ? 'Read only' : saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
         </div>
         <div className="stage-holder">
-          <Stage project={project} size={formatById(project, format)} showSafe={showSafe} showZones={showZones} background={background} />
+          <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} />
         </div>
       </main>
       <aside className="panel right">
