@@ -1,6 +1,6 @@
 // Relations between values — mirror of crates/cg-core/src/logic.rs.
 import { COLOR_PROPS, type Data, type Layer, type Logic, type LogicNode, type Prop, type TextMetric } from './types';
-import { parseHex, type Resolved } from './evaluate';
+import { parseHex, transformText, type Resolved } from './evaluate';
 
 export type LVal = number | string;
 
@@ -190,12 +190,12 @@ export function measureLayer(layers: Layer[], data: Data, interpolate: (t: strin
     const l = layers.find((x) => x.id === id);
     if (!l || l.type !== 'text') return 0;
     let text = interpolate(l.text, data);
-    if (l.uppercase) text = text.toUpperCase();
+    text = l.uppercase ? text.toUpperCase() : transformText(text, l.transform);
     const size = typeof v.fontSize === 'number' ? v.fontSize : 0;
     const lines = text.split('\n');
     if (metric === 'lines') return lines.length;
     if (metric === 'chars') return [...text].length;
-    if (metric === 'height') return text ? lines.length * size * 1.2 : 0;
+    if (metric === 'height') return text ? lines.length * size * (l.lineHeight ?? 1.2) : 0;
     if (!text) return 0;
     ctx2d ??= document.createElement('canvas').getContext('2d');
     if (!ctx2d) return 0;

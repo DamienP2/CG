@@ -157,6 +157,47 @@ impl Prop {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
+pub enum TextTransform {
+    #[default]
+    None,
+    Upper,
+    Lower,
+    /// First letter of each word.
+    Capitalize,
+}
+
+impl TextTransform {
+    pub fn is_none(&self) -> bool {
+        *self == TextTransform::None
+    }
+
+    pub fn apply(&self, t: &str) -> String {
+        match self {
+            TextTransform::None => t.to_string(),
+            TextTransform::Upper => t.to_uppercase(),
+            TextTransform::Lower => t.to_lowercase(),
+            TextTransform::Capitalize => crate::datapath::filter(t, &DataFilter::Capitalize),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum TextDecoration {
+    #[default]
+    None,
+    Underline,
+    LineThrough,
+}
+
+impl TextDecoration {
+    pub fn is_none(&self) -> bool {
+        *self == TextDecoration::None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub enum TextAlign {
     #[default]
     Left,
@@ -199,6 +240,14 @@ pub enum LayerKind {
         /// Paragraph: lines wrap at the box width.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         wrap: bool,
+        /// Case change (`uppercase` = true still means upper case).
+        #[serde(default, skip_serializing_if = "TextTransform::is_none")]
+        transform: TextTransform,
+        #[serde(default, skip_serializing_if = "TextDecoration::is_none")]
+        decoration: TextDecoration,
+        /// Line height, in font sizes (default 1.2).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        line_height: Option<f32>,
     },
     #[serde(rename_all = "camelCase")]
     Image {

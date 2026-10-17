@@ -1,5 +1,5 @@
 // Animation evaluation — mirror of crates/cg-core/src/{easing,anim}.rs.
-import { COLOR_PROPS, PROPS, type Color, type Data, type Easing, type Keyframe, type Layer, type Prop, type Template, type Value } from './types';
+import { COLOR_PROPS, PROPS, type Color, type Data, type Easing, type Keyframe, type Layer, type Prop, type Template, type TextTransform, type Value } from './types';
 
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number, x: number): number {
   x1 = Math.min(1, Math.max(0, x1));
@@ -118,6 +118,32 @@ export function sampleTrack(track: Keyframe[] | undefined, frame: number): Value
     }
   }
   return sorted[sorted.length - 1].value;
+}
+
+/** Mirror of TextTransform::apply. */
+export function transformText(t: string, transform?: TextTransform): string {
+  switch (transform) {
+    case 'upper':
+      return t.toUpperCase();
+    case 'lower':
+      return t.toLowerCase();
+    case 'capitalize': {
+      let start = true;
+      let out = '';
+      for (const c of t) {
+        if (start && c.toLowerCase() !== c.toUpperCase()) {
+          out += c.toUpperCase();
+          start = false;
+        } else {
+          out += c;
+          if (/\s/.test(c) || c === '-') start = true;
+        }
+      }
+      return out;
+    }
+    default:
+      return t;
+  }
 }
 
 export function interpolateText(text: string, data: Data): string {

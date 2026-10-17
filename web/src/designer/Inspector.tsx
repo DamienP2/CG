@@ -440,19 +440,6 @@ export function AssetPicker({ value, onChange }: { value: string; onChange: (v: 
 
 export type Attrs = Record<string, unknown>;
 
-/** Inserts `{{field}}` placeholders into a text attribute. */
-export function FieldChips({ template, onInsert }: { template: Template; onInsert: (token: string) => void }) {
-  if (!template.fields.length) return null;
-  return (
-    <div className="chips">
-      {template.fields.map((f) => (
-        <button key={f.key} className="chip" onClick={() => onInsert(`{{${f.key}}}`)}>
-          + {f.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -495,14 +482,9 @@ function HexInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 /** Settings of prefab widgets. */
-export function WidgetSettings({ layer, template, set }: { layer: Layer; template: Template; set: (key: string, v: unknown, coalesce?: boolean) => void }) {
+export function WidgetSettings({ layer, set }: { layer: Layer; set: (key: string, v: unknown, coalesce?: boolean) => void }) {
   const a = layer as unknown as Attrs;
-  const text = (key: string, multiline = false, placeholder?: string) => (
-    <>
-      <TextInput multiline={multiline} value={String(a[key] ?? '')} placeholder={placeholder} onChange={(v) => set(key, v, true)} />
-      <FieldChips template={template} onInsert={(tok) => set(key, `${a[key] ?? ''}${tok}`)} />
-    </>
-  );
+  const text = (key: string, multiline = false, placeholder?: string) => <TextInput multiline={multiline} value={String(a[key] ?? '')} placeholder={placeholder} onChange={(v) => set(key, v, true)} />;
   const check = (key: string, label: string) => (
     <label className="check">
       <input type="checkbox" checked={!!a[key]} onChange={(e) => set(key, e.target.checked)} />
@@ -790,10 +772,38 @@ function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: str
             { value: 'bottom', label: 'Bot' },
           ]}
         />
-        <button className={`btn small ${layer.uppercase ? 'on' : ''}`} onClick={() => set('uppercase', !layer.uppercase)}>
-          AA
-        </button>
+        {layer.type !== 'text' && (
+          <button className={`btn small ${layer.uppercase ? 'on' : ''}`} onClick={() => set('uppercase', !layer.uppercase)} title="Upper case">
+            AA
+          </button>
+        )}
       </div>
+      {layer.type === 'text' && (
+        <div className="row">
+          <Segmented
+            value={layer.uppercase ? 'upper' : (layer.transform ?? 'none')}
+            onChange={(v) => {
+              set('uppercase', false);
+              set('transform', v === 'none' ? undefined : v);
+            }}
+            options={[
+              { value: 'none', label: <span title="As typed">—</span> },
+              { value: 'upper', label: <span title="UPPER CASE">AA</span> },
+              { value: 'lower', label: <span title="lower case">aa</span> },
+              { value: 'capitalize', label: <span title="Each Word">Aa</span> },
+            ]}
+          />
+          <Segmented
+            value={layer.decoration ?? 'none'}
+            onChange={(v) => set('decoration', v === 'none' ? undefined : v)}
+            options={[
+              { value: 'none', label: <span title="No decoration">—</span> },
+              { value: 'underline', label: <span title="Underline" style={{ textDecoration: 'underline' }}>U</span> },
+              { value: 'lineThrough', label: <span title="Strike through" style={{ textDecoration: 'line-through' }}>S</span> },
+            ]}
+          />
+        </div>
+      )}
     </>
   );
 }
@@ -838,16 +848,27 @@ function LayerGeneral({ layer }: { layer: Layer }) {
       {layer.type === 'text' && (
         <>
           <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
-          <FieldChips template={template} onInsert={(tok) => set('text', layer.text + tok)} />
           <label className="check" title="Paragraph: the lines wrap at the width of the box">
             <input type="checkbox" checked={!!layer.wrap} onChange={(e) => edit((l) => void (l.type === 'text' && (l.wrap = e.target.checked || undefined)))} />
             Wrap lines (paragraph)
           </label>
-          <p className="hint">Insert a variable with {'{{key}}'}: the operator (or a data source) fills it.</p>
         </>
       )}
+      {TEXT_LIKE.has(layer.type) && (
+        <div className="pp-typo">
+          <FontControls layer={layer as Layer & FontStyle} set={set} />
+          <GroupRow layer={layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
+          <GroupRow layer={layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
+          {layer.type === 'text' && (
+            <div className="row">
+              <span className="prop-label">Line height</span>
+              <NumberField value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} suffix="×" onChange={(v) => edit((l) => void (l.type === 'text' && (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v)), `lh-${layer.id}`)} />
+            </div>
+          )}
+        </div>
+      )}
       {layer.type === 'image' && <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />}
-      <WidgetSettings layer={layer} template={template} set={set} />
+      <WidgetSettings layer={layer} set={set} />
       {isTimed(layer) && (
         <div className="dp-run">
           <span className="prop-label">Try it</span>
@@ -869,7 +890,6 @@ function LayerGeneral({ layer }: { layer: Layer }) {
 function LayerInspector({ layer }: { layer: Layer }) {
   const { update } = useDesigner();
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
-  const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
   const textLike = TEXT_LIKE.has(layer.type);
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
   const Icon = ICONS[layer.type];
@@ -900,13 +920,6 @@ function LayerInspector({ layer }: { layer: Layer }) {
             STYLE.filter((st) => (st.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((st) => (
               <GroupRow key={st.prop} layer={layer} spec={{ label: st.label === 'Stroke W' ? 'Stroke width' : st.label, props: [st.prop], min: st.min, precision: st.precision, suffix: 'px' }} />
             ))}
-          {textLike && (
-            <>
-              <GroupRow layer={layer} spec={{ label: 'Font size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-              <GroupRow layer={layer} spec={{ label: 'Tracking', props: ['letterSpacing'], precision: 1 }} />
-              <FontControls layer={layer as Layer & FontStyle} set={set} />
-            </>
-          )}
           {layer.type === 'image' && (
             <div className="row">
               <span className="prop-label">Fit</span>

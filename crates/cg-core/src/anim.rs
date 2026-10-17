@@ -171,10 +171,20 @@ pub fn resolve_layer<'a>(
         .collect();
     let (text, image_src) = match &layer.kind {
         LayerKind::Text {
-            text, uppercase, ..
+            text,
+            uppercase,
+            transform,
+            ..
         } => {
             let t = interpolate_text(text, data);
-            (Some(if *uppercase { t.to_uppercase() } else { t }), None)
+            (
+                Some(if *uppercase {
+                    t.to_uppercase()
+                } else {
+                    transform.apply(&t)
+                }),
+                None,
+            )
         }
         LayerKind::Image { src, .. } => (None, Some(interpolate_text(src, data))),
         _ => (None, None),

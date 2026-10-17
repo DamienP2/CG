@@ -6694,3 +6694,13 @@ a.btn {
 .pp-fields.n2 .pp-driven .suffix {
   display: none;
 }
+/* General > typography of text widgets. */
+.pp-typo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pp-general .pp-row {
+  margin-left: -26px;
+}

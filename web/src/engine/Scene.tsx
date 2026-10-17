@@ -1,7 +1,7 @@
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
 import { createContext, memo, useContext, useEffect, useReducer, type CSSProperties } from 'react';
-import { col, cssColor, holdFrame, interpolateText, num, parseHex, resolveLayer, type Resolved } from './evaluate';
+import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
 import { applyLogic, measureLayer } from './logic';
@@ -89,7 +89,7 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
       return { style };
     case 'text': {
       let text = interpolateText(layer.text, data);
-      if (layer.uppercase) text = text.toUpperCase();
+      text = layer.uppercase ? text.toUpperCase() : transformText(text, layer.transform);
       Object.assign(style, {
         display: 'flex',
         flexDirection: 'column',
@@ -100,7 +100,10 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
         fontWeight: layer.fontWeight,
         fontSize: num(r.fontSize),
         letterSpacing: num(r.letterSpacing),
-        lineHeight: LINE_HEIGHT,
+        lineHeight: layer.lineHeight ?? LINE_HEIGHT,
+        textDecoration: layer.decoration === 'underline' ? 'underline' : layer.decoration === 'lineThrough' ? 'line-through' : undefined,
+        textDecorationThickness: layer.decoration && layer.decoration !== 'none' ? `${Math.max(1, num(r.fontSize) * 0.06)}px` : undefined,
+        textUnderlineOffset: layer.decoration === 'underline' ? `${num(r.fontSize) * 0.1}px` : undefined,
         whiteSpace: layer.wrap ? 'pre-wrap' : 'pre',
         overflow: 'visible',
         fontKerning: 'normal',

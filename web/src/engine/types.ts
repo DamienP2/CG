@@ -51,6 +51,9 @@ export type VerticalAlign = 'top' | 'middle' | 'bottom';
 export type ImageFit = 'contain' | 'cover' | 'stretch';
 
 /** Text styling shared by the text-based widgets. */
+export type TextTransform = 'none' | 'upper' | 'lower' | 'capitalize';
+export type TextDecoration = 'none' | 'underline' | 'lineThrough';
+
 export interface FontStyle {
   fontFamily: string;
   fontWeight: number;
@@ -65,7 +68,16 @@ export type LayerKind =
   | { type: 'group'; clip?: boolean }
   | { type: 'rect' }
   | { type: 'ellipse' }
-  | ({ type: 'text'; text: string; /** Paragraph: lines wrap at the box width. */ wrap?: boolean } & FontStyle)
+  | ({
+      type: 'text';
+      text: string;
+      /** Paragraph: lines wrap at the box width. */
+      wrap?: boolean;
+      transform?: TextTransform;
+      decoration?: TextDecoration;
+      /** In font sizes (default 1.2). */
+      lineHeight?: number;
+    } & FontStyle)
   | { type: 'image'; src: string; fit: ImageFit }
   | ({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle)
   | ({ type: 'ticker'; text: string; separator: string; speed: number } & FontStyle)

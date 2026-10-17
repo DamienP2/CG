@@ -43,6 +43,9 @@ fn layer(
 fn text(t: &str, weight: u16) -> LayerKind {
     LayerKind::Text {
         wrap: false,
+        transform: Default::default(),
+        decoration: Default::default(),
+        line_height: None,
         text: t.into(),
         font_family: "Inter".into(),
         font_weight: weight,
@@ -259,6 +262,9 @@ pub fn score_bug() -> Template {
             name,
             LayerKind::Text {
                 wrap: false,
+                transform: Default::default(),
+                decoration: Default::default(),
+                line_height: None,
                 text: t.into(),
                 font_family: "Inter".into(),
                 font_weight: 700,
@@ -494,6 +500,9 @@ pub fn ticker() -> Template {
         "Label",
         LayerKind::Text {
             wrap: false,
+            transform: Default::default(),
+            decoration: Default::default(),
+            line_height: None,
             text: "{{label}}".into(),
             font_family: "Inter".into(),
             font_weight: 800,

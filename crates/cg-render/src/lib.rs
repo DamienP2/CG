@@ -159,15 +159,20 @@ impl Renderer {
                 font_family,
                 font_weight,
                 uppercase,
+                transform,
+                line_height,
                 ..
             }) = t.layers.iter().find(|l| l.id == id).map(|l| &l.kind)
             else {
                 return 0.0;
             };
             let mut content = interpolate_text(text, data);
-            if *uppercase {
-                content = content.to_uppercase();
-            }
+            content = if *uppercase {
+                content.to_uppercase()
+            } else {
+                transform.apply(&content)
+            };
+            let line_h = line_height.unwrap_or(text::LINE_HEIGHT) as f64;
             let num = |p: Prop| v.get(&p).and_then(Value::as_number).unwrap_or(0.0);
             let size = num(Prop::FontSize);
             let lines = content.split('\n').count() as f64;
@@ -178,7 +183,7 @@ impl Renderer {
                     if content.is_empty() {
                         0.0
                     } else {
-                        lines * size * text::LINE_HEIGHT as f64
+                        lines * size * line_h
                     }
                 }
                 cg_core::logic::TextMetric::Width => match fonts.font(font_family, *font_weight) {
@@ -471,6 +476,8 @@ impl Renderer {
                 align,
                 vertical_align,
                 wrap,
+                decoration,
+                line_height,
                 ..
             } => {
                 let Some(content) = r.text.as_deref().filter(|t| !t.is_empty()) else {
@@ -487,6 +494,8 @@ impl Renderer {
                     vertical_align: *vertical_align,
                     box_w: w,
                     box_h: h,
+                    line_height: line_height.unwrap_or(text::LINE_HEIGHT),
+                    decoration: *decoration,
                 };
                 let wrapped;
                 let content = if *wrap {
@@ -1024,6 +1033,8 @@ impl Renderer {
             vertical_align,
             box_w: w,
             box_h: h,
+            line_height: text::LINE_HEIGHT,
+            decoration: cg_core::TextDecoration::None,
         };
         let Some(path) = text::layout_text(&f, content, &style) else {
             return;

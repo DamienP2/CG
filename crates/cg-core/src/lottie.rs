@@ -1124,6 +1124,9 @@ impl Converter {
         Some((
             LayerKind::Text {
                 wrap: false,
+                transform: Default::default(),
+                decoration: Default::default(),
+                line_height: None,
                 text: format!("{{{{{key}}}}}"),
                 font_family: family,
                 font_weight: weight,
@@ -1405,7 +1408,6 @@ mod tests {
 
         // Text → data field.
         let LayerKind::Text {
-            wrap: false,
             text,
             font_family,
             font_weight,

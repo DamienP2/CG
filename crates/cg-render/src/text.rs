@@ -162,6 +162,9 @@ pub struct TextStyle {
     pub vertical_align: VerticalAlign,
     pub box_w: f32,
     pub box_h: f32,
+    /// In font sizes ([`LINE_HEIGHT`] by default).
+    pub line_height: f32,
+    pub decoration: cg_core::TextDecoration,
 }
 
 /// Line height multiplier — must match the web renderer (`line-height: 1.2`).
@@ -219,7 +222,7 @@ pub fn layout_text(font: &FontArc, text: &str, style: &TextStyle) -> Option<SkPa
     let upem = font.units_per_em().unwrap_or(1000.0);
     let px = ab_glyph::PxScale::from(style.size * font.height_unscaled() / upem);
     let scaled = font.as_scaled(px);
-    let line_h = style.size * LINE_HEIGHT;
+    let line_h = style.size * style.line_height;
     let lines: Vec<&str> = text.split('\n').collect();
     let block_h = line_h * lines.len() as f32;
     let top = match style.vertical_align {
@@ -248,6 +251,18 @@ pub fn layout_text(font: &FontArc, text: &str, style: &TextStyle) -> Option<SkPa
             TextAlign::Right => style.box_w - width,
         };
         let baseline = top + i as f32 * line_h + half_leading + scaled.ascent();
+        // Underline / strike through: a bar under the line or across it.
+        let bar = match style.decoration {
+            cg_core::TextDecoration::Underline => Some(baseline + style.size * 0.1),
+            cg_core::TextDecoration::LineThrough => Some(baseline - style.size * 0.3),
+            cg_core::TextDecoration::None => None,
+        };
+        if let (Some(y), true) = (bar, width > 0.0) {
+            let t = (style.size * 0.06).max(1.0);
+            if let Some(r) = tiny_skia::Rect::from_xywh(x, y - t / 2.0, width, t) {
+                pb.push_rect(r);
+            }
+        }
         for (j, g) in glyphs.iter().enumerate() {
             if let Some(outline) = font.outline(*g) {
                 append_outline(&mut pb, &outline.curves, x, baseline, s);
