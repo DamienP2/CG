@@ -5,6 +5,7 @@ use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
 use cg_core::{ChannelState, Project};
+use cg_output::ndi::NdiSender;
 use cg_output::sdi::DeckLinkOutput;
 use cg_output::st2110::St2110Sender;
 use cg_output::{OutputError, OutputSink};
@@ -12,35 +13,63 @@ use cg_render::{OutputFormat, Renderer};
 use tokio::time::{interval, MissedTickBehavior};
 
 use crate::config::ChannelConfig;
-use crate::state::{ChannelRt, Shared};
+use crate::state::{ChannelRt, OutputStatus, Shared};
+
+/// A started output and its id (for its status).
+struct Sink {
+    id: String,
+    sink: Box<dyn OutputSink>,
+    failing: bool,
+}
 
 fn open_outputs(
     cfg: &ChannelConfig,
     outputs: &crate::config::OutputsConfig,
     period: Duration,
-) -> Vec<Box<dyn OutputSink>> {
-    let mut sinks: Vec<Box<dyn OutputSink>> = Vec::new();
+    status: &OutputStatus,
+) -> Vec<Sink> {
+    let mut sinks = Vec::new();
+    let mut opened =
+        |id: &str, name: &str, kind: &str, r: Result<Box<dyn OutputSink>, OutputError>| match r {
+            Ok(sink) => {
+                status.set(&cfg.id, id, true, "Running");
+                sinks.push(Sink {
+                    id: id.to_string(),
+                    sink,
+                    failing: false,
+                });
+            }
+            Err(e) => {
+                tracing::error!(
+                    channel = cfg.name,
+                    output = name,
+                    "cannot start {kind} output: {e}"
+                );
+                status.set(&cfg.id, id, false, short(&e));
+            }
+        };
     for o in &outputs.st2110 {
-        match St2110Sender::start(o.clone(), period) {
-            Ok(s) => sinks.push(Box::new(s)),
-            Err(e) => tracing::error!(
-                channel = cfg.name,
-                output = o.name,
-                "cannot start ST 2110 output: {e}"
-            ),
-        }
+        let r = St2110Sender::start(o.clone(), period).map(|s| Box::new(s) as Box<dyn OutputSink>);
+        opened(&o.id, &o.name, "ST 2110", r);
     }
     for o in &outputs.sdi {
-        match DeckLinkOutput::open(o.clone()) {
-            Ok(s) => sinks.push(Box::new(s)),
-            Err(e) => tracing::error!(
-                channel = cfg.name,
-                output = o.name,
-                "cannot open SDI output: {e}"
-            ),
-        }
+        let r = DeckLinkOutput::open(o.clone()).map(|s| Box::new(s) as Box<dyn OutputSink>);
+        opened(&o.id, &o.name, "SDI", r);
+    }
+    let rate = (cfg.frame_rate.num, cfg.frame_rate.den);
+    for o in &outputs.ndi {
+        let r = NdiSender::open(o.clone(), rate).map(|s| Box::new(s) as Box<dyn OutputSink>);
+        opened(&o.id, &o.name, "NDI", r);
     }
     sinks
+}
+
+/// An error as the outputs page shows it (details stay in the log).
+fn short(e: &OutputError) -> String {
+    match e {
+        OutputError::Unsupported(m) => m.split(" (").next().unwrap_or(m).to_string(),
+        e => e.to_string(),
+    }
 }
 
 /// Starts every channel; the returned handles are aborted on restart.
@@ -58,11 +87,12 @@ type RenderJob = (Option<Arc<Project>>, ChannelState);
 async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
     let cfg = &ch.config;
     let period = cfg.frame_rate.frame_duration();
+    state.output_status.reset(&cfg.id);
     // One render thread per picture (main + renditions) that has baseband
     // outputs, so the clock never blocks and each output gets its own size.
     let mut render_txs = Vec::new();
     for (id, width, height, outputs) in cfg.pictures() {
-        let sinks = open_outputs(cfg, outputs, period);
+        let sinks = open_outputs(cfg, outputs, period, &state.output_status);
         if sinks.is_empty() {
             continue;
         }
@@ -72,7 +102,10 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
         let tz = state.config.timezone.clone();
         std::thread::Builder::new()
             .name(format!("cg-render-{}-{id}", cfg.id))
-            .spawn(move || render_loop(Renderer::new(assets), out, tz, rx, sinks))
+            .spawn({
+                let (status, channel) = (state.output_status.clone(), cfg.id.clone());
+                move || render_loop(Renderer::new(assets), out, tz, rx, sinks, status, channel)
+            })
             .expect("spawn render thread");
         render_txs.push(tx);
     }
@@ -116,7 +149,9 @@ fn render_loop(
     out: OutputFormat,
     tz: String,
     rx: mpsc::Receiver<RenderJob>,
-    mut sinks: Vec<Box<dyn OutputSink>>,
+    mut sinks: Vec<Sink>,
+    status: Arc<OutputStatus>,
+    channel_id: String,
 ) {
     while let Ok((project, channel)) = rx.recv() {
         let frame = match project {
@@ -124,9 +159,21 @@ fn render_loop(
             None => cg_render::Frame::blank(out.width, out.height),
         };
         for s in &mut sinks {
-            match s.push(&frame) {
-                Ok(()) | Err(OutputError::Dropped) => {}
-                Err(e) => tracing::warn!(output = s.name(), "{e}"),
+            match s.sink.push(&frame) {
+                Ok(()) | Err(OutputError::Dropped) => {
+                    if s.failing {
+                        s.failing = false;
+                        status.set(&channel_id, &s.id, true, "Running");
+                    }
+                }
+                Err(e) => {
+                    // Report a failure once, not every frame.
+                    if !s.failing {
+                        tracing::warn!(output = s.sink.name(), "{e}");
+                        status.set(&channel_id, &s.id, false, short(&e));
+                        s.failing = true;
+                    }
+                }
             }
         }
     }

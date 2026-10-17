@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use cg_core::FrameRate;
+use cg_output::ndi::NdiConfig;
 use cg_output::sdi::SdiConfig;
 use cg_output::st2110::St2110Config;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,72 @@ pub struct OutputsConfig {
     pub st2110: Vec<St2110Config>,
     #[serde(default)]
     pub sdi: Vec<SdiConfig>,
+    #[serde(default)]
+    pub ndi: Vec<NdiConfig>,
+    /// Web links to the picture (`/output/<channel>/<picture>`).
+    #[serde(default)]
+    pub html5: Vec<Html5Config>,
+}
+
+impl OutputsConfig {
+    /// Gives every destination an id (`sdi-1`, `ndi-2`…): stable, so loading
+    /// twice gives the same config.
+    fn ensure_ids(&mut self, taken: &mut HashSet<String>) {
+        fn fill(kind: &str, id: &mut String, taken: &mut HashSet<String>) {
+            if !id.is_empty() && taken.insert(id.clone()) {
+                return;
+            }
+            let mut n = 1;
+            while taken.contains(&format!("{kind}-{n}")) {
+                n += 1;
+            }
+            *id = format!("{kind}-{n}");
+            taken.insert(id.clone());
+        }
+        self.st2110
+            .iter_mut()
+            .for_each(|o| fill("st2110", &mut o.id, taken));
+        self.sdi
+            .iter_mut()
+            .for_each(|o| fill("sdi", &mut o.id, taken));
+        self.ndi
+            .iter_mut()
+            .for_each(|o| fill("ndi", &mut o.id, taken));
+        self.html5
+            .iter_mut()
+            .for_each(|o| fill("html5", &mut o.id, taken));
+    }
+
+    /// Ids of the destinations, in order.
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.st2110
+            .iter()
+            .map(|o| o.id.as_str())
+            .chain(self.sdi.iter().map(|o| o.id.as_str()))
+            .chain(self.ndi.iter().map(|o| o.id.as_str()))
+            .chain(self.html5.iter().map(|o| o.id.as_str()))
+    }
+}
+
+/// A web page playing the picture (browser source, web player…).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Html5Config {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// CSS background of the page ("" = transparent).
+    #[serde(default)]
+    pub background: String,
+}
+
+/// A place the channels belong to (a studio, a gallery, a truck…).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Location {
+    pub id: String,
+    pub name: String,
 }
 
 /// Another shape of the same program (e.g. 9:16 for social media): same
@@ -50,6 +117,9 @@ pub struct ChannelConfig {
     /// Extra renditions (9:16, 1:1…) driven by the same playout.
     #[serde(default)]
     pub renditions: Vec<Rendition>,
+    /// Location id ("" = none).
+    #[serde(default)]
+    pub location: String,
 }
 
 impl ChannelConfig {
@@ -75,6 +145,16 @@ impl ChannelConfig {
             project_id: None,
             outputs: OutputsConfig::default(),
             renditions: Vec::new(),
+            location: String::new(),
+        }
+    }
+
+    /// Gives the destinations without one an id.
+    pub fn ensure_ids(&mut self) {
+        let mut taken = HashSet::new();
+        self.outputs.ensure_ids(&mut taken);
+        for r in &mut self.renditions {
+            r.outputs.ensure_ids(&mut taken);
         }
     }
 }
@@ -141,6 +221,9 @@ pub struct ServerConfig {
     /// Default IANA time zone of clocks ("" = the server's zone).
     #[serde(default)]
     pub timezone: String,
+    /// Places the channels are sorted by.
+    #[serde(default)]
+    pub locations: Vec<Location>,
     #[serde(default)]
     pub channels: Vec<ChannelConfig>,
     #[serde(default)]
@@ -165,6 +248,7 @@ impl Default for ServerConfig {
             bind: None,
             public_outputs: true,
             timezone: String::new(),
+            locations: Vec::new(),
             channels: Vec::new(),
             mos: MosConfig::default(),
             outputs: None,
@@ -204,7 +288,46 @@ impl ServerConfig {
             c.channels[0].outputs = o;
             let _ = c.save(data_dir);
         }
+        let before = c.clone();
+        c.normalize();
+        if c != before {
+            let _ = c.save(data_dir);
+        }
         c
+    }
+
+    /// Ids for every destination, and a location for the channels of a
+    /// config made before locations existed.
+    pub fn normalize(&mut self) {
+        if self.locations.is_empty() {
+            // A config from before the outputs canvas: its channels already
+            // had their web page, which is now a destination like the others.
+            for ch in &mut self.channels {
+                if ch.outputs.html5.is_empty() {
+                    ch.outputs.html5.push(Html5Config {
+                        id: String::new(),
+                        name: "Web page".into(),
+                        background: String::new(),
+                    });
+                }
+            }
+        }
+        for ch in &mut self.channels {
+            ch.ensure_ids();
+        }
+        if self.locations.is_empty() {
+            self.locations.push(Location {
+                id: "main".into(),
+                name: "Main".into(),
+            });
+        }
+        let known: HashSet<String> = self.locations.iter().map(|l| l.id.clone()).collect();
+        let first = self.locations[0].id.clone();
+        for ch in &mut self.channels {
+            if !known.contains(&ch.location) {
+                ch.location = first.clone();
+            }
+        }
     }
 
     pub fn save(&self, data_dir: &Path) -> std::io::Result<()> {
@@ -242,6 +365,16 @@ impl ServerConfig {
                 return Err("MOS: two different ports are needed".into());
             }
         }
+        let mut loc_ids = HashSet::new();
+        for l in &self.locations {
+            if l.id.trim().is_empty() || !loc_ids.insert(l.id.as_str()) {
+                return Err("location ids must be unique".into());
+            }
+            if l.name.trim().is_empty() {
+                return Err("every location needs a name".into());
+            }
+        }
+        let mut ndi_names = HashSet::new();
         let mut ids = HashSet::new();
         for ch in &self.channels {
             let valid_id = !ch.id.is_empty()
@@ -280,6 +413,22 @@ impl ServerConfig {
                     return Err(format!("rendition `{}`: invalid resolution", r.name));
                 }
             }
+            let mut out_ids = HashSet::new();
+            for (_, _, _, outputs) in ch.pictures() {
+                for id in outputs.ids() {
+                    if !out_ids.insert(id) {
+                        return Err(format!("channel `{}`: output ids must be unique", ch.name));
+                    }
+                }
+                for o in &outputs.ndi {
+                    if o.name.trim().is_empty() || !ndi_names.insert(o.name.trim().to_lowercase()) {
+                        return Err(format!(
+                            "NDI source names must be unique and non-empty (`{}`)",
+                            o.name
+                        ));
+                    }
+                }
+            }
             let mut names = HashSet::new();
             for (_, _, _, outputs) in ch.pictures() {
                 for o in &outputs.st2110 {
@@ -295,7 +444,9 @@ impl ServerConfig {
                             o.name
                         ));
                     }
-                    if Some(o.fill) == o.key {
+                    if o.encoding == cg_output::st2110::St2110Encoding::FillKey
+                        && Some(o.fill) == o.key
+                    {
                         return Err(format!(
                             "output `{}`: fill and key must use different destinations",
                             o.name
@@ -320,7 +471,7 @@ impl ServerConfig {
             .flat_map(|c| c.pictures())
             .flat_map(|(_, _, _, outputs)| &outputs.st2110)
         {
-            for d in std::iter::once(o.fill).chain(o.key) {
+            for (d, _) in o.streams() {
                 if !dests.insert(d) {
                     return Err(format!("destination {d} is used by two outputs"));
                 }

@@ -4637,3 +4637,360 @@ a.btn {
   border-radius: 6px;
   box-shadow: 0 0 0 1px var(--line-2);
 }
+
+/* ---------- outputs (node canvas) ---------- */
+.outputs-page {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+.oc-location {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.oc-loc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-weight: 600;
+  color: var(--text);
+}
+.oc-loc-head svg {
+  color: var(--accent-2);
+  flex: none;
+}
+.oc-loc-head .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-loc-head:hover .lib-nav-actions {
+  display: flex;
+}
+.oc-channel {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px 7px 30px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.oc-channel:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.oc-channel.on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.oc-channel .grow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.oc-channel .grow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-channel small {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.oc-channel.add {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.oc-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--text-3);
+}
+.oc-dot.ok {
+  background: var(--pvw);
+}
+.oc-dot.warn {
+  background: var(--warn);
+}
+.oc-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.oc-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.oc-head h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.oc-head .row {
+  gap: 10px;
+}
+.oc-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.oc-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.oc-tool:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+  background: var(--panel-2);
+}
+.oc-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.oc-canvas {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background-color: var(--bg);
+  background-image: radial-gradient(#22263a 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.oc-plane {
+  position: relative;
+}
+.oc-col {
+  position: absolute;
+  top: 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4b5070;
+}
+.oc-wires {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.oc-wires path {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-opacity: 0.75;
+}
+.oc-node {
+  position: absolute;
+  width: 232px;
+  border-radius: 11px;
+  background: #151824;
+  border: 1px solid #2a2f44;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  user-select: none;
+  cursor: grab;
+}
+.oc-node:active {
+  cursor: grabbing;
+}
+.oc-node.sel {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 0 2px rgba(124, 92, 255, 0.35), 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+.oc-node-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px 6px;
+}
+.oc-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--k);
+  background: color-mix(in srgb, var(--k) 16%, transparent);
+}
+.oc-node-head .grow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.oc-node-head small,
+.oc-ins-head small {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--k);
+}
+.oc-node-head strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-node-sub {
+  padding: 0 12px 9px 49px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #8b90aa;
+  white-space: pre-line;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.oc-node-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-top: 1px solid #23273a;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.oc-node-status span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-port {
+  position: absolute;
+  top: 22px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.oc-port.in {
+  left: -6px;
+  background: var(--bg);
+  border: 2px solid var(--k);
+}
+.oc-port.out {
+  right: -6px;
+  background: var(--k);
+  border: 2px solid var(--bg);
+}
+.oc-inspector {
+  flex: 0 0 330px;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+}
+.oc-ins-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.oc-ins-head .grow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.oc-ins-head strong {
+  font-size: 15px;
+}
+.oc-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--k);
+}
+.oc-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 10px;
+}
+.oc-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.oc-link code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+.oc-sdp {
+  display: flex;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.oc-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.oc-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text-2);
+}
+.oc-state.warn {
+  color: var(--warn);
+}
+@media (max-width: 900px) {
+  .outputs-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .oc-body {
+    flex-direction: column;
+  }
+  .oc-inspector {
+    flex: none;
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}

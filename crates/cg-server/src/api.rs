@@ -95,6 +95,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/qr", get(qr))
         .route("/api/system", get(get_system))
         .route("/api/system/config", put(put_system_config))
+        .route("/api/outputs/status", get(outputs_status))
         .route("/api/system/restart", post(post_restart))
         .route("/api/mos/status", get(mos_status))
         .route("/api/data/sources", get(list_sources).post(create_source))
@@ -1236,7 +1237,7 @@ async fn get_sdp(
     visible_channel(&me, &id)?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let c = &ch.config;
-    // Output names are unique across the channel's pictures.
+    // By id (or name, as before): unique across the channel's pictures.
     let (width, height, cfg) = c
         .pictures()
         .into_iter()
@@ -1244,7 +1245,7 @@ async fn get_sdp(
             outputs
                 .st2110
                 .iter()
-                .find(|o| o.name == name)
+                .find(|o| o.id == name || o.name == name)
                 .map(|o| (w, h, o))
         })
         .ok_or_else(|| not_found("output"))?;
@@ -1454,9 +1455,10 @@ async fn get_system(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> Js
 async fn put_system_config(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
-    Json(cfg): Json<ServerConfig>,
+    Json(mut cfg): Json<ServerConfig>,
 ) -> ApiResult<StatusCode> {
     require(me.is_admin())?;
+    cfg.normalize();
     cfg.validate().map_err(bad)?;
     if let Some(bind) = cfg.bind.filter(|b| *b != s.bind) {
         // Fail early rather than restarting into an address we cannot use.
@@ -1471,6 +1473,16 @@ async fn put_system_config(
     tracing::info!("settings saved, restarting the engine");
     s.restart.notify_one();
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Whether each video output runs, by channel and output id.
+async fn outputs_status(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> Json<BTreeMap<String, BTreeMap<String, crate::state::OutputState>>> {
+    let mut all = s.output_status.snapshot();
+    all.retain(|ch, _| me.sees_channel(ch));
+    Json(all)
 }
 
 /// Unauthenticated status for the desktop tray app and monitoring.

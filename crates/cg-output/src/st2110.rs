@@ -18,7 +18,7 @@ use cg_render::Frame;
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 
-use crate::colorspace::pack_line_422_10;
+use crate::colorspace::{pack_line_4224_10, pack_line_422_10, pack_line_rgba8};
 use crate::{OutputError, OutputSink};
 
 /// RTP payload bytes per packet. 1200 = 240 pgroups (480 px), fits a 1500 MTU
@@ -26,13 +26,79 @@ use crate::{OutputError, OutputSink};
 const PAYLOAD_BYTES: usize = 1200;
 const RTP_CLOCK: f64 = 90_000.0;
 
+/// How the picture and its alpha travel.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum St2110Encoding {
+    /// Two ST 2110-20 streams: YCbCr 4:2:2 10-bit fill and its key.
+    #[default]
+    FillKey,
+    /// One stream, RGBA 4:4:4:4 8-bit.
+    Rgba,
+    /// One stream, YCbCr + alpha 4:2:2:4 10-bit.
+    Ycbcra,
+}
+
+/// One RTP stream of a sender.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Essence {
+    Fill,
+    Key,
+    Rgba,
+    Ycbcra,
+}
+
+impl Essence {
+    /// (bytes, pixels) of one pgroup.
+    fn pgroup(self) -> (usize, usize) {
+        match self {
+            Essence::Fill | Essence::Key => (5, 2),
+            Essence::Rgba => (4, 1),
+            Essence::Ycbcra => (15, 4),
+        }
+    }
+
+    fn pack(self, rgba: &[u8], out: &mut Vec<u8>) {
+        match self {
+            Essence::Fill => pack_line_422_10(rgba, out, false),
+            Essence::Key => pack_line_422_10(rgba, out, true),
+            Essence::Rgba => pack_line_rgba8(rgba, out),
+            Essence::Ycbcra => pack_line_4224_10(rgba, out),
+        }
+    }
+
+    /// SDP `sampling` and `depth`.
+    fn sampling(self) -> (&'static str, u8) {
+        match self {
+            Essence::Fill => ("YCbCr-4:2:2", 10),
+            Essence::Key => ("KEY", 10),
+            Essence::Rgba => ("RGBA", 8),
+            Essence::Ycbcra => ("YCbCrA-4:2:2:4", 10),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Essence::Fill => "fill",
+            Essence::Key => "key",
+            Essence::Rgba => "rgba",
+            Essence::Ycbcra => "ycbcra",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct St2110Config {
+    /// Stable id (layout, status, SDP links).
+    #[serde(default)]
+    pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub encoding: St2110Encoding,
     /// Multicast group (or unicast) for the fill stream.
     pub fill: SocketAddrV4,
-    /// Optional key (alpha) stream.
+    /// Key (alpha) stream of the fill + key encoding.
     #[serde(default)]
     pub key: Option<SocketAddrV4>,
     /// Local interface address to send from.
@@ -52,16 +118,31 @@ fn default_pt() -> u8 {
 }
 
 impl St2110Config {
-    /// Session description for one essence (`key = true` for the alpha stream).
+    /// The streams this sender sends, with their destinations.
+    pub fn streams(&self) -> Vec<(SocketAddrV4, Essence)> {
+        match self.encoding {
+            St2110Encoding::FillKey => std::iter::once((self.fill, Essence::Fill))
+                .chain(self.key.map(|k| (k, Essence::Key)))
+                .collect(),
+            St2110Encoding::Rgba => vec![(self.fill, Essence::Rgba)],
+            St2110Encoding::Ycbcra => vec![(self.fill, Essence::Ycbcra)],
+        }
+    }
+
+    /// Session description for one stream (`key = true`: the key of a
+    /// fill + key pair; otherwise the main stream).
     pub fn sdp(&self, width: u32, height: u32, rate: (u32, u32), key: bool) -> Option<String> {
-        let dest = if key { self.key? } else { self.fill };
+        let (dest, essence) = self
+            .streams()
+            .into_iter()
+            .find(|(_, e)| (*e == Essence::Key) == key)?;
         let src = self.interface.unwrap_or(Ipv4Addr::UNSPECIFIED);
         let rate = if rate.1 == 1 {
             rate.0.to_string()
         } else {
             format!("{}/{}", rate.0, rate.1)
         };
-        let label = if key { "key" } else { "fill" };
+        let (sampling, depth) = essence.sampling();
         Some(format!(
             "v=0\r\n\
              o=- {sess} 0 IN IP4 {src}\r\n\
@@ -71,11 +152,12 @@ impl St2110Config {
              c=IN IP4 {ip}/{ttl}\r\n\
              a=source-filter: incl IN IP4 {ip} {src}\r\n\
              a=rtpmap:{pt} raw/90000\r\n\
-             a=fmtp:{pt} sampling=YCbCr-4:2:2; width={width}; height={height}; exactframerate={rate}; depth=10; TCS=SDR; colorimetry=BT709; PM=2110GPM; SSN=ST2110-20:2017; TP=2110TPW; \r\n\
+             a=fmtp:{pt} sampling={sampling}; width={width}; height={height}; exactframerate={rate}; depth={depth}; TCS=SDR; colorimetry=BT709; PM=2110GPM; SSN=ST2110-20:2017; TP=2110TPW; \r\n\
              a=ts-refclk:ptp=IEEE1588-2008:traceable\r\n\
              a=mediaclk:direct=0\r\n",
             sess = u32::from(dest.ip().to_owned()) ^ dest.port() as u32,
             name = self.name,
+            label = essence.label(),
             port = dest.port(),
             pt = self.payload_type,
             ip = dest.ip(),
@@ -110,7 +192,7 @@ impl Packets {
 /// Splits a frame into RFC 4175 RTP packets (single line segment per packet).
 pub fn packetize_into(
     frame: &Frame,
-    key: bool,
+    essence: Essence,
     pt: u8,
     seq: &mut u32,
     timestamp: u32,
@@ -121,10 +203,11 @@ pub fn packetize_into(
     out.buf.clear();
     out.ends.clear();
     for y in 0..h {
-        pack_line_422_10(&frame.data[y * w * 4..(y + 1) * w * 4], line, key);
+        essence.pack(&frame.data[y * w * 4..(y + 1) * w * 4], line);
+        let (pg_bytes, pg_px) = essence.pgroup();
         let mut offset_bytes = 0;
         while offset_bytes < line.len() {
-            let len = PAYLOAD_BYTES.min(line.len() - offset_bytes);
+            let len = (PAYLOAD_BYTES / pg_bytes * pg_bytes).min(line.len() - offset_bytes);
             let last = y == h - 1 && offset_bytes + len >= line.len();
             let p = &mut out.buf;
             // RTP header
@@ -137,7 +220,7 @@ pub fn packetize_into(
             p.extend_from_slice(&((*seq >> 16) as u16).to_be_bytes()); // extended seq
             p.extend_from_slice(&(len as u16).to_be_bytes());
             p.extend_from_slice(&((y as u16) & 0x7fff).to_be_bytes()); // F=0, line
-            let pixel_offset = (offset_bytes / 5 * 2) as u16;
+            let pixel_offset = (offset_bytes / pg_bytes * pg_px) as u16;
             p.extend_from_slice(&(pixel_offset & 0x7fff).to_be_bytes()); // C=0
             p.extend_from_slice(&line[offset_bytes..offset_bytes + len]);
             out.ends.push(p.len());
@@ -147,9 +230,23 @@ pub fn packetize_into(
     }
 }
 
-pub fn packetize(frame: &Frame, key: bool, pt: u8, seq: &mut u32, timestamp: u32) -> Packets {
+pub fn packetize(
+    frame: &Frame,
+    essence: Essence,
+    pt: u8,
+    seq: &mut u32,
+    timestamp: u32,
+) -> Packets {
     let mut out = Packets::default();
-    packetize_into(frame, key, pt, seq, timestamp, &mut out, &mut Vec::new());
+    packetize_into(
+        frame,
+        essence,
+        pt,
+        seq,
+        timestamp,
+        &mut out,
+        &mut Vec::new(),
+    );
     out
 }
 
@@ -164,35 +261,30 @@ fn open_socket(cfg: &St2110Config) -> std::io::Result<UdpSocket> {
     Ok(s.into())
 }
 
-/// One essence (fill or key) = one socket + one pacing thread.
-struct Essence {
+/// One stream = one socket + one pacing thread.
+struct Stream {
     tx: SyncSender<Arc<Frame>>,
 }
 
 pub struct St2110Sender {
-    essences: Vec<Essence>,
+    essences: Vec<Stream>,
     config: St2110Config,
 }
 
 impl St2110Sender {
     pub fn start(config: St2110Config, frame_period: Duration) -> Result<Self, OutputError> {
         let mut essences = Vec::new();
-        let streams = std::iter::once((config.fill, false)).chain(config.key.map(|k| (k, true)));
-        for (dest, key) in streams {
+        for (dest, essence) in config.streams() {
             let socket = open_socket(&config).map_err(OutputError::Io)?;
             let (tx, rx) = sync_channel::<Arc<Frame>>(2);
             let (name, pt) = (config.name.clone(), config.payload_type);
             std::thread::Builder::new()
-                .name(format!(
-                    "st2110-{}-{}",
-                    config.name,
-                    if key { "key" } else { "fill" }
-                ))
-                .spawn(move || run(name, socket, dest, key, pt, rx, frame_period))
+                .name(format!("st2110-{}-{}", config.name, essence.label()))
+                .spawn(move || run(name, socket, dest, essence, pt, rx, frame_period))
                 .map_err(OutputError::Io)?;
-            essences.push(Essence { tx });
+            essences.push(Stream { tx });
         }
-        tracing::info!(fill = %config.fill, key = ?config.key, "ST 2110-20 sender started");
+        tracing::info!(fill = %config.fill, key = ?config.key, encoding = ?config.encoding, "ST 2110-20 sender started");
         Ok(Self { essences, config })
     }
 
@@ -205,7 +297,7 @@ fn run(
     name: String,
     socket: UdpSocket,
     dest: SocketAddrV4,
-    key: bool,
+    essence: Essence,
     pt: u8,
     rx: Receiver<Arc<Frame>>,
     period: Duration,
@@ -219,7 +311,7 @@ fn run(
         if stats_at.elapsed() >= Duration::from_secs(5) {
             tracing::debug!(
                 name,
-                key,
+                stream = essence.label(),
                 fps = frames as f64 / stats_at.elapsed().as_secs_f64(),
                 "ST 2110 send rate"
             );
@@ -228,7 +320,7 @@ fn run(
         // Fill and key threads derive the same timestamp from the frame's
         // capture time so receivers can pair them.
         let ts = (frame_time(&frame).as_secs_f64() * RTP_CLOCK) as u64 as u32;
-        packetize_into(&frame, key, pt, &mut seq, ts, &mut packets, &mut line);
+        packetize_into(&frame, essence, pt, &mut seq, ts, &mut packets, &mut line);
         // Pace across what is left of ~90% of the frame period.
         let budget = period.mul_f64(0.9).saturating_sub(start.elapsed());
         let send_start = Instant::now();
@@ -244,7 +336,7 @@ fn run(
             }
         }
     }
-    tracing::info!(name, key, "ST 2110 sender stopped");
+    tracing::info!(name, stream = essence.label(), "ST 2110 sender stopped");
 }
 
 fn frame_time(frame: &Frame) -> Duration {
@@ -281,7 +373,7 @@ mod tests {
     fn packet_count_and_marker() {
         let f = Frame::blank(1920, 1080);
         let mut seq = 0;
-        let pkts = packetize(&f, false, 96, &mut seq, 1234);
+        let pkts = packetize(&f, Essence::Fill, 96, &mut seq, 1234);
         // 1920 px * 2.5 B = 4800 B per line = 4 packets.
         assert_eq!(pkts.len(), 1080 * 4);
         assert_eq!(seq, 1080 * 4);
@@ -296,6 +388,8 @@ mod tests {
     #[test]
     fn sdp_contains_format() {
         let cfg = St2110Config {
+            id: "a".into(),
+            encoding: St2110Encoding::FillKey,
             name: "CG1".into(),
             fill: "239.10.0.1:5004".parse().unwrap(),
             key: Some("239.10.0.2:5004".parse().unwrap()),
@@ -306,5 +400,28 @@ mod tests {
         let sdp = cfg.sdp(1920, 1080, (60000, 1001), true).unwrap();
         assert!(sdp.contains("c=IN IP4 239.10.0.2/16"));
         assert!(sdp.contains("exactframerate=60000/1001"));
+        assert!(sdp.contains("sampling=KEY"));
+        let one = St2110Config {
+            encoding: St2110Encoding::Ycbcra,
+            ..cfg
+        };
+        assert_eq!(one.streams().len(), 1);
+        let sdp = one.sdp(1920, 1080, (50, 1), false).unwrap();
+        assert!(sdp.contains("sampling=YCbCrA-4:2:2:4") && sdp.contains("depth=10"));
+        assert!(one.sdp(1920, 1080, (50, 1), true).is_none());
+    }
+
+    #[test]
+    fn one_stream_pgroups() {
+        let f = Frame::blank(1920, 1080);
+        let mut seq = 0;
+        // RGBA: 7680 B per line, 1200 B per packet.
+        let p = packetize(&f, Essence::Rgba, 96, &mut seq, 0);
+        assert_eq!(p.len(), 1080 * 7);
+        assert_eq!(u16::from_be_bytes([p.get(1)[18], p.get(1)[19]]), 300);
+        // YCbCrA: 480 pgroups of 15 B = 7200 B per line, 80 pgroups a packet.
+        let p = packetize(&f, Essence::Ycbcra, 96, &mut seq, 0);
+        assert_eq!(p.len(), 1080 * 6);
+        assert_eq!(u16::from_be_bytes([p.get(1)[18], p.get(1)[19]]), 320);
     }
 }

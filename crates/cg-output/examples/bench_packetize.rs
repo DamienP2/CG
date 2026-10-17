@@ -1,7 +1,7 @@
 //! `cargo run --release -p cg-output --example bench_packetize`
 use std::time::Instant;
 
-use cg_output::st2110::packetize;
+use cg_output::st2110::{packetize, Essence};
 use cg_render::Frame;
 
 fn main() {
@@ -13,7 +13,7 @@ fn main() {
     let n = 50;
     let t = Instant::now();
     for _ in 0..n {
-        std::hint::black_box(packetize(&f, false, 96, &mut seq, 0));
+        std::hint::black_box(packetize(&f, Essence::Fill, 96, &mut seq, 0));
     }
     println!(
         "packetize 1080p fill: {:.2} ms/frame",

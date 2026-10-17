@@ -82,9 +82,73 @@ pub fn pack_line_422_10(rgba: &[u8], out: &mut Vec<u8>, key: bool) {
     }
 }
 
+/// Packs one line of premultiplied RGBA into 8-bit RGBA pgroups (4 bytes
+/// per pixel), for receivers that take the picture and its alpha in one
+/// stream.
+pub fn pack_line_rgba8(rgba: &[u8], out: &mut Vec<u8>) {
+    out.clear();
+    out.extend_from_slice(rgba);
+}
+
+/// Packs one line of RGBA into YCbCr + alpha 4:2:2:4 10-bit pgroups of 4
+/// pixels (15 bytes: Cb0 Y0 A0 Cr0 Y1 A1 Cb1 Y2 A2 Cr1 Y3 A3, big-endian
+/// bit stream). Fill is shaped (premultiplied), like the fill + key pair.
+pub fn pack_line_4224_10(rgba: &[u8], out: &mut Vec<u8>) {
+    out.clear();
+    out.reserve(rgba.len() / 16 * 15 + 15);
+    let px = |i: usize| -> [u8; 4] {
+        let n = rgba.len() / 4;
+        let i = i.min(n.saturating_sub(1)) * 4;
+        [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]
+    };
+    let n = rgba.len() / 4;
+    let mut i = 0;
+    while i < n {
+        let p: [[u8; 4]; 4] = [px(i), px(i + 1), px(i + 2), px(i + 3)];
+        let ycc: Vec<(u16, u16, u16)> = p
+            .iter()
+            .map(|q| rgb_to_ycbcr709_10(q[0], q[1], q[2]))
+            .collect();
+        let a = |q: [u8; 4]| alpha_to_key10(q[3]).0 as u128;
+        let avg = |x: u16, y: u16| (x as u32 + y as u32).div_ceil(2) as u128;
+        let samples: [u128; 12] = [
+            avg(ycc[0].1, ycc[1].1),
+            ycc[0].0 as u128,
+            a(p[0]),
+            avg(ycc[0].2, ycc[1].2),
+            ycc[1].0 as u128,
+            a(p[1]),
+            avg(ycc[2].1, ycc[3].1),
+            ycc[2].0 as u128,
+            a(p[2]),
+            avg(ycc[2].2, ycc[3].2),
+            ycc[3].0 as u128,
+            a(p[3]),
+        ];
+        let bits = samples
+            .iter()
+            .fold(0u128, |acc, v| (acc << 10) | (v & 0x3ff));
+        out.extend_from_slice(&bits.to_be_bytes()[1..16]);
+        i += 4;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ycbcra_pgroup() {
+        let mut out = Vec::new();
+        pack_line_4224_10(&[255; 16], &mut out);
+        assert_eq!(out.len(), 15);
+        let mut b = [0u8; 16];
+        b[1..].copy_from_slice(&out);
+        let v = u128::from_be_bytes(b);
+        let s = |i: u32| ((v >> (110 - i * 10)) & 0x3ff) as u16;
+        assert_eq!((s(0), s(1), s(2)), (512, 940, 940));
+        assert_eq!(s(11), 940);
+    }
 
     #[test]
     fn levels() {

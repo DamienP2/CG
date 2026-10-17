@@ -18,12 +18,21 @@ use crate::{OutputError, OutputSink};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SdiConfig {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     /// DeckLink device index (as listed by Desktop Video).
     pub device: u32,
-    /// Use the card's external keyer (fill on SDI A, key on SDI B).
+    /// Use the card's external keyer (fill on SDI A, key on SDI B); off:
+    /// the card's internal keyer over its SDI input.
     #[serde(default = "yes")]
     pub external_key: bool,
+    /// Fill only, no key.
+    #[serde(default)]
+    pub fill_only: bool,
+    /// Lock to the card's reference input.
+    #[serde(default)]
+    pub genlock: bool,
 }
 
 fn yes() -> bool {
@@ -45,7 +54,7 @@ impl DeckLinkOutput {
         } else {
             let _ = &config;
             Err(OutputError::Unsupported(
-                "built without the `decklink` feature".into(),
+                "DeckLink support is not built into this server (`decklink` feature)".into(),
             ))
         }
     }

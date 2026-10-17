@@ -6,6 +6,7 @@
 
 pub mod colorspace;
 pub mod mov;
+pub mod ndi;
 pub mod sdi;
 pub mod st2110;
 

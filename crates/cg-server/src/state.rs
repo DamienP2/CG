@@ -150,6 +150,8 @@ pub struct AppState {
     pub data: Arc<crate::datasources::Hub>,
     /// Who edits which template in the designer.
     pub locks: Arc<crate::locks::Locks>,
+    /// Whether each video output runs, by channel and output id.
+    pub output_status: Arc<OutputStatus>,
     /// Settings this engine cycle was started with.
     pub config: ServerConfig,
     /// Address actually bound by this cycle.
@@ -162,6 +164,43 @@ pub struct AppState {
 }
 
 pub type Shared = Arc<AppState>;
+
+/// State of one video output (SDI, ST 2110, NDI).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputState {
+    pub ok: bool,
+    pub message: String,
+}
+
+/// Video output states, by channel id then output id.
+#[derive(Default)]
+pub struct OutputStatus {
+    map: std::sync::Mutex<BTreeMap<String, BTreeMap<String, OutputState>>>,
+}
+
+impl OutputStatus {
+    pub fn set(&self, channel: &str, output: &str, ok: bool, message: impl Into<String>) {
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(channel.into()).or_default().insert(
+            output.into(),
+            OutputState {
+                ok,
+                message: message.into(),
+            },
+        );
+    }
+
+    /// Forgets a channel's outputs (the engine restarts them).
+    pub fn reset(&self, channel: &str) {
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(channel);
+    }
+
+    pub fn snapshot(&self) -> BTreeMap<String, BTreeMap<String, OutputState>> {
+        self.map.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
 
 pub fn now_ms() -> i64 {
     SystemTime::now()

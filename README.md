@@ -65,9 +65,9 @@ cg-server user delete <nom>
 
 Ces commandes agissent sur le dossier de données du service s'il existe (sinon sur le dossier utilisateur, ou sur `--data-dir`). Elles fonctionnent aussi pendant que le serveur tourne.
 
-### Réglages, chaînes et sorties baseband
+### Réglages, chaînes et sorties vidéo
 
-Le serveur, les chaînes et leurs sorties se règlent dans la page **Réglages** (`/settings`, réservée aux admins), sans redémarrer le service. Ils sont enregistrés dans `config.json`, dans le dossier de données :
+Le serveur se règle dans la page **Settings**, les chaînes et leurs sorties dans la page **Outputs** (`/outputs`, réservées aux admins). Tout est enregistré dans `config.json`, dans le dossier de données ; *Apply* redémarre les sorties sans redémarrer le service :
 
 ```json
 {
@@ -75,21 +75,25 @@ Le serveur, les chaînes et leurs sorties se règlent dans la page **Réglages**
   "bind": "0.0.0.0:8080",
   "publicOutputs": true,
   "timezone": "Europe/Paris",
+  "locations": [{ "id": "studio-a", "name": "Studio A" }, { "id": "web", "name": "Web desk" }],
   "channels": [
     {
-      "id": "studio-a", "name": "Studio A", "width": 1920, "height": 1080, "frameRate": { "num": 50, "den": 1 },
+      "id": "news", "name": "News", "location": "studio-a",
+      "width": 1920, "height": 1080, "frameRate": { "num": 50, "den": 1 },
       "projectId": "journal-20h",
       "outputs": {
-        "st2110": [{ "name": "CG1", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
-        "sdi": [{ "name": "CG1-SDI", "device": 0, "externalKey": true }]
-      }
-    },
-    { "id": "regie-sport", "name": "Régie sport", "width": 1920, "height": 1080, "frameRate": { "num": 50, "den": 1 }, "projectId": "match", "outputs": { "st2110": [], "sdi": [] } }
+        "html5": [{ "id": "html5-1", "name": "Web page", "background": "" }],
+        "st2110": [{ "id": "st2110-1", "name": "CG1", "encoding": "fillKey", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
+        "sdi": [{ "id": "sdi-1", "name": "CG1-SDI", "device": 0, "externalKey": true, "fillOnly": false, "genlock": true }],
+        "ndi": [{ "id": "ndi-1", "name": "PULSE NEWS", "groups": "", "alpha": true }]
+      },
+      "renditions": [{ "id": "vertical", "name": "Vertical 9:16", "width": 1080, "height": 1920, "outputs": { "st2110": [], "sdi": [], "ndi": [{ "id": "ndi-2", "name": "PULSE NEWS 9:16", "groups": "", "alpha": true }] } }]
+    }
   ]
 }
 ```
 
-Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/CG1/fill.sdp` et `/key.sdp` (à importer dans le contrôleur NMOS ou le récepteur).
+Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/<id de la sortie>/fill.sdp` et `/key.sdp` (à importer dans le contrôleur NMOS ou le récepteur). `GET /api/outputs/status` donne l'état de chaque sortie.
 
 ## Utilisation
 
@@ -103,8 +107,15 @@ Chaque carte de projet montre son nom, sa description, son format d'origine, ses
 ### Médias
 Deux bibliothèques : les **médias partagés** (page *Media* de l'accueil, `/assets/<fichier>`), utilisables par tous les projets, et les **médias du projet** (onglet *Media* du projet, `/assets/projects/<id>/<fichier>`). On y téléverse images, vidéos, sons et polices (bouton *Upload* ou glisser-déposer, jusqu'à 2 Go par fichier, avec progression), on filtre par type, on cherche, on copie l'URL, on télécharge ou on supprime. Le sélecteur d'image du Designer propose les deux bibliothèques et téléverse dans celle du projet ; les images d'un import After Effects y vont aussi. Dupliquer un projet copie ses médias, le supprimer les supprime.
 
-### Chaînes de sortie
-Une **chaîne** est un programme indépendant, par exemple une par studio ou par régie. Chaque chaîne a son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne, ses sorties ST 2110 / SDI et sa page HTML5 `/output/<id>`. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
+### Sorties vidéo (page Outputs)
+Une **chaîne** est un programme indépendant : son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne. Les chaînes se rangent par **lieu** (un studio, un car, la cellule web…) dans la colonne de gauche. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
+
+Chaque chaîne se règle sur un **canvas de nodes** : *Program* (la chaîne) → *Pictures* (l'image principale et d'autres tailles du même programme, 9:16, 1:1…) → *Destinations*. On ajoute des nodes avec les boutons du haut, on les déplace (positions gardées par navigateur), on sélectionne un node pour le régler à droite, puis *Apply*. Chaque node affiche son état (en marche, ou pourquoi il ne tourne pas).
+
+- **HTML5** : lien web `/output/<chaîne>[/<picture>]` (fond transparent, noir ou vert), pour OBS, vMix, CasparCG, un lecteur web ou un écran.
+- **SDI** : carte Blackmagic DeckLink, Fill + Key (keyer externe), keyer interne ou Fill seul, genlock. Nécessite Desktop Video et un serveur compilé avec la fonction `decklink`.
+- **ST 2110** : Fill + Key (deux flux ST 2110-20 YCbCr 4:2:2 10 bits + KEY), RGBA (un flux 4:4:4:4 8 bits) ou YCbCrA (un flux 4:2:2:4 10 bits) ; interface réseau, multicast, TTL, SDP. Le serveur doit être discipliné en PTP.
+- **NDI** : nom de source, groupes, avec ou sans alpha. Le runtime NDI (NDI Tools) est chargé au démarrage de la sortie ; `NDI_LIB_PATH` indique son emplacement si besoin.
 
 ### Formats multiples (16:9, 9:16, 1:1…)
 Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et un 9:16 pour les réseaux sociaux.

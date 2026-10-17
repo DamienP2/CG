@@ -2587,6 +2587,41 @@
      }
     }
    }
+  },
+  "/api/outputs/status": {
+   "get": {
+    "tags": [
+     "System"
+    ],
+    "summary": "State of the video outputs",
+    "description": "By channel id, then output id: `{ok, message}` for each SDI, ST 2110 and NDI output (\"Running\", or why it does not run).",
+    "responses": {
+     "200": {
+      "description": "States",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "object",
+           "properties": {
+            "ok": {
+             "type": "boolean"
+            },
+            "message": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {

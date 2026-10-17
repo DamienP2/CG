@@ -355,6 +355,7 @@ pub async fn serve(
     let mos_store = Arc::new(mos::Store::load(&data_dir));
     let data_hub = Arc::new(datasources::Hub::load(&data_dir));
     let locks = Arc::new(locks::Locks::default());
+    let output_status = Arc::new(state::OutputStatus::default());
     if auth.needs_setup() {
         tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
     }
@@ -414,6 +415,7 @@ pub async fn serve(
             mos: mos_store.clone(),
             data: data_hub.clone(),
             locks: locks.clone(),
+            output_status: output_status.clone(),
             config,
             bind,
             started_at,

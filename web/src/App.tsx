@@ -1,4 +1,4 @@
-import { BookOpen, Database, FolderOpen, Images, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { BookOpen, Database, FolderOpen, Images, MonitorPlay, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Logo } from './ui/Logo';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
@@ -9,6 +9,7 @@ import { Login } from './pages/Login';
 import { MosPlugin } from './mos/Plugin';
 import { Projects } from './pages/Projects';
 import { MediaLibrary } from './pages/Media';
+import { Outputs } from './outputs/Outputs';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
@@ -62,7 +63,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'settings' || route.page === 'users') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -123,7 +124,7 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'users' | 'settings' | 'apiDocs' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'outputs' | 'users' | 'settings' | 'apiDocs' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Pulse CG';
@@ -140,6 +141,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         <div className="tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
           {tab('media', '/media', <Images size={14} />, 'Media')}
+          {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, 'Outputs')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
           {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
         </div>
@@ -149,6 +151,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
       <div className="content">
         {route.page === 'projects' && <Projects />}
         {route.page === 'media' && <MediaLibrary />}
+        {route.page === 'outputs' && <Outputs />}
         {route.page === 'settings' && <Settings />}
         {route.page === 'users' && <Users />}
         {route.page === 'apiDocs' && <ApiDocs />}
