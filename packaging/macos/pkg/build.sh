@@ -42,6 +42,17 @@ chmod 0755 "$PAYLOAD/cg-server"
 cp "$ROOT/packaging/macos/uninstall.sh" "$ROOT/docs/INSTALL.md" "$ROOT/docs/outputs.example.json" "$ROOT/assets/fonts/OFL.txt" "$PAYLOAD/"
 chmod 0755 "$PAYLOAD/uninstall.sh"
 
+# NDI runtime (fetched by packaging/ndi/fetch-runtime.sh), loaded by the
+# server from lib/ next to it.
+if [ -n "${NDI_DIR:-}" ] && [ -f "$NDI_DIR/libndi.dylib" ]; then
+  mkdir -p "$PAYLOAD/lib"
+  cp "$NDI_DIR"/* "$PAYLOAD/lib/"
+  chmod 0644 "$PAYLOAD/lib/libndi.dylib"
+  echo "bundling the NDI runtime"
+else
+  echo "warning: no NDI runtime to bundle (NDI_DIR)"
+fi
+
 APPS="$WORK/root/Applications/Pulse CG"
 mkdir -p "$APPS"
 make_app "Pulse CG" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
@@ -53,6 +64,8 @@ cp "$HERE/com.pulsecg.tray.plist" "$WORK/root/Library/LaunchAgents/"
 # --- signing (optional) --------------------------------------------------------
 if [ -n "${MACOS_APP_IDENTITY:-}" ]; then
   sign() { codesign --force --options runtime --timestamp --sign "$MACOS_APP_IDENTITY" "$@"; }
+  # Same team as the server, so the hardened runtime loads it.
+  [ -f "$PAYLOAD/lib/libndi.dylib" ] && sign "$PAYLOAD/lib/libndi.dylib"
   sign "$PAYLOAD/cg-server"
   sign "$APPS/Pulse CG.app"
   sign "$APPS/Uninstall Pulse CG.app"

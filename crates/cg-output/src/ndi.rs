@@ -5,8 +5,8 @@
 //! the SDK redistributable) is loaded when the first NDI output opens. Without
 //! it, opening an output returns `OutputError::Unsupported` with where it was
 //! looked for. The server settings (or `NDI_LIB_PATH`) point to the library
-//! explicitly; otherwise the usual install folders are searched, then copies
-//! shipped inside other applications.
+//! explicitly; otherwise the runtime shipped next to the server by the Pulse
+//! CG installers is used, then the NDI SDK / NDI Tools install folders.
 
 use std::ffi::{c_char, c_void, CString};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -80,59 +80,6 @@ struct Lib {
 unsafe impl Send for Lib {}
 unsafe impl Sync for Lib {}
 
-/// Bundled copies inside applications (NDI Tools installs its runtime in
-/// its apps on macOS): `<dir>/*.app/Contents/{Frameworks,MacOS}/libndi*.dylib`,
-/// looking one folder deeper for suites such as "NDI Tools".
-fn app_bundles(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for e in rd.flatten() {
-        let p = e.path();
-        let name = e.file_name().to_string_lossy().to_lowercase();
-        if name.ends_with(".app") {
-            if !name.contains("ndi") && depth == 0 {
-                continue;
-            }
-            for sub in [
-                "Contents/Frameworks",
-                "Contents/MacOS",
-                "Contents/Resources",
-            ] {
-                if let Ok(files) = std::fs::read_dir(p.join(sub)) {
-                    for f in files.flatten() {
-                        let n = f.file_name().to_string_lossy().to_string();
-                        if n.starts_with("libndi") && n.ends_with(".dylib") {
-                            out.push(f.path().to_string_lossy().into_owned());
-                        }
-                    }
-                }
-            }
-        } else if depth > 0 && p.is_dir() && name.contains("ndi") {
-            app_bundles(&p, depth - 1, out);
-        }
-    }
-}
-
-/// Copies of the runtime shipped inside other applications (plugins,
-/// players…): `libndi*.dylib` anywhere a few folders down `dir`.
-fn deep_scan(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().to_string();
-        let Ok(ft) = e.file_type() else { continue };
-        if ft.is_dir() {
-            if depth > 0 && !name.starts_with('.') && name != "node_modules" {
-                deep_scan(&e.path(), depth - 1, out);
-            }
-        } else if name.starts_with("libndi") && name.ends_with(".dylib") {
-            out.push(e.path().to_string_lossy().into_owned());
-        }
-    }
-}
-
 /// Runtime path set in the server settings (tried first).
 static CONFIGURED: Mutex<String> = Mutex::new(String::new());
 
@@ -148,6 +95,24 @@ fn candidates() -> Vec<String> {
         c.push(configured);
     }
     c.extend(std::env::var("NDI_LIB_PATH"));
+    // The runtime shipped with Pulse CG, next to the server.
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.to_path_buf()))
+    {
+        let names: &[&str] = if cfg!(target_os = "windows") {
+            &["Processing.NDI.Lib.x64.dll"]
+        } else if cfg!(target_os = "macos") {
+            &["lib/libndi.dylib", "libndi.dylib"]
+        } else {
+            &["lib/libndi.so.6", "libndi.so.6"]
+        };
+        c.extend(
+            names
+                .iter()
+                .map(|n| dir.join(n).to_string_lossy().into_owned()),
+        );
+    }
     let runtime_dirs: Vec<String> = [
         "NDI_RUNTIME_DIR_V6",
         "NDI_RUNTIME_DIR_V5",
@@ -184,11 +149,6 @@ fn candidates() -> Vec<String> {
             ]
             .map(String::from),
         );
-        app_bundles(std::path::Path::new("/Applications"), 1, &mut c);
-        deep_scan(std::path::Path::new("/Applications"), 5, &mut c);
-        if let Some(home) = std::env::var_os("HOME") {
-            app_bundles(&std::path::Path::new(&home).join("Applications"), 1, &mut c);
-        }
     } else {
         for dir in &runtime_dirs {
             c.push(format!("{dir}/libndi.so.6"));
@@ -256,7 +216,7 @@ fn load() -> Result<Lib, String> {
         ));
     }
     Err(format!(
-        "NDI runtime not found (install the NDI SDK or NDI Tools, or set NDI_LIB_PATH; looked for {})",
+        "NDI runtime not found (reinstall Pulse CG, or install the NDI SDK; looked for {})",
         tried.join(", ")
     ))
 }

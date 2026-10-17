@@ -12,6 +12,8 @@ mkdir -p "$PREFIX" /usr/local/bin
 cp "$HERE/cg-server" "$PREFIX/cg-server"
 chmod 0755 "$PREFIX/cg-server"
 cp "$HERE"/*.md "$HERE"/OFL.txt "$PREFIX/" 2>/dev/null || true
+# NDI runtime shipped with the package.
+if [ -d "$HERE/lib" ]; then mkdir -p "$PREFIX/lib" && cp "$HERE"/lib/* "$PREFIX/lib/"; fi
 # Downloaded binaries are quarantined by Gatekeeper; the archive is not notarized yet.
 xattr -dr com.apple.quarantine "$PREFIX" 2>/dev/null || true
 ln -sf "$PREFIX/cg-server" /usr/local/bin/cg-server

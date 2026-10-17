@@ -73,6 +73,15 @@
       <Component Id="DocFontLicense">
         <File Id="FontLicense" Source="$(var.DocsDir)\assets\fonts\OFL.txt" KeyPath="yes" />
       </Component>
+      <?ifdef NdiDir ?>
+      <!-- NDI runtime (packaging/ndi/fetch-runtime.sh), loaded from next to the server. -->
+      <Component Id="NdiRuntime">
+        <File Id="NdiDll" Source="$(var.NdiDir)\Processing.NDI.Lib.x64.dll" KeyPath="yes" />
+      </Component>
+      <Component Id="NdiNotice">
+        <File Id="NdiNoticeTxt" Source="$(var.NdiDir)\NDI-NOTICE.txt" KeyPath="yes" />
+      </Component>
+      <?endif ?>
       <Component Id="StartMenu" Directory="MenuFolder">
         <Shortcut Id="TrayShortcut" Name="Pulse CG" Description="Pulse CG server status, settings and shortcuts" Target="[#TrayExe]" WorkingDirectory="INSTALLFOLDER" />
         <Shortcut Id="UninstallShortcut" Name="Uninstall Pulse CG" Description="Remove Pulse CG (your data is kept)" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]" Icon="PulseCG.ico" />

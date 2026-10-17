@@ -22,6 +22,8 @@ if (Get-Service -Name "pulse-cg" -ErrorAction SilentlyContinue) {
 New-Item -ItemType Directory -Force -Path $prefix | Out-Null
 Copy-Item (Join-Path $here "cg-server.exe") $exe -Force
 Get-ChildItem $here -Include *.md, OFL.txt -File -Recurse | Copy-Item -Destination $prefix -Force
+# NDI runtime shipped with the package, loaded from next to the server.
+Get-ChildItem $here -Include Processing.NDI.Lib.x64.dll, NDI-NOTICE.txt -File -Recurse | Copy-Item -Destination $prefix -Force
 Unblock-File $exe
 
 $cliArgs = @("service", "install", "--bind", $Bind)

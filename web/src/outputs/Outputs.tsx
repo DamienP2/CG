@@ -874,10 +874,10 @@ export function Outputs() {
                         <input type="checkbox" checked={o.alpha} onChange={(e) => editDest<NdiOutput>((d) => void (d.alpha = e.target.checked))} />
                         Send the alpha channel
                       </label>
-                      <Field label="NDI runtime (all NDI outputs)" hint="Path of libndi on this server. Empty: the usual install folders, then copies shipped inside applications.">
+                      <Field label="NDI runtime (all NDI outputs)" hint="Leave empty to use the NDI runtime installed with Pulse CG. Only to force another libndi.">
                         <input value={cfg.ndiLibrary ?? ''} placeholder={info.os === 'macos' ? '/usr/local/lib/libndi.dylib' : info.os === 'windows' ? 'C:\\Program Files\\NDI\\…\\Processing.NDI.Lib.x64.dll' : '/usr/lib/libndi.so.6'} onChange={(e) => edit((c) => void (c.ndiLibrary = e.target.value))} />
                       </Field>
-                      <Hint>Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). Needs the NDI runtime on this server: the NDI SDK or NDI Tools.</Hint>
+                      <Hint>Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). The NDI runtime comes with the Pulse CG installers (macOS, Windows).</Hint>
                     </>
                   );
                 })()}
