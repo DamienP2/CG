@@ -1,0 +1,778 @@
+{
+ "demo": {
+  "id": "demo-06-football",
+  "name": "06 · Football match",
+  "level": 3,
+  "tags": [
+   "Sport",
+   "Score",
+   "Colours",
+   "Widget controls",
+   "Line height"
+  ],
+  "description": "A score bug with team colours (colour variables) and a match clock the operator starts and pauses from the controls on air, a GOAL! full screen and the line-ups."
+ },
+ "project": {
+  "id": "demo-06-football",
+  "name": "06 · Football match",
+  "description": "A score bug with team colours (colour variables) and a match clock the operator starts and pauses from the controls on air, a GOAL! full screen and the line-ups.",
+  "width": 1920,
+  "height": 1080,
+  "frameRate": {
+   "num": 50,
+   "den": 1
+  },
+  "templates": [
+   {
+    "id": "scorebug",
+    "name": "Score bug",
+    "duration": 60.0,
+    "markers": [
+     {
+      "id": "scorebug-out",
+      "frame": 30.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "home",
+      "label": "Home",
+      "kind": "text",
+      "default": "PSG"
+     },
+     {
+      "key": "away",
+      "label": "Away",
+      "kind": "text",
+      "default": "OM"
+     },
+     {
+      "key": "homeScore",
+      "label": "Home score",
+      "kind": "number",
+      "default": "0",
+      "min": 0,
+      "max": 20
+     },
+     {
+      "key": "awayScore",
+      "label": "Away score",
+      "kind": "number",
+      "default": "0",
+      "min": 0,
+      "max": 20
+     },
+     {
+      "key": "homeColor",
+      "label": "Home colour",
+      "kind": "color",
+      "default": "#1d4ed8"
+     },
+     {
+      "key": "awayColor",
+      "label": "Away colour",
+      "kind": "color",
+      "default": "#38bdf8"
+     }
+    ],
+    "layers": [
+     {
+      "id": "scorebug-1",
+      "name": "Score bug",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 50.0,
+       "width": 560.0,
+       "height": 64.0
+      },
+      "tracks": {
+       "cropRight": [
+        {
+         "frame": 0.0,
+         "value": 1,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 14.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 30.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 44.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": true
+     },
+     {
+      "id": "scorebug-2",
+      "name": "Plate",
+      "parent": "scorebug-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 560.0,
+       "height": 64.0,
+       "fill": [
+        0.0431,
+        0.051,
+        0.0902,
+        0.92
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "scorebug-3",
+      "name": "Home colour",
+      "parent": "scorebug-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 10.0,
+       "height": 64.0,
+       "fill": [
+        0.1451,
+        0.3882,
+        0.9216,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {
+       "fill": "homeColor"
+      }
+     },
+     {
+      "id": "scorebug-4",
+      "name": "Home",
+      "parent": "scorebug-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 20.0,
+       "y": 0.0,
+       "width": 120.0,
+       "height": 64.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 30.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{home}}",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false,
+      "transform": "upper"
+     },
+     {
+      "id": "scorebug-5",
+      "name": "Score plate",
+      "parent": "scorebug-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 140.0,
+       "y": 0.0,
+       "width": 140.0,
+       "height": 64.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "scorebug-6",
+      "name": "Score",
+      "parent": "scorebug-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 140.0,
+       "y": 0.0,
+       "width": 140.0,
+       "height": 64.0,
+       "fill": [
+        0.0431,
+        0.051,
+        0.0902,
+        1.0
+       ],
+       "fontSize": 34.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{homeScore}} - {{awayScore}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "scorebug-7",
+      "name": "Away",
+      "parent": "scorebug-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 290.0,
+       "y": 0.0,
+       "width": 120.0,
+       "height": 64.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 30.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{away}}",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false,
+      "transform": "upper"
+     },
+     {
+      "id": "scorebug-8",
+      "name": "Away colour",
+      "parent": "scorebug-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 410.0,
+       "y": 0.0,
+       "width": 10.0,
+       "height": 64.0,
+       "fill": [
+        0.1451,
+        0.3882,
+        0.9216,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {
+       "fill": "awayColor"
+      }
+     },
+     {
+      "id": "scorebug-9",
+      "name": "Match clock",
+      "parent": "scorebug-1",
+      "type": "clock",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 420.0,
+       "y": 0.0,
+       "width": 140.0,
+       "height": 64.0,
+       "fontSize": 30.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "mode": "elapsed",
+      "format": "mm:ss",
+      "timezone": "",
+      "target": "",
+      "manualStart": true,
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "score",
+    "revision": 1,
+    "markerModel": 2
+   },
+   {
+    "id": "goal",
+    "name": "Goal",
+    "duration": 90.0,
+    "markers": [
+     {
+      "id": "goal-out",
+      "frame": 60.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "team",
+      "label": "Team",
+      "kind": "text",
+      "default": "PSG"
+     },
+     {
+      "key": "scorer",
+      "label": "Scorer",
+      "kind": "text",
+      "default": "Mbappé 23'"
+     }
+    ],
+    "layers": [
+     {
+      "id": "goal-1",
+      "name": "Goal",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 380.0,
+       "width": 1920.0,
+       "height": 320.0
+      },
+      "tracks": {
+       "cropBottom": [
+        {
+         "frame": 0.0,
+         "value": 1,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 12.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 60.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": true
+     },
+     {
+      "id": "goal-2",
+      "name": "Band",
+      "parent": "goal-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1920.0,
+       "height": 320.0,
+       "fill": [
+        1.0,
+        0.2314,
+        0.3608,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "goal-3",
+      "name": "GOAL",
+      "parent": "goal-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 20.0,
+       "width": 1920.0,
+       "height": 200.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 160.0
+      },
+      "tracks": {
+       "scaleX": [
+        {
+         "frame": 0.0,
+         "value": 0.6,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 18.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ],
+       "scaleY": [
+        {
+         "frame": 0.0,
+         "value": 0.6,
+         "easing": {
+          "type": "back"
+         }
+        },
+        {
+         "frame": 18.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "text": "GOAL!",
+      "fontFamily": "Inter",
+      "fontWeight": 900,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false,
+      "transform": "upper"
+     },
+     {
+      "id": "goal-4",
+      "name": "Scorer",
+      "parent": "goal-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 220.0,
+       "width": 1920.0,
+       "height": 80.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{team}} · {{scorer}}",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "full",
+    "revision": 1,
+    "markerModel": 2
+   },
+   {
+    "id": "lineup",
+    "name": "Line-up",
+    "duration": 90.0,
+    "markers": [
+     {
+      "id": "lineup-out",
+      "frame": 60.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "team",
+      "label": "Team",
+      "kind": "text",
+      "default": "Paris Saint-Germain"
+     },
+     {
+      "key": "players",
+      "label": "Players",
+      "kind": "multiline",
+      "default": "Donnarumma\nHakimi\nMarquinhos\nPacho\nMendes\nVitinha\nNeves\nZaïre-Emery\nDembélé\nBarcola\nKvaratskhelia"
+     }
+    ],
+    "layers": [
+     {
+      "id": "lineup-1",
+      "name": "Line-up",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 560.0,
+       "y": 90.0,
+       "width": 800.0,
+       "height": 900.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 12.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 60.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 72.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "lineup-2",
+      "name": "Panel",
+      "parent": "lineup-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 800.0,
+       "height": 900.0,
+       "fill": [
+        0.1176,
+        0.1333,
+        0.2,
+        0.94
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "lineup-3",
+      "name": "Team",
+      "parent": "lineup-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 50.0,
+       "y": 30.0,
+       "width": 700.0,
+       "height": 80.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{team}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "lineup-4",
+      "name": "Players",
+      "parent": "lineup-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 50.0,
+       "y": 130.0,
+       "width": 700.0,
+       "height": 740.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{players}}",
+      "fontFamily": "Inter",
+      "fontWeight": 500,
+      "align": "left",
+      "verticalAlign": "top",
+      "uppercase": false,
+      "lineHeight": 1.6
+     }
+    ],
+    "zone": "full",
+    "revision": 1,
+    "markerModel": 2
+   }
+  ],
+  "rundown": [
+   {
+    "id": "pre-line-up-psg",
+    "name": "Line-up PSG",
+    "templateId": "lineup",
+    "zone": "full",
+    "playlist": "pre",
+    "layer": 50,
+    "data": {}
+   },
+   {
+    "id": "live-psg---om",
+    "name": "PSG - OM",
+    "templateId": "scorebug",
+    "zone": "score",
+    "playlist": "live",
+    "layer": 20,
+    "data": {}
+   },
+   {
+    "id": "live-goal-psg",
+    "name": "Goal PSG",
+    "templateId": "goal",
+    "zone": "full",
+    "playlist": "live",
+    "layer": 50,
+    "data": {}
+   }
+  ],
+  "zones": [
+   {
+    "id": "score",
+    "name": "Score bug",
+    "layer": 20,
+    "color": "#ff3b5c",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0.03,
+      "y": 0.04,
+      "width": 0.3,
+      "height": 0.07
+     }
+    }
+   },
+   {
+    "id": "full",
+    "name": "Full screen",
+    "layer": 50,
+    "color": "#38bdf8",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+     }
+    }
+   }
+  ],
+  "playlists": [
+   {
+    "id": "pre",
+    "name": "Before the match"
+   },
+   {
+    "id": "live",
+    "name": "Match"
+   }
+  ],
+  "formats": []
+ }
+}

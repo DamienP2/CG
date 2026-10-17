@@ -34,6 +34,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/keys/{id}", axum::routing::delete(delete_key))
         .route("/api/openapi.json", get(openapi))
         .route("/api/projects", get(list_projects).post(create_project))
+        .route("/api/demos", get(list_demos))
+        .route("/api/demos/{id}", post(create_from_demo))
         .route("/api/projects/import", post(import_project))
         .route(
             "/api/projects/{id}",
@@ -519,6 +521,25 @@ async fn create_project(
         );
         p = serde_json::from_str(&json).map_err(internal)?;
     }
+    let p = s.save_project(p).await.map_err(internal)?;
+    Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
+/// The bank of demo projects.
+async fn list_demos(CurrentUser(_me): CurrentUser) -> Json<Vec<crate::demos::DemoInfo>> {
+    Json(crate::demos::list())
+}
+
+/// A new project made from a demo.
+async fn create_from_demo(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<ProjectSummary>> {
+    require(me.can_create_projects())?;
+    let mut p = crate::demos::project(&id).ok_or_else(|| not_found("demo project"))?;
+    p.id = cg_core::new_id();
+    p.rundown.iter_mut().for_each(|r| r.id = cg_core::new_id());
     let p = s.save_project(p).await.map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }

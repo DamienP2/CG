@@ -1,0 +1,1006 @@
+{
+ "demo": {
+  "id": "demo-04-weather",
+  "name": "04 · Weather",
+  "level": 2,
+  "tags": [
+   "Weather",
+   "Counter",
+   "Rotator",
+   "Number range"
+  ],
+  "description": "A full-screen weather board whose temperatures count up (number variables with a range, set with sliders), and a strip that rotates through the forecasts."
+ },
+ "project": {
+  "id": "demo-04-weather",
+  "name": "04 · Weather",
+  "description": "A full-screen weather board whose temperatures count up (number variables with a range, set with sliders), and a strip that rotates through the forecasts.",
+  "width": 1920,
+  "height": 1080,
+  "frameRate": {
+   "num": 50,
+   "den": 1
+  },
+  "templates": [
+   {
+    "id": "weather",
+    "name": "Weather board",
+    "duration": 100.0,
+    "markers": [
+     {
+      "id": "weather-out",
+      "frame": 70.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "title",
+      "label": "Title",
+      "kind": "text",
+      "default": "Weather · Tomorrow"
+     },
+     {
+      "key": "paris",
+      "label": "Paris °C",
+      "kind": "number",
+      "default": "18",
+      "min": -20,
+      "max": 45
+     },
+     {
+      "key": "lyon",
+      "label": "Lyon °C",
+      "kind": "number",
+      "default": "21",
+      "min": -20,
+      "max": 45
+     },
+     {
+      "key": "marseille",
+      "label": "Marseille °C",
+      "kind": "number",
+      "default": "25",
+      "min": -20,
+      "max": 45
+     },
+     {
+      "key": "lille",
+      "label": "Lille °C",
+      "kind": "number",
+      "default": "14",
+      "min": -20,
+      "max": 45
+     }
+    ],
+    "layers": [
+     {
+      "id": "weather-1",
+      "name": "Board",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 360.0,
+       "y": 160.0,
+       "width": 1200.0,
+       "height": 760.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 15.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 85.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "weather-2",
+      "name": "Panel",
+      "parent": "weather-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1200.0,
+       "height": 760.0,
+       "fill": [
+        0.0549,
+        0.1647,
+        0.2902,
+        0.92
+       ],
+       "cornerRadius": 24.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-3",
+      "name": "Title",
+      "parent": "weather-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 30.0,
+       "width": 1080.0,
+       "height": 100.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 56.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{title}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-4",
+      "name": "Paris",
+      "parent": "weather-1",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 170.0,
+       "width": 1080.0,
+       "height": 120.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": 1300,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 16.0,
+         "value": 60,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 60,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 86.0,
+         "value": 1300,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "weather-5",
+      "name": "Row",
+      "parent": "weather-4",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1080.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 14.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-6",
+      "name": "Sun",
+      "parent": "weather-4",
+      "type": "ellipse",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 30.0,
+       "y": 25.0,
+       "width": 70.0,
+       "height": 70.0,
+       "fill": [
+        0.9608,
+        0.6471,
+        0.1412,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-7",
+      "name": "City",
+      "parent": "weather-4",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 130.0,
+       "y": 0.0,
+       "width": 600.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "Paris",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-8",
+      "name": "Temperature",
+      "parent": "weather-4",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 700.0,
+       "y": 0.0,
+       "width": 340.0,
+       "height": 120.0,
+       "fontSize": 56.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "from": "0",
+      "to": "{{paris}}",
+      "duration": 1.2,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": "°",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-9",
+      "name": "Lyon",
+      "parent": "weather-1",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 310.0,
+       "width": 1080.0,
+       "height": 120.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": 1300,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 19.0,
+         "value": 60,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 60,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 89.0,
+         "value": 1300,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "weather-10",
+      "name": "Row",
+      "parent": "weather-9",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1080.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 14.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-11",
+      "name": "Sun",
+      "parent": "weather-9",
+      "type": "ellipse",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 30.0,
+       "y": 25.0,
+       "width": 70.0,
+       "height": 70.0,
+       "fill": [
+        0.9608,
+        0.6471,
+        0.1412,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-12",
+      "name": "City",
+      "parent": "weather-9",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 130.0,
+       "y": 0.0,
+       "width": 600.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "Lyon",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-13",
+      "name": "Temperature",
+      "parent": "weather-9",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 700.0,
+       "y": 0.0,
+       "width": 340.0,
+       "height": 120.0,
+       "fontSize": 56.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "from": "0",
+      "to": "{{lyon}}",
+      "duration": 1.2,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": "°",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-14",
+      "name": "Marseille",
+      "parent": "weather-1",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 450.0,
+       "width": 1080.0,
+       "height": 120.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": 1300,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 22.0,
+         "value": 60,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 60,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 92.0,
+         "value": 1300,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "weather-15",
+      "name": "Row",
+      "parent": "weather-14",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1080.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 14.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-16",
+      "name": "Sun",
+      "parent": "weather-14",
+      "type": "ellipse",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 30.0,
+       "y": 25.0,
+       "width": 70.0,
+       "height": 70.0,
+       "fill": [
+        0.9608,
+        0.6471,
+        0.1412,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-17",
+      "name": "City",
+      "parent": "weather-14",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 130.0,
+       "y": 0.0,
+       "width": 600.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "Marseille",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-18",
+      "name": "Temperature",
+      "parent": "weather-14",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 700.0,
+       "y": 0.0,
+       "width": 340.0,
+       "height": 120.0,
+       "fontSize": 56.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "from": "0",
+      "to": "{{marseille}}",
+      "duration": 1.2,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": "°",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-19",
+      "name": "Lille",
+      "parent": "weather-1",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 590.0,
+       "width": 1080.0,
+       "height": 120.0
+      },
+      "tracks": {
+       "x": [
+        {
+         "frame": 0.0,
+         "value": 1300,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 25.0,
+         "value": 60,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 70.0,
+         "value": 60,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 95.0,
+         "value": 1300,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "weather-20",
+      "name": "Row",
+      "parent": "weather-19",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1080.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        0.06
+       ],
+       "cornerRadius": 14.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-21",
+      "name": "Sun",
+      "parent": "weather-19",
+      "type": "ellipse",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 30.0,
+       "y": 25.0,
+       "width": 70.0,
+       "height": 70.0,
+       "fill": [
+        0.9608,
+        0.6471,
+        0.1412,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-22",
+      "name": "City",
+      "parent": "weather-19",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 130.0,
+       "y": 0.0,
+       "width": 600.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "Lille",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "weather-23",
+      "name": "Temperature",
+      "parent": "weather-19",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 700.0,
+       "y": 0.0,
+       "width": 340.0,
+       "height": 120.0,
+       "fontSize": 56.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "from": "0",
+      "to": "{{lille}}",
+      "duration": 1.2,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": "°",
+      "grouping": false,
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "full",
+    "revision": 1,
+    "markerModel": 2
+   },
+   {
+    "id": "weather-strip",
+    "name": "Forecast strip",
+    "duration": 60.0,
+    "markers": [
+     {
+      "id": "weather-strip-out",
+      "frame": 30.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "lines",
+      "label": "Forecasts",
+      "kind": "multiline",
+      "default": "Paris  18°  sunny\nLyon  21°  clouds\nMarseille  25°  sunny\nLille  14°  rain"
+     }
+    ],
+    "layers": [
+     {
+      "id": "weather-strip-1",
+      "name": "Strip",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 880.0,
+       "width": 900.0,
+       "height": 90.0
+      },
+      "tracks": {
+       "cropRight": [
+        {
+         "frame": 0.0,
+         "value": 1,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 18.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 30.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 48.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "weather-strip-2",
+      "name": "Plate",
+      "parent": "weather-strip-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 900.0,
+       "height": 90.0,
+       "fill": [
+        0.0549,
+        0.1647,
+        0.2902,
+        0.95
+       ],
+       "cornerRadius": 12.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "weather-strip-3",
+      "name": "Forecasts",
+      "parent": "weather-strip-1",
+      "type": "rotator",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 40.0,
+       "y": 0.0,
+       "width": 840.0,
+       "height": 90.0,
+       "fontSize": 40.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{lines}}",
+      "interval": 3.0,
+      "fade": 0.5,
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "lower",
+    "revision": 1,
+    "markerModel": 2
+   }
+  ],
+  "rundown": [
+   {
+    "id": "weather-tomorrow",
+    "name": "Tomorrow",
+    "templateId": "weather",
+    "zone": "full",
+    "playlist": "weather",
+    "layer": 50,
+    "data": {
+     "title": "Weather · Tomorrow",
+     "paris": "18",
+     "lyon": "21",
+     "marseille": "25",
+     "lille": "14"
+    }
+   },
+   {
+    "id": "weather-forecast-strip",
+    "name": "Forecast strip",
+    "templateId": "weather-strip",
+    "zone": "lower",
+    "playlist": "weather",
+    "layer": 10,
+    "data": {}
+   }
+  ],
+  "zones": [
+   {
+    "id": "lower",
+    "name": "Lower third",
+    "layer": 10,
+    "color": "#7c5cff",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0.04,
+      "y": 0.68,
+      "width": 0.66,
+      "height": 0.28
+     }
+    }
+   },
+   {
+    "id": "full",
+    "name": "Full screen",
+    "layer": 50,
+    "color": "#38bdf8",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+     }
+    }
+   }
+  ],
+  "playlists": [
+   {
+    "id": "weather",
+    "name": "Weather"
+   }
+  ],
+  "formats": []
+ }
+}

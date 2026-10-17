@@ -1,0 +1,575 @@
+{
+ "demo": {
+  "id": "demo-02-bug-clock",
+  "name": "02 · Channel bug and clock",
+  "level": 1,
+  "tags": [
+   "Zones",
+   "Clock widget",
+   "Pause",
+   "Guides"
+  ],
+  "description": "Three graphics on air together in their own zones: a channel bug, a clock widget and a LIVE tag that holds on a pause until you press Continue. The bug area is kept clear in the guides."
+ },
+ "project": {
+  "id": "demo-02-bug-clock",
+  "name": "02 · Channel bug and clock",
+  "description": "Three graphics on air together in their own zones: a channel bug, a clock widget and a LIVE tag that holds on a pause until you press Continue. The bug area is kept clear in the guides.",
+  "width": 1920,
+  "height": 1080,
+  "frameRate": {
+   "num": 50,
+   "den": 1
+  },
+  "templates": [
+   {
+    "id": "bug",
+    "name": "Channel bug",
+    "duration": 60.0,
+    "markers": [
+     {
+      "id": "bug-out",
+      "frame": 30.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "channel",
+      "label": "Channel",
+      "kind": "text",
+      "default": "PULSE 24"
+     }
+    ],
+    "layers": [
+     {
+      "id": "bug-1",
+      "name": "Bug",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 1640.0,
+       "y": 54.0,
+       "width": 230.0,
+       "height": 70.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 12.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 30.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 42.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "bug-2",
+      "name": "Plate",
+      "parent": "bug-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 230.0,
+       "height": 70.0,
+       "fill": [
+        0.4863,
+        0.3608,
+        1.0,
+        1.0
+       ],
+       "cornerRadius": 10.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "bug-3",
+      "name": "Channel",
+      "parent": "bug-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 230.0,
+       "height": 70.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 30.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{channel}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "bug",
+    "revision": 1,
+    "markerModel": 2
+   },
+   {
+    "id": "clock",
+    "name": "Clock",
+    "duration": 60.0,
+    "markers": [
+     {
+      "id": "clock-out",
+      "frame": 30.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [],
+    "layers": [
+     {
+      "id": "clock-1",
+      "name": "Clock",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 1640.0,
+       "y": 132.0,
+       "width": 230.0,
+       "height": 54.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 12.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 30.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 42.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "clock-2",
+      "name": "Plate",
+      "parent": "clock-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 230.0,
+       "height": 54.0,
+       "fill": [
+        0.0431,
+        0.051,
+        0.0902,
+        0.92
+       ],
+       "cornerRadius": 8.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "clock-3",
+      "name": "Time",
+      "parent": "clock-1",
+      "type": "clock",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 230.0,
+       "height": 54.0,
+       "fontSize": 30.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "mode": "time",
+      "format": "HH:mm:ss",
+      "timezone": "",
+      "target": "",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "clock",
+    "revision": 1,
+    "markerModel": 2
+   },
+   {
+    "id": "live",
+    "name": "LIVE tag",
+    "duration": 80.0,
+    "markers": [
+     {
+      "id": "live-out",
+      "frame": 50.0,
+      "name": "On air",
+      "kind": "out"
+     },
+     {
+      "id": "live-p1",
+      "frame": 20.0,
+      "name": "Hold",
+      "kind": "pause",
+      "resume": {
+       "type": "manual"
+      }
+     }
+    ],
+    "fields": [
+     {
+      "key": "label",
+      "label": "Label",
+      "kind": "text",
+      "default": "LIVE"
+     },
+     {
+      "key": "place",
+      "label": "Place",
+      "kind": "text",
+      "default": "PARIS"
+     }
+    ],
+    "layers": [
+     {
+      "id": "live-1",
+      "name": "Live",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 54.0,
+       "width": 420.0,
+       "height": 60.0
+      },
+      "tracks": {
+       "cropRight": [
+        {
+         "frame": 0.0,
+         "value": 1,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 14.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 50.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 64.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": true
+     },
+     {
+      "id": "live-2",
+      "name": "Red",
+      "parent": "live-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 120.0,
+       "height": 60.0,
+       "fill": [
+        1.0,
+        0.2314,
+        0.3608,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "live-3",
+      "name": "Live",
+      "parent": "live-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 120.0,
+       "height": 60.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 30.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{label}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "live-4",
+      "name": "Place plate",
+      "parent": "live-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 0.0,
+       "width": 300.0,
+       "height": 60.0,
+       "fill": [
+        0.0431,
+        0.051,
+        0.0902,
+        0.92
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "live-5",
+      "name": "Place",
+      "parent": "live-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 140.0,
+       "y": 0.0,
+       "width": 270.0,
+       "height": 60.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 28.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{place}}",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "live",
+    "revision": 1,
+    "markerModel": 2
+   }
+  ],
+  "rundown": [
+   {
+    "id": "show-bug",
+    "name": "Bug",
+    "templateId": "bug",
+    "zone": "bug",
+    "playlist": "show",
+    "layer": 60,
+    "data": {
+     "channel": "PULSE 24"
+    }
+   },
+   {
+    "id": "show-clock",
+    "name": "Clock",
+    "templateId": "clock",
+    "zone": "clock",
+    "playlist": "show",
+    "layer": 61,
+    "data": {}
+   },
+   {
+    "id": "show-live-paris",
+    "name": "Live Paris",
+    "templateId": "live",
+    "zone": "live",
+    "playlist": "show",
+    "layer": 20,
+    "data": {
+     "label": "LIVE",
+     "place": "PARIS"
+    }
+   }
+  ],
+  "zones": [
+   {
+    "id": "live",
+    "name": "Top left",
+    "layer": 20,
+    "color": "#ff3b5c",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0.02,
+      "y": 0.03,
+      "width": 0.26,
+      "height": 0.09
+     }
+    }
+   },
+   {
+    "id": "bug",
+    "name": "Bug",
+    "layer": 60,
+    "color": "#7c5cff",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0.84,
+      "y": 0.04,
+      "width": 0.14,
+      "height": 0.08
+     }
+    }
+   },
+   {
+    "id": "clock",
+    "name": "Clock",
+    "layer": 61,
+    "color": "#22c55e",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0.84,
+      "y": 0.12,
+      "width": 0.14,
+      "height": 0.06
+     }
+    }
+   }
+  ],
+  "playlists": [
+   {
+    "id": "show",
+    "name": "Show"
+   }
+  ],
+  "formats": [],
+  "guides": {
+   "vertical": [
+    0.0625,
+    0.9375
+   ],
+   "horizontal": [
+    0.9
+   ],
+   "actionSafe": 0.035,
+   "titleSafe": 0.05,
+   "exclusions": [
+    {
+     "id": "bug",
+     "name": "Channel bug",
+     "x": 0.84,
+     "y": 0.04,
+     "width": 0.13,
+     "height": 0.18
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,420 @@
+{
+ "demo": {
+  "id": "demo-05-election",
+  "name": "05 · Election night",
+  "level": 3,
+  "tags": [
+   "Elections",
+   "Bar chart",
+   "Progress",
+   "Boolean",
+   "Trigger"
+  ],
+  "description": "Results with animated bars, a turnout bar, a vote counter, and a \"projected winner\" badge switched by a boolean variable. The board waits on the trigger \"reveal\" before the results animate."
+ },
+ "project": {
+  "id": "demo-05-election",
+  "name": "05 · Election night",
+  "description": "Results with animated bars, a turnout bar, a vote counter, and a \"projected winner\" badge switched by a boolean variable. The board waits on the trigger \"reveal\" before the results animate.",
+  "width": 1920,
+  "height": 1080,
+  "frameRate": {
+   "num": 50,
+   "den": 1
+  },
+  "templates": [
+   {
+    "id": "results",
+    "name": "Results",
+    "duration": 110.0,
+    "markers": [
+     {
+      "id": "results-out",
+      "frame": 80.0,
+      "name": "On air",
+      "kind": "out"
+     },
+     {
+      "id": "results-p1",
+      "frame": 40.0,
+      "name": "Results in",
+      "kind": "pause",
+      "resume": {
+       "type": "trigger",
+       "name": "reveal"
+      }
+     }
+    ],
+    "fields": [
+     {
+      "key": "title",
+      "label": "Title",
+      "kind": "text",
+      "default": "Presidential election · Second round"
+     },
+     {
+      "key": "results",
+      "label": "Results (name: %)",
+      "kind": "multiline",
+      "default": "Candidate A: 52.4\nCandidate B: 47.6"
+     },
+     {
+      "key": "turnout",
+      "label": "Turnout %",
+      "kind": "number",
+      "default": "71.3",
+      "min": 0,
+      "max": 100
+     },
+     {
+      "key": "winner",
+      "label": "Projected winner shown",
+      "kind": "boolean",
+      "default": "true"
+     },
+     {
+      "key": "votes",
+      "label": "Votes counted",
+      "kind": "number",
+      "default": "31254870"
+     }
+    ],
+    "layers": [
+     {
+      "id": "results-1",
+      "name": "Results",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 300.0,
+       "y": 140.0,
+       "width": 1320.0,
+       "height": 800.0
+      },
+      "tracks": {
+       "opacity": [
+        {
+         "frame": 0.0,
+         "value": 0,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 12.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 80.0,
+         "value": 1,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 92.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "results-2",
+      "name": "Panel",
+      "parent": "results-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1320.0,
+       "height": 800.0,
+       "fill": [
+        0.1176,
+        0.1333,
+        0.2,
+        0.94
+       ],
+       "cornerRadius": 20.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "results-3",
+      "name": "Title",
+      "parent": "results-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 30.0,
+       "width": 1200.0,
+       "height": 90.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 48.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{title}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "results-4",
+      "name": "Bars",
+      "parent": "results-1",
+      "type": "barChart",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 150.0,
+       "width": 1200.0,
+       "height": 330.0,
+       "fontSize": 34.0,
+       "fill": [
+        0.1451,
+        0.3882,
+        0.9216,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{results}}",
+      "percent": true,
+      "duration": 1.6,
+      "track": "#ffffff1f",
+      "textColor": "#ffffff",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "results-5",
+      "name": "Turnout label",
+      "parent": "results-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 520.0,
+       "width": 300.0,
+       "height": 60.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 30.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "Turnout",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "results-6",
+      "name": "Turnout",
+      "parent": "results-1",
+      "type": "progress",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 360.0,
+       "y": 535.0,
+       "width": 840.0,
+       "height": 30.0,
+       "fill": [
+        0.1333,
+        0.7725,
+        0.3686,
+        1.0
+       ],
+       "cornerRadius": 15.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "value": "{{turnout}}",
+      "max": "100",
+      "duration": 1.5,
+      "track": "#ffffff22"
+     },
+     {
+      "id": "results-7",
+      "name": "Votes",
+      "parent": "results-1",
+      "type": "counter",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 610.0,
+       "width": 1140.0,
+       "height": 60.0,
+       "fontSize": 30.0,
+       "fill": [
+        0.6392,
+        0.6588,
+        0.749,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "from": "0",
+      "to": "{{votes}}",
+      "duration": 2.0,
+      "decimals": 0,
+      "prefix": "",
+      "suffix": " votes counted",
+      "grouping": true,
+      "fontFamily": "Inter",
+      "fontWeight": 500,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "results-8",
+      "name": "Projected winner",
+      "parent": "results-1",
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 60.0,
+       "y": 690.0,
+       "width": 520.0,
+       "height": 80.0
+      },
+      "tracks": {},
+      "bindings": {
+       "opacity": "winner"
+      },
+      "clip": false
+     },
+     {
+      "id": "results-9",
+      "name": "Badge",
+      "parent": "results-8",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 520.0,
+       "height": 80.0,
+       "fill": [
+        1.0,
+        0.2314,
+        0.3608,
+        1.0
+       ],
+       "cornerRadius": 12.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "results-10",
+      "name": "Badge text",
+      "parent": "results-8",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 520.0,
+       "height": 80.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 30.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "PROJECTED WINNER: A",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "center",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "full",
+    "revision": 1,
+    "markerModel": 2
+   }
+  ],
+  "rundown": [
+   {
+    "id": "night-second-round",
+    "name": "Second round",
+    "templateId": "results",
+    "zone": "full",
+    "playlist": "night",
+    "layer": 50,
+    "data": {}
+   }
+  ],
+  "zones": [
+   {
+    "id": "full",
+    "name": "Full screen",
+    "layer": 50,
+    "color": "#38bdf8",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0,
+      "y": 0,
+      "width": 1,
+      "height": 1
+     }
+    }
+   }
+  ],
+  "playlists": [
+   {
+    "id": "night",
+    "name": "Election night"
+   }
+  ],
+  "formats": []
+ }
+}

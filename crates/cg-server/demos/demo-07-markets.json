@@ -1,0 +1,573 @@
+{
+ "demo": {
+  "id": "demo-07-markets",
+  "name": "07 · Markets",
+  "level": 3,
+  "tags": [
+   "Finance",
+   "Logic",
+   "Condition",
+   "Ticker"
+  ],
+  "description": "A stock index whose ▲ / ▼ follows the sign of the change (a condition in the logic), and a ticker of quotes. Open the Data canvas to see the operations wired to the arrows."
+ },
+ "project": {
+  "id": "demo-07-markets",
+  "name": "07 · Markets",
+  "description": "A stock index whose ▲ / ▼ follows the sign of the change (a condition in the logic), and a ticker of quotes. Open the Data canvas to see the operations wired to the arrows.",
+  "width": 1920,
+  "height": 1080,
+  "frameRate": {
+   "num": 50,
+   "den": 1
+  },
+  "templates": [
+   {
+    "id": "markets",
+    "name": "Markets",
+    "duration": 70.0,
+    "markers": [
+     {
+      "id": "markets-out",
+      "frame": 40.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "index",
+      "label": "Index",
+      "kind": "text",
+      "default": "CAC 40"
+     },
+     {
+      "key": "value",
+      "label": "Value",
+      "kind": "text",
+      "default": "7 512.30"
+     },
+     {
+      "key": "change",
+      "label": "Change %",
+      "kind": "number",
+      "default": "1.24",
+      "min": -10,
+      "max": 10
+     }
+    ],
+    "layers": [
+     {
+      "id": "markets-1",
+      "name": "Index",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 120.0,
+       "y": 840.0,
+       "width": 700.0,
+       "height": 120.0
+      },
+      "tracks": {
+       "cropRight": [
+        {
+         "frame": 0.0,
+         "value": 1,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 18.0,
+         "value": 0,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 40.0,
+         "value": 0,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 58.0,
+         "value": 1,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": true
+     },
+     {
+      "id": "markets-2",
+      "name": "Plate",
+      "parent": "markets-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 700.0,
+       "height": 120.0,
+       "fill": [
+        0.0431,
+        0.051,
+        0.0902,
+        0.92
+       ],
+       "cornerRadius": 10.0
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "markets-3",
+      "name": "Index",
+      "parent": "markets-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 30.0,
+       "y": 0.0,
+       "width": 300.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 44.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{index}}",
+      "fontFamily": "Inter",
+      "fontWeight": 800,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "markets-4",
+      "name": "Value",
+      "parent": "markets-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 300.0,
+       "y": 0.0,
+       "width": 260.0,
+       "height": 120.0,
+       "fill": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+       ],
+       "fontSize": 40.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{value}}",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "right",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "markets-5",
+      "name": "Up",
+      "parent": "markets-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 560.0,
+       "y": 0.0,
+       "width": 140.0,
+       "height": 60.0,
+       "fill": [
+        0.1333,
+        0.7725,
+        0.3686,
+        1.0
+       ],
+       "fontSize": 26.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "▲ {{change}} %",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     },
+     {
+      "id": "markets-6",
+      "name": "Down",
+      "parent": "markets-1",
+      "type": "text",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 560.0,
+       "y": 60.0,
+       "width": 140.0,
+       "height": 60.0,
+       "fill": [
+        1.0,
+        0.2314,
+        0.3608,
+        1.0
+       ],
+       "fontSize": 26.0
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "▼ {{change}} %",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "lower",
+    "revision": 1,
+    "markerModel": 2,
+    "logic": {
+     "nodes": [
+      {
+       "id": "f",
+       "type": "field",
+       "key": "change",
+       "x": 60,
+       "y": 80
+      },
+      {
+       "id": "zero",
+       "type": "constant",
+       "value": 0,
+       "x": 60,
+       "y": 200
+      },
+      {
+       "id": "one",
+       "type": "constant",
+       "value": 1,
+       "x": 60,
+       "y": 320
+      },
+      {
+       "id": "none",
+       "type": "constant",
+       "value": 0,
+       "x": 60,
+       "y": 440
+      },
+      {
+       "id": "isUp",
+       "type": "condition",
+       "cmp": "ge",
+       "x": 340,
+       "y": 100
+      },
+      {
+       "id": "isDown",
+       "type": "condition",
+       "cmp": "lt",
+       "x": 340,
+       "y": 320
+      },
+      {
+       "id": "tUp",
+       "type": "target",
+       "layer": "markets-5",
+       "prop": "opacity",
+       "mode": "set",
+       "x": 640,
+       "y": 100
+      },
+      {
+       "id": "tDown",
+       "type": "target",
+       "layer": "markets-6",
+       "prop": "opacity",
+       "mode": "set",
+       "x": 640,
+       "y": 320
+      }
+     ],
+     "edges": [
+      {
+       "from": "f",
+       "to": "isUp",
+       "port": "a"
+      },
+      {
+       "from": "zero",
+       "to": "isUp",
+       "port": "b"
+      },
+      {
+       "from": "one",
+       "to": "isUp",
+       "port": "then"
+      },
+      {
+       "from": "none",
+       "to": "isUp",
+       "port": "else"
+      },
+      {
+       "from": "f",
+       "to": "isDown",
+       "port": "a"
+      },
+      {
+       "from": "zero",
+       "to": "isDown",
+       "port": "b"
+      },
+      {
+       "from": "one",
+       "to": "isDown",
+       "port": "then"
+      },
+      {
+       "from": "none",
+       "to": "isDown",
+       "port": "else"
+      },
+      {
+       "from": "isUp",
+       "to": "tUp",
+       "port": "in"
+      },
+      {
+       "from": "isDown",
+       "to": "tDown",
+       "port": "in"
+      }
+     ]
+    }
+   },
+   {
+    "id": "market-ticker",
+    "name": "Market ticker",
+    "duration": 60.0,
+    "markers": [
+     {
+      "id": "market-ticker-out",
+      "frame": 30.0,
+      "name": "On air",
+      "kind": "out"
+     }
+    ],
+    "fields": [
+     {
+      "key": "quotes",
+      "label": "Quotes",
+      "kind": "multiline",
+      "default": "AIR  142.10  ▲ 0.8 %\nLVMH  712.40  ▼ 1.2 %\nTOTAL  58.32  ▲ 0.3 %\nSANOFI  91.05  ▲ 1.9 %"
+     }
+    ],
+    "layers": [
+     {
+      "id": "market-ticker-1",
+      "name": "Ticker",
+      "parent": null,
+      "type": "group",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 1000.0,
+       "width": 1920.0,
+       "height": 56.0
+      },
+      "tracks": {
+       "y": [
+        {
+         "frame": 0.0,
+         "value": 1080,
+         "easing": {
+          "type": "easeOut"
+         }
+        },
+        {
+         "frame": 12.0,
+         "value": 1000,
+         "easing": {
+          "type": "linear"
+         }
+        },
+        {
+         "frame": 30.0,
+         "value": 1000,
+         "easing": {
+          "type": "easeIn"
+         }
+        },
+        {
+         "frame": 42.0,
+         "value": 1080,
+         "easing": {
+          "type": "linear"
+         }
+        }
+       ]
+      },
+      "bindings": {},
+      "clip": false
+     },
+     {
+      "id": "market-ticker-2",
+      "name": "Plate",
+      "parent": "market-ticker-1",
+      "type": "rect",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1920.0,
+       "height": 56.0,
+       "fill": [
+        0.0392,
+        0.102,
+        0.0706,
+        0.95
+       ]
+      },
+      "tracks": {},
+      "bindings": {}
+     },
+     {
+      "id": "market-ticker-3",
+      "name": "Quotes",
+      "parent": "market-ticker-1",
+      "type": "ticker",
+      "visible": true,
+      "locked": false,
+      "props": {
+       "x": 0.0,
+       "y": 0.0,
+       "width": 1920.0,
+       "height": 56.0,
+       "fontSize": 28.0,
+       "fill": [
+        0.8196,
+        0.9804,
+        0.898,
+        1.0
+       ]
+      },
+      "tracks": {},
+      "bindings": {},
+      "text": "{{quotes}}",
+      "separator": "     ",
+      "speed": 140.0,
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "align": "left",
+      "verticalAlign": "middle",
+      "uppercase": false
+     }
+    ],
+    "zone": "ticker",
+    "revision": 1,
+    "markerModel": 2
+   }
+  ],
+  "rundown": [
+   {
+    "id": "markets-cac-40-up",
+    "name": "CAC 40 up",
+    "templateId": "markets",
+    "zone": "lower",
+    "playlist": "markets",
+    "layer": 10,
+    "data": {
+     "index": "CAC 40",
+     "value": "7 512.30",
+     "change": "1.24"
+    }
+   },
+   {
+    "id": "markets-dax-down",
+    "name": "DAX down",
+    "templateId": "markets",
+    "zone": "lower",
+    "playlist": "markets",
+    "layer": 10,
+    "data": {
+     "index": "DAX",
+     "value": "18 120.55",
+     "change": "-0.62"
+    }
+   },
+   {
+    "id": "markets-quotes",
+    "name": "Quotes",
+    "templateId": "market-ticker",
+    "zone": "ticker",
+    "playlist": "markets",
+    "layer": 40,
+    "data": {}
+   }
+  ],
+  "zones": [
+   {
+    "id": "lower",
+    "name": "Lower third",
+    "layer": 10,
+    "color": "#7c5cff",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0.04,
+      "y": 0.68,
+      "width": 0.66,
+      "height": 0.28
+     }
+    }
+   },
+   {
+    "id": "ticker",
+    "name": "Ticker",
+    "layer": 40,
+    "color": "#f5a524",
+    "transition": "sequential",
+    "areas": {
+     "main": {
+      "x": 0,
+      "y": 0.92,
+      "width": 1,
+      "height": 0.06
+     }
+    }
+   }
+  ],
+  "playlists": [
+   {
+    "id": "markets",
+    "name": "Markets"
+   }
+  ],
+  "formats": []
+ }
+}

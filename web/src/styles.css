@@ -6872,3 +6872,71 @@ body.dragging-guide .guide span {
   width: 100%;
   min-width: 0;
 }
+/* Demo projects bank. */
+.demo-bank {
+  width: min(1100px, 94vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
+.demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  overflow: auto;
+  padding: 2px;
+}
+.demo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.demo-card p {
+  margin: 0;
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.demo-card .btn {
+  align-self: flex-start;
+}
+.demo-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.demo-num {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.demo-level {
+  display: flex;
+  gap: 3px;
+}
+.demo-level span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--panel-3);
+}
+.demo-level span.on {
+  background: var(--accent);
+}
+.demo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.demo-tags span {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}

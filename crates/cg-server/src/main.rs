@@ -3,6 +3,7 @@ mod api;
 mod auth;
 mod config;
 mod datasources;
+mod demos;
 mod engine;
 mod library;
 mod locks;

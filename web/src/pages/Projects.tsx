@@ -1,4 +1,4 @@
-import { Copy, Database, Download, Folder, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
+import { Copy, Database, GraduationCap, Download, Folder, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
@@ -138,11 +138,83 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
 type View = { kind: 'all' } | { kind: 'unfiled' } | { kind: 'folder'; name: string };
 type Sort = 'name' | 'templates';
 
+interface DemoInfo {
+  id: string;
+  name: string;
+  level: number;
+  tags: string[];
+  description: string;
+}
+
+/** The bank of demo projects: a copy of one becomes a project of the user. */
+function DemoBank({ onClose }: { onClose: () => void }) {
+  const toast = useApp((s) => s.toast);
+  const [demos, setDemos] = useState<DemoInfo[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    api<DemoInfo[]>('GET', '/api/demos')
+      .then(setDemos)
+      .catch((e) => toast((e as Error).message, 'error'));
+  }, []);
+  const create = async (d: DemoInfo) => {
+    setBusy(d.id);
+    try {
+      const p = await api<ProjectSummary>('POST', `/api/demos/${encodeURIComponent(d.id)}`);
+      toast(`“${p.name}” added to your projects`, 'info');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="modal-back" onPointerDown={onClose}>
+      <div className="modal wide demo-bank" onPointerDown={(e) => e.stopPropagation()}>
+        <header>
+          <GraduationCap size={18} />
+          <h2>Demo projects</h2>
+          <div className="spacer" />
+          <button className="icon-btn ghost" title="Close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <p className="hint">From a single lower third to a multi-format live show: each one shows features you can reuse. Add a copy, open it in the Designer and take its graphics in the Operator.</p>
+        <div className="demo-grid">
+          {demos === null && <p className="muted">Loading…</p>}
+          {demos?.map((d, i) => (
+            <div key={d.id} className="demo-card">
+              <div className="demo-top">
+                <span className="demo-num">{String(i + 1).padStart(2, '0')}</span>
+                <span className="demo-level" title={`Level ${d.level} of 5`}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <span key={n} className={n <= d.level ? 'on' : ''} />
+                  ))}
+                </span>
+              </div>
+              <strong>{d.name.replace(/^\d+ · /, '')}</strong>
+              <p>{d.description}</p>
+              <div className="demo-tags">
+                {d.tags.map((t) => (
+                  <span key={t}>{t}</span>
+                ))}
+              </div>
+              <button className="btn primary small" disabled={busy !== null} onClick={() => create(d)}>
+                <Plus size={13} /> {busy === d.id ? 'Adding…' : 'Add to my projects'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Projects() {
   const { projects, channels, auth, toast, folders, saveFolders } = useApp();
   const user = auth?.user;
   const design = can.design(user);
   const [dialog, setDialog] = useState<{ from?: ProjectSummary } | null>(null);
+  const [demos, setDemos] = useState(false);
   const [view, setView] = useState<View>({ kind: 'all' });
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('name');
@@ -290,6 +362,9 @@ export function Projects() {
             <div className="spacer" />
             {design && (
               <>
+                <button className="btn" title="Ten ready-made projects, from simple to complete" onClick={() => setDemos(true)}>
+                  <GraduationCap size={14} /> Demo projects
+                </button>
                 <label className="btn" title="Import a .pulsecg.json file">
                   <Upload size={14} /> Import
                   <input type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
@@ -425,6 +500,7 @@ export function Projects() {
           </div>
         </div>
       </main>
+      {demos && <DemoBank onClose={() => setDemos(false)} />}
       {dialog && <NewProject from={dialog.from} folder={view.kind === 'folder' ? view.name : undefined} onClose={() => setDialog(null)} />}
     </div>
   );
