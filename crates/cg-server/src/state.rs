@@ -35,6 +35,15 @@ pub enum Event {
         state: ChannelState,
         server_time: i64,
     },
+    /// A template's edit lock changed (taken, renewed after a take over,
+    /// released). `takenFrom` is the designer tab that lost it.
+    #[serde(rename_all = "camelCase")]
+    Lock {
+        project_id: String,
+        template_id: String,
+        lock: Option<crate::locks::Lock>,
+        taken_from: Option<String>,
+    },
     /// A data source was checked or changed (the value itself is fetched
     /// with GET /api/data/sources/{id}/value).
     Data {
@@ -135,6 +144,8 @@ pub struct AppState {
     pub mos: Arc<crate::mos::Store>,
     /// Data connectors and their latest values.
     pub data: Arc<crate::datasources::Hub>,
+    /// Who edits which template in the designer.
+    pub locks: Arc<crate::locks::Locks>,
     /// Settings this engine cycle was started with.
     pub config: ServerConfig,
     /// Address actually bound by this cycle.

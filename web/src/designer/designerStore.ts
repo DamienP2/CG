@@ -28,8 +28,14 @@ interface DesignerStore {
   expanded: Record<string, boolean>;
   zoom: number;
   previewData: Data;
+  /** Someone else holds the template's edit lock: edits are ignored. */
+  readOnly: boolean;
+  /** Counts user edits (autosave saves on change, not on load). */
+  edits: number;
 
   load: (t: Template | null) => void;
+  /** Shows a newer version of the open template (read only) without resetting the view. */
+  replace: (t: Template) => void;
   update: (recipe: (t: Template) => void, coalesceKey?: string) => void;
   /** Edits the saved template directly (all formats at once). */
   updateBase: (recipe: (t: Template) => void) => void;
@@ -63,6 +69,8 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   expanded: {},
   zoom: 8,
   previewData: {},
+  readOnly: false,
+  edits: 0,
 
   load(t) {
     const base = t ? structuredClone(t) : null;
@@ -81,8 +89,8 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   },
 
   update(recipe, coalesceKey) {
-    const { base, format, past, lastCoalesce } = get();
-    if (!base) return;
+    const { base, format, past, lastCoalesce, readOnly } = get();
+    if (!base || readOnly) return;
     const edited = view(base, format)!;
     recipe(edited);
     const next = format === MAIN_FORMAT ? edited : fromFormatView(base, edited, format);
@@ -94,15 +102,22 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
       past: coalesce ? past : [...past.slice(-HISTORY), base],
       future: [],
       lastCoalesce: coalesceKey ? { key: coalesceKey, at: now } : null,
+      edits: get().edits + 1,
     });
   },
 
+  replace(t) {
+    const { format } = get();
+    const base = structuredClone(t);
+    set({ base, template: view(base, format), past: [], future: [], lastCoalesce: null });
+  },
+
   updateBase(recipe) {
-    const { base, format, past } = get();
-    if (!base) return;
+    const { base, format, past, readOnly } = get();
+    if (!base || readOnly) return;
     const next = structuredClone(base);
     recipe(next);
-    set({ base: next, template: view(next, format), past: [...past.slice(-HISTORY), base], future: [], lastCoalesce: null });
+    set({ base: next, template: view(next, format), past: [...past.slice(-HISTORY), base], future: [], lastCoalesce: null, edits: get().edits + 1 });
   },
 
   setFormat(format) {
@@ -113,13 +128,13 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
     const { past, base, future, format } = get();
     if (!past.length || !base) return;
     const prev = past[past.length - 1];
-    set({ base: prev, template: view(prev, format), past: past.slice(0, -1), future: [base, ...future], lastCoalesce: null });
+    set({ base: prev, template: view(prev, format), past: past.slice(0, -1), future: [base, ...future], lastCoalesce: null, edits: get().edits + 1 });
   },
 
   redo() {
     const { past, base, future, format } = get();
     if (!future.length || !base) return;
-    set({ base: future[0], template: view(future[0], format), future: future.slice(1), past: [...past, base], lastCoalesce: null });
+    set({ base: future[0], template: view(future[0], format), future: future.slice(1), past: [...past, base], lastCoalesce: null, edits: get().edits + 1 });
   },
 
   setFrame(f) {

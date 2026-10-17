@@ -579,6 +579,9 @@ pub struct Template {
     /// Relations between values (node graph), see [`crate::logic`].
     #[serde(default, skip_serializing_if = "crate::logic::Logic::is_empty")]
     pub logic: crate::logic::Logic,
+    /// Published revision (1, 2…); 0 for a template never published.
+    #[serde(default)]
+    pub revision: u32,
 }
 
 impl Template {
@@ -771,6 +774,11 @@ pub struct Project {
     /// Alternative layouts (the main one is width × height).
     #[serde(default)]
     pub formats: Vec<Format>,
+    /// Designer working copies not yet published. `templates` is what the
+    /// operator, the outputs and automation use; "Publish" moves a draft
+    /// there. A draft without a published template is a new template.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drafts: Vec<Template>,
 }
 
 impl Project {
@@ -924,8 +932,52 @@ impl Project {
         Ok(())
     }
 
+    /// The published template (what goes on air).
     pub fn template(&self, id: &str) -> Option<&Template> {
         self.templates.iter().find(|t| t.id == id)
+    }
+
+    /// The template as the designer sees it: its draft, else the published one.
+    pub fn draft(&self, id: &str) -> Option<&Template> {
+        self.drafts
+            .iter()
+            .find(|t| t.id == id)
+            .or_else(|| self.template(id))
+    }
+
+    /// Saves a designer edit as a draft (nothing changes on air).
+    pub fn save_draft(&mut self, t: Template) {
+        match self.drafts.iter_mut().find(|x| x.id == t.id) {
+            Some(d) => *d = t,
+            None => self.drafts.push(t),
+        }
+    }
+
+    /// Publishes a template's draft: the operator and the outputs use it
+    /// from now on. Returns the new revision, or None without a draft.
+    pub fn publish(&mut self, id: &str) -> Option<u32> {
+        let i = self.drafts.iter().position(|t| t.id == id)?;
+        let mut t = self.drafts.remove(i);
+        let rev = self.template(id).map_or(0, |p| p.revision) + 1;
+        t.revision = rev;
+        match self.templates.iter_mut().find(|x| x.id == id) {
+            Some(p) => *p = t,
+            None => self.templates.push(t),
+        }
+        Some(rev)
+    }
+
+    /// Every template the designer lists: published ones (or their draft),
+    /// then new drafts.
+    pub fn design_templates(&self) -> impl Iterator<Item = &Template> {
+        self.templates
+            .iter()
+            .map(|t| self.draft(&t.id).unwrap_or(t))
+            .chain(
+                self.drafts
+                    .iter()
+                    .filter(|d| self.template(&d.id).is_none()),
+            )
     }
 }
 

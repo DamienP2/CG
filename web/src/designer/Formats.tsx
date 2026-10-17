@@ -1,3 +1,4 @@
+import { designTemplates } from '../engine/drafts';
 import { Plus, RectangleHorizontal, RectangleVertical, Square, Wand2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { adaptTemplate, projectFormats } from '../engine/formats';
@@ -16,7 +17,7 @@ const shapeIcon = (f: { width: number; height: number }) => (f.width > f.height 
 
 /** Lays every template of the project out in `format` (smart adaptation). */
 async function adaptProject(project: Project, format: Format, only?: string) {
-  for (const t of project.templates) {
+  for (const t of designTemplates(project)) {
     if (only && t.id !== only) continue;
     const adapted = adaptTemplate(t, project, format);
     await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(t.id)}`, adapted);
@@ -50,7 +51,7 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
       const fresh = await api<Project>('GET', `/api/projects/${encodeURIComponent(project.id)}`);
       await adaptProject(fresh, format);
       const reloaded = await api<Project>('GET', `/api/projects/${encodeURIComponent(project.id)}`);
-      const cur = reloaded.templates.find((t) => t.id === st.base?.id);
+      const cur = designTemplates(reloaded).find((t) => t.id === st.base?.id);
       st.setFormat(format.id);
       if (cur) st.load(cur);
       toast(`${format.name} added: every template has a first layout to refine`, 'info');

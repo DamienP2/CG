@@ -138,7 +138,7 @@ Onglet **Data** : les sources de données du serveur, relues à intervalle régu
 Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains projets** et à **certaines chaînes**. Les mots de passe sont hachés avec Argon2 (`users.json`). Le navigateur garde la session dans un cookie HttpOnly. L'automation peut utiliser `Authorization: Bearer <token>` (jeton renvoyé par `POST /api/auth/login`). Les pages `/output/<chaîne>` restent accessibles sans connexion pour les browser sources ; l'option se désactive dans les Réglages.
 
 ### Designer
-- Barre d'outils : rectangle, ellipse, texte, image, groupe (avec masque *clip*), et le menu **Widgets**.
+- **Insertion** (au-dessus de la colonne *Layers* de la timeline) : rectangle, ellipse, trait, texte, image, groupe (avec masque *clip*), et le bouton **+** qui ouvre les *Basics* et les *Pulse CG widgets*.
 - **Widgets préfabriqués** : ils sont rendus à l'identique en HTML5 et par le moteur Rust, animables (position, opacité, crop…) et reliables aux champs de données `{{clé}}` :
   - **Horloge** (heure dans n'importe quel fuseau, date) ;
   - **Compte à rebours** vers une heure ou une date ;
@@ -155,15 +155,16 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
   - **QR code**.
 - **Scène** : sélection, déplacement, poignées de redimensionnement, zones de sécurité, fond studio, transparent ou noir.
 - **Inspecteur** : chaque propriété a un **chronomètre** (comme dans After Effects) qui active l'animation. Ensuite, toute modification à la tête de lecture crée ou met à jour une keyframe (auto-key). La navigation entre keyframes (◀ ◆ ▶) se fait dans la timeline. Faire glisser le libellé d'un champ modifie la valeur (Maj = ×10, Alt = ×0,1). Les champs numériques acceptent des expressions (`1920/2`).
-- **Timeline** : règle avec scrub, keyframes déplaçables (multi-sélection avec Maj), easing par keyframe (linéaire, easy ease, bezier libre, back, elastic, bounce, hold) avec aperçu de la courbe, marqueurs déplaçables : *On air* (vert, la première pause), *Pause* (orange, arrêts supplémentaires que *Continue* relance, pour une deuxième ligne ou une étape suivante) et *Out* (rouge). La lecture se comporte comme à l'antenne : elle s'arrête sur On air, sur chaque pause et sur Out ; `Espace` relance, et repart du début une fois la fin atteinte. *Loop* joue en continu sans s'arrêter.
+- **Timeline** (toute la largeur de la page) : la colonne *Layers* liste les calques (renommer par double-clic, dupliquer, supprimer, masquer, verrouiller, glisser-déposer). Déplier un calque affiche *Transform* et ses propriétés (Position, Size, Scale, Rotation, Opacity, puis les propriétés animées) avec leur valeur à la tête de lecture, modifiable, et ◀ ◆ ▶ pour naviguer et poser une keyframe ; les keyframes d'une propriété sont reliées par un trait. Règle avec scrub, keyframes déplaçables (multi-sélection avec Maj), easing par keyframe (linéaire, easy ease, bezier libre, back, elastic, bounce, hold) avec aperçu de la courbe, marqueurs déplaçables : *On air* (vert, la première pause), *Pause* (orange, arrêts supplémentaires que *Continue* relance, pour une deuxième ligne ou une étape suivante) et *Out* (rouge). La lecture se comporte comme à l'antenne : elle s'arrête sur On air, sur chaque pause et sur Out ; `Espace` relance, et repart du début une fois la fin atteinte. *Loop* joue en continu sans s'arrêter.
 - **Logic (relations entre valeurs, façon MXMZ)** : bouton *Logic* de la barre d'outils. Un canevas de nœuds reliés : sources (propriété d'un calque, taille mesurée d'un texte, champ de données, nombre), opérations (maths, min/max, clamp, **conditions** si/alors/sinon) et cibles qui fixent, ajoutent ou multiplient une propriété. Exemple : la largeur d'une plaque qui suit la longueur du nom, plus une marge, avec un minimum (préréglage *Fit a box to a text*). Les valeurs s'affichent en direct ; le graphe est évalué à l'identique par le rendu HTML5 et par le moteur Rust. Une propriété pilotée porte une pastille verte dans l'inspecteur.
 - **Import After Effects** : icône d'import du panneau *Templates*. Une composition exportée avec Bodymovin / LottieFiles (`.json`, `.zip`, `.lottie`) devient un template : formes, solides, textes reliés à des champs de données, images, parentage, précomps et keyframes avec leur easing. Les `.mogrt` et `.aep` sont des formats binaires fermés (voir [docs/AFTER_EFFECTS.md](docs/AFTER_EFFECTS.md)).
-- Les panneaux du Designer (templates, calques, inspecteur, timeline) se redimensionnent en tirant leurs bords (double-clic = taille par défaut).
+- Les panneaux du Designer (templates, inspecteur, timeline) se redimensionnent en tirant leurs bords (double-clic = taille par défaut).
 - **Données** : champs de template (texte, multiligne, nombre, couleur, image), syntaxe `{{clé}}` dans les textes, bindings de propriétés (couleur ou nombre) vers un champ.
 - **Zones à l'écran** : les zones du projet sont dessinées sur la scène, dans le format édité. La zone du template est mise en avant ; on déplace une zone par son étiquette et on la redimensionne par ses poignées (`Maj` = pas de 1 %). Le bouton *Zones* les masque, *…* ouvre leur gestion.
 - Champs numériques : un clic, puis la molette de la souris ou du trackpad ajuste la valeur (`Maj` ×10, `Alt` ×0,1), comme les flèches. Même chose pour les champs nombre de l'Opérateur.
 - Raccourcis : `Espace` lecture / reprise, `Ctrl+Z` / `Ctrl+Maj+Z`, `Ctrl+D` dupliquer, `Suppr` supprimer (calques ou keyframes), flèches = nudge, `,` / `.` image par image.
-- Sauvegarde automatique.
+- Sauvegarde automatique, dans un **brouillon** : l'Opérateur, les sorties et le playout gardent la version publiée. Le bouton **Publish to Operator** la met à l'antenne (révision v1, v2…) ; l'icône ↺ abandonne le brouillon et revient à la version publiée. *Live in Operator · vN* indique qu'il n'y a rien à publier.
+- **Verrou d'édition** : un template ouvert par un designer est en lecture seule pour les autres, avec son nom. *Take over* (après confirmation) reprend la main ; celui qui éditait passe en lecture seule et est prévenu. Le verrou se libère à la fermeture de l'onglet, ou 45 s après sa dernière activité.
 
 ### Opérateur
 - **Chaîne** : choix de la chaîne opérée et du projet chargé dessus ; lien vers sa sortie HTML5.
@@ -185,7 +186,9 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
 | `GET` / `POST` / `PUT` / `DELETE` | `/api/users[/{id}]` | utilisateurs (admin) |
 | `GET` / `POST` | `/api/projects` · `/api/projects/import` | liste, création (ou duplication avec `from`), import |
 | `GET` / `PUT` / `DELETE` | `/api/projects/{id}` · `/export` | projet complet, réglages, suppression, export |
-| `PUT` / `DELETE` | `/api/projects/{id}/templates/{tid}` | créer, mettre à jour ou supprimer un template |
+| `PUT` / `DELETE` | `/api/projects/{id}/templates/{tid}[?publish=true]` | enregistrer le brouillon d'un template (publié aussitôt avec `?publish=true`), ou le supprimer |
+| `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/publish` · `/draft` | publier vers l'Opérateur, abandonner le brouillon |
+| `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/lock` · `GET /api/projects/{id}/locks` | verrou d'édition (en-tête `X-Pulse-Client`, `force` pour reprendre la main) |
 | `GET` | `/api/projects/{id}/templates/{tid}/thumbnail.png?frame=` | rendu serveur d'un template |
 | `PUT` | `/api/projects/{id}/rundown` | playlist |
 | `GET` | `/api/channels` · `/api/channels/{id}/state` · `/preview.png` | chaînes, état et rendu du program |

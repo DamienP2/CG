@@ -9,6 +9,7 @@ type ServerEvent =
   | { type: 'channels'; channels: ChannelInfo[] }
   | { type: 'channel'; channelId: string; state: ChannelState; serverTime: number }
   | { type: 'data'; source: string; status: DataStatus }
+  | { type: 'lock'; projectId: string; templateId: string; lock: EditLock | null; takenFrom: string | null }
   | { type: 'error'; message: string };
 
 interface Toast {
@@ -81,8 +82,22 @@ export class ApiError extends Error {
 let apiKey: string | null = null;
 export const setApiKey = (k: string | null) => void (apiKey = k);
 
+/** A designer's edit lock on a template. */
+export interface EditLock {
+  userId: string;
+  userName: string;
+  client: string;
+  since: number;
+}
+
+/** Lock changes pushed by the server (`detail`: the event). */
+export const lockEvents = new EventTarget();
+
+/** This browser tab, for designer edit locks. */
+export const clientId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random()).slice(2);
+
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Pulse-Client': clientId };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   const res = await fetch(path, {
@@ -198,6 +213,9 @@ export const useApp = create<AppStore>((set, get) => {
               break;
             case 'channel':
               set({ live: { ...get().live, [msg.channelId]: { state: msg.state, at: now } }, serverOffset: msg.serverTime - now });
+              break;
+            case 'lock':
+              lockEvents.dispatchEvent(new CustomEvent('lock', { detail: msg }));
               break;
             case 'data':
               useData.getState().onStatus(msg.source, msg.status);
@@ -316,5 +334,5 @@ export const can = {
   admin: (u: User | null | undefined) => u?.role === 'admin',
 };
 
-export const thumbnailUrl = (projectId: string, t: Template, format = 'main') =>
-  `/api/projects/${encodeURIComponent(projectId)}/templates/${encodeURIComponent(t.id)}/thumbnail.png?format=${encodeURIComponent(format)}&v=${JSON.stringify(t).length}`;
+export const thumbnailUrl = (projectId: string, t: Template, format = 'main', draft = false) =>
+  `/api/projects/${encodeURIComponent(projectId)}/templates/${encodeURIComponent(t.id)}/thumbnail.png?format=${encodeURIComponent(format)}${draft ? '&draft=true' : ''}&v=${JSON.stringify(t).length}`;

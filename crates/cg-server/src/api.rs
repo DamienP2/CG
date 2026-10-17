@@ -41,6 +41,7 @@ pub fn router() -> Router<Shared> {
                 .delete(delete_project),
         )
         .route("/api/projects/{id}/export", get(export_project))
+        .route("/api/projects/{id}/locks", get(project_locks))
         .route("/api/projects/{id}/rundown", put(put_rundown))
         .route("/api/projects/{id}/zones", put(put_zones))
         .route("/api/projects/{id}/playlists", put(put_playlists))
@@ -48,6 +49,18 @@ pub fn router() -> Router<Shared> {
         .route(
             "/api/projects/{id}/templates/{tid}",
             put(put_template).delete(delete_template),
+        )
+        .route(
+            "/api/projects/{id}/templates/{tid}/publish",
+            post(publish_template),
+        )
+        .route(
+            "/api/projects/{id}/templates/{tid}/draft",
+            axum::routing::delete(discard_draft),
+        )
+        .route(
+            "/api/projects/{id}/templates/{tid}/lock",
+            post(lock_template).delete(unlock_template),
         )
         .route(
             "/api/projects/{id}/templates/{tid}/thumbnail.png",
@@ -463,6 +476,7 @@ async fn create_project(
             zones: cg_core::Zone::defaults(),
             playlists: Vec::new(),
             formats: Vec::new(),
+            drafts: Vec::new(),
         },
     };
     p.id = cg_core::new_id();
@@ -560,21 +574,151 @@ async fn delete_project(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize, Default)]
+struct PutTemplateQuery {
+    /// Publish at once (automation); otherwise the template is saved as a
+    /// draft that the operator does not see until it is published.
+    #[serde(default)]
+    publish: bool,
+}
+
 async fn put_template(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
+    Query(q): Query<PutTemplateQuery>,
+    headers: HeaderMap,
     Json(t): Json<Template>,
 ) -> ApiResult<StatusCode> {
     require(me.can_design(&id))?;
     if t.id != tid {
         return Err(bad("template id mismatch"));
     }
+    s.locks.check(&id, &tid, &me, client_id(&headers))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    match p.templates.iter_mut().find(|x| x.id == tid) {
-        Some(existing) => *existing = t,
-        None => p.templates.push(t),
+    p.save_draft(t);
+    if q.publish {
+        p.publish(&tid);
     }
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The designer tab a request comes from (`X-Pulse-Client`).
+fn client_id(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get("x-pulse-client")
+        .and_then(|v| v.to_str().ok())
+        .filter(|v| !v.is_empty() && v.len() <= 64)
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct LockRequest {
+    /// Take the lock over from whoever holds it.
+    #[serde(default)]
+    force: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LockReply {
+    granted: bool,
+    lock: crate::locks::Lock,
+}
+
+/// Takes, renews (call it every ~15 s) or takes over a template's edit lock.
+async fn lock_template(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, tid)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Option<Json<LockRequest>>,
+) -> ApiResult<Json<LockReply>> {
+    require(me.can_design(&id))?;
+    visible_project(&s, &me, &id).await?;
+    let client = client_id(&headers).ok_or_else(|| bad("missing X-Pulse-Client header"))?;
+    let force = body.is_some_and(|b| b.force);
+    match s.locks.acquire(&id, &tid, &me, client, force) {
+        crate::locks::Acquired::Held(lock) => Ok(Json(LockReply {
+            granted: false,
+            lock,
+        })),
+        crate::locks::Acquired::Granted { lock, taken_from } => {
+            let fresh = lock.since >= now_ms() - 2000 || taken_from.is_some();
+            if fresh {
+                let _ = s.events.send(Event::Lock {
+                    project_id: id.clone(),
+                    template_id: tid.clone(),
+                    lock: Some(lock.clone()),
+                    taken_from: taken_from.map(|l| l.client),
+                });
+            }
+            Ok(Json(LockReply {
+                granted: true,
+                lock,
+            }))
+        }
+    }
+}
+
+async fn unlock_template(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+    Path((id, tid)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> ApiResult<StatusCode> {
+    let client = client_id(&headers).ok_or_else(|| bad("missing X-Pulse-Client header"))?;
+    if s.locks.release(&id, &tid, client) {
+        let _ = s.events.send(Event::Lock {
+            project_id: id,
+            template_id: tid,
+            lock: None,
+            taken_from: None,
+        });
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Current edit locks of a project, by template id.
+async fn project_locks(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<std::collections::HashMap<String, crate::locks::Lock>>> {
+    visible_project(&s, &me, &id).await?;
+    Ok(Json(s.locks.of_project(&id)))
+}
+
+/// Makes the draft of a template the version the operator and the outputs use.
+async fn publish_template(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, tid)): Path<(String, String)>,
+) -> ApiResult<Json<BTreeMap<&'static str, u32>>> {
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let rev = match p.publish(&tid) {
+        Some(r) => r,
+        None if p.template(&tid).is_some() => p.template(&tid).map_or(0, |t| t.revision),
+        None => return Err(not_found("template")),
+    };
+    s.save_project(p).await.map_err(internal)?;
+    Ok(Json(BTreeMap::from([("revision", rev)])))
+}
+
+/// Drops a template's unpublished changes (back to what is on air).
+async fn discard_draft(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, tid)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    if p.template(&tid).is_none() {
+        return Err(bad("this template was never published: delete it instead"));
+    }
+    p.drafts.retain(|t| t.id != tid);
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -631,7 +775,7 @@ async fn import_after_effects(
     if let Some(name) = q.name.filter(|n| !n.trim().is_empty()) {
         template.name = name.trim().to_string();
     }
-    p.templates.push(template.clone());
+    p.save_draft(template.clone());
     s.save_project(p).await.map_err(internal)?;
     Ok(Json(ImportResult {
         template,
@@ -646,9 +790,10 @@ async fn delete_template(
 ) -> ApiResult<StatusCode> {
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    let before = p.templates.len();
+    let before = p.templates.len() + p.drafts.len();
     p.templates.retain(|t| t.id != tid);
-    if p.templates.len() == before {
+    p.drafts.retain(|t| t.id != tid);
+    if p.templates.len() + p.drafts.len() == before {
         return Err(not_found("template"));
     }
     p.rundown.retain(|r| r.template_id != tid);
@@ -681,7 +826,7 @@ async fn put_zones(
     Project::validate_zones(&zones).map_err(bad)?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     let kept = |z: &str| zones.iter().any(|x| x.id == z);
-    if let Some(t) = p.templates.iter().find(|t| !kept(&t.zone)) {
+    if let Some(t) = p.templates.iter().chain(&p.drafts).find(|t| !kept(&t.zone)) {
         return Err(bad(format!(
             "template “{}” still plays in a removed zone; move it first",
             t.name
@@ -755,7 +900,7 @@ async fn put_formats(
         check_format(f.width, f.height, FrameRate::new(1, 1))?;
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    for t in &mut p.templates {
+    for t in p.templates.iter_mut().chain(p.drafts.iter_mut()) {
         for l in &mut t.layers {
             l.overrides.retain(|k, _| ids.contains(k));
         }
@@ -783,6 +928,9 @@ struct ThumbQuery {
     format: Option<String>,
     /// Field values as JSON, over the template defaults.
     data: Option<String>,
+    /// Show the designer's draft rather than the published template.
+    #[serde(default)]
+    draft: bool,
 }
 
 async fn template_thumbnail(
@@ -792,10 +940,13 @@ async fn template_thumbnail(
     Query(q): Query<ThumbQuery>,
 ) -> ApiResult<Response> {
     let p = visible_project(&s, &me, &id).await?;
-    let template = p
-        .template(&tid)
-        .cloned()
-        .ok_or_else(|| not_found("template"))?;
+    let template = if q.draft {
+        p.draft(&tid)
+    } else {
+        p.template(&tid).or(p.draft(&tid))
+    }
+    .cloned()
+    .ok_or_else(|| not_found("template"))?;
     // Default to the first hold point: that's what the graphic looks like on air.
     let frame = q.frame.unwrap_or_else(|| {
         template
@@ -1789,6 +1940,7 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                     Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
                     // Signed-in users (designer, operator, settings), not output pages.
                     Event::Data { .. } => viewer.user.is_some(),
+                    Event::Lock { project_id, .. } => viewer.user.as_ref().is_some_and(|u| u.sees_project(project_id)),
                     Event::Channels { channels } => {
                         // An output page switches project with its channel.
                         if let Some(c) = viewer.channel.as_ref().and_then(|id| channels.iter().find(|c| &c.id == id)) {

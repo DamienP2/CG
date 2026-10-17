@@ -174,6 +174,8 @@ export interface Template {
   zone: string;
   /** Relations between values (node graph). */
   logic?: Logic;
+  /** Published revision (0: never published). */
+  revision?: number;
 }
 
 export type TextMetric = 'width' | 'height' | 'lines' | 'chars';
@@ -256,6 +258,8 @@ export interface Project {
   zones: Zone[];
   playlists: Playlist[];
   formats: Format[];
+  /** Designer drafts not yet published (the operator uses `templates`). */
+  drafts?: Template[];
 }
 
 export interface Playlist {

@@ -723,8 +723,8 @@
     "tags": [
      "Projects"
     ],
-    "summary": "Create or replace a template",
-    "description": "**Rights:** admin, designer.",
+    "summary": "Save a template draft",
+    "description": "Saves the designer's working copy (draft). The Operator, outputs and playout keep using the published version until it is published (`POST …/publish`), or pass `?publish=true` to publish at once.\n\nA designer tab sends its `X-Pulse-Client` id: the save is refused (409) when another tab holds the template's edit lock. Requests without that header (automation, API keys) are not locked out.\n\n**Rights:** admin, designer.",
     "requestBody": {
      "required": true,
      "content": {
@@ -738,15 +738,38 @@
     "responses": {
      "204": {
       "description": "Done"
+     },
+     "409": {
+      "description": "Another designer holds the edit lock"
      }
-    }
+    },
+    "parameters": [
+     {
+      "name": "publish",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean"
+      },
+      "description": "Publish to the Operator immediately"
+     },
+     {
+      "name": "X-Pulse-Client",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Designer tab id (edit lock)"
+     }
+    ]
    },
    "delete": {
     "tags": [
      "Projects"
     ],
     "summary": "Delete a template",
-    "description": "Also removes its rundown items.\n\n**Rights:** admin, designer.",
+    "description": "Also removes its draft and rundown items.\n\n**Rights:** admin, designer.",
     "responses": {
      "204": {
       "description": "Done"
@@ -2117,6 +2140,222 @@
      }
     }
    }
+  },
+  "/api/projects/{id}/templates/{tid}/publish": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "tid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Template id"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Publish a template to the Operator",
+    "description": "Makes the draft the version used by the Operator, outputs and playout, and increments its revision.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "200": {
+      "description": "Published",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "revision": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such template"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/templates/{tid}/draft": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "tid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Template id"
+    }
+   ],
+   "delete": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Discard a template's draft",
+    "description": "Goes back to the published version. Refused for a template that was never published.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/templates/{tid}/lock": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    },
+    {
+     "name": "tid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Template id"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Take or renew a template's edit lock",
+    "description": "One designer tab at a time edits a template. The lock lapses when not renewed for 45 s. `force` takes it over: the previous holder is told by a `lock` WebSocket event and switches to read only.\n\n**Rights:** admin, designer.",
+    "parameters": [
+     {
+      "name": "X-Pulse-Client",
+      "in": "header",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Designer tab id"
+     }
+    ],
+    "requestBody": {
+     "required": false,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "force": {
+          "type": "boolean"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "`granted` is false when someone else holds it (`lock` is theirs)",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "granted": {
+           "type": "boolean"
+          },
+          "lock": {
+           "$ref": "#/components/schemas/EditLock"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Release a template's edit lock",
+    "description": "Only the holding tab releases it.\n\n**Rights:** admin, designer.",
+    "parameters": [
+     {
+      "name": "X-Pulse-Client",
+      "in": "header",
+      "required": true,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Designer tab id"
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Done"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/locks": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Project id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Edit locks of a project",
+    "description": "By template id.",
+    "responses": {
+     "200": {
+      "description": "Locks",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": {
+          "$ref": "#/components/schemas/EditLock"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -3002,6 +3241,24 @@
      "error": {
       "type": "string",
       "readOnly": true
+     }
+    }
+   },
+   "EditLock": {
+    "type": "object",
+    "properties": {
+     "userId": {
+      "type": "string"
+     },
+     "userName": {
+      "type": "string"
+     },
+     "client": {
+      "type": "string"
+     },
+     "since": {
+      "type": "integer",
+      "description": "Unix ms"
      }
     }
    }

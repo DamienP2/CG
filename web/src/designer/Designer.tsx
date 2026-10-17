@@ -1,11 +1,11 @@
-import { ChevronDown, LayoutGrid, Circle, Copy, FileUp, Folder, Grid3x3, Image, Link2, Plus, Settings2, Redo2, Sparkles, Square, Trash2, Type, Undo2 } from 'lucide-react';
+import { ChevronDown, LayoutGrid, Copy, FileUp, Grid3x3, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
-import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner, WIDGET_PRESETS } from './designerStore';
+import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
-import { ICONS, LayersPanel } from './LayersPanel';
+import { LockBanner, PublishButton, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
@@ -13,6 +13,7 @@ import { LogicEditor } from './LogicEditor';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
+import { designTemplates } from '../engine/drafts';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -52,24 +53,21 @@ function usePlayback(fps: number) {
 }
 
 function useAutosave() {
-  // The saved form (every format), not the view being edited.
-  const template = useDesigner((s) => s.base);
+  // Saves the draft after the user's edits (not when a template is opened).
+  const edits = useDesigner((s) => s.edits);
   const saveTemplate = useApp((s) => s.saveTemplate);
-  const first = useRef(true);
   const [state, setState] = useState<'saved' | 'pending'>('saved');
   useEffect(() => {
-    if (!template) return;
-    if (first.current) {
-      first.current = false;
-      return;
-    }
+    if (!edits) return;
     setState('pending');
+    // The edited template, even if another one is opened meanwhile.
+    const { base, readOnly } = useDesigner.getState();
     const h = setTimeout(async () => {
-      await saveTemplate(template);
+      if (base && !readOnly) await saveTemplate(base);
       setState('saved');
     }, 500);
     return () => clearTimeout(h);
-  }, [template, saveTemplate]);
+  }, [edits, saveTemplate]);
   return state;
 }
 
@@ -214,7 +212,7 @@ function TemplateList({ project }: { project: Project }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const create = async (base?: Template) => {
-    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${project.templates.length + 1}`, project.zones[0]?.id);
+    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${designTemplates(project).length + 1}`, project.zones[0]?.id);
     // Open it at once; the save follows.
     load(t);
     await saveTemplate(t);
@@ -253,9 +251,9 @@ function TemplateList({ project }: { project: Project }) {
           }}
         />
       </header>
-      {project.templates.map((t) => (
+      {designTemplates(project).map((t) => (
         <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={() => template?.id !== t.id && load(t)}>
-          <img src={thumbnailUrl(project.id, t, format)} alt="" loading="lazy" />
+          <img src={thumbnailUrl(project.id, t, format, true)} alt="" loading="lazy" />
           <span className="tpl-text">
             <span>{t.name}</span>
             {(() => {
@@ -278,7 +276,7 @@ function TemplateList({ project }: { project: Project }) {
                 e.stopPropagation();
                 if (!confirm(`Delete template “${t.name}”? Rundown items using it are removed too.`)) return;
                 await deleteTemplate(t.id).catch((err) => toast(String(err), 'error'));
-                if (template?.id === t.id) load(project.templates.find((x) => x.id !== t.id) ?? null);
+                if (template?.id === t.id) load(designTemplates(project).find((x) => x.id !== t.id) ?? null);
               }}
             >
               <Trash2 size={12} />
@@ -286,55 +284,6 @@ function TemplateList({ project }: { project: Project }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function WidgetMenu({ onPick }: { onPick: (w: (typeof WIDGET_PRESETS)[number]) => void }) {
-  // Fixed position: the toolbar scrolls sideways and would clip the menu.
-  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(null);
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('resize', close);
-    };
-  }, [open]);
-  return (
-    <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={`tool wide ${open ? 'on' : ''}`} title="Prefab widgets"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setOpen(open ? null : { left: Math.max(8, Math.min(r.left, window.innerWidth - 650)), top: r.bottom + 6 });
-        }}
-      >
-        <Sparkles size={15} /> Widgets <ChevronDown size={12} />
-      </button>
-      {open && (
-        <div className="menu widget-menu" style={{ position: 'fixed', left: open.left, top: open.top }}>
-          {WIDGET_PRESETS.map((w) => {
-            const Icon = ICONS[w.type];
-            return (
-              <button
-                key={w.key}
-                onClick={() => {
-                  setOpen(null);
-                  onPick(w);
-                }}
-              >
-                <Icon size={15} />
-                <span>
-                  <strong>{w.label}</strong>
-                  <em>{w.hint}</em>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -354,6 +303,7 @@ export function Designer() {
   usePlayback(fps);
   useShortcuts();
   const saveState = useAutosave();
+  const lock = useEditLock(project, template?.id);
 
   // Opening another project: start on its first template.
   const openedFor = useRef<string | null>(null);
@@ -361,8 +311,9 @@ export function Designer() {
     if (!project) return;
     if (openedFor.current !== project.id) {
       openedFor.current = project.id;
-      if (!template || !project.templates.some((t) => t.id === template.id)) load(project.templates[0] ?? null);
-    } else if (!template && project.templates.length) load(project.templates[0]);
+      const all = designTemplates(project);
+      if (!template || !all.some((t) => t.id === template.id)) load(all[0] ?? null);
+    } else if (!template && designTemplates(project).length) load(designTemplates(project)[0]);
   }, [project, template, load]);
 
   if (!project) return <div className="loading">Connecting…</div>;
@@ -384,30 +335,9 @@ export function Designer() {
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={layout.left} min={180} max={520} reset={250} onChange={(v) => setLayout('left', v)} />
         <TemplateList project={project} />
-        <Splitter axis="y" className="inline" value={layout.templates} min={60} max={800} reset={260} onChange={(v) => setLayout('templates', v)} />
-        <div className="panel-title">Layers</div>
-        <LayersPanel />
       </aside>
       <main className="center">
         <div className="toolbar">
-          <div className="tool-group">
-            <button className="tool" title="Rectangle" onClick={() => add('rect')}>
-              <Square size={16} />
-            </button>
-            <button className="tool" title="Ellipse" onClick={() => add('ellipse')}>
-              <Circle size={16} />
-            </button>
-            <button className="tool" title="Text" onClick={() => add('text')}>
-              <Type size={16} />
-            </button>
-            <button className="tool" title="Image" onClick={() => add('image')}>
-              <Image size={16} />
-            </button>
-            <button className="tool" title="Group" onClick={() => add('group')}>
-              <Folder size={16} />
-            </button>
-            <WidgetMenu onPick={(w) => add(w.type, w.patch, w.label)} />
-          </div>
           <div className="tool-group">
             <button className="tool" title="Undo (Ctrl+Z)" disabled={!past.length} onClick={undo}>
               <Undo2 size={16} />
@@ -432,18 +362,22 @@ export function Designer() {
           >
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>
-          <span className={`save-state ${saveState}`}>{saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
+          <PublishButton project={project} readOnly={lock.state.status === 'held'} />
+          <span className={`save-state ${saveState}`}>{lock.state.status === 'held' ? 'Read only' : saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
         </div>
-        <Stage project={project} size={formatById(project, format)} showSafe={showSafe} showZones={showZones} background={background} />
-        <div className="timeline-wrap">
-          <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={120} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
-          <Timeline fps={fps} />
+        <div className="stage-holder">
+          <Stage project={project} size={formatById(project, format)} showSafe={showSafe} showZones={showZones} background={background} />
+          {lock.state.status === 'held' && <LockBanner holder={lock.state.holder} onTakeOver={lock.takeOver} />}
         </div>
       </main>
       <aside className="panel right">
         <Splitter axis="x" className="edge-left" sign={-1} value={layout.right} min={260} max={620} reset={340} onChange={(v) => setLayout('right', v)} />
         <Inspector />
       </aside>
+      <div className="timeline-wrap">
+        <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
+        <Timeline fps={fps} leftW={layout.left} onAdd={add} />
+      </div>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
     </div>

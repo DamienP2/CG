@@ -1,3 +1,4 @@
+import { designTemplates } from '../engine/drafts';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Zone } from '../engine/types';
@@ -16,7 +17,7 @@ export function ZonesDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   if (!project) return null;
 
-  const used = (id: string) => project.templates.filter((t) => t.zone === id).length + project.rundown.filter((r) => r.zone === id).length;
+  const used = (id: string) => designTemplates(project).filter((t) => t.zone === id).length + project.rundown.filter((r) => r.zone === id).length;
   const edit = (i: number, patch: Partial<Zone>) => setZones(zones.map((z, j) => (i === j ? { ...z, ...patch } : z)));
   const move = (i: number, d: -1 | 1) => {
     const j = i + d;

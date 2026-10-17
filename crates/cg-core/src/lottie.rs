@@ -134,6 +134,7 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
         layers: cx.out,
         zone: opts.zone.clone(),
         logic: Default::default(),
+        revision: 0,
     };
     template.markers = markers(json, &template, ip, fps / fr);
     let mut warnings: Vec<String> = cx

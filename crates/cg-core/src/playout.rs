@@ -483,6 +483,7 @@ mod tests {
             frame_rate: FrameRate::default(),
             templates: vec![Template {
                 logic: Default::default(),
+                revision: 0,
                 id: "t".into(),
                 name: "t".into(),
                 duration: 100.0,
@@ -513,6 +514,7 @@ mod tests {
             rundown: vec![],
             playlists: vec![],
             formats: vec![],
+            drafts: vec![],
             zones: vec![crate::model::Zone {
                 id: "z".into(),
                 name: "Zone".into(),
@@ -736,5 +738,31 @@ mod tests {
         .unwrap();
         ch.tick(4.0);
         assert_eq!(item(&ch), 4.0);
+    }
+
+    #[test]
+    fn drafts_stay_off_air_until_published() {
+        let mut p = crate::sample::demo_project();
+        let mut t = p.template("lower-third").unwrap().clone();
+        let before = t.duration;
+        t.duration = before + 10.0;
+        p.save_draft(t);
+        // On air still uses the published template; the designer sees the draft.
+        assert_eq!(p.template("lower-third").unwrap().duration, before);
+        assert_eq!(p.draft("lower-third").unwrap().duration, before + 10.0);
+        assert_eq!(p.design_templates().count(), p.templates.len());
+        assert_eq!(p.publish("lower-third"), Some(1));
+        assert_eq!(p.template("lower-third").unwrap().duration, before + 10.0);
+        assert!(p.drafts.is_empty());
+        // A new template is a draft until it is published.
+        let mut n = p.template("clock").unwrap().clone();
+        n.id = "new".into();
+        p.save_draft(n);
+        assert!(p.template("new").is_none());
+        assert_eq!(p.design_templates().count(), p.templates.len() + 1);
+        let mut ch = ChannelState::default();
+        assert!(ch.apply(&p, Command::take("top-right", "new")).is_err());
+        p.publish("new");
+        assert!(ch.apply(&p, Command::take("top-right", "new")).is_ok());
     }
 }

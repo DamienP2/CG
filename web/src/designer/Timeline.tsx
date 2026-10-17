@@ -1,12 +1,28 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Diamond, Flag, LogOut, Pause, Play, Repeat, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react';
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  AlarmClock, Calendar, ChevronDown, ChevronLeft, ChevronRight, Circle, Code, Copy, Diamond, Eye, EyeOff, Flag, Folder, Globe, Image, Lock, LogOut, Minus,
+  Pause, Play, Plus, Repeat, SkipBack, SkipForward, Sparkles, Square, StepBack, StepForward, Table, Trash2, Type, Unlock, Video,
+  ChartArea, ChartColumn, ChartLine, ChartPie, Map as MapIcon,
+} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { childrenMap } from '../engine/Scene';
-import { newId } from '../engine/evaluate';
-import { PROPS, type Keyframe, type Layer, type MarkerKind, type Prop, type Template } from '../engine/types';
-import { findLayer, markerRole, toggleKeyAt, useDesigner, type KeyRef } from './designerStore';
+import { newId, num, propValue } from '../engine/evaluate';
+import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type MarkerKind, type Prop, type Template } from '../engine/types';
+import { NumberField } from '../ui/fields';
+import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
+import { ICONS, moveLayer, type DropPos } from './LayersPanel';
 
-const LEFT_W = 260;
+/** Rows shown under an expanded layer, like After Effects' Transform group. */
+const PROP_ROWS: { label: string; props: Prop[]; display?: number; suffix?: string; labels?: string[] }[] = [
+  { label: 'Position', props: ['x', 'y'], labels: ['X', 'Y'] },
+  { label: 'Size', props: ['width', 'height'], labels: ['W', 'H'] },
+  { label: 'Scale', props: ['scaleX', 'scaleY'], display: 100, suffix: '%', labels: ['X', 'Y'] },
+  { label: 'Rotation', props: ['rotation'], suffix: '°' },
+  { label: 'Opacity', props: ['opacity'], display: 100, suffix: '%' },
+];
+const IN_ROWS = new Set(PROP_ROWS.flatMap((r) => r.props));
+
+export type AddLayer = (type: LayerType, patch?: Record<string, unknown>, name?: string) => void;
 
 export function formatTime(frame: number, fps: number): string {
   const f = Math.round(frame);
@@ -36,7 +52,10 @@ function tickStep(zoom: number): number {
 
 const sameKey = (a: KeyRef, b: KeyRef) => a.layerId === b.layerId && a.prop === b.prop && a.frame === b.frame;
 
-export function Timeline({ fps }: { fps: number }) {
+export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; onAdd: AddLayer }) {
+  const LEFT_W = leftW;
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [drop, setDrop] = useState<{ id: string; pos: DropPos } | null>(null);
   const st = useDesigner();
   const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -158,7 +177,7 @@ export function Timeline({ fps }: { fps: number }) {
     const next = frames.find((f) => f > frame + 0.5);
     const here = frames.some((f) => Math.abs(f - frame) < 0.5);
     return (
-      <span className="tl-keynav" onClick={(e) => e.stopPropagation()}>
+      <span className="tl-keynav" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <button title="Previous keyframe" disabled={prev === undefined} onClick={() => prev !== undefined && st.setFrame(prev)}>
           <ChevronLeft size={12} />
         </button>
@@ -166,7 +185,13 @@ export function Timeline({ fps }: { fps: number }) {
           <button
             className={here ? 'on' : ''}
             title={here ? 'Remove the keyframe at the playhead' : 'Add a keyframe at the playhead'}
-            onClick={() => st.update((t) => toggleKeyAt(findLayer(t, layer.id)!, props[0], frame))}
+            onClick={() =>
+              st.update((t) => {
+                const l = findLayer(t, layer.id)!;
+                // A row (Position…) keys all its properties together.
+                for (const p of props) if (here === (l.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5)) toggleKeyAt(l, p, frame);
+              })
+            }
           >
             <Diamond size={11} fill={here ? 'currentColor' : 'none'} />
           </button>
@@ -201,24 +226,109 @@ export function Timeline({ fps }: { fps: number }) {
 
   const body: React.ReactNode[] = [];
   const labels: React.ReactNode[] = [];
+  const track = (layer: Layer, props: Prop[]) => {
+    const keys = props.flatMap((p) => (layer.tracks[p] ?? []).map((k) => ({ p, k })));
+    if (!keys.length) return null;
+    const frames = keys.map((x) => x.k.frame);
+    const a = Math.min(...frames);
+    const b = Math.max(...frames);
+    return (
+      <>
+        {b > a && <div className="tl-span" style={{ left: a * zoom, width: (b - a) * zoom }} />}
+        {keys.map(({ p, k }) => diamond({ layerId: layer.id, prop: p, frame: k.frame }, k))}
+      </>
+    );
+  };
   for (const { layer, depth } of rows) {
     const animated = PROPS.filter((p) => layer.tracks[p]?.length);
     const open = expanded[layer.id];
     const isSel = selected.includes(layer.id);
+    const Icon = ICONS[layer.type];
+    const dropCls = drop?.id === layer.id ? `drop-${drop.pos}` : '';
     labels.push(
-      <div key={layer.id} className={`tl-label ${isSel ? 'selected' : ''} ${layer.visible ? '' : 'dim'}`} style={{ paddingLeft: 8 + depth * 14 }} onClick={() => st.select([layer.id])}>
+      <div
+        key={layer.id}
+        className={`tl-label layer ${isSel ? 'selected' : ''} ${layer.visible ? '' : 'dim'} ${dropCls}`}
+        style={{ paddingLeft: 4 + depth * 14 }}
+        draggable={renaming !== layer.id}
+        onDragStart={(e) => e.dataTransfer.setData('text/layer', layer.id)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          const y = (e.clientY - r.top) / r.height;
+          setDrop({ id: layer.id, pos: layer.type === 'group' && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below' });
+        }}
+        onDragLeave={() => setDrop(null)}
+        onDrop={(e) => {
+          const id = e.dataTransfer.getData('text/layer');
+          const d = drop;
+          setDrop(null);
+          if (id && d) st.update((t) => moveLayer(t, id, d.id, d.pos));
+        }}
+        onClick={(e) => {
+          if (e.shiftKey || e.metaKey || e.ctrlKey) st.select(isSel ? selected.filter((x) => x !== layer.id) : [...selected, layer.id]);
+          else st.select([layer.id]);
+        }}
+        onDoubleClick={() => setRenaming(layer.id)}
+      >
         <span
           className="twirl"
+          title="Show the properties"
           onClick={(e) => {
             e.stopPropagation();
             st.toggleExpanded(layer.id);
           }}
         >
-          {animated.length > 0 && (open ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
-        <span className="layer-name">{layer.name}</span>
-        {animated.length > 0 && <span className="badge">{animated.length}</span>}
-        {animated.length > 0 && keyNav(layer, animated, false)}
+        <Icon size={13} className="layer-icon" />
+        {renaming === layer.id ? (
+          <input
+            autoFocus
+            className="rename"
+            defaultValue={layer.name}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              setRenaming(null);
+              if (v && v !== layer.name) st.update((t) => void (findLayer(t, layer.id)!.name = v));
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Escape') setRenaming(null);
+            }}
+          />
+        ) : (
+          <span className="layer-name">{layer.name}</span>
+        )}
+        {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
+        <span className="row-actions">
+          <button title="Duplicate (Ctrl+D)" onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
+            <Copy size={12} />
+          </button>
+          <button
+            title="Delete (Del)"
+            onClick={(e) => {
+              e.stopPropagation();
+              const kids = descendants(template, layer.id).length;
+              if (kids && !confirm(`Delete “${layer.name}” and the ${kids} layer(s) inside it?`)) return;
+              st.update((t) => {
+                const ids = new Set([layer.id, ...descendants(t, layer.id)]);
+                t.layers = t.layers.filter((x) => !ids.has(x.id));
+              });
+              st.select(selected.filter((x) => x !== layer.id));
+            }}
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
+        <button className={`row-btn ${layer.visible ? '' : 'off'}`} title={layer.visible ? 'Hide' : 'Show'} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.visible = !layer.visible)))}>
+          {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+        </button>
+        <button className={`row-btn ${layer.locked ? 'on' : ''}`} title={layer.locked ? 'Unlock' : 'Lock'} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.locked = !layer.locked)))}>
+          {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
+        </button>
       </div>,
     );
     const allFrames = new Map<number, Keyframe>();
@@ -226,29 +336,54 @@ export function Timeline({ fps }: { fps: number }) {
     body.push(
       <div key={layer.id} className={`tl-row layer ${isSel ? 'selected' : ''}`}>
         <div className="tl-bar" style={{ width: template.duration * zoom }} />
-        {[...allFrames.values()].map((k) => diamond({ layerId: layer.id, prop: 'x', frame: k.frame }, k, true))}
+        {!open && [...allFrames.values()].map((k) => diamond({ layerId: layer.id, prop: 'x', frame: k.frame }, k, true))}
       </div>,
     );
-    if (open) {
-      for (const p of animated) {
-        labels.push(
-          <div key={`${layer.id}-${p}`} className="tl-label prop" style={{ paddingLeft: 30 + depth * 14 }}>
-            <span className="prop-name">{PROP_LABELS[p]}</span>
-            {keyNav(layer, [p], true)}
-          </div>,
-        );
-        body.push(
-          <div key={`${layer.id}-${p}`} className="tl-row prop">
-            {layer.tracks[p]!.map((k) => diamond({ layerId: layer.id, prop: p, frame: k.frame }, k))}
-          </div>,
-        );
-      }
+    if (!open) continue;
+    const extra = animated.filter((p) => !IN_ROWS.has(p));
+    const groups = [...PROP_ROWS, ...extra.map((p) => ({ label: PROP_LABELS[p], props: [p] as Prop[], display: undefined, suffix: undefined, labels: undefined }))];
+    labels.push(
+      <div key={`${layer.id}-tr`} className="tl-label group" style={{ paddingLeft: 22 + depth * 14 }}>
+        Transform
+      </div>,
+    );
+    body.push(<div key={`${layer.id}-tr`} className="tl-row prop" />);
+    for (const g of groups) {
+      const isAnim = g.props.some((p) => layer.tracks[p]?.length);
+      labels.push(
+        <div key={`${layer.id}-${g.label}`} className={`tl-label prop ${isAnim ? 'animated' : ''}`} style={{ paddingLeft: 14 + depth * 14 }}>
+          {keyNav(layer, g.props, true)}
+          <span className="prop-name">{g.label}</span>
+          <span className="prop-values">
+            {g.props.map((p, i) =>
+              COLOR_PROPS.has(p) ? (
+                <span key={p} className="prop-swatch" style={{ background: `rgba(${(propValue(layer, p, frame) as number[]).slice(0, 3).map((c) => Math.round(c * 255)).join(',')},${(propValue(layer, p, frame) as number[])[3]})` }} />
+              ) : (
+                <NumberField
+                  key={p}
+                  label={g.labels?.[i]}
+                  value={num(propValue(layer, p, frame))}
+                  display={g.display}
+                  suffix={g.suffix}
+                  onChange={(v) => st.update((t) => setProp(findLayer(t, layer.id)!, p, v, frame), `tl-${layer.id}-${p}`)}
+                />
+              ),
+            )}
+          </span>
+        </div>,
+      );
+      body.push(
+        <div key={`${layer.id}-${g.label}`} className="tl-row prop">
+          {track(layer, g.props)}
+        </div>,
+      );
     }
   }
 
   return (
     <div className="timeline">
       <div className="tl-toolbar">
+        <InsertBar width={LEFT_W} onAdd={onAdd} />
         <div className="transport">
           <button className="icon-btn" title="Go to start (Home)" onClick={() => st.setFrame(0)}>
             <SkipBack size={15} />
@@ -332,3 +467,123 @@ export function Timeline({ fps }: { fps: number }) {
   );
 }
 
+
+
+/** Shapes on hand above the layers; the rest behind "+". */
+function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
+  return (
+    <div className="tl-insert" style={{ width }}>
+      <button className="tool" title="Rectangle" onClick={() => onAdd('rect')}>
+        <Square size={15} />
+      </button>
+      <button className="tool" title="Ellipse" onClick={() => onAdd('ellipse')}>
+        <Circle size={15} />
+      </button>
+      <button className="tool" title="Line" onClick={() => onAdd('rect', { props: { x: 160, y: 540, width: 600, height: 4, fill: [1, 1, 1, 1] } }, 'Line')}>
+        <Minus size={15} />
+      </button>
+      <button className="tool" title="Text" onClick={() => onAdd('text')}>
+        <Type size={15} />
+      </button>
+      <button className="tool" title="Image" onClick={() => onAdd('image')}>
+        <Image size={15} />
+      </button>
+      <button className="tool" title="Group" onClick={() => onAdd('group')}>
+        <Folder size={15} />
+      </button>
+      <div className="spacer" />
+      <AddMenu onAdd={onAdd} />
+    </div>
+  );
+}
+
+type MenuItem = { label: string; icon: typeof Square; preset?: string; soon?: boolean };
+
+const BASICS: MenuItem[] = [
+  { label: 'Clock', icon: AlarmClock, preset: 'clock' },
+  { label: 'Date', icon: Calendar, preset: 'date' },
+  { label: 'Countdown', icon: ICONS.clock, preset: 'countdown' },
+  { label: 'Timer', icon: ICONS.clock, preset: 'timer' },
+  { label: 'Stopwatch', icon: ICONS.clock, preset: 'elapsed' },
+  { label: 'Analog clock', icon: ICONS.analogClock, preset: 'analogClock' },
+  { label: 'Slideshow', icon: ICONS.slideshow, preset: 'slideshow' },
+  { label: 'Video', icon: Video, soon: true },
+  { label: 'Animation (Lottie)', icon: Sparkles, soon: true },
+  { label: 'Iframe', icon: Code, soon: true },
+  { label: 'Web page', icon: Globe, soon: true },
+  { label: 'Table', icon: Table, soon: true },
+];
+
+const PULSE: MenuItem[] = [
+  { label: 'Typewriter', icon: ICONS.typewriter, preset: 'typewriter' },
+  { label: 'Ticker', icon: ICONS.ticker, preset: 'ticker' },
+  { label: 'Credits roll', icon: ICONS.roll, preset: 'roll' },
+  { label: 'Rotator', icon: ICONS.rotator, preset: 'rotator' },
+  { label: 'Counter', icon: ICONS.counter, preset: 'counter' },
+  { label: 'Progress bar', icon: ICONS.progress, preset: 'progress' },
+  { label: 'Bar chart / poll', icon: ICONS.barChart, preset: 'barChart' },
+  { label: 'QR code', icon: ICONS.qrCode, preset: 'qrCode' },
+  { label: 'Column chart', icon: ChartColumn, soon: true },
+  { label: 'Line chart', icon: ChartLine, soon: true },
+  { label: 'Area chart', icon: ChartArea, soon: true },
+  { label: 'Pie chart', icon: ChartPie, soon: true },
+  { label: 'Map', icon: MapIcon, soon: true },
+];
+
+function AddMenu({ onAdd }: { onAdd: AddLayer }) {
+  const [open, setOpen] = useState<{ left: number; bottom: number } | null>(null);
+  const [tab, setTab] = useState<'basics' | 'pulse'>('basics');
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+  const pick = (it: MenuItem) => {
+    const w = WIDGET_PRESETS.find((x) => x.key === it.preset);
+    if (!w) return;
+    setOpen(null);
+    onAdd(w.type, w.patch as Record<string, unknown> | undefined, w.label);
+  };
+  return (
+    <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
+      <button
+        className={`add-btn ${open ? 'on' : ''}`}
+        title="Basics and Pulse CG widgets"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setOpen(open ? null : { left: Math.max(8, r.left), bottom: window.innerHeight - r.top + 6 });
+        }}
+      >
+        <Plus size={15} />
+      </button>
+      {open && (
+        <div className="menu add-menu" style={{ position: 'fixed', left: open.left, bottom: open.bottom, top: 'auto' }}>
+          <div className="add-tabs">
+            <button className={tab === 'basics' ? 'on' : ''} onClick={() => setTab('basics')}>
+              Basics
+            </button>
+            <button className={tab === 'pulse' ? 'on' : ''} onClick={() => setTab('pulse')}>
+              Pulse CG widgets
+            </button>
+          </div>
+          <div className="add-grid">
+            {(tab === 'basics' ? BASICS : PULSE).map((it) => (
+              <button key={it.label} disabled={it.soon} title={it.soon ? 'Coming soon' : undefined} onClick={() => pick(it)}>
+                <span className="add-icon">
+                  <it.icon size={15} />
+                </span>
+                {it.label}
+                {it.soon && <em>soon</em>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
