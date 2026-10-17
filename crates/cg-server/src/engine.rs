@@ -45,7 +45,7 @@ fn open_outputs(
                     output = name,
                     "cannot start {kind} output: {e}"
                 );
-                status.set(&cfg.id, id, false, short(&e));
+                status.set_detailed(&cfg.id, id, false, short(&e), e.to_string());
             }
         };
     for o in &outputs.st2110 {
@@ -170,7 +170,7 @@ fn render_loop(
                     // Report a failure once, not every frame.
                     if !s.failing {
                         tracing::warn!(output = s.sink.name(), "{e}");
-                        status.set(&channel_id, &s.id, false, short(&e));
+                        status.set_detailed(&channel_id, &s.id, false, short(&e), e.to_string());
                         s.failing = true;
                     }
                 }

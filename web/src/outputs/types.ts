@@ -97,6 +97,8 @@ export interface SystemInfo {
 export interface OutputState {
   ok: boolean;
   message: string;
+  /** The full error, when it says more. */
+  detail?: string;
 }
 
 export const VIDEO_FORMATS: { label: string; width: number; height: number; rate: FrameRate }[] = [

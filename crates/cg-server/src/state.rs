@@ -171,6 +171,9 @@ pub type Shared = Arc<AppState>;
 pub struct OutputState {
     pub ok: bool,
     pub message: String,
+    /// The full error, when it says more than `message`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub detail: String,
 }
 
 /// Video output states, by channel id then output id.
@@ -181,12 +184,24 @@ pub struct OutputStatus {
 
 impl OutputStatus {
     pub fn set(&self, channel: &str, output: &str, ok: bool, message: impl Into<String>) {
+        self.set_detailed(channel, output, ok, message, String::new());
+    }
+
+    pub fn set_detailed(
+        &self,
+        channel: &str,
+        output: &str,
+        ok: bool,
+        message: impl Into<String>,
+        detail: String,
+    ) {
         let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         map.entry(channel.into()).or_default().insert(
             output.into(),
             OutputState {
                 ok,
                 message: message.into(),
+                detail,
             },
         );
     }

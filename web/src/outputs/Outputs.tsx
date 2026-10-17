@@ -1,5 +1,5 @@
 import { Check, Copy, ExternalLink, Image as ImageIcon, MapPin, Network, Pencil, Play, Plus, Radio, Save, Trash2, Tv, Globe } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp } from '../store';
 import { joinAddr, splitAddr, VIDEO_FORMATS, type ChannelConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type SystemInfo } from './types';
 
@@ -116,6 +116,9 @@ export function Outputs() {
   const [layout, setLayout] = useState<Layout>(readLayout);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [wire, setWire] = useState<{ from: string; moving?: string; x: number; y: number } | null>(null);
+  const [addMenu, setAddMenu] = useState<{ picture: string; x: number; y: number } | null>(null);
+  const planeRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
     const i = await api<SystemInfo>('GET', '/api/system');
@@ -215,14 +218,14 @@ export function Outputs() {
   const targetPicture = selPic?.id ?? selDest?.picture ?? 'main';
   const takenIds = () => new Set(pics.flatMap((p) => dests(p).map((d) => d.value.id)));
 
-  const addDest = (kind: DestKind) => {
+  const addDest = (kind: DestKind, picture = targetPicture, at?: { x: number; y: number }) => {
     const taken = takenIds();
     let k = 1;
     while (taken.has(`${kind}-${k}`)) k++;
     const id = `${kind}-${k}`;
     const n = allDests.filter((d) => d.kind === kind).length + 1;
     editCh((c, all) => {
-      const p = pictures(c).find((x) => x.id === targetPicture) ?? pictures(c)[0];
+      const p = pictures(c).find((x) => x.id === picture) ?? pictures(c)[0];
       const picOutputs = p.id === 'main' ? c.outputs : c.renditions!.find((r) => r.id === p.id)!.outputs;
       const group = 100 + chIndex;
       if (kind === 'st2110') {
@@ -241,6 +244,7 @@ export function Outputs() {
         (picOutputs.html5 ??= []).push({ id, name: 'Web page', background: '' });
       }
     });
+    if (at) setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), [id]: at } }));
     setSel(id);
   };
 
@@ -269,17 +273,20 @@ export function Outputs() {
     setSel('program');
   };
 
-  const moveDest = (to: string) =>
+  /** Feeds a destination from another picture. */
+  const moveDest = (destId: string, to: string) =>
     editCh((c) => {
-      if (!selDest) return;
-      const from = pictures(c).find((x) => x.id === selDest.picture)!;
-      const target = pictures(c).find((x) => x.id === to)!;
-      const list = listOf(from.outputs, selDest.kind) as { id: string }[];
+      const d = pictures(c).flatMap(dests).find((x) => x.value.id === destId);
+      if (!d || d.picture === to) return;
+      const from = pictures(c).find((x) => x.id === d.picture)!;
+      const target = pictures(c).find((x) => x.id === to);
+      if (!target) return;
+      const list = listOf(from.outputs, d.kind) as { id: string }[];
       const [item] = list.splice(
-        list.findIndex((x) => x.id === selDest.value.id),
+        list.findIndex((x) => x.id === destId),
         1,
       );
-      (listOf(target.outputs, selDest.kind) as { id: string }[]).push(item);
+      (listOf(target.outputs, d.kind) as { id: string }[]).push(item);
     });
 
   const editDest = <T,>(fn: (d: T) => void) =>
@@ -376,6 +383,41 @@ export function Outputs() {
     window.addEventListener('pointerup', up);
   };
 
+  // ---- wiring with the mouse ----
+  // From a picture's output: drop on a destination to feed it, or in the
+  // void to create one there. From a destination's input: drop on another
+  // picture to feed it from there.
+  const planePoint = (ev: { clientX: number; clientY: number }) => {
+    const r = planeRef.current!.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  };
+  const startWire = (e: React.PointerEvent, from: string, moving?: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setAddMenu(null);
+    setWire({ from, moving, ...planePoint(e) });
+    const move = (ev: PointerEvent) => setWire((w) => w && { ...w, ...planePoint(ev) });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setWire(null);
+      const target = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-node]')?.dataset.node;
+      const targetPic = target?.startsWith('pic:') ? target.slice(4) : undefined;
+      if (moving) {
+        if (targetPic) moveDest(moving, targetPic);
+        return;
+      }
+      if (target && !target.startsWith('pic:') && target !== 'program') moveDest(target, from);
+      else if (!target) {
+        const at = planePoint(ev);
+        setAddMenu({ picture: from, x: at.x, y: at.y });
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   const selNode = nodes.find((n) => n.id === sel) ?? nodes[0];
   const destCount = (c: ChannelConfig) => pictures(c).reduce((n, p) => n + dests(p).length, 0);
   const warns = (c: ChannelConfig) => Object.values(status[c.id] ?? {}).some((s) => !s.ok);
@@ -465,7 +507,7 @@ export function Outputs() {
 
           <div className="oc-body">
             <div className="oc-canvas">
-              <div className="oc-plane" style={{ width, height }}>
+              <div ref={planeRef} className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height }} onPointerDown={() => setAddMenu(null)}>
                 <span className="oc-col" style={{ left: COL.program }}>
                   Source
                 </span>
@@ -479,7 +521,7 @@ export function Outputs() {
                   {edges.map((e) => {
                     const a = pos[e.from];
                     const b = pos[e.to];
-                    if (!a || !b) return null;
+                    if (!a || !b || e.to === wire?.moving) return null;
                     const x1 = a.x + NODE_W;
                     const y1 = a.y + 27;
                     const x2 = b.x;
@@ -487,12 +529,21 @@ export function Outputs() {
                     const c = Math.max(40, (x2 - x1) / 2);
                     return <path key={`${e.from}-${e.to}`} d={`M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`} stroke={e.color} />;
                   })}
+                  {wire &&
+                    pos[`pic:${wire.from}`] &&
+                    (() => {
+                      const a = pos[`pic:${wire.from}`];
+                      const x1 = a.x + NODE_W;
+                      const y1 = a.y + 27;
+                      const c = Math.max(40, Math.abs(wire.x - x1) / 2);
+                      return <path className="oc-wire-live" d={`M${x1},${y1} C${x1 + c},${y1} ${wire.x - c},${wire.y} ${wire.x},${wire.y}`} stroke={KIND.picture.color} />;
+                    })()}
                 </svg>
                 {nodes.map((n) => {
                   const k = KIND[n.kind];
                   const Icon = k.icon;
                   return (
-                    <div key={n.id} className={`oc-node ${n.id === selNode?.id ? 'sel' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)}>
+                    <div key={n.id} data-node={n.id} className={`oc-node ${n.kind} ${n.id === selNode?.id ? 'sel' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)}>
                       <div className="oc-node-head">
                         <span className="oc-icon">
                           <Icon size={15} />
@@ -507,11 +558,34 @@ export function Outputs() {
                         <span className={`oc-dot ${n.tone}`} />
                         <span>{n.status}</span>
                       </div>
-                      {n.kind !== 'program' && <span className="oc-port in" />}
-                      {(n.kind === 'program' || n.kind === 'picture') && <span className="oc-port out" />}
+                      {n.kind === 'picture' && <span className="oc-port in" />}
+                      {n.kind !== 'program' && n.kind !== 'picture' && (
+                        <span className="oc-port in grab" title="Drag to another picture to feed this output from it" onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
+                      )}
+                      {n.kind === 'program' && <span className="oc-port out" />}
+                      {n.kind === 'picture' && <span className="oc-port out grab" title="Drag to an output to feed it, or into the empty canvas to add one" onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
                     </div>
                   );
                 })}
+                {addMenu && (
+                  <div className="menu oc-add-menu" style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()}>
+                    <div className="menu-label">Add an output</div>
+                    {(['html5', 'sdi', 'st2110', 'ndi'] as DestKind[]).map((k) => {
+                      const Icon = KIND[k].icon;
+                      return (
+                        <button
+                          key={k}
+                          onClick={() => {
+                            addDest(k, addMenu.picture, { x: Math.max(0, Math.round(addMenu.x)), y: Math.max(30, Math.round(addMenu.y - 27)) });
+                            setAddMenu(null);
+                          }}
+                        >
+                          <Icon size={14} color={KIND[k].color} /> {KIND[k].label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -638,18 +712,6 @@ export function Outputs() {
                   )}
                   <Hint>One take drives every picture. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit.</Hint>
                 </>
-              )}
-
-              {selDest && pics.length > 1 && (
-                <Field label="Picture">
-                  <select value={selDest.picture} onChange={(e) => moveDest(e.target.value)}>
-                    {pics.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} · {p.width}×{p.height}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
               )}
 
               {selDest?.kind === 'html5' &&
@@ -822,6 +884,12 @@ export function Outputs() {
                   <span className={`oc-dot ${destStatus(selDest).tone}`} />
                   {destStatus(selDest).text}
                 </div>
+              )}
+              {selDest && status[ch.id]?.[selDest.value.id]?.detail && status[ch.id][selDest.value.id].detail !== destStatus(selDest).text && (
+                <details className="oc-detail">
+                  <summary>Details</summary>
+                  <code>{status[ch.id][selDest.value.id].detail}</code>
+                </details>
               )}
             </aside>
           </div>

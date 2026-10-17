@@ -78,22 +78,87 @@ struct Lib {
 unsafe impl Send for Lib {}
 unsafe impl Sync for Lib {}
 
+/// Bundled copies inside applications (NDI Tools installs its runtime in
+/// its apps on macOS): `<dir>/*.app/Contents/{Frameworks,MacOS}/libndi*.dylib`,
+/// looking one folder deeper for suites such as "NDI Tools".
+fn app_bundles(dir: &std::path::Path, depth: u32, out: &mut Vec<String>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        let name = e.file_name().to_string_lossy().to_lowercase();
+        if name.ends_with(".app") {
+            if !name.contains("ndi") && depth == 0 {
+                continue;
+            }
+            for sub in [
+                "Contents/Frameworks",
+                "Contents/MacOS",
+                "Contents/Resources",
+            ] {
+                if let Ok(files) = std::fs::read_dir(p.join(sub)) {
+                    for f in files.flatten() {
+                        let n = f.file_name().to_string_lossy().to_string();
+                        if n.starts_with("libndi") && n.ends_with(".dylib") {
+                            out.push(f.path().to_string_lossy().into_owned());
+                        }
+                    }
+                }
+            }
+        } else if depth > 0 && p.is_dir() && name.contains("ndi") {
+            app_bundles(&p, depth - 1, out);
+        }
+    }
+}
+
 fn candidates() -> Vec<String> {
     let mut c: Vec<String> = std::env::var("NDI_LIB_PATH").into_iter().collect();
+    let runtime_dirs: Vec<String> = [
+        "NDI_RUNTIME_DIR_V6",
+        "NDI_RUNTIME_DIR_V5",
+        "NDI_RUNTIME_DIR_V4",
+    ]
+    .iter()
+    .filter_map(|v| std::env::var(v).ok())
+    .collect();
     if cfg!(target_os = "windows") {
-        for var in ["NDI_RUNTIME_DIR_V6", "NDI_RUNTIME_DIR_V5"] {
-            if let Ok(dir) = std::env::var(var) {
-                c.push(format!("{dir}\\Processing.NDI.Lib.x64.dll"));
-            }
+        for dir in &runtime_dirs {
+            c.push(format!("{dir}\\Processing.NDI.Lib.x64.dll"));
+        }
+        for v in ["6", "5"] {
+            c.push(format!(
+                "C:\\Program Files\\NDI\\NDI {v} Runtime\\v{v}\\Processing.NDI.Lib.x64.dll"
+            ));
+            c.push(format!(
+                "C:\\Program Files\\NDI\\NDI {v} Tools\\Runtime\\Processing.NDI.Lib.x64.dll"
+            ));
         }
         c.push("Processing.NDI.Lib.x64.dll".into());
     } else if cfg!(target_os = "macos") {
-        c.extend([
-            "libndi.dylib".into(),
-            "/usr/local/lib/libndi.dylib".into(),
-            "/Library/NDI SDK for Apple/lib/macOS/libndi.dylib".into(),
-        ]);
+        for dir in &runtime_dirs {
+            c.push(format!("{dir}/libndi.dylib"));
+        }
+        c.extend(
+            [
+                "/usr/local/lib/libndi.dylib",
+                "/opt/homebrew/lib/libndi.dylib",
+                "/Library/NDI SDK for Apple/lib/macOS/libndi.dylib",
+                "/Library/NDI SDK for Apple/lib/macOS/libndi_advanced.dylib",
+                "/Library/NDI Advanced SDK for Apple/lib/macOS/libndi_advanced.dylib",
+                "libndi.dylib",
+            ]
+            .map(String::from),
+        );
+        app_bundles(std::path::Path::new("/Applications"), 1, &mut c);
+        if let Some(home) = std::env::var_os("HOME") {
+            app_bundles(&std::path::Path::new(&home).join("Applications"), 1, &mut c);
+        }
     } else {
+        for dir in &runtime_dirs {
+            c.push(format!("{dir}/libndi.so.6"));
+            c.push(format!("{dir}/libndi.so.5"));
+        }
         c.extend([
             "libndi.so.6".into(),
             "libndi.so.5".into(),
@@ -101,16 +166,27 @@ fn candidates() -> Vec<String> {
             "/usr/local/lib/libndi.so".into(),
         ]);
     }
+    c.dedup();
     c
 }
 
 fn load() -> Result<Lib, String> {
     let tried = candidates();
+    let mut failures = Vec::new();
     for path in &tried {
+        // Only report the paths that exist but would not load (a bare name
+        // is searched in the system folders).
+        let bare = !path.contains('/') && !path.contains('\\');
         // SAFETY: loading the NDI runtime runs its initialisers, which is
         // what the SDK expects of its users.
-        let Ok(lib) = (unsafe { libloading::Library::new(path) }) else {
-            continue;
+        let lib = match unsafe { libloading::Library::new(path) } {
+            Ok(l) => l,
+            Err(e) => {
+                if !bare && std::path::Path::new(path).exists() {
+                    failures.push(format!("{path}: {e}"));
+                }
+                continue;
+            }
         };
         unsafe {
             let init: libloading::Symbol<unsafe extern "C" fn() -> bool> =
@@ -127,6 +203,7 @@ fn load() -> Result<Lib, String> {
             let destroy = *lib
                 .get(b"NDIlib_send_destroy\0")
                 .map_err(|e| e.to_string())?;
+            tracing::info!(path, "NDI runtime loaded");
             return Ok(Lib {
                 _lib: lib,
                 create,
@@ -135,8 +212,14 @@ fn load() -> Result<Lib, String> {
             });
         }
     }
+    if !failures.is_empty() {
+        return Err(format!(
+            "NDI runtime found but not loadable ({})",
+            failures.join("; ")
+        ));
+    }
     Err(format!(
-        "NDI runtime not found (install NDI Tools or set NDI_LIB_PATH; looked for {})",
+        "NDI runtime not found (install the NDI SDK or NDI Tools, or set NDI_LIB_PATH; looked for {})",
         tried.join(", ")
     ))
 }
