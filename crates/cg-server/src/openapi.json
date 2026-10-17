@@ -773,10 +773,13 @@
      "Projects"
     ],
     "summary": "Delete a template",
-    "description": "Also removes its draft and rundown items.\n\n**Rights:** admin, designer.",
+    "description": "Also removes its draft and rundown items. The last template of a project cannot be deleted (409).\n\n**Rights:** admin, designer.",
     "responses": {
      "204": {
       "description": "Done"
+     },
+     "409": {
+      "description": "Last template of the project"
      }
     }
    }

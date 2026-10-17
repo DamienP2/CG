@@ -618,6 +618,28 @@ pub struct Template {
 }
 
 impl Template {
+    /// An empty template: 2 s at 50 fps, on air at 1 s.
+    pub fn blank(name: &str, zone: &str) -> Self {
+        Template {
+            id: new_id(),
+            name: name.into(),
+            duration: 100.0,
+            markers: vec![Marker {
+                id: new_id(),
+                frame: 50.0,
+                name: "On air".into(),
+                kind: MarkerKind::Out,
+                resume: Resume::Manual,
+            }],
+            fields: Vec::new(),
+            layers: Vec::new(),
+            zone: zone.into(),
+            logic: Default::default(),
+            revision: 0,
+            marker_model: MARKER_MODEL,
+        }
+    }
+
     /// The template as laid out in `format` (overrides applied); the main
     /// format, or a format without overrides, borrows it unchanged.
     pub fn in_format(&self, format: &str) -> std::borrow::Cow<'_, Template> {

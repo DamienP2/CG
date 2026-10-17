@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
+import { designTemplates } from './engine/drafts';
 import type { ChannelInfo, ChannelState, Command, DataStatus, Project, ProjectSummary, RundownItem, Template, User, Zone } from './engine/types';
 
 type ServerEvent =
@@ -209,8 +210,9 @@ export const useApp = create<AppStore>((set, get) => {
             }
             case 'project': {
               const full = { ...get().full, [msg.project.id]: msg.project };
-              const { id, name, description, width, height, frameRate, templates, rundown } = msg.project;
-              const summary: ProjectSummary = { id, name, description: description ?? '', width, height, frameRate, templates: templates.length, rundown: rundown.length, cover: templates[0]?.id };
+              const { id, name, description, width, height, frameRate, rundown } = msg.project;
+              const design = designTemplates(msg.project);
+              const summary: ProjectSummary = { id, name, description: description ?? '', width, height, frameRate, templates: design.length, rundown: rundown.length, cover: design[0]?.id };
               const projects = get().projects.some((p) => p.id === id) ? get().projects.map((p) => (p.id === id ? summary : p)) : [...get().projects, summary];
               set({ full, projects: outputChannel ? get().projects : projects, ...select(get().projectId, full) });
               break;

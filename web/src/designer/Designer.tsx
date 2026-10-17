@@ -293,7 +293,8 @@ function TemplateList({ project }: { project: Project }) {
             </button>
             <button
               className="icon-btn ghost"
-              title="Delete"
+              title={designTemplates(project).length < 2 ? 'A project keeps at least one template' : 'Delete'}
+              disabled={designTemplates(project).length < 2}
               onClick={async (e) => {
                 e.stopPropagation();
                 if (!confirm(`Delete template “${t.name}”? Rundown items using it are removed too.`)) return;

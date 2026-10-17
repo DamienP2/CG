@@ -98,7 +98,7 @@ Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/<id de la sorti
 ## Utilisation
 
 ### Projets
-Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. Après connexion, l'application montre seulement **Projects**, **Media**, **Users** et **Settings** (ces deux derniers pour les admins). La page **Projects** permet de créer un projet (dans le format de son choix), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
+Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. Après connexion, l'application montre seulement **Projects**, **Media**, **Users** et **Settings** (ces deux derniers pour les admins). La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
 
 Les projets se rangent dans des **dossiers** (colonne de gauche : créer, renommer, supprimer un dossier ; glisser une carte sur un dossier, ou *… > Move to*). Supprimer un dossier ne supprime pas ses projets. Recherche et tri par nom ou nombre de templates.
 

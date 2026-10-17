@@ -38,9 +38,9 @@ impl From<&Project> for ProjectSummary {
             width: p.width,
             height: p.height,
             frame_rate: p.frame_rate,
-            templates: p.templates.len(),
+            templates: p.design_templates().count(),
             rundown: p.rundown.len(),
-            cover: p.templates.first().map(|t| t.id.clone()),
+            cover: p.design_templates().next().map(|t| t.id.clone()),
         }
     }
 }

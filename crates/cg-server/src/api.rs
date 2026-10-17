@@ -498,6 +498,11 @@ async fn create_project(
         p.frame_rate = r;
     }
     check_format(p.width, p.height, p.frame_rate)?;
+    if n.from.is_none() {
+        // A new project starts with one (draft) template to design.
+        let zone = p.zones.first().map(|z| z.id.clone()).unwrap_or_default();
+        p.drafts.push(cg_core::Template::blank("Template 1", &zone));
+    }
     if let Some(src) = &n.from {
         // The copy gets its own media, and its templates point to them.
         copy_dir(
@@ -835,6 +840,12 @@ async fn delete_template(
 ) -> ApiResult<StatusCode> {
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    if p.design_templates().all(|t| t.id == tid) {
+        return Err((
+            StatusCode::CONFLICT,
+            "a project keeps at least one template".into(),
+        ));
+    }
     let before = p.templates.len() + p.drafts.len();
     p.templates.retain(|t| t.id != tid);
     p.drafts.retain(|t| t.id != tid);
