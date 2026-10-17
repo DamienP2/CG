@@ -1,6 +1,8 @@
 import { RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Braces, Link as LinkIcon, Link2, Unlink, Upload } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
+import { applyLogic, measureLayer } from '../engine/logic';
+import { useBoundData } from '../data/dataStore';
 import { MAIN_FORMAT, TEXT_LIKE, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
@@ -51,12 +53,8 @@ const CROP: PropSpec[] = [
 ];
 
 export const PROP_LABELS: Record<Prop, string> = Object.fromEntries(
-  [...TRANSFORM, ...STYLE, ...TEXT, ...CROP.map((c) => ({ ...c, label: `Crop ${c.label}` })), { prop: 'fill', label: 'Fill' }, { prop: 'stroke', label: 'Stroke' }].map((s) => [
-    s.prop,
-    s.label,
-  ]),
+  [...TRANSFORM, ...STYLE, ...TEXT, ...CROP.map((c) => ({ ...c, label: `Crop ${c.label}` })), { prop: 'fill', label: 'Fill' }, { prop: 'stroke', label: 'Stroke' }].map((s) => [s.prop, s.label]),
 ) as Record<Prop, string>;
-
 
 export function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -237,9 +235,43 @@ function ExposeButton({ layer, prop }: { layer: Layer; prop: Prop }) {
   );
 }
 
+/** Values of the selected layer set by data (a bound variable or a relation of the Data canvas), at the playhead. */
+const DrivenContext = createContext<Map<string, Value>>(new Map());
+
+function useDrivenValues(layer: Layer): Map<string, Value> {
+  const { template, frame, previewData } = useDesigner();
+  const bound = useBoundData(template, previewData);
+  return useMemo(() => {
+    const out = new Map<string, Value>();
+    if (!template) return out;
+    const targets = template.logic?.nodes.filter((n): n is typeof n & { type: 'target' } => n.type === 'target' && n.layer === layer.id && !!template.logic?.edges.some((e) => e.to === n.id)) ?? [];
+    const driven = new Set<Prop>([...(Object.entries(layer.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...targets.map((t) => t.prop)]);
+    if (!driven.size) return out;
+    const data = { ...previewData, ...bound };
+    const hold = holdFrame(template);
+    const resolved = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
+    applyLogic(template.logic, resolved, data, measureLayer(template.layers, data, interpolateText));
+    const r = resolved.get(layer.id);
+    if (r) for (const p of driven) out.set(p, r[p]);
+    return out;
+  }, [template, frame, previewData, bound, layer]);
+}
+
+/** A value set by data: shown, not edited (change it in the Data canvas or the Operator). */
+function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { value: Value; display?: number; suffix?: string; precision?: number; label?: string }) {
+  return (
+    <span className="pp-driven" title="Set by data (Data canvas): read only">
+      {label && <span className="scrub">{label}</span>}
+      <span className="pp-driven-v">{+(num(value) * display).toFixed(precision)}</span>
+      {suffix && <span className="suffix">{suffix}</span>}
+    </span>
+  );
+}
+
 /** A property row: ◀ ◆ ▶, name, animate, its fields (X / Y…). */
 function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
   const { frame, update, format, updateBase } = useDesigner();
+  const driven = useContext(DrivenContext);
   const locked = !!spec.lock && !!layer.scaleLock;
   const overridden = format !== MAIN_FORMAT && spec.props.some((p) => isOverridden(layer, format, p));
   const setValue = (prop: Prop, nv: number) =>
@@ -270,16 +302,11 @@ function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
       <div className={`pp-fields n${spec.props.length}`}>
         {spec.props.map((p, i) => (
           <span key={p} className="pp-field">
-            <NumberField
-              label={spec.fields?.[i]}
-              value={num(propValue(layer, p, frame))}
-              display={spec.display}
-              suffix={spec.suffix}
-              precision={spec.precision}
-              min={spec.min}
-              max={spec.max}
-              onChange={(nv) => setValue(p, nv)}
-            />
+            {driven.has(p) ? (
+              <DrivenValue value={driven.get(p)!} label={spec.fields?.[i]} display={spec.display} suffix={spec.suffix} precision={spec.precision ?? (spec.display ? 0 : 1)} />
+            ) : (
+              <NumberField label={spec.fields?.[i]} value={num(propValue(layer, p, frame))} display={spec.display} suffix={spec.suffix} precision={spec.precision} min={spec.min} max={spec.max} onChange={(nv) => setValue(p, nv)} />
+            )}
             <ExposeButton layer={layer} prop={p} />
           </span>
         ))}
@@ -296,6 +323,7 @@ function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
 /** Colour row in the same layout. */
 function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke'; label: string }) {
   const { frame, update } = useDesigner();
+  const driven = useContext(DrivenContext).get(prop);
   return (
     <div className={`pp-row ${isAnimated(layer, prop) ? 'animated' : ''}`}>
       <RowKeys layer={layer} props={[prop]} />
@@ -304,7 +332,14 @@ function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 's
       <LogicBadge layer={layer} props={[prop]} />
       <div className="pp-fields n1">
         <span className="pp-field">
-          <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
+          {driven ? (
+            <span className="pp-driven" title="Set by data (Data canvas): read only">
+              <span className="dc-swatch" style={{ background: toHex(col(driven), true) }} />
+              <span className="pp-driven-v">{toHex(col(driven), true)}</span>
+            </span>
+          ) : (
+            <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
+          )}
           <ExposeButton layer={layer} prop={prop} />
         </span>
       </div>
@@ -722,12 +757,14 @@ function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: str
             ))}
         </select>
         <select value={layer.fontWeight} onChange={(e) => set('fontWeight', +e.target.value)}>
-          {[...new Set([...weights, layer.fontWeight])].sort((a, b) => a - b).map((w) => (
-            <option key={w} value={w}>
-              {WEIGHT_NAMES[w] ?? w}
-              {weights.includes(w) ? '' : ' (n/a)'}
-            </option>
-          ))}
+          {[...new Set([...weights, layer.fontWeight])]
+            .sort((a, b) => a - b)
+            .map((w) => (
+              <option key={w} value={w}>
+                {WEIGHT_NAMES[w] ?? w}
+                {weights.includes(w) ? '' : ' (n/a)'}
+              </option>
+            ))}
         </select>
         <label className="icon-btn ghost" title="Add a font (.ttf, .otf, .woff)">
           <Upload size={13} />
@@ -837,8 +874,9 @@ function LayerInspector({ layer }: { layer: Layer }) {
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
   const Icon = ICONS[layer.type];
   const hasLook = layer.type !== 'image' && layer.type !== 'slideshow';
+  const driven = useDrivenValues(layer);
   return (
-    <>
+    <DrivenContext.Provider value={driven}>
       <FormatNote layer={layer} />
       <div className="pp-head">
         <span className="pp-type">
@@ -901,7 +939,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
           ))}
         </Group>
       </Group>
-    </>
+    </DrivenContext.Provider>
   );
 }
 
@@ -970,15 +1008,7 @@ function KeyframeInspector() {
         {k.easing.type === 'bezier' && (
           <div className="bez-grid">
             {(['x1', 'y1', 'x2', 'y2'] as const).map((c) => (
-              <NumberField
-                key={c}
-                label={c}
-                value={bez[c]}
-                step={0.01}
-                precision={2}
-                display={1}
-                onChange={(v) => setEasing({ type: 'bezier', ...bez, [c]: c.startsWith('x') ? Math.min(1, Math.max(0, v)) : v })}
-              />
+              <NumberField key={c} label={c} value={bez[c]} step={0.01} precision={2} display={1} onChange={(v) => setEasing({ type: 'bezier', ...bez, [c]: c.startsWith('x') ? Math.min(1, Math.max(0, v)) : v })} />
             ))}
           </div>
         )}

@@ -6658,3 +6658,39 @@ a.btn {
   flex: 1;
   accent-color: var(--accent);
 }
+/* A property set by data: shown read only. */
+.pp-driven {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px dashed rgba(34, 197, 94, 0.45);
+  color: var(--pvw);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: not-allowed;
+  overflow: hidden;
+}
+.pp-driven .scrub {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.pp-driven-v {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-driven .suffix {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+.pp-fields.n2 .pp-driven .suffix {
+  display: none;
+}
