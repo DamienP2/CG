@@ -461,6 +461,9 @@ pub struct Layer {
     /// Timed widgets (timer, ticker…) wait for the operator to start them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub manual_start: bool,
+    /// Scale X and Y change together (designer setting).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub scale_lock: bool,
     /// Static (base) values; a property with keyframes ignores its base value.
     #[serde(default)]
     pub props: BTreeMap<Prop, Value>,

@@ -89,6 +89,8 @@ export type Layer = LayerKind & {
   locked: boolean;
   /** Timed widgets wait for the operator to start them. */
   manualStart?: boolean;
+  /** Scale X and Y change together. */
+  scaleLock?: boolean;
   props: Partial<Record<Prop, Value>>;
   tracks: Partial<Record<Prop, Keyframe[]>>;
   bindings: Partial<Record<Prop, string>>;

@@ -32,6 +32,7 @@ fn layer(
         visible: true,
         locked: false,
         manual_start: false,
+        scale_lock: false,
         props: props.iter().copied().collect(),
         tracks: BTreeMap::new(),
         bindings: BTreeMap::new(),

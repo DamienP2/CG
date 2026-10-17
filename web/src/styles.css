@@ -5237,3 +5237,308 @@ a.btn {
 .fmt-compare .muted {
   margin-left: auto;
 }
+/* ---------- right panel: properties (After Effects-like) ---------- */
+.pp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.pp-type {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--accent-2);
+  background: var(--accent-soft);
+}
+.pp-head input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.pp-group > header {
+  display: flex;
+  align-items: center;
+}
+.pp-twirl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.pp-twirl svg {
+  color: var(--text-3);
+  transition: transform 0.12s;
+  transform: rotate(-90deg);
+}
+.pp-group.open > header .pp-twirl svg {
+  transform: none;
+}
+.pp-group.l1 {
+  border-bottom: 1px solid var(--line);
+}
+.pp-group.l1 > header .pp-twirl {
+  padding: 12px 12px 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.pp-group.l2 > header .pp-twirl {
+  padding: 6px 12px 6px 22px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.pp-group.l2 > .pp-body {
+  padding: 0 10px 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pp-group.l2 > .pp-body > .row,
+.pp-group.l2 > .pp-body > .check,
+.pp-group.l2 > .pp-body > .font-controls {
+  margin-left: 26px;
+}
+.pp-row {
+  display: grid;
+  grid-template-columns: 50px minmax(68px, auto) 18px 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+}
+.pp-keys {
+  display: flex;
+  align-items: center;
+}
+.pp-keys button {
+  width: 16px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.pp-keys button:hover:not(:disabled) {
+  color: var(--text);
+}
+.pp-keys button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pp-keys button.on {
+  color: var(--key);
+}
+.pp-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+.pp-row.animated .pp-label {
+  color: var(--key);
+}
+.pp-lock,
+.pp-anim {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.pp-lock:hover,
+.pp-anim:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.pp-lock.on {
+  color: var(--accent-2);
+}
+.pp-anim.on {
+  color: var(--key);
+}
+.pp-lock-space {
+  width: 18px;
+}
+.pp-fields {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.pp-fields.n2 {
+  grid-template-columns: 1fr 1fr;
+}
+.pp-fields .num-field {
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  gap: 4px;
+}
+.pp-fields .num-field:focus-within {
+  border-color: var(--accent);
+}
+.pp-fields .num-field .scrub {
+  min-width: 10px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.pp-fields .num-field input {
+  border: none;
+  background: none;
+  padding: 0;
+  height: 24px;
+  min-width: 0;
+  text-align: left;
+}
+.pp-fields .num-field .suffix {
+  width: auto;
+  font-size: 10.5px;
+}
+.pp-row.animated .pp-fields .num-field input {
+  color: var(--accent-2);
+}
+.hint.pad {
+  padding: 0 12px;
+}
+
+/* ---------- left panel: widget content and variables ---------- */
+.data-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dp-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.dp-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 60%;
+  padding: 7px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dp-tabs button span:not(.count) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-tabs button.on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.dp-tabs button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dp-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 20px;
+}
+.dp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.dp-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.dp-binding {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.3fr) auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.dp-prop {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-arrow {
+  color: var(--accent-2);
+}
+.dp-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dp-add select {
+  flex: 1;
+  min-width: 0;
+}
+.tl-lock {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-3);
+  cursor: pointer;
+  flex: none;
+}
+.tl-lock.on {
+  color: var(--accent-2);
+}
+.tl-lock {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 4px;
+  color: var(--text-3);
+  cursor: pointer;
+  flex: none;
+}
+.tl-lock.on {
+  color: var(--accent-2);
+}

@@ -1,15 +1,14 @@
-import { RotateCcw, SlidersHorizontal, AlignCenter, AlignLeft, AlignRight, Link2, Plus, Timer, Trash2, Upload } from 'lucide-react';
+import { RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, Spline, Unlink, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { applyEasing, col, holdFrame, num, parseHex, propValue, toHex } from '../engine/evaluate';
-import { MAIN_FORMAT, TEXT_LIKE, type Easing, type Field, type FieldKind, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { applyEasing, col, num, parseHex, propValue, toHex } from '../engine/evaluate';
+import { MAIN_FORMAT, TEXT_LIKE, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
-import { isTimed } from '../engine/widgets';
-import { BindingEditor } from '../data/BindingEditor';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
-import { findLayer, isAnimated, LABELS, setProp, toggleStopwatch, useDesigner } from './designerStore';
+import { findLayer, isAnimated, setProp, toggleKeyAt, toggleStopwatch, useDesigner } from './designerStore';
+import { ICONS } from './LayersPanel';
 
 interface PropSpec {
   prop: Prop;
@@ -57,7 +56,7 @@ export const PROP_LABELS: Record<Prop, string> = Object.fromEntries(
 ) as Record<Prop, string>;
 
 
-function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
+export function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
     <section className="insp-section">
       <header>
@@ -69,37 +68,194 @@ function Section({ title, children, actions }: { title: string; children: React.
   );
 }
 
-/** Stopwatch + keyframe navigation, the AE way. */
-/** The stopwatch (animate this property); keyframes are navigated in the
- *  timeline, with ◀ ◆ ▶ on each row. */
-function KeyControls({ layer, prop }: { layer: Layer; prop: Prop }) {
-  const { frame, update } = useDesigner();
-  const animated = isAnimated(layer, prop);
-  const driven = useDesigner((s) => s.template?.logic?.nodes.some((n) => n.type === 'target' && n.layer === layer.id && n.prop === prop));
+/** Collapsible group of the properties panel (state kept per browser). */
+function Group({ id, title, level = 1, children, actions }: { id: string; title: string; level?: 1 | 2; children: React.ReactNode; actions?: React.ReactNode }) {
+  const key = `pulse.insp.${id}`;
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      localStorage.setItem(key, open ? '0' : '1');
+    } catch {
+      /* private mode */
+    }
+  };
   return (
-    <div className="key-controls">
+    <section className={`pp-group l${level} ${open ? 'open' : ''}`}>
+      <header>
+        <button className="pp-twirl" onClick={toggle} aria-expanded={open}>
+          <ChevronDown size={level === 1 ? 14 : 12} />
+          <span>{title}</span>
+        </button>
+        {actions}
+      </header>
+      {open && <div className="pp-body">{children}</div>}
+    </section>
+  );
+}
+
+interface RowSpec {
+  label: string;
+  props: Prop[];
+  /** Field labels (X / Y, W / H…). */
+  fields?: string[];
+  display?: number;
+  suffix?: string;
+  precision?: number;
+  min?: number;
+  max?: number;
+  /** Scale X / Y keep their ratio when locked. */
+  lock?: boolean;
+}
+
+const TRANSFORM_ROWS: RowSpec[] = [
+  { label: 'Position', props: ['x', 'y'], fields: ['X', 'Y'], suffix: 'px' },
+  { label: 'Scale', props: ['scaleX', 'scaleY'], fields: ['X', 'Y'], display: 100, suffix: '%', lock: true },
+  { label: 'Dimensions', props: ['width', 'height'], fields: ['W', 'H'], suffix: 'px', min: 0 },
+  { label: 'Anchor', props: ['anchorX', 'anchorY'], fields: ['X', 'Y'], display: 100, suffix: '%' },
+  { label: 'Rotation', props: ['rotation'], suffix: '°', precision: 1 },
+  { label: 'Opacity', props: ['opacity'], display: 100, suffix: '%', min: 0, max: 1 },
+];
+
+/** ◀ ◆ ▶ of a row: previous key, key at the playhead (all its properties), next key. */
+function RowKeys({ layer, props }: { layer: Layer; props: Prop[] }) {
+  const { frame, update, setFrame } = useDesigner();
+  const frames = [...new Set(props.flatMap((p) => (layer.tracks[p] ?? []).map((k) => k.frame)))].sort((a, b) => a - b);
+  const prev = [...frames].reverse().find((f) => f < frame - 0.5);
+  const next = frames.find((f) => f > frame + 0.5);
+  const here = frames.some((f) => Math.abs(f - frame) < 0.5);
+  return (
+    <span className="pp-keys">
+      <button title="Previous keyframe" disabled={prev === undefined} onClick={() => prev !== undefined && setFrame(prev)}>
+        <ChevronLeft size={12} />
+      </button>
+      <button
+        className={here ? 'on' : ''}
+        title={here ? 'Remove the keyframe at the playhead' : 'Add a keyframe at the playhead'}
+        onClick={() =>
+          update((t) => {
+            const l = findLayer(t, layer.id)!;
+            for (const p of props) if (here === (l.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5)) toggleKeyAt(l, p, frame);
+          })
+        }
+      >
+        <Diamond size={11} fill={here ? 'currentColor' : 'none'} />
+      </button>
+      <button title="Next keyframe" disabled={next === undefined} onClick={() => next !== undefined && setFrame(next)}>
+        <ChevronRight size={12} />
+      </button>
+    </span>
+  );
+}
+
+/** Animate toggle of a row (all its properties), lit while animated. */
+function AnimateToggle({ layer, props }: { layer: Layer; props: Prop[] }) {
+  const { frame, update } = useDesigner();
+  const animated = props.some((p) => isAnimated(layer, p));
+  const driven = useDesigner((s) => s.template?.logic?.nodes.some((n) => n.type === 'target' && n.layer === layer.id && props.includes(n.prop as Prop)));
+  return (
+    <>
       {driven && (
         <span className="logic-badge" title="Driven by a Logic relation (Logic button in the toolbar)">
           <Link2 size={11} />
         </span>
       )}
       <button
-        className={`icon-btn ghost ${animated ? 'on accent' : ''}`}
-        title={animated ? 'Disable animation' : 'Animate this property'}
+        className={`pp-anim ${animated ? 'on' : ''}`}
+        title={animated ? 'Stop animating' : 'Animate (keyframes at the playhead)'}
         onClick={() => {
-          update((t) => toggleStopwatch(findLayer(t, layer.id)!, prop, frame));
-          // Reveal the new track in the timeline, like AE does.
-          if (!animated) useDesigner.setState((s) => ({ expanded: { ...s.expanded, [layer.id]: true } }));
+          update((t) => {
+            const l = findLayer(t, layer.id)!;
+            for (const p of props) if (isAnimated(l, p) === animated) toggleStopwatch(l, p, frame);
+          });
+          if (!animated) useDesigner.setState((st) => ({ expanded: { ...st.expanded, [layer.id]: true } }));
         }}
       >
-        <Timer size={13} />
+        <Spline size={14} />
       </button>
+    </>
+  );
+}
+
+/** A property row: ◀ ◆ ▶, name, animate, its fields (X / Y…). */
+function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
+  const { frame, update, format, updateBase } = useDesigner();
+  const locked = !!spec.lock && !!layer.scaleLock;
+  const overridden = format !== MAIN_FORMAT && spec.props.some((p) => isOverridden(layer, format, p));
+  const setValue = (prop: Prop, nv: number) =>
+    update((t) => {
+      const l = findLayer(t, layer.id)!;
+      if (locked && spec.props.length === 2) {
+        // Keep the X / Y ratio.
+        const [a, b] = spec.props;
+        const other = prop === a ? b : a;
+        const cur = num(propValue(l, prop, frame));
+        const ov = num(propValue(l, other, frame));
+        setProp(l, other, cur ? (ov * nv) / cur : nv, frame);
+      }
+      setProp(l, prop, nv, frame);
+    }, `prop-${layer.id}-${spec.label}`);
+  return (
+    <div className={`pp-row ${spec.props.some((p) => isAnimated(layer, p)) ? 'animated' : ''}`}>
+      <RowKeys layer={layer} props={spec.props} />
+      <span className="pp-label">{spec.label}</span>
+      {spec.lock ? (
+        <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => update((t) => void (findLayer(t, layer.id)!.scaleLock = !locked || undefined))}>
+          {locked ? <LinkIcon size={12} /> : <Unlink size={12} />}
+        </button>
+      ) : (
+        <span className="pp-lock-space" />
+      )}
+      <AnimateToggle layer={layer} props={spec.props} />
+      <div className={`pp-fields n${spec.props.length}`}>
+        {spec.props.map((p, i) => (
+          <NumberField
+            key={p}
+            label={spec.fields?.[i]}
+            value={num(propValue(layer, p, frame))}
+            display={spec.display}
+            suffix={spec.suffix}
+            precision={spec.precision}
+            min={spec.min}
+            max={spec.max}
+            onChange={(nv) => setValue(p, nv)}
+          />
+        ))}
+      </div>
+      {overridden && (
+        <button className="override-mark" title="Changed in this format — click to use the main layout again" onClick={() => updateBase((t) => spec.props.forEach((p) => resetOverride(findLayer(t, layer.id)!, format, p)))}>
+          <RotateCcw size={10} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Colour row in the same layout. */
+function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke'; label: string }) {
+  const { frame, update } = useDesigner();
+  return (
+    <div className={`pp-row ${isAnimated(layer, prop) ? 'animated' : ''}`}>
+      <RowKeys layer={layer} props={[prop]} />
+      <span className="pp-label">{label}</span>
+      <span className="pp-lock-space" />
+      <AnimateToggle layer={layer} props={[prop]} />
+      <div className="pp-fields n1">
+        <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
+      </div>
+      <OverrideMark layer={layer} prop={prop} />
     </div>
   );
 }
 
 /** Field key from a label: "Name plate X" -> "namePlateX". */
-function fieldKey(label: string, taken: Set<string>): string {
+export function fieldKey(label: string, taken: Set<string>): string {
   const words = label
     .normalize('NFD')
     .replace(/[^A-Za-z0-9 ]/g, ' ')
@@ -113,74 +269,6 @@ function fieldKey(label: string, taken: Set<string>): string {
   return k;
 }
 
-/** Makes a property an operator variable (a data field bound to it). */
-function BindButton({ layer, prop, template }: { layer: Layer; prop: Prop; template: Template }) {
-  const { update } = useDesigner();
-  const bound = layer.bindings[prop];
-  const field = template.fields.find((f) => f.key === bound);
-  const [open, setOpen] = useState(false);
-  const isColor = prop === 'fill' || prop === 'stroke';
-  const expose = () => {
-    update((t) => {
-      const l = findLayer(t, layer.id)!;
-      const label = `${l.name} · ${PROP_LABELS[prop]}`;
-      const key = fieldKey(`${l.name} ${PROP_LABELS[prop]}`, new Set(t.fields.map((f) => f.key)));
-      // Default: what is seen on air.
-      const v = propValue(l, prop, holdFrame(t));
-      const def = isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3));
-      t.fields.push({ key, label, kind: isColor ? 'color' : 'number', default: def });
-      l.bindings[prop] = key;
-    });
-    setOpen(false);
-  };
-  const unbind = (removeField: boolean) => {
-    update((t) => {
-      delete findLayer(t, layer.id)!.bindings[prop];
-      const stillUsed = t.layers.some((l) => Object.values(l.bindings).includes(bound!));
-      if (removeField && !stillUsed) t.fields = t.fields.filter((f) => f.key !== bound);
-    });
-    setOpen(false);
-  };
-  const others = template.fields.filter((f) => f.key !== bound && (isColor ? f.kind === 'color' : f.kind === 'number' || f.kind === 'text'));
-  return (
-    <div className="bind">
-      <button className={`icon-btn ghost ${bound ? 'on accent' : ''}`} title={bound ? `Operator variable “${field?.label ?? bound}”` : 'Make it an operator variable'} onClick={() => setOpen(!open)}>
-        <SlidersHorizontal size={12} />
-      </button>
-      {open && (
-        <div className="popover" onMouseLeave={() => setOpen(false)}>
-          {bound ? (
-            <>
-              <div className="popover-note">
-                The operator sets this value in the field <strong>{field?.label ?? bound}</strong>
-                {isAnimated(layer, prop) && !isColor ? ' — the value on air; the animation moves relative to it' : ''}.
-              </div>
-              <button onClick={() => unbind(true)}>Stop exposing (remove the field)</button>
-              <button onClick={() => unbind(false)}>Unbind, keep the field</button>
-            </>
-          ) : (
-            <button className="primary" onClick={expose}>
-              + Expose to the operator
-            </button>
-          )}
-          {others.length > 0 && <div className="popover-note">Or use an existing field:</div>}
-          {others.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => {
-                update((t) => void (findLayer(t, layer.id)!.bindings[prop] = f.key));
-                setOpen(false);
-              }}
-            >
-              {f.label} <code>{f.key}</code>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Dot on a property changed in the current format; click to inherit again. */
 function OverrideMark({ layer, prop }: { layer: Layer; prop: Prop }) {
   const { format, updateBase } = useDesigner();
@@ -192,43 +280,7 @@ function OverrideMark({ layer, prop }: { layer: Layer; prop: Prop }) {
   );
 }
 
-function PropRow({ layer, spec, template }: { layer: Layer; spec: PropSpec; template: Template }) {
-  const { frame, update } = useDesigner();
-  const v = num(propValue(layer, spec.prop, frame));
-  return (
-    <div className={`prop-row ${isAnimated(layer, spec.prop) ? 'animated' : ''}`}>
-      <KeyControls layer={layer} prop={spec.prop} />
-      <NumberField
-        label={spec.label}
-        value={v}
-        display={spec.display}
-        suffix={spec.suffix}
-        step={spec.step ?? (spec.display === 100 ? 1 : 1)}
-        precision={spec.precision}
-        min={spec.min}
-        max={spec.max}
-        onChange={(nv) => update((t) => setProp(findLayer(t, layer.id)!, spec.prop, nv, frame), `prop-${layer.id}-${spec.prop}`)}
-      />
-      <OverrideMark layer={layer} prop={spec.prop} />
-      <BindButton layer={layer} prop={spec.prop} template={template} />
-    </div>
-  );
-}
-
-function ColorRow({ layer, prop, label, template }: { layer: Layer; prop: 'fill' | 'stroke'; label: string; template: Template }) {
-  const { frame, update } = useDesigner();
-  return (
-    <div className={`prop-row ${isAnimated(layer, prop) ? 'animated' : ''}`}>
-      <KeyControls layer={layer} prop={prop} />
-      <span className="prop-label">{label}</span>
-      <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
-      <OverrideMark layer={layer} prop={prop} />
-      <BindButton layer={layer} prop={prop} template={template} />
-    </div>
-  );
-}
-
-function AssetPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function AssetPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const projectId = useApp((s) => s.projectId);
   const [own, setOwn] = useState<MediaFile[]>([]);
   const [shared, setShared] = useState<MediaFile[]>([]);
@@ -292,10 +344,10 @@ function AssetPicker({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
-type Attrs = Record<string, unknown>;
+export type Attrs = Record<string, unknown>;
 
 /** Inserts `{{field}}` placeholders into a text attribute. */
-function FieldChips({ template, onInsert }: { template: Template; onInsert: (token: string) => void }) {
+export function FieldChips({ template, onInsert }: { template: Template; onInsert: (token: string) => void }) {
   if (!template.fields.length) return null;
   return (
     <div className="chips">
@@ -349,7 +401,7 @@ function HexInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 /** Settings of prefab widgets. */
-function WidgetSettings({ layer, template, set }: { layer: Layer; template: Template; set: (key: string, v: unknown, coalesce?: boolean) => void }) {
+export function WidgetSettings({ layer, template, set }: { layer: Layer; template: Template; set: (key: string, v: unknown, coalesce?: boolean) => void }) {
   const a = layer as unknown as Attrs;
   const text = (key: string, multiline = false, placeholder?: string) => (
     <>
@@ -679,46 +731,46 @@ function FormatNote({ layer }: { layer: Layer }) {
   );
 }
 
-function LayerInspector({ layer, template }: { layer: Layer; template: Template }) {
+/** Right panel: the properties of the selected layer. Its content, widget
+ *  settings and data live in the left panel (DataPanel). */
+function LayerInspector({ layer }: { layer: Layer }) {
   const { update } = useDesigner();
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
   const textLike = TEXT_LIKE.has(layer.type);
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
+  const Icon = ICONS[layer.type];
+  const hasLook = layer.type !== 'image' && layer.type !== 'slideshow';
   return (
     <>
       <FormatNote layer={layer} />
-      <Section title={LABELS[layer.type].toUpperCase()}>
-        <div className="row">
-          <span className="prop-label">Name</span>
-          <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
-        </div>
-        {layer.type === 'group' && (
-          <label className="check">
-            <input type="checkbox" checked={!!layer.clip} onChange={(e) => edit((l) => void (l.type === 'group' && (l.clip = e.target.checked)))} />
-            Clip children to group bounds
-          </label>
-        )}
-        {layer.type === 'text' && (
-          <>
-            <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
-            <FieldChips template={template} onInsert={(tok) => set('text', layer.text + tok)} />
-          </>
-        )}
-        <WidgetSettings layer={layer} template={template} set={set} />
-        {isTimed(layer) && (
-          <>
-            <label className="check" title="The operator starts it with ▶ in the zone card (or API action widget)">
-              <input type="checkbox" checked={!!layer.manualStart} onChange={(e) => edit((l) => void (l.manualStart = e.target.checked || undefined))} />
-              Start manually (the operator presses ▶)
-            </label>
-            <p className="hint">On air, the operator can start, pause and restart this animation from its zone card; automation uses the command <code>{`{"action":"widget","target":"${layer.name}","control":"toggle"}`}</code>.</p>
-          </>
-        )}
-        {textLike && <FontControls layer={layer as Layer & FontStyle} set={set} />}
-        {layer.type === 'image' && (
-          <>
-            <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />
+      <div className="pp-head">
+        <span className="pp-type">
+          <Icon size={14} />
+        </span>
+        <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
+      </div>
+      <Group id="properties" title="Properties">
+        <Group id="transform" title="Transform" level={2}>
+          {TRANSFORM_ROWS.map((r) => (
+            <GroupRow key={r.label} layer={layer} spec={r} />
+          ))}
+        </Group>
+        <Group id="contents" title="Contents" level={2}>
+          {hasLook && <ColorGroupRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} />}
+          {hasLook && layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorGroupRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} />}
+          {hasLook &&
+            STYLE.filter((st) => (st.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((st) => (
+              <GroupRow key={st.prop} layer={layer} spec={{ label: st.label === 'Stroke W' ? 'Stroke width' : st.label, props: [st.prop], min: st.min, precision: st.precision, suffix: 'px' }} />
+            ))}
+          {textLike && (
+            <>
+              <GroupRow layer={layer} spec={{ label: 'Font size', props: ['fontSize'], min: 1, suffix: 'px' }} />
+              <GroupRow layer={layer} spec={{ label: 'Tracking', props: ['letterSpacing'], precision: 1 }} />
+              <FontControls layer={layer as Layer & FontStyle} set={set} />
+            </>
+          )}
+          {layer.type === 'image' && (
             <div className="row">
               <span className="prop-label">Fit</span>
               <Segmented
@@ -731,35 +783,25 @@ function LayerInspector({ layer, template }: { layer: Layer; template: Template 
                 ]}
               />
             </div>
-          </>
-        )}
-      </Section>
-      <Section title="Transform">
-        {TRANSFORM.map((s) => (
-          <PropRow key={s.prop} layer={layer} spec={s} template={template} />
-        ))}
-      </Section>
-      {layer.type !== 'image' && layer.type !== 'slideshow' && (
-        <Section title="Appearance">
-          <ColorRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} template={template} />
-          {layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} template={template} />}
-          {STYLE.filter((s) => (s.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((s) => (
-            <PropRow key={s.prop} layer={layer} spec={s} template={template} />
+          )}
+          {layer.type === 'group' && (
+            <label className="check">
+              <input type="checkbox" checked={!!layer.clip} onChange={(e) => edit((l) => void (l.type === 'group' && (l.clip = e.target.checked)))} />
+              Clip children to group bounds
+            </label>
+          )}
+        </Group>
+        <Group id="reveal" title="Reveal mask" level={2}>
+          {[
+            { label: 'Left', props: ['cropLeft'] as Prop[] },
+            { label: 'Right', props: ['cropRight'] as Prop[] },
+            { label: 'Top', props: ['cropTop'] as Prop[] },
+            { label: 'Bottom', props: ['cropBottom'] as Prop[] },
+          ].map((r) => (
+            <GroupRow key={r.label} layer={layer} spec={{ ...r, display: 100, suffix: '%', min: 0, max: 1 }} />
           ))}
-        </Section>
-      )}
-      {textLike && (
-        <Section title="Typography">
-          {TEXT.map((s) => (
-            <PropRow key={s.prop} layer={layer} spec={s} template={template} />
-          ))}
-        </Section>
-      )}
-      <Section title="Reveal mask">
-        {CROP.map((s) => (
-          <PropRow key={s.prop} layer={layer} spec={s} template={template} />
-        ))}
-      </Section>
+        </Group>
+      </Group>
     </>
   );
 }
@@ -848,12 +890,11 @@ function KeyframeInspector() {
 }
 
 function TemplateInspector({ template }: { template: Template }) {
-  const { update, previewData, set } = useDesigner();
+  const { update } = useDesigner();
   const fps = useApp((s) => s.project?.frameRate);
   const zones = useApp((s) => s.project?.zones ?? []);
   const [zonesOpen, setZonesOpen] = useState(false);
   const rate = fps ? fps.num / fps.den : 50;
-  const editField = (i: number, fn: (f: Field) => void) => update((t) => fn(t.fields[i]));
   return (
     <>
       <Section title="Template">
@@ -884,58 +925,7 @@ function TemplateInspector({ template }: { template: Template }) {
         <p className="hint">One template at a time per zone; zones are on air together.</p>
       </Section>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
-      <Section
-        title="Data fields"
-        actions={
-          <button
-            className="icon-btn ghost"
-            title="Add field"
-            onClick={() =>
-              update((t) => {
-                let n = t.fields.length + 1;
-                while (t.fields.some((f) => f.key === `field${n}`)) n++;
-                t.fields.push({ key: `field${n}`, label: `Field ${n}`, kind: 'text', default: '' });
-              })
-            }
-          >
-            <Plus size={14} />
-          </button>
-        }
-      >
-        {template.fields.length === 0 && <p className="hint">Fields are the inputs the operator fills in. Use them in text with {'{{key}}'} or bind them to properties.</p>}
-        {template.fields.map((f, i) => (
-          <div key={i} className="field-card">
-            <div className="row">
-              <TextInput value={f.label} commitOnBlur placeholder="Label" onChange={(v) => editField(i, (x) => void (x.label = v))} />
-              <TextInput value={f.key} commitOnBlur placeholder="key" onChange={(v) => editField(i, (x) => void (x.key = v.replace(/[^A-Za-z0-9_]/g, '')))} />
-            </div>
-            <div className="row">
-              <select value={f.kind} onChange={(e) => editField(i, (x) => void (x.kind = e.target.value as FieldKind))}>
-                {['text', 'multiline', 'number', 'color', 'image'].map((k) => (
-                  <option key={k}>{k}</option>
-                ))}
-              </select>
-              <TextInput value={f.default} commitOnBlur placeholder="Default value" onChange={(v) => editField(i, (x) => void (x.default = v))} />
-              <button className="icon-btn ghost" onClick={() => update((t) => void t.fields.splice(i, 1))}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-            {!f.binding && (
-              <div className="row">
-                <span className="prop-label">Preview</span>
-                <TextInput value={previewData[f.key] ?? ''} onChange={(v) => set({ previewData: { ...previewData, [f.key]: v } })} />
-              </div>
-            )}
-            <BindingEditor
-              field={f}
-              template={template}
-              data={previewData}
-              onChange={(b) => editField(i, (x) => void (b ? (x.binding = b) : delete x.binding))}
-              onAddField={(nf) => update((t) => void (t.fields.some((x) => x.key === nf.key) || t.fields.push(nf)))}
-            />
-          </div>
-        ))}
-      </Section>
+      <p className="hint pad">Variables and data are in the panel on the left, under the templates.</p>
     </>
   );
 }
@@ -948,7 +938,7 @@ export function Inspector() {
     <div className="inspector">
       <KeyframeInspector />
       {layer ? (
-        <LayerInspector layer={layer} template={template} />
+        <LayerInspector layer={layer} />
       ) : selected.length > 1 ? (
         <Section title="Selection">
           <p className="hint">{selected.length} layers selected. Drag on the stage to move them together.</p>

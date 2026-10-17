@@ -28,6 +28,8 @@ import {
   StepForward,
   Table,
   Trash2,
+  Unlink,
+  Link as LinkIcon,
   X,
   Type,
   Unlock,
@@ -449,6 +451,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         <div key={`${layer.id}-${g.label}`} className={`tl-label prop ${isAnim ? 'animated' : ''}`} style={{ paddingLeft: 14 + depth * 14 }}>
           {keyNav(layer, g.props, true)}
           <span className="prop-name">{g.label}</span>
+          {g.label === 'Scale' && (
+            <button className={`tl-lock ${layer.scaleLock ? 'on' : ''}`} title={layer.scaleLock ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => st.update((t) => void (findLayer(t, layer.id)!.scaleLock = !layer.scaleLock || undefined))}>
+              {layer.scaleLock ? <LinkIcon size={11} /> : <Unlink size={11} />}
+            </button>
+          )}
           <span className="prop-values">
             {g.props.map((p, i) =>
               COLOR_PROPS.has(p) ? (
@@ -463,7 +470,19 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   }}
                 />
               ) : (
-                <NumberField key={p} label={g.labels?.[i]} value={num(propValue(layer, p, frame))} display={g.display} suffix={g.suffix} onChange={(v) => st.update((t) => setProp(findLayer(t, layer.id)!, p, v, frame), `tl-${layer.id}-${p}`)} />
+                <NumberField key={p} label={g.labels?.[i]} value={num(propValue(layer, p, frame))} display={g.display} suffix={g.suffix} onChange={(v) =>
+                    st.update((t) => {
+                      const l = findLayer(t, layer.id)!;
+                      // Locked scale: X and Y keep their ratio.
+                      if (g.label === 'Scale' && l.scaleLock) {
+                        const other: Prop = p === 'scaleX' ? 'scaleY' : 'scaleX';
+                        const cur = num(propValue(l, p, frame));
+                        setProp(l, other, cur ? (num(propValue(l, other, frame)) * v) / cur : v, frame);
+                      }
+                      setProp(l, p, v, frame);
+                    }, `tl-${layer.id}-${g.label}`)
+                  }
+                />
               ),
             )}
           </span>

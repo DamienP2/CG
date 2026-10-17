@@ -6,6 +6,7 @@ import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
 import { LockOverlay, PublishButton, useEditLock } from './Collab';
+import { DataPanel } from './DataPanel';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
@@ -376,6 +377,8 @@ export function Designer() {
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={280} onChange={(v) => setLayout('left', v)} />
         <TemplateList project={project} />
+        <Splitter axis="y" className="inline" value={layout.templates} min={110} max={640} reset={260} onChange={(v) => setLayout('templates', v)} />
+        <DataPanel />
       </aside>
       <main className="center">
         <div className="toolbar">
