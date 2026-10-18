@@ -208,6 +208,16 @@ impl PlayoutItem {
     }
 }
 
+/// Removes the "set by hand" marks that `done` says are over (the data
+/// binding fills those values again). Returns true when one went.
+fn release_manual(data: &mut Data, done: impl Fn(&str) -> bool) -> bool {
+    let keys: Vec<String> = data.iter().filter(|(k, v)| k.ends_with("__manual") && done(v)).map(|(k, _)| k.clone()).collect();
+    for k in &keys {
+        data.remove(k);
+    }
+    !keys.is_empty()
+}
+
 /// Commands address a zone by id (`zone`) or a raw playout layer (`layer`).
 /// A take with neither plays in the template's zone.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -435,6 +445,12 @@ impl ChannelState {
                 resume(t, item);
             }
             Command::Trigger { name } => {
+                // Values set by hand until this trigger let go.
+                for item in self.layers.values_mut() {
+                    release_manual(&mut item.data, |m| {
+                        m.strip_prefix("trigger:").is_some_and(|n| n.trim().eq_ignore_ascii_case(name.trim()))
+                    });
+                }
                 for item in self.layers.values_mut() {
                     if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
                         continue;
@@ -468,6 +484,13 @@ impl ChannelState {
                     .layers
                     .get_mut(&layer)
                     .ok_or(PlayoutError::EmptyLayer(layer))?;
+                // Rows going on by themselves: the time counts from now.
+                let mut data = data;
+                for k in data.keys().filter_map(|k| k.strip_suffix("__auto")).map(String::from).collect::<Vec<_>>() {
+                    if item.data.get(&format!("{k}__auto")) != data.get(&format!("{k}__auto")) {
+                        data.insert(format!("{k}__shown"), format!("{}", item.age.round()));
+                    }
+                }
                 // Update what is (about to be) on air.
                 match &mut item.next {
                     Some(q) => q.data.extend(data),
@@ -507,6 +530,8 @@ impl ChannelState {
                     RowChange::OutIn => {
                         let mut data = item.data.clone();
                         data.insert(row.0.clone(), row.1.clone());
+                        // Comes in again: its time on the row starts with the hold.
+                        data.remove(&ds.shown_key());
                         let take = QueuedTake {
                             template_id: item.template_id.clone(),
                             data,
@@ -523,9 +548,11 @@ impl ChannelState {
                         let fps = project.frame_rate.as_f64().max(1.0);
                         item.fade = Some(Fade { data: item.data.clone(), frame: 0.0, length: (fps * 0.5).round() });
                         item.data.insert(row.0, row.1);
+                        item.data.insert(ds.shown_key(), format!("{}", item.age.round()));
                     }
                     RowChange::Cut => {
                         item.data.insert(row.0, row.1);
+                        item.data.insert(ds.shown_key(), format!("{}", item.age.round()));
                     }
                 }
             }
@@ -627,6 +654,60 @@ impl ChannelState {
                 .is_some_and(|m| matches!(m.resume, Resume::After { seconds } if item.held >= seconds.max(0.0) * fps));
             if due {
                 changed |= resume(t, item);
+            }
+        }
+        changed
+    }
+
+    /// Data sets going on by themselves: the next row once the graphic has
+    /// held on air (on the on-air marker, after its in animation) for the
+    /// data set's seconds. Returns true when a row changed.
+    pub fn auto_rows(&mut self, project: &Project) -> bool {
+        let fps = project.frame_rate.as_f64().max(1.0);
+        let mut due = Vec::new();
+        for (layer, item) in &self.layers {
+            if item.phase != Phase::Holding || item.next.is_some() {
+                continue;
+            }
+            let Some(t) = project.template(&item.template_id) else { continue };
+            // Holding on the on-air marker, not on a pause of the in animation.
+            if item.frame < t.hold_frame() - 1e-6 {
+                continue;
+            }
+            for ds in &t.datasets {
+                let num = |k: String| item.data.get(&k).and_then(|v| v.trim().parse::<f64>().ok());
+                let Some(secs) = num(ds.auto_key()).filter(|s| *s > 0.0) else { continue };
+                let shown = num(ds.shown_key()).map_or(item.held, |at| (item.age - at).min(item.held));
+                if shown < secs * fps {
+                    continue;
+                }
+                let n = num(ds.count_key()).unwrap_or(0.0) as u32;
+                let row = num(ds.row_key()).unwrap_or(1.0).max(1.0) as u32;
+                let next = if row < n {
+                    row + 1
+                } else if item.data.get(&ds.loop_key()).is_some_and(|l| l == "1") && n > 1 {
+                    1
+                } else {
+                    continue;
+                };
+                due.push((*layer, ds.key.clone(), next));
+            }
+        }
+        let changed = !due.is_empty();
+        for (layer, dataset, row) in due {
+            let _ = self.apply(project, Command::Row { zone: None, layer: Some(layer), dataset, row });
+        }
+        changed
+    }
+
+    /// Lets go of the values set by hand for a time (`until:<unix ms>`)
+    /// once it is over. Returns true when one did.
+    pub fn expire_manual(&mut self, now_ms: u64) -> bool {
+        let mut changed = false;
+        for item in self.layers.values_mut() {
+            changed |= release_manual(&mut item.data, |m| m.strip_prefix("until:").and_then(|t| t.trim().parse::<u64>().ok()).is_some_and(|t| t <= now_ms));
+            if let Some(q) = &mut item.next {
+                changed |= release_manual(&mut q.data, |m| m.strip_prefix("until:").and_then(|t| t.trim().parse::<u64>().ok()).is_some_and(|t| t <= now_ms));
             }
         }
         changed
@@ -737,6 +818,46 @@ mod tests {
         st.tick(100.0);
         assert!(st.layers.values().next().unwrap().fade.is_none());
         assert_eq!(st.apply(&p, Command::Row { zone: Some("z".into()), layer: None, dataset: "nope".into(), row: 1 }), Err(PlayoutError::UnknownDataset("nope".into())));
+    }
+
+    #[test]
+    fn dataset_auto_and_manual() {
+        use crate::model::{DataSet, RowChange};
+        let mut p = project();
+        p.templates[0].datasets.push(DataSet { key: "ds".into(), name: "Guests".into(), source: "s".into(), list: String::new(), steps: vec![], change: RowChange::Cut });
+        let mut st = ChannelState::default();
+        let data: Data = [("ds__auto", "2"), ("ds__count", "3"), ("ds__loop", "1")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+        st.apply(&p, Command::Take { zone: Some("z".into()), layer: None, template_id: "t".into(), data: Some(data), rundown_id: None }).unwrap();
+        let fps = p.frame_rate.as_f64();
+        // On the way in (pauses on its way): not counting yet.
+        st.tick(20.0);
+        assert!(!st.auto_rows(&p));
+        st.apply(&p, Command::Continue { zone: Some("z".into()), layer: None }).unwrap();
+        st.tick(20.0);
+        st.apply(&p, Command::Continue { zone: Some("z".into()), layer: None }).unwrap();
+        st.tick(100.0);
+        let item = st.layers.values().next().unwrap();
+        assert_eq!(item.phase, Phase::Holding);
+        assert!(!st.auto_rows(&p));
+        st.tick(2.0 * fps);
+        assert!(st.auto_rows(&p));
+        assert_eq!(st.layers.values().next().unwrap().data["ds__row"], "2");
+        // The time on a row starts again with each row.
+        st.tick(fps);
+        assert!(!st.auto_rows(&p));
+        st.tick(fps);
+        assert!(st.auto_rows(&p));
+        st.tick(2.0 * fps);
+        assert!(st.auto_rows(&p));
+        assert_eq!(st.layers.values().next().unwrap().data["ds__row"], "1");
+        // Set by hand: until a trigger, until a time.
+        let item = st.layers.values_mut().next().unwrap();
+        item.data.insert("x__manual".into(), "trigger:End".into());
+        item.data.insert("y__manual".into(), "until:1000".into());
+        assert!(!st.expire_manual(999));
+        assert!(st.expire_manual(1000));
+        st.apply(&p, Command::Trigger { name: "end".into() }).unwrap();
+        assert!(!st.layers.values().next().unwrap().data.contains_key("x__manual"));
     }
 
     #[test]

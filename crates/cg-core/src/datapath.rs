@@ -99,6 +99,9 @@ pub fn bind(template: &Template, data: &mut Data, store: &Store) -> bool {
         let Some(v) = store.get(&b.source) else {
             continue;
         };
+        if is_manual(data, &f.key) {
+            continue;
+        }
         if b.list.is_some() || !b.steps.is_empty() {
             let Some(text) = read(v, b, data) else { continue };
             if data.get(&f.key) != Some(&text) {
@@ -115,6 +118,9 @@ pub fn bind(template: &Template, data: &mut Data, store: &Store) -> bool {
             }
             None => v,
         };
+        if is_manual(data, &f.key) {
+            continue;
+        }
         let Some(text) = lookup_filtered(v, &b.path, &b.filters, data) else {
             continue;
         };
@@ -549,6 +555,7 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
             false
         }
     };
+    let t = with_added(t, data.get(&ds.added_key()).map(String::as_str));
     let n = t.rows.len();
     let row = data
         .get(&ds.row_key())
@@ -557,10 +564,50 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
         .clamp(1, n.max(1));
     let mut changed = set(ds.count_key(), n.to_string(), data);
     for (i, c) in t.columns.iter().enumerate() {
+        let key = ds.column_key(c);
+        // Set by hand: kept until the operator (or its time, or a trigger) lets go.
+        if is_manual(data, &key) {
+            continue;
+        }
         let v = t.rows.get(row - 1).and_then(|r| r.get(i)).cloned().unwrap_or_default();
-        changed |= set(ds.column_key(c), v, data);
+        changed |= set(key, v, data);
     }
     changed
+}
+
+/// A value the operator set by hand over the data (`<key>__manual` holds
+/// how long: `removed`, `trigger:<name>`, `until:<unix ms>`).
+pub fn is_manual(data: &Data, key: &str) -> bool {
+    data.get(&format!("{key}__manual")).is_some_and(|m| !m.trim().is_empty())
+}
+
+#[derive(serde::Deserialize)]
+struct Added {
+    #[serde(default)]
+    at: Option<usize>,
+    #[serde(default)]
+    cells: std::collections::BTreeMap<String, Json>,
+}
+
+/// The table with the rows the operator added (JSON, see `DataSet::added_key`).
+pub fn with_added(mut t: Table, added: Option<&str>) -> Table {
+    let Some(list) = added.and_then(|a| serde_json::from_str::<Vec<Added>>(a).ok()) else {
+        return t;
+    };
+    for a in list {
+        for c in a.cells.keys() {
+            if !t.columns.contains(c) {
+                t.columns.push(c.clone());
+                for r in &mut t.rows {
+                    r.push(String::new());
+                }
+            }
+        }
+        let row = t.columns.iter().map(|c| a.cells.get(c).map(text).unwrap_or_default()).collect();
+        let at = a.at.map_or(t.rows.len(), |i| i.saturating_sub(1).min(t.rows.len()));
+        t.rows.insert(at, row);
+    }
+    t
 }
 
 /// Sources a template reads.
@@ -914,5 +961,17 @@ mod tests {
         bind_datasets(&t, &mut data, &store);
         assert_eq!(data["standings_team"], "OM");
         assert!(!bind_datasets(&t, &mut data, &store));
+        // A row added by hand, second; a value set by hand stays.
+        data.insert("standings__added".into(), r#"[{"at": 2, "cells": {"team": "Nice"}}]"#.into());
+        data.insert("standings__row".into(), "2".into());
+        bind_datasets(&t, &mut data, &store);
+        assert_eq!(data["standings_team"], "Nice");
+        assert_eq!(data["standings__count"], "3");
+        data.insert("standings_team".into(), "PARIS".into());
+        data.insert("standings_team__manual".into(), "removed".into());
+        data.insert("standings__row".into(), "1".into());
+        bind_datasets(&t, &mut data, &store);
+        assert_eq!(data["standings_team"], "PARIS");
+        assert_eq!(data["standings_club_city"], "Paris");
     }
 }

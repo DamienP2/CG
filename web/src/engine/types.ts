@@ -420,6 +420,8 @@ export interface PlayoutItem {
   rundownId?: string | null;
   /** Project frames since the take (keeps counting while holding). */
   age?: number;
+  /** Frames spent holding at the current stop. */
+  held?: number;
   /** Waiting for this graphic to finish going out (sequential zones). */
   next?: { templateId: string; data: Record<string, string>; rundownId?: string | null; target: number } | null;
   /** Widgets started, paused or reset by the operator, by layer id. */

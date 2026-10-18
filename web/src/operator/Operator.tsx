@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, Undo2, X, Zap } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, Zap, GripVertical } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
@@ -122,10 +122,6 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
 
 const isPaused = (p: PlayoutItem, project: Project) => !!pauseOf(p, project);
 
-function phaseLabel(p: PlayoutItem, project: Project) {
-  if (isPaused(p, project)) return p.phase === 'outHold' ? 'OUT · PAUSE' : 'PAUSE';
-  return p.phase === 'holding' ? 'ON AIR' : p.phase === 'out' || p.phase === 'outHold' ? 'OUT' : 'PLAYING';
-}
 
 /** Content scaled to fit its box (both ways), on a checkerboard. */
 function Screen({ width, height, children }: { width: number; height: number; children: React.ReactNode }) {
@@ -167,11 +163,13 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200 });
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
   const [airSel, setAirSel] = useState<string | null>(null);
+  // Reordering the graphics by dragging their grip.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; where: 'before' | 'after' } | null>(null);
   const original = useRef<{ id: string; data: Record<string, string> } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const channelInfo = channels.find((c) => c.id === channelId);
@@ -202,11 +200,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   /** Saves the item's data a moment after the last edit. */
   const saveData = (id: string, data: Record<string, string>) => {
     clearTimeout(saveTimer.current);
-    setSaving(true);
     saveTimer.current = setTimeout(async () => {
       const cur = useApp.getState().project?.rundown ?? [];
       await saveRundown(cur.map((r) => (r.id === id ? { ...r, data } : r)));
-      setSaving(false);
     }, 500);
   };
   const editDraft = (patch: Record<string, string>) => {
@@ -215,13 +211,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
     setDraft(next);
     saveData(item.id, next);
   };
-  const dirty = !!item && !!template && original.current?.id === item.id && JSON.stringify({ ...defaultData(template), ...original.current.data }) !== JSON.stringify(draft);
-  const revert = () => {
-    if (!item || !template || original.current?.id !== item.id) return;
-    const data = original.current.data;
-    setDraft({ ...defaultData(template), ...data });
-    saveData(item.id, data);
-  };
   const setItem = (id: string, patch: Partial<RundownItem>) => saveRundown(rundown.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const onAirByItem = useMemo(() => {
@@ -229,7 +218,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
     for (const p of Object.values(channel.layers)) if (p.rundownId) m.set(p.rundownId, p);
     return m;
   }, [channel]);
-  const queued = useMemo(() => new Set(Object.values(channel.layers).flatMap((p) => (p.next?.rundownId ? [p.next.rundownId] : []))), [channel]);
 
   const zoneOf = (r: RundownItem) => project?.zones.find((z) => z.id === r.zone) ?? project?.zones.find((z) => z.id === project.templates.find((t) => t.id === r.templateId)?.zone);
   const dataOf = (r: RundownItem) => {
@@ -241,8 +229,14 @@ export function Operator({ channelId }: { channelId: string | null }) {
     const z = zoneOf(r);
     if (z) setAirSel(z.id);
   };
+  /** The selected graphic on air with rows: Take shows its NEXT row. */
+  const nextRow = item && template?.datasets?.length && onAirByItem.get(item.id) ? template.datasets[0] : undefined;
   const take = () => {
     if (!item) return;
+    if (nextRow) {
+      command({ action: 'row', dataset: nextRow.key, row: parseInt(draft[rowKey(nextRow.key)] ?? '1', 10) || 1, zone: zoneOf(item)?.id });
+      return;
+    }
     takeItem(item);
     // Select the next item of the playlist (a graphic with rows stays: its next row).
     if (template?.datasets?.length) return;
@@ -346,29 +340,20 @@ export function Operator({ channelId }: { channelId: string | null }) {
             </div>
           )}
           <div className="opx-scroll">
-            {items.map((r, i) => (
+            {items.map((r) => (
               <GraphicRow
                 key={r.id}
                 project={project}
                 item={r}
                 zone={zoneOf(r)}
                 air={onAirByItem.get(r.id)}
-                next={queued.has(r.id)}
                 selected={r.id === cued}
                 operate={operate}
                 editable={canEdit}
                 onSelect={() => setCued(r.id)}
                 onTake={() => takeItem(r)}
                 onOut={() => outZone(zoneOf(r))}
-                onMove={(d) => {
-                  const other = items[i + d];
-                  if (!other) return;
-                  const a = rundown.indexOf(r);
-                  const b = rundown.indexOf(other);
-                  const next = [...rundown];
-                  [next[a], next[b]] = [next[b], next[a]];
-                  saveRundown(next);
-                }}
+                onRename={(name) => setItem(r.id, { name })}
                 onDuplicate={() => {
                   const next = [...rundown];
                   next.splice(rundown.indexOf(r) + 1, 0, { ...structuredClone(r), id: newId(), name: `${r.name} copy` });
@@ -379,15 +364,53 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   saveRundown(rundown.filter((x) => x.id !== r.id));
                   if (cued === r.id) setCued(null);
                 }}
+                drag={{
+                  over: dropAt?.id === r.id ? dropAt.where : null,
+                  onStart: (e) => {
+                    setDragging(r.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', r.id);
+                    const row = (e.currentTarget as HTMLElement).closest('.opx-gr');
+                    if (row) e.dataTransfer.setDragImage(row, 20, 20);
+                  },
+                  onOver: (e) => {
+                    if (!dragging) return;
+                    e.preventDefault();
+                    const b = e.currentTarget.getBoundingClientRect();
+                    const where = e.clientY < b.top + b.height / 2 ? 'before' : 'after';
+                    if (dragging !== r.id && (dropAt?.id !== r.id || dropAt.where !== where)) setDropAt({ id: r.id, where });
+                  },
+                  onDrop: (e) => {
+                    e.preventDefault();
+                    if (dragging && dropAt && dragging !== r.id) {
+                      const moved = rundown.find((x) => x.id === dragging)!;
+                      const rest = rundown.filter((x) => x.id !== dragging);
+                      const at = rest.findIndex((x) => x.id === r.id) + (dropAt.where === 'after' ? 1 : 0);
+                      rest.splice(at, 0, moved);
+                      saveRundown(rest);
+                    }
+                    setDragging(null);
+                    setDropAt(null);
+                  },
+                  onEnd: () => (setDragging(null), setDropAt(null)),
+                }}
               />
             ))}
             {!items.length && <p className="opx-hint">Empty playlist: add graphics from your templates with +.</p>}
           </div>
           <footer className="opx-foot">
-            <button className="opx-btn red big" disabled={!item || !operate} onClick={take} title="F1 / Enter">
-              <Play size={15} fill="currentColor" /> Take
+            <button className={`opx-btn big ${nextRow ? 'green' : 'red'}`} disabled={!item || !operate} onClick={take} title={nextRow ? 'Show the NEXT row on air (Enter)' : 'F1 / Enter'}>
+              {nextRow ? (
+                <>
+                  <ChevronsRight size={16} /> Next row
+                </>
+              ) : (
+                <>
+                  <Play size={15} fill="currentColor" /> Take
+                </>
+              )}
             </button>
-            <button className="opx-btn" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12: everything out at once">
+            <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12: everything out at once">
               Clear all
             </button>
           </footer>
@@ -419,29 +442,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
               <header className="opx-head tall">
                 <Pencil size={13} className="muted" />
                 <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title="Name in the playlist" />
-                <span className={`opx-save ${saving ? 'busy' : ''}`}>{saving ? 'Saving…' : '✓ Saved'}</span>
-                <button className="opx-btn small" disabled={!dirty || !canEdit} onClick={revert} title="Back to the values it had when you selected it">
-                  <Undo2 size={13} /> Revert
-                </button>
-                <button className="opx-btn red" disabled={!operate} onClick={take}>
-                  <Play size={13} fill="currentColor" /> Take
-                </button>
+                <span className="muted small">
+                  {template.name} · zone {itemZone?.name ?? '—'}
+                </span>
               </header>
-              <div className={`opx-edit ${template.datasets?.length ? 'with-sets' : ''}`}>
-                {template.datasets?.map((ds, i) => (
-                  <DataSetPanel
-                    key={ds.key}
-                    ds={ds}
-                    draft={draft}
-                    onAir={onAirByItem.get(item.id)}
-                    operate={operate}
-                    zone={itemZone?.id}
-                    onNext={(row) => editDraft({ [rowKey(ds.key)]: String(row) })}
-                    onTake={(row) => takeItem(item, { [rowKey(ds.key)]: String(row) })}
-                    command={command}
-                    keys={i === 0}
-                  />
-                ))}
+              <div className={`opx-edit ${template.datasets?.length ? 'wide-data' : ''}`}>
                 <div className="opx-fields">
                   {template.fields.length === 0 && <p className="opx-hint">This graphic has no variables: take it as it is.</p>}
                   {template.fields.map((f) => {
@@ -462,11 +467,24 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       </label>
                     );
                   })}
-                  <span className="opx-hint">
-                    {template.name} · zone {itemZone?.name ?? '—'} (set in the Designer)
-                  </span>
                 </div>
-                <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />
+                <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
+                  {template.datasets?.map((ds, i) => (
+                    <DataSetPanel
+                      key={ds.key}
+                      ds={ds}
+                      template={template}
+                      draft={draft}
+                      onAir={onAirByItem.get(item.id)}
+                      operate={operate}
+                      zone={itemZone?.id}
+                      fps={fps}
+                      onDraft={editDraft}
+                      command={command}
+                      keys={i === 0}
+                    />
+                  ))}
+                </DataBlock>
               </div>
             </>
           ) : (
@@ -543,34 +561,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
           ) : (
             <p className="opx-hint pad">Nothing on air. The controls of the graphics on air show here: their widgets, values and triggers.</p>
           )}
-          <div className="opx-subtitle">On screen</div>
-          <div className="opx-scroll onscreen">
-            {busy.map((z) => {
-              const p = channel.layers[String(z.layer)];
-              const t = project.templates.find((x) => x.id === p.templateId);
-              const paused = isPaused(p, project);
-              return (
-                <div key={z.id} className={`opx-onscreen ${z.id === selZone?.id ? 'sel' : ''}`} onClick={() => setAirSel(z.id)}>
-                  <button className={`opx-sq ${paused ? 'amber' : 'red'}`} title="Out" disabled={!operate} onClick={(e) => (e.stopPropagation(), outZone(z))}>
-                    <Square size={11} fill="currentColor" />
-                  </button>
-                  <span className="opx-os-main">
-                    <strong>{rundownName(project, p.rundownId) ?? t?.name}</strong>
-                    <span className="muted small">
-                      <span className="opx-dot" style={{ background: z.color }} /> {z.name}
-                      {p.next && ` · then ${rundownName(project, p.next.rundownId) ?? '…'}`}
-                    </span>
-                    <progress max={t?.duration ?? 1} value={p.frame} />
-                  </span>
-                  <span className={`opx-tally ${paused ? 'amber' : p.phase === 'out' || p.phase === 'outHold' ? 'grey' : 'red'}`}>{phaseLabel(p, project)}</span>
-                  <button className="opx-x" title="Cut (no animation)" disabled={!operate} onClick={(e) => (e.stopPropagation(), command({ action: 'clear', zone: z.id }))}>
-                    <X size={13} />
-                  </button>
-                </div>
-              );
-            })}
-            {!busy.length && <span className="opx-hint">—</span>}
-          </div>
         </section>
       </div>
     </div>
@@ -624,27 +614,51 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
   );
 }
 
+/** In, hold and out of a template, and where the graphic on air is in it. */
+function MiniTimeline({ template, air }: { template?: Template; air?: PlayoutItem }) {
+  if (!template) return null;
+  const d = Math.max(1, template.duration);
+  const hold = Math.min(d, holdFrame(template));
+  const pauses = template.markers.filter((m) => m.kind === 'pause');
+  return (
+    <span className={`opx-mtl ${air ? 'air' : ''}`} title={air ? `On air · ${air.phase}` : 'In · on air · out'}>
+      <span className="in" style={{ width: `${(hold / d) * 100}%` }} />
+      <span className="out" style={{ left: `${(hold / d) * 100}%` }} />
+      {pauses.map((m) => (
+        <span key={m.id} className="pause" style={{ left: `${(m.frame / d) * 100}%` }} />
+      ))}
+      {air && <span className="ph" style={{ left: `${(Math.min(air.frame, d) / d) * 100}%` }} />}
+    </span>
+  );
+}
+
 function GraphicRow(props: {
   project: Project;
   item: RundownItem;
   zone?: Zone;
   air?: PlayoutItem;
-  next: boolean;
   selected: boolean;
   operate: boolean;
   editable: boolean;
   onSelect: () => void;
   onTake: () => void;
   onOut: () => void;
-  onMove: (d: -1 | 1) => void;
+  onRename: (name: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  drag: { over: 'before' | 'after' | null; onStart: (e: React.DragEvent) => void; onOver: (e: React.DragEvent) => void; onDrop: (e: React.DragEvent) => void; onEnd: () => void };
 }) {
   const { project, item, zone, air } = props;
   const t = project.templates.find((x) => x.id === item.templateId);
   const paused = air && isPaused(air, project);
+  const [renaming, setRenaming] = useState(false);
   return (
-    <div className={`opx-gr ${props.selected ? 'on' : ''}`} onClick={props.onSelect}>
+    <div className={`opx-gr ${props.selected ? 'on' : ''} ${air ? 'air' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
+      {props.editable && (
+        <span className="opx-grip" draggable onDragStart={props.drag.onStart} onDragEnd={props.drag.onEnd} title="Drag to reorder" onClick={(e) => e.stopPropagation()}>
+          <GripVertical size={14} />
+        </span>
+      )}
       <button
         className={`opx-sq big ${air ? (paused ? 'amber' : 'red') : ''}`}
         disabled={!props.operate}
@@ -658,27 +672,36 @@ function GraphicRow(props: {
         {air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
       </button>
       <span className="opx-gr-main">
-        <strong>{item.name}</strong>
+        {renaming ? (
+          <input
+            className="opx-rename"
+            autoFocus
+            defaultValue={item.name}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') setRenaming(false);
+            }}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v && v !== item.name) props.onRename(v);
+              setRenaming(false);
+            }}
+          />
+        ) : (
+          <strong title={props.editable ? 'Double-click to rename' : undefined} onDoubleClick={(e) => (e.stopPropagation(), props.editable && setRenaming(true))}>
+            {item.name}
+          </strong>
+        )}
         <span className="muted small">
           <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? 'no zone'} · {t?.name ?? 'missing template'}
         </span>
+        <MiniTimeline template={t} air={air} />
       </span>
-      {!air && !!t?.datasets?.length && (
-        <span className="opx-ds-badge" title={`Rows of ${t.datasets.map((d) => d.name).join(', ')}: step through them once on air`}>
-          data set
-        </span>
-      )}
-      {air && <span className={`opx-tally ${paused ? 'amber' : 'red'}`}>{phaseLabel(air, project)}</span>}
-      {!air && props.next && <span className="opx-tally green">NEXT</span>}
       {props.editable && (
-        <span className="opx-hover" onClick={(e) => e.stopPropagation()}>
-          <button title="Up" onClick={() => props.onMove(-1)}>
-            <ArrowUp size={13} />
-          </button>
-          <button title="Down" onClick={() => props.onMove(1)}>
-            <ArrowDown size={13} />
-          </button>
-          <button className="violet" title="Duplicate" onClick={props.onDuplicate}>
+        <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
+          <button title="Duplicate" onClick={props.onDuplicate}>
             <Copy size={13} />
           </button>
           <button className="red" title="Remove" onClick={props.onDelete}>
@@ -698,7 +721,9 @@ function DataBlock({
   canEdit,
   onRead,
   onMode,
+  children,
 }: {
+  children?: React.ReactNode;
   project: Project;
   template: Template;
   item: RundownItem;
@@ -735,8 +760,10 @@ function DataBlock({
   return (
     <div className="opx-data">
       <div className="opx-data-title">Data</div>
+      {children}
       {!used.length ? (
-        <p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
+        !template.datasets?.length && 
+<p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
       ) : (
         <>
           {used.map((s) => (
@@ -811,7 +838,13 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
   const target = { zone: zone.id };
   const timed = t.layers.filter(isTimed);
   const numbers = t.fields.filter((f) => f.kind === 'number' && !f.binding);
-  const triggers = [...new Set(t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])))];
+  // Pauses waiting for a trigger, and values set by hand until one.
+  const triggers = [
+    ...new Set([
+      ...t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])),
+      ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : [])),
+    ]),
+  ];
   const waiting = pauseOf(item, project);
   const setValue = (key: string, v: string) => {
     const data = { ...item.data, [key]: v };
@@ -821,6 +854,17 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
   const r = item.rundownId ? project.rundown.find((x) => x.id === item.rundownId) : undefined;
   return (
     <div className="opx-controls">
+      <div className="opx-actions sticky">
+        <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title="F2 / Space">
+          <ChevronsRight size={14} /> Continue
+        </button>
+        <button className="opx-btn violet" disabled={!r} title="Send the item's saved data to the graphic on air" onClick={() => r && command({ action: 'update', ...target, data: { ...defaultData(t), ...r.data } })}>
+          <RefreshCw size={13} /> Update
+        </button>
+        <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
+          <CircleStop size={14} /> Out
+        </button>
+      </div>
       {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} />}
       {timed.map((l) => {
         const c = item.clocks?.[l.id];
@@ -871,17 +915,6 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
         </div>
       )}
       {!timed.length && !numbers.length && !triggers.length && !t.datasets?.length && <p className="opx-hint">This graphic has no internal controls.</p>}
-      <div className="opx-actions">
-        <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title="F2 / Space">
-          <ChevronsRight size={14} /> Continue
-        </button>
-        <button className="opx-btn violet" disabled={!r} title="Send the item's saved data to the graphic on air" onClick={() => r && command({ action: 'update', ...target, data: { ...defaultData(t), ...r.data } })}>
-          <RefreshCw size={13} /> Update
-        </button>
-        <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
-          <CircleStop size={14} /> Out
-        </button>
-      </div>
     </div>
   );
 }

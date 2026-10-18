@@ -231,7 +231,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         <div className="tabs">
           {tab('designer', <PenTool size={14} />, 'Designer')}
           {tab('operator', <Radio size={14} />, 'Operator')}
-          {tab('data', <Database size={14} />, 'Data')}
+          {tab('data', <Database size={14} />, 'Connectors')}
           {tab('media', <Images size={14} />, 'Media')}
           {tab('settings', <SettingsIcon size={14} />, 'Settings')}
         </div>

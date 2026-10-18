@@ -6347,13 +6347,13 @@ a.btn {
   border-bottom-color: var(--live);
 }
 .opx-controls {
-  padding: 12px 14px;
+  padding: 0 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   overflow: auto;
-  max-height: 60%;
-  flex: none;
+  flex: 1;
+  min-height: 0;
 }
 .opx-widget {
   display: flex;
@@ -8263,16 +8263,14 @@ body.cv-moving * {
   color: #0b0d14;
 }
 /* Operator: data sets (rows on air and next). */
-.opx-edit.with-sets {
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: auto;
-}
 .ods {
-  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--line);
-  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  flex: none;
+  overflow: hidden;
 }
 .ods-bar {
   display: flex;
@@ -8396,4 +8394,320 @@ body.cv-moving * {
   border: 1px solid color-mix(in srgb, #facc15 50%, transparent);
   border-radius: 10px;
   padding: 1px 7px;
+}
+
+/* Operator v2: graphics list, one Take, data set in the Data block. */
+.opx-gr {
+  min-height: 64px;
+  padding: 6px 8px 8px 4px;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.opx-gr.air {
+  box-shadow: inset 3px 0 var(--live);
+}
+.opx-gr.drop-before::before,
+.opx-gr.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.25);
+  z-index: 2;
+}
+.opx-gr.drop-before::before {
+  top: -1px;
+}
+.opx-gr.drop-after::after {
+  bottom: -1px;
+}
+.opx-grip {
+  flex: none;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  color: var(--text-3);
+  cursor: grab;
+}
+.opx-grip:hover {
+  color: var(--text);
+}
+.opx-grip:active {
+  cursor: grabbing;
+}
+.opx-rename {
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+.opx-acts {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.opx-acts button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.opx-acts button:hover {
+  background: var(--op-4);
+  color: var(--text);
+}
+.opx-acts button.red:hover {
+  color: var(--live);
+}
+/* Mini timeline: in, then out; the playhead on air. */
+.opx-mtl {
+  position: relative;
+  display: block;
+  height: 5px;
+  margin-top: 3px;
+  border-radius: 3px;
+  background: var(--op-4);
+  overflow: hidden;
+}
+.opx-mtl .in,
+.opx-mtl .out {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.opx-mtl .in {
+  left: 0;
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.opx-mtl .out {
+  right: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.opx-mtl .pause {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--warn);
+}
+.opx-mtl.air .in {
+  background: color-mix(in srgb, var(--live) 45%, transparent);
+}
+.opx-mtl.air .out {
+  background: color-mix(in srgb, var(--live) 18%, transparent);
+}
+.opx-mtl .ph {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 6px var(--live);
+}
+.opx-foot .opx-btn.big {
+  height: 44px;
+  font-size: 14px;
+}
+.opx-foot .opx-btn.big:last-child {
+  flex: none;
+  width: 110px;
+}
+.opx-btn.green {
+  background: var(--pvw);
+  color: #04140a;
+}
+.opx-btn.blue {
+  background: #38bdf8;
+  color: #04121c;
+}
+.opx-actions.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 -14px;
+  padding: 10px 14px;
+  background: var(--op-1, var(--panel));
+  border-bottom: 1px solid var(--line);
+}
+.opx-actions.sticky .opx-btn {
+  height: 38px;
+}
+.ods-pos b.ods-next {
+  color: var(--pvw);
+}
+.ods-pos b.ods-air {
+  color: var(--live);
+}
+.ods-manual {
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #04121c;
+  background: #38bdf8;
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.ods-x {
+  width: 26px;
+}
+.ods-x button,
+.ods-override button {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.ods-x button:hover,
+.ods-override button:hover {
+  color: var(--live);
+}
+.ods-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+.ods-switch .ods-knob {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 9px;
+  background: var(--op-4);
+  transition: background 0.15s;
+  flex: none;
+}
+.ods-switch .ods-knob::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+.ods-switch.on {
+  color: var(--text);
+}
+.ods-switch.on .ods-knob {
+  background: var(--accent);
+}
+.ods-switch.on .ods-knob::after {
+  left: 15px;
+}
+.ods-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ods-manual-box {
+  margin: 0 12px 12px;
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px dashed rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ods-manual-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #38bdf8;
+}
+.ods-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ods-line select,
+.ods-line input {
+  height: 28px;
+  min-width: 0;
+  max-width: 140px;
+  font-size: 12px;
+}
+.ods-line .ods-num {
+  width: 56px;
+}
+.ods-line .ods-trigger {
+  width: 80px;
+}
+.ods-add {
+  padding-top: 8px;
+  border-top: 1px solid rgba(56, 189, 248, 0.2);
+}
+.ods-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.ods-seg button {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ods-seg button.on {
+  background: #38bdf8;
+  color: #04121c;
+  font-weight: 700;
+}
+.ods-seg button:disabled {
+  opacity: 0.4;
+}
+.ods-override {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--op-2, var(--panel-2));
+  font-size: 12px;
+}
+.ods-left {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #38bdf8;
+}
+.opx-edit.wide-data {
+  grid-template-columns: minmax(200px, 0.7fr) minmax(0, 1.6fr);
+}
+.ods-switch {
+  white-space: nowrap;
+}
+.ods-auto {
+  flex-wrap: wrap;
 }

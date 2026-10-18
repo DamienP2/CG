@@ -374,6 +374,15 @@ impl AppState {
                 Command::Take { rundown_id, .. } => rundown_id.clone(),
                 _ => None,
             };
+            let mut cmd = cmd;
+            // Values set by hand for some seconds: until when, on the server's clock.
+            if let Command::Update { data, .. } | Command::Take { data: Some(data), .. } = &mut cmd {
+                for (k, v) in data.iter_mut() {
+                    if let Some(secs) = k.ends_with("__manual").then(|| v.strip_prefix("for:")).flatten().and_then(|n| n.trim().parse::<f64>().ok()) {
+                        *v = format!("until:{}", now_ms() + (secs * 1000.0) as i64);
+                    }
+                }
+            }
             st.apply(&project, cmd).map_err(|e| e.to_string())?;
             bind_state(&project, &mut st, &store, None, taken.as_deref());
             st.clone()

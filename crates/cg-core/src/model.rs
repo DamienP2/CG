@@ -834,6 +834,23 @@ impl DataSet {
     pub fn count_key(&self) -> String {
         format!("{}__count", self.key)
     }
+    /// Seconds between rows when the rows go on by themselves (empty: off).
+    pub fn auto_key(&self) -> String {
+        format!("{}__auto", self.key)
+    }
+    /// "1": after the last row, the first again.
+    pub fn loop_key(&self) -> String {
+        format!("{}__loop", self.key)
+    }
+    /// Age on air (frames) when the row last changed without going out.
+    pub fn shown_key(&self) -> String {
+        format!("{}__shown", self.key)
+    }
+    /// Rows the operator added: JSON `[{"at": 3, "cells": {"team": "Nice"}}]`
+    /// (`at`: the row number it takes, none = at the end).
+    pub fn added_key(&self) -> String {
+        format!("{}__added", self.key)
+    }
     /// Data key of a column: letters, digits and `_` only.
     pub fn column_key(&self, column: &str) -> String {
         let c: String = column.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
@@ -1589,6 +1606,11 @@ impl Project {
 
     /// Saves a designer edit as a draft (nothing changes on air).
     pub fn save_draft(&mut self, t: Template) {
+        // Saved as it is published: nothing to publish.
+        if self.template(&t.id).is_some_and(|p| Template { revision: p.revision, ..t.clone() } == *p) {
+            self.drafts.retain(|x| x.id != t.id);
+            return;
+        }
         match self.drafts.iter_mut().find(|x| x.id == t.id) {
             Some(d) => *d = t,
             None => self.drafts.push(t),
