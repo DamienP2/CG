@@ -146,7 +146,12 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     return () => ro.disconnect();
   }, [template?.id, duration, LEFT_W]);
 
-  if (!template) return null;
+  if (!template)
+    return (
+      <div className="timeline tl-empty">
+        <p>Open a template (on the left, or click its graphic) to see its layers and animate them.</p>
+      </div>
+    );
   const width = template.duration * zoom + TAIL;
   const step = tickStep(zoom);
   const outF = template.markers.find((m) => m.kind === 'out')?.frame;

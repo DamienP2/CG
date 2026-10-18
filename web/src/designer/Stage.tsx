@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { hasLiveWidgets, Scene, Viewport } from '../engine/Scene';
-import { num, propValue } from '../engine/evaluate';
+import { defaultData, holdFrame, num, propValue } from '../engine/evaluate';
+import { designTemplates } from '../engine/drafts';
+import { inFormat } from '../engine/formats';
+import { areaClip, zoneArea } from '../engine/zones';
 import type { Project } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
@@ -44,11 +47,12 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     if (!el) return;
     const ro = new ResizeObserver(() => {
       const pad = 48;
-      setScale(Math.min((el.clientWidth - pad) / project.width, (el.clientHeight - pad) / project.height));
+      setScale(Math.max(0.05, Math.min((el.clientWidth - pad) / project.width, (el.clientHeight - pad) / project.height)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [project.width, project.height]);
+    // The overview and a template have their own stage element.
+  }, [project.width, project.height, !!template]);
 
   // Selection boxes come from the DOM so they follow nested transforms.
   useLayoutEffect(() => {
@@ -170,7 +174,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     beginDrag(e, 'move', sel);
   };
 
-  if (!template) return <div className="stage-wrap" ref={wrapRef} />;
+  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={background} showZones={showZones} wrapRef={wrapRef} now={now} fps={fps} />;
 
   return (
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
@@ -183,7 +187,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
             </LiveTime>
           </Viewport>
           <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
-          {showZones && <ZoneOverlay zones={_project.zones ?? []} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
+          {showZones && <ZoneOverlay zones={(_project.zones ?? []).filter((z) => z.id === template.zone)} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
               {selected.length === 1 &&
@@ -194,6 +198,74 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       </div>
       <div className="stage-info">
         {project.width}×{project.height} · {Math.round(scale * 100)}%
+      </div>
+    </div>
+  );
+}
+
+/**
+ * No template open: every template of the project at its on-air point,
+ * each cut to its zone, over the zones. Clicking a graphic opens its
+ * template; Esc in a template comes back here.
+ */
+function Overview({
+  project,
+  size,
+  format,
+  scale,
+  background,
+  showZones,
+  wrapRef,
+  now,
+  fps,
+}: {
+  project: Project;
+  size: { width: number; height: number };
+  format: string;
+  scale: number;
+  background: string;
+  showZones: boolean;
+  wrapRef: React.RefObject<HTMLDivElement | null>;
+  now: number;
+  fps: number;
+}) {
+  const load = useDesigner((s) => s.load);
+  const sceneRef = useRef<HTMLDivElement>(null);
+  const portrait = size.height > size.width;
+  const zones = new Map(project.zones.map((z) => [z.id, z]));
+  const templates = [...designTemplates(project)].sort((a, b) => (zones.get(a.zone)?.layer ?? 0) - (zones.get(b.zone)?.layer ?? 0));
+  return (
+    <div className="stage-wrap" ref={wrapRef}>
+      <div className={`stage-frame bg-${background}`}>
+        <div
+          ref={sceneRef}
+          className="overview"
+          style={{ position: 'relative' }}
+          onPointerDown={(e) => {
+            const id = (e.target as HTMLElement).closest<HTMLElement>('[data-template-id]')?.dataset.templateId;
+            const t = id && templates.find((x) => x.id === id);
+            if (t) load(t);
+          }}
+        >
+          <Viewport width={size.width} height={size.height} scale={scale}>
+            {templates.map((t) => {
+              const z = zones.get(t.zone);
+              const hold = holdFrame(t);
+              return (
+                <div key={t.id} className="overview-tpl" data-template-id={t.id} title={`${t.name} — click to open`} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
+                  <LiveTime ageSecs={hold / fps} clientNow={now}>
+                    <Scene template={inFormat(t, format)} frame={hold} data={defaultData(t)} interactive />
+                  </LiveTime>
+                </div>
+              );
+            })}
+          </Viewport>
+          <StageGuides project={project} width={size.width} height={size.height} scale={scale} frameRef={sceneRef} />
+          {showZones && <ZoneOverlay zones={project.zones ?? []} format={format} width={size.width} height={size.height} scale={scale} current="" />}
+        </div>
+      </div>
+      <div className="stage-info">
+        All templates · {templates.length} · click a graphic to open its template · {size.width}×{size.height} · {Math.round(scale * 100)}%
       </div>
     </div>
   );

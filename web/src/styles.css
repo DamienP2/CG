@@ -6940,3 +6940,157 @@ body.dragging-guide .guide span {
   background: var(--accent-soft);
   color: var(--accent-2);
 }
+/* Designer > left panel > Project. */
+.project-panel {
+  flex: none;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.project-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pp-save {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--pvw);
+}
+.pp-save.pending {
+  color: var(--warn);
+}
+.pp-save.ro {
+  color: var(--text-3);
+}
+.pjp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px;
+}
+.pjp-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.pjp-name span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pjp-name svg {
+  color: var(--text-3);
+  opacity: 0;
+}
+.pjp-name:hover svg {
+  opacity: 1;
+}
+.pjp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pjp-label {
+  font-size: 12px;
+  color: var(--text-2);
+  width: 52px;
+}
+.pjp-row select {
+  flex: 1;
+  min-width: 0;
+}
+.pjp-publish .publish {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pjp-publish .btn {
+  flex: 1;
+  justify-content: center;
+}
+.pjp-history {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pjp-hist-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.pjp-hist-toggle svg.open {
+  transform: rotate(180deg);
+}
+.pjp-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow: auto;
+}
+.pjp-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  color: var(--text-3);
+}
+.pjp-version:hover {
+  background: var(--panel-2);
+}
+.pjp-v-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pjp-v-main strong {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Designer overview: every template; a click on a graphic opens it. */
+.overview .overview-tpl {
+  pointer-events: none;
+}
+.overview .overview-tpl [data-layer-id] {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.overview .overview-tpl:hover [data-layer-id] {
+  outline: 1px dashed rgba(157, 133, 255, 0.6);
+}
+.timeline.tl-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-3);
+  background: var(--panel);
+}

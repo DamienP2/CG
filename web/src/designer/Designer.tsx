@@ -5,13 +5,14 @@ import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
-import { LockOverlay, PublishButton, useEditLock } from './Collab';
+import { LockOverlay, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { GuidesMenu } from './Guides';
+import { ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
@@ -87,6 +88,12 @@ function useShortcuts() {
       if (target.closest('input, textarea, select')) return;
       const st = useDesigner.getState();
       const t = st.template;
+      // Esc: off the selected layers, then off the template (overview).
+      if (e.key === 'Escape' && t) {
+        if (st.selected.length || st.selectedKeys.length) st.set({ selected: [], selectedKeys: [] });
+        else st.load(null);
+        return;
+      }
       if (!t) return;
       const mod = e.ctrlKey || e.metaKey;
       if (mod && e.key.toLowerCase() === 'z') {
@@ -344,9 +351,10 @@ export function Designer() {
     if (!project) return;
     if (openedFor.current !== project.id) {
       openedFor.current = project.id;
+      // A project opens on the overview: every zone and template.
       const all = designTemplates(project);
-      if (!template || !all.some((t) => t.id === template.id)) load(all[0] ?? null);
-    } else if (!template && designTemplates(project).length) load(designTemplates(project)[0]);
+      if (!template || !all.some((t) => t.id === template.id)) load(null);
+    }
   }, [project, template, load]);
 
   if (!project) return <div className="loading">Connecting…</div>;
@@ -374,6 +382,7 @@ export function Designer() {
     >
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={280} onChange={(v) => setLayout('left', v)} />
+        <ProjectPanel project={project} saveState={saveState} readOnly={lock.state.status === 'held'} />
         <TemplateList project={project} />
       </aside>
       <main className="center">
@@ -388,17 +397,15 @@ export function Designer() {
           </div>
           <FormatBar project={project} />
           <div className="spacer" />
-          <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
             <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
           </button>
           <DataCanvasButton />
+          <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <GuidesMenu project={project} />
           <button className="btn small bg-toggle" title={`Stage background: ${BG_LABELS[background]} (click to change)`} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>
-          <PublishButton project={project} readOnly={lock.state.status === 'held'} />
-          <span className={`save-state ${saveState}`}>{lock.state.status === 'held' ? 'Read only' : saveState === 'saved' ? 'Saved' : 'Saving…'}</span>
         </div>
         <div className="stage-holder">
           <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} />

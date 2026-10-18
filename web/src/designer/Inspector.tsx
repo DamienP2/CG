@@ -1116,7 +1116,14 @@ function TemplateInspector({ template }: { template: Template }) {
 
 export function Inspector() {
   const { template, selected } = useDesigner();
-  if (!template) return null;
+  if (!template)
+    return (
+      <div className="inspector">
+        <Section title="All templates">
+          <p className="hint">The stage shows every template at its on-air point, each in its zone. Click a graphic, or a template on the left, to open it; Esc in a template comes back here.</p>
+        </Section>
+      </div>
+    );
   const layer = selected.length === 1 ? findLayer(template, selected[0]) : undefined;
   return (
     <div className="inspector">
