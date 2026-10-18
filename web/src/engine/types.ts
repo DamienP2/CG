@@ -84,6 +84,13 @@ export type LayerKind =
       speed?: number;
       separator?: string;
       looping?: boolean;
+      /** When the text does not fit its box (default fit). */
+      overflow?: TextOverflow;
+      /** Fit: narrowest (fraction of the width), then smallest font size (fraction), default 0.8 and 0.6. */
+      squeeze?: number;
+      minSize?: number;
+      /** The Operator warns under this (fraction, default 0.8). */
+      warnBelow?: number;
     } & FontStyle)
   | { type: 'image'; src: string; fit: ImageFit }
   | ({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle)
@@ -195,6 +202,9 @@ export interface SortKey {
   descending?: boolean;
   numeric?: boolean;
 }
+
+/** Too long for its box: narrower then smaller, "…", cut, or drawn outside. */
+export type TextOverflow = 'fit' | 'ellipsis' | 'clip' | 'visible';
 
 /** How the graphic on air goes from one row of a data set to the next. */
 export type RowChange = 'outIn' | 'fade' | 'cut';

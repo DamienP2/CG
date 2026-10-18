@@ -326,6 +326,18 @@ pub enum LayerKind {
         /// A vertical scroll comes round again.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         looping: bool,
+        /// What happens when the text does not fit its box.
+        #[serde(default)]
+        overflow: TextOverflow,
+        /// Fit: narrowest the text gets (fraction of its width), then…
+        #[serde(default = "default_squeeze")]
+        squeeze: f32,
+        /// …smallest font size (fraction of the size set).
+        #[serde(default = "default_min_size")]
+        min_size: f32,
+        /// The Operator warns when the text gets smaller than this.
+        #[serde(default = "default_warn_below")]
+        warn_below: f32,
     },
     #[serde(rename_all = "camelCase")]
     Image {
@@ -868,6 +880,31 @@ pub enum RowChange {
     Fade,
     /// The values change at once.
     Cut,
+}
+
+/// What a text does when it is too long for its box.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TextOverflow {
+    /// Narrower, then smaller (down to its minimums), then cut at the box.
+    #[default]
+    Fit,
+    /// Cut with "…".
+    Ellipsis,
+    /// Cut at the box.
+    Clip,
+    /// Drawn outside its box.
+    Visible,
+}
+
+fn default_squeeze() -> f32 {
+    0.8
+}
+fn default_min_size() -> f32 {
+    0.6
+}
+fn default_warn_below() -> f32 {
+    0.8
 }
 
 /// One node of the table pipeline between a source and a field.

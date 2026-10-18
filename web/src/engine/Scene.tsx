@@ -5,6 +5,7 @@ import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
 import { applyLogic, measureLayer } from './logic';
+import { fitText, type Fitted } from './textFit';
 import { useFonts } from './fonts';
 
 /** Time seen by widgets; provided per playout layer (or by the designer). */
@@ -39,7 +40,50 @@ export const LINE_HEIGHT = 1.2;
 /** Layers changed by the template's logic graph (resolved values). */
 const LogicContext = createContext<Map<string, Resolved>>(new Map());
 
-function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic?: Resolved): { style: CSSProperties; text?: string; src?: string } {
+/** How a text layer fits its box with these values (also for the Designer's and the Operator's warnings). */
+export function fitLayer(layer: Layer & { type: 'text' }, r: Resolved, text: string): Fitted {
+  return fitText(text, {
+    fontFamily: layer.fontFamily,
+    fontWeight: layer.fontWeight,
+    size: num(r.fontSize),
+    letterSpacing: num(r.letterSpacing),
+    lineHeight: layer.lineHeight ?? LINE_HEIGHT,
+    boxW: num(r.width),
+    boxH: num(r.height),
+    wrap: !!layer.wrap,
+    overflow: layer.overflow ?? 'fit',
+    squeeze: layer.squeeze ?? 0.8,
+    minSize: layer.minSize ?? 0.6,
+  });
+}
+
+export interface TextWarning {
+  layer: Layer & { type: 'text' };
+  ratio: number;
+  overflows: boolean;
+  /** Fields and data keys the text shows. */
+  keys: string[];
+}
+
+/** Texts too long for their box with these values, at the on-air point: reduced under their warning, or not all shown. */
+export function textWarnings(template: Template, data: Data): TextWarning[] {
+  const hold = holdFrame(template);
+  const out: TextWarning[] = [];
+  for (const l of template.layers) {
+    if (l.type !== 'text' || !l.visible || (l.scroll && l.scroll !== 'none') || (l.overflow ?? 'fit') === 'visible') continue;
+    const fit = fitLayer(l, resolveLayer(l, hold, data, hold), layerText(l, data));
+    if (fit.overflows || fit.ratio < (l.warnBelow ?? 0.8)) out.push({ layer: l, ratio: fit.ratio, overflows: fit.overflows, keys: [...l.text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]) });
+  }
+  return out;
+}
+
+/** A text layer's text as shown (fields filled in, case changed). */
+export const layerText = (layer: Layer & { type: 'text' }, data: Data) => {
+  const text = interpolateText(layer.text, data);
+  return layer.uppercase ? text.toUpperCase() : transformText(text, layer.transform);
+};
+
+function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic?: Resolved): { style: CSSProperties; text?: string; src?: string; squeeze?: number; fit?: string } {
   const r = logic ?? resolveLayer(layer, frame, data, hold);
   const w = num(r.width);
   const h = num(r.height);
@@ -88,8 +132,9 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
       strokeCss(style);
       return { style };
     case 'text': {
-      let text = interpolateText(layer.text, data);
-      text = layer.uppercase ? text.toUpperCase() : transformText(text, layer.transform);
+      // Too long for its box: narrower and smaller, "…", or cut.
+      const fit = fitLayer(layer, r, layerText(layer, data));
+      const text = fit.text;
       Object.assign(style, {
         display: 'flex',
         flexDirection: 'column',
@@ -98,23 +143,26 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
         color: fill,
         fontFamily: `"${layer.fontFamily}", Inter, system-ui, sans-serif`,
         fontWeight: layer.fontWeight,
-        fontSize: num(r.fontSize),
+        fontSize: fit.size,
         letterSpacing: num(r.letterSpacing),
         lineHeight: layer.lineHeight ?? LINE_HEIGHT,
         textDecoration: layer.decoration === 'underline' ? 'underline' : layer.decoration === 'lineThrough' ? 'line-through' : undefined,
         textDecorationThickness: layer.decoration && layer.decoration !== 'none' ? `${Math.max(1, num(r.fontSize) * 0.06)}px` : undefined,
         textUnderlineOffset: layer.decoration === 'underline' ? `${num(r.fontSize) * 0.1}px` : undefined,
-        whiteSpace: layer.wrap ? 'pre-wrap' : 'pre',
-        overflow: 'visible',
+        // Wrapped already, as the Rust renderer does.
+        whiteSpace: 'pre',
+        overflow: fit.clip ? 'hidden' : 'visible',
         fontKerning: 'normal',
       } satisfies CSSProperties);
       if (strokeW > 0) (style as Record<string, unknown>).WebkitTextStroke = `${strokeW}px ${stroke}`;
-      return { style, text };
+      const warn = fit.overflows ? (layer.overflow === 'visible' ? 'overflows' : 'too long') : fit.ratio < (layer.warnBelow ?? 0.8) ? `${Math.round(fit.ratio * 100)} %` : undefined;
+      return { style, text, squeeze: fit.squeeze, fit: warn };
     }
     case 'image':
       return { style, src: interpolateText(layer.src, data) };
     default:
-      // Widgets draw their own content (see WidgetContent).
+      // Widgets draw their own content (see WidgetContent), inside their box.
+      if (layer.type !== 'analogClock' && layer.type !== 'progress' && layer.type !== 'qrCode') style.overflow = 'hidden';
       return { style };
   }
 }
@@ -357,16 +405,16 @@ const LayerNode = memo(function LayerNode({
   const self = layer;
   // A scrolling text is drawn as the ticker or roll it behaves like.
   layer = W.scrollingAs(layer) ?? layer;
-  const { style, text, src } = layerStyle(layer, frame, data, hold, logic);
+  const { style, text, src, squeeze = 1, fit } = layerStyle(layer, frame, data, hold, logic);
   const kids = childrenOf.get(self.id) ?? [];
+  const lines = text?.split('\n').map((line, i) => (
+    <div key={i} style={{ width: '100%' }}>
+      {line || ' '}
+    </div>
+  ));
   return (
-    <div style={style} data-layer-id={interactive ? layer.id : undefined}>
-      {text !== undefined &&
-        text.split('\n').map((line, i) => (
-          <div key={i} style={{ width: '100%' }}>
-            {line || ' '}
-          </div>
-        ))}
+    <div style={style} data-layer-id={interactive ? layer.id : undefined} data-fit={interactive ? fit : undefined}>
+      {lines && (squeeze < 1 ? <div style={{ width: `${100 / squeeze}%`, transform: `scaleX(${squeeze})`, transformOrigin: '0 0' }}>{lines}</div> : lines)}
       {src && layer.type === 'image' && (
         <img
           src={src}

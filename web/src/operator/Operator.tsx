@@ -1,6 +1,6 @@
 import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, Zap, GripVertical } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Scene, Viewport } from '../engine/Scene';
+import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
 import { rowKey, type Command, type Field, type Marker, type PlayoutItem, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
@@ -196,6 +196,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Bound fields read live show the source's value (manual ones show what was read).
   const boundDraft = useBoundData(readMode === 'manual' ? undefined : template, draft);
   const previewData = { ...draft, ...boundDraft };
+  // Texts too long for their box with these values.
+  const fitWarnings = template ? textWarnings(template, previewData) : [];
 
   /** Saves the item's data a moment after the last edit. */
   const saveData = (id: string, data: Record<string, string>) => {
@@ -464,9 +466,19 @@ export function Operator({ channelId }: { channelId: string | null }) {
                         ) : (
                           <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => editDraft({ [f.key]: v })} />
                         )}
+                        {fitWarnings
+                          .filter((w) => w.keys.includes(f.key))
+                          .map((w) => (
+                            <FitWarning key={w.layer.id} w={w} />
+                          ))}
                       </label>
                     );
                   })}
+                  {fitWarnings
+                    .filter((w) => !w.keys.some((k) => template.fields.some((f) => f.key === k)))
+                    .map((w) => (
+                      <FitWarning key={w.layer.id} w={w} named />
+                    ))}
                 </div>
                 <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
                   {template.datasets?.map((ds, i) => (
@@ -611,6 +623,18 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
         </span>
       )}
     </div>
+  );
+}
+
+/** A text too long for its box: reduced, or not all shown. */
+function FitWarning({ w, named }: { w: TextWarning; named?: boolean }) {
+  const pct = `${Math.round(w.ratio * 100)} %`;
+  const mode = w.layer.overflow ?? 'fit';
+  return (
+    <span className={`opx-fit ${w.overflows ? 'bad' : ''}`} title="The text does not fit its box as designed">
+      {named && <strong>{w.layer.name}:</strong>}
+      {!w.overflows ? `text reduced to ${pct}` : mode === 'fit' ? 'too long: cut even when reduced — shorten it' : mode === 'ellipsis' ? 'too long: shown with “…”' : 'too long: cut on air'}
+    </span>
   );
 }
 

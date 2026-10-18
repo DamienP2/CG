@@ -432,7 +432,26 @@ impl Renderer {
         let stroke = paint_for(r.color(Prop::Stroke), opacity);
         // A scrolling text is drawn as the ticker or roll it behaves like.
         let scrolling = r.layer.kind.scrolling_as();
-        match scrolling.as_ref().unwrap_or(&r.layer.kind) {
+        let kind = scrolling.as_ref().unwrap_or(&r.layer.kind);
+        // Widgets stay inside their box.
+        let boxed;
+        let mask = if matches!(
+            kind,
+            LayerKind::Clock { .. }
+                | LayerKind::Counter { .. }
+                | LayerKind::Typewriter { .. }
+                | LayerKind::Rotator { .. }
+                | LayerKind::BarChart { .. }
+                | LayerKind::Slideshow { .. }
+                | LayerKind::Ticker { .. }
+                | LayerKind::Roll { .. }
+        ) {
+            boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0)).map(|b| build_mask(pm, mask, b, tf));
+            boxed.as_ref().or(mask)
+        } else {
+            mask
+        };
+        match kind {
             LayerKind::Group { .. } => {
                 // Groups paint a background only if a visible fill is set explicitly.
                 if r.layer.props.contains_key(&Prop::Fill)
@@ -486,6 +505,9 @@ impl Renderer {
                 wrap,
                 decoration,
                 line_height,
+                overflow,
+                squeeze,
+                min_size,
                 ..
             } => {
                 let Some(content) = r.text.as_deref().filter(|t| !t.is_empty()) else {
@@ -505,14 +527,18 @@ impl Renderer {
                     line_height: line_height.unwrap_or(text::LINE_HEIGHT),
                     decoration: *decoration,
                 };
-                let wrapped;
-                let content = if *wrap {
-                    wrapped = text::wrap_text(&font, content, style.size, style.letter_spacing, w);
-                    wrapped.as_str()
+                // Too long for its box: narrower and smaller, "…", or cut.
+                let fit = text::fit_text(&font, content, &style, *wrap, *overflow, *squeeze, *min_size);
+                let style = text::TextStyle { size: fit.size, box_w: w / fit.squeeze, ..style };
+                let boxed;
+                let mask = if fit.clip {
+                    boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0)).map(|r| build_mask(pm, mask, r, tf));
+                    boxed.as_ref().or(mask)
                 } else {
-                    content
+                    mask
                 };
-                if let Some(path) = text::layout_text(&font, content, &style) {
+                let tf = tf.pre_scale(fit.squeeze, 1.0);
+                if let Some(path) = text::layout_text(&font, &fit.text, &style) {
                     pm.fill_path(&path, &fill, FillRule::Winding, tf, mask);
                     if stroke_w > 0.0 {
                         pm.stroke_path(

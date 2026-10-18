@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
-import { MAIN_FORMAT, TEXT_LIKE, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, TEXT_LIKE, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
@@ -13,6 +13,7 @@ import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, useDesigner } from
 import { isTimed } from '../engine/widgets';
 import { WidgetRunButtons } from './WidgetRun';
 import { AreaInspector, useGuidesView } from './Guides';
+import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
 
@@ -998,6 +999,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
               )}
             </>
           )}
+          {(!layer.scroll || layer.scroll === 'none') && <TextFitControls layer={layer} edit={edit} />}
         </>
       )}
       {TEXT_LIKE.has(layer.type) && (
@@ -1278,6 +1280,55 @@ function DurationField({ frames, rate, onChange }: { frames: number; rate: numbe
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+const OVERFLOWS: { value: TextOverflow; label: string; hint: string }[] = [
+  { value: 'fit', label: 'Fit', hint: 'Narrower, then smaller, down to the minimums below; then cut at the box' },
+  { value: 'ellipsis', label: '…', hint: 'Shortened with “…”' },
+  { value: 'clip', label: 'Cut', hint: 'Cut at the box' },
+  { value: 'visible', label: 'Overflow', hint: 'Drawn outside its box' },
+];
+
+/** What a text does when it is too long for its box, and how it does now with the preview values. */
+function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edit: (fn: (l: Layer) => void, key?: string) => void }) {
+  const { frame, previewData, template } = useDesigner();
+  const data = useBoundData(template, previewData);
+  const mode = layer.overflow ?? 'fit';
+  const fit = fitLayer(layer, resolveLayer(layer, frame, data, template ? holdFrame(template) : 0), layerText(layer, data));
+  const pct = (v: number) => `${Math.round(v * 100)} %`;
+  const setT = (fn: (l: Layer & { type: 'text' }) => void, key?: string) => edit((l) => void (l.type === 'text' && fn(l)), key);
+  return (
+    <div className="fit-controls">
+      <div className="row">
+        <span className="prop-label" title="When the text is too long for its box">Too long</span>
+        <Segmented value={mode} onChange={(v) => setT((l) => (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS.map((o) => ({ value: o.value, label: <span title={o.hint}>{o.label}</span> }))} />
+      </div>
+      {mode === 'fit' && (
+        <>
+          <div className="row">
+            <span className="prop-label" title="Narrowest the text gets, before getting smaller">Narrower to</span>
+            <input type="range" min={50} max={100} value={Math.round((layer.squeeze ?? 0.8) * 100)} onChange={(e) => setT((l) => (l.squeeze = +e.target.value / 100), `squeeze-${layer.id}`)} />
+            <span className="fit-val">{pct(layer.squeeze ?? 0.8)}</span>
+          </div>
+          <div className="row">
+            <span className="prop-label" title="Smallest font size, as a part of the size set">Smaller to</span>
+            <input type="range" min={20} max={100} value={Math.round((layer.minSize ?? 0.6) * 100)} onChange={(e) => setT((l) => (l.minSize = +e.target.value / 100), `minsize-${layer.id}`)} />
+            <span className="fit-val">{pct(layer.minSize ?? 0.6)}</span>
+          </div>
+          <div className="row">
+            <span className="prop-label" title="The Operator warns when the text gets smaller than this">Warn under</span>
+            <input type="range" min={20} max={100} value={Math.round((layer.warnBelow ?? 0.8) * 100)} onChange={(e) => setT((l) => (l.warnBelow = +e.target.value / 100), `warn-${layer.id}`)} />
+            <span className="fit-val">{pct(layer.warnBelow ?? 0.8)}</span>
+          </div>
+        </>
+      )}
+      {(fit.ratio < 0.999 || fit.overflows) && (
+        <div className={`fit-state ${fit.overflows ? 'bad' : fit.ratio < (layer.warnBelow ?? 0.8) ? 'warn' : ''}`}>
+          {fit.overflows ? (mode === 'fit' ? `Too long even at the minimums: cut` : mode === 'ellipsis' ? 'Too long: shortened with “…”' : mode === 'clip' ? 'Too long: cut at the box' : 'Too long: goes out of its box') : `With the preview values: ${pct(fit.ratio)}`}
+        </div>
+      )}
     </div>
   );
 }
