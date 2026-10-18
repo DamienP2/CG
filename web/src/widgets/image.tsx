@@ -1,15 +1,357 @@
-// Image: settings, drawing, inspector and Operator controls.
-// Same picture as crates/cg-render/src/wid/image.rs; actions in crates/cg-core/src/wid/image.rs.
+// Image: fits (incl. original size and tile), focal point, crop, rounded / circle mask, stroke,
+// colorize, fallback picture when the source is missing, animated sequence (list of pictures).
+// Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { Image } from 'lucide-react';
-import { defineWidget } from './kit';
+import { col, cssColor, interpolateText, num } from '../engine/evaluate';
+import type { Data } from '../engine/types';
+import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
+import { Btns, clamp, ColorPick, Content, defineWidget, Handle, hex, Msg, Note, Num, Range, Row, Section, Seg, Toggle, useFrame, useKeys, wiredKeys, type Warning } from './kit';
 
-/** Settings of the layer (flattened into it; every field optional: older projects lack them). */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface Config {}
+export interface Crop {
+  l: number;
+  t: number;
+  r: number;
+  b: number;
+}
+export interface Config {
+  /** Original / Tile on top of the layer's `fit` (contain / cover / stretch). */
+  fitMode?: 'original' | 'tile';
+  tileScale?: number;
+  /** Kept in view when Cover crops (fractions of the picture). */
+  focal?: { x: number; y: number };
+  crop?: Crop;
+  mask?: 'none' | 'rounded' | 'circle';
+  radius?: number;
+  colorize?: 'none' | 'replace' | 'tint';
+  tint?: string;
+  /** Shown when the source cannot be found (empty = the built-in slate). */
+  fallback?: string;
+  /** Animated sequence: pictures played instead of `src`. */
+  frames?: string[];
+  fps?: number;
+  playMode?: 'loop' | 'once' | 'count';
+  loops?: number;
+  start?: 'in' | 'manual';
+}
 
-/** What the operator changes on air (mirrors `State` in the Rust module). */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface State {}
+/** Operator state of a sequence started by hand (wall-clock ms). */
+export interface State {
+  playing?: boolean;
+  atMs?: number;
+  pausedEl?: number;
+}
+
+type Fit = 'contain' | 'cover' | 'stretch' | 'original' | 'tile';
+type Rect = [number, number, number, number];
+type ImgLayer = Config & { id: string; src: string; fit: 'contain' | 'cover' | 'stretch'; props: Record<string, unknown> };
+
+const D = { tileScale: 100, focal: { x: 0.5, y: 0.5 }, crop: { l: 0, t: 0, r: 0, b: 0 }, mask: 'none' as const, radius: 28, colorize: 'none' as const, tint: '#ff3b5c', fallback: '', frames: [] as string[], fps: 12, playMode: 'loop' as const, loops: 3, start: 'in' as const };
+const cfg = (c: Config) => ({ ...D, ...c });
+const fitOf = (l: ImgLayer): Fit => l.fitMode ?? l.fit ?? 'contain';
+
+/** The frame in the box and its radius (mirrors frame_rect). */
+function frameRect(c: Config, w: number, h: number): [Rect, number] {
+  const k = cfg(c);
+  if (k.mask === 'circle') {
+    const d = Math.min(w, h);
+    return [[(w - d) / 2, (h - d) / 2, d, d], d / 2];
+  }
+  if (k.mask === 'rounded') return [[0, 0, w, h], Math.min(Math.max(0, k.radius), w / 2, h / 2)];
+  return [[0, 0, w, h], 0];
+}
+
+/** Crop capped so 5 % of the picture is always left (mirrors crop). */
+function cropOf(c: Config): Crop {
+  const k = cfg(c).crop;
+  const l = clamp(k.l, 0, 0.95);
+  const t = clamp(k.t, 0, 0.95);
+  return { l, t, r: clamp(k.r, 0, Math.max(0, 0.95 - l)), b: clamp(k.b, 0, Math.max(0, 0.95 - t)) };
+}
+
+/** Visible window and whole picture in the frame (mirrors place). */
+function place(c: Config, [iw, ih]: [number, number], [fw, fh]: [number, number], fit: Fit, cr: Crop): [Rect, Rect] {
+  const focal = cfg(c).focal;
+  const cw = Math.max(1e-3, iw * (1 - cr.l - cr.r));
+  const ch = Math.max(1e-3, ih * (1 - cr.t - cr.b));
+  let sx: number, sy: number, ox: number, oy: number;
+  if (fit === 'stretch') [sx, sy, ox, oy] = [fw / cw, fh / ch, 0, 0];
+  else {
+    const k = fit === 'contain' ? Math.min(fw / cw, fh / ch) : fit === 'cover' ? Math.max(fw / cw, fh / ch) : 1;
+    let [x, y] = [(fw - cw * k) / 2, (fh - ch * k) / 2];
+    if (fit === 'cover') {
+      x = clamp(fw / 2 - (focal.x - cr.l) * iw * k, fw - cw * k, 0);
+      y = clamp(fh / 2 - (focal.y - cr.t) * ih * k, fh - ch * k, 0);
+    }
+    [sx, sy, ox, oy] = [k, k, x, y];
+  }
+  return [
+    [ox, oy, cw * sx, ch * sy],
+    [ox - cr.l * iw * sx, oy - cr.t * ih * sy, iw * sx, ih * sy],
+  ];
+}
+
+/** Where a sequence is (mirrors seq). */
+export function seqInfo(c: Config, st: State | undefined, nowMs: number, ageSecs: number) {
+  const k = cfg(c);
+  const n = Math.max(1, k.frames.length);
+  const el = Math.max(0, k.start === 'in' ? ageSecs : st?.playing ? (nowMs - (st.atMs ?? 0)) / 1000 : (st?.pausedEl ?? 0));
+  const loops = k.playMode === 'loop' ? Infinity : k.playMode === 'once' ? 1 : Math.max(1, k.loops);
+  let f = Math.floor(el * clamp(k.fps, 0.1, 120));
+  let ended = false;
+  if (f >= n * loops) ((f = n * loops - 1), (ended = true));
+  return { idx: f % n, lap: Math.floor(f / n) + 1, loops, ended, el, n };
+}
+
+// --------------------------------------------------------------- pictures --
+// Natural sizes and failures, per source (module level: warnings read them too).
+const sizes = new Map<string, [number, number]>();
+const failed = new Set<string>();
+const loading = new Set<string>();
+const subs = new Set<() => void>();
+let version = 0;
+const bump = () => {
+  version++;
+  subs.forEach((f) => f());
+};
+const useStore = () =>
+  useSyncExternalStore(
+    (f) => (subs.add(f), () => subs.delete(f)),
+    () => version,
+  );
+
+function load(src: string) {
+  if (!src || sizes.has(src) || failed.has(src) || loading.has(src)) return;
+  loading.add(src);
+  const img = new window.Image();
+  img.onload = () => {
+    loading.delete(src);
+    sizes.set(src, [img.naturalWidth || 1, img.naturalHeight || 1]);
+    bump();
+  };
+  img.onerror = () => {
+    loading.delete(src);
+    failed.add(src);
+    bump();
+  };
+  img.src = src;
+}
+
+/** 'ok' with its size, 'missing', or 'loading'. */
+function status(src: string): { s: 'ok'; size: [number, number] } | { s: 'missing' } | { s: 'loading' } {
+  src = src.trim();
+  if (!src || failed.has(src)) return { s: 'missing' };
+  const z = sizes.get(src);
+  if (z) return { s: 'ok', size: z };
+  load(src);
+  return { s: 'loading' };
+}
+
+/** The source in effect: frame of the sequence or the picture. */
+function wantedSrc(l: ImgLayer, data: Data, idx = 0) {
+  const k = cfg(l);
+  return interpolateText(k.frames.length ? k.frames[Math.min(idx, k.frames.length - 1)] : l.src, data).trim();
+}
+
+// Designer-only UI: crop editing and the key / fill preview, per layer (not saved).
+const ui = { crop: new Set<string>(), view: new Map<string, 'program' | 'fill' | 'key'>() };
+const setUi = (fn: () => void) => (fn(), bump());
+
+// --------------------------------------------------------------- drawing --
+
+const px = (r: Rect): CSSProperties => ({ position: 'absolute', left: r[0], top: r[1], width: r[2], height: r[3] });
+
+/** One picture at rectangle P, colorized, in the preview view. */
+function Pic({ src, P, colorize, tint, view }: { src: string; P: Rect; colorize: string; tint: string; view: string }) {
+  const q = `url("${src.replace(/"/g, '%22')}")`;
+  const filters: string[] = [];
+  if (colorize === 'tint') filters.push('grayscale(1)');
+  if (view === 'key') filters.push('brightness(0) invert(1)');
+  const filter = filters.join(' ') || undefined;
+  const masked = (bg: string): CSSProperties => ({ ...px(P), background: bg, WebkitMaskImage: q, maskImage: q, WebkitMaskSize: '100% 100%', maskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat' });
+  if (colorize === 'replace') return <div style={masked(view === 'key' ? '#fff' : hex(tint))} />;
+  return (
+    <>
+      <img src={src} alt="" draggable={false} onError={() => (failed.add(src), bump())} style={{ ...px(P), maxWidth: 'none', display: 'block', filter }} />
+      {colorize === 'tint' && view !== 'key' && <div style={{ ...masked(hex(tint)), mixBlendMode: 'multiply' }} />}
+    </>
+  );
+}
+
+/** The pulse line of the slate, in ring radii (mirrors SLATE_PULSE). */
+const SLATE_PULSE: [number, number][] = [
+  [-0.73, 0.08],
+  [-0.36, 0.08],
+  [-0.19, -0.4],
+  [0.02, 0.52],
+  [0.23, -0.6],
+  [0.42, 0.08],
+  [0.75, 0.08],
+];
+
+/** The built-in slate: neutral, branded, never an error on air (same as the Rust one). */
+function Slate({ F }: { F: Rect }) {
+  const [x, y, w, h] = F;
+  const s = Math.min(w, h);
+  const [cx, cy, rr] = [x + w / 2, y + h / 2, s * 0.2];
+  const id = `slate${Math.round(x)}_${Math.round(w)}`;
+  return (
+    <svg style={{ position: 'absolute', inset: 0, overflow: 'visible' }} width="100%" height="100%">
+      <defs>
+        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1={x} y1={y} x2={x + w} y2={y + h}>
+          <stop offset="0" stopColor="#1b1442" />
+          <stop offset="1" stopColor="#3b0d2a" />
+        </linearGradient>
+      </defs>
+      <rect x={x} y={y} width={w} height={h} fill={`url(#${id})`} />
+      <circle cx={cx} cy={cy} r={rr} fill="none" stroke="#fff" strokeWidth={s * 0.045} />
+      <path d={SLATE_PULSE.map(([u, v], i) => `${i ? 'L' : 'M'}${cx + u * rr} ${cy + v * rr}`).join('')} fill="none" stroke="#ff3b5c" strokeWidth={s * 0.038} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** What is shown: the picture, the fallback (missing), or the slate. */
+function resolve(l: ImgLayer, data: Data, idx: number) {
+  const k = cfg(l);
+  const src = wantedSrc(l, data, idx);
+  const st = status(src);
+  if (st.s !== 'missing') return { src, st, missing: false };
+  const fb = interpolateText(k.fallback, data).trim();
+  return { src: fb, st: status(fb), missing: true };
+}
+
+function ImageView({ layer, r, w, h, data, time, state, designer }: { layer: ImgLayer; r: Record<string, unknown>; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown; designer?: boolean }) {
+  useStore();
+  const k = cfg(layer);
+  // Every frame of a sequence decoded once, up front: cycling never stutters.
+  useEffect(() => k.frames.forEach((f) => load(interpolateText(f, data).trim())), [k.frames, data]);
+  const sq = seqInfo(layer, state as State, time.nowMs, time.ageSecs);
+  const { src, st, missing } = resolve(layer, data, sq.idx);
+  const view = designer ? (ui.view.get(layer.id) ?? 'program') : 'program';
+  const [F, radius] = frameRect(layer, w, h);
+  const sw = num(r.strokeWidth as never);
+  const bg: CSSProperties = view === 'program' ? {} : { background: '#000' };
+  const fit: Fit = missing ? 'cover' : fitOf(layer);
+  const colorize = missing ? 'none' : k.colorize;
+  let inner: ReactNode = null;
+  if (st.s === 'missing') inner = <Slate F={[0, 0, F[2], F[3]]} />;
+  else if (st.s === 'ok') {
+    const [iw, ih] = st.size;
+    if (designer && ui.crop.has(layer.id) && fit !== 'tile' && !missing) {
+      // Crop editing: the whole picture (contain), outside the crop dimmed.
+      const [R] = place(layer, [iw, ih], [w, h], 'contain', { l: 0, t: 0, r: 0, b: 0 });
+      const c = cropOf(layer);
+      const [cx, cy, cw, ch] = [R[0] + c.l * R[2], R[1] + c.t * R[3], R[2] * (1 - c.l - c.r), R[3] * (1 - c.t - c.b)];
+      return (
+        <div style={{ position: 'absolute', inset: 0, ...bg }}>
+          <Pic src={src} P={R} colorize="none" tint="" view={view} />
+          <svg width={w} height={h} style={{ position: 'absolute', inset: 0 }}>
+            <path fillRule="evenodd" fill="#000" opacity={0.6} d={`M${R[0]} ${R[1]}h${R[2]}v${R[3]}h${-R[2]}Z M${cx} ${cy}h${cw}v${ch}h${-cw}Z`} />
+            <rect x={cx} y={cy} width={cw} height={ch} fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="14 10" />
+          </svg>
+        </div>
+      );
+    }
+    if (fit === 'tile') {
+      const t = clamp(k.tileScale, 1, 1000) / 100;
+      const q = `url("${src.replace(/"/g, '%22')}")`;
+      const size = `${iw * t}px ${ih * t}px`;
+      inner =
+        colorize === 'replace' ? (
+          <div style={{ position: 'absolute', inset: 0, background: view === 'key' ? '#fff' : hex(k.tint), WebkitMaskImage: q, maskImage: q, WebkitMaskSize: size, maskSize: size, WebkitMaskRepeat: 'repeat', maskRepeat: 'repeat' }} />
+        ) : (
+          <>
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: q, backgroundSize: size, backgroundRepeat: 'repeat', filter: view === 'key' ? 'brightness(0) invert(1)' : colorize === 'tint' ? 'grayscale(1)' : undefined }} />
+            {colorize === 'tint' && view !== 'key' && <div style={{ position: 'absolute', inset: 0, background: hex(k.tint), mixBlendMode: 'multiply', WebkitMaskImage: q, maskImage: q, WebkitMaskSize: size, maskSize: size }} />}
+          </>
+        );
+    } else {
+      const [win, pic] = place(layer, [iw, ih], [F[2], F[3]], fit, missing ? { l: 0, t: 0, r: 0, b: 0 } : cropOf(layer));
+      inner = (
+        <div style={{ ...px(win), overflow: 'hidden', isolation: 'isolate' }}>
+          <Pic src={src} P={[pic[0] - win[0], pic[1] - win[1], pic[2], pic[3]]} colorize={colorize} tint={k.tint} view={view} />
+        </div>
+      );
+    }
+  }
+  return (
+    <div style={{ position: 'absolute', inset: 0, ...bg }}>
+      <div style={{ ...px(F), borderRadius: radius, overflow: 'hidden', isolation: 'isolate' }}>{inner}</div>
+      {sw > 0 && <div style={{ ...px(F), borderRadius: radius, boxShadow: `inset 0 0 0 ${sw}px ${view === 'key' ? '#fff' : cssColor(col(r.stroke as never))}`, pointerEvents: 'none' }} />}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------- inspector --
+
+/** Source thumbnail with the focal point and the crop; a click sets the focal point. */
+function Thumb({ src, size, layer, edit }: { src: string; size: [number, number]; layer: ImgLayer; edit: (fn: (l: ImgLayer) => void, key?: string) => void }) {
+  const k = cfg(layer);
+  const c = cropOf(layer);
+  return (
+    <div
+      style={{ position: 'relative', width: `min(100%, ${Math.round((170 * size[0]) / size[1])}px)`, aspectRatio: `${size[0]} / ${size[1]}`, background: `url("${src}") 0 0 / 100% 100%`, borderRadius: 6, margin: '4px auto', cursor: 'crosshair' }}
+      onClick={(e) => {
+        const b = e.currentTarget.getBoundingClientRect();
+        edit((l) => void (l.focal = { x: +clamp((e.clientX - b.left) / b.width, 0, 1).toFixed(3), y: +clamp((e.clientY - b.top) / b.height, 0, 1).toFixed(3) }));
+      }}
+    >
+      <div style={{ position: 'absolute', left: `${c.l * 100}%`, top: `${c.t * 100}%`, right: `${c.r * 100}%`, bottom: `${c.b * 100}%`, outline: '2px dashed #f59e0b' }} />
+      <div style={{ position: 'absolute', left: `${k.focal.x * 100}%`, top: `${k.focal.y * 100}%`, width: 16, height: 16, margin: -8, borderRadius: '50%', border: '3px solid #fff', background: '#f59e0b', boxShadow: '0 1px 4px #000' }} />
+    </div>
+  );
+}
+
+function seqLine(c: Config, st: State | undefined, now: number, age: number) {
+  const q = seqInfo(c, st, now, age);
+  const manual = cfg(c).start === 'manual';
+  const state = !manual || st?.playing ? q.ended ? <b>■ finished</b> : <b style={{ color: '#9ff0bd' }}>▶ playing</b> : q.ended ? <b>■ finished</b> : <b style={{ color: '#fcd38a' }}>❚❚ paused</b>;
+  return (
+    <p className="hint wk-note" style={{ fontFamily: 'var(--mono, monospace)' }}>
+      {state} · frame {String(q.idx + 1).padStart(2, '0')}/{q.n} · loop {Math.min(q.lap, q.loops)}/{q.loops === Infinity ? '∞' : q.loops}
+    </p>
+  );
+}
+
+function SeqReadout({ layer, state, offset, age }: { layer: Config; state: unknown; offset: number; age?: number }) {
+  const now = useFrame() + offset;
+  return seqLine(layer, state as State, now, age ?? 0);
+}
+
+function FramesEditor({ layer, edit }: { layer: ImgLayer; edit: (fn: (l: ImgLayer) => void, key?: string) => void }) {
+  const frames = cfg(layer).frames;
+  const put = (fn: (f: string[]) => void) =>
+    edit((l) => {
+      const f = [...cfg(l).frames];
+      fn(f);
+      l.frames = f;
+    });
+  return (
+    <Row label={`Frames · ${frames.length}`}>
+      <div className="wk-list">
+        {frames.map((f, i) => (
+          <div key={i} className="wk-item">
+            <span className="hint" style={{ flex: '0 0 22px', fontWeight: 700 }}>
+              {i + 1}
+            </span>
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+              <AssetPicker value={f} onChange={(v) => put((x) => void (x[i] = v))} />
+            </div>
+            <button className="wk-x" title="Up" disabled={!i} onClick={() => put((x) => void ([x[i - 1], x[i]] = [x[i], x[i - 1]]))}>
+              ↑
+            </button>
+            <button className="wk-x" title="Remove" onClick={() => put((x) => void x.splice(i, 1))}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <button className="opx-btn small wk-add" onClick={() => put((x) => void x.push(x[x.length - 1] ?? ''))}>
+          + Frame
+        </button>
+      </div>
+    </Row>
+  );
+}
 
 export default defineWidget({
   id: 'image',
@@ -17,5 +359,282 @@ export default defineWidget({
   label: 'Image',
   group: 'Shapes & tools',
   icon: Image,
-  create: () => ({}),
+  presets: [{ label: 'Image' }, { label: 'Speaker portrait', patch: { mask: 'circle', fit: 'cover' } }, { label: 'Animated sequence', patch: { frames: [''], fit: 'contain', mask: 'none' } }],
+  create: () => ({ src: '', fit: 'cover', mask: 'rounded', radius: 28, props: { width: 800, height: 560, stroke: [1, 1, 1, 1], strokeWidth: 0 } }),
+  ownsLook: true,
+  content: ['src'],
+  live: (l) => (l.frames?.length ?? 0) > 0,
+  Render: ({ layer, r, w, h, data, time, state, designer }) => <ImageView layer={layer as unknown as ImgLayer} r={r as never} w={w} h={h} data={data} time={time} state={state} designer={designer} />,
+  Inspector: ({ layer, data, edit }) => {
+    useStore();
+    const l = layer as unknown as ImgLayer;
+    const ed = edit as unknown as (fn: (l: ImgLayer) => void, key?: string) => void;
+    const k = cfg(l);
+    const fit = fitOf(l);
+    const { src, st, missing } = resolve(l, data, 0);
+    const wanted = wantedSrc(l, data, 0);
+    const cropping = ui.crop.has(layer.id);
+    const view = ui.view.get(layer.id) ?? 'program';
+    const cropped = cropOf(l);
+    const big = st.s === 'ok' && st.size[0] * st.size[1] > 3840 * 2160;
+    return (
+      <>
+        <Section id="image-source" title="Source">
+          {wiredKeys(l.src).length ? (
+            <Content label="File" path="src" />
+          ) : (
+            <Row label="File">
+              <AssetPicker value={l.src} onChange={(v) => ed((x) => void ((x.src = v), (x.crop = undefined)))} />
+            </Row>
+          )}
+          {k.frames.length > 0 && <Note>An animated sequence is set: its frames are played instead of this file.</Note>}
+          {missing ? (
+            <Note>
+              <span style={{ color: '#ffb3c0' }}>{wanted ? 'Not found in the library' : 'No picture chosen'} — showing the fallback.</span>
+            </Note>
+          ) : st.s === 'ok' ? (
+            <Note>
+              {st.size[0]}×{st.size[1]} px{big ? ' · large: decoded once at load and cached, nothing is decoded per frame' : ''}
+            </Note>
+          ) : null}
+          <Row label="Fallback">
+            <AssetPicker value={k.fallback} onChange={(v) => ed((x) => void (x.fallback = v))} />
+          </Row>
+          <Note>Shown on air instead of the picture when the file cannot be found (without one, a neutral channel slate): never an empty frame or an error icon.</Note>
+        </Section>
+        <Section id="image-fit" title="Fit & crop">
+          <Seg
+            label="Fit"
+            value={fit}
+            onChange={(v) =>
+              ed((x) => {
+                if (v === 'original' || v === 'tile') x.fitMode = v;
+                else ((x.fitMode = undefined), (x.fit = v));
+              })
+            }
+            options={[
+              ['contain', 'Contain'],
+              ['cover', 'Cover'],
+              ['stretch', 'Stretch'],
+              ['original', 'Original'],
+              ['tile', 'Tile'],
+            ]}
+          />
+          {fit === 'tile' && <Range label="Tile size" path="tileScale" value={k.tileScale} min={5} max={200} unit=" %" />}
+          {fit === 'cover' && (
+            <>
+              <Note>Focal point: the orange dot on the stage, or click the thumbnail. It stays in view when Cover crops.</Note>
+              {!missing && st.s === 'ok' && <Thumb src={src} size={st.size} layer={l} edit={ed} />}
+            </>
+          )}
+          {fit !== 'tile' ? (
+            <>
+              <Toggle label="Crop" value={cropping} text="Edit the crop on the stage" onChange={(v) => setUi(() => (v ? ui.crop.add(layer.id) : ui.crop.delete(layer.id)))} />
+              {cropping ? (
+                <>
+                  {(['l', 't', 'r', 'b'] as const).map((s) => (
+                    <Range key={s} label={{ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s]} path={`crop.${s}`} value={0} min={0} max={0.9} step={0.01} fmt={(v) => `${Math.round(v * 100)} %`} />
+                  ))}
+                  <Btns
+                    list={[
+                      { label: 'Reset crop', cls: 'ghost', onClick: () => ed((x) => void (x.crop = undefined)) },
+                      { label: 'Done', cls: 'violet', onClick: () => setUi(() => ui.crop.delete(layer.id)) },
+                    ]}
+                  />
+                </>
+              ) : (
+                cropped.l + cropped.t + cropped.r + cropped.b > 0 && <Note>Cropped: {(['l', 't', 'r', 'b'] as const).map((s) => `${Math.round(cropped[s] * 100)}%`).join(' · ')} (left, top, right, bottom).</Note>
+              )}
+            </>
+          ) : (
+            <Note>Tile repeats the whole picture: the crop does not apply.</Note>
+          )}
+        </Section>
+        <Section id="image-shape" title="Shape & stroke">
+          <Seg
+            label="Mask"
+            path="mask"
+            value={k.mask}
+            options={[
+              ['none', 'Square'],
+              ['rounded', 'Rounded'],
+              ['circle', 'Circle'],
+            ]}
+          />
+          {k.mask === 'rounded' && <Range label="Radius" path="radius" value={k.radius} min={0} max={400} unit=" px" />}
+          {k.mask === 'circle' && <Note>Circle of the smallest side, centred: the speaker portrait.</Note>}
+          <ColorGroupRow layer={layer} prop="stroke" label="Stroke" />
+          <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+        </Section>
+        <Section id="image-colorize" title="Colorize">
+          <Seg
+            label="Mode"
+            path="colorize"
+            value={k.colorize}
+            options={[
+              ['none', 'Off'],
+              ['replace', 'Replace colour', 'Single-colour logo: every opaque pixel takes the colour'],
+              ['tint', 'Tint', 'Monochrome picture: greys take the colour'],
+            ]}
+          />
+          {k.colorize !== 'none' && <ColorPick label="Colour" path="tint" value={D.tint} />}
+          {k.colorize === 'replace' && <Msg level="info">Replace colour is meant for one-colour logos (SVG or PNG with transparency): on a photo it gives a flat silhouette.</Msg>}
+        </Section>
+        <Section id="image-seq" title="Animated sequence" closed={!k.frames.length}>
+          <FramesEditor layer={l} edit={ed} />
+          {k.frames.length > 0 ? (
+            <>
+              <Range label="Frame rate" path="fps" value={k.fps} min={2} max={30} unit=" fps" />
+              <Seg
+                label="Playback"
+                path="playMode"
+                value={k.playMode}
+                options={[
+                  ['loop', 'Loop'],
+                  ['once', 'Once'],
+                  ['count', 'N loops'],
+                ]}
+              />
+              {k.playMode === 'count' && <Num label="Loops" path="loops" value={k.loops} min={1} max={99} />}
+              <Seg
+                label="Start"
+                path="start"
+                value={k.start}
+                options={[
+                  ['in', 'At In'],
+                  ['manual', 'Manual'],
+                ]}
+              />
+              <Note>{k.start === 'in' ? 'Plays from the first frame at every TAKE.' : 'Waits on the first frame: the Operator has Play, Pause, Restart.'}</Note>
+            </>
+          ) : (
+            <Note>Add the pictures of the sequence (PNG with transparency, in order): they replace the file and play at the frame rate.</Note>
+          )}
+        </Section>
+        <Section id="image-preview" title="Output preview" closed>
+          <Seg
+            label="View"
+            value={view}
+            onChange={(v) => setUi(() => ui.view.set(layer.id, v))}
+            options={[
+              ['program', 'Program'],
+              ['fill', 'Fill'],
+              ['key', 'Key (alpha)'],
+            ]}
+          />
+          <Note>Designer only. Key shows the alpha as white on black, Fill the colours over black. Pictures are premultiplied when loaded: no dark fringe round logos on the key/fill output.</Note>
+        </Section>
+      </>
+    );
+  },
+  Operator: ({ layer, state, data, act, time }) => {
+    useStore();
+    const l = layer as unknown as ImgLayer;
+    const k = cfg(l);
+    const st = state as State | undefined;
+    const manual = k.frames.length > 0 && k.start === 'manual';
+    const [offset] = useState(() => time.nowMs - Date.now());
+    const now = () => Date.now() + offset;
+    useKeys(
+      manual
+        ? {
+            ' ': () => act(st?.playing ? 'pause' : 'play'),
+            r: () => act('restart'),
+            R: () => act('restart'),
+          }
+        : {},
+    );
+    const missing = resolve(l, data, 0).missing;
+    if (!k.frames.length || missing)
+      return (
+        <p className="hint wk-note">
+          <span className="none">{missing ? 'Fallback picture on air — see the alert above.' : 'No control for a still picture: it is taken and taken out like any graphic.'}</span>
+        </p>
+      );
+    if (!manual)
+      return (
+        <>
+          <SeqReadout layer={l} state={st} offset={offset} age={time.ageSecs} />
+          <p className="hint wk-note">
+            <span className="none">Sequence starts at In: no control needed. Set Start to Manual in the Designer for Play / Pause / Restart.</span>
+          </p>
+        </>
+      );
+    const ended = seqInfo(l, st, now(), 0).ended;
+    return (
+      <>
+        <Btns
+          list={[
+            { label: '▶ Play', cls: 'green big', keyHint: 'Space', disabled: !!st?.playing && !ended, onClick: () => act('play') },
+            { label: '❚❚ Pause', cls: 'big', disabled: !st?.playing, onClick: () => act('pause') },
+            { label: '↺ Restart', cls: 'violet big', keyHint: 'R', onClick: () => act('restart') },
+          ]}
+        />
+        <SeqReadout layer={l} state={st} offset={offset} />
+      </>
+    );
+  },
+  Overlay: ({ layer, w, h, scale, edit }) => {
+    useStore();
+    const l = layer as unknown as ImgLayer;
+    const ed = edit as unknown as (fn: (l: ImgLayer) => void, key?: string) => void;
+    const fit = fitOf(l);
+    const { st, missing } = resolve(l, {}, 0);
+    if (st.s !== 'ok' || missing) return null;
+    const c = cropOf(l);
+    if (ui.crop.has(layer.id) && fit !== 'tile') {
+      const [R] = place(l, st.size, [w, h], 'contain', { l: 0, t: 0, r: 0, b: 0 });
+      const fx = (x: number) => (x - R[0]) / R[2];
+      const fy = (y: number) => (y - R[1]) / R[3];
+      const r3 = (v: number) => +v.toFixed(3);
+      return (
+        <>
+          <Handle x={R[0] + c.l * R[2]} y={R[1] + c.t * R[3]} scale={scale} label="Crop: top left" onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), l: r3(clamp(fx(x), 0, 0.95 - c.r)), t: r3(clamp(fy(y), 0, 0.95 - c.b)) }), `crop-${layer.id}`)} />
+          <Handle x={R[0] + (1 - c.r) * R[2]} y={R[1] + (1 - c.b) * R[3]} scale={scale} label="Crop: bottom right" onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), r: r3(clamp(1 - fx(x), 0, 0.95 - c.l)), b: r3(clamp(1 - fy(y), 0, 0.95 - c.t)) }), `crop-${layer.id}`)} />
+        </>
+      );
+    }
+    if (fit === 'cover') {
+      const k = cfg(l);
+      const [F] = frameRect(l, w, h);
+      const ux = (k.focal.x - c.l) / (1 - c.l - c.r);
+      const uy = (k.focal.y - c.t) / (1 - c.t - c.b);
+      return (
+        <Handle
+          x={F[0] + clamp(ux, 0, 1) * F[2]}
+          y={F[1] + clamp(uy, 0, 1) * F[3]}
+          scale={scale}
+          label="Focal point: kept in view when Cover crops"
+          onDrag={(x, y) =>
+            ed((q) => {
+              const cc = cropOf(q);
+              const [G] = frameRect(q, w, h);
+              q.focal = { x: +(cc.l + clamp((x - G[0]) / G[2], 0, 1) * (1 - cc.l - cc.r)).toFixed(3), y: +(cc.t + clamp((y - G[1]) / G[3], 0, 1) * (1 - cc.t - cc.b)).toFixed(3) };
+            }, `focal-${layer.id}`)
+          }
+        />
+      );
+    }
+    return null;
+  },
+  warnings: (layer, { data, state }) => {
+    const l = layer as unknown as ImgLayer;
+    const k = cfg(l);
+    const out: Warning[] = [];
+    const wanted = wantedSrc(l, data, 0);
+    const r = resolve(l, data, 0);
+    if (r.missing) {
+      const shown = r.st.s === 'missing' ? 'the channel slate' : `the fallback ${r.src}`;
+      const also = k.fallback && r.st.s === 'missing' ? ` (the fallback ${k.fallback} cannot be found either)` : '';
+      out.push({ level: 'error', text: wanted ? `File not found: ${wanted}. On air: ${shown} instead${also}.` : `No picture chosen: ${shown} is shown${also}.`, op: true });
+    }
+    const missingFrames = k.frames.filter((f) => status(interpolateText(f, data)).s === 'missing').length;
+    if (k.frames.length && missingFrames) out.push({ level: 'warn', text: `${missingFrames} frame${missingFrames > 1 ? 's' : ''} of the sequence cannot be found: the fallback shows in their place.`, op: true });
+    if (k.colorize !== 'none' && r.missing) out.push({ level: 'info', text: 'Colorize does not apply to the fallback picture.' });
+    if (k.frames.length && !r.missing && k.start === 'manual') {
+      const s = seqInfo(l, state as State, Date.now(), 0);
+      if (!(state as State | undefined)?.playing || s.ended) out.push({ level: 'info', text: `Sequence ${s.ended ? 'finished' : 'paused'} on frame ${s.idx + 1}/${s.n}.`, op: 'only' });
+    }
+    return out;
+  },
 });

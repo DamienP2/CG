@@ -1137,7 +1137,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
                 }}
               />
             ))}
-          {layer.type === 'image' && (
+          {layer.type === 'image' && !spec?.Inspector && (
             <div className="row">
               <span className="prop-label">Fit</span>
               <Segmented
