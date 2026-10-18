@@ -811,7 +811,7 @@ function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }:
 
 /** Internal controls of one graphic on air: widgets, number values, triggers, continue / update / out. */
 /** Operator controls of a spec widget of the graphic on air (web/src/widgets). */
-function SpecControls({ layer, item, act }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void }) {
+function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number }) {
   const def = widgetOf(layer.type)!;
   const Op = def.Operator!;
   const offset = useApp((s) => s.serverOffset);
@@ -827,7 +827,7 @@ function SpecControls({ layer, item, act }: { layer: Layer; item: PlayoutItem; a
         <span className="muted small">{def.label}</span>
       </div>
       <Warnings list={warnings} />
-      <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / 50, defaultTz: tz }} />
+      <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps }} />
     </div>
   );
 }
@@ -864,7 +864,7 @@ function AirControls({ project, zone, item, command, onSaveData, nextRowOf }: { 
       {t.layers
         .filter((l) => l.visible && widgetOf(l.type)?.Operator)
         .map((l) => (
-          <SpecControls key={l.id} layer={l} item={item} act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })} />
+          <SpecControls key={l.id} layer={l} item={item} fps={project.frameRate.num / project.frameRate.den || 50} act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })} />
         ))}
       {timed
         .filter((l) => !widgetOf(l.type)?.Operator)
