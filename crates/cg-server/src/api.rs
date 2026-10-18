@@ -1187,6 +1187,8 @@ async fn template_thumbnail(
     {
         data.extend(extra);
     }
+    // Data sets show their row (the first, or the one asked).
+    cg_core::datapath::bind_datasets(&template, &mut data, &s.data.store());
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());

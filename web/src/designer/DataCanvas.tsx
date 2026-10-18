@@ -1,11 +1,11 @@
-import { ArrowDown, ArrowDownUp, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, INPUTS, measureLayer, nodeValues } from '../engine/logic';
 import { api } from '../store';
-import { TEXT_LIKE, type CondOp, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
+import { columnKey, rowKey, TEXT_LIKE, type CondOp, type DataSet, type RowChange, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -130,6 +130,9 @@ function stepOf(n: FlowNode): DataStep {
   return step as DataStep;
 }
 
+/** Height of a data set's column row (its ports follow it). */
+const DS_ROW = 28;
+
 /** The source node and the steps leading to node `id` (included). */
 function chainOf(flow: DataFlow, id: string): { source: FlowNode & { type: 'source' }; steps: DataStep[] } | null {
   const byId = new Map(flow.nodes.map((n) => [n.id, n]));
@@ -190,6 +193,16 @@ function compile(t: Template, flow: DataFlow) {
     if (c) f.binding = { source: c.source.source, path: '', list: c.source.list, steps: c.steps };
     else delete f.binding;
   }
+  // Data sets: the rows of the chain wired into them.
+  const sets: DataSet[] = [];
+  for (const n of flow.nodes) {
+    if (n.type !== 'dataset') continue;
+    const from = flow.edges.find((e) => e.to === n.id)?.from;
+    const c = from ? chainOf(flow, from) : null;
+    if (c) sets.push({ key: n.key, name: n.name, source: c.source.source, list: c.source.list, steps: c.steps, change: n.change });
+  }
+  if (sets.length) t.datasets = sets;
+  else delete t.datasets;
   t.dataflow = flow.nodes.length ? flow : undefined;
   if (!t.dataflow) delete t.dataflow;
 }
@@ -210,6 +223,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const [layout, setLayoutState] = useState<Layout>(() => loadLayout(template.id));
   const [drag, setDrag] = useState<{ wire: Wire; x: number; y: number } | null>(null);
   const [ghost, setGhost] = useState<{ label: string; x: number; y: number } | null>(null);
+  // The columns each data set node shows (from its preview), by node id.
+  const [dsColumns, setDsColumns] = useState<Record<string, string[]>>({});
   const logic: Logic = template.logic ?? { nodes: [], edges: [] };
   const migrated = useMemo(() => (template.dataflow ? null : migrate(template)), [template]);
   const flow: DataFlow = template.dataflow ?? migrated!;
@@ -336,6 +351,15 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     f.edges.push({ from, to });
   };
 
+  // Data set columns: where their ports are (the node reports its columns).
+  const columnPorts = new Map<string, Pt>();
+  for (const n of flow.nodes)
+    if (n.type === 'dataset')
+      (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), { x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 }));
+  /** Where a value wired by key starts: a variable, or a data set column. */
+  const keyOut = (key: string): Pt | null => (nodePos.has(`f:${key}`) ? outOf(`f:${key}`, widthOf(`f:${key}`, W.field)) : (columnPorts.get(key) ?? null));
+  const wiredKey = (k: string) => template.fields.some((f) => f.key === k) || columnPorts.has(k);
+
   // ---- Wires of the template.
   const wires: { d: string; title: string; onClick: () => void; data?: boolean; edge?: number }[] = [];
   flow.edges.forEach((e, i) => {
@@ -350,10 +374,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       const to = layerIn(l, port);
       if (!to) continue;
       const content = contentOf(l).includes(port);
-      const keys = content ? template.fields.filter((f) => tokensIn(l, port, f.key)).map((f) => f.key) : [l.bindings[port as Prop]].filter((k): k is string => !!k && template.fields.some((f) => f.key === k));
+      const keys = content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [l.bindings[port as Prop]].filter((k): k is string => !!k && wiredKey(k));
       for (const key of keys)
         wires.push({
-          d: curve(outOf(`f:${key}`, widthOf(`f:${key}`, W.field)), to),
+          d: curve(keyOut(key)!, to),
+          data: columnPorts.has(key),
           title: `${key} → ${l.name} ${content ? port : PROP_LABELS[port as Prop]} (click to remove)`,
           onClick: () =>
             update((t) => {
@@ -368,7 +393,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const a = nodes.get(e.from);
     const b = nodes.get(e.to);
     if (!a || !b) return;
-    const from = a.type === 'field' ? (nodePos.has(`f:${a.key}`) ? outOf(`f:${a.key}`, widthOf(`f:${a.key}`, W.field)) : null) : logicOut(a);
+    const from = a.type === 'field' ? keyOut(a.key) : logicOut(a);
     let to: Pt | null;
     if (b.type === 'target') {
       const l = template.layers.find((x) => x.id === b.layer);
@@ -385,7 +410,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       const n = flow.nodes.find((x) => x.id === w.id);
       return n ? outOf(n.id, flowWidth(n)) : null;
     }
-    if (w.kind === 'field') return nodePos.has(`f:${w.key}`) ? outOf(`f:${w.key}`, widthOf(`f:${w.key}`, W.field)) : null;
+    if (w.kind === 'field') return keyOut(w.key);
     const n = nodes.get(w.id);
     return n ? logicOut(n) : null;
   };
@@ -423,7 +448,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       editLogic((l) => {
         let from = w.kind === 'logic' ? w.id : '';
         if (w.kind === 'field') {
-          const fp = nodePos.get(`f:${w.key}`)!;
+          const fp = keyOut(w.key) ?? { x: 0, y: 0 };
           from = l.nodes.find((n) => n.type === 'field' && n.key === w.key)?.id ?? '';
           if (!from) {
             from = newId();
@@ -557,6 +582,17 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     for (const [id, p] of nodePos) if ((id.startsWith('f:') || id.startsWith('l:')) && p.x >= x0) moved[id] = { x: p.x + shift, y: p.y };
     setLayout((l) => ({ ...l, pos: { ...l.pos, ...moved } }));
   };
+  const addDataset = (at: Pt, edge?: number) => {
+    const taken = new Set([...template.fields.map((f) => f.key), ...flow.nodes.flatMap((n) => (n.type === 'dataset' ? [n.key] : []))]);
+    const name = `Data set ${flow.nodes.filter((n) => n.type === 'dataset').length + 1}`;
+    editFlow((f) => {
+      const n: FlowNode = { id: newId(), ...at, type: 'dataset', key: fieldKey(name, taken), name, change: 'outIn' };
+      f.nodes.push(n);
+      // Dropped on a wire: fed from where it starts.
+      const e = edge !== undefined ? f.edges[edge] : undefined;
+      if (e) f.edges.push({ from: e.from, to: n.id });
+    });
+  };
   const addSource = (source: string) => (at: Pt) => editFlow((f) => void f.nodes.push({ id: newId(), ...at, type: 'source', source, list: '' }));
 
   const dragFrom = drag && wireStart(drag.wire);
@@ -634,6 +670,15 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             );
           })}
 
+          <div className="dc-pal-title">Into the graphic</div>
+          <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, 'Data set', addDataset)}>
+            <Rows3 size={14} />
+            <span>
+              <strong>Data set</strong>
+              <em>Rows the operator steps through · a port per column</em>
+            </span>
+          </button>
+
           <div className="dc-pal-title">Operations</div>
           {OPERATIONS.map((k) => (
             <button key={k.type} className={`kind-${k.type}`} onPointerDown={(e) => fromPalette(e, k.label, (at) => editLogic((l) => void l.nodes.push(makeNode(k.type, template, at.x, at.y))))}>
@@ -684,6 +729,31 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       <SourceBody node={n} version={s?.updatedAt ?? 0} data={values} onList={(list) => setFlowNode(n.id, (x) => void ((x as { list: string }).list = list))} />
                     </div>
                     {resizer(n.id)}
+                  </div>
+                );
+              }
+              if (n.type === 'dataset') {
+                const into = flow.edges.find((e) => e.to === n.id)?.from;
+                return (
+                  <div key={n.id} className="logic-node dc-node kind-dataset" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
+                    <div className="ln-head" style={{ height: HEAD }}>
+                      <span className="port in" data-flow={n.id} title="Drop a source or a step here" />
+                      <Rows3 size={12} />
+                      <input className="dc-title" value={n.name} onChange={(e) => setFlowNode(n.id, (x) => void ((x as { name: string }).name = e.target.value), `ds-name-${n.id}`)} title={`Key: ${n.key}`} />
+                      <button className="ln-del" title="Remove" onClick={() => removeFlowNode(n.id)}>
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                    <DataSetBody
+                      node={n}
+                      chain={into ? chainOf(flow, into) : null}
+                      data={values}
+                      onColumns={(cols) => setDsColumns((m) => (m[n.id]?.join('\n') === cols.join('\n') ? m : { ...m, [n.id]: cols }))}
+                      onRow={(row) => useDesigner.setState((st) => ({ previewData: { ...st.previewData, [rowKey(n.key)]: String(row) } }))}
+                      onChange={(change) => setFlowNode(n.id, (x) => void ((x as { change: RowChange }).change = change))}
+                      startWire={(e, key) => startWire(e, { kind: 'field', key })}
+                    />
+                    {resizer(n.id, false)}
                   </div>
                 );
               }
@@ -1001,7 +1071,7 @@ function columnTypes(stage: Stage): CellType[] {
 const TYPE_ICON: Record<CellType, typeof Type> = { text: Type, number: Hash, image: ImageIcon, color: Palette, boolean: ToggleLeft };
 
 /** A cell as it reads: the picture, the colour, or the text. */
-function Cell({ v }: { v: string }) {
+export function Cell({ v }: { v: string }) {
   const t = cellType(v);
   if (t === 'image') return <img className="dc-thumb" src={v} alt="" loading="lazy" />;
   if (t === 'color')
@@ -1243,6 +1313,91 @@ function ColumnChips({ columns, selected, onChange }: { columns: string[]; selec
         </button>
       )}
     </div>
+  );
+}
+
+const CHANGES: { value: RowChange; label: string; hint: string }[] = [
+  { value: 'outIn', label: 'Out › In', hint: 'The graphic goes out, then comes in with the new row' },
+  { value: 'fade', label: 'Crossfade', hint: 'The new row fades over the old one' },
+  { value: 'cut', label: 'Cut', hint: 'The values change at once' },
+];
+
+/**
+ * A data set: its columns (a port each, with the value of the row shown),
+ * the row previewed in the Designer, and how the graphic on air goes from
+ * one row to the next.
+ */
+function DataSetBody({
+  node,
+  chain,
+  data,
+  onColumns,
+  onRow,
+  onChange,
+  startWire,
+}: {
+  node: FlowNode & { type: 'dataset' };
+  chain: ReturnType<typeof chainOf>;
+  data: Data;
+  onColumns: (cols: string[]) => void;
+  onRow: (row: number) => void;
+  onChange: (c: RowChange) => void;
+  startWire: (e: React.PointerEvent, key: string) => void;
+}) {
+  const res = useStages(chain?.source.source ?? '', chain?.source.list ?? '', chain?.steps ?? [], data);
+  const t = chain ? res?.stages[res.stages.length - 1] : undefined;
+  const cols = t?.columns ?? [];
+  useEffect(() => onColumns(cols), [cols.join('\n')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const types = t ? columnTypes(t) : [];
+  const total = t?.total ?? 0;
+  const row = Math.min(Math.max(1, parseInt(data[rowKey(node.key)] ?? '1', 10) || 1), Math.max(1, total));
+  return (
+    <>
+      {cols.map((c, i) => {
+        const Icon = TYPE_ICON[types[i]];
+        const v = t?.rows[row - 1]?.[i] ?? '';
+        return (
+          <div key={c} className="ds-col" style={{ height: DS_ROW }}>
+            <Icon size={11} className={`dc-type t-${types[i]}`} />
+            <span className="ds-name">{c}</span>
+            <span className="ds-val" title={v}>
+              <Cell v={v} />
+            </span>
+            <span className="port out" title={`Drag ${c} to a layer's value (key ${columnKey(node.key, c)})`} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
+          </div>
+        );
+      })}
+      <div className="ln-body">
+        {!chain && <span className="dc-meta">Wire a source (or a step) into it.</span>}
+        {chain && res === null && <span className="dc-meta">No data at this place.</span>}
+        {chain && t && (
+          <div className="ds-cursor">
+            <span className="dc-meta">Row</span>
+            <b>
+              {total ? row : 0} / {total}
+            </b>
+            <span className="dc-meta ds-first">{t.rows[row - 1]?.find((x) => x && cellType(x) === 'text') ?? ''}</span>
+            <button className="icon-btn ghost" title="Previous row (preview)" disabled={row <= 1} onClick={() => onRow(row - 1)}>
+              <ArrowLeft size={12} />
+            </button>
+            <button className="icon-btn ghost" title="Next row (preview)" disabled={row >= total} onClick={() => onRow(row + 1)}>
+              <ArrowRight size={12} />
+            </button>
+          </div>
+        )}
+        <div className="ds-opt">
+          <span className="dc-meta">On change</span>
+          <div className="seg ds-seg">
+            {CHANGES.map((c) => (
+              <button key={c.value} className={node.change === c.value ? 'on' : ''} title={c.hint} onClick={() => onChange(c.value)}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="dc-meta">The operator steps through the rows; the values follow the source live.</span>
+      </div>
+    </>
   );
 }
 

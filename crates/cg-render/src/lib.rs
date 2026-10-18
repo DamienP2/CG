@@ -281,6 +281,12 @@ impl Renderer {
                     fps,
                 };
                 self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref());
+                // A data set row change: the old values fade out above.
+                if let Some(f) = &item.fade {
+                    let logic = self.logic_values(&t, item.frame, &f.data);
+                    let old = Ctx { data: &f.data, logic, ..ctx };
+                    self.draw_children(&mut pm, &old, None, root, f.opacity(), zone_mask.as_ref());
+                }
             }
         }
         Frame {

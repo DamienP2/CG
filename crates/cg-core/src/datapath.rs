@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use serde_json::Value as Json;
 
 use crate::anim::Data;
-use crate::model::{CondOp, Condition, DataFilter, DataSort, DataStep, FieldBinding, FilterOp, Template};
+use crate::model::{CondOp, Condition, DataFilter, DataSet, DataSort, DataStep, FieldBinding, FilterOp, Template};
 
 /// Latest value of each data source, by source id.
 pub type Store = HashMap<String, Json>;
@@ -525,12 +525,51 @@ pub fn read(value: &Json, b: &FieldBinding, data: &Data) -> Option<String> {
     pipeline(value, b.list.as_deref().unwrap_or(""), &b.steps, data).map(|t| t.last().unwrap().text())
 }
 
+/// Fills the columns of the current row of each data set of `template`
+/// into `data` (the row number is in the data, 1 = first, kept within the
+/// rows). Returns true when a value changed.
+pub fn bind_datasets(template: &Template, data: &mut Data, store: &Store) -> bool {
+    let mut changed = false;
+    for ds in &template.datasets {
+        changed |= bind_dataset(ds, data, store);
+    }
+    changed
+}
+
+fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
+    let Some(v) = store.get(&ds.source) else { return false };
+    let Some(t) = pipeline(v, &ds.list, &ds.steps, data).and_then(|mut s| s.pop()) else {
+        return false;
+    };
+    let set = |k: String, v: String, data: &mut Data| {
+        if data.get(&k) != Some(&v) {
+            data.insert(k, v);
+            true
+        } else {
+            false
+        }
+    };
+    let n = t.rows.len();
+    let row = data
+        .get(&ds.row_key())
+        .and_then(|r| r.trim().parse::<usize>().ok())
+        .unwrap_or(1)
+        .clamp(1, n.max(1));
+    let mut changed = set(ds.count_key(), n.to_string(), data);
+    for (i, c) in t.columns.iter().enumerate() {
+        let v = t.rows.get(row - 1).and_then(|r| r.get(i)).cloned().unwrap_or_default();
+        changed |= set(ds.column_key(c), v, data);
+    }
+    changed
+}
+
 /// Sources a template reads.
 pub fn sources(template: &Template) -> impl Iterator<Item = &str> {
     template
         .fields
         .iter()
         .filter_map(|f| f.binding.as_ref().map(|b| b.source.as_str()))
+        .chain(template.datasets.iter().map(|d| d.source.as_str()))
 }
 
 /// A JSON value as display text.
@@ -847,5 +886,33 @@ mod tests {
         let join = DataStep::Transform { columns: vec![], ops: vec![DataFilter::Join { separator: " · ".into() }] };
         let only = DataStep::Filter { conditions: vec![], any: false, from: 0, count: 2, columns: vec!["team".into()] };
         assert_eq!(pipeline(&v, "standings", &[only, join], &Data::new()).unwrap()[2].text(), "Lens · PSG");
+    }
+
+    #[test]
+    fn dataset_rows() {
+        use crate::model::{DataSet, RowChange};
+        let mut t: Template = serde_json::from_value(serde_json::json!({"id": "t", "name": "t", "duration": 10})).unwrap();
+        t.datasets.push(DataSet {
+            key: "standings".into(),
+            name: "Standings".into(),
+            source: "league".into(),
+            list: "table".into(),
+            steps: vec![],
+            change: RowChange::OutIn,
+        });
+        let store: Store = [("league".to_string(), serde_json::json!({"table": [{"team": "PSG", "club.city": "Paris"}, {"team": "OM", "club.city": "Marseille"}]}))].into();
+        let mut data = Data::new();
+        assert!(bind_datasets(&t, &mut data, &store));
+        assert_eq!(data["standings_team"], "PSG");
+        assert_eq!(data["standings_club_city"], "Paris");
+        assert_eq!(data["standings__count"], "2");
+        data.insert("standings__row".into(), "2".into());
+        bind_datasets(&t, &mut data, &store);
+        assert_eq!(data["standings_team"], "OM");
+        // Past the end: the last row.
+        data.insert("standings__row".into(), "9".into());
+        bind_datasets(&t, &mut data, &store);
+        assert_eq!(data["standings_team"], "OM");
+        assert!(!bind_datasets(&t, &mut data, &store));
     }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import type { Data, DataFilter, DataSort, DataSourceInfo, DataStatus, DataStep, FieldBinding, Template } from '../engine/types';
+import { columnKey, countKey, rowKey, type Data, type DataFilter, type DataSet, type DataSort, type DataSourceInfo, type DataStatus, type DataStep, type FieldBinding, type Template } from '../engine/types';
 import { api } from '../store';
 
 /** Data sources, their status (pushed live) and a version per source. */
@@ -79,6 +79,18 @@ export async function readBinding(b: FieldBinding, data: Data): Promise<string |
   return lookup(b.source, b.path, data, b.filters, b.sort);
 }
 
+/** The columns of the current row of a data set (and its number of rows), as the server fills them. */
+export async function readDataset(ds: DataSet, data: Data): Promise<Data | null> {
+  const r = await pipeline(ds.source, ds.list, ds.steps ?? [], data);
+  const t = r?.stages[r.stages.length - 1];
+  if (!t) return null;
+  const n = t.total;
+  const row = Math.min(Math.max(1, parseInt(data[rowKey(ds.key)] ?? '1', 10) || 1), Math.max(1, n));
+  const out: Data = { [countKey(ds.key)]: String(n) };
+  t.columns.forEach((c, i) => (out[columnKey(ds.key, c)] = t.rows[row - 1]?.[i] ?? ''));
+  return out;
+}
+
 /**
  * `data` with the template's bound fields filled from their sources, like the
  * server does on air (previews in the designer and the operator).
@@ -86,10 +98,11 @@ export async function readBinding(b: FieldBinding, data: Data): Promise<string |
 export function useBoundData(template: Template | null | undefined, data: Data): Data {
   const versions = useData((s) => s.versions);
   const bound = template?.fields.filter((f) => f.binding?.source && (f.binding.path || isTable(f.binding))) ?? [];
-  const key = JSON.stringify([bound.map((f) => [f.key, f.binding]), data, bound.map((f) => versions[f.binding!.source] ?? 0)]);
+  const sets = template?.datasets ?? [];
+  const key = JSON.stringify([bound.map((f) => [f.key, f.binding]), sets, data, bound.map((f) => versions[f.binding!.source] ?? 0), sets.map((d) => versions[d.source] ?? 0)]);
   const [values, setValues] = useState<Record<string, string>>({});
   useEffect(() => {
-    if (!bound.length) {
+    if (!bound.length && !sets.length) {
       setValues({});
       return;
     }
@@ -102,6 +115,7 @@ export function useBoundData(template: Template | null | undefined, data: Data):
           if (v !== null) out[f.key] = v;
         }),
       );
+      for (const r of await Promise.all(sets.map((d) => readDataset(d, data)))) if (r) Object.assign(out, r);
       if (live) setValues(out);
     }, 150);
     return () => {

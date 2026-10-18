@@ -2,13 +2,14 @@ import { ArrowDown, ArrowUp, ChevronsRight, CircleStop, Copy, MoreHorizontal, Pa
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import type { Command, Field, Marker, PlayoutItem, Project, ReadMode, RundownItem, Template, Zone } from '../engine/types';
+import { rowKey, type Command, type Field, type Marker, type PlayoutItem, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
+import { AirRows, DataSetPanel } from './DataSets';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
@@ -235,15 +236,16 @@ export function Operator({ channelId }: { channelId: string | null }) {
     const t = project?.templates.find((x) => x.id === r.templateId);
     return { ...(t ? defaultData(t) : {}), ...(r.id === item?.id ? draft : r.data) };
   };
-  const takeItem = (r: RundownItem) => {
-    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: dataOf(r), rundownId: r.id });
+  const takeItem = (r: RundownItem, extra?: Record<string, string>) => {
+    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: { ...dataOf(r), ...extra }, rundownId: r.id });
     const z = zoneOf(r);
     if (z) setAirSel(z.id);
   };
   const take = () => {
     if (!item) return;
     takeItem(item);
-    // Select the next item of the playlist.
+    // Select the next item of the playlist (a graphic with rows stays: its next row).
+    if (template?.datasets?.length) return;
     const idx = items.findIndex((r) => r.id === item.id);
     if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
   };
@@ -425,7 +427,21 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   <Play size={13} fill="currentColor" /> Take
                 </button>
               </header>
-              <div className="opx-edit">
+              <div className={`opx-edit ${template.datasets?.length ? 'with-sets' : ''}`}>
+                {template.datasets?.map((ds, i) => (
+                  <DataSetPanel
+                    key={ds.key}
+                    ds={ds}
+                    draft={draft}
+                    onAir={onAirByItem.get(item.id)}
+                    operate={operate}
+                    zone={itemZone?.id}
+                    onNext={(row) => editDraft({ [rowKey(ds.key)]: String(row) })}
+                    onTake={(row) => takeItem(item, { [rowKey(ds.key)]: String(row) })}
+                    command={command}
+                    keys={i === 0}
+                  />
+                ))}
                 <div className="opx-fields">
                   {template.fields.length === 0 && <p className="opx-hint">This graphic has no variables: take it as it is.</p>}
                   {template.fields.map((f) => {
@@ -647,6 +663,11 @@ function GraphicRow(props: {
           <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? 'no zone'} · {t?.name ?? 'missing template'}
         </span>
       </span>
+      {!air && !!t?.datasets?.length && (
+        <span className="opx-ds-badge" title={`Rows of ${t.datasets.map((d) => d.name).join(', ')}: step through them once on air`}>
+          data set
+        </span>
+      )}
       {air && <span className={`opx-tally ${paused ? 'amber' : 'red'}`}>{phaseLabel(air, project)}</span>}
       {!air && props.next && <span className="opx-tally green">NEXT</span>}
       {props.editable && (
@@ -800,6 +821,7 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
   const r = item.rundownId ? project.rundown.find((x) => x.id === item.rundownId) : undefined;
   return (
     <div className="opx-controls">
+      {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} />}
       {timed.map((l) => {
         const c = item.clocks?.[l.id];
         const running = c ? c.pausedAt == null : !l.manualStart;
@@ -848,7 +870,7 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
           ))}
         </div>
       )}
-      {!timed.length && !numbers.length && !triggers.length && <p className="opx-hint">This graphic has no internal controls.</p>}
+      {!timed.length && !numbers.length && !triggers.length && !t.datasets?.length && <p className="opx-hint">This graphic has no internal controls.</p>}
       <div className="opx-actions">
         <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title="F2 / Space">
           <ChevronsRight size={14} /> Continue

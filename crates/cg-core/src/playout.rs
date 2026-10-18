@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
-use crate::model::{Layer, LayerKind, Project, Resume, Template, ZoneTransition};
+use crate::model::{Layer, LayerKind, Project, Resume, RowChange, Template, ZoneTransition};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +65,26 @@ pub struct PlayoutItem {
     /// Out animation: `target` is a pause, not the end.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pause_ahead: bool,
+    /// The graphic as it was before a data set row change, fading out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fade: Option<Fade>,
+}
+
+/// A cross-fade from the data the graphic had (drawn fading out above it).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fade {
+    pub data: Data,
+    /// Frames since the change.
+    pub frame: f64,
+    pub length: f64,
+}
+
+impl Fade {
+    /// Opacity of the old data, 1 → 0.
+    pub fn opacity(&self) -> f32 {
+        (1.0 - self.frame / self.length.max(1.0)).clamp(0.0, 1.0) as f32
+    }
 }
 
 /// Own time of a widget layer (timer, ticker, roll…), in frames on air.
@@ -130,6 +150,7 @@ impl PlayoutItem {
             clocks: BTreeMap::new(),
             held: 0.0,
             pause_ahead: false,
+            fade: None,
         }
     }
 
@@ -235,6 +256,17 @@ pub enum Command {
         target: String,
         control: WidgetControl,
     },
+    /// Shows another row of a data set of the graphic on air (`dataset`: its
+    /// key or name; `row`: 1 = first), the way the data set says: out and
+    /// in again, a cross-fade, or at once.
+    Row {
+        #[serde(default)]
+        zone: Option<String>,
+        #[serde(default)]
+        layer: Option<u32>,
+        dataset: String,
+        row: u32,
+    },
     /// Resumes every graphic holding on a pause that waits for this trigger.
     Trigger { name: String },
     /// Removes the graphic(s) at once; without zone or layer, everything.
@@ -270,6 +302,8 @@ pub enum PlayoutError {
     UnknownWidget(String),
     #[error("nothing on air on layer {0}")]
     EmptyLayer(u32),
+    #[error("no data set `{0}` in the graphic on air")]
+    UnknownDataset(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -440,6 +474,61 @@ impl ChannelState {
                     None => item.data.extend(data),
                 }
             }
+            Command::Row {
+                zone,
+                layer,
+                dataset,
+                row,
+            } => {
+                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let item = self
+                    .layers
+                    .get_mut(&layer)
+                    .ok_or(PlayoutError::EmptyLayer(layer))?;
+                let t = project
+                    .template(&item.template_id)
+                    .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
+                let ds = t
+                    .datasets
+                    .iter()
+                    .find(|d| d.key == dataset || d.name.eq_ignore_ascii_case(dataset.trim()))
+                    .ok_or_else(|| PlayoutError::UnknownDataset(dataset.clone()))?;
+                let row = (ds.row_key(), row.max(1).to_string());
+                // Already going out to come back: the row it comes back with.
+                if let Some(q) = &mut item.next {
+                    q.data.insert(row.0, row.1);
+                    return Ok(());
+                }
+                if matches!(item.phase, Phase::Out | Phase::OutHold) {
+                    item.data.insert(row.0, row.1);
+                    return Ok(());
+                }
+                match ds.change {
+                    RowChange::OutIn => {
+                        let mut data = item.data.clone();
+                        data.insert(row.0.clone(), row.1.clone());
+                        let take = QueuedTake {
+                            template_id: item.template_id.clone(),
+                            data,
+                            rundown_id: item.rundown_id.clone(),
+                            target: hold_target(t, 0.0),
+                        };
+                        if begin_out(project, item) {
+                            item.next = Some(take);
+                        } else {
+                            item.data.insert(row.0, row.1);
+                        }
+                    }
+                    RowChange::Fade => {
+                        let fps = project.frame_rate.as_f64().max(1.0);
+                        item.fade = Some(Fade { data: item.data.clone(), frame: 0.0, length: (fps * 0.5).round() });
+                        item.data.insert(row.0, row.1);
+                    }
+                    RowChange::Cut => {
+                        item.data.insert(row.0, row.1);
+                    }
+                }
+            }
             Command::Widget {
                 zone,
                 layer,
@@ -487,6 +576,13 @@ impl ChannelState {
         let mut finished = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
             item.age += frames;
+            if let Some(f) = &mut item.fade {
+                f.frame += frames;
+                changed = true;
+                if f.frame >= f.length {
+                    item.fade = None;
+                }
+            }
             if matches!(item.phase, Phase::Holding | Phase::OutHold) {
                 item.held += frames;
                 continue;
@@ -539,7 +635,7 @@ impl ChannelState {
     pub fn is_animating(&self) -> bool {
         self.layers
             .values()
-            .any(|i| !matches!(i.phase, Phase::Holding | Phase::OutHold))
+            .any(|i| i.fade.is_some() || !matches!(i.phase, Phase::Holding | Phase::OutHold))
     }
 }
 
@@ -561,6 +657,7 @@ mod tests {
             templates: vec![Template {
                 logic: Default::default(),
                 dataflow: None,
+                datasets: vec![],
                 revision: 0,
                 marker_model: crate::model::MARKER_MODEL,
                 id: "t".into(),
@@ -606,6 +703,40 @@ mod tests {
                 areas: Default::default(),
             }],
         }
+    }
+
+    #[test]
+    fn dataset_row_changes() {
+        use crate::model::{DataSet, RowChange};
+        let mut p = project();
+        p.templates[0].datasets.push(DataSet { key: "ds".into(), name: "Guests".into(), source: "s".into(), list: String::new(), steps: vec![], change: RowChange::OutIn });
+        let mut st = ChannelState::default();
+        st.apply(&p, Command::take("z", "t")).unwrap();
+        st.tick(500.0);
+        let row = |r| Command::Row { zone: Some("z".into()), layer: None, dataset: "guests".into(), row: r };
+        // Out › In: out with the old row, back with the new one.
+        st.apply(&p, row(2)).unwrap();
+        let item = st.layers.values().next().unwrap();
+        assert_eq!(item.phase, Phase::Out);
+        assert_eq!(item.next.as_ref().unwrap().data["ds__row"], "2");
+        assert!(!item.data.contains_key("ds__row"));
+        // Asked again while going out: the row it comes back with.
+        st.apply(&p, row(3)).unwrap();
+        assert_eq!(st.layers.values().next().unwrap().next.as_ref().unwrap().data["ds__row"], "3");
+        st.tick(500.0);
+        let item = st.layers.values().next().unwrap();
+        assert_eq!(item.data["ds__row"], "3");
+        // Fade: the old data fades out over half a second.
+        st.tick(500.0);
+        p.templates[0].datasets[0].change = RowChange::Fade;
+        st.apply(&p, row(4)).unwrap();
+        let item = st.layers.values().next().unwrap();
+        assert_eq!(item.data["ds__row"], "4");
+        assert_eq!(item.fade.as_ref().unwrap().data["ds__row"], "3");
+        assert!(st.is_animating());
+        st.tick(100.0);
+        assert!(st.layers.values().next().unwrap().fade.is_none());
+        assert_eq!(st.apply(&p, Command::Row { zone: Some("z".into()), layer: None, dataset: "nope".into(), row: 1 }), Err(PlayoutError::UnknownDataset("nope".into())));
     }
 
     #[test]

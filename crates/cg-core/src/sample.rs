@@ -197,6 +197,7 @@ pub fn lower_third() -> Template {
     Template {
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -328,6 +329,7 @@ pub fn score_bug() -> Template {
     Template {
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -465,6 +467,7 @@ pub fn clock() -> Template {
     Template {
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -573,6 +576,7 @@ pub fn ticker() -> Template {
     Template {
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -635,6 +639,7 @@ pub fn credits() -> Template {
     Template {
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -664,6 +669,7 @@ fn simple(id: &str, name: &str, duration: f64, fields: Vec<Field>, layers: Vec<L
     Template {
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
         zone: String::new(),

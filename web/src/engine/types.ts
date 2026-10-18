@@ -196,8 +196,26 @@ export interface SortKey {
   numeric?: boolean;
 }
 
-/** A node of the Data canvas graph: a source's list, or a step. */
-export type FlowNode = { id: string; x: number; y: number } & ({ type: 'source'; source: string; list: string } | DataStep);
+/** How the graphic on air goes from one row of a data set to the next. */
+export type RowChange = 'outIn' | 'fade' | 'cut';
+
+/** Rows the operator steps through (mirror of model::DataSet); compiled from a Data set node. */
+export interface DataSet {
+  key: string;
+  name: string;
+  source: string;
+  list: string;
+  steps?: DataStep[];
+  change?: RowChange;
+}
+
+/** Data keys of a data set: its row, its number of rows, each column of the current row. */
+export const rowKey = (key: string) => `${key}__row`;
+export const countKey = (key: string) => `${key}__count`;
+export const columnKey = (key: string, column: string) => `${key}_${column.replace(/[^A-Za-z0-9]/g, '_')}`;
+
+/** A node of the Data canvas graph: a source's list, a step, or a data set. */
+export type FlowNode = { id: string; x: number; y: number } & ({ type: 'source'; source: string; list: string } | DataStep | { type: 'dataset'; key: string; name: string; change: RowChange });
 /** The Data canvas graph; an edge goes to a node id or to `field:<key>`. */
 export interface DataFlow {
   nodes: FlowNode[];
@@ -265,8 +283,9 @@ export interface Template {
   zone: string;
   /** Relations between values (node graph). */
   logic?: Logic;
-  /** The Data canvas graph; the fields' bindings are compiled from it. */
+  /** The Data canvas graph; the fields' bindings and the data sets are compiled from it. */
   dataflow?: DataFlow;
+  datasets?: DataSet[];
   /** Published revision (0: never published). */
   revision?: number;
   /** Marker model (MARKER_MODEL); older templates are converted by the server. */
@@ -428,6 +447,8 @@ export type Command =
   | ({ action: 'takeOut' } & Target)
   | ({ action: 'update'; data: Record<string, string> } & Target)
   | ({ action: 'widget'; target: string; control: WidgetControl } & Target)
+  /** Another row of a data set of the graphic on air (1 = first). */
+  | ({ action: 'row'; dataset: string; row: number } & Target)
   | ({ action: 'clear' } & Target)
   | { action: 'trigger'; name: string };
 

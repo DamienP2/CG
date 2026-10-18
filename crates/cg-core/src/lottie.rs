@@ -135,6 +135,7 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
         zone: opts.zone.clone(),
         logic: Default::default(),
         dataflow: None,
+        datasets: vec![],
         revision: 0,
         marker_model: 0,
     };

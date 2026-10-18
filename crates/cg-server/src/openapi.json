@@ -3339,6 +3339,7 @@
        "takeOut",
        "update",
        "widget",
+       "row",
        "clear",
        "trigger"
       ]
@@ -3378,6 +3379,15 @@
      "name": {
       "type": "string",
       "description": "trigger: resumes every graphic holding on a pause that waits for this trigger"
+     },
+     "dataset": {
+      "type": "string",
+      "description": "row: key or name of a data set of the graphic on air"
+     },
+     "row": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "row: the row to show (1 = first); the graphic changes the way its data set says (out › in, crossfade or cut)"
      }
     },
     "example": {

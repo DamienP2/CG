@@ -404,6 +404,10 @@ pub fn bind_state(
             let Some(t) = project.template(template_id) else {
                 return;
             };
+            // Data sets always follow their source, on the row shown.
+            if only.is_none_or(|src| t.datasets.iter().any(|d| d.source == src)) {
+                changed |= cg_core::datapath::bind_datasets(t, data, store);
+            }
             let mode = rundown_id
                 .and_then(|id| project.rundown.iter().find(|r| r.id == id))
                 .map(|r| r.read)

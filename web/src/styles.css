@@ -8177,3 +8177,223 @@ body.cv-moving * {
   border-radius: 3px;
   flex: none;
 }
+/* Data set node: a port per column, the row previewed, the change on air. */
+.logic-node.kind-dataset,
+.logic-palette .kind-dataset {
+  --kind: #facc15;
+}
+.logic-palette .kind-dataset > svg {
+  color: var(--kind);
+  flex: none;
+}
+.logic-node.kind-dataset {
+  border-color: color-mix(in srgb, #facc15 45%, var(--line-2));
+}
+.ds-col {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 0 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.ds-col .port.out {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  margin-top: -6px;
+}
+.ds-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-val {
+  justify-self: end;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-val .dc-thumb {
+  height: 20px;
+}
+.ds-cursor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  border-radius: 7px;
+  background: var(--bg);
+}
+.ds-cursor b {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.ds-first {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ds-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ds-seg {
+  flex: 1;
+  display: flex;
+}
+.ds-seg button {
+  flex: 1;
+  padding: 0 4px;
+}
+.ds-seg button.on {
+  background: #facc15;
+  color: #0b0d14;
+}
+/* Operator: data sets (rows on air and next). */
+.opx-edit.with-sets {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: auto;
+}
+.ods {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line);
+  min-height: 0;
+}
+.ods-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.ods-icon {
+  color: #facc15;
+  flex: none;
+}
+.ods-rows {
+  max-height: 260px;
+  overflow: auto;
+}
+.ods-rows table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ods-rows th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.ods-rows td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ods-rows tbody tr {
+  cursor: pointer;
+}
+.ods-rows tbody tr:hover {
+  background: var(--panel-2);
+}
+.ods-rows tr.air {
+  background: color-mix(in srgb, var(--live) 14%, transparent);
+  box-shadow: inset 3px 0 var(--live);
+}
+.ods-rows tr.next {
+  background: color-mix(in srgb, var(--pvw) 11%, transparent);
+  box-shadow: inset 3px 0 var(--pvw);
+}
+.ods-tag {
+  width: 46px;
+}
+.ods-n {
+  width: 28px;
+  font-family: var(--mono);
+  color: var(--text-3);
+}
+.ods-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #fff;
+}
+.ods-badge.air {
+  background: var(--live);
+}
+.ods-badge.next {
+  background: var(--pvw);
+  color: #04140a;
+}
+.ods-rows .dc-thumb {
+  height: 22px;
+}
+.ods-rows .dc-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+.ods-auto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.ods-auto input[type='number'] {
+  width: 54px;
+}
+.ods-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.ods-prog {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+.ods-prog i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.opx-ds-badge {
+  flex: none;
+  font-size: 10px;
+  color: #facc15;
+  border: 1px solid color-mix(in srgb, #facc15 50%, transparent);
+  border-radius: 10px;
+  padding: 1px 7px;
+}

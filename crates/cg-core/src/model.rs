@@ -806,6 +806,53 @@ pub struct FieldBinding {
     pub steps: Vec<DataStep>,
 }
 
+/// Rows of a source (after its steps) shown one at a time: the value of
+/// each column of the current row is in the data under
+/// [`DataSet::column_key`], the row number (1 = first) under
+/// [`DataSet::row_key`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSet {
+    /// Data keys start with it (`standings` → `standings_team`).
+    pub key: String,
+    #[serde(default)]
+    pub name: String,
+    pub source: String,
+    #[serde(default)]
+    pub list: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<DataStep>,
+    /// How the graphic on air goes from one row to the next.
+    #[serde(default)]
+    pub change: RowChange,
+}
+
+impl DataSet {
+    pub fn row_key(&self) -> String {
+        format!("{}__row", self.key)
+    }
+    pub fn count_key(&self) -> String {
+        format!("{}__count", self.key)
+    }
+    /// Data key of a column: letters, digits and `_` only.
+    pub fn column_key(&self, column: &str) -> String {
+        let c: String = column.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+        format!("{}_{}", self.key, c)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RowChange {
+    /// The graphic plays its out animation, then comes in with the new row.
+    #[default]
+    OutIn,
+    /// The new row fades over the old one.
+    Fade,
+    /// The values change at once.
+    Cut,
+}
+
 /// One node of the table pipeline between a source and a field.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -978,6 +1025,10 @@ pub struct Template {
     /// compiled from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dataflow: Option<serde_json::Value>,
+    /// Tables whose rows the operator steps through (compiled from the
+    /// Data canvas); see [`crate::datapath::bind_datasets`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub datasets: Vec<DataSet>,
     /// Published revision (1, 2…); 0 for a template never published.
     #[serde(default)]
     pub revision: u32,
@@ -1006,6 +1057,7 @@ impl Template {
             zone: zone.into(),
             logic: Default::default(),
             dataflow: None,
+            datasets: vec![],
             revision: 0,
             marker_model: MARKER_MODEL,
         }
