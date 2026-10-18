@@ -421,7 +421,7 @@ impl Converter {
                 let w = num(l.get("sw")).unwrap_or(100.0);
                 let h = num(l.get("sh")).unwrap_or(100.0);
                 (
-                    LayerKind::Rect,
+                    LayerKind::rect(),
                     Box2 {
                         x: 0.0,
                         y: 0.0,
@@ -435,6 +435,7 @@ impl Converter {
                 let (src, w, h) = self.image(l);
                 (
                     LayerKind::Image {
+                        x: Default::default(),
                         src,
                         fit: ImageFit::Stretch,
                     },
@@ -495,9 +496,9 @@ impl Converter {
                     let p = &primitives[0];
                     (
                         if p.ellipse {
-                            LayerKind::Ellipse
+                            LayerKind::ellipse()
                         } else {
-                            LayerKind::Rect
+                            LayerKind::rect()
                         },
                         b,
                     )
@@ -595,9 +596,9 @@ impl Converter {
                 let pid = new_id();
                 let b = p.bounds();
                 let kind = if p.ellipse {
-                    LayerKind::Ellipse
+                    LayerKind::ellipse()
                 } else {
-                    LayerKind::Rect
+                    LayerKind::rect()
                 };
                 let mut c = layer(&pid, &name, Some(&id), kind);
                 set(&mut c, Prop::X, (b.x - inner.0).round());
@@ -1125,6 +1126,7 @@ impl Converter {
         });
         Some((
             LayerKind::Text {
+                x: Default::default(),
                 wrap: false,
                 transform: Default::default(),
                 decoration: Default::default(),
@@ -1450,7 +1452,7 @@ mod tests {
         );
         let disc = by_name(t, "Disc");
         assert_eq!(disc.parent.as_deref(), Some(logo.id.as_str()));
-        assert!(matches!(disc.kind, LayerKind::Ellipse));
+        assert!(matches!(disc.kind, LayerKind::Ellipse { .. }));
         assert_eq!(track(disc, Prop::ScaleX), vec![(20.0, 0.0), (40.0, 1.0)]);
         assert_eq!(disc.props[&Prop::X], Value::Number(20.0));
 
@@ -1541,12 +1543,12 @@ mod tests {
             .filter(|l| l.parent.as_deref() == Some(master.id.as_str()))
             .collect();
         assert_eq!(own.len(), 2);
-        assert!(matches!(own[0].kind, LayerKind::Rect));
+        assert!(matches!(own[0].kind, LayerKind::Rect { .. }));
         assert_eq!(
             own[0].props[&Prop::Fill],
             Value::Color(Color::from_hex("#00ff00").unwrap())
         );
-        assert!(matches!(own[1].kind, LayerKind::Ellipse));
+        assert!(matches!(own[1].kind, LayerKind::Ellipse { .. }));
         assert_eq!(
             (own[1].props[&Prop::X], own[1].props[&Prop::Y]),
             (Value::Number(0.0), Value::Number(0.0))

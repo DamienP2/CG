@@ -8780,3 +8780,313 @@ body.cv-moving * {
   background: rgba(255, 59, 92, 0.12);
   border-color: rgba(255, 59, 92, 0.4);
 }
+
+/* ---- Spec widgets (web/src/widgets/kit.tsx) ---- */
+.pp-group.l1 > .wk-body {
+  padding: 2px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pp-group.l2 > .wk-body > .wk-row {
+  margin-left: 0;
+}
+.wk-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+.wk-row.full {
+  grid-template-columns: minmax(0, 1fr);
+}
+.wk-row > .prop-label {
+  min-width: 0;
+  line-height: 1.2;
+}
+.wk-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.wk-ctl > input:not([type='checkbox']):not([type='color']),
+.wk-ctl > select,
+.wk-ctl > textarea {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+.wk-ctl > .segmented {
+  flex: 1;
+  flex-wrap: wrap;
+}
+.wk-ctl > .segmented button {
+  flex: 1 1 auto;
+}
+.wk-ctl > input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.wk-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  min-width: 46px;
+  text-align: right;
+}
+.wk-tog {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+.wk-tog i {
+  width: 30px;
+  height: 17px;
+  border-radius: 9px;
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+  position: relative;
+  flex: none;
+  transition: background 0.15s;
+}
+.wk-tog i::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+.wk-tog.on {
+  color: var(--text);
+}
+.wk-tog.on i {
+  background: var(--accent);
+  box-shadow: none;
+}
+.wk-tog.on i::after {
+  left: 15px;
+}
+.wk-tog:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wk-data {
+  color: var(--text-3) !important;
+  background: var(--panel-2) !important;
+  cursor: not-allowed;
+  font-style: italic;
+}
+.wk-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.wk-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+.opx-spec .wk-warnings {
+  padding: 0;
+}
+.wk-msg {
+  font-size: 11.5px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  line-height: 1.35;
+}
+.wk-msg.warn {
+  color: #fcd38a;
+  background: rgba(245, 165, 36, 0.12);
+}
+.wk-msg.error {
+  color: #ffb3c0;
+  background: rgba(255, 59, 92, 0.14);
+}
+.wk-msg.ok {
+  color: #9ff0bd;
+  background: rgba(34, 197, 94, 0.12);
+}
+.wk-msg.info {
+  color: #a8e3fb;
+  background: rgba(56, 189, 248, 0.1);
+}
+.wk-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wk-op,
+.opx-spec {
+  --op-1: #151722;
+  --op-2: #1c1f2c;
+  --op-3: #252938;
+  --op-4: #2f3446;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.opx-spec {
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--op-2);
+}
+.opx-spec-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-2);
+}
+.opx-spec-head strong {
+  color: var(--text);
+}
+.opx-spec-head .muted {
+  margin-left: auto;
+}
+.wk-btn kbd {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  opacity: 0.7;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+  letter-spacing: 0;
+}
+.wk-btn.big {
+  height: 42px;
+  padding: 0 18px;
+  font-size: 13px;
+}
+.wk-btn.huge {
+  height: 60px;
+  min-width: 60px;
+  font-size: 22px;
+  font-weight: 900;
+  justify-content: center;
+}
+.wk-btn.ghost {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--op-4);
+}
+.wk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.wk-item {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.wk-item > input:not([type='checkbox']):not([type='color']),
+.wk-item > select {
+  flex: 1;
+  min-width: 0;
+}
+.wk-item.off > input {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.wk-x {
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  width: 20px;
+  flex: none;
+}
+.wk-x:hover:not(:disabled) {
+  color: var(--live);
+}
+.wk-add {
+  align-self: flex-start;
+}
+.wk-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wk-grid-scroll {
+  overflow: auto;
+  max-height: 320px;
+}
+.wk-grid table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11.5px;
+}
+.wk-grid td {
+  border: 1px solid var(--line-2);
+  padding: 0;
+}
+.wk-grid tr.head td {
+  background: var(--panel-2);
+}
+.wk-grid td input {
+  border: 0;
+  border-radius: 0;
+  height: 24px;
+  width: 100%;
+  min-width: 56px;
+  background: transparent;
+  padding: 0 5px;
+}
+.wk-grid tr.head input {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.wk-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.wk-readout b {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.wk-readout span {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.wk-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.wk-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--warn);
+  border: 2.5px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+  pointer-events: auto;
+  z-index: 3;
+}
+.wk-catch {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}

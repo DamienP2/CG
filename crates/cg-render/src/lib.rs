@@ -5,6 +5,7 @@
 //! (wgpu) can be added behind the same `Renderer` API.
 
 mod text;
+mod wid;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -284,7 +285,11 @@ impl Renderer {
                 // A data set row change: the old values fade out above.
                 if let Some(f) = &item.fade {
                     let logic = self.logic_values(&t, item.frame, &f.data);
-                    let old = Ctx { data: &f.data, logic, ..ctx };
+                    let old = Ctx {
+                        data: &f.data,
+                        logic,
+                        ..ctx
+                    };
                     self.draw_children(&mut pm, &old, None, root, f.opacity(), zone_mask.as_ref());
                 }
             }
@@ -427,6 +432,34 @@ impl Renderer {
     ) {
         let (w, h) = (r.num(Prop::Width) as f32, r.num(Prop::Height) as f32);
         let time = ctx.time_for(r.layer);
+        // The widgets of the spec draw themselves (src/wid).
+        if cg_core::wid::widget_id(&r.layer.kind).is_some() {
+            let null = serde_json::Value::Null;
+            let state = ctx
+                .item
+                .and_then(|i| i.widgets.get(&r.layer.id))
+                .unwrap_or(&null);
+            let mut d = wid::Draw {
+                rd: self,
+                pm,
+                r,
+                layer: r.layer,
+                tf,
+                mask,
+                opacity,
+                w,
+                h,
+                time,
+                data: ctx.data,
+                frame: ctx.frame,
+                hold: ctx.template.hold_frame(),
+                fps: ctx.fps,
+                state,
+            };
+            if wid::draw(&mut d) {
+                return;
+            }
+        }
         let fill = paint_for(r.color(Prop::Fill), opacity);
         let stroke_w = r.num(Prop::StrokeWidth) as f32;
         let stroke = paint_for(r.color(Prop::Stroke), opacity);
@@ -446,7 +479,8 @@ impl Renderer {
                 | LayerKind::Ticker { .. }
                 | LayerKind::Roll { .. }
         ) {
-            boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0)).map(|b| build_mask(pm, mask, b, tf));
+            boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0))
+                .map(|b| build_mask(pm, mask, b, tf));
             boxed.as_ref().or(mask)
         } else {
             mask
@@ -462,7 +496,7 @@ impl Renderer {
                     }
                 }
             }
-            LayerKind::Rect => {
+            LayerKind::Rect { .. } => {
                 if let Some(path) = rounded_rect(w, h, r.num(Prop::CornerRadius) as f32) {
                     pm.fill_path(&path, &fill, FillRule::Winding, tf, mask);
                     if stroke_w > 0.0 {
@@ -479,7 +513,7 @@ impl Renderer {
                     }
                 }
             }
-            LayerKind::Ellipse => {
+            LayerKind::Ellipse { .. } => {
                 if let Some(path) = Rect::from_xywh(0.0, 0.0, w, h).and_then(PathBuilder::from_oval)
                 {
                     pm.fill_path(&path, &fill, FillRule::Winding, tf, mask);
@@ -528,11 +562,18 @@ impl Renderer {
                     decoration: *decoration,
                 };
                 // Too long for its box: narrower and smaller, "…", or cut.
-                let fit = text::fit_text(&font, content, &style, *wrap, *overflow, *squeeze, *min_size);
-                let style = text::TextStyle { size: fit.size, box_w: w / fit.squeeze, ..style };
+                let fit = text::fit_text(
+                    &font, content, &style, *wrap, *overflow, *squeeze, *min_size,
+                );
+                let style = text::TextStyle {
+                    size: fit.size,
+                    box_w: w / fit.squeeze,
+                    ..style
+                };
                 let boxed;
                 let mask = if fit.clip {
-                    boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0)).map(|r| build_mask(pm, mask, r, tf));
+                    boxed = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0))
+                        .map(|r| build_mask(pm, mask, r, tf));
                     boxed.as_ref().or(mask)
                 } else {
                     mask
@@ -555,6 +596,7 @@ impl Renderer {
                 }
             }
             LayerKind::Clock {
+                x: _,
                 mode,
                 format,
                 timezone,
@@ -580,6 +622,7 @@ impl Renderer {
                 );
             }
             LayerKind::Ticker {
+                x: _,
                 text,
                 separator,
                 speed,
@@ -723,6 +766,7 @@ impl Renderer {
                 }
             }
             LayerKind::Counter {
+                x: _,
                 from,
                 to,
                 duration,
@@ -756,6 +800,7 @@ impl Renderer {
                 );
             }
             LayerKind::Progress {
+                x: _,
                 value,
                 max,
                 duration,
@@ -805,6 +850,7 @@ impl Renderer {
                 );
             }
             LayerKind::Typewriter {
+                x: _,
                 text,
                 speed,
                 cursor,
@@ -855,7 +901,17 @@ impl Renderer {
                     self.draw_image(pm, &list[next], *fit, w, h, tf, opacity * mix as f32, mask);
                 }
             }
-            LayerKind::QrCode { data, background } => {
+            // Spec widgets not drawn yet by src/wid.
+            LayerKind::Polygon { .. }
+            | LayerKind::Pen { .. }
+            | LayerKind::Table { .. }
+            | LayerKind::Credits { .. }
+            | LayerKind::Chart { .. }
+            | LayerKind::Map { .. }
+            | LayerKind::Scoreboard { .. } => {}
+            LayerKind::QrCode {
+                data, background, ..
+            } => {
                 let content = interpolate_text(data, ctx.data);
                 let Some((n, modules)) = qr_modules(&content) else {
                     return;

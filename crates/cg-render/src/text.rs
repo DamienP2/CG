@@ -251,9 +251,18 @@ pub fn fit_text(
     min_size: f32,
 ) -> Fitted {
     use cg_core::TextOverflow as O;
-    let (bw, bh, lh, ls) = (style.box_w.max(1.0), style.box_h.max(1.0), style.line_height, style.letter_spacing);
+    let (bw, bh, lh, ls) = (
+        style.box_w.max(1.0),
+        style.box_h.max(1.0),
+        style.line_height,
+        style.letter_spacing,
+    );
     let layout = |size: f32, width: f32| -> (String, f32, f32) {
-        let t = if wrap { wrap_text(font, content, size, ls, width) } else { content.to_string() };
+        let t = if wrap {
+            wrap_text(font, content, size, ls, width)
+        } else {
+            content.to_string()
+        };
         let w = text_width(font, &t, size, ls);
         let h = block_height(t.split('\n').count(), size, lh);
         (t, w, h)
@@ -262,11 +271,21 @@ pub fn fit_text(
     let (text, w, h) = layout(size0, bw);
     let eps = 0.5;
     if w <= bw + eps && h <= bh + eps || overflow == O::Visible {
-        return Fitted { text, size: size0, squeeze: 1.0, clip: false };
+        return Fitted {
+            text,
+            size: size0,
+            squeeze: 1.0,
+            clip: false,
+        };
     }
     match overflow {
         O::Visible => unreachable!(),
-        O::Clip => Fitted { text, size: size0, squeeze: 1.0, clip: true },
+        O::Clip => Fitted {
+            text,
+            size: size0,
+            squeeze: 1.0,
+            clip: true,
+        },
         O::Ellipsis => {
             let max_lines = ((bh - size0) / (size0 * lh)).floor().max(0.0) as usize + 1;
             let mut lines: Vec<String> = text.split('\n').map(String::from).collect();
@@ -288,23 +307,42 @@ pub fn fit_text(
                     chars.pop();
                 }
             }
-            Fitted { text: lines.join("\n"), size: size0, squeeze: 1.0, clip: true }
+            Fitted {
+                text: lines.join("\n"),
+                size: size0,
+                squeeze: 1.0,
+                clip: true,
+            }
         }
         O::Fit => {
             // Narrower first (one line of text only: a paragraph wraps).
-            let sx = if wrap || w <= bw { 1.0 } else { (bw / w).max(squeeze_min.clamp(0.1, 1.0)) };
+            let sx = if wrap || w <= bw {
+                1.0
+            } else {
+                (bw / w).max(squeeze_min.clamp(0.1, 1.0))
+            };
             let fits = |size: f32| {
                 let (t, w, h) = layout(size, bw / sx);
                 (w * sx <= bw + eps && h <= bh + eps, t)
             };
             if let (true, t) = fits(size0) {
-                return Fitted { text: t, size: size0, squeeze: sx, clip: false };
+                return Fitted {
+                    text: t,
+                    size: size0,
+                    squeeze: sx,
+                    clip: false,
+                };
             }
             // Then smaller, down to the minimum: the largest size that fits.
             let lo_size = size0 * min_size.clamp(0.1, 1.0);
             let (ok, t) = fits(lo_size);
             if !ok {
-                return Fitted { text: t, size: lo_size, squeeze: sx, clip: true };
+                return Fitted {
+                    text: t,
+                    size: lo_size,
+                    squeeze: sx,
+                    clip: true,
+                };
             }
             let (mut lo, mut hi, mut best) = (lo_size, size0, t);
             for _ in 0..14 {
@@ -317,7 +355,12 @@ pub fn fit_text(
                     (false, _) => hi = mid,
                 }
             }
-            Fitted { text: best, size: lo, squeeze: sx, clip: false }
+            Fitted {
+                text: best,
+                size: lo,
+                squeeze: sx,
+                clip: false,
+            }
         }
     }
 }
@@ -449,24 +492,72 @@ mod tests {
         let text = "Maria Antonietta Gonzalez";
         let w = text_width(&font, text, 50.0, 0.0);
         // Fits: as it is.
-        let f = fit_text(&font, text, &style(w + 10.0, 60.0), false, TextOverflow::Fit, 0.8, 0.6);
+        let f = fit_text(
+            &font,
+            text,
+            &style(w + 10.0, 60.0),
+            false,
+            TextOverflow::Fit,
+            0.8,
+            0.6,
+        );
         assert_eq!((f.size, f.squeeze, f.clip), (50.0, 1.0, false));
         // A little too long: narrower only.
-        let f = fit_text(&font, text, &style(w * 0.9, 60.0), false, TextOverflow::Fit, 0.8, 0.6);
+        let f = fit_text(
+            &font,
+            text,
+            &style(w * 0.9, 60.0),
+            false,
+            TextOverflow::Fit,
+            0.8,
+            0.6,
+        );
         assert_eq!(f.size, 50.0);
         assert!((f.squeeze - 0.9).abs() < 0.01);
         // Much too long: narrower, then smaller.
-        let f = fit_text(&font, text, &style(w * 0.6, 60.0), false, TextOverflow::Fit, 0.8, 0.6);
+        let f = fit_text(
+            &font,
+            text,
+            &style(w * 0.6, 60.0),
+            false,
+            TextOverflow::Fit,
+            0.8,
+            0.6,
+        );
         assert!((f.squeeze - 0.8).abs() < 1e-3 && f.size < 50.0 && f.size >= 30.0 && !f.clip);
         assert!(text_width(&font, &f.text, f.size, 0.0) * f.squeeze <= w * 0.6 + 0.5);
         // Far too long: at the minimums, and cut.
-        let f = fit_text(&font, text, &style(w * 0.3, 60.0), false, TextOverflow::Fit, 0.8, 0.6);
+        let f = fit_text(
+            &font,
+            text,
+            &style(w * 0.3, 60.0),
+            false,
+            TextOverflow::Fit,
+            0.8,
+            0.6,
+        );
         assert!(f.clip && (f.size - 30.0).abs() < 1e-3);
         // "…"
-        let f = fit_text(&font, text, &style(w * 0.5, 60.0), false, TextOverflow::Ellipsis, 0.8, 0.6);
+        let f = fit_text(
+            &font,
+            text,
+            &style(w * 0.5, 60.0),
+            false,
+            TextOverflow::Ellipsis,
+            0.8,
+            0.6,
+        );
         assert!(f.text.ends_with('…') && text_width(&font, &f.text, 50.0, 0.0) <= w * 0.5 + 0.5);
         // A paragraph: wraps, then smaller when the lines are too many.
-        let f = fit_text(&font, "one two three four five six seven", &style(w * 0.5, 60.0), true, TextOverflow::Fit, 0.8, 0.3);
+        let f = fit_text(
+            &font,
+            "one two three four five six seven",
+            &style(w * 0.5, 60.0),
+            true,
+            TextOverflow::Fit,
+            0.8,
+            0.3,
+        );
         assert!(f.size < 50.0 && f.text.contains('\n') && !f.clip);
     }
 }

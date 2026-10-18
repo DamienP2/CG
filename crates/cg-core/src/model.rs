@@ -177,6 +177,18 @@ impl TextScroll {
 }
 
 impl LayerKind {
+    /// A plain rectangle / ellipse (default settings).
+    pub fn rect() -> Self {
+        LayerKind::Rect {
+            x: Default::default(),
+        }
+    }
+    pub fn ellipse() -> Self {
+        LayerKind::Ellipse {
+            x: Default::default(),
+        }
+    }
+
     /// A scrolling text drawn as the ticker or the roll it behaves like.
     pub fn scrolling_as(&self) -> Option<LayerKind> {
         let LayerKind::Text {
@@ -206,6 +218,7 @@ impl LayerKind {
         match scroll {
             TextScroll::None => None,
             TextScroll::Horizontal => Some(LayerKind::Ticker {
+                x: Default::default(),
                 text: text.clone(),
                 separator: separator.clone(),
                 speed: *speed,
@@ -288,8 +301,16 @@ pub enum LayerKind {
         #[serde(default)]
         clip: bool,
     },
-    Rect,
-    Ellipse,
+    Rect {
+        /// Settings of the spec widget (`wid::quad`).
+        #[serde(flatten)]
+        x: crate::wid::quad::Config,
+    },
+    Ellipse {
+        /// Settings of the spec widget (`wid::ellipse`).
+        #[serde(flatten)]
+        x: crate::wid::ellipse::Config,
+    },
     #[serde(rename_all = "camelCase")]
     Text {
         /// Text content; `{{key}}` placeholders are replaced by field values.
@@ -338,6 +359,9 @@ pub enum LayerKind {
         /// The Operator warns when the text gets smaller than this.
         #[serde(default = "default_warn_below")]
         warn_below: f32,
+        /// Settings of the spec widget (`wid::text`).
+        #[serde(flatten)]
+        x: crate::wid::text::Config,
     },
     #[serde(rename_all = "camelCase")]
     Image {
@@ -345,6 +369,9 @@ pub enum LayerKind {
         src: String,
         #[serde(default)]
         fit: ImageFit,
+        /// Settings of the spec widget (`wid::image`).
+        #[serde(flatten)]
+        x: crate::wid::image::Config,
     },
     /// Live clock / countdown / timer.
     #[serde(rename_all = "camelCase")]
@@ -363,6 +390,9 @@ pub enum LayerKind {
         target: String,
         #[serde(flatten)]
         font: FontStyle,
+        /// Settings of the spec widget (`wid::timer`).
+        #[serde(flatten)]
+        x: crate::wid::timer::Config,
     },
     /// Horizontal crawl: one item per line of `text`, joined by `separator`.
     #[serde(rename_all = "camelCase")]
@@ -375,6 +405,9 @@ pub enum LayerKind {
         speed: f64,
         #[serde(flatten)]
         font: FontStyle,
+        /// Settings of the spec widget (`wid::ticker`).
+        #[serde(flatten)]
+        x: crate::wid::ticker::Config,
     },
     /// Vertical roll (credits, lists): lines scroll upwards.
     #[serde(rename_all = "camelCase")]
@@ -420,6 +453,9 @@ pub enum LayerKind {
         grouping: bool,
         #[serde(flatten)]
         font: FontStyle,
+        /// Settings of the spec widget (`wid::counter`).
+        #[serde(flatten)]
+        x: crate::wid::counter::Config,
     },
     /// Horizontal bar filled to `value` / `max`, animated from empty.
     #[serde(rename_all = "camelCase")]
@@ -432,6 +468,9 @@ pub enum LayerKind {
         /// Colour of the empty part (the bar uses the fill colour).
         #[serde(default = "default_track")]
         track: String,
+        /// Settings of the spec widget (`wid::progress`).
+        #[serde(flatten)]
+        x: crate::wid::progress::Config,
     },
     /// Shows the lines of `text` one after another with a cross-fade.
     #[serde(rename_all = "camelCase")]
@@ -456,6 +495,9 @@ pub enum LayerKind {
         cursor: bool,
         #[serde(flatten)]
         font: FontStyle,
+        /// Settings of the spec widget (`wid::typewriter`).
+        #[serde(flatten)]
+        x: crate::wid::typewriter::Config,
     },
     /// Cycles through images (one asset path per line) with a cross-fade.
     #[serde(rename_all = "camelCase")]
@@ -474,6 +516,9 @@ pub enum LayerKind {
         data: String,
         #[serde(default = "default_white")]
         background: String,
+        /// Settings of the spec widget (`wid::qrcode`).
+        #[serde(flatten)]
+        x: crate::wid::qrcode::Config,
     },
     /// Horizontal bar chart / poll: one "Label: value" per line.
     #[serde(rename_all = "camelCase")]
@@ -491,6 +536,55 @@ pub enum LayerKind {
         text_color: String,
         #[serde(flatten)]
         font: FontStyle,
+    },
+    /// Regular, triangle or free polygon.
+    #[serde(rename_all = "camelCase")]
+    Polygon {
+        /// Settings of the spec widget (`wid::polygon`).
+        #[serde(flatten)]
+        x: crate::wid::polygon::Config,
+    },
+    /// Bézier path drawn with the pen tool.
+    #[serde(rename_all = "camelCase")]
+    Pen {
+        /// Settings of the spec widget (`wid::pen`).
+        #[serde(flatten)]
+        x: crate::wid::pen::Config,
+    },
+    /// Table of data with pages.
+    #[serde(rename_all = "camelCase")]
+    Table {
+        /// Settings of the spec widget (`wid::table`).
+        #[serde(flatten)]
+        x: crate::wid::table::Config,
+    },
+    /// Structured credits: roll, crawl or pages.
+    #[serde(rename_all = "camelCase")]
+    Credits {
+        /// Settings of the spec widget (`wid::credits`).
+        #[serde(flatten)]
+        x: crate::wid::credits::Config,
+    },
+    /// Columns, areas, lines or pie.
+    #[serde(rename_all = "camelCase")]
+    Chart {
+        /// Settings of the spec widget (`wid::chart`).
+        #[serde(flatten)]
+        x: crate::wid::chart::Config,
+    },
+    /// Vector map with views, markers, routes and zones.
+    #[serde(rename_all = "camelCase")]
+    Map {
+        /// Settings of the spec widget (`wid::map`).
+        #[serde(flatten)]
+        x: crate::wid::map::Config,
+    },
+    /// Sport scoreboard with its counting rules.
+    #[serde(rename_all = "camelCase")]
+    Scoreboard {
+        /// Settings of the spec widget (`wid::scoreboard`).
+        #[serde(flatten)]
+        x: crate::wid::scoreboard::Config,
     },
 }
 
@@ -865,7 +959,10 @@ impl DataSet {
     }
     /// Data key of a column: letters, digits and `_` only.
     pub fn column_key(&self, column: &str) -> String {
-        let c: String = column.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+        let c: String = column
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
         format!("{}_{}", self.key, c)
     }
 }
@@ -1644,7 +1741,12 @@ impl Project {
     /// Saves a designer edit as a draft (nothing changes on air).
     pub fn save_draft(&mut self, t: Template) {
         // Saved as it is published: nothing to publish.
-        if self.template(&t.id).is_some_and(|p| Template { revision: p.revision, ..t.clone() } == *p) {
+        if self.template(&t.id).is_some_and(|p| {
+            Template {
+                revision: p.revision,
+                ..t.clone()
+            } == *p
+        }) {
             self.drafts.retain(|x| x.id != t.id);
             return;
         }

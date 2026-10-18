@@ -16,6 +16,8 @@ import { AreaInspector, useGuidesView } from './Guides';
 import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
+import { widgetOf } from '../widgets';
+import { Bound, Section as SpecSection, setPath, Warnings } from '../widgets/kit';
 
 interface PropSpec {
   prop: Prop;
@@ -129,7 +131,7 @@ function Group({ id, title, level = 1, children, actions }: { id: string; title:
   );
 }
 
-interface RowSpec {
+export interface RowSpec {
   label: string;
   props: Prop[];
   /** Field labels (X / Y, W / H…). */
@@ -332,7 +334,7 @@ function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { val
 }
 
 /** A property row: ◀ ◆ ▶, name, animate, its fields (X / Y…). */
-function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
+export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
   const { frame, update, format, updateBase } = useDesigner();
   const driven = useContext(DrivenContext);
   const locked = !!spec.lock && !!layer.scaleLock;
@@ -384,7 +386,7 @@ function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
 }
 
 /** Colour row in the same layout. */
-function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke'; label: string }) {
+export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke'; label: string }) {
   const { frame, update } = useDesigner();
   const driven = useContext(DrivenContext).get(prop);
   return (
@@ -762,7 +764,7 @@ const WEIGHT_NAMES: Record<number, string> = {
 };
 
 /** Font picker: the fonts the server really has (bundled, uploaded, system). */
-function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
+export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
   const families = useFonts((s) => s.families);
   const toast = useApp((s) => s.toast);
   // The list is loaded at start, which fails before logging in.
@@ -1043,14 +1045,46 @@ function LayerGeneral({ layer }: { layer: Layer }) {
   );
 }
 
+/** Settings of a spec widget (web/src/widgets), its warnings and its Operator controls to try. */
+function SpecInspector({ layer }: { layer: Layer }) {
+  const { update, template, previewData } = useDesigner();
+  const data = useBoundData(template, previewData);
+  const state = useDesigner((s) => s.widgetState[layer.id]);
+  const actWidget = useDesigner((s) => s.actWidget);
+  if (!template) return null;
+  const def = widgetOf(layer.type)!;
+  const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
+  const set = (path: string, v: unknown, coalesce?: boolean) => edit((l) => setPath(l, path, v), coalesce ? `${path}-${layer.id}` : undefined);
+  const act = (op: string, args?: unknown) => void actWidget(layer.id, op, args);
+  const Insp = def.Inspector!;
+  const Op = def.Operator;
+  const r = resolveLayer(layer, useDesigner.getState().frame, data, holdFrame(template));
+  const warnings = (def.warnings?.(layer as never, { data, state, r }) ?? []).filter((w) => w.op !== 'only');
+  return (
+    <Bound obj={layer} set={set} data={data}>
+      <Warnings list={warnings} />
+      <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
+      {Op && (
+        <SpecSection id={`try-${def.id}`} title="Operator · try it">
+          <p className="hint wk-note">The Operator's controls, on the Designer's preview. On air they act on the graphic taken.</p>
+          <div className="wk-op">
+            <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
+          </div>
+        </SpecSection>
+      )}
+    </Bound>
+  );
+}
+
 function LayerInspector({ layer }: { layer: Layer }) {
   const { update } = useDesigner();
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const textLike = TEXT_LIKE.has(layer.type);
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
   const Icon = ICONS[layer.type];
-  const hasLook = layer.type !== 'image' && layer.type !== 'slideshow';
+  const hasLook = layer.type !== 'image' && layer.type !== 'slideshow' && !widgetOf(layer.type)?.ownsLook;
   const driven = useDrivenValues(layer);
+  const spec = widgetOf(layer.type);
   return (
     <DrivenContext.Provider value={driven}>
       <FormatNote layer={layer} />
@@ -1060,9 +1094,13 @@ function LayerInspector({ layer }: { layer: Layer }) {
         </span>
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
-      <Group id="general" title="General">
-        <LayerGeneral layer={layer} />
-      </Group>
+      {spec?.Inspector ? (
+        <SpecInspector layer={layer} />
+      ) : (
+        <Group id="general" title="General">
+          <LayerGeneral layer={layer} />
+        </Group>
+      )}
       <Group id="properties" title="Properties">
         <Group id="transform" title="Transform" level={2}>
           {TRANSFORM_ROWS.map((r) => (
@@ -1302,23 +1340,31 @@ function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edi
   return (
     <div className="fit-controls">
       <div className="row">
-        <span className="prop-label" title="When the text is too long for its box">Too long</span>
+        <span className="prop-label" title="When the text is too long for its box">
+          Too long
+        </span>
         <Segmented value={mode} onChange={(v) => setT((l) => (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS.map((o) => ({ value: o.value, label: <span title={o.hint}>{o.label}</span> }))} />
       </div>
       {mode === 'fit' && (
         <>
           <div className="row">
-            <span className="prop-label" title="Narrowest the text gets, before getting smaller">Narrower to</span>
+            <span className="prop-label" title="Narrowest the text gets, before getting smaller">
+              Narrower to
+            </span>
             <input type="range" min={50} max={100} value={Math.round((layer.squeeze ?? 0.8) * 100)} onChange={(e) => setT((l) => (l.squeeze = +e.target.value / 100), `squeeze-${layer.id}`)} />
             <span className="fit-val">{pct(layer.squeeze ?? 0.8)}</span>
           </div>
           <div className="row">
-            <span className="prop-label" title="Smallest font size, as a part of the size set">Smaller to</span>
+            <span className="prop-label" title="Smallest font size, as a part of the size set">
+              Smaller to
+            </span>
             <input type="range" min={20} max={100} value={Math.round((layer.minSize ?? 0.6) * 100)} onChange={(e) => setT((l) => (l.minSize = +e.target.value / 100), `minsize-${layer.id}`)} />
             <span className="fit-val">{pct(layer.minSize ?? 0.6)}</span>
           </div>
           <div className="row">
-            <span className="prop-label" title="The Operator warns when the text gets smaller than this">Warn under</span>
+            <span className="prop-label" title="The Operator warns when the text gets smaller than this">
+              Warn under
+            </span>
             <input type="range" min={20} max={100} value={Math.round((layer.warnBelow ?? 0.8) * 100)} onChange={(e) => setT((l) => (l.warnBelow = +e.target.value / 100), `warn-${layer.id}`)} />
             <span className="fit-val">{pct(layer.warnBelow ?? 0.8)}</span>
           </div>

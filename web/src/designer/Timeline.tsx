@@ -1,6 +1,4 @@
 import {
-  AlarmClock,
-  Calendar,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -26,7 +24,6 @@ import {
   Square,
   StepBack,
   StepForward,
-  Table,
   Trash2,
   Unlink,
   Link as LinkIcon,
@@ -34,11 +31,6 @@ import {
   Type,
   Unlock,
   Video,
-  ChartArea,
-  ChartColumn,
-  ChartLine,
-  ChartPie,
-  Map as MapIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -46,6 +38,7 @@ import { childrenMap } from '../engine/Scene';
 import { newId, num, propValue } from '../engine/evaluate';
 import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template } from '../engine/types';
 import { NumberField } from '../ui/fields';
+import { WIDGET_LIST } from '../widgets';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 import { ICONS, moveLayer, type DropPos } from './LayersPanel';
@@ -475,7 +468,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   }}
                 />
               ) : (
-                <NumberField key={p} label={g.labels?.[i]} value={num(propValue(layer, p, frame))} display={g.display} suffix={g.suffix} onChange={(v) =>
+                <NumberField
+                  key={p}
+                  label={g.labels?.[i]}
+                  value={num(propValue(layer, p, frame))}
+                  display={g.display}
+                  suffix={g.suffix}
+                  onChange={(v) =>
                     st.update((t) => {
                       const l = findLayer(t, layer.id)!;
                       // Locked scale: X and Y keep their ratio.
@@ -790,44 +789,36 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
 type MenuItem = {
   label: string;
   icon: typeof Square;
+  /** A spec widget (type + settings), or a preset of the older widgets. */
+  type?: LayerType;
+  patch?: Record<string, unknown>;
   preset?: string;
+  hint?: string;
   soon?: boolean;
 };
 
-const BASICS: MenuItem[] = [
-  { label: 'Clock', icon: AlarmClock, preset: 'clock' },
-  { label: 'Date', icon: Calendar, preset: 'date' },
-  { label: 'Countdown', icon: ICONS.clock, preset: 'countdown' },
-  { label: 'Timer', icon: ICONS.clock, preset: 'timer' },
-  { label: 'Stopwatch', icon: ICONS.clock, preset: 'elapsed' },
-  { label: 'Analog clock', icon: ICONS.analogClock, preset: 'analogClock' },
-  { label: 'Slideshow', icon: ICONS.slideshow, preset: 'slideshow' },
-  { label: 'Video', icon: Video, soon: true },
-  { label: 'Animation (Lottie)', icon: Sparkles, soon: true },
-  { label: 'Iframe', icon: Code, soon: true },
-  { label: 'Web page', icon: Globe, soon: true },
-  { label: 'Table', icon: Table, soon: true },
-];
+const TABS = ['Shapes & tools', 'Time', 'Data', 'Sport & interaction', 'More'] as const;
+type Tab = (typeof TABS)[number];
 
-const PULSE: MenuItem[] = [
-  { label: 'Typewriter', icon: ICONS.typewriter, preset: 'typewriter' },
-  { label: 'Ticker', icon: ICONS.ticker, preset: 'ticker' },
-  { label: 'Credits roll', icon: ICONS.roll, preset: 'roll' },
-  { label: 'Rotator', icon: ICONS.rotator, preset: 'rotator' },
-  { label: 'Counter', icon: ICONS.counter, preset: 'counter' },
-  { label: 'Progress bar', icon: ICONS.progress, preset: 'progress' },
-  { label: 'Bar chart / poll', icon: ICONS.barChart, preset: 'barChart' },
-  { label: 'QR code', icon: ICONS.qrCode, preset: 'qrCode' },
-  { label: 'Column chart', icon: ChartColumn, soon: true },
-  { label: 'Line chart', icon: ChartLine, soon: true },
-  { label: 'Area chart', icon: ChartArea, soon: true },
-  { label: 'Pie chart', icon: ChartPie, soon: true },
-  { label: 'Map', icon: MapIcon, soon: true },
-];
+/** The + menu: the spec widgets by group, then the older widgets (built on first use: the registry imports this module's neighbours). */
+const menu = (): Record<Tab, MenuItem[]> => ({
+  ...(Object.fromEntries(
+    TABS.slice(0, 4).map((g) => [g, WIDGET_LIST.filter((w) => w.group === g).flatMap((w) => (w.presets?.length ? w.presets : [{ label: w.label, hint: undefined, patch: undefined }]).map((p) => ({ label: p.label, hint: p.hint, icon: w.icon, type: w.type, patch: p.patch })))]),
+  ) as Record<Exclude<Tab, 'More'>, MenuItem[]>),
+  More: [
+    { label: 'Analog clock', icon: ICONS.analogClock, preset: 'analogClock' },
+    { label: 'Rotator', icon: ICONS.rotator, preset: 'rotator' },
+    { label: 'Slideshow', icon: ICONS.slideshow, preset: 'slideshow' },
+    { label: 'Video', icon: Video, soon: true },
+    { label: 'Animation (Lottie)', icon: Sparkles, soon: true },
+    { label: 'Iframe', icon: Code, soon: true },
+    { label: 'Web page', icon: Globe, soon: true },
+  ],
+});
 
 function AddMenu({ onAdd }: { onAdd: AddLayer }) {
   const [open, setOpen] = useState<{ left: number; bottom: number } | null>(null);
-  const [tab, setTab] = useState<'basics' | 'pulse'>('basics');
+  const [tab, setTab] = useState<Tab>('Shapes & tools');
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(null);
@@ -839,6 +830,11 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
     };
   }, [open]);
   const pick = (it: MenuItem) => {
+    if (it.type) {
+      setOpen(null);
+      onAdd(it.type, it.patch, it.label);
+      return;
+    }
     const w = WIDGET_PRESETS.find((x) => x.key === it.preset);
     if (!w) return;
     setOpen(null);
@@ -874,16 +870,15 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
           }}
         >
           <div className="add-tabs">
-            <button className={tab === 'basics' ? 'on' : ''} onClick={() => setTab('basics')}>
-              Basics
-            </button>
-            <button className={tab === 'pulse' ? 'on' : ''} onClick={() => setTab('pulse')}>
-              Pulse CG widgets
-            </button>
+            {TABS.map((t) => (
+              <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
+                {t}
+              </button>
+            ))}
           </div>
           <div className="add-grid">
-            {(tab === 'basics' ? BASICS : PULSE).map((it) => (
-              <button key={it.label} disabled={it.soon} title={it.soon ? 'Coming soon' : undefined} onClick={() => pick(it)}>
+            {menu()[tab].map((it) => (
+              <button key={it.label} disabled={it.soon} title={it.soon ? 'Coming soon' : it.hint} onClick={() => pick(it)}>
                 <span className="add-icon">
                   <it.icon size={15} />
                 </span>

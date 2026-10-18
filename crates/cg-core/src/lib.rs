@@ -9,6 +9,7 @@ pub mod lottie;
 pub mod model;
 pub mod playout;
 pub mod sample;
+pub mod wid;
 pub mod widgets;
 
 pub use anim::{resolve_template, Data, ResolvedLayer};

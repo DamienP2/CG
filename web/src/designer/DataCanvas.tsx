@@ -1,3 +1,4 @@
+import { widgetOf } from '../widgets';
 import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
@@ -33,6 +34,8 @@ export const useDataCanvas = create<{ open: boolean; set: (open: boolean) => voi
 
 /** What a layer shows, wired by default: its text, or its picture. */
 function contentOf(l: Layer): string[] {
+  const spec = widgetOf(l.type)?.content;
+  if (spec) return spec;
   if (l.type === 'image') return ['src'];
   return typeof (l as { text?: unknown }).text === 'string' ? ['text'] : [];
 }
@@ -253,11 +256,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const operations = logic.nodes.filter((n) => n.type !== 'field' && n.type !== 'target');
   const targets = logic.nodes.filter((n): n is LogicNode & { type: 'target' } => n.type === 'target');
   const wiredPorts = (l: Layer) =>
-    new Set<string>([
-      ...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p),
-      ...targets.filter((t) => t.layer === l.id && logic.edges.some((e) => e.to === t.id)).map((t) => t.prop),
-      ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))),
-    ]);
+    new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...targets.filter((t) => t.layer === l.id && logic.edges.some((e) => e.to === t.id)).map((t) => t.prop), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c)))]);
   /** Content ports always; properties when unfolded (or wired). */
   const ports = (l: Layer) => {
     const wired = wiredPorts(l);
@@ -283,8 +282,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     }
   };
   const fieldHeight = (f: Field) => HEAD + (f.binding ? 90 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
-  stack(COLS.field, template.fields.map((f) => [`f:${f.key}`, fieldHeight(f)]));
-  stack(COLS.layer, template.layers.map((l) => [`l:${l.id}`, layerHeight(l)]));
+  stack(
+    COLS.field,
+    template.fields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
+  );
+  stack(
+    COLS.layer,
+    template.layers.map((l) => [`l:${l.id}`, layerHeight(l)]),
+  );
   for (const n of flow.nodes) nodePos.set(n.id, { x: n.x, y: n.y });
   const flowWidth = (n: FlowNode) => widthOf(n.id, n.type === 'source' ? W.source : W.step);
 
@@ -353,9 +358,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   // Data set columns: where their ports are (the node reports its columns).
   const columnPorts = new Map<string, Pt>();
-  for (const n of flow.nodes)
-    if (n.type === 'dataset')
-      (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), { x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 }));
+  for (const n of flow.nodes) if (n.type === 'dataset') (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), { x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 }));
   /** Where a value wired by key starts: a variable, or a data set column. */
   const keyOut = (key: string): Pt | null => (nodePos.has(`f:${key}`) ? outOf(`f:${key}`, widthOf(`f:${key}`, W.field)) : (columnPorts.get(key) ?? null));
   const wiredKey = (k: string) => template.fields.some((f) => f.key === k) || columnPorts.has(k);
@@ -383,7 +386,12 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           onClick: () =>
             update((t) => {
               const x = findLayer(t, l.id)! as unknown as Record<string, unknown> & Layer;
-              if (content) x[port] = String(x[port] ?? '').split(tokenOf(key)).join('').replace(/ {2,}/g, ' ').trim();
+              if (content)
+                x[port] = String(x[port] ?? '')
+                  .split(tokenOf(key))
+                  .join('')
+                  .replace(/ {2,}/g, ' ')
+                  .trim();
               else delete x.bindings[port as Prop];
             }),
         });
@@ -526,9 +534,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
-  const resizer = (id: string, height = true) => (
-    <ResizeCorner onPointerDown={(e) => cv.resize(e, (w, h) => setLayout((l) => ({ ...l, size: { ...l.size, [id]: height ? { w, h } : { w } } })))} />
-  );
+  const resizer = (id: string, height = true) => <ResizeCorner onPointerDown={(e) => cv.resize(e, (w, h) => setLayout((l) => ({ ...l, size: { ...l.size, [id]: height ? { w, h } : { w } } })))} />;
   const sizeStyle = (id: string, def: number) => ({ width: widthOf(id, def), height: layout.size[id]?.h });
 
   /** Somewhere free in view, for a node added with a click. */
@@ -770,17 +776,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     <span className="port out" title="Drag to a step or a variable" onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                   </div>
                   <div className="ln-body">
-                    {chain ? (
-                      <StepBody
-                        source={chain.source}
-                        steps={chain.steps}
-                        data={values}
-                        node={n as FlowNode & DataStep}
-                        onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)}
-                      />
-                    ) : (
-                      <span className="dc-meta">Wire a source (or a step) into it.</span>
-                    )}
+                    {chain ? <StepBody source={chain.source} steps={chain.steps} data={values} node={n as FlowNode & DataStep} onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)} /> : <span className="dc-meta">Wire a source (or a step) into it.</span>}
                   </div>
                   {resizer(n.id)}
                 </div>
@@ -828,7 +824,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                           <option key={k}>{k}</option>
                         ))}
                       </select>
-                      <code className="dc-key" title="Key (API, MOS)">{f.key}</code>
+                      <code className="dc-key" title="Key (API, MOS)">
+                        {f.key}
+                      </code>
                     </div>
                     {f.binding ? (
                       <>
@@ -931,12 +929,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                               {result === '' ? '(empty)' : result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')}
                             </span>
                           ) : (
-                            <input
-                              className="dc-content-input"
-                              value={raw}
-                              title="Default value (until a variable is wired)"
-                              onChange={(e) => update((t) => void ((findLayer(t, l.id) as unknown as Record<string, unknown>)[port] = e.target.value), `content-${l.id}`)}
-                            />
+                            <input className="dc-content-input" value={raw} title="Default value (until a variable is wired)" onChange={(e) => update((t) => void ((findLayer(t, l.id) as unknown as Record<string, unknown>)[port] = e.target.value), `content-${l.id}`)} />
                           )}
                         </div>
                       );
@@ -952,11 +945,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       </div>
                     );
                   })}
-                  <button
-                    className="dc-props-toggle"
-                    onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))}
-                    title="Position, size, colours… (Properties)"
-                  >
+                  <button className="dc-props-toggle" onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))} title="Position, size, colours… (Properties)">
                     {hidden ? `+ ${hidden} properties` : '− Fold the properties'}
                   </button>
                   {isTimed(l) && (
@@ -1015,13 +1004,15 @@ function listsIn(v: unknown, path = '', depth = 0, out: string[] = []): string[]
   return out;
 }
 
-
 /** The tables of a pipeline (each stage), refreshed when the source changes. */
 const stageCache = new Map<string, { stages: Stage[]; text: string } | null>();
 function useStages(source: string, list: string, steps: DataStep[], data: Data) {
   const version = useData((s) => s.versions[source] ?? 0);
   // Only the values its conditions read count.
-  const used = JSON.stringify(steps).match(/\{(\w+)\}/g)?.map((m) => m.slice(1, -1)) ?? [];
+  const used =
+    JSON.stringify(steps)
+      .match(/\{(\w+)\}/g)
+      ?.map((m) => m.slice(1, -1)) ?? [];
   const sub = Object.fromEntries(used.map((k) => [k, data[k] ?? '']));
   const key = JSON.stringify([source, list, steps, sub, version]);
   const [res, setRes] = useState(() => stageCache.get(key));
@@ -1446,9 +1437,7 @@ function TransformSteps({ steps, onChange }: { steps: DataFilter[]; onChange: (s
 /** The settings of a filter. */
 function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f: DataFilter) => void }) {
   const text = (key: string, placeholder: string) => <input placeholder={placeholder} value={String((f as Record<string, unknown>)[key] ?? '')} onChange={(e) => onChange({ ...f, [key]: e.target.value } as DataFilter)} />;
-  const number = (key: string, title: string, min?: number) => (
-    <input type="number" title={title} min={min} value={Number((f as Record<string, unknown>)[key] ?? 0)} onChange={(e) => onChange({ ...f, [key]: +e.target.value } as DataFilter)} />
-  );
+  const number = (key: string, title: string, min?: number) => <input type="number" title={title} min={min} value={Number((f as Record<string, unknown>)[key] ?? 0)} onChange={(e) => onChange({ ...f, [key]: +e.target.value } as DataFilter)} />;
   let body: React.ReactNode = null;
   switch (f.type) {
     case 'prefix':
@@ -1475,11 +1464,7 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
       );
       break;
     case 'truncate':
-      body = (
-        <label className="dc-inline">
-          Max {number('max', 'Characters', 1)}
-        </label>
-      );
+      body = <label className="dc-inline">Max {number('max', 'Characters', 1)}</label>;
       break;
     case 'lines':
       body = (

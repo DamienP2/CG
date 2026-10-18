@@ -376,9 +376,18 @@ impl AppState {
             };
             let mut cmd = cmd;
             // Values set by hand for some seconds: until when, on the server's clock.
-            if let Command::Update { data, .. } | Command::Take { data: Some(data), .. } = &mut cmd {
+            if let Command::Update { data, .. }
+            | Command::Take {
+                data: Some(data), ..
+            } = &mut cmd
+            {
                 for (k, v) in data.iter_mut() {
-                    if let Some(secs) = k.ends_with("__manual").then(|| v.strip_prefix("for:")).flatten().and_then(|n| n.trim().parse::<f64>().ok()) {
+                    if let Some(secs) = k
+                        .ends_with("__manual")
+                        .then(|| v.strip_prefix("for:"))
+                        .flatten()
+                        .and_then(|n| n.trim().parse::<f64>().ok())
+                    {
                         *v = format!("until:{}", now_ms() + (secs * 1000.0) as i64);
                     }
                 }

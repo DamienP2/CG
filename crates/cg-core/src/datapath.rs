@@ -16,7 +16,9 @@ use std::collections::HashMap;
 use serde_json::Value as Json;
 
 use crate::anim::Data;
-use crate::model::{CondOp, Condition, DataFilter, DataSet, DataSort, DataStep, FieldBinding, FilterOp, Template};
+use crate::model::{
+    CondOp, Condition, DataFilter, DataSet, DataSort, DataStep, FieldBinding, FilterOp, Template,
+};
 
 /// Latest value of each data source, by source id.
 pub type Store = HashMap<String, Json>;
@@ -103,7 +105,9 @@ pub fn bind(template: &Template, data: &mut Data, store: &Store) -> bool {
             continue;
         }
         if b.list.is_some() || !b.steps.is_empty() {
-            let Some(text) = read(v, b, data) else { continue };
+            let Some(text) = read(v, b, data) else {
+                continue;
+            };
             if data.get(&f.key) != Some(&text) {
                 data.insert(f.key.clone(), text);
                 changed = true;
@@ -335,7 +339,8 @@ pub fn table(value: &Json, list: &str) -> Option<Table> {
         // like {"home": {…}, "away": {…}}.
         Json::Object(o)
             if o.values().all(Json::is_object)
-                && (o.len() >= 4 || (!o.is_empty() && o.keys().all(|k| k.parse::<f64>().is_ok()))) =>
+                && (o.len() >= 4
+                    || (!o.is_empty() && o.keys().all(|k| k.parse::<f64>().is_ok()))) =>
         {
             for (k, e) in o {
                 let mut row = vec![("#key".to_string(), k.clone())];
@@ -362,7 +367,12 @@ pub fn table(value: &Json, list: &str) -> Option<Table> {
         .map(|row| {
             columns
                 .iter()
-                .map(|c| row.iter().find(|(k, _)| k == c).map(|(_, v)| v.clone()).unwrap_or_default())
+                .map(|c| {
+                    row.iter()
+                        .find(|(k, _)| k == c)
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default()
+                })
                 .collect()
         })
         .collect();
@@ -373,26 +383,41 @@ fn flatten(v: &Json, prefix: &str, out: &mut Vec<(String, String)>, depth: usize
     match v {
         Json::Object(o) if depth < 4 => {
             for (k, x) in o {
-                let key = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{prefix}.{k}")
+                };
                 flatten(x, &key, out, depth + 1);
             }
         }
         // A list of plain values in a cell: one per line.
-        Json::Array(a) if a.iter().all(|x| !x.is_object() && !x.is_array()) => {
-            out.push((col_name(prefix), a.iter().map(text).collect::<Vec<_>>().join("\n")))
-        }
+        Json::Array(a) if a.iter().all(|x| !x.is_object() && !x.is_array()) => out.push((
+            col_name(prefix),
+            a.iter().map(text).collect::<Vec<_>>().join("\n"),
+        )),
         other => out.push((col_name(prefix), text(other))),
     }
 }
 
 fn col_name(prefix: &str) -> String {
-    if prefix.is_empty() { "value".into() } else { prefix.into() }
+    if prefix.is_empty() {
+        "value".into()
+    } else {
+        prefix.into()
+    }
 }
 
 /// One step of the pipeline.
 pub fn step(t: Table, s: &DataStep, data: &Data) -> Table {
     match s {
-        DataStep::Filter { conditions, any, from, count, columns } => {
+        DataStep::Filter {
+            conditions,
+            any,
+            from,
+            count,
+            columns,
+        } => {
             let mut rows: Vec<Vec<String>> = t
                 .rows
                 .iter()
@@ -417,23 +442,37 @@ pub fn step(t: Table, s: &DataStep, data: &Data) -> Table {
                 f if f < 0 => (n + f).max(0),
                 f => (f - 1).min(n),
             } as usize;
-            let end = if *count == 0 { rows.len() } else { (start + count).min(rows.len()) };
+            let end = if *count == 0 {
+                rows.len()
+            } else {
+                (start + count).min(rows.len())
+            };
             rows = rows.drain(start..end).collect();
             if columns.is_empty() {
-                return Table { columns: t.columns, rows };
+                return Table {
+                    columns: t.columns,
+                    rows,
+                };
             }
             let idx: Vec<Option<usize>> = columns.iter().map(|c| t.col(c)).collect();
             Table {
                 columns: columns.clone(),
                 rows: rows
                     .into_iter()
-                    .map(|r| idx.iter().map(|i| i.map(|i| r[i].clone()).unwrap_or_default()).collect())
+                    .map(|r| {
+                        idx.iter()
+                            .map(|i| i.map(|i| r[i].clone()).unwrap_or_default())
+                            .collect()
+                    })
                     .collect(),
             }
         }
         DataStep::Sort { keys } => {
             let mut t = t;
-            let keys: Vec<_> = keys.iter().filter_map(|k| t.col(&k.column).map(|i| (i, k))).collect();
+            let keys: Vec<_> = keys
+                .iter()
+                .filter_map(|k| t.col(&k.column).map(|i| (i, k)))
+                .collect();
             t.rows.sort_by(|a, b| {
                 for (i, k) in &keys {
                     let o = if k.numeric {
@@ -461,16 +500,30 @@ pub fn step(t: Table, s: &DataStep, data: &Data) -> Table {
                             .filter(|l| !l.trim().is_empty())
                             .collect::<Vec<_>>()
                             .join(separator);
-                        t = Table { columns: vec!["value".into()], rows: vec![vec![joined]] };
+                        t = Table {
+                            columns: vec!["value".into()],
+                            rows: vec![vec![joined]],
+                        };
                     }
                     DataFilter::Default { text: d } if t.rows.is_empty() => {
-                        let cols = if t.columns.is_empty() { vec!["value".into()] } else { t.columns.clone() };
+                        let cols = if t.columns.is_empty() {
+                            vec!["value".into()]
+                        } else {
+                            t.columns.clone()
+                        };
                         let mut row = vec![String::new(); cols.len()];
                         row[0] = d.clone();
-                        t = Table { columns: cols, rows: vec![row] };
+                        t = Table {
+                            columns: cols,
+                            rows: vec![row],
+                        };
                     }
                     op => {
-                        let on: Vec<bool> = t.columns.iter().map(|c| columns.is_empty() || columns.contains(c)).collect();
+                        let on: Vec<bool> = t
+                            .columns
+                            .iter()
+                            .map(|c| columns.is_empty() || columns.contains(c))
+                            .collect();
                         for r in &mut t.rows {
                             for (i, cell) in r.iter_mut().enumerate() {
                                 if on[i] {
@@ -487,12 +540,20 @@ pub fn step(t: Table, s: &DataStep, data: &Data) -> Table {
 }
 
 fn num(s: &str) -> f64 {
-    s.trim().replace(',', ".").parse::<f64>().unwrap_or(f64::NEG_INFINITY)
+    s.trim()
+        .replace(',', ".")
+        .parse::<f64>()
+        .unwrap_or(f64::NEG_INFINITY)
 }
 
 fn matches(cell: &str, op: CondOp, want: &str) -> bool {
     let (a, b) = (cell.trim(), want.trim());
-    let nums = || Some((a.replace(',', ".").parse::<f64>().ok()?, b.replace(',', ".").parse::<f64>().ok()?));
+    let nums = || {
+        Some((
+            a.replace(',', ".").parse::<f64>().ok()?,
+            b.replace(',', ".").parse::<f64>().ok()?,
+        ))
+    };
     let cmp = || match nums() {
         Some((x, y)) => x.total_cmp(&y),
         None => a.to_lowercase().cmp(&b.to_lowercase()),
@@ -528,7 +589,8 @@ pub fn pipeline(value: &Json, list: &str, steps: &[DataStep], data: &Data) -> Op
 
 /// What a table binding gives its field.
 pub fn read(value: &Json, b: &FieldBinding, data: &Data) -> Option<String> {
-    pipeline(value, b.list.as_deref().unwrap_or(""), &b.steps, data).map(|t| t.last().unwrap().text())
+    pipeline(value, b.list.as_deref().unwrap_or(""), &b.steps, data)
+        .map(|t| t.last().unwrap().text())
 }
 
 /// Fills the columns of the current row of each data set of `template`
@@ -543,7 +605,9 @@ pub fn bind_datasets(template: &Template, data: &mut Data, store: &Store) -> boo
 }
 
 fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
-    let Some(v) = store.get(&ds.source) else { return false };
+    let Some(v) = store.get(&ds.source) else {
+        return false;
+    };
     let Some(t) = pipeline(v, &ds.list, &ds.steps, data).and_then(|mut s| s.pop()) else {
         return false;
     };
@@ -569,7 +633,12 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
         if is_manual(data, &key) {
             continue;
         }
-        let v = t.rows.get(row - 1).and_then(|r| r.get(i)).cloned().unwrap_or_default();
+        let v = t
+            .rows
+            .get(row - 1)
+            .and_then(|r| r.get(i))
+            .cloned()
+            .unwrap_or_default();
         changed |= set(key, v, data);
     }
     changed
@@ -578,7 +647,8 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
 /// A value the operator set by hand over the data (`<key>__manual` holds
 /// how long: `removed`, `trigger:<name>`, `until:<unix ms>`).
 pub fn is_manual(data: &Data, key: &str) -> bool {
-    data.get(&format!("{key}__manual")).is_some_and(|m| !m.trim().is_empty())
+    data.get(&format!("{key}__manual"))
+        .is_some_and(|m| !m.trim().is_empty())
 }
 
 #[derive(serde::Deserialize)]
@@ -603,8 +673,13 @@ pub fn with_added(mut t: Table, added: Option<&str>) -> Table {
                 }
             }
         }
-        let row = t.columns.iter().map(|c| a.cells.get(c).map(text).unwrap_or_default()).collect();
-        let at = a.at.map_or(t.rows.len(), |i| i.saturating_sub(1).min(t.rows.len()));
+        let row = t
+            .columns
+            .iter()
+            .map(|c| a.cells.get(c).map(text).unwrap_or_default())
+            .collect();
+        let at =
+            a.at.map_or(t.rows.len(), |i| i.saturating_sub(1).min(t.rows.len()));
         t.rows.insert(at, row);
     }
     t
@@ -885,7 +960,7 @@ mod tests {
 
     #[test]
     fn table_pipeline() {
-        use crate::model::{SortKey};
+        use crate::model::SortKey;
         let v = serde_json::json!({
             "standings": [
                 {"team": "Lens", "pts": 30, "club": {"city": "Lens"}},
@@ -900,18 +975,33 @@ mod tests {
 
         let sort = DataStep::Sort {
             keys: vec![
-                SortKey { column: "pts".into(), descending: true, numeric: true },
-                SortKey { column: "team".into(), descending: false, numeric: false },
+                SortKey {
+                    column: "pts".into(),
+                    descending: true,
+                    numeric: true,
+                },
+                SortKey {
+                    column: "team".into(),
+                    descending: false,
+                    numeric: false,
+                },
             ],
         };
         let filter = DataStep::Filter {
-            conditions: vec![Condition { column: "pts".into(), op: CondOp::Ge, value: "{min}".into() }],
+            conditions: vec![Condition {
+                column: "pts".into(),
+                op: CondOp::Ge,
+                value: "{min}".into(),
+            }],
             any: false,
             from: 1,
             count: 3,
             columns: vec!["team".into(), "pts".into()],
         };
-        let upper = DataStep::Transform { columns: vec!["team".into()], ops: vec![DataFilter::Upper] };
+        let upper = DataStep::Transform {
+            columns: vec!["team".into()],
+            ops: vec![DataFilter::Upper],
+        };
         let data: Data = [("min".to_string(), "30".to_string())].into();
         let stages = pipeline(&v, "standings", &[sort, filter, upper], &data).unwrap();
         assert_eq!(stages.len(), 4);
@@ -919,26 +1009,64 @@ mod tests {
         assert_eq!(stages[3].text(), "PSG 41\nOM 35\nLENS 30");
 
         // One value of an object: its row, one column.
-        let one = DataStep::Filter { conditions: vec![], any: false, from: 0, count: 0, columns: vec!["home.score".into()] };
+        let one = DataStep::Filter {
+            conditions: vec![],
+            any: false,
+            from: 0,
+            count: 0,
+            columns: vec!["home.score".into()],
+        };
         let m = serde_json::json!({"home": {"score": 2}, "away": {"score": 1}});
-        assert_eq!(pipeline(&m, "", &[one], &Data::new()).unwrap()[1].text(), "2");
+        assert_eq!(
+            pipeline(&m, "", &[one], &Data::new()).unwrap()[1].text(),
+            "2"
+        );
 
         // Join, and a default for an empty table.
         let none = DataStep::Filter {
-            conditions: vec![Condition { column: "team".into(), op: CondOp::Eq, value: "Nice".into() }],
-            any: false, from: 0, count: 0, columns: vec![],
+            conditions: vec![Condition {
+                column: "team".into(),
+                op: CondOp::Eq,
+                value: "Nice".into(),
+            }],
+            any: false,
+            from: 0,
+            count: 0,
+            columns: vec![],
         };
-        let def = DataStep::Transform { columns: vec![], ops: vec![DataFilter::Default { text: "—".into() }] };
-        assert_eq!(pipeline(&v, "standings", &[none, def], &Data::new()).unwrap()[2].text(), "—");
-        let join = DataStep::Transform { columns: vec![], ops: vec![DataFilter::Join { separator: " · ".into() }] };
-        let only = DataStep::Filter { conditions: vec![], any: false, from: 0, count: 2, columns: vec!["team".into()] };
-        assert_eq!(pipeline(&v, "standings", &[only, join], &Data::new()).unwrap()[2].text(), "Lens · PSG");
+        let def = DataStep::Transform {
+            columns: vec![],
+            ops: vec![DataFilter::Default { text: "—".into() }],
+        };
+        assert_eq!(
+            pipeline(&v, "standings", &[none, def], &Data::new()).unwrap()[2].text(),
+            "—"
+        );
+        let join = DataStep::Transform {
+            columns: vec![],
+            ops: vec![DataFilter::Join {
+                separator: " · ".into(),
+            }],
+        };
+        let only = DataStep::Filter {
+            conditions: vec![],
+            any: false,
+            from: 0,
+            count: 2,
+            columns: vec!["team".into()],
+        };
+        assert_eq!(
+            pipeline(&v, "standings", &[only, join], &Data::new()).unwrap()[2].text(),
+            "Lens · PSG"
+        );
     }
 
     #[test]
     fn dataset_rows() {
         use crate::model::{DataSet, RowChange};
-        let mut t: Template = serde_json::from_value(serde_json::json!({"id": "t", "name": "t", "duration": 10})).unwrap();
+        let mut t: Template =
+            serde_json::from_value(serde_json::json!({"id": "t", "name": "t", "duration": 10}))
+                .unwrap();
         t.datasets.push(DataSet {
             key: "standings".into(),
             name: "Standings".into(),
@@ -962,7 +1090,10 @@ mod tests {
         assert_eq!(data["standings_team"], "OM");
         assert!(!bind_datasets(&t, &mut data, &store));
         // A row added by hand, second; a value set by hand stays.
-        data.insert("standings__added".into(), r#"[{"at": 2, "cells": {"team": "Nice"}}]"#.into());
+        data.insert(
+            "standings__added".into(),
+            r#"[{"at": 2, "cells": {"team": "Nice"}}]"#.into(),
+        );
         data.insert("standings__row".into(), "2".into());
         bind_datasets(&t, &mut data, &store);
         assert_eq!(data["standings_team"], "Nice");

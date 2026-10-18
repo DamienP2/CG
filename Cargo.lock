@@ -389,6 +389,7 @@ dependencies = [
  "image",
  "qrcode",
  "serde",
+ "serde_json",
  "tiny-skia",
  "tracing",
 ]

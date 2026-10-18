@@ -127,6 +127,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/data/test", post(test_source))
         .route("/api/data/lookup", post(data_lookup))
         .route("/api/data/pipeline", post(data_pipeline))
+        .route("/api/widgets/act", post(widget_act))
         .route("/api/mos/info", get(mos_info))
         .route("/api/system/update", get(update_info))
         .route("/api/system/update/settings", put(update_settings))
@@ -809,7 +810,11 @@ async fn publish_project(
     for tid in ids {
         let name = p.draft(&tid).map(|t| t.name.clone()).unwrap_or_default();
         if let Some(revision) = p.publish(&tid) {
-            out.push(Published { id: tid, name, revision });
+            out.push(Published {
+                id: tid,
+                name,
+                revision,
+            });
         }
     }
     if out.is_empty() {
@@ -817,7 +822,12 @@ async fn publish_project(
     }
     let p = s.save_project(p).await.map_err(internal)?;
     let names: Vec<&str> = out.iter().map(|x| x.name.as_str()).collect();
-    let note = format!("Published {} template{}: {}", out.len(), if out.len() > 1 { "s" } else { "" }, names.join(", "));
+    let note = format!(
+        "Published {} template{}: {}",
+        out.len(),
+        if out.len() > 1 { "s" } else { "" },
+        names.join(", ")
+    );
     if let Err(e) = s.library.read().await.save_version(&p, who(&me), &note) {
         tracing::warn!("cannot keep a version: {e}");
     }
@@ -1970,6 +1980,37 @@ async fn data_pipeline(
             })
             .collect(),
     }))
+}
+
+/// An operator action tried in the Designer: the layer's state after it.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ActQuery {
+    layer: cg_core::Layer,
+    #[serde(default)]
+    state: serde_json::Value,
+    op: String,
+    #[serde(default)]
+    args: serde_json::Value,
+    #[serde(default)]
+    data: cg_core::Data,
+    #[serde(default)]
+    age_secs: f64,
+}
+
+async fn widget_act(
+    CurrentUser(_me): CurrentUser,
+    Json(q): Json<ActQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let ctx = cg_core::wid::ActCtx {
+        now_ms: cg_core::playout::now_ms(),
+        age_secs: q.age_secs,
+        data: &q.data,
+    };
+    let mut st = q.state;
+    cg_core::wid::act(&q.layer, &mut st, &q.op, &q.args, &ctx)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(st))
 }
 
 // --------------------------------------------------------------- update ----

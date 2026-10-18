@@ -2,8 +2,10 @@ import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, P
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import { rowKey, type Command, type Field, type Marker, type PlayoutItem, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { rowKey, type Command, type Field, type Layer, type Marker, type PlayoutItem, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
+import { widgetOf } from '../widgets';
+import { Warnings } from '../widgets/kit';
 import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
@@ -121,7 +123,6 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
 }
 
 const isPaused = (p: PlayoutItem, project: Project) => !!pauseOf(p, project);
-
 
 /** Content scaled to fit its box (both ways), on a checkerboard. */
 function Screen({ width, height, children }: { width: number; height: number; children: React.ReactNode }) {
@@ -273,9 +274,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Pictures of the output (main + renditions); the ones without a format in the project are off.
   const formats = projectFormats(project);
   const designed = (w: number, h: number) => formats.some((f) => Math.abs(Math.log(f.width / f.height) - Math.log(w / h)) < 0.01);
-  const pictures = channelInfo
-    ? [{ id: 'main', name: `${channelInfo.width}×${channelInfo.height}`, width: channelInfo.width, height: channelInfo.height }, ...channelInfo.renditions]
-    : formats.map((f) => ({ id: f.id, name: f.id === 'main' ? 'Main' : f.name, width: f.width, height: f.height }));
+  const pictures = channelInfo ? [{ id: 'main', name: `${channelInfo.width}×${channelInfo.height}`, width: channelInfo.width, height: channelInfo.height }, ...channelInfo.renditions] : formats.map((f) => ({ id: f.id, name: f.id === 'main' ? 'Main' : f.name, width: f.width, height: f.height }));
   const visible = pictures.filter((p) => shown.includes(p.id) && designed(p.width, p.height));
   const programs = visible.length ? visible : pictures.slice(0, 1);
   const main = pictures[0];
@@ -482,19 +481,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 </div>
                 <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
                   {template.datasets?.map((ds, i) => (
-                    <DataSetPanel
-                      key={ds.key}
-                      ds={ds}
-                      template={template}
-                      draft={draft}
-                      onAir={onAirByItem.get(item.id)}
-                      operate={operate}
-                      zone={itemZone?.id}
-                      fps={fps}
-                      onDraft={editDraft}
-                      command={command}
-                      keys={i === 0}
-                    />
+                    <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={i === 0} />
                   ))}
                 </DataBlock>
               </div>
@@ -519,13 +506,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               const ok = designed(p.width, p.height);
               const on = ok && (shown.includes(p.id) || (!visible.length && p === pictures[0]));
               return (
-                <button
-                  key={p.id}
-                  className={on ? 'on' : ''}
-                  disabled={!ok}
-                  title={ok ? `${p.width}×${p.height}` : `${p.width}×${p.height}: not designed in this project (add the format in the Designer)`}
-                  onClick={() => setShown(on ? shown.filter((x) => x !== p.id) : [...shown, p.id])}
-                >
+                <button key={p.id} className={on ? 'on' : ''} disabled={!ok} title={ok ? `${p.width}×${p.height}` : `${p.width}×${p.height}: not designed in this project (add the format in the Designer)`} onClick={() => setShown(on ? shown.filter((x) => x !== p.id) : [...shown, p.id])}>
                   {p.name}
                 </button>
               );
@@ -738,24 +719,7 @@ function GraphicRow(props: {
 }
 
 /** Sources the graphic reads, when it reads them, and Read now. */
-function DataBlock({
-  template,
-  item,
-  draft,
-  canEdit,
-  onRead,
-  onMode,
-  children,
-}: {
-  children?: React.ReactNode;
-  project: Project;
-  template: Template;
-  item: RundownItem;
-  draft: Record<string, string>;
-  canEdit: boolean;
-  onRead: (patch: Record<string, string>) => void;
-  onMode: (m: ReadMode) => void;
-}) {
+function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }: { children?: React.ReactNode; project: Project; template: Template; item: RundownItem; draft: Record<string, string>; canEdit: boolean; onRead: (patch: Record<string, string>) => void; onMode: (m: ReadMode) => void }) {
   const all = useSources();
   const auth = useApp((s) => s.auth);
   const toast = useApp((s) => s.toast);
@@ -786,8 +750,7 @@ function DataBlock({
       <div className="opx-data-title">Data</div>
       {children}
       {!used.length ? (
-        !template.datasets?.length && 
-<p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
+        !template.datasets?.length && <p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
       ) : (
         <>
           {used.map((s) => (
@@ -818,7 +781,7 @@ function DataBlock({
                     title={can.design(auth?.user) ? 'How often the server reads the source (for every graphic using it)' : 'Set by a designer in Data'}
                     onChange={async (e) => {
                       const { updatedAt, checkedAt, error, bytes, ...src } = s as typeof s & { checkedAt?: number; bytes?: number };
-                      void updatedAt, checkedAt, error, bytes;
+                      (void updatedAt, checkedAt, error, bytes);
                       await api('PUT', `/api/data/sources/${encodeURIComponent(s.id)}`, { ...src, interval: +e.target.value }).catch((err) => toast((err as Error).message, 'error'));
                     }}
                   >
@@ -856,6 +819,28 @@ function DataBlock({
 }
 
 /** Internal controls of one graphic on air: widgets, number values, triggers, continue / update / out. */
+/** Operator controls of a spec widget of the graphic on air (web/src/widgets). */
+function SpecControls({ layer, item, act }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void }) {
+  const def = widgetOf(layer.type)!;
+  const Op = def.Operator!;
+  const offset = useApp((s) => s.serverOffset);
+  const tz = useApp((s) => s.timezone);
+  const state = item.widgets?.[layer.id];
+  const warnings = (def.warnings?.(layer as never, { data: item.data, state }) ?? []).filter((w) => w.op);
+  const Icon = def.icon;
+  return (
+    <div className="opx-spec">
+      <div className="opx-spec-head">
+        <Icon size={13} />
+        <strong>{layer.name}</strong>
+        <span className="muted small">{def.label}</span>
+      </div>
+      <Warnings list={warnings} />
+      <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / 50, defaultTz: tz }} />
+    </div>
+  );
+}
+
 function AirControls({ project, zone, item, command, onSaveData }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; onSaveData: (d: Record<string, string>) => void }) {
   const t = project.templates.find((x) => x.id === item.templateId);
   if (!t) return null;
@@ -863,12 +848,7 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
   const timed = t.layers.filter(isTimed);
   const numbers = t.fields.filter((f) => f.kind === 'number' && !f.binding);
   // Pauses waiting for a trigger, and values set by hand until one.
-  const triggers = [
-    ...new Set([
-      ...t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])),
-      ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : [])),
-    ]),
-  ];
+  const triggers = [...new Set([...t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])), ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : []))])];
   const waiting = pauseOf(item, project);
   const setValue = (key: string, v: string) => {
     const data = { ...item.data, [key]: v };
@@ -890,24 +870,31 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
         </button>
       </div>
       {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} />}
-      {timed.map((l) => {
-        const c = item.clocks?.[l.id];
-        const running = c ? c.pausedAt == null : !l.manualStart;
-        return (
-          <div key={l.id} className="opx-widget">
-            <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? 'Pause' : 'Start'} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
-              {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-            </button>
-            <span className="opx-widget-name">
-              <strong>{l.name}</strong>
-              <span className="muted small">{running ? 'running' : 'stopped'}</span>
-            </span>
-            <button className="opx-sq" title="Back to the start" onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
-              <RotateCcw size={13} />
-            </button>
-          </div>
-        );
-      })}
+      {t.layers
+        .filter((l) => l.visible && widgetOf(l.type)?.Operator)
+        .map((l) => (
+          <SpecControls key={l.id} layer={l} item={item} act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })} />
+        ))}
+      {timed
+        .filter((l) => !widgetOf(l.type)?.Operator)
+        .map((l) => {
+          const c = item.clocks?.[l.id];
+          const running = c ? c.pausedAt == null : !l.manualStart;
+          return (
+            <div key={l.id} className="opx-widget">
+              <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? 'Pause' : 'Start'} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
+                {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
+              </button>
+              <span className="opx-widget-name">
+                <strong>{l.name}</strong>
+                <span className="muted small">{running ? 'running' : 'stopped'}</span>
+              </span>
+              <button className="opx-sq" title="Back to the start" onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
+                <RotateCcw size={13} />
+              </button>
+            </div>
+          );
+        })}
       {numbers.length > 0 && (
         <div className="opx-numbers">
           {numbers.map((f) => {
@@ -938,7 +925,7 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
           ))}
         </div>
       )}
-      {!timed.length && !numbers.length && !triggers.length && !t.datasets?.length && <p className="opx-hint">This graphic has no internal controls.</p>}
+      {!timed.length && !numbers.length && !triggers.length && !t.datasets?.length && !t.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">This graphic has no internal controls.</p>}
     </div>
   );
 }

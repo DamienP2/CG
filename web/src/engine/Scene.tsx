@@ -7,25 +7,15 @@ import * as W from './widgets';
 import { applyLogic, measureLayer } from './logic';
 import { fitText, type Fitted } from './textFit';
 import { useFonts } from './fonts';
+import { widgetOf } from '../widgets';
 
 /** Time seen by widgets; provided per playout layer (or by the designer). */
 export const TimeContext = createContext<W.TimeCtx>({ nowMs: Date.now(), ageSecs: 0, defaultTz: '' });
 
 /** Layers whose look depends on the clock: their scene re-renders every frame. */
-export const LIVE_TYPES: ReadonlySet<LayerType> = new Set([
-  'clock',
-  'ticker',
-  'roll',
-  'analogClock',
-  'counter',
-  'progress',
-  'rotator',
-  'typewriter',
-  'slideshow',
-  'barChart',
-]);
+export const LIVE_TYPES: ReadonlySet<LayerType> = new Set(['clock', 'ticker', 'roll', 'analogClock', 'counter', 'progress', 'rotator', 'typewriter', 'slideshow', 'barChart']);
 
-export const hasLiveWidgets = (t: Template) => t.layers.some((l) => l.visible && LIVE_TYPES.has(l.type));
+export const hasLiveWidgets = (t: Template) => t.layers.some((l) => l.visible && (LIVE_TYPES.has(l.type) || !!widgetOf(l.type)?.live?.(l as never)));
 
 interface SceneProps {
   template: Template;
@@ -106,6 +96,8 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
     const p = (v: number) => `${Math.min(1, Math.max(0, v)) * 100}%`;
     style.clipPath = `inset(${p(ct)} ${p(cr)} ${p(cb)} ${p(cl)})`;
   }
+  // The spec widgets draw everything inside their box (SpecWidget).
+  if (widgetOf(layer.type)?.Render) return { style };
   const fill = cssColor(col(r.fill));
   const strokeW = num(r.strokeWidth);
   const stroke = cssColor(col(r.stroke));
@@ -175,27 +167,7 @@ const hexColor = (s: string, fallback = 'transparent') => {
 const justify = (v: VerticalAlign) => (v === 'top' ? 'flex-start' : v === 'bottom' ? 'flex-end' : 'center');
 
 /** A block of text in a box, laid out like the Rust text engine. */
-function TextBox({
-  text,
-  font,
-  r,
-  align,
-  valign,
-  box,
-  color,
-  stroke = true,
-  opacity = 1,
-}: {
-  text: string;
-  font: FontStyle;
-  r: Resolved;
-  align: TextAlign;
-  valign: VerticalAlign;
-  box: [number, number, number, number];
-  color?: string;
-  stroke?: boolean;
-  opacity?: number;
-}) {
+function TextBox({ text, font, r, align, valign, box, color, stroke = true, opacity = 1 }: { text: string; font: FontStyle; r: Resolved; align: TextAlign; valign: VerticalAlign; box: [number, number, number, number]; color?: string; stroke?: boolean; opacity?: number }) {
   if (!text) return null;
   const strokeW = num(r.strokeWidth);
   const style: CSSProperties = {
@@ -336,9 +308,7 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
       const list = W.lines(layer.images, data);
       if (!list.length) return null;
       const [cur, next, mix] = W.slideshowState(list.length, layer.interval, layer.fade, age);
-      const img = (src: string, opacity: number) => (
-        <img key={src + opacity} src={src} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, opacity }} />
-      );
+      const img = (src: string, opacity: number) => <img key={src + opacity} src={src} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, opacity }} />;
       return (
         <>
           {img(list[cur], 1 - mix)}
@@ -366,9 +336,7 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
             const bh = rowH * 0.56;
             const by = y + (rowH - bh) / 2;
             const frac = max > 0 ? Math.min(1, Math.max(0, v / max)) : 0;
-            const shown = layer.percent
-              ? `${W.formatNumber((total > 0 ? (v / total) * 100 : 0) * g, 0, false)}%`
-              : W.formatNumber(v * g, Number.isInteger(v) ? 0 : 1, true);
+            const shown = layer.percent ? `${W.formatNumber((total > 0 ? (v / total) * 100 : 0) * g, 0, false)}%` : W.formatNumber(v * g, Number.isInteger(v) ? 0 : 1, true);
             return (
               <div key={i}>
                 <div style={{ position: 'absolute', left: barX, top: by, width: barW, height: bh, background: hexColor(layer.track), borderRadius: bh / 4 }} />
@@ -386,21 +354,17 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
   }
 }
 
-const LayerNode = memo(function LayerNode({
-  layer,
-  childrenOf,
-  frame,
-  data,
-  hold,
-  interactive,
-}: {
-  layer: Layer;
-  childrenOf: Map<string | null, Layer[]>;
-  frame: number;
-  data: Data;
-  hold: number;
-  interactive?: boolean;
-}) {
+/** A spec widget (web/src/widgets) drawing its layer; reads the time context so only it re-renders. */
+function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; frame: number; data: Data; hold: number; interactive?: boolean }) {
+  const base = useContext(TimeContext);
+  const time = base.layerAge ? { ...base, ageSecs: base.layerAge(layer) } : base;
+  const r = useContext(LogicContext).get(layer.id) ?? resolveLayer(layer, frame, data, hold);
+  const def = widgetOf(layer.type)!;
+  const Render = def.Render!;
+  return <Render layer={layer as never} r={r} w={num(r.width)} h={num(r.height)} data={data} time={time} state={time.widgetState?.(layer.id)} frame={frame} hold={hold} fps={time.fps ?? 50} designer={interactive} />;
+}
+
+const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold, interactive }: { layer: Layer; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
   const logic = useContext(LogicContext).get(layer.id);
   const self = layer;
   // A scrolling text is drawn as the ticker or roll it behaves like.
@@ -415,15 +379,8 @@ const LayerNode = memo(function LayerNode({
   return (
     <div style={style} data-layer-id={interactive ? layer.id : undefined} data-fit={interactive ? fit : undefined}>
       {lines && (squeeze < 1 ? <div style={{ width: `${100 / squeeze}%`, transform: `scaleX(${squeeze})`, transformOrigin: '0 0' }}>{lines}</div> : lines)}
-      {src && layer.type === 'image' && (
-        <img
-          src={src}
-          alt=""
-          draggable={false}
-          style={{ width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, display: 'block' }}
-        />
-      )}
-      {LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
+      {src && layer.type === 'image' && <img src={src} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, display: 'block' }} />}
+      {widgetOf(layer.type)?.Render ? <SpecWidget layer={layer} frame={frame} data={data} hold={hold} interactive={interactive} /> : LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
       {kids.map((k) => (
         <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ))}
@@ -467,21 +424,7 @@ export const Scene = memo(function Scene({ template, frame, data, interactive }:
 });
 
 /** Fixed-size canvas scaled to fit its container. */
-export function Viewport({
-  width,
-  height,
-  scale,
-  children,
-  className,
-  style,
-}: {
-  width: number;
-  height: number;
-  scale: number;
-  children: React.ReactNode;
-  className?: string;
-  style?: CSSProperties;
-}) {
+export function Viewport({ width, height, scale, children, className, style }: { width: number; height: number; scale: number; children: React.ReactNode; className?: string; style?: CSSProperties }) {
   return (
     <div className={className} style={{ width: width * scale, height: height * scale, position: 'relative', overflow: 'hidden', ...style }}>
       <div style={{ width, height, transform: `scale(${scale})`, transformOrigin: '0 0', position: 'absolute', left: 0, top: 0 }}>{children}</div>

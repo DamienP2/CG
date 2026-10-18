@@ -3,16 +3,7 @@
 export type Color = [number, number, number, number];
 export type Value = number | Color;
 
-export type Easing =
-  | { type: 'linear' }
-  | { type: 'hold' }
-  | { type: 'easeIn' }
-  | { type: 'easeOut' }
-  | { type: 'easeInOut' }
-  | { type: 'bezier'; x1: number; y1: number; x2: number; y2: number }
-  | { type: 'back' }
-  | { type: 'elastic' }
-  | { type: 'bounce' };
+export type Easing = { type: 'linear' } | { type: 'hold' } | { type: 'easeIn' } | { type: 'easeOut' } | { type: 'easeInOut' } | { type: 'bezier'; x1: number; y1: number; x2: number; y2: number } | { type: 'back' } | { type: 'elastic' } | { type: 'bounce' };
 
 export interface Keyframe {
   frame: number;
@@ -20,28 +11,7 @@ export interface Keyframe {
   easing: Easing;
 }
 
-export const PROPS = [
-  'x',
-  'y',
-  'width',
-  'height',
-  'anchorX',
-  'anchorY',
-  'rotation',
-  'scaleX',
-  'scaleY',
-  'opacity',
-  'fill',
-  'stroke',
-  'strokeWidth',
-  'cornerRadius',
-  'fontSize',
-  'letterSpacing',
-  'cropLeft',
-  'cropRight',
-  'cropTop',
-  'cropBottom',
-] as const;
+export const PROPS = ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fill', 'stroke', 'strokeWidth', 'cornerRadius', 'fontSize', 'letterSpacing', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom'] as const;
 export type Prop = (typeof PROPS)[number];
 
 export const COLOR_PROPS: ReadonlySet<Prop> = new Set(['fill', 'stroke']);
@@ -67,9 +37,9 @@ export type ClockMode = 'time' | 'countdown' | 'elapsed' | 'timer';
 
 export type LayerKind =
   | { type: 'group'; clip?: boolean }
-  | { type: 'rect' }
-  | { type: 'ellipse' }
-  | ({
+  | ({ type: 'rect' } & import('../widgets/quad').Config)
+  | ({ type: 'ellipse' } & import('../widgets/ellipse').Config)
+  | (({
       type: 'text';
       text: string;
       /** Paragraph: lines wrap at the box width. */
@@ -91,19 +61,27 @@ export type LayerKind =
       minSize?: number;
       /** The Operator warns under this (fraction, default 0.8). */
       warnBelow?: number;
-    } & FontStyle)
-  | { type: 'image'; src: string; fit: ImageFit }
-  | ({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle)
-  | ({ type: 'ticker'; text: string; separator: string; speed: number } & FontStyle)
+    } & FontStyle) &
+      import('../widgets/text').Config)
+  | ({ type: 'image'; src: string; fit: ImageFit } & import('../widgets/image').Config)
+  | (({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle) & import('../widgets/timer').Config)
+  | (({ type: 'ticker'; text: string; separator: string; speed: number } & FontStyle) & import('../widgets/ticker').Config)
   | ({ type: 'roll'; text: string; speed: number; loop: boolean } & FontStyle)
   | { type: 'analogClock'; timezone: string; seconds: boolean; accent: string }
-  | ({ type: 'counter'; from: string; to: string; duration: number; decimals: number; prefix: string; suffix: string; grouping: boolean } & FontStyle)
-  | { type: 'progress'; value: string; max: string; duration: number; track: string }
+  | (({ type: 'counter'; from: string; to: string; duration: number; decimals: number; prefix: string; suffix: string; grouping: boolean } & FontStyle) & import('../widgets/counter').Config)
+  | ({ type: 'progress'; value: string; max: string; duration: number; track: string } & import('../widgets/progress').Config)
   | ({ type: 'rotator'; text: string; interval: number; fade: number } & FontStyle)
-  | ({ type: 'typewriter'; text: string; speed: number; cursor: boolean } & FontStyle)
+  | (({ type: 'typewriter'; text: string; speed: number; cursor: boolean } & FontStyle) & import('../widgets/typewriter').Config)
   | { type: 'slideshow'; images: string; interval: number; fade: number; fit: ImageFit }
-  | { type: 'qrCode'; data: string; background: string }
-  | ({ type: 'barChart'; text: string; percent: boolean; duration: number; track: string; textColor: string } & FontStyle);
+  | ({ type: 'qrCode'; data: string; background: string } & import('../widgets/qrcode').Config)
+  | ({ type: 'barChart'; text: string; percent: boolean; duration: number; track: string; textColor: string } & FontStyle)
+  | ({ type: 'polygon' } & import('../widgets/polygon').Config)
+  | ({ type: 'pen' } & import('../widgets/pen').Config)
+  | ({ type: 'table' } & import('../widgets/table').Config)
+  | ({ type: 'credits' } & import('../widgets/credits').Config)
+  | ({ type: 'chart' } & import('../widgets/chart').Config)
+  | ({ type: 'map' } & import('../widgets/map').Config)
+  | ({ type: 'scoreboard' } & import('../widgets/scoreboard').Config);
 
 export type LayerType = LayerKind['type'];
 
@@ -186,10 +164,7 @@ export interface FieldBinding {
 }
 
 /** A step of the table pipeline (mirror of model::DataStep). */
-export type DataStep =
-  | { type: 'filter'; where: Condition[]; any?: boolean; from: number; count: number; columns: string[] }
-  | { type: 'sort'; keys: SortKey[] }
-  | { type: 'transform'; columns: string[]; ops: DataFilter[] };
+export type DataStep = { type: 'filter'; where: Condition[]; any?: boolean; from: number; count: number; columns: string[] } | { type: 'sort'; keys: SortKey[] } | { type: 'transform'; columns: string[]; ops: DataFilter[] };
 
 export type CondOp = 'eq' | 'ne' | 'contains' | 'notContains' | 'startsWith' | 'gt' | 'ge' | 'lt' | 'le' | 'empty' | 'notEmpty';
 export interface Condition {
@@ -258,12 +233,7 @@ export type DataFilter =
   | { type: 'default'; text: string }
   | { type: 'map'; when: string; then: string };
 
-export type DataSourceKind =
-  | { type: 'json'; url: string; headers?: Record<string, string> }
-  | { type: 'csv'; url: string; header?: boolean }
-  | { type: 'rss'; url: string }
-  | { type: 'xml'; url: string; headers?: Record<string, string> }
-  | { type: 'push'; format?: 'json' | 'csv' | 'xml' };
+export type DataSourceKind = { type: 'json'; url: string; headers?: Record<string, string> } | { type: 'csv'; url: string; header?: boolean } | { type: 'rss'; url: string } | { type: 'xml'; url: string; headers?: Record<string, string> } | { type: 'push'; format?: 'json' | 'csv' | 'xml' };
 
 export type DataSource = DataSourceKind & {
   id: string;
@@ -436,6 +406,8 @@ export interface PlayoutItem {
   next?: { templateId: string; data: Record<string, string>; rundownId?: string | null; target: number } | null;
   /** Widgets started, paused or reset by the operator, by layer id. */
   clocks?: Record<string, LayerClock>;
+  /** What the operator changed in the spec widgets (web/src/widgets), by layer id. */
+  widgets?: Record<string, unknown>;
 }
 
 /** Own time of a widget layer, in frames on air. */
@@ -459,6 +431,8 @@ export type Command =
   | ({ action: 'takeOut' } & Target)
   | ({ action: 'update'; data: Record<string, string> } & Target)
   | ({ action: 'widget'; target: string; control: WidgetControl } & Target)
+  /** An operator action on a spec widget of the graphic on air (see web/src/widgets). */
+  | ({ action: 'act'; target: string; op: string; args?: unknown } & Target)
   /** Another row of a data set of the graphic on air (1 = first). */
   | ({ action: 'row'; dataset: string; row: number } & Target)
   | ({ action: 'clear' } & Target)

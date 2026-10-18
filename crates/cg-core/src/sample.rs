@@ -42,6 +42,7 @@ fn layer(
 
 fn text(t: &str, weight: u16) -> LayerKind {
     LayerKind::Text {
+        x: Default::default(),
         wrap: false,
         transform: Default::default(),
         decoration: Default::default(),
@@ -101,7 +102,7 @@ pub fn lower_third() -> Template {
     let mut accent = layer(
         "lt-accent",
         "Accent bar",
-        LayerKind::Rect,
+        LayerKind::rect(),
         Some("lt-group"),
         &[
             (X, n(0.0)),
@@ -119,7 +120,7 @@ pub fn lower_third() -> Template {
     let plate = layer(
         "lt-plate",
         "Plate",
-        LayerKind::Rect,
+        LayerKind::rect(),
         Some("lt-group"),
         &[
             (X, n(14.0)),
@@ -132,7 +133,7 @@ pub fn lower_third() -> Template {
     let mut sub = layer(
         "lt-sub",
         "Subtitle plate",
-        LayerKind::Rect,
+        LayerKind::rect(),
         Some("lt-group"),
         &[
             (X, n(14.0)),
@@ -242,7 +243,7 @@ pub fn score_bug() -> Template {
     let mut bg = layer(
         "sb-bg",
         "Background",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(80.0)),
@@ -271,6 +272,7 @@ pub fn score_bug() -> Template {
             id,
             name,
             LayerKind::Text {
+                x: Default::default(),
                 wrap: false,
                 transform: Default::default(),
                 decoration: Default::default(),
@@ -314,7 +316,7 @@ pub fn score_bug() -> Template {
     let mut score = layer(
         "sb-score-bg",
         "Score plate",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(230.0)),
@@ -439,7 +441,7 @@ pub fn clock() -> Template {
     let mut bg = layer(
         "ck-bg",
         "Background",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(1640.0)),
@@ -455,6 +457,7 @@ pub fn clock() -> Template {
         "ck-time",
         "Clock",
         LayerKind::Clock {
+            x: Default::default(),
             mode: ClockMode::Time,
             format: "HH:mm:ss".into(),
             timezone: String::new(),
@@ -498,7 +501,7 @@ pub fn ticker() -> Template {
     let mut bar = layer(
         "tk-bar",
         "Bar",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(0.0)),
@@ -521,6 +524,7 @@ pub fn ticker() -> Template {
         "tk-label",
         "Label",
         LayerKind::Text {
+            x: Default::default(),
             wrap: false,
             transform: Default::default(),
             decoration: Default::default(),
@@ -554,7 +558,7 @@ pub fn ticker() -> Template {
     let mut label_bg = layer(
         "tk-label-bg",
         "Label plate",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(0.0)),
@@ -569,6 +573,7 @@ pub fn ticker() -> Template {
         "tk-crawl",
         "Crawl",
         LayerKind::Ticker {
+            x: Default::default(),
             text: "{{items}}".into(),
             separator: "   •   ".into(),
             speed: 180.0,
@@ -617,7 +622,7 @@ pub fn credits() -> Template {
     let mut shade = layer(
         "cr-bg",
         "Shade",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(0.0)),
@@ -742,7 +747,7 @@ pub fn poll() -> Template {
     let mut bg = layer(
         "pl-bg",
         "Panel",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(560.0)),
@@ -795,6 +800,7 @@ pub fn poll() -> Template {
         "pl-total",
         "Total votes",
         LayerKind::Counter {
+            x: Default::default(),
             from: "0".into(),
             to: "{{votes}}".into(),
             duration: 2.0,
@@ -846,6 +852,7 @@ pub fn qr_code() -> Template {
         "qr-code",
         "QR code",
         LayerKind::QrCode {
+            x: Default::default(),
             data: "{{url}}".into(),
             background: "#ffffff".into(),
         },
@@ -902,7 +909,7 @@ pub fn countdown() -> Template {
     let mut bg = layer(
         "cd-bg",
         "Plate",
-        LayerKind::Rect,
+        LayerKind::rect(),
         None,
         &[
             (X, n(710.0)),
@@ -918,6 +925,7 @@ pub fn countdown() -> Template {
         "cd-label",
         "Label",
         LayerKind::Typewriter {
+            x: Default::default(),
             text: "{{label}}".into(),
             speed: 18.0,
             cursor: false,
@@ -938,6 +946,7 @@ pub fn countdown() -> Template {
         "cd-time",
         "Countdown",
         LayerKind::Clock {
+            x: Default::default(),
             mode: ClockMode::Countdown,
             format: "HH:mm:ss".into(),
             timezone: String::new(),

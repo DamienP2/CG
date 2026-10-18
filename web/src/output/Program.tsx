@@ -17,10 +17,12 @@ export function Program({ project, live, width, height }: { project: Project; li
   // Templates laid out in that format, computed once per project change.
   const templates = useMemo(() => new Map<string, Template>(project.templates.map((t) => [t.id, inFormat(t, format.id)])), [project, format.id]);
   const items = Object.entries(live?.state.layers ?? {}).sort(([a], [b]) => Number(a) - Number(b));
-  const now = useTicker(items.some(([, item]) => {
-    const t = templates.get(item.templateId);
-    return !!t && hasLiveWidgets(t);
-  }));
+  const now = useTicker(
+    items.some(([, item]) => {
+      const t = templates.get(item.templateId);
+      return !!t && hasLiveWidgets(t);
+    }),
+  );
   const fps = project.frameRate.num / project.frameRate.den || 1;
   const scale = Math.min(width / format.width, height / format.height);
   const zoneOf = (layer: number) => {
@@ -47,7 +49,7 @@ export function Program({ project, live, width, height }: { project: Project; li
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
-            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined}>
+            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps}>
               <Scene template={t} frame={item.frame} data={item.data} />
             </LiveTime>
           </div>

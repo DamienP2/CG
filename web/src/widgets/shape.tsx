@@ -1,0 +1,285 @@
+// What the shape widgets share (quad, polygon, ellipse, pen): fill and
+// stroke styles, outlines as path commands, and their inspector sections.
+// Mirror of crates/cg-core/src/wid/shape.rs and cg-render/src/wid/shape.rs.
+import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
+import type { Data, Layer } from '../engine/types';
+import { ColorGroupRow, GroupRow, AssetPicker } from '../designer/Inspector';
+import { useEffect, useState } from 'react';
+import { ColorPick, getPath, hex, Range, Row, Section, Seg, useBound } from './kit';
+
+export type FillKind = 'none' | 'solid' | 'linear' | 'radial' | 'image';
+export type ImageFill = 'contain' | 'cover' | 'stretch' | 'tile';
+export interface FillStyle {
+  kind?: FillKind;
+  /** Second colour of a gradient. */
+  color2?: string;
+  angle?: number;
+  image?: string;
+  fit?: ImageFill;
+}
+export interface StrokeStyle {
+  position?: 'inside' | 'center' | 'outside';
+  dash?: 'solid' | 'dashed' | 'dotted';
+  join?: 'miter' | 'round' | 'bevel';
+  cap?: 'butt' | 'round' | 'square';
+}
+export type FillRule = 'nonzero' | 'evenodd';
+export const FILL: Required<FillStyle> = { kind: 'solid', color2: '#ff3b5c', angle: 90, image: '', fit: 'cover' };
+export const STROKE: Required<StrokeStyle> = { position: 'inside', dash: 'solid', join: 'miter', cap: 'butt' };
+
+export type Pt = [number, number];
+
+/** SVG path of a closed polygon with rounded vertices, radii capped (mirrors rounded_polygon). */
+export function roundedPolygon(pts: Pt[], radii: number[]): string {
+  const n = pts.length;
+  if (n < 2) return '';
+  const seg: { a: Pt; b: Pt; c: Pt; d: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const v0: Pt = [p0[0] - p1[0], p0[1] - p1[1]];
+    const v2: Pt = [p2[0] - p1[0], p2[1] - p1[1]];
+    const l0 = Math.hypot(...v0);
+    const l2 = Math.hypot(...v2);
+    if (l0 < 1e-6 || l2 < 1e-6) {
+      seg.push({ a: p1, b: p1, c: p1, d: 0 });
+      continue;
+    }
+    const u0: Pt = [v0[0] / l0, v0[1] / l0];
+    const u2: Pt = [v2[0] / l2, v2[1] / l2];
+    const cos = Math.min(1, Math.max(-1, u0[0] * u2[0] + u0[1] * u2[1]));
+    const tan = Math.tan(Math.acos(cos) / 2);
+    const r = Math.max(0, radii[i] ?? radii[radii.length - 1] ?? 0);
+    const d = Math.min(tan > 1e-6 ? r / tan : 0, l0 / 2, l2 / 2);
+    seg.push({ a: [p1[0] + u0[0] * d, p1[1] + u0[1] * d], b: [p1[0] + u2[0] * d, p1[1] + u2[1] * d], c: p1, d });
+  }
+  const k = 0.5523;
+  let path = `M${seg[0].b[0]} ${seg[0].b[1]}`;
+  for (let j = 1; j <= n; j++) {
+    const s = seg[j % n];
+    path += `L${s.a[0]} ${s.a[1]}`;
+    if (s.d > 0.01) {
+      const c1 = [s.a[0] + (s.c[0] - s.a[0]) * k, s.a[1] + (s.c[1] - s.a[1]) * k];
+      const c2 = [s.b[0] + (s.c[0] - s.b[0]) * k, s.b[1] + (s.c[1] - s.b[1]) * k];
+      path += `C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${s.b[0]} ${s.b[1]}`;
+    }
+  }
+  return path + 'Z';
+}
+
+let seq = 0;
+
+/**
+ * A filled and stroked outline as SVG (w × h, layer pixels): fill from the
+ * `fill` property (+ style), stroke from `stroke` / `strokeWidth` inside,
+ * centred on or outside the outline.
+ */
+export function ShapeSvg({ d, w, h, r, fill, stroke, rule = 'nonzero', data }: { d: string; w: number; h: number; r: Resolved; fill?: FillStyle; stroke?: StrokeStyle; rule?: FillRule; data: Data }) {
+  const id = `ws${(seq = (seq + 1) % 1e6)}`;
+  const f = { ...FILL, ...fill };
+  const st = { ...STROKE, ...stroke };
+  const c1 = cssColor(col(r.fill));
+  const c2 = hex(f.color2);
+  const sw = num(r.strokeWidth);
+  let defs = null;
+  let paint = c1;
+  if (f.kind === 'none') paint = 'none';
+  else if (f.kind === 'linear') {
+    const a = ((f.angle - 90) * Math.PI) / 180;
+    const [dx, dy] = [Math.cos(a) / 2, Math.sin(a) / 2];
+    const len = (w * Math.abs(dx) + h * Math.abs(dy)) * 2;
+    defs = (
+      <linearGradient id={`${id}f`} gradientUnits="userSpaceOnUse" x1={w / 2 - dx * len} y1={h / 2 - dy * len} x2={w / 2 + dx * len} y2={h / 2 + dy * len}>
+        <stop offset="0" stopColor={c1} />
+        <stop offset="1" stopColor={c2} />
+      </linearGradient>
+    );
+    paint = `url(#${id}f)`;
+  } else if (f.kind === 'radial') {
+    defs = (
+      <radialGradient id={`${id}f`} gradientUnits="userSpaceOnUse" cx={w / 2} cy={h / 2} r={Math.hypot(w, h) / 2}>
+        <stop offset="0" stopColor={c1} />
+        <stop offset="1" stopColor={c2} />
+      </radialGradient>
+    );
+    paint = `url(#${id}f)`;
+  } else if (f.kind === 'image') {
+    const src = interpolateText(f.image, data);
+    const ar = { contain: 'xMidYMid meet', cover: 'xMidYMid slice', stretch: 'none', tile: 'xMidYMid meet' }[f.fit];
+    defs =
+      f.fit === 'tile' ? (
+        <TilePattern id={`${id}f`} src={src} />
+      ) : (
+        <pattern id={`${id}f`} patternUnits="userSpaceOnUse" width={w} height={h}>
+          <image href={src} width={w} height={h} preserveAspectRatio={ar} />
+        </pattern>
+      );
+    paint = src ? `url(#${id}f)` : 'none';
+  }
+  const dash = st.dash === 'dashed' ? (k: number) => `${sw * k * 3} ${sw * k * 2}` : st.dash === 'dotted' ? (k: number) => `0.001 ${sw * k * 2}` : () => undefined;
+  const strokeEl = (k: number, extra: Record<string, string>) => <path d={d} fill="none" stroke={cssColor(col(r.stroke))} strokeWidth={sw * k} strokeLinejoin={st.join} strokeLinecap={st.dash === 'dotted' ? 'round' : st.cap} strokeDasharray={dash(k)} {...extra} />;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+      <defs>
+        {defs}
+        {sw > 0 && st.position === 'inside' && (
+          <clipPath id={`${id}c`}>
+            <path d={d} clipRule={rule} />
+          </clipPath>
+        )}
+        {sw > 0 && st.position === 'outside' && (
+          <mask id={`${id}m`} maskUnits="userSpaceOnUse" x={-5000} y={-5000} width={10000 + w} height={10000 + h}>
+            <rect x={-5000} y={-5000} width={10000 + w} height={10000 + h} fill="#fff" />
+            <path d={d} fill="#000" fillRule={rule} />
+          </mask>
+        )}
+      </defs>
+      <path d={d} fill={paint} fillRule={rule} />
+      {sw > 0 && st.position === 'center' && strokeEl(1, {})}
+      {sw > 0 && st.position === 'inside' && strokeEl(2, { clipPath: `url(#${id}c)` })}
+      {sw > 0 && st.position === 'outside' && strokeEl(2, { mask: `url(#${id}m)` })}
+    </svg>
+  );
+}
+
+/** A picture repeated at its own size (tile fill). */
+function TilePattern({ id, src }: { id: string; src: string }) {
+  const [size] = useImageSize(src);
+  return (
+    <pattern id={id} patternUnits="userSpaceOnUse" width={size[0]} height={size[1]}>
+      <image href={src} width={size[0]} height={size[1]} />
+    </pattern>
+  );
+}
+
+const sizes = new Map<string, [number, number]>();
+/** Natural size of a picture (100 × 100 until it has loaded). */
+export function useImageSize(src: string): [[number, number], (s: [number, number]) => void] {
+  const [s, set] = useState<[number, number]>(sizes.get(src) ?? [100, 100]);
+  useEffect(() => {
+    if (!src || sizes.has(src)) return;
+    const img = new Image();
+    img.onload = () => {
+      sizes.set(src, [img.naturalWidth, img.naturalHeight]);
+      set([img.naturalWidth, img.naturalHeight]);
+    };
+    img.src = src;
+  }, [src]);
+  return [sizes.get(src) ?? s, set];
+}
+
+/**
+ * Fill and Stroke groups of the inspector: the colours and the width are
+ * the layer's animated properties (keyframes), the rest is `fillStyle` /
+ * `strokeStyle` of the layer.
+ */
+export function FillStrokeSections({ layer, id, rule, caps, noPosition }: { layer: Layer; id: string; rule?: boolean; caps?: boolean; noPosition?: boolean }) {
+  const f = { ...FILL, ...(layer as { fillStyle?: FillStyle }).fillStyle };
+  return (
+    <>
+      <Section id={`${id}-fill`} title="Fill">
+        <Seg
+          label="Type"
+          path="fillStyle.kind"
+          value={f.kind}
+          options={[
+            ['none', 'None'],
+            ['solid', 'Solid'],
+            ['linear', 'Linear'],
+            ['radial', 'Radial'],
+            ['image', 'Image'],
+          ]}
+        />
+        {f.kind !== 'none' && f.kind !== 'image' && <ColorGroupRow layer={layer} prop="fill" label={f.kind === 'solid' ? 'Color' : 'From'} />}
+        {(f.kind === 'linear' || f.kind === 'radial') && <GradientTo />}
+        {f.kind === 'linear' && <Range label="Angle" path="fillStyle.angle" min={0} max={360} unit="°" />}
+        {f.kind === 'image' && <ImageSource />}
+        {f.kind === 'image' && (
+          <Seg
+            label="Fit"
+            path="fillStyle.fit"
+            options={[
+              ['contain', 'Contain'],
+              ['cover', 'Cover'],
+              ['stretch', 'Stretch'],
+              ['tile', 'Tile'],
+            ]}
+          />
+        )}
+        {rule && (
+          <Seg
+            label="Fill rule"
+            path="fillRule"
+            options={[
+              ['nonzero', 'Non-zero', 'Self-crossing parts are filled'],
+              ['evenodd', 'Even-odd', 'Self-crossing parts alternate (holes)'],
+            ]}
+          />
+        )}
+      </Section>
+      <Section id={`${id}-stroke`} title="Stroke">
+        <ColorGroupRow layer={layer} prop="stroke" label="Color" />
+        <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+        {!noPosition && (
+          <Seg
+            label="Position"
+            path="strokeStyle.position"
+            value={STROKE.position}
+            options={[
+              ['inside', 'Inside'],
+              ['center', 'Centre'],
+              ['outside', 'Outside'],
+            ]}
+          />
+        )}
+        <Seg
+          label="Style"
+          path="strokeStyle.dash"
+          value={STROKE.dash}
+          options={[
+            ['solid', 'Solid'],
+            ['dashed', 'Dashes'],
+            ['dotted', 'Dots'],
+          ]}
+        />
+        <Seg
+          label="Joins"
+          path="strokeStyle.join"
+          value={STROKE.join}
+          options={[
+            ['miter', 'Miter'],
+            ['round', 'Round'],
+            ['bevel', 'Bevel'],
+          ]}
+        />
+        {caps && (
+          <Seg
+            label="Ends"
+            path="strokeStyle.cap"
+            value={STROKE.cap}
+            options={[
+              ['butt', 'Flat'],
+              ['round', 'Round'],
+              ['square', 'Square'],
+            ]}
+          />
+        )}
+      </Section>
+    </>
+  );
+}
+
+function GradientTo() {
+  return <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />;
+}
+
+/** Picture of an image fill (from the media library). */
+function ImageSource() {
+  const b = useBound();
+  return (
+    <Row label="Picture">
+      <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
+    </Row>
+  );
+}

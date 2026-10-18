@@ -13,6 +13,10 @@ export interface TimeCtx {
   defaultTz: string;
   /** Time on air of one layer when the operator controls its widget. */
   layerAge?: (layer: Layer) => number;
+  /** The operator's state of a spec widget, by layer id (web/src/widgets). */
+  widgetState?: (layerId: string) => unknown;
+  /** Project frame rate. */
+  fps?: number;
 }
 
 /** A scrolling text, as the ticker or roll it behaves like (mirrors LayerKind::scrolling_as). */
@@ -20,9 +24,7 @@ export function scrollingAs(l: Layer): Layer | null {
   if (l.type !== 'text' || !l.scroll || l.scroll === 'none') return null;
   const font = { fontFamily: l.fontFamily, fontWeight: l.fontWeight, align: l.align, verticalAlign: l.verticalAlign, uppercase: l.uppercase || l.transform === 'upper' };
   const base = { ...l, ...font };
-  return l.scroll === 'horizontal'
-    ? ({ ...base, type: 'ticker', text: l.text, separator: l.separator ?? '   •   ', speed: l.speed ?? 120 } as Layer)
-    : ({ ...base, type: 'roll', text: l.text, speed: l.speed ?? 120, loop: !!l.looping } as Layer);
+  return l.scroll === 'horizontal' ? ({ ...base, type: 'ticker', text: l.text, separator: l.separator ?? '   •   ', speed: l.speed ?? 120 } as Layer) : ({ ...base, type: 'roll', text: l.text, speed: l.speed ?? 120, loop: !!l.looping } as Layer);
 }
 
 /** Widgets whose animation follows the time on air (mirrors playout::is_timed). */
@@ -121,22 +123,54 @@ export function formatTokens(fmt: string, f: Fields): string {
     for (const t of TOKENS) {
       if (fmt.startsWith(t, i)) {
         switch (t) {
-          case 'yyyy': out += pad(f.year, 4); break;
-          case 'yy': out += pad(((f.year % 100) + 100) % 100); break;
-          case 'MM': out += pad(f.month); break;
-          case 'M': out += f.month; break;
-          case 'dd': out += pad(f.day); break;
-          case 'd': out += f.day; break;
-          case 'HH': out += pad(f.hour); break;
-          case 'H': out += f.hour; break;
-          case 'hh': out += pad(f.duration ? f.hour : h12); break;
-          case 'h': out += f.duration ? f.hour : h12; break;
-          case 'mm': out += pad(f.minute); break;
-          case 'm': out += f.minute; break;
-          case 'ss': out += pad(f.second); break;
-          case 's': out += f.second; break;
-          case 'f': out += f.tenth; break;
-          case 'A': out += f.duration ? '' : f.hour < 12 ? 'AM' : 'PM'; break;
+          case 'yyyy':
+            out += pad(f.year, 4);
+            break;
+          case 'yy':
+            out += pad(((f.year % 100) + 100) % 100);
+            break;
+          case 'MM':
+            out += pad(f.month);
+            break;
+          case 'M':
+            out += f.month;
+            break;
+          case 'dd':
+            out += pad(f.day);
+            break;
+          case 'd':
+            out += f.day;
+            break;
+          case 'HH':
+            out += pad(f.hour);
+            break;
+          case 'H':
+            out += f.hour;
+            break;
+          case 'hh':
+            out += pad(f.duration ? f.hour : h12);
+            break;
+          case 'h':
+            out += f.duration ? f.hour : h12;
+            break;
+          case 'mm':
+            out += pad(f.minute);
+            break;
+          case 'm':
+            out += f.minute;
+            break;
+          case 'ss':
+            out += pad(f.second);
+            break;
+          case 's':
+            out += f.second;
+            break;
+          case 'f':
+            out += f.tenth;
+            break;
+          case 'A':
+            out += f.duration ? '' : f.hour < 12 ? 'AM' : 'PM';
+            break;
         }
         i += t.length;
         continue outer;
@@ -165,7 +199,10 @@ function durationFields(secs: number): Fields {
 }
 
 function parseNumbers(s: string): number[] | undefined {
-  const parts = s.trim().split(':').map((p) => p.trim());
+  const parts = s
+    .trim()
+    .split(':')
+    .map((p) => p.trim());
   if (parts.some((p) => p === '' || !/^[-+]?\d*\.?\d+$/.test(p))) return undefined;
   return parts.map(Number);
 }
@@ -253,11 +290,7 @@ export function formatNumber(v: number, decimals: number, grouping: boolean): st
   return frac !== undefined ? `${sign}${int},${frac}` : `${sign}${int}`;
 }
 
-export function counterText(
-  l: { from: string; to: string; duration: number; decimals: number; prefix: string; suffix: string; grouping: boolean },
-  data: Data,
-  age: number,
-): string {
+export function counterText(l: { from: string; to: string; duration: number; decimals: number; prefix: string; suffix: string; grouping: boolean }, data: Data, age: number): string {
   const a = number(l.from, data);
   const b = number(l.to, data);
   const v = a + (b - a) * grow(l.duration, age);
@@ -308,7 +341,12 @@ export function chartRows(text: string, data: Data): [string, number][] {
   return lines(text, data).map((l) => {
     const i = l.lastIndexOf(':');
     if (i < 0) return [l, 0];
-    const v = parseFloat(l.slice(i + 1).trim().replace(',', '.'));
+    const v = parseFloat(
+      l
+        .slice(i + 1)
+        .trim()
+        .replace(',', '.'),
+    );
     return [l.slice(0, i).trim(), Number.isFinite(v) ? v : 0];
   });
 }

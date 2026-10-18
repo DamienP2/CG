@@ -8,6 +8,7 @@ import { areaClip, zoneArea } from '../engine/zones';
 import type { Project } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
+import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
 import { snapShift, snapTargets, StageGuides, useGuidesView, useProjectGuides } from './Guides';
 
@@ -33,6 +34,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   const [scale, setScale] = useState(0.5);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const widgetRun = useDesigner((s) => s.widgetRun);
+  const widgetState = useDesigner((s) => s.widgetState);
   const running = Object.values(widgetRun).some((r) => r.pausedAge === undefined);
   const now = useTicker((!!template && hasLiveWidgets(template)) || running);
   const fps = project.frameRate.num / project.frameRate.den || 1;
@@ -182,7 +184,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
         <div ref={sceneRef} onPointerDown={onPointerDown} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)}>
+            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} widgetState={(id) => widgetState[id]} fps={fps}>
               <Scene template={template} frame={frame} data={data} interactive />
             </LiveTime>
           </Viewport>
@@ -190,8 +192,8 @@ export function Stage({ project: _project, size, showZones, background }: { proj
           {showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
-              {selected.length === 1 &&
-                HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
+              {selected.length === 1 && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
+              {selected.length === 1 && <WidgetOverlay layerId={b.id} box={b} frame={frame} />}
             </div>
           ))}
         </div>
@@ -199,6 +201,22 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       <div className="stage-info">
         {project.width}×{project.height} · {Math.round(scale * 100)}%
       </div>
+    </div>
+  );
+}
+
+/** Handles of a spec widget (web/src/widgets) over its selection box. */
+function WidgetOverlay({ layerId, box, frame }: { layerId: string; box: Box; frame: number }) {
+  const { template, update } = useDesigner();
+  const layer = template && findLayer(template, layerId);
+  const Ov = layer && widgetOf(layer.type)?.Overlay;
+  if (!layer || !Ov) return null;
+  const w = num(propValue(layer, 'width', frame));
+  const h = num(propValue(layer, 'height', frame));
+  const edit = (fn: (l: never) => void, key?: string) => update((t) => fn(findLayer(t, layerId)! as never), key);
+  return (
+    <div className="wk-overlay">
+      <Ov layer={layer as never} w={w} h={h} scale={w > 0 ? box.width / w : 1} edit={edit} />
     </div>
   );
 }

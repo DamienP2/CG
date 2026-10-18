@@ -1,3 +1,5 @@
+import { widgetOf } from '../widgets';
+import { api, useApp } from '../store';
 import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
 import { fromFormatView, inFormat } from '../engine/formats';
@@ -34,6 +36,8 @@ interface DesignerStore {
   edits: number;
   /** Widgets run by hand in the designer (▶ ❚❚ ⟲), apart from the playhead. */
   widgetRun: Record<string, WidgetRun>;
+  /** Try-out state of the spec widgets (the Operator controls in the inspector), by layer id. */
+  widgetState: Record<string, unknown>;
 
   load: (t: Template | null) => void;
   /** Shows a newer version of the open template (read only) without resetting the view. */
@@ -51,6 +55,8 @@ interface DesignerStore {
   toggleExpanded: (id: string) => void;
   set: (partial: Partial<DesignerStore>) => void;
   controlWidget: (layerId: string, c: 'start' | 'pause' | 'reset' | 'playhead') => void;
+  /** Applies an Operator action to a widget's try-out state (same logic as on air, run by the server). */
+  actWidget: (layerId: string, op: string, args?: unknown) => Promise<void>;
 }
 
 /** A widget's own clock: running since `startedAt` (ms), or stopped at `pausedAge` seconds. */
@@ -84,6 +90,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   readOnly: false,
   edits: 0,
   widgetRun: {},
+  widgetState: {},
 
   load(t) {
     const base = t ? structuredClone(t) : null;
@@ -99,6 +106,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
       previewData: t ? defaultData(t) : {},
       lastCoalesce: null,
       widgetRun: {},
+      widgetState: {},
     });
   },
 
@@ -167,6 +175,17 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   toggleExpanded: (id) => set({ expanded: { ...get().expanded, [id]: !get().expanded[id] } }),
   set: (partial) => set(partial),
 
+  async actWidget(id, op, args) {
+    const s = get();
+    const layer = s.template && findLayer(s.template, id);
+    if (!layer) return;
+    try {
+      const state = await api('POST', '/api/widgets/act', { layer, state: s.widgetState[id] ?? null, op, args: args ?? null, data: s.previewData, ageSecs: s.frame / 50 });
+      set({ widgetState: { ...get().widgetState, [id]: state } });
+    } catch (e) {
+      useApp.getState().toast(String((e as Error).message ?? e), 'error');
+    }
+  },
   controlWidget(id, c) {
     const run = { ...get().widgetRun };
     const now = Date.now();
@@ -239,7 +258,7 @@ export function toggleKeyAt(l: Layer, p: Prop, frame: number) {
 export function descendants(t: Template, id: string): string[] {
   const out: string[] = [];
   const walk = (pid: string) => {
-    for (const l of t.layers) if (l.parent === pid) out.push(l.id), walk(l.id);
+    for (const l of t.layers) if (l.parent === pid) (out.push(l.id), walk(l.id));
   };
   walk(id);
   return out;
@@ -262,6 +281,13 @@ export const LABELS: Record<LayerType, string> = {
   slideshow: 'Slideshow',
   qrCode: 'QR code',
   barChart: 'Bar chart / poll',
+  polygon: 'Polygon',
+  pen: 'Pen',
+  table: 'Table',
+  credits: 'Credits',
+  chart: 'Chart',
+  map: 'Map',
+  scoreboard: 'Scoreboard',
 };
 
 /** Widget presets offered in the toolbar menu (a type plus overrides). */
@@ -324,6 +350,14 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
     bindings: {},
   };
   const centered = (w: number, h: number) => ({ x: parent ? 0 : Math.round((width - w) / 2), y: parent ? 0 : Math.round((height - h) / 2), width: w, height: h });
+  // The spec widgets make their own layers (web/src/widgets).
+  const made = widgetOf(type)?.create();
+  if (made && Object.keys(made).length) {
+    const { props = {}, ...rest } = made as { props?: Record<string, unknown> };
+    const w = Number(props.width ?? 600);
+    const h = Number(props.height ?? 400);
+    return { ...base, type, ...rest, props: { ...props, ...centered(w, h) } } as Layer;
+  }
   switch (type) {
     case 'group':
       return { ...base, type, clip: false, props: centered(800, 200) };
@@ -405,6 +439,8 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
         ...font('left', 600),
         props: { ...centered(900, 260), fontSize: 36, fill: [0.486, 0.361, 1, 1] },
       };
+    default:
+      return { ...base, type, props: centered(600, 400) } as Layer;
   }
 }
 
@@ -438,9 +474,7 @@ export function duplicateLayers(ids: string[]) {
       if (!t.layers.some((l) => l.id === id)) continue;
       const sub = [id, ...descendants(t, id)];
       const map = new Map(sub.map((x) => [x, newId()]));
-      const clones = t.layers
-        .filter((l) => sub.includes(l.id))
-        .map((l) => ({ ...structuredClone(l), id: map.get(l.id)!, parent: l.id === id ? l.parent : (map.get(l.parent!) ?? l.parent), name: l.id === id ? `${l.name} copy` : l.name }));
+      const clones = t.layers.filter((l) => sub.includes(l.id)).map((l) => ({ ...structuredClone(l), id: map.get(l.id)!, parent: l.id === id ? l.parent : (map.get(l.parent!) ?? l.parent), name: l.id === id ? `${l.name} copy` : l.name }));
       // Paint order: right above the original.
       const last = Math.max(...sub.map((x) => t.layers.findIndex((l) => l.id === x)));
       t.layers.splice(last + 1, 0, ...clones);

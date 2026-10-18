@@ -68,6 +68,9 @@ pub struct PlayoutItem {
     /// The graphic as it was before a data set row change, fading out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade: Option<Fade>,
+    /// What the operator changed in the spec widgets (`wid`), by layer id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub widgets: BTreeMap<String, serde_json::Value>,
 }
 
 /// A cross-fade from the data the graphic had (drawn fading out above it).
@@ -151,6 +154,7 @@ impl PlayoutItem {
             held: 0.0,
             pause_ahead: false,
             fade: None,
+            widgets: BTreeMap::new(),
         }
     }
 
@@ -208,10 +212,22 @@ impl PlayoutItem {
     }
 }
 
+/// Wall-clock time, Unix milliseconds.
+pub fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
 /// Removes the "set by hand" marks that `done` says are over (the data
 /// binding fills those values again). Returns true when one went.
 fn release_manual(data: &mut Data, done: impl Fn(&str) -> bool) -> bool {
-    let keys: Vec<String> = data.iter().filter(|(k, v)| k.ends_with("__manual") && done(v)).map(|(k, _)| k.clone()).collect();
+    let keys: Vec<String> = data
+        .iter()
+        .filter(|(k, v)| k.ends_with("__manual") && done(v))
+        .map(|(k, _)| k.clone())
+        .collect();
     for k in &keys {
         data.remove(k);
     }
@@ -266,6 +282,20 @@ pub enum Command {
         target: String,
         control: WidgetControl,
     },
+    /// An operator action on a widget of the graphic on air (`target`: layer
+    /// id or name), e.g. `{"op": "next"}` on a table or `{"op": "add",
+    /// "args": {"team": 0, "points": 3}}` on a scoreboard.
+    #[serde(rename_all = "camelCase")]
+    Act {
+        #[serde(default)]
+        zone: Option<String>,
+        #[serde(default)]
+        layer: Option<u32>,
+        target: String,
+        op: String,
+        #[serde(default)]
+        args: serde_json::Value,
+    },
     /// Shows another row of a data set of the graphic on air (`dataset`: its
     /// key or name; `row`: 1 = first), the way the data set says: out and
     /// in again, a cross-fade, or at once.
@@ -314,6 +344,8 @@ pub enum PlayoutError {
     EmptyLayer(u32),
     #[error("no data set `{0}` in the graphic on air")]
     UnknownDataset(String),
+    #[error("{0}")]
+    Widget(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -448,7 +480,8 @@ impl ChannelState {
                 // Values set by hand until this trigger let go.
                 for item in self.layers.values_mut() {
                     release_manual(&mut item.data, |m| {
-                        m.strip_prefix("trigger:").is_some_and(|n| n.trim().eq_ignore_ascii_case(name.trim()))
+                        m.strip_prefix("trigger:")
+                            .is_some_and(|n| n.trim().eq_ignore_ascii_case(name.trim()))
                     });
                 }
                 for item in self.layers.values_mut() {
@@ -486,7 +519,12 @@ impl ChannelState {
                     .ok_or(PlayoutError::EmptyLayer(layer))?;
                 // Rows going on by themselves: the time counts from now.
                 let mut data = data;
-                for k in data.keys().filter_map(|k| k.strip_suffix("__auto")).map(String::from).collect::<Vec<_>>() {
+                for k in data
+                    .keys()
+                    .filter_map(|k| k.strip_suffix("__auto"))
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+                {
                     if item.data.get(&format!("{k}__auto")) != data.get(&format!("{k}__auto")) {
                         data.insert(format!("{k}__shown"), format!("{}", item.age.round()));
                     }
@@ -546,13 +584,19 @@ impl ChannelState {
                     }
                     RowChange::Fade => {
                         let fps = project.frame_rate.as_f64().max(1.0);
-                        item.fade = Some(Fade { data: item.data.clone(), frame: 0.0, length: (fps * 0.5).round() });
+                        item.fade = Some(Fade {
+                            data: item.data.clone(),
+                            frame: 0.0,
+                            length: (fps * 0.5).round(),
+                        });
                         item.data.insert(row.0, row.1);
-                        item.data.insert(ds.shown_key(), format!("{}", item.age.round()));
+                        item.data
+                            .insert(ds.shown_key(), format!("{}", item.age.round()));
                     }
                     RowChange::Cut => {
                         item.data.insert(row.0, row.1);
-                        item.data.insert(ds.shown_key(), format!("{}", item.age.round()));
+                        item.data
+                            .insert(ds.shown_key(), format!("{}", item.age.round()));
                     }
                 }
             }
@@ -585,6 +629,43 @@ impl ChannelState {
                 for l in targets {
                     item.control(l, control);
                 }
+            }
+            Command::Act {
+                zone,
+                layer,
+                target,
+                op,
+                args,
+            } => {
+                let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
+                let item = self
+                    .layers
+                    .get_mut(&layer)
+                    .ok_or(PlayoutError::EmptyLayer(layer))?;
+                let t = project
+                    .template(&item.template_id)
+                    .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
+                let l = t
+                    .layers
+                    .iter()
+                    .find(|l| {
+                        crate::wid::widget_id(&l.kind).is_some()
+                            && (l.id == target || l.name.eq_ignore_ascii_case(target.trim()))
+                    })
+                    .ok_or_else(|| PlayoutError::UnknownWidget(target.clone()))?;
+                let fps = project.frame_rate.as_f64().max(1.0);
+                let ctx = crate::wid::ActCtx {
+                    now_ms: now_ms(),
+                    age_secs: item.age / fps,
+                    data: &item.data,
+                };
+                let mut st = item
+                    .widgets
+                    .get(&l.id)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                crate::wid::act(l, &mut st, &op, &args, &ctx).map_err(PlayoutError::Widget)?;
+                item.widgets.insert(l.id.clone(), st);
             }
             Command::Clear { zone, layer } => match resolve(project, &zone, layer)? {
                 Some(l) => {
@@ -669,15 +750,20 @@ impl ChannelState {
             if item.phase != Phase::Holding || item.next.is_some() {
                 continue;
             }
-            let Some(t) = project.template(&item.template_id) else { continue };
+            let Some(t) = project.template(&item.template_id) else {
+                continue;
+            };
             // Holding on the on-air marker, not on a pause of the in animation.
             if item.frame < t.hold_frame() - 1e-6 {
                 continue;
             }
             for ds in &t.datasets {
                 let num = |k: String| item.data.get(&k).and_then(|v| v.trim().parse::<f64>().ok());
-                let Some(secs) = num(ds.auto_key()).filter(|s| *s > 0.0) else { continue };
-                let shown = num(ds.shown_key()).map_or(item.held, |at| (item.age - at).min(item.held));
+                let Some(secs) = num(ds.auto_key()).filter(|s| *s > 0.0) else {
+                    continue;
+                };
+                let shown =
+                    num(ds.shown_key()).map_or(item.held, |at| (item.age - at).min(item.held));
                 if shown < secs * fps {
                     continue;
                 }
@@ -695,7 +781,15 @@ impl ChannelState {
         }
         let changed = !due.is_empty();
         for (layer, dataset, row) in due {
-            let _ = self.apply(project, Command::Row { zone: None, layer: Some(layer), dataset, row });
+            let _ = self.apply(
+                project,
+                Command::Row {
+                    zone: None,
+                    layer: Some(layer),
+                    dataset,
+                    row,
+                },
+            );
         }
         changed
     }
@@ -705,9 +799,17 @@ impl ChannelState {
     pub fn expire_manual(&mut self, now_ms: u64) -> bool {
         let mut changed = false;
         for item in self.layers.values_mut() {
-            changed |= release_manual(&mut item.data, |m| m.strip_prefix("until:").and_then(|t| t.trim().parse::<u64>().ok()).is_some_and(|t| t <= now_ms));
+            changed |= release_manual(&mut item.data, |m| {
+                m.strip_prefix("until:")
+                    .and_then(|t| t.trim().parse::<u64>().ok())
+                    .is_some_and(|t| t <= now_ms)
+            });
             if let Some(q) = &mut item.next {
-                changed |= release_manual(&mut q.data, |m| m.strip_prefix("until:").and_then(|t| t.trim().parse::<u64>().ok()).is_some_and(|t| t <= now_ms));
+                changed |= release_manual(&mut q.data, |m| {
+                    m.strip_prefix("until:")
+                        .and_then(|t| t.trim().parse::<u64>().ok())
+                        .is_some_and(|t| t <= now_ms)
+                });
             }
         }
         changed
@@ -790,11 +892,23 @@ mod tests {
     fn dataset_row_changes() {
         use crate::model::{DataSet, RowChange};
         let mut p = project();
-        p.templates[0].datasets.push(DataSet { key: "ds".into(), name: "Guests".into(), source: "s".into(), list: String::new(), steps: vec![], change: RowChange::OutIn });
+        p.templates[0].datasets.push(DataSet {
+            key: "ds".into(),
+            name: "Guests".into(),
+            source: "s".into(),
+            list: String::new(),
+            steps: vec![],
+            change: RowChange::OutIn,
+        });
         let mut st = ChannelState::default();
         st.apply(&p, Command::take("z", "t")).unwrap();
         st.tick(500.0);
-        let row = |r| Command::Row { zone: Some("z".into()), layer: None, dataset: "guests".into(), row: r };
+        let row = |r| Command::Row {
+            zone: Some("z".into()),
+            layer: None,
+            dataset: "guests".into(),
+            row: r,
+        };
         // Out › In: out with the old row, back with the new one.
         st.apply(&p, row(2)).unwrap();
         let item = st.layers.values().next().unwrap();
@@ -803,7 +917,17 @@ mod tests {
         assert!(!item.data.contains_key("ds__row"));
         // Asked again while going out: the row it comes back with.
         st.apply(&p, row(3)).unwrap();
-        assert_eq!(st.layers.values().next().unwrap().next.as_ref().unwrap().data["ds__row"], "3");
+        assert_eq!(
+            st.layers
+                .values()
+                .next()
+                .unwrap()
+                .next
+                .as_ref()
+                .unwrap()
+                .data["ds__row"],
+            "3"
+        );
         st.tick(500.0);
         let item = st.layers.values().next().unwrap();
         assert_eq!(item.data["ds__row"], "3");
@@ -817,24 +941,68 @@ mod tests {
         assert!(st.is_animating());
         st.tick(100.0);
         assert!(st.layers.values().next().unwrap().fade.is_none());
-        assert_eq!(st.apply(&p, Command::Row { zone: Some("z".into()), layer: None, dataset: "nope".into(), row: 1 }), Err(PlayoutError::UnknownDataset("nope".into())));
+        assert_eq!(
+            st.apply(
+                &p,
+                Command::Row {
+                    zone: Some("z".into()),
+                    layer: None,
+                    dataset: "nope".into(),
+                    row: 1
+                }
+            ),
+            Err(PlayoutError::UnknownDataset("nope".into()))
+        );
     }
 
     #[test]
     fn dataset_auto_and_manual() {
         use crate::model::{DataSet, RowChange};
         let mut p = project();
-        p.templates[0].datasets.push(DataSet { key: "ds".into(), name: "Guests".into(), source: "s".into(), list: String::new(), steps: vec![], change: RowChange::Cut });
+        p.templates[0].datasets.push(DataSet {
+            key: "ds".into(),
+            name: "Guests".into(),
+            source: "s".into(),
+            list: String::new(),
+            steps: vec![],
+            change: RowChange::Cut,
+        });
         let mut st = ChannelState::default();
-        let data: Data = [("ds__auto", "2"), ("ds__count", "3"), ("ds__loop", "1")].map(|(k, v)| (k.to_string(), v.to_string())).into();
-        st.apply(&p, Command::Take { zone: Some("z".into()), layer: None, template_id: "t".into(), data: Some(data), rundown_id: None }).unwrap();
+        let data: Data = [("ds__auto", "2"), ("ds__count", "3"), ("ds__loop", "1")]
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .into();
+        st.apply(
+            &p,
+            Command::Take {
+                zone: Some("z".into()),
+                layer: None,
+                template_id: "t".into(),
+                data: Some(data),
+                rundown_id: None,
+            },
+        )
+        .unwrap();
         let fps = p.frame_rate.as_f64();
         // On the way in (pauses on its way): not counting yet.
         st.tick(20.0);
         assert!(!st.auto_rows(&p));
-        st.apply(&p, Command::Continue { zone: Some("z".into()), layer: None }).unwrap();
+        st.apply(
+            &p,
+            Command::Continue {
+                zone: Some("z".into()),
+                layer: None,
+            },
+        )
+        .unwrap();
         st.tick(20.0);
-        st.apply(&p, Command::Continue { zone: Some("z".into()), layer: None }).unwrap();
+        st.apply(
+            &p,
+            Command::Continue {
+                zone: Some("z".into()),
+                layer: None,
+            },
+        )
+        .unwrap();
         st.tick(100.0);
         let item = st.layers.values().next().unwrap();
         assert_eq!(item.phase, Phase::Holding);
@@ -856,8 +1024,15 @@ mod tests {
         item.data.insert("y__manual".into(), "until:1000".into());
         assert!(!st.expire_manual(999));
         assert!(st.expire_manual(1000));
-        st.apply(&p, Command::Trigger { name: "end".into() }).unwrap();
-        assert!(!st.layers.values().next().unwrap().data.contains_key("x__manual"));
+        st.apply(&p, Command::Trigger { name: "end".into() })
+            .unwrap();
+        assert!(!st
+            .layers
+            .values()
+            .next()
+            .unwrap()
+            .data
+            .contains_key("x__manual"));
     }
 
     #[test]
