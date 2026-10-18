@@ -16,7 +16,15 @@ import { api, useApp } from '../store';
 export const DEFAULT_GUIDES: Guides = { vertical: [], horizontal: [], actionSafe: 0.05, titleSafe: 0.1, exclusions: [] };
 
 const VIEW_KEY = 'pulse.guidesView';
-type View = { safe: boolean; guides: boolean; snap: boolean; /** Safe areas and areas to keep clear moved on the stage (not kept). */ editSafe?: boolean };
+type View = {
+  safe: boolean;
+  guides: boolean;
+  snap: boolean;
+  /** Safe areas and areas to keep clear moved on the stage (not kept). */
+  editSafe?: boolean;
+  /** The area selected while editing ("action", "title" or an exclusion id). */
+  area?: string | null;
+};
 function loadView(): View {
   try {
     return { safe: true, guides: true, snap: true, ...JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') };
@@ -299,17 +307,19 @@ function RectEditor({
       window.removeEventListener('pointerup', up);
     };
   }, [width, height, onChange, onDone]);
+  const selected = useGuidesView((s) => s.area);
   const begin = (e: React.PointerEvent, id: string, mode: Handle, area: Area) => {
     e.stopPropagation();
     e.preventDefault();
+    useGuidesView.getState().set({ area: id });
     drag.current = { id, mode, x: e.clientX, y: e.clientY, start: area };
   };
   return (
-    <div className="rect-editor" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="rect-editor" onPointerDown={(e) => (e.stopPropagation(), useGuidesView.getState().set({ area: null }))}>
       {rects.map((r) => {
         const a = draft?.id === r.id ? draft.area : r.area;
         return (
-          <div key={r.id} className={`re-box ${r.kind}`} style={pct(a)}>
+          <div key={r.id} className={`re-box ${r.kind} ${selected === r.id ? 'sel' : ''}`} style={pct(a)}>
             <span className="re-tab" title="Drag to move (Shift: 1 % steps)" onPointerDown={(e) => begin(e, r.id, 'move', a)}>
               <Move size={10} /> {r.label}
               {draft?.id === r.id && <em>{`${Math.round(a.x * px.width)}, ${Math.round(a.y * px.height)} · ${Math.round(a.width * px.width)}×${Math.round(a.height * px.height)}`}</em>}
@@ -435,3 +445,72 @@ export function SafeMenu({ project }: { project: Project }) {
     </SplitButton>
   );
 }
+
+/** Right panel while editing the safe areas: the values of the selected area, like a widget's. */
+export function AreaInspector({ project }: { project: Project }) {
+  const view = useGuidesView();
+  const [g, setG] = useProjectGuides(project);
+  const W = project.width;
+  const H = project.height;
+  const id = view.area;
+  const [action, title] = safeRects(g);
+  const x = g.exclusions.find((e) => e.id === id);
+  const area = id === 'action' ? action : id === 'title' ? title : x;
+  const set = (a: Area) => {
+    if (id === 'action') setG({ ...g, actionArea: a });
+    else if (id === 'title') setG({ ...g, titleArea: a });
+    else if (x) setG({ ...g, exclusions: g.exclusions.map((e) => (e.id === x.id ? { ...e, ...a } : e)) });
+  };
+  if (!area)
+    return (
+      <div className="area-inspector">
+        <div className="ai-title">Safe areas</div>
+        <p className="hint">Click an area on the stage (its label) to see and type its position and size. Esc or Done to leave.</p>
+      </div>
+    );
+  const box = { x: area.x, y: area.y, width: area.width, height: area.height };
+  const field = (label: string, key: keyof Area, size: number) => (
+    <label className="ai-field">
+      <span>{label}</span>
+      <input type="number" value={Math.round(box[key] * size)} onChange={(e) => set({ ...box, [key]: Math.max(0, Math.min(size, +e.target.value)) / size })} />
+      <em>px</em>
+    </label>
+  );
+  return (
+    <div className="area-inspector">
+      <div className="ai-title">{id === 'action' ? 'Action safe' : id === 'title' ? 'Title safe' : 'Area to keep clear'}</div>
+      {x && (
+        <label className="ai-field wide">
+          <span>Name</span>
+          <input value={x.name} onChange={(e) => setG({ ...g, exclusions: g.exclusions.map((y) => (y.id === x.id ? { ...y, name: e.target.value } : y)) })} />
+        </label>
+      )}
+      <div className="ai-grid">
+        {field('X', 'x', W)}
+        {field('Y', 'y', H)}
+        {field('W', 'width', W)}
+        {field('H', 'height', H)}
+      </div>
+      <p className="hint">
+        In px of the main format ({W}×{H}). {Math.round(box.width * 100)} % × {Math.round(box.height * 100)} % of the picture.
+      </p>
+      {x ? (
+        <button
+          className="btn small"
+          onClick={() => {
+            setG({ ...g, exclusions: g.exclusions.filter((y) => y.id !== x.id) });
+            view.set({ area: null });
+          }}
+        >
+          <Trash2 size={13} /> Remove the area
+        </button>
+      ) : (
+        <button className="btn small" onClick={() => setG(id === 'action' ? { ...g, actionArea: undefined } : { ...g, titleArea: undefined })}>
+          Back to a {pctv(id === 'action' ? g.actionSafe : g.titleSafe)} % margin
+        </button>
+      )}
+    </div>
+  );
+}
+
+const pctv = (v: number) => Math.round(v * 1000) / 10;

@@ -4,7 +4,7 @@ import type { Project } from '../engine/types';
 import { FORMATS } from '../pages/Projects';
 import { api, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { PublishButton } from './Collab';
+import { ProjectPublish } from './Collab';
 
 /*
  * Left panel, above the templates: the project — its name, format,
@@ -114,7 +114,7 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
           </select>
         </div>
         <div className="pjp-publish">
-          <PublishButton project={project} readOnly={readOnly} />
+          <ProjectPublish project={project} readOnly={readOnly} />
         </div>
         <div className="pjp-history">
           <button className="pjp-hist-toggle" onClick={() => setHistoryOpen(!historyOpen)}>

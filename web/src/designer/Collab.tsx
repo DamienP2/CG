@@ -125,6 +125,59 @@ export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock
   );
 }
 
+/** Publishes one template (its latest edits first when it is open). */
+export async function publishTemplate(project: Project, id: string) {
+  const { saveTemplate, toast } = useApp.getState();
+  const st = useDesigner.getState();
+  try {
+    if (st.base?.id === id) await saveTemplate(st.base);
+    const r = await api<{ revision: number }>('POST', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(id)}/publish`);
+    const name = project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id;
+    toast(`“${name}” v${r.revision} is live in the Operator`, 'info');
+  } catch (e) {
+    toast((e as Error).message, 'error');
+  }
+}
+
+/** The project's Publish: every template with changes goes live in the Operator at once. */
+export function ProjectPublish({ project, readOnly }: { project: Project; readOnly: boolean }) {
+  const { saveTemplate, toast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const changed = project.drafts ?? [];
+  const isNew = (id: string) => !project.templates.some((t) => t.id === id);
+  if (!changed.length)
+    return (
+      <span className="publish-state" title="The Operator uses the templates as they are here">
+        <Check size={13} /> All live in the Operator
+      </span>
+    );
+  const publish = async () => {
+    setBusy(true);
+    try {
+      const st = useDesigner.getState();
+      if (st.base) await saveTemplate(st.base);
+      const r = await api<{ name: string; revision: number }[]>('POST', `/api/projects/${encodeURIComponent(project.id)}/publish`);
+      toast(`${r.length} template${r.length > 1 ? 's' : ''} live in the Operator`, 'info');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="publish">
+      <button
+        className="btn small primary"
+        disabled={busy || readOnly}
+        title={`Not yet in the Operator: ${changed.map((t) => `${t.name}${isNew(t.id) ? ' (new)' : ''}`).join(', ')}`}
+        onClick={publish}
+      >
+        <Upload size={13} /> {busy ? 'Publishing…' : `Publish ${changed.length} change${changed.length > 1 ? 's' : ''} to Operator`}
+      </button>
+    </div>
+  );
+}
+
 /** Draft / published state of the open template, and the Publish button. */
 export function PublishButton({ project, readOnly }: { project: Project; readOnly: boolean }) {
   const base = useDesigner((s) => s.base);

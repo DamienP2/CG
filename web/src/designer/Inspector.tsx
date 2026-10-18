@@ -12,6 +12,7 @@ import { isOverridden, resetOverride } from '../engine/formats';
 import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, useDesigner } from './designerStore';
 import { isTimed } from '../engine/widgets';
 import { WidgetRunButtons } from './WidgetRun';
+import { AreaInspector, useGuidesView } from './Guides';
 import { ICONS } from './LayersPanel';
 
 interface PropSpec {
@@ -1116,6 +1117,14 @@ function TemplateInspector({ template }: { template: Template }) {
 
 export function Inspector() {
   const { template, selected } = useDesigner();
+  const editSafe = useGuidesView((s) => s.editSafe);
+  const project = useApp((s) => s.project);
+  if (editSafe && project)
+    return (
+      <div className="inspector">
+        <AreaInspector project={project} />
+      </div>
+    );
   if (!template)
     return (
       <div className="inspector">

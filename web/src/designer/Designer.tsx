@@ -1,11 +1,11 @@
-import { LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
-import { LockOverlay, useEditLock } from './Collab';
+import { LockOverlay, publishTemplate, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
@@ -16,7 +16,7 @@ import { ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
-import { designTemplates } from '../engine/drafts';
+import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
 
 function usePlayback(fps: number) {
@@ -209,8 +209,9 @@ function TemplateList({ project }: { project: Project }) {
     await saveTemplate(t);
   };
   return (
-    <div className="template-list">
-      <header>
+    // A click beside the templates leaves the open one, like Esc.
+    <div className="template-list" onClick={() => template && load(null)}>
+      <header onClick={(e) => e.stopPropagation()}>
         <span>Templates</span>
         <div className="header-actions">
           <button className="icon-btn ghost" title="Import an After Effects composition (Bodymovin / LottieFiles .json, .zip, .lottie)" onClick={() => fileRef.current?.click()} disabled={importing}>
@@ -242,8 +243,11 @@ function TemplateList({ project }: { project: Project }) {
           }}
         />
       </header>
-      {designTemplates(project).map((t) => (
-        <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={() => template?.id !== t.id && load(t)}>
+      {designTemplates(project).map((t) => {
+        const { published, draft } = publishState(project, t.id);
+        const unpublished = draft || !published;
+        return (
+        <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== t.id && load(t))}>
           <img src={thumbnailUrl(project.id, t, format, true)} alt="" loading="lazy" />
           <span className="tpl-text">
             <span>{t.name}</span>
@@ -256,6 +260,11 @@ function TemplateList({ project }: { project: Project }) {
               ) : null;
             })()}
           </span>
+          {unpublished && (
+            <button className="tpl-publish" title={published ? `Publish only “${t.name}” (the Operator uses v${published.revision || 1})` : `Publish “${t.name}” (new: the Operator does not see it yet)`} onClick={(e) => (e.stopPropagation(), void publishTemplate(project, t.id))}>
+              <Upload size={12} />
+            </button>
+          )}
           <div className="item-actions">
             <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
               <Copy size={12} />
@@ -275,7 +284,8 @@ function TemplateList({ project }: { project: Project }) {
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

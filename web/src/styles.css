@@ -7321,3 +7321,64 @@ body.dragging-guide .guide span {
 .dc-props-toggle:hover {
   color: var(--text);
 }
+/* Per-template publish, in the templates list. */
+.tpl-publish {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  cursor: pointer;
+  padding: 0;
+}
+.tpl-publish:hover {
+  background: var(--accent);
+  color: #fff;
+}
+/* Right panel while editing the safe areas. */
+.area-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px;
+}
+.ai-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.ai-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ai-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.ai-field input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+}
+.ai-field em {
+  font-style: normal;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.ai-field.wide span {
+  width: 44px;
+}
+.area-inspector .btn {
+  align-self: flex-start;
+}
+.re-box.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -50,6 +50,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/playlists", put(put_playlists))
         .route("/api/projects/{id}/formats", put(put_formats))
         .route("/api/projects/{id}/guides", put(put_guides))
+        .route("/api/projects/{id}/publish", post(publish_project))
         .route(
             "/api/projects/{id}/versions",
             get(list_versions).post(create_version),
@@ -784,6 +785,42 @@ async fn publish_template(
         tracing::warn!("cannot keep a version: {e}");
     }
     Ok(Json(BTreeMap::from([("revision", rev)])))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Published {
+    id: String,
+    name: String,
+    revision: u32,
+}
+
+/// Publishes every template with unpublished changes; one version is kept.
+async fn publish_project(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<Published>>> {
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let ids: Vec<String> = p.drafts.iter().map(|t| t.id.clone()).collect();
+    let mut out = Vec::new();
+    for tid in ids {
+        let name = p.draft(&tid).map(|t| t.name.clone()).unwrap_or_default();
+        if let Some(revision) = p.publish(&tid) {
+            out.push(Published { id: tid, name, revision });
+        }
+    }
+    if out.is_empty() {
+        return Ok(Json(out));
+    }
+    let p = s.save_project(p).await.map_err(internal)?;
+    let names: Vec<&str> = out.iter().map(|x| x.name.as_str()).collect();
+    let note = format!("Published {} template{}: {}", out.len(), if out.len() > 1 { "s" } else { "" }, names.join(", "));
+    if let Err(e) = s.library.read().await.save_version(&p, who(&me), &note) {
+        tracing::warn!("cannot keep a version: {e}");
+    }
+    Ok(Json(out))
 }
 
 fn who(u: &crate::auth::User) -> &str {
