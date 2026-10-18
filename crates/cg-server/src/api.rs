@@ -1698,6 +1698,9 @@ async fn health(State(s): State<Shared>) -> Json<serde_json::Value> {
 #[derive(Deserialize)]
 struct QrQuery {
     data: String,
+    /// Error correction (L, M, Q, H; M by default).
+    #[serde(default)]
+    ec: Option<cg_core::wid::qrcode::Ecl>,
 }
 
 /// QR modules for the HTML5 renderer (public: output pages need it).
@@ -1705,7 +1708,7 @@ async fn qr(Query(q): Query<QrQuery>) -> ApiResult<Json<serde_json::Value>> {
     if q.data.len() > 2048 {
         return Err(bad("too long for a QR code"));
     }
-    let (size, modules) = cg_render::qr_modules(&q.data).ok_or_else(|| bad("cannot encode"))?;
+    let (size, modules) = cg_render::qr_modules_ec(&q.data, q.ec.unwrap_or_default()).ok_or_else(|| bad("cannot encode"))?;
     let modules: String = modules.iter().map(|d| if *d { '1' } else { '0' }).collect();
     Ok(Json(
         serde_json::json!({ "size": size, "modules": modules }),

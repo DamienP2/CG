@@ -12,7 +12,7 @@ mod map;
 mod pen;
 mod polygon;
 mod progress;
-mod qrcode;
+pub(crate) mod qrcode;
 mod quad;
 mod scoreboard;
 mod shape;

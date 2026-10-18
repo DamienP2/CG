@@ -19,6 +19,7 @@ use cg_core::{
 };
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 
+pub use wid::qrcode::qr_modules_ec;
 pub use text::{fonts_changed, FontFamily, FontStore, BUNDLED_FONTS};
 
 /// QR modules of `content` (row-major, true = dark) and the side length,
