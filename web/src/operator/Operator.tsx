@@ -698,7 +698,7 @@ function DataBlock({
     const patch: Record<string, string> = {};
     await Promise.all(
       bound.map(async (f) => {
-        const v = await lookup(f.binding!.source, f.binding!.path, draft, f.binding!.filters);
+        const v = await lookup(f.binding!.source, f.binding!.path, draft, f.binding!.filters, f.binding!.sort);
         if (v !== null) patch[f.key] = v;
       }),
     );

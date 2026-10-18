@@ -1,11 +1,12 @@
-import { Database, Filter, ListTree, Plus, Trash2, Type, Variable, X } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, ArrowUp, Database, Filter, Image as ImageIcon, ListTree, Plus, Trash2, Type, Variable, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { PickDialog } from '../data/BindingEditor';
 import { useBoundData, useSources } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
-import { INPUTS, measureLayer, nodeValues } from '../engine/logic';
-import { TEXT_LIKE, type DataFilter, type Field, type FieldKind, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
+import { applyLogic, INPUTS, measureLayer, nodeValues } from '../engine/logic';
+import { api } from '../store';
+import { TEXT_LIKE, type DataFilter, type DataSort, type Field, type FieldKind, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate } from '../router';
 import { findLayer, useDesigner } from './designerStore';
@@ -28,6 +29,15 @@ import { WidgetRunButtons } from './WidgetRun';
 
 export const useDataCanvas = create<{ open: boolean; set: (open: boolean) => void }>((set) => ({ open: false, set: (open) => set({ open }) }));
 
+/** What a layer shows, wired by default: its text, or its picture. */
+function contentOf(l: Layer): string[] {
+  if (l.type === 'image') return ['src'];
+  return typeof (l as { text?: unknown }).text === 'string' ? ['text'] : [];
+}
+const contentValue = (l: Layer, port: string) => String((l as unknown as Record<string, unknown>)[port] ?? '');
+/** A {{key}} in a layer's text or picture. */
+const tokensIn = (l: Layer, port: string, key: string) => contentValue(l, port).includes(`{{${key}}}`);
+
 /** Properties a layer exposes as ports. */
 function portsOf(l: Layer): string[] {
   const props: Prop[] = ['x', 'y', 'width', 'height', 'scaleX', 'scaleY', 'rotation', 'opacity'];
@@ -36,7 +46,7 @@ function portsOf(l: Layer): string[] {
   if (l.type === 'rect' || l.type === 'group' || l.type === 'progress') props.push('cornerRadius');
   if (TEXT_LIKE.has(l.type)) props.push('fontSize', 'letterSpacing');
   if (l.type === 'image') props.push('cropLeft', 'cropRight', 'cropTop', 'cropBottom');
-  return [...(l.type === 'text' ? ['text'] : []), ...props];
+  return props;
 }
 const isColor = (p: string) => p === 'fill' || p === 'stroke';
 
@@ -56,14 +66,13 @@ const FILTERS: { make: () => DataFilter; label: string; hint: string }[] = [
   { make: () => ({ type: 'map', when: '', then: '' }), label: 'If equals', hint: 'A value → another' },
   { make: () => ({ type: 'default', text: '' }), label: 'If empty', hint: 'Fallback text' },
 ];
-const filterLabel = (f: DataFilter) => FILTERS.find((x) => x.make().type === f.type)?.label ?? f.type;
 
 const OPERATIONS = KINDS.filter((k) => k.type !== 'field' && k.type !== 'target');
 
-const W = { source: 220, filter: 190, field: 250, logic: 210, layer: 250 };
+const W = { source: 320, filter: 210, field: 250, logic: 210, layer: 260 };
 const HEAD = 34;
 const ROW = 24;
-const COLS = { source: 40, filter: 290, field: 540, logic: 830, layer: 1080 };
+const COLS = { source: 40, filter: 400, field: 900, logic: 1200, layer: 1480 };
 
 interface Layout {
   pos: Record<string, { x: number; y: number }>;
@@ -81,7 +90,6 @@ function loadLayout(id: string): Layout {
 }
 
 const tokenOf = (key: string) => `{{${key}}}`;
-const usesKey = (l: Layer, key: string) => l.type === 'text' && l.text.includes(tokenOf(key));
 
 type Pt = { x: number; y: number };
 function curve(a: Pt, b: Pt) {
@@ -107,12 +115,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const [layout, setLayoutState] = useState<Layout>(() => loadLayout(template.id));
   const [drag, setDrag] = useState<{ wire: Wire; x: number; y: number } | null>(null);
   const [picking, setPicking] = useState<Field | null>(null);
-  const [armed, setArmed] = useState<DataFilter | null>(null);
-  const [menu, setMenu] = useState<{ key: string; x: number; y: number } | null>(null);
+  const [armed, setArmed] = useState<'filter' | 'sort' | null>(null);
   const logic: Logic = template.logic ?? { nodes: [], edges: [] };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && (setArmed(null), setMenu(null));
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setArmed(null);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -131,7 +138,10 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   // Values at the playhead: layer properties and logic nodes.
   const resolved = useMemo(() => {
     const hold = holdFrame(template);
-    return new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, values, hold)]));
+    const m = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, values, hold)]));
+    // What the operations set, too: the layers' values as they will be.
+    applyLogic(template.logic, m, values, measureLayer(template.layers, values, interpolateText));
+    return m;
   }, [template, frame, values]);
   const logicValues = useMemo(() => nodeValues(logic, resolved, values, measureLayer(template.layers, values, interpolateText)), [logic, resolved, values, template.layers]);
 
@@ -143,14 +153,23 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     new Set<string>([
       ...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p),
       ...targets.filter((t) => t.layer === l.id && logic.edges.some((e) => e.to === t.id)).map((t) => t.prop),
-      ...(l.type === 'text' && /\{\{\w+\}\}/.test(l.text) ? ['text'] : []),
+      ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))),
     ]);
+  /** Content ports always; properties when unfolded (or wired). */
   const ports = (l: Layer) => {
-    const all = portsOf(l);
-    if (!layout.collapsed[l.id]) return all;
     const wired = wiredPorts(l);
-    return all.filter((p) => wired.has(p));
+    return [...contentOf(l), ...portsOf(l).filter((p) => layout.collapsed[l.id] === false || wired.has(p))];
   };
+  const CROW = 52;
+  const portTop = (l: Layer, port: string) => {
+    let y = HEAD;
+    for (const p of ports(l)) {
+      if (p === port) return y;
+      y += contentOf(l).includes(p) ? CROW : ROW;
+    }
+    return -1;
+  };
+  const layerHeight = (l: Layer) => HEAD + ports(l).reduce((h, p) => h + (contentOf(l).includes(p) ? CROW : ROW), 0) + 30 + (isTimed(l) ? 40 : 0);
 
   const nodePos = new Map<string, Pt>();
   const stack = (col: keyof typeof COLS, items: [string, number][]) => {
@@ -161,15 +180,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     }
   };
   const fieldHeight = (f: Field) => HEAD + (f.binding ? 120 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
-  stack('source', sourceIds.map((s) => [`s:${s}`, HEAD + 56]));
+  stack('source', sourceIds.map((s) => [`s:${s}`, HEAD + 300]));
   stack('field', template.fields.map((f) => [`f:${f.key}`, fieldHeight(f)]));
-  stack('layer', template.layers.map((l) => [`l:${l.id}`, HEAD + ports(l).length * ROW + (isTimed(l) ? 50 : 14)]));
+  stack('layer', template.layers.map((l) => [`l:${l.id}`, layerHeight(l)]));
+  // Sort and filter nodes sit on the way from the source to their variable.
   for (const f of template.fields) {
     const fp = nodePos.get(`f:${f.key}`)!;
-    (f.binding?.filters ?? []).forEach((_, i, all) => {
-      const id = `x:${f.key}:${i}`;
-      nodePos.set(id, layout.pos[id] ?? { x: COLS.filter + (i * (COLS.field - COLS.filter - 20)) / Math.max(1, all.length), y: fp.y });
-    });
+    if (f.binding?.sort) nodePos.set(`o:${f.key}`, layout.pos[`o:${f.key}`] ?? { x: COLS.filter - 20, y: fp.y });
+    if (f.binding?.filters?.length) nodePos.set(`x:${f.key}`, layout.pos[`x:${f.key}`] ?? { x: COLS.filter + (f.binding.sort ? 230 : 0), y: fp.y + 10 });
   }
   const space = { w: Math.max(2200, ...[...nodePos.values()].map((p) => p.x + 400), ...operations.map((n) => n.x + 400)), h: Math.max(1400, ...[...nodePos.values()].map((p) => p.y + 600), ...operations.map((n) => n.y + 400)) };
 
@@ -184,9 +202,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   };
   const layerIn = (l: Layer, port: string): Pt | null => {
     const p = nodePos.get(`l:${l.id}`);
-    const i = ports(l).indexOf(port);
-    if (!p || i < 0) return null;
-    return { x: p.x, y: p.y + HEAD + i * ROW + ROW / 2 };
+    const top = portTop(l, port);
+    if (!p || top < 0) return null;
+    return { x: p.x, y: p.y + top + ROW / 2 };
   };
   const logicIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + INPUTS[n.type].indexOf(port) * ROW + ROW / 2 });
   const logicOut = (n: LogicNode) => ({ x: n.x + W.logic, y: n.y + HEAD / 2 });
@@ -229,40 +247,40 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   for (const f of template.fields) {
     if (!f.binding?.source || !nodePos.has(`s:${f.binding.source}`)) continue;
     const chain = [outOf(`s:${f.binding.source}`, W.source)];
-    const fs = f.binding.filters ?? [];
-    fs.forEach((_, i) => {
-      chain.push(inOf(`x:${f.key}:${i}`));
-      chain.push(outOf(`x:${f.key}:${i}`, W.filter));
-    });
+    for (const id of [`o:${f.key}`, `x:${f.key}`])
+      if (nodePos.has(id)) {
+        chain.push(inOf(id));
+        chain.push(outOf(id, W.filter));
+      }
     chain.push(inOf(`f:${f.key}`));
     for (let i = 0; i + 1 < chain.length; i += 2) {
-      const at = i / 2;
       wires.push({
         d: curve(chain[i], chain[i + 1]),
         data: true,
-        title: armed ? `Add ${filterLabel(armed)} here` : `${f.label} from the source (click to unlink)`,
+        title: armed ? `Add a ${armed} here` : `${f.label} from the source (click to unlink)`,
         onClick: () => {
-          if (armed) {
-            editFilters(f.key, (x) => void x.splice(at, 0, structuredClone(armed)));
-            setArmed(null);
-          } else update((t) => void delete t.fields.find((x) => x.key === f.key)!.binding);
+          if (armed === 'filter') editFilters(f.key, (x) => void (x.length || x.push({ type: 'trim' })));
+          else if (armed === 'sort') editField(f.key, (x) => void (x.binding && (x.binding.sort ??= { list: '', by: '', descending: true, numeric: true })));
+          else update((t) => void delete t.fields.find((x) => x.key === f.key)!.binding);
+          setArmed(null);
         },
       });
     }
   }
   for (const l of template.layers)
-    for (const port of portsOf(l)) {
+    for (const port of [...contentOf(l), ...portsOf(l)]) {
       const to = layerIn(l, port);
       if (!to) continue;
-      const keys = port === 'text' ? template.fields.filter((f) => usesKey(l, f.key)).map((f) => f.key) : [l.bindings[port as Prop]].filter((k): k is string => !!k && template.fields.some((f) => f.key === k));
+      const content = contentOf(l).includes(port);
+      const keys = content ? template.fields.filter((f) => tokensIn(l, port, f.key)).map((f) => f.key) : [l.bindings[port as Prop]].filter((k): k is string => !!k && template.fields.some((f) => f.key === k));
       for (const key of keys)
         wires.push({
           d: curve(outOf(`f:${key}`, W.field), to),
-          title: `${key} → ${l.name} ${port === 'text' ? 'text' : PROP_LABELS[port as Prop]} (click to remove)`,
+          title: `${key} → ${l.name} ${content ? port : PROP_LABELS[port as Prop]} (click to remove)`,
           onClick: () =>
             update((t) => {
-              const x = findLayer(t, l.id)!;
-              if (port === 'text' && x.type === 'text') x.text = x.text.split(tokenOf(key)).join('').replace(/ {2,}/g, ' ').trim();
+              const x = findLayer(t, l.id)! as unknown as Record<string, unknown> & Layer;
+              if (content) x[port] = String(x[port] ?? '').split(tokenOf(key)).join('').replace(/ {2,}/g, ' ').trim();
               else delete x.bindings[port as Prop];
             }),
         });
@@ -339,12 +357,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     if (!layerId || !p) return;
     if (w.kind === 'field') {
       update((t) => {
-        const l = findLayer(t, layerId)!;
-        if (p === 'text') {
-          if (l.type === 'text' && !usesKey(l, w.key)) l.text = l.text.trim() ? `${l.text} ${tokenOf(w.key)}` : tokenOf(w.key);
+        const l = findLayer(t, layerId)! as unknown as Record<string, unknown> & Layer;
+        if (p === 'src') l.src = tokenOf(w.key);
+        else if (p === 'text') {
+          const cur = String(l.text ?? '');
+          if (!cur.includes(tokenOf(w.key))) l.text = cur.trim() && /\{\{\w+\}\}/.test(cur) ? `${cur} ${tokenOf(w.key)}` : tokenOf(w.key);
         } else l.bindings[p as Prop] = w.key;
       });
-    } else if (w.kind === 'logic' && p !== 'text') {
+    } else if (w.kind === 'logic' && p !== 'text' && p !== 'src') {
       editLogic((l) => {
         let to = l.nodes.find((n) => n.type === 'target' && n.layer === layerId && n.prop === p)?.id;
         if (!to) {
@@ -411,7 +431,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       </header>
       {armed && (
         <div className="dc-armed">
-          <Filter size={13} /> Click a data wire (source → variable) to add <strong>{filterLabel(armed)}</strong> there.
+          {armed === 'sort' ? <ArrowDownUp size={13} /> : <Filter size={13} />} Click a data wire (source → variable) to add a <strong>{armed}</strong> there.
           <button className="btn small" onClick={() => setArmed(null)}>
             Cancel (Esc)
           </button>
@@ -455,14 +475,21 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           )}
           {sources.length > 0 && !hiddenSources.length && <p className="hint">All the sources are on the canvas.</p>}
 
-          <div className="dc-pal-title">Filters</div>
-          <div className="dc-pal-grid">
-            {FILTERS.map((f) => (
-              <button key={f.label} className={`kind-filter ${armed?.type === f.make().type ? 'on' : ''}`} title={`${f.hint} — then click a data wire`} onClick={() => setArmed(f.make())}>
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <div className="dc-pal-title">On the way</div>
+          <button className={`kind-sort ${armed === 'sort' ? 'on' : ''}`} title="Then click a data wire" onClick={() => setArmed('sort')}>
+            <ArrowDownUp size={14} />
+            <span>
+              <strong>Sort</strong>
+              <em>Order a list before reading it</em>
+            </span>
+          </button>
+          <button className={`kind-filter ${armed === 'filter' ? 'on' : ''}`} title="Then click a data wire" onClick={() => setArmed('filter')}>
+            <Filter size={14} />
+            <span>
+              <strong>Filter</strong>
+              <em>Steps on the text read: case, replace, format, lines…</em>
+            </span>
+          </button>
 
           <div className="dc-pal-title">Operations</div>
           {OPERATIONS.map((k) => (
@@ -483,7 +510,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           ))}
         </aside>
 
-        <div className={`logic-canvas ${armed ? 'arming' : ''}`} ref={canvasRef} onPointerDown={() => setMenu(null)}>
+        <div className={`logic-canvas ${armed ? 'arming' : ''}`} ref={canvasRef}>
           <div className="logic-space" style={{ width: space.w, height: space.h }}>
             <svg className="logic-wires">
               {wires.map((w, i) => (
@@ -516,32 +543,52 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       <span className={`live-dot ${s?.error ? 'err' : ''}`} /> {s ? `${s.type.toUpperCase()} · every ${s.interval} s` : 'not found'}
                     </span>
                     <span className="dc-meta">{used ? `Feeds ${used} variable${used > 1 ? 's' : ''}` : 'Feeds nothing yet'}</span>
+                    <SourceTable id={id} version={s?.updatedAt ?? 0} />
                   </div>
                 </div>
               );
             })}
 
-            {/* Filters, on the way from a source to a variable */}
-            {template.fields.flatMap((f) =>
-              (f.binding?.filters ?? []).map((flt, i) => {
-                const id = `x:${f.key}:${i}`;
-                const p = nodePos.get(id)!;
-                return (
-                  <div key={id} className="logic-node dc-node kind-filter" style={{ left: p.x, top: p.y, width: W.filter }} onPointerDown={(e) => dragNode(e, id)}>
+            {/* Sort and filter, on the way from a source to a variable */}
+            {template.fields.flatMap((f) => {
+              const out: React.ReactNode[] = [];
+              const b = f.binding;
+              if (b?.sort) {
+                const p = nodePos.get(`o:${f.key}`)!;
+                out.push(
+                  <div key={`o:${f.key}`} className="logic-node dc-node kind-sort" style={{ left: p.x, top: p.y, width: W.filter }} onPointerDown={(e) => dragNode(e, `o:${f.key}`)}>
                     <div className="ln-head" style={{ height: HEAD }}>
                       <span className="port in fixed" />
-                      <Filter size={12} />
-                      <span>{filterLabel(flt)}</span>
-                      <button className="ln-del" title="Remove the filter" onClick={() => editFilters(f.key, (x) => void x.splice(i, 1))}>
+                      <ArrowDownUp size={12} />
+                      <span>Sort</span>
+                      <button className="ln-del" title="Remove the sort" onClick={() => editField(f.key, (x) => void (x.binding && delete x.binding.sort))}>
                         <Trash2 size={11} />
                       </button>
                       <span className="port out fixed" />
                     </div>
-                    <FilterBody filter={flt} onChange={(nf) => editFilters(f.key, (x) => void (x[i] = nf), `filter-${f.key}-${i}`)} />
-                  </div>
+                    <SortBody source={b.source} sort={b.sort} onChange={(srt) => editField(f.key, (x) => void (x.binding && (x.binding.sort = srt)), `sort-${f.key}`)} />
+                  </div>,
                 );
-              }),
-            )}
+              }
+              if (b?.filters?.length) {
+                const p = nodePos.get(`x:${f.key}`)!;
+                out.push(
+                  <div key={`x:${f.key}`} className="logic-node dc-node kind-filter" style={{ left: p.x, top: p.y, width: W.filter }} onPointerDown={(e) => dragNode(e, `x:${f.key}`)}>
+                    <div className="ln-head" style={{ height: HEAD }}>
+                      <span className="port in fixed" />
+                      <Filter size={12} />
+                      <span>Filter · {b.filters.length}</span>
+                      <button className="ln-del" title="Remove the filter" onClick={() => editFilters(f.key, (x) => void x.splice(0))}>
+                        <Trash2 size={11} />
+                      </button>
+                      <span className="port out fixed" />
+                    </div>
+                    <FilterSteps steps={b.filters} onChange={(fs) => editFilters(f.key, (x) => void x.splice(0, x.length, ...fs), `filter-${f.key}`)} />
+                  </div>,
+                );
+              }
+              return out;
+            })}
 
             {/* Variables */}
             {template.fields.map((f) => {
@@ -592,15 +639,18 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                         <span className="dc-value live" title="Value from the source now, after the filters">
                           {v === '' ? '(no value at this path)' : v.length > 40 ? `${v.slice(0, 40)}…` : v}
                         </span>
-                        <button
-                          className="dc-addfilter"
-                          onClick={(e) => {
-                            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            setMenu({ key: f.key, ...point(r.left, r.bottom) });
-                          }}
-                        >
-                          <Plus size={11} /> Filter
-                        </button>
+                        <span className="row">
+                          {!f.binding.sort && (
+                            <button className="dc-addfilter" onClick={() => editField(f.key, (x) => void (x.binding && (x.binding.sort = { list: '', by: '', descending: true, numeric: true })))}>
+                              <Plus size={11} /> Sort
+                            </button>
+                          )}
+                          {!f.binding.filters?.length && (
+                            <button className="dc-addfilter" onClick={() => editFilters(f.key, (x) => void x.push({ type: 'trim' }))}>
+                              <Plus size={11} /> Filter
+                            </button>
+                          )}
+                        </span>
                       </>
                     ) : (
                       <DefaultEditor field={f} onChange={(fn, key) => editField(f.key, fn, key)} />
@@ -646,41 +696,65 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               );
             })}
 
-            {/* Layers: every value they show in Properties */}
+            {/* Layers: what they show (text, picture); their properties folded */}
             {template.layers.map((l) => {
               const p = nodePos.get(`l:${l.id}`)!;
               const Icon = ICONS[l.type];
               const wired = wiredPorts(l);
               const r = resolved.get(l.id);
+              const hidden = portsOf(l).filter((x) => !ports(l).includes(x)).length;
               return (
                 <div key={l.id} className="logic-node dc-node kind-layer" style={{ left: p.x, top: p.y, width: W.layer }} onPointerDown={(e) => dragNode(e, `l:${l.id}`)}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <Icon size={12} />
                     <span>{l.name}</span>
-                    <button
-                      className="dc-collapse"
-                      title={layout.collapsed[l.id] ? 'Show all its values' : 'Show only the wired values'}
-                      onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: !x.collapsed[l.id] } }))}
-                    >
-                      {layout.collapsed[l.id] ? `+${portsOf(l).length - ports(l).length}` : '−'}
-                    </button>
                   </div>
                   {ports(l).map((port) => {
-                    const v = port === 'text' || !r ? undefined : r[port as Prop];
+                    const content = contentOf(l).includes(port);
+                    if (content) {
+                      const raw = contentValue(l, port);
+                      const isWired = wired.has(port);
+                      const result = interpolateText(raw, values);
+                      return (
+                        <div key={port} className={`ln-content ${isWired ? 'wired' : ''}`} style={{ height: CROW }}>
+                          <div className="ln-input" style={{ height: ROW }}>
+                            <span className="port in" data-layer={l.id} data-port={port} title="Drop a variable here" />
+                            {port === 'src' ? <ImageIcon size={11} /> : <Type size={11} />} {port === 'src' ? 'Picture' : 'Text'}
+                            {isWired && <span className="dc-from">from data</span>}
+                          </div>
+                          {isWired ? (
+                            <span className="dc-value live" title={`Result: ${result}`}>
+                              {result === '' ? '(empty)' : result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')}
+                            </span>
+                          ) : (
+                            <input
+                              className="dc-content-input"
+                              value={raw}
+                              title="Default value (until a variable is wired)"
+                              onChange={(e) => update((t) => void ((findLayer(t, l.id) as unknown as Record<string, unknown>)[port] = e.target.value), `content-${l.id}`)}
+                            />
+                          )}
+                        </div>
+                      );
+                    }
+                    const v = r ? r[port as Prop] : undefined;
                     return (
                       <div key={port} className={`ln-input ${wired.has(port) ? 'wired' : ''}`} style={{ height: ROW }}>
                         <span className="port in" data-layer={l.id} data-port={port} title="Drop a variable or an operation here" />
-                        {port === 'text' ? (
-                          <>
-                            <Type size={11} /> Text
-                          </>
-                        ) : (
-                          <span>{PROP_LABELS[port as Prop]}</span>
-                        )}
-                        <span className="dc-port-value">{v === undefined ? '' : isColor(port) ? <span className="dc-swatch" style={{ background: toHex(col(v), true) }} /> : +num(v).toFixed(2)}</span>
+                        <span>{PROP_LABELS[port as Prop]}</span>
+                        <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={wired.has(port) ? 'Value it gets from the data' : 'Value in Properties'}>
+                          {v === undefined ? '' : isColor(port) ? <span className="dc-swatch" style={{ background: toHex(col(v), true) }} /> : +num(v).toFixed(2)}
+                        </span>
                       </div>
                     );
                   })}
+                  <button
+                    className="dc-props-toggle"
+                    onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))}
+                    title="Position, size, colours… (Properties)"
+                  >
+                    {hidden ? `+ ${hidden} properties` : '− Fold the properties'}
+                  </button>
                   {isTimed(l) && (
                     <div className="ln-body">
                       <WidgetRunButtons layer={l} compact />
@@ -689,23 +763,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 </div>
               );
             })}
-
-            {menu && (
-              <div className="dc-menu" style={{ left: menu.x, top: menu.y + 4 }} onPointerDown={(e) => e.stopPropagation()}>
-                {FILTERS.map((f) => (
-                  <button
-                    key={f.label}
-                    onClick={() => {
-                      editFilters(menu.key, (x) => void x.push(f.make()));
-                      setMenu(null);
-                    }}
-                  >
-                    <strong>{f.label}</strong>
-                    <em>{f.hint}</em>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -720,6 +777,187 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           onClose={() => setPicking(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Latest value of a data source, for the tables and the sort's lists. */
+const sourceValues = new Map<string, { version: number; value: unknown }>();
+function useSourceValue(id: string, version: number): unknown {
+  const [value, setValue] = useState<unknown>(sourceValues.get(id)?.value);
+  useEffect(() => {
+    const cached = sourceValues.get(id);
+    if (cached && cached.version === version) return setValue(cached.value);
+    let live = true;
+    api('GET', `/api/data/sources/${encodeURIComponent(id)}/value`)
+      .then((v) => {
+        sourceValues.set(id, { version, value: v });
+        if (live) setValue(v);
+      })
+      .catch(() => live && setValue(null));
+    return () => {
+      live = false;
+    };
+  }, [id, version]);
+  return value;
+}
+
+type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
+const isObj = (v: unknown): v is Record<string, Json> => !!v && typeof v === 'object' && !Array.isArray(v);
+const cell = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? (Array.isArray(v) ? `[${v.length}]` : '{…}') : String(v));
+
+/** Dotted paths of the lists of objects in a value (for the sort), the root first. */
+function listsIn(v: unknown, path = '', depth = 0, out: string[] = []): string[] {
+  if (Array.isArray(v)) {
+    if (v.some(isObj)) out.push(path);
+  } else if (isObj(v) && depth < 4) {
+    for (const [k, x] of Object.entries(v)) listsIn(x, path ? `${path}.${k}` : k, depth + 1, out);
+  }
+  return out;
+}
+const at = (v: unknown, path: string): unknown => path.split('.').filter(Boolean).reduce<unknown>((cur, k) => (isObj(cur) ? cur[k] : Array.isArray(cur) ? cur[+k] : undefined), v);
+
+/** A source's data as a readable table: its first list of rows, or its keys and values (10 rows, scrolls). */
+function SourceTable({ id, version }: { id: string; version: number }) {
+  const value = useSourceValue(id, version);
+  if (value === undefined) return <span className="dc-meta">Loading the data…</span>;
+  if (value === null) return <span className="dc-meta">No data yet.</span>;
+  const list = listsIn(value)[0];
+  const rows = list !== undefined ? (at(value, list) as unknown[]) : null;
+  if (rows) {
+    const objs = rows.filter(isObj);
+    const cols = [...new Set(objs.slice(0, 20).flatMap((o) => Object.keys(o)))].slice(0, 8);
+    return (
+      <div className="dc-table-wrap" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+        <div className="dc-table-title">
+          {list || 'root'} · {rows.length} rows
+        </div>
+        <div className="dc-table-scroll">
+          <table className="dc-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                {cols.map((c) => (
+                  <th key={c}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {objs.map((o, i) => (
+                <tr key={i}>
+                  <td>{i}</td>
+                  {cols.map((c) => (
+                    <td key={c}>{cell(o[c])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+  const entries = isObj(value) ? Object.entries(value) : [['value', value]];
+  return (
+    <div className="dc-table-wrap" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+      <div className="dc-table-scroll">
+        <table className="dc-table">
+          <tbody>
+            {entries.map(([k, v]) => (
+              <tr key={String(k)}>
+                <th>{String(k)}</th>
+                <td>{cell(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Which list to sort, by which key, in which order. */
+function SortBody({ source, sort, onChange }: { source: string; sort: DataSort; onChange: (s: DataSort) => void }) {
+  const value = useSourceValue(source, 0);
+  const lists = value ? listsIn(value) : [];
+  const rows = (lists.includes(sort.list) ? (at(value, sort.list) as unknown[]) : []).filter(isObj);
+  const keys = [...new Set(rows.slice(0, 20).flatMap((o) => Object.keys(o)))];
+  return (
+    <div className="ln-body">
+      <label className="dc-inline">
+        List
+        <select value={sort.list} onChange={(e) => onChange({ ...sort, list: e.target.value })}>
+          {!lists.includes(sort.list) && <option value={sort.list}>{sort.list || '— choose —'}</option>}
+          {lists.map((l) => (
+            <option key={l} value={l}>
+              {l || '(root)'}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="dc-inline">
+        By
+        <select value={sort.by} onChange={(e) => onChange({ ...sort, by: e.target.value })}>
+          {!keys.includes(sort.by) && <option value={sort.by}>{sort.by || '— key —'}</option>}
+          {keys.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="row">
+        <button className={`btn small ${sort.descending ? '' : 'on'}`} title="Smallest first" onClick={() => onChange({ ...sort, descending: false })}>
+          <ArrowUp size={12} /> Asc
+        </button>
+        <button className={`btn small ${sort.descending ? 'on' : ''}`} title="Largest first" onClick={() => onChange({ ...sort, descending: true })}>
+          <ArrowDown size={12} /> Desc
+        </button>
+        <label className="dc-inline" title="Compare as numbers (else as text)">
+          <input type="checkbox" checked={!!sort.numeric} onChange={(e) => onChange({ ...sort, numeric: e.target.checked })} /> 123
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/** One filter node: its steps, applied one after the other. */
+function FilterSteps({ steps, onChange }: { steps: DataFilter[]; onChange: (s: DataFilter[]) => void }) {
+  const set = (i: number, f: DataFilter) => onChange(steps.map((x, k) => (k === i ? f : x)));
+  const move = (i: number, d: -1 | 1) => {
+    const next = [...steps];
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    onChange(next);
+  };
+  return (
+    <div className="dc-steps">
+      {steps.map((f, i) => (
+        <div key={i} className="dc-step">
+          <div className="row">
+            <span className="dc-step-n">{i + 1}</span>
+            <select value={f.type} onChange={(e) => set(i, FILTERS.find((x) => x.make().type === e.target.value)!.make())}>
+              {FILTERS.map((x) => (
+                <option key={x.label} value={x.make().type}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+            <button className="icon-btn ghost" title="Earlier" disabled={i === 0} onClick={() => move(i, -1)}>
+              <ArrowUp size={11} />
+            </button>
+            <button className="icon-btn ghost" title="Later" disabled={i === steps.length - 1} onClick={() => move(i, 1)}>
+              <ArrowDown size={11} />
+            </button>
+            <button className="icon-btn ghost" title="Remove the step" onClick={() => onChange(steps.filter((_, k) => k !== i))}>
+              <X size={11} />
+            </button>
+          </div>
+          <FilterBody filter={f} onChange={(nf) => set(i, nf)} />
+        </div>
+      ))}
+      <button className="dc-addfilter" onClick={() => onChange([...steps, { type: 'trim' }])}>
+        <Plus size={11} /> Step
+      </button>
     </div>
   );
 }
@@ -797,7 +1035,7 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
       );
       break;
   }
-  return body ? <div className="ln-body">{body}</div> : null;
+  return body ? <div className="dc-step-body">{body}</div> : null;
 }
 
 /** The default value of a variable, with an editor fitting its kind. */

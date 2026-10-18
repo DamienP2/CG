@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import type { Data, DataFilter, DataSourceInfo, DataStatus, Template } from '../engine/types';
+import type { Data, DataFilter, DataSort, DataSourceInfo, DataStatus, Template } from '../engine/types';
 import { api } from '../store';
 
 /** Data sources, their status (pushed live) and a version per source. */
@@ -41,9 +41,9 @@ export function useSources() {
   return sources;
 }
 
-export async function lookup(source: string, path: string, data: Data, filters?: DataFilter[]): Promise<string | null> {
+export async function lookup(source: string, path: string, data: Data, filters?: DataFilter[], sort?: DataSort): Promise<string | null> {
   try {
-    const r = await api<{ value: string | null }>('POST', '/api/data/lookup', { source, path, data, filters: filters ?? [] });
+    const r = await api<{ value: string | null }>('POST', '/api/data/lookup', { source, path, data, filters: filters ?? [], sort: sort?.by ? sort : undefined });
     return r.value;
   } catch {
     return null;
@@ -69,7 +69,7 @@ export function useBoundData(template: Template | null | undefined, data: Data):
       const out: Record<string, string> = {};
       await Promise.all(
         bound.map(async (f) => {
-          const v = await lookup(f.binding!.source, f.binding!.path, data, f.binding!.filters);
+          const v = await lookup(f.binding!.source, f.binding!.path, data, f.binding!.filters, f.binding!.sort);
           if (v !== null) out[f.key] = v;
         }),
       );

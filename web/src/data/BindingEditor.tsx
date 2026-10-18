@@ -38,7 +38,7 @@ export function BindingEditor({
       return;
     }
     let live = true;
-    const h = setTimeout(() => lookup(b.source, b.path, data, b.filters).then((v) => live && setValue(v)), 200);
+    const h = setTimeout(() => lookup(b.source, b.path, data, b.filters, b.sort).then((v) => live && setValue(v)), 200);
     return () => {
       live = false;
       clearTimeout(h);

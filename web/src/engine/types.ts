@@ -171,6 +171,16 @@ export interface FieldBinding {
   path: string;
   /** Applied in order to the value read (mirror of model::DataFilter). */
   filters?: DataFilter[];
+  /** Sorts a list of the source before the path reads it. */
+  sort?: DataSort;
+}
+
+/** Sorts the list at `list` (dotted keys, "" = the root) by `by` (mirror of model::DataSort). */
+export interface DataSort {
+  list: string;
+  by: string;
+  descending?: boolean;
+  numeric?: boolean;
 }
 
 export type FilterOp = 'add' | 'sub' | 'mul' | 'div';
