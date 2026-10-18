@@ -813,12 +813,14 @@ function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }:
 /** Operator controls of a spec widget of the graphic on air (web/src/widgets). */
 function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number }) {
   const def = widgetOf(layer.type)!;
-  const Op = def.Operator!;
+  const Op = def.Operator;
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const state = item.widgets?.[layer.id];
   const warnings = (def.warnings?.(layer as never, { data: item.data, state }) ?? []).filter((w) => w.op);
   const Icon = def.icon;
+  // A widget without controls shows only its alerts for the Operator.
+  if (!Op && !warnings.length) return null;
   return (
     <div className="opx-spec">
       <div className="opx-spec-head">
@@ -827,7 +829,7 @@ function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutIt
         <span className="muted small">{def.label}</span>
       </div>
       <Warnings list={warnings} />
-      <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps }} />
+      {Op && <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps }} />}
     </div>
   );
 }
@@ -862,7 +864,7 @@ function AirControls({ project, zone, item, command, onSaveData, nextRowOf }: { 
       </div>
       {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {t.layers
-        .filter((l) => l.visible && widgetOf(l.type)?.Operator)
+        .filter((l) => l.visible && (widgetOf(l.type)?.Operator || widgetOf(l.type)?.warnings))
         .map((l) => (
           <SpecControls key={l.id} layer={l} item={item} fps={project.frameRate.num / project.frameRate.den || 50} act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })} />
         ))}
