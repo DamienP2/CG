@@ -1,18 +1,19 @@
-import { LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2, Upload } from 'lucide-react';
+import { LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { Inspector } from './Inspector';
-import { LockOverlay, publishTemplate, useEditLock } from './Collab';
+import { LockOverlay, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { GuidesMenu, SafeMenu, SplitButton, useGuidesView } from './Guides';
-import { ProjectPanel } from './ProjectPanel';
+import { ProjectHistory, ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
@@ -281,11 +282,7 @@ function TemplateList({ project }: { project: Project }) {
               ) : null;
             })()}
           </span>
-          {unpublished && (
-            <button className="tpl-publish" title={published ? `Publish only “${t.name}” (the Operator uses v${published.revision || 1})` : `Publish “${t.name}” (new: the Operator does not see it yet)`} onClick={(e) => (e.stopPropagation(), void publishTemplate(project, t.id))}>
-              <Upload size={12} />
-            </button>
-          )}
+          {unpublished && <span className="tpl-draft" title={published ? 'Changes not in the Operator yet (publish from the properties on the right)' : 'New: not in the Operator yet'} />}
           <div className="item-actions">
             <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
               <Copy size={12} />
@@ -317,6 +314,9 @@ export function Designer() {
   const project = useApp((s) => s.project);
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
   const [zonesOpen, setZonesOpen] = useState(false);
+  // The top bar's slot for undo, redo and the history.
+  const [topSlot, setTopSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setTopSlot(document.getElementById('topbar-slot')), []);
   const [showZones, setShowZones] = useState(true);
   const [logicOpen, setLogicOpen] = useState(false);
   const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
@@ -378,20 +378,29 @@ export function Designer() {
       </aside>
       <main className="center">
         <div className="toolbar">
-          <div className="tool-group">
-            <button className="tool" title="Undo (Ctrl+Z)" disabled={!past.length} onClick={undo}>
-              <Undo2 size={16} />
-            </button>
-            <button className="tool" title="Redo (Ctrl+Shift+Z)" disabled={!future.length} onClick={redo}>
-              <Redo2 size={16} />
-            </button>
-          </div>
+          {topSlot &&
+            createPortal(
+              <>
+                <button className="top-tool" title="Undo (Ctrl+Z)" disabled={!past.length} onClick={undo}>
+                  <Undo2 size={15} />
+                </button>
+                <button className="top-tool" title="Redo (Ctrl+Shift+Z)" disabled={!future.length} onClick={redo}>
+                  <Redo2 size={15} />
+                </button>
+                <ProjectHistory project={project} readOnly={lock.state.status === 'held'} />
+              </>,
+              topSlot,
+            )}
           <FormatBar project={project} />
           <div className="spacer" />
-          <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
-            <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
-          </button>
-          <DataCanvasButton />
+          {template && (
+            <>
+              <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
+                <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
+              </button>
+              <DataCanvasButton />
+            </>
+          )}
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <GuidesMenu project={project} />
           <SafeMenu project={project} />

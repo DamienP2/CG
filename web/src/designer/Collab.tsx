@@ -139,6 +139,34 @@ export async function publishTemplate(project: Project, id: string) {
   }
 }
 
+/** Publish of one template, in its properties: the same look as the project's. */
+export function TemplatePublish({ project, id, readOnly }: { project: Project; id: string; readOnly: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const { published, draft } = publishState(project, id);
+  if (published && !draft)
+    return (
+      <span className="publish-state" title="The Operator uses this template as it is here">
+        <Check size={13} /> Live in the Operator · v{published.revision || 1}
+      </span>
+    );
+  return (
+    <div className="publish">
+      <button
+        className="btn small primary"
+        disabled={busy || readOnly}
+        title={published ? `The Operator uses v${published.revision || 1}` : 'New: the Operator does not see it yet'}
+        onClick={async () => {
+          setBusy(true);
+          await publishTemplate(project, id);
+          setBusy(false);
+        }}
+      >
+        <Upload size={13} /> {busy ? 'Publishing…' : published ? 'Publish this template to Operator' : 'Publish this new template to Operator'}
+      </button>
+    </div>
+  );
+}
+
 /** The project's Publish: every template with changes goes live in the Operator at once. */
 export function ProjectPublish({ project, readOnly }: { project: Project; readOnly: boolean }) {
   const { saveTemplate, toast } = useApp();

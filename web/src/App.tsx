@@ -236,6 +236,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           {tab('settings', <SettingsIcon size={14} />, 'Settings')}
         </div>
         <div className="spacer" />
+        {/* Filled by the page (the Designer's undo, redo and history). */}
+        <div id="topbar-slot" className="topbar-slot" />
         {sub === 'designer' && project && (
           <span className="project-info">
             {project.width}×{project.height} · {+(project.frameRate.num / project.frameRate.den).toFixed(2)} fps

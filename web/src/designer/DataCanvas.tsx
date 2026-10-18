@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowDownUp, ArrowUp, Database, Filter, Image as ImageIcon, Plus, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from '../data/dataStore';
@@ -394,13 +394,22 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const port = target?.closest<HTMLElement>('.port.in');
     const d = port?.dataset ?? {};
     if (w.kind === 'flow') {
+      const kind = kindOf(flow, w.id);
       if (d.flow) editFlow((f) => link(f, w.id, d.flow!));
-      else if (d.field) editFlow((f) => link(f, w.id, `field:${d.field}`));
+      else if (d.field)
+        update((t) => {
+          const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
+          link(f, w.id, `field:${d.field}`);
+          compile(t, f);
+          // A text variable fed with pictures, numbers… takes their type.
+          const x = t.fields.find((y) => y.key === d.field);
+          if (x && kind && x.kind === 'text' && kind !== 'text') x.kind = kind;
+        });
       else if (!target?.closest('.dc-node')) {
         // Dropped on empty space: a new variable fed from here.
         let made = '';
         update((t) => {
-          made = newField(t, `Field ${t.fields.length + 1}`, 'text', '');
+          made = newField(t, `Field ${t.fields.length + 1}`, kind ?? 'text', '');
           const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
           link(f, w.id, `field:${made}`);
           compile(t, f);
@@ -753,9 +762,15 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     </div>
                     {f.binding ? (
                       <>
-                        <span className="dc-result" title={v}>
-                          {v === '' ? <em>(empty)</em> : v}
-                        </span>
+                        {cellType(v) === 'image' ? (
+                          <span className="dc-result img" title={v}>
+                            <img src={v} alt="" />
+                          </span>
+                        ) : (
+                          <span className="dc-result" title={v}>
+                            {v === '' ? <em>(empty)</em> : v}
+                          </span>
+                        )}
                         {legacy && (
                           <span className="dc-meta" title="Made before the tables: unlink it and wire the data again to change it">
                             Path {f.binding.path}
@@ -837,7 +852,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                             {port === 'src' ? <ImageIcon size={11} /> : <Type size={11} />} {port === 'src' ? 'Picture' : 'Text'}
                             {isWired && <span className="dc-from">from data</span>}
                           </div>
-                          {isWired ? (
+                          {isWired && port === 'src' && cellType(result) === 'image' ? (
+                            <span className="dc-value live dc-pic" title={result}>
+                              <img src={result} alt="" /> {result.split('/').pop()}
+                            </span>
+                          ) : isWired ? (
                             <span className="dc-value live" title={`Result: ${result}`}>
                               {result === '' ? '(empty)' : result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')}
                             </span>
@@ -956,9 +975,60 @@ function useStages(source: string, list: string, steps: DataStep[], data: Data) 
   return res;
 }
 
+/** What a cell holds: a picture (uploaded or on the web), a colour, a number… */
+export type CellType = 'number' | 'image' | 'color' | 'boolean' | 'text';
+const IMAGE = /^(data:image\/|(https?:\/\/|\/)\S+\.(png|jpe?g|gif|webp|svg|avif|bmp)([?#]\S*)?$)/i;
+export function cellType(v: string): CellType | null {
+  const t = v.trim();
+  if (!t) return null;
+  if (IMAGE.test(t)) return 'image';
+  if (/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(t) || /^rgba?\(/i.test(t)) return 'color';
+  if (/^-?\d+([.,]\d+)?$/.test(t)) return 'number';
+  if (/^(true|false)$/i.test(t)) return 'boolean';
+  return 'text';
+}
+/** The type of each column: the one most of its cells have. */
+function columnTypes(stage: Stage): CellType[] {
+  return stage.columns.map((_, i) => {
+    const n: Partial<Record<CellType, number>> = {};
+    for (const r of stage.rows.slice(0, 50)) {
+      const t = cellType(r[i] ?? '');
+      if (t) n[t] = (n[t] ?? 0) + 1;
+    }
+    return ((Object.entries(n) as [CellType, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'text') as CellType;
+  });
+}
+const TYPE_ICON: Record<CellType, typeof Type> = { text: Type, number: Hash, image: ImageIcon, color: Palette, boolean: ToggleLeft };
+
+/** A cell as it reads: the picture, the colour, or the text. */
+function Cell({ v }: { v: string }) {
+  const t = cellType(v);
+  if (t === 'image') return <img className="dc-thumb" src={v} alt="" loading="lazy" />;
+  if (t === 'color')
+    return (
+      <>
+        <span className="dc-swatch" style={{ background: v }} /> {v}
+      </>
+    );
+  return <>{v}</>;
+}
+
+/** The variable kind fitting the result of node `id`, from its last preview. */
+function kindOf(flow: DataFlow, id: string): FieldKind | null {
+  const c = chainOf(flow, id);
+  if (!c) return null;
+  const prefix = JSON.stringify([c.source.source, c.source.list, c.steps]).slice(0, -1) + ',';
+  const hit = [...stageCache.entries()].find(([k, v]) => k.startsWith(prefix) && v)?.[1];
+  const last = hit?.stages[hit.stages.length - 1];
+  if (!last || last.columns.length !== 1) return null;
+  const t = columnTypes(last)[0];
+  return t === 'image' ? 'image' : t === 'number' ? 'number' : t === 'color' ? 'color' : t === 'boolean' ? 'boolean' : last.total > 1 ? 'multiline' : 'text';
+}
+
 /** A table, 10 rows in view (more when the node is taller), scrolling. */
 function StageTable({ stage, title }: { stage: Stage | undefined; title?: string }) {
   if (!stage) return <span className="dc-meta">Loading the data…</span>;
+  const types = columnTypes(stage);
   return (
     <div className="dc-table-wrap">
       <div className="dc-table-title">
@@ -970,9 +1040,14 @@ function StageTable({ stage, title }: { stage: Stage | undefined; title?: string
           <thead>
             <tr>
               <th>#</th>
-              {stage.columns.map((c) => (
-                <th key={c}>{c}</th>
-              ))}
+              {stage.columns.map((c, i) => {
+                const Icon = TYPE_ICON[types[i]];
+                return (
+                  <th key={c} title={`${c} · ${types[i]}`}>
+                    <Icon size={10} className={`dc-type t-${types[i]}`} /> {c}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -980,8 +1055,8 @@ function StageTable({ stage, title }: { stage: Stage | undefined; title?: string
               <tr key={i}>
                 <td>{i + 1}</td>
                 {r.map((c, j) => (
-                  <td key={j} title={c}>
-                    {c}
+                  <td key={j} title={c} className={types[j] === 'image' ? 'img' : ''}>
+                    <Cell v={c} />
                   </td>
                 ))}
               </tr>
