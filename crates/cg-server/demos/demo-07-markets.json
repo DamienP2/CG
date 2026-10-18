@@ -460,7 +460,7 @@
       "id": "market-ticker-3",
       "name": "Quotes",
       "parent": "market-ticker-1",
-      "type": "ticker",
+      "type": "text",
       "visible": true,
       "locked": false,
       "props": {
@@ -479,6 +479,7 @@
       "tracks": {},
       "bindings": {},
       "text": "{{quotes}}",
+      "scroll": "horizontal",
       "separator": "     ",
       "speed": 140.0,
       "fontFamily": "Inter",

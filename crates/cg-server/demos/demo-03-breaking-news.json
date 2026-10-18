@@ -362,7 +362,7 @@
       "id": "ticker-5",
       "name": "Crawl",
       "parent": "ticker-1",
-      "type": "ticker",
+      "type": "text",
       "visible": true,
       "locked": false,
       "props": {
@@ -381,6 +381,7 @@
       "tracks": {},
       "bindings": {},
       "text": "{{items}}",
+      "scroll": "horizontal",
       "separator": "   •   ",
       "speed": 160.0,
       "fontFamily": "Inter",

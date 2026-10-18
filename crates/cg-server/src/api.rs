@@ -51,6 +51,14 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/formats", put(put_formats))
         .route("/api/projects/{id}/guides", put(put_guides))
         .route(
+            "/api/projects/{id}/versions",
+            get(list_versions).post(create_version),
+        )
+        .route(
+            "/api/projects/{id}/versions/{vid}/restore",
+            post(restore_version),
+        )
+        .route(
             "/api/projects/{id}/templates/{tid}",
             put(put_template).delete(delete_template),
         )
@@ -768,8 +776,85 @@ async fn publish_template(
         None if p.template(&tid).is_some() => p.template(&tid).map_or(0, |t| t.revision),
         None => return Err(not_found("template")),
     };
-    s.save_project(p).await.map_err(internal)?;
+    let name = p.template(&tid).map(|t| t.name.clone()).unwrap_or_default();
+    let p = s.save_project(p).await.map_err(internal)?;
+    // Every publish is a version the designer can go back to.
+    let note = format!("Published “{name}” (revision {rev})");
+    if let Err(e) = s.library.read().await.save_version(&p, who(&me), &note) {
+        tracing::warn!("cannot keep a version: {e}");
+    }
     Ok(Json(BTreeMap::from([("revision", rev)])))
+}
+
+fn who(u: &crate::auth::User) -> &str {
+    if u.display_name.is_empty() {
+        &u.username
+    } else {
+        &u.display_name
+    }
+}
+
+async fn list_versions(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<crate::library::VersionInfo>>> {
+    visible_project(&s, &me, &id).await?;
+    Ok(Json(s.library.read().await.versions(&id)))
+}
+
+#[derive(Deserialize)]
+struct NewVersion {
+    #[serde(default)]
+    note: String,
+}
+
+/// Keeps the project as it is now in its history.
+async fn create_version(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(n): Json<NewVersion>,
+) -> ApiResult<Json<crate::library::VersionInfo>> {
+    require(me.can_design(&id))?;
+    let p = visible_project(&s, &me, &id).await?;
+    let note = if n.note.trim().is_empty() {
+        "Saved by hand".to_string()
+    } else {
+        n.note.trim().to_string()
+    };
+    let v = s
+        .library
+        .read()
+        .await
+        .save_version(&p, who(&me), &note)
+        .map_err(internal)?;
+    Ok(Json(v))
+}
+
+/// Puts a project back as it was in a version (the current state is kept
+/// as a version first, so a restore can be undone).
+async fn restore_version(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, vid)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    require(me.can_design(&id))?;
+    let current = visible_project(&s, &me, &id).await?;
+    let mut old = s
+        .library
+        .read()
+        .await
+        .version(&id, &vid)
+        .ok_or_else(|| not_found("version"))?;
+    s.library
+        .read()
+        .await
+        .save_version(&current, who(&me), "Before restoring an older version")
+        .map_err(internal)?;
+    old.id = id;
+    s.save_project(old).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Drops a template's unpublished changes (back to what is on air).
@@ -1766,6 +1851,8 @@ struct LookupQuery {
     data: cg_core::Data,
     #[serde(default)]
     filters: Vec<cg_core::DataFilter>,
+    #[serde(default)]
+    sort: Option<cg_core::DataSort>,
 }
 
 /// Resolves a binding path against a source's current value.
@@ -1780,7 +1867,14 @@ async fn data_lookup(
         .ok_or_else(|| not_found("value for this data source"))?;
     Ok(Json(BTreeMap::from([(
         "value",
-        cg_core::datapath::lookup_filtered(&v, &q.path, &q.filters, &q.data),
+        cg_core::datapath::lookup_filtered(
+            &q.sort
+                .as_ref()
+                .map_or_else(|| v.clone(), |srt| cg_core::datapath::sort(&v, srt)),
+            &q.path,
+            &q.filters,
+            &q.data,
+        ),
     )])))
 }
 

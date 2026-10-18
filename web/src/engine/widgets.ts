@@ -15,9 +15,21 @@ export interface TimeCtx {
   layerAge?: (layer: Layer) => number;
 }
 
+/** A scrolling text, as the ticker or roll it behaves like (mirrors LayerKind::scrolling_as). */
+export function scrollingAs(l: Layer): Layer | null {
+  if (l.type !== 'text' || !l.scroll || l.scroll === 'none') return null;
+  const font = { fontFamily: l.fontFamily, fontWeight: l.fontWeight, align: l.align, verticalAlign: l.verticalAlign, uppercase: l.uppercase || l.transform === 'upper' };
+  const base = { ...l, ...font };
+  return l.scroll === 'horizontal'
+    ? ({ ...base, type: 'ticker', text: l.text, separator: l.separator ?? '   •   ', speed: l.speed ?? 120 } as Layer)
+    : ({ ...base, type: 'roll', text: l.text, speed: l.speed ?? 120, loop: !!l.looping } as Layer);
+}
+
 /** Widgets whose animation follows the time on air (mirrors playout::is_timed). */
 export function isTimed(l: Layer): boolean {
   switch (l.type) {
+    case 'text':
+      return !!l.scroll && l.scroll !== 'none';
     case 'clock':
       return l.mode === 'elapsed' || l.mode === 'timer';
     case 'ticker':

@@ -1009,7 +1009,7 @@
       "id": "credits-2",
       "name": "Roll",
       "parent": null,
-      "type": "roll",
+      "type": "text",
       "visible": true,
       "locked": false,
       "props": {
@@ -1028,12 +1028,12 @@
       "tracks": {},
       "bindings": {},
       "text": "{{credits}}",
+      "scroll": "vertical",
       "speed": 80.0,
-      "loop": false,
       "fontFamily": "Inter",
       "fontWeight": 600,
       "align": "center",
-      "verticalAlign": "middle",
+      "verticalAlign": "top",
       "uppercase": false
      }
     ],

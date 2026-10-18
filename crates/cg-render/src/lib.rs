@@ -424,7 +424,9 @@ impl Renderer {
         let fill = paint_for(r.color(Prop::Fill), opacity);
         let stroke_w = r.num(Prop::StrokeWidth) as f32;
         let stroke = paint_for(r.color(Prop::Stroke), opacity);
-        match &r.layer.kind {
+        // A scrolling text is drawn as the ticker or roll it behaves like.
+        let scrolling = r.layer.kind.scrolling_as();
+        match scrolling.as_ref().unwrap_or(&r.layer.kind) {
             LayerKind::Group { .. } => {
                 // Groups paint a background only if a visible fill is set explicitly.
                 if r.layer.props.contains_key(&Prop::Fill)

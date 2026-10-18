@@ -354,8 +354,11 @@ const LayerNode = memo(function LayerNode({
   interactive?: boolean;
 }) {
   const logic = useContext(LogicContext).get(layer.id);
+  const self = layer;
+  // A scrolling text is drawn as the ticker or roll it behaves like.
+  layer = W.scrollingAs(layer) ?? layer;
   const { style, text, src } = layerStyle(layer, frame, data, hold, logic);
-  const kids = childrenOf.get(layer.id) ?? [];
+  const kids = childrenOf.get(self.id) ?? [];
   return (
     <div style={style} data-layer-id={interactive ? layer.id : undefined}>
       {text !== undefined &&

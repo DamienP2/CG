@@ -155,6 +155,72 @@ impl Prop {
     }
 }
 
+fn default_scroll_speed() -> f64 {
+    120.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum TextScroll {
+    #[default]
+    None,
+    /// The lines one after the other, from right to left (ticker).
+    Horizontal,
+    /// The text from bottom to top (credit roll).
+    Vertical,
+}
+
+impl TextScroll {
+    pub fn is_none(&self) -> bool {
+        *self == TextScroll::None
+    }
+}
+
+impl LayerKind {
+    /// A scrolling text drawn as the ticker or the roll it behaves like.
+    pub fn scrolling_as(&self) -> Option<LayerKind> {
+        let LayerKind::Text {
+            text,
+            font_family,
+            font_weight,
+            align,
+            vertical_align,
+            uppercase,
+            transform,
+            scroll,
+            speed,
+            separator,
+            looping,
+            ..
+        } = self
+        else {
+            return None;
+        };
+        let font = FontStyle {
+            font_family: font_family.clone(),
+            font_weight: *font_weight,
+            align: *align,
+            vertical_align: *vertical_align,
+            uppercase: *uppercase || *transform == TextTransform::Upper,
+        };
+        match scroll {
+            TextScroll::None => None,
+            TextScroll::Horizontal => Some(LayerKind::Ticker {
+                text: text.clone(),
+                separator: separator.clone(),
+                speed: *speed,
+                font,
+            }),
+            TextScroll::Vertical => Some(LayerKind::Roll {
+                text: text.clone(),
+                speed: *speed,
+                looping: *looping,
+                font,
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum TextTransform {
@@ -248,6 +314,18 @@ pub enum LayerKind {
         /// Line height, in font sizes (default 1.2).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         line_height: Option<f32>,
+        /// Fixed, or scrolling like a ticker (horizontal) or a credit roll (vertical).
+        #[serde(default, skip_serializing_if = "TextScroll::is_none")]
+        scroll: TextScroll,
+        /// Scrolling speed, px/s.
+        #[serde(default = "default_scroll_speed")]
+        speed: f64,
+        /// Between the lines of a horizontal scroll.
+        #[serde(default = "default_separator")]
+        separator: String,
+        /// A vertical scroll comes round again.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        looping: bool,
     },
     #[serde(rename_all = "camelCase")]
     Image {
@@ -709,6 +787,24 @@ pub struct FieldBinding {
     /// Applied in order to the value read (see [`crate::datapath::filter`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub filters: Vec<DataFilter>,
+    /// Sorts a list of the source before the path reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<DataSort>,
+}
+
+/// Sorts the list at `list` (dotted keys from the root, "" = the root) by
+/// the value of `by` in each element.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSort {
+    #[serde(default)]
+    pub list: String,
+    pub by: String,
+    #[serde(default)]
+    pub descending: bool,
+    /// Compare as numbers (else as text).
+    #[serde(default)]
+    pub numeric: bool,
 }
 
 /// A step between a data source and a field: changes the text read.

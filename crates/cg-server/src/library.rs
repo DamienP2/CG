@@ -45,6 +45,32 @@ impl From<&Project> for ProjectSummary {
     }
 }
 
+/// How many versions a project keeps.
+const MAX_VERSIONS: usize = 50;
+
+/// One entry of a project's history.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfo {
+    pub id: String,
+    /// Unix ms.
+    pub at: u64,
+    pub by: String,
+    pub note: String,
+    pub templates: usize,
+}
+
+#[derive(Serialize, serde::Deserialize)]
+struct VersionFile {
+    info: VersionInfo,
+    project: Project,
+}
+
+#[derive(serde::Deserialize)]
+struct VersionHead {
+    info: VersionInfo,
+}
+
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
@@ -138,6 +164,71 @@ impl Library {
         let p = Arc::new(project);
         self.projects.insert(p.id.clone(), p.clone());
         Ok(p)
+    }
+
+    fn versions_dir(&self, id: &str) -> PathBuf {
+        self.dir.join("versions").join(id)
+    }
+
+    /// Keeps a copy of `project` in its history (the newest `MAX_VERSIONS`).
+    pub fn save_version(
+        &self,
+        project: &Project,
+        by: &str,
+        note: &str,
+    ) -> std::io::Result<VersionInfo> {
+        let dir = self.versions_dir(&project.id);
+        std::fs::create_dir_all(&dir)?;
+        let at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        let info = VersionInfo {
+            id: format!("{at}-{}", cg_core::new_id()),
+            at,
+            by: by.to_string(),
+            note: note.to_string(),
+            templates: project.design_templates().count(),
+        };
+        let file = VersionFile {
+            info: info.clone(),
+            project: project.clone(),
+        };
+        std::fs::write(
+            dir.join(format!("{}.json", info.id)),
+            serde_json::to_vec(&file).map_err(std::io::Error::other)?,
+        )?;
+        let mut all = self.versions(&project.id);
+        while all.len() > MAX_VERSIONS {
+            let old = all.pop().unwrap();
+            let _ = std::fs::remove_file(dir.join(format!("{}.json", old.id)));
+        }
+        Ok(info)
+    }
+
+    /// The history of a project, newest first.
+    pub fn versions(&self, id: &str) -> Vec<VersionInfo> {
+        let Ok(rd) = std::fs::read_dir(self.versions_dir(id)) else {
+            return Vec::new();
+        };
+        let mut out: Vec<VersionInfo> = rd
+            .filter_map(|e| e.ok())
+            .filter_map(|e| std::fs::read(e.path()).ok())
+            .filter_map(|b| serde_json::from_slice::<VersionHead>(&b).ok())
+            .map(|h| h.info)
+            .collect();
+        out.sort_by(|a, b| b.at.cmp(&a.at));
+        out
+    }
+
+    /// The project as it was in version `vid`.
+    pub fn version(&self, id: &str, vid: &str) -> Option<Project> {
+        if !valid_id(vid) {
+            return None;
+        }
+        let b = std::fs::read(self.versions_dir(id).join(format!("{vid}.json"))).ok()?;
+        serde_json::from_slice::<VersionFile>(&b)
+            .ok()
+            .map(|f| f.project)
     }
 
     pub fn delete(&mut self, id: &str) -> std::io::Result<bool> {

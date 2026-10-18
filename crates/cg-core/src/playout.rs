@@ -103,6 +103,7 @@ pub fn is_timed(kind: &LayerKind) -> bool {
                 crate::model::ClockMode::Elapsed | crate::model::ClockMode::Timer
             )
         }
+        LayerKind::Text { scroll, .. } => !scroll.is_none(),
         LayerKind::Ticker { .. }
         | LayerKind::Roll { .. }
         | LayerKind::Counter { .. }

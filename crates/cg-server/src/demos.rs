@@ -85,12 +85,25 @@ mod tests {
                 let zone = p.zones.iter().find(|z| z.id == t.zone).unwrap();
                 let area = zone.area(cg_core::MAIN_FORMAT, false);
                 for l in t.layers.iter().filter(|l| l.parent.is_none()) {
-                    let n = |prop: cg_core::Prop| l.props.get(&prop).and_then(|v| v.as_number()).unwrap_or(0.0);
-                    let (x, y, w, h) = (n(cg_core::Prop::X), n(cg_core::Prop::Y), n(cg_core::Prop::Width), n(cg_core::Prop::Height));
+                    let n = |prop: cg_core::Prop| {
+                        l.props
+                            .get(&prop)
+                            .and_then(|v| v.as_number())
+                            .unwrap_or(0.0)
+                    };
+                    let (x, y, w, h) = (
+                        n(cg_core::Prop::X),
+                        n(cg_core::Prop::Y),
+                        n(cg_core::Prop::Width),
+                        n(cg_core::Prop::Height),
+                    );
                     let (ax, ay) = (area.x * p.width as f64, area.y * p.height as f64);
                     let (aw, ah) = (area.width * p.width as f64, area.height * p.height as f64);
                     assert!(
-                        x >= ax - 2.0 && y >= ay - 2.0 && x + w <= ax + aw + 2.0 && y + h <= ay + ah + 2.0,
+                        x >= ax - 2.0
+                            && y >= ay - 2.0
+                            && x + w <= ax + aw + 2.0
+                            && y + h <= ay + ah + 2.0,
                         "{}: {} / {} out of its zone {}",
                         d.demo.id,
                         t.name,

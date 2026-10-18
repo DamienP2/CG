@@ -245,7 +245,7 @@ tk.rect('Plate', 0, 0, 1920, 60, SLATE, g)
 tk.rect('Label', 0, 0, 180, 60, BLUE, g)
 tk.text('Label text', 'NEWS', 0, 0, 180, 60, 28, g, align='center', weight=800)
 f, p = tk.font(30, weight=600)
-tk.widget('ticker', 'Crawl', 200, 0, 1720, 60, g, p, text='{{items}}', separator='   •   ', speed=160.0, **f)
+tk.layer('text', 'Crawl', g, {'x': 200, 'y': 0, 'width': 1720, 'height': 60, **p}, text='{{items}}', scroll='horizontal', separator='   •   ', speed=160.0, **f)
 demos.append(project(
     'demo-03-breaking-news', '03 · Breaking news', 'A breaking news banner whose label types itself in, holds 8 seconds on its headline then plays on by itself, and a news ticker crawling at the bottom.',
     2, ['Breaking news', 'Ticker', 'Typewriter', 'Auto pause'],
@@ -387,7 +387,7 @@ mt.field('quotes', 'Quotes', 'AIR  142.10  ▲ 0.8 %\nLVMH  712.40  ▼ 1.2 %\nT
 g = mt.group('Ticker', 0, 1000, 1920, 56, tracks=slide('y', 1080, 1000, 30, 12))
 mt.rect('Plate', 0, 0, 1920, 56, hexc('0a1a12', 0.95), g)
 f, p = mt.font(28, weight=600, color=hexc('d1fae5'))
-mt.widget('ticker', 'Quotes', 0, 0, 1920, 56, g, p, text='{{quotes}}', separator='     ', speed=140.0, **f)
+mt.layer('text', 'Quotes', g, {'x': 0, 'y': 0, 'width': 1920, 'height': 56, **p}, text='{{quotes}}', scroll='horizontal', separator='     ', speed=140.0, **f)
 demos.append(project(
     'demo-07-markets', '07 · Markets', 'A stock index whose ▲ / ▼ follows the sign of the change (a condition in the logic), and a ticker of quotes. Open the Data canvas to see the operations wired to the arrows.',
     3, ['Finance', 'Logic', 'Condition', 'Ticker'],
@@ -499,7 +499,7 @@ cr = T('credits', 'Credits', 'full', duration=60, on_air=30)
 cr.field('credits', 'Credits', 'PULSE CUP 2026\n\nCasters\nAnna · Ben\n\nObservers\nChloe · Dan\n\nThanks for watching', kind='multiline')
 f, p = cr.font(44, 'center', 600)
 cr.rect('Background', 0, 0, 1920, 1080, hexc('0c0718', 0.9), tracks=fade(30))
-cr.widget('roll', 'Roll', 460, 0, 1000, 1080, None, p, text='{{credits}}', speed=80.0, loop=False, **f)
+cr.layer('text', 'Roll', None, {'x': 460, 'y': 0, 'width': 1000, 'height': 1080, **p}, text='{{credits}}', scroll='vertical', speed=80.0, **dict(f, verticalAlign='top'))
 demos.append(project(
     'demo-09-esports', '09 · Esports tournament', 'Match header, player cards with counters and an MVP badge (boolean), a viewer poll, a break timer and the end credits roll. Several playlists for the phases of the show.',
     4, ['Esports', 'Counters', 'Boolean', 'Poll', 'Timer', 'Credits'],

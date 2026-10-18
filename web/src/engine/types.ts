@@ -51,6 +51,7 @@ export type VerticalAlign = 'top' | 'middle' | 'bottom';
 export type ImageFit = 'contain' | 'cover' | 'stretch';
 
 /** Text styling shared by the text-based widgets. */
+export type TextScroll = 'none' | 'horizontal' | 'vertical';
 export type TextTransform = 'none' | 'upper' | 'lower' | 'capitalize';
 export type TextDecoration = 'none' | 'underline' | 'lineThrough';
 
@@ -77,6 +78,12 @@ export type LayerKind =
       decoration?: TextDecoration;
       /** In font sizes (default 1.2). */
       lineHeight?: number;
+      /** Fixed, or scrolling like a ticker (horizontal) or a credit roll (vertical). */
+      scroll?: TextScroll;
+      /** px/s. */
+      speed?: number;
+      separator?: string;
+      looping?: boolean;
     } & FontStyle)
   | { type: 'image'; src: string; fit: ImageFit }
   | ({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle)

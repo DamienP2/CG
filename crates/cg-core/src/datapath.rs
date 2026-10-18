@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use serde_json::Value as Json;
 
 use crate::anim::Data;
-use crate::model::{DataFilter, FilterOp, Template};
+use crate::model::{DataFilter, DataSort, FilterOp, Template};
 
 /// Latest value of each data source, by source id.
 pub type Store = HashMap<String, Json>;
@@ -99,6 +99,14 @@ pub fn bind(template: &Template, data: &mut Data, store: &Store) -> bool {
         let Some(v) = store.get(&b.source) else {
             continue;
         };
+        let sorted;
+        let v = match &b.sort {
+            Some(s) => {
+                sorted = sort(v, s);
+                &sorted
+            }
+            None => v,
+        };
         let Some(text) = lookup_filtered(v, &b.path, &b.filters, data) else {
             continue;
         };
@@ -129,6 +137,48 @@ pub fn lookup_filtered(
         None => return None,
     };
     Some(filters.iter().fold(raw, |t, f| filter(&t, f)))
+}
+
+/// `value` with the list `s.list` sorted by `s.by`.
+pub fn sort(value: &Json, s: &DataSort) -> Json {
+    let mut out = value.clone();
+    let mut cur = &mut out;
+    for key in s.list.split('.').filter(|k| !k.is_empty()) {
+        cur = match cur {
+            Json::Object(o) => match o.get_mut(key) {
+                Some(v) => v,
+                None => return out,
+            },
+            Json::Array(a) => match key.parse::<usize>().ok().and_then(|i| a.get_mut(i)) {
+                Some(v) => v,
+                None => return out,
+            },
+            _ => return out,
+        };
+    }
+    if let Json::Array(items) = cur {
+        let key = |e: &Json| e.get(s.by.as_str()).map(text).unwrap_or_default();
+        let num = |e: &Json| {
+            key(e)
+                .trim()
+                .replace(',', ".")
+                .parse::<f64>()
+                .unwrap_or(f64::NEG_INFINITY)
+        };
+        items.sort_by(|a, b| {
+            let o = if s.numeric {
+                num(a).total_cmp(&num(b))
+            } else {
+                key(a).to_lowercase().cmp(&key(b).to_lowercase())
+            };
+            if s.descending {
+                o.reverse()
+            } else {
+                o
+            }
+        });
+    }
+    out
 }
 
 /// One filter step.
@@ -366,6 +416,7 @@ mod tests {
             source: "match".into(),
             path: "home.score".into(),
             filters: vec![],
+            sort: None,
         });
         let mut store = Store::new();
         let mut data = d(&[("homeScore", "0")]);
@@ -376,6 +427,31 @@ mod tests {
         assert_eq!(data["homeScore"], "3");
         assert!(!bind(&t, &mut data, &store));
         assert_eq!(sources(&t).collect::<Vec<_>>(), vec!["match"]);
+    }
+
+    #[test]
+    fn sorts_a_list_before_reading_it() {
+        let v = json!({ "table": [{ "team": "Lyon", "pts": "52" }, { "team": "PSG", "pts": "74" }, { "team": "Lens", "pts": "9" }] });
+        let s = DataSort {
+            list: "table".into(),
+            by: "pts".into(),
+            descending: true,
+            numeric: true,
+        };
+        assert_eq!(
+            lookup(&sort(&v, &s), "table[*].team", &Data::new()).as_deref(),
+            Some("PSG\nLyon\nLens")
+        );
+        let s = DataSort {
+            list: "table".into(),
+            by: "team".into(),
+            descending: false,
+            numeric: false,
+        };
+        assert_eq!(
+            lookup(&sort(&v, &s), "table[0].team", &Data::new()).as_deref(),
+            Some("Lens")
+        );
     }
 
     #[test]

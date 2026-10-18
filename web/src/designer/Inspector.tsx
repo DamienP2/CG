@@ -693,6 +693,10 @@ const WEIGHT_NAMES: Record<number, string> = { 100: 'Thin', 200: 'ExtraLight', 3
 function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
   const families = useFonts((s) => s.families);
   const toast = useApp((s) => s.toast);
+  // The list is loaded at start, which fails before logging in.
+  useEffect(() => {
+    if (!families.length) void loadFonts();
+  }, [families.length]);
   const current = families.find((f) => f.family.toLowerCase() === layer.fontFamily.toLowerCase());
   const weights = current?.weights ?? [400, 700];
   const groups: [string, typeof families][] = [
@@ -848,10 +852,48 @@ function LayerGeneral({ layer }: { layer: Layer }) {
       {layer.type === 'text' && (
         <>
           <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
-          <label className="check" title="Paragraph: the lines wrap at the width of the box">
-            <input type="checkbox" checked={!!layer.wrap} onChange={(e) => edit((l) => void (l.type === 'text' && (l.wrap = e.target.checked || undefined)))} />
-            Wrap lines (paragraph)
-          </label>
+          <div className="row">
+            <span className="prop-label">Lines</span>
+            <Segmented
+              value={layer.wrap ? 'paragraph' : 'single'}
+              onChange={(v) => edit((l) => void (l.type === 'text' && (l.wrap = v === 'paragraph' || undefined)))}
+              options={[
+                { value: 'single', label: <span title="Line breaks only where you type them">As typed</span> },
+                { value: 'paragraph', label: <span title="Lines wrap at the width of the box">Paragraph</span> },
+              ]}
+            />
+          </div>
+          <div className="row">
+            <span className="prop-label">Scroll</span>
+            <Segmented
+              value={layer.scroll ?? 'none'}
+              onChange={(v) => edit((l) => void (l.type === 'text' && (l.scroll = v === 'none' ? undefined : v)))}
+              options={[
+                { value: 'none', label: <span title="The text stays in place">Fixed</span> },
+                { value: 'horizontal', label: <span title="The lines one after the other, right to left (ticker)">Horizontal</span> },
+                { value: 'vertical', label: <span title="Bottom to top (credit roll)">Vertical</span> },
+              ]}
+            />
+          </div>
+          {layer.scroll && layer.scroll !== 'none' && (
+            <>
+              <div className="row">
+                <span className="prop-label">Speed</span>
+                <NumberField value={layer.speed ?? 120} min={1} max={2000} suffix="px/s" onChange={(v) => edit((l) => void (l.type === 'text' && (l.speed = v)), `speed-${layer.id}`)} />
+              </div>
+              {layer.scroll === 'horizontal' ? (
+                <div className="row">
+                  <span className="prop-label">Separator</span>
+                  <TextInput value={layer.separator ?? '   •   '} onChange={(v) => set('separator', v, true)} />
+                </div>
+              ) : (
+                <label className="check">
+                  <input type="checkbox" checked={!!layer.looping} onChange={(e) => edit((l) => void (l.type === 'text' && (l.looping = e.target.checked || undefined)))} />
+                  Loop (comes round again)
+                </label>
+              )}
+            </>
+          )}
         </>
       )}
       {TEXT_LIKE.has(layer.type) && (
