@@ -7094,3 +7094,89 @@ body.dragging-guide .guide span {
   color: var(--text-3);
   background: var(--panel);
 }
+/* Split toolbar buttons: show / hide, then the settings. */
+.split-btn {
+  display: inline-flex;
+}
+.split-btn > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split-btn > .split-arrow {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding: 0 5px;
+}
+.split-btn > .btn.off {
+  color: var(--text-3);
+}
+/* Safe areas and areas to keep clear, moved on the stage. */
+.rect-editor {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(0, 0, 0, 0.15);
+}
+.re-box {
+  position: absolute;
+  border: 1.5px dashed rgba(255, 255, 255, 0.8);
+}
+.re-box.title {
+  border-color: #fde047;
+}
+.re-box.exclusion {
+  border: 1.5px solid #ff3b5c;
+  background: repeating-linear-gradient(45deg, rgba(255, 59, 92, 0.25) 0 6px, rgba(255, 59, 92, 0.1) 6px 12px);
+}
+.re-tab {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0b0c12;
+  background: rgba(255, 255, 255, 0.85);
+  cursor: move;
+  white-space: nowrap;
+}
+.re-box.title .re-tab {
+  top: auto;
+  bottom: 0;
+  background: #fde047;
+}
+.re-box.exclusion .re-tab {
+  background: #ff3b5c;
+  color: #fff;
+}
+.re-tab em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-weight: 400;
+}
+.re-done {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+.re-box {
+  --zc: #fff;
+}
+.re-box.title {
+  --zc: #fde047;
+}
+.re-box.exclusion {
+  --zc: #ff3b5c;
+}
+/* Only the tabs and handles take the pointer: the boxes overlap. */
+.re-box {
+  pointer-events: none;
+}
+.re-box .re-tab,
+.re-box .zone-handle {
+  pointer-events: auto;
+}

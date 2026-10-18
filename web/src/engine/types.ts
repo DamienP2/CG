@@ -329,6 +329,9 @@ export interface Guides {
   horizontal: number[];
   actionSafe: number;
   titleSafe: number;
+  /** Safe areas placed by hand (instead of the margins). */
+  actionArea?: Area;
+  titleArea?: Area;
   exclusions: Exclusion[];
 }
 

@@ -637,6 +637,11 @@ pub struct Guides {
     pub action_safe: f64,
     #[serde(default = "default_title_safe")]
     pub title_safe: f64,
+    /// Safe areas placed by hand (instead of the margins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_area: Option<Area>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_area: Option<Area>,
     /// Areas graphics must leave clear (channel bug, sign language box…).
     #[serde(default)]
     pub exclusions: Vec<Exclusion>,
@@ -656,6 +661,8 @@ impl Default for Guides {
             horizontal: Vec::new(),
             action_safe: default_action_safe(),
             title_safe: default_title_safe(),
+            action_area: None,
+            title_area: None,
             exclusions: Vec::new(),
         }
     }

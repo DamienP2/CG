@@ -187,7 +187,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
             </LiveTime>
           </Viewport>
           <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
-          {showZones && <ZoneOverlay zones={(_project.zones ?? []).filter((z) => z.id === template.zone)} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
+          {showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
               {selected.length === 1 &&

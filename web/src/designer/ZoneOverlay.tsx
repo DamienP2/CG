@@ -12,7 +12,7 @@ const MIN = 0.02;
  * of the open template is highlighted; drag a zone by its name tab, resize
  * it with its handles. Layers stay clickable through the zones.
  */
-export function ZoneOverlay({ zones, format, width, height, scale, current }: { zones: Zone[]; format: string; width: number; height: number; scale: number; current: string }) {
+export function ZoneOverlay({ zones, format, width, height, scale, current, only }: { zones: Zone[]; format: string; width: number; height: number; scale: number; current: string; /** Show only this zone (all are kept when saving). */ only?: string }) {
   const saveZones = useApp((s) => s.saveZones);
   const [active, setActive] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ id: string; area: Area } | null>(null);
@@ -82,6 +82,7 @@ export function ZoneOverlay({ zones, format, width, height, scale, current }: { 
   return (
     <div className="zone-overlay" onPointerDown={() => setActive(null)}>
       {[...zones]
+        .filter((z) => !only || z.id === only)
         .sort((a, b) => a.layer - b.layer)
         .map((z) => {
           const area = draft?.id === z.id ? draft.area : zoneArea(z, format, portrait);

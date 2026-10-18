@@ -1,4 +1,4 @@
-import { ChevronDown, LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
@@ -11,7 +11,7 @@ import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
-import { GuidesMenu } from './Guides';
+import { GuidesMenu, SafeMenu, SplitButton, useGuidesView } from './Guides';
 import { ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
@@ -88,7 +88,8 @@ function useShortcuts() {
       if (target.closest('input, textarea, select')) return;
       const st = useDesigner.getState();
       const t = st.template;
-      // Esc: off the selected layers, then off the template (overview).
+      // Esc: out of the safe area editing, off the selected layers, then off the template (overview).
+      if (e.key === 'Escape' && useGuidesView.getState().editSafe) return useGuidesView.getState().set({ editSafe: false });
       if (e.key === 'Escape' && t) {
         if (st.selected.length || st.selectedKeys.length) st.set({ selected: [], selectedKeys: [] });
         else st.load(null);
@@ -168,67 +169,25 @@ function duplicateSelection() {
 
 /** Zones button: show them on the stage, see the list, manage them. */
 function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show: boolean; onShow: (v: boolean) => void; onManage: () => void }) {
-  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
   const current = useDesigner((s) => s.template?.zone);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(null);
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('resize', close);
-    };
-  }, [open]);
   return (
-    <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
-      <button
-        className={`btn small ${show ? 'on' : ''}`}
-        title="Screen zones"
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setOpen(
-            open
-              ? null
-              : {
-                  left: Math.min(r.left, window.innerWidth - 260),
-                  top: r.bottom + 6,
-                },
-          );
-        }}
-      >
-        <LayoutGrid size={13} /> Zones <ChevronDown size={12} />
+    <SplitButton icon={<LayoutGrid size={13} />} label="Zones" on={show} onToggle={() => onShow(!show)} title="screen zones" width={260}>
+      <div className="zm-list">
+        {[...project.zones]
+          .sort((a, b) => b.layer - a.layer)
+          .map((z) => (
+            <div key={z.id} className={`zm-zone ${z.id === current ? 'mine' : ''}`} style={{ ['--zc' as string]: z.color }}>
+              <span className="zm-dot" />
+              <span>{z.name}</span>
+              <em>{z.id === current ? 'this template' : `layer ${z.layer}`}</em>
+            </div>
+          ))}
+      </div>
+      <p className="zm-hint">On the stage, drag a zone by its name and resize it with its handles.</p>
+      <button className="btn small" data-close onClick={onManage}>
+        <Settings2 size={13} /> Manage zones…
       </button>
-      {open && (
-        <div className="menu zones-menu" style={{ position: 'fixed', left: open.left, top: open.top }}>
-          <label className="zm-toggle">
-            <input type="checkbox" checked={show} onChange={(e) => onShow(e.target.checked)} />
-            Show on the stage
-          </label>
-          <div className="zm-list">
-            {[...project.zones]
-              .sort((a, b) => b.layer - a.layer)
-              .map((z) => (
-                <div key={z.id} className={`zm-zone ${z.id === current ? 'mine' : ''}`} style={{ ['--zc' as string]: z.color }}>
-                  <span className="zm-dot" />
-                  <span>{z.name}</span>
-                  <em>{z.id === current ? 'this template' : `layer ${z.layer}`}</em>
-                </div>
-              ))}
-          </div>
-          <p className="zm-hint">On the stage, drag a zone by its name and resize it with its handles.</p>
-          <button
-            className="btn small"
-            onClick={() => {
-              setOpen(null);
-              onManage();
-            }}
-          >
-            <Settings2 size={13} /> Manage zones…
-          </button>
-        </div>
-      )}
-    </div>
+    </SplitButton>
   );
 }
 
@@ -403,6 +362,7 @@ export function Designer() {
           <DataCanvasButton />
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <GuidesMenu project={project} />
+          <SafeMenu project={project} />
           <button className="btn small bg-toggle" title={`Stage background: ${BG_LABELS[background]} (click to change)`} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>
