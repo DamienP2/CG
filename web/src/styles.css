@@ -9090,3 +9090,110 @@ body.cv-moving * {
   inset: 0;
   pointer-events: auto;
 }
+/* Operator: values set by hand, under the fields of the item (like them). */
+.ods-hand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.ods-hand .opx-label {
+  margin: 0;
+}
+.ods-hand .opx-label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ods-hand .ods-hand-sub {
+  margin-top: 6px;
+}
+.ods-hand .ods-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ods-hand .ods-line > select,
+.ods-hand .ods-line > input:not(.ods-num):not(.ods-trigger) {
+  flex: 1 1 100%;
+  max-width: none;
+  min-height: 34px;
+  border: none;
+  border-radius: 5px;
+  background: var(--bg);
+  padding: 0 11px;
+  font-size: 13px;
+}
+.ods-hand .ods-line > .opx-seg {
+  flex: 1 1 100%;
+}
+.ods-hand .ods-line > .ods-num,
+.ods-hand .ods-line > .ods-trigger {
+  height: 30px;
+  border: none;
+  border-radius: 5px;
+  background: var(--bg);
+  max-width: none;
+}
+.ods-hand .ods-line > .opx-btn {
+  margin-left: auto;
+}
+.ods-hand .ods-left {
+  color: var(--text-2);
+}
+.opx-seg.tiny button {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.ods-bar .opx-seg.tiny {
+  flex: none;
+}
+/* Operator controls: the NEXT row of a data set of the graphic on air. */
+.opx-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--op-2);
+}
+.opx-rows-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.opx-rows .opx-btn.big {
+  width: 100%;
+  justify-content: center;
+}
+/* Designer: content wired in the Data canvas, shown greyed and read only. */
+.wired-value {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.wired-value > input,
+.wired-value > textarea {
+  width: 100%;
+}
+.wired-from {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pvw);
+  pointer-events: none;
+}
+.wk-ctl > .wired-value {
+  flex: 1;
+  min-width: 0;
+}
+.opx-seg.tiny button {
+  white-space: nowrap;
+}

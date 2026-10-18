@@ -17,7 +17,7 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, Section as SpecSection, setPath, Warnings } from '../widgets/kit';
+import { Bound, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
 
 interface PropSpec {
   prop: Prop;
@@ -546,9 +546,11 @@ function HexInput({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 /** Settings of prefab widgets. */
-export function WidgetSettings({ layer, set }: { layer: Layer; set: (key: string, v: unknown, coalesce?: boolean) => void }) {
+export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (key: string, v: unknown, coalesce?: boolean) => void; data?: Record<string, string> }) {
   const a = layer as unknown as Attrs;
-  const text = (key: string, multiline = false, placeholder?: string) => <TextInput multiline={multiline} value={String(a[key] ?? '')} placeholder={placeholder} onChange={(v) => set(key, v, true)} />;
+  // Content wired in the Data canvas: the data's value, greyed and read only.
+  const text = (key: string, multiline = false, placeholder?: string) =>
+    wiredKeys(String(a[key] ?? '')).length ? <WiredValue value={interpolateText(String(a[key]), data)} multiline={multiline} /> : <TextInput multiline={multiline} value={String(a[key] ?? '')} placeholder={placeholder} onChange={(v) => set(key, v, true)} />;
   const check = (key: string, label: string) => (
     <label className="check">
       <input type="checkbox" checked={!!a[key]} onChange={(e) => set(key, e.target.checked)} />
@@ -934,8 +936,19 @@ function FormatNote({ layer }: { layer: Layer }) {
 }
 
 /** What a layer shows: its text, picture, widget settings (and ▶ ❚❚ ⟲ to try a widget). */
+/** A content value that comes from data (wired in the Data canvas): greyed, read only. */
+function WiredValue({ value, multiline }: { value: string; multiline?: boolean }) {
+  return (
+    <div className="wired-value" title="Comes from data: change it in the Data canvas">
+      {multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}
+      <span className="wired-from">From data</span>
+    </div>
+  );
+}
+
 function LayerGeneral({ layer }: { layer: Layer }) {
-  const { update, template } = useDesigner();
+  const { update, template, previewData } = useDesigner();
+  const data = useBoundData(template, previewData);
   if (!template) return null;
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
@@ -943,7 +956,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
     <div className="pp-general">
       {layer.type === 'text' && (
         <>
-          <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />
+          {wiredKeys(layer.text).length ? <WiredValue value={interpolateText(layer.text, data)} multiline /> : <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />}
           <div className="row">
             <span className="prop-label">Lines</span>
             <Segmented
@@ -1025,8 +1038,8 @@ function LayerGeneral({ layer }: { layer: Layer }) {
           )}
         </div>
       )}
-      {layer.type === 'image' && <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />}
-      <WidgetSettings layer={layer} set={set} />
+      {layer.type === 'image' && (wiredKeys(layer.src).length ? <WiredValue value={interpolateText(layer.src, data)} /> : <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />)}
+      <WidgetSettings layer={layer} set={set} data={data} />
       {isTimed(layer) && (
         <div className="dp-run">
           <span className="prop-label">Try it</span>

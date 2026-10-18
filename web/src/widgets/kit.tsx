@@ -324,7 +324,10 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
 export function DataValue({ label, value, multiline }: { label?: ReactNode; value: string; multiline?: boolean }) {
   return (
     <Row label={label} title="Comes from data: change it in the Data canvas">
-      {multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}
+      <div className="wired-value">
+        {multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}
+        <span className="wired-from">From data</span>
+      </div>
     </Row>
   );
 }

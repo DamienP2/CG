@@ -952,6 +952,20 @@ impl DataSet {
     pub fn shown_key(&self) -> String {
         format!("{}__shown", self.key)
     }
+    /// How the row changes, chosen by the operator ("outIn", "fade", "cut");
+    /// unset = the data set's own setting.
+    pub fn change_key(&self) -> String {
+        format!("{}__change", self.key)
+    }
+    /// The way rows change for this graphic.
+    pub fn change_in(&self, data: &crate::anim::Data) -> RowChange {
+        match data.get(&self.change_key()).map(|s| s.trim()) {
+            Some("outIn") => RowChange::OutIn,
+            Some("fade") => RowChange::Fade,
+            Some("cut") => RowChange::Cut,
+            _ => self.change,
+        }
+    }
     /// Rows the operator added: JSON `[{"at": 3, "cells": {"team": "Nice"}}]`
     /// (`at`: the row number it takes, none = at the end).
     pub fn added_key(&self) -> String {

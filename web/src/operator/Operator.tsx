@@ -11,7 +11,7 @@ import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
-import { AirRows, DataSetPanel } from './DataSets';
+import { AirRows, DataSetHand, DataSetPanel } from './DataSets';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
@@ -232,14 +232,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
     const z = zoneOf(r);
     if (z) setAirSel(z.id);
   };
-  /** The selected graphic on air with rows: Take shows its NEXT row. */
-  const nextRow = item && template?.datasets?.length && onAirByItem.get(item.id) ? template.datasets[0] : undefined;
+  /** The NEXT row the operator chose for a data set of the graphic on air (in the cued item), if it is that one. */
+  const nextRowOf = (onAir: PlayoutItem, key: string) => (item && onAirByItem.get(item.id) === onAir ? parseInt(draft[rowKey(key)] ?? '', 10) || undefined : undefined);
   const take = () => {
     if (!item) return;
-    if (nextRow) {
-      command({ action: 'row', dataset: nextRow.key, row: parseInt(draft[rowKey(nextRow.key)] ?? '1', 10) || 1, zone: zoneOf(item)?.id });
-      return;
-    }
     takeItem(item);
     // Select the next item of the playlist (a graphic with rows stays: its next row).
     if (template?.datasets?.length) return;
@@ -400,16 +396,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
             {!items.length && <p className="opx-hint">Empty playlist: add graphics from your templates with +.</p>}
           </div>
           <footer className="opx-foot">
-            <button className={`opx-btn big ${nextRow ? 'green' : 'red'}`} disabled={!item || !operate} onClick={take} title={nextRow ? 'Show the NEXT row on air (Enter)' : 'F1 / Enter'}>
-              {nextRow ? (
-                <>
-                  <ChevronsRight size={16} /> Next row
-                </>
-              ) : (
-                <>
-                  <Play size={15} fill="currentColor" /> Take
-                </>
-              )}
+            <button className="opx-btn big red" disabled={!item || !operate} onClick={take} title="F1 / Enter">
+              <Play size={15} fill="currentColor" /> Take
             </button>
             <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12: everything out at once">
               Clear all
@@ -478,6 +466,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     .map((w) => (
                       <FitWarning key={w.layer.id} w={w} named />
                     ))}
+                  {template.datasets?.map((ds) => (
+                    <DataSetHand key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                  ))}
                 </div>
                 <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
                   {template.datasets?.map((ds, i) => (
@@ -550,7 +541,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             )}
           </header>
           {selItem && selZone ? (
-            <AirControls project={project} zone={selZone} item={selItem} command={command} onSaveData={(data) => selItem.rundownId && setItem(selItem.rundownId, { data })} />
+            <AirControls project={project} zone={selZone} item={selItem} command={command} onSaveData={(data) => selItem.rundownId && setItem(selItem.rundownId, { data })} nextRowOf={(key) => nextRowOf(selItem, key)} />
           ) : (
             <p className="opx-hint pad">Nothing on air. The controls of the graphics on air show here: their widgets, values and triggers.</p>
           )}
@@ -841,7 +832,7 @@ function SpecControls({ layer, item, act }: { layer: Layer; item: PlayoutItem; a
   );
 }
 
-function AirControls({ project, zone, item, command, onSaveData }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; onSaveData: (d: Record<string, string>) => void }) {
+function AirControls({ project, zone, item, command, onSaveData, nextRowOf }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; onSaveData: (d: Record<string, string>) => void; nextRowOf?: (dataset: string) => number | undefined }) {
   const t = project.templates.find((x) => x.id === item.templateId);
   if (!t) return null;
   const target = { zone: zone.id };
@@ -869,7 +860,7 @@ function AirControls({ project, zone, item, command, onSaveData }: { project: Pr
           <CircleStop size={14} /> Out
         </button>
       </div>
-      {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} />}
+      {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {t.layers
         .filter((l) => l.visible && widgetOf(l.type)?.Operator)
         .map((l) => (

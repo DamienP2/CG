@@ -6,7 +6,7 @@ import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, INPUTS, measureLayer, nodeValues } from '../engine/logic';
 import { api } from '../store';
-import { columnKey, rowKey, TEXT_LIKE, type CondOp, type DataSet, type RowChange, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
+import { columnKey, rowKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -756,7 +756,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       data={values}
                       onColumns={(cols) => setDsColumns((m) => (m[n.id]?.join('\n') === cols.join('\n') ? m : { ...m, [n.id]: cols }))}
                       onRow={(row) => useDesigner.setState((st) => ({ previewData: { ...st.previewData, [rowKey(n.key)]: String(row) } }))}
-                      onChange={(change) => setFlowNode(n.id, (x) => void ((x as { change: RowChange }).change = change))}
                       startWire={(e, key) => startWire(e, { kind: 'field', key })}
                     />
                     {resizer(n.id, false)}
@@ -1307,34 +1306,12 @@ function ColumnChips({ columns, selected, onChange }: { columns: string[]; selec
   );
 }
 
-const CHANGES: { value: RowChange; label: string; hint: string }[] = [
-  { value: 'outIn', label: 'Out › In', hint: 'The graphic goes out, then comes in with the new row' },
-  { value: 'fade', label: 'Crossfade', hint: 'The new row fades over the old one' },
-  { value: 'cut', label: 'Cut', hint: 'The values change at once' },
-];
-
 /**
  * A data set: its columns (a port each, with the value of the row shown),
  * the row previewed in the Designer, and how the graphic on air goes from
  * one row to the next.
  */
-function DataSetBody({
-  node,
-  chain,
-  data,
-  onColumns,
-  onRow,
-  onChange,
-  startWire,
-}: {
-  node: FlowNode & { type: 'dataset' };
-  chain: ReturnType<typeof chainOf>;
-  data: Data;
-  onColumns: (cols: string[]) => void;
-  onRow: (row: number) => void;
-  onChange: (c: RowChange) => void;
-  startWire: (e: React.PointerEvent, key: string) => void;
-}) {
+function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node: FlowNode & { type: 'dataset' }; chain: ReturnType<typeof chainOf>; data: Data; onColumns: (cols: string[]) => void; onRow: (row: number) => void; startWire: (e: React.PointerEvent, key: string) => void }) {
   const res = useStages(chain?.source.source ?? '', chain?.source.list ?? '', chain?.steps ?? [], data);
   const t = chain ? res?.stages[res.stages.length - 1] : undefined;
   const cols = t?.columns ?? [];
@@ -1376,17 +1353,7 @@ function DataSetBody({
             </button>
           </div>
         )}
-        <div className="ds-opt">
-          <span className="dc-meta">On change</span>
-          <div className="seg ds-seg">
-            {CHANGES.map((c) => (
-              <button key={c.value} className={node.change === c.value ? 'on' : ''} title={c.hint} onClick={() => onChange(c.value)}>
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <span className="dc-meta">The operator steps through the rows; the values follow the source live.</span>
+        <span className="dc-meta">The operator steps through the rows (and chooses how the graphic changes: out › in, fade or cut); the values follow the source live.</span>
       </div>
     </>
   );

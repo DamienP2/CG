@@ -564,7 +564,7 @@ impl ChannelState {
                     item.data.insert(row.0, row.1);
                     return Ok(());
                 }
-                match ds.change {
+                match ds.change_in(&item.data) {
                     RowChange::OutIn => {
                         let mut data = item.data.clone();
                         data.insert(row.0.clone(), row.1.clone());

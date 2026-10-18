@@ -1,9 +1,9 @@
-import { ChevronLeft, ChevronRight, PenLine, Plus, Repeat, Rows3, Timer, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsRight, PenLine, Plus, Repeat, Rows3, Timer, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { pipeline, useData, type Stage } from '../data/dataStore';
 import { Cell } from '../designer/DataCanvas';
 import { holdFrame } from '../engine/evaluate';
-import { columnKey, rowKey, type Command, type Data, type DataSet, type PlayoutItem, type Template } from '../engine/types';
+import { columnKey, rowKey, type Command, type Data, type DataSet, type PlayoutItem, type RowChange, type Template } from '../engine/types';
 import { useApp } from '../store';
 
 /*
@@ -38,7 +38,10 @@ const parseAdded = (v?: string): Added[] => {
 /** The rows of a data set now (its last table), refreshed when the source changes. */
 export function useDatasetRows(ds: DataSet, data: Data): Stage | null | undefined {
   const version = useData((s) => s.versions[ds.source] ?? 0);
-  const used = JSON.stringify(ds.steps ?? []).match(/\{(\w+)\}/g)?.map((m) => m.slice(1, -1)) ?? [];
+  const used =
+    JSON.stringify(ds.steps ?? [])
+      .match(/\{(\w+)\}/g)
+      ?.map((m) => m.slice(1, -1)) ?? [];
   const sub = Object.fromEntries(used.map((k) => [k, data[k] ?? '']));
   const key = JSON.stringify([ds.source, ds.list, ds.steps, sub, version]);
   const [stage, setStage] = useState<Stage | null | undefined>(undefined);
@@ -65,7 +68,11 @@ function withAdded(t: Stage, added: Added[]): { columns: string[]; rows: string[
         rows.forEach((r) => r.push(''));
       }
     const at = a.at ? Math.min(Math.max(0, a.at - 1), rows.length) : rows.length;
-    rows.splice(at, 0, columns.map((c) => a.cells[c] ?? ''));
+    rows.splice(
+      at,
+      0,
+      columns.map((c) => a.cells[c] ?? ''),
+    );
     entry.splice(at, 0, n);
   });
   return { columns, rows, entry };
@@ -102,7 +109,6 @@ export function DataSetPanel({
   keys?: boolean;
 }) {
   const t = useDatasetRows(ds, draft);
-  const serverOffset = useApp((s) => s.serverOffset ?? 0);
   const live = onAir ? shownData(onAir) : undefined;
   // Auto, loop and the added rows: as on air, else as kept in the item.
   const conf = live ?? draft;
@@ -113,6 +119,7 @@ export function DataSetPanel({
   const next = Math.min(rowOf(draft, ds), Math.max(total, 1));
   const auto = parseFloat(conf[autoKey(ds.key)] ?? '') || 0;
   const loop = conf[loopKey(ds.key)] === '1';
+  const change = (conf[changeKey(ds.key)] || ds.change || 'outIn') as RowChange;
   const [every, setEvery] = useState(() => auto || 8);
   const after = (row: number) => (row < total ? row + 1 : loop ? 1 : row);
 
@@ -157,37 +164,18 @@ export function DataSetPanel({
     progress = Math.min(1, (frames / fps + (Date.now() - receivedAt) / 1000) / auto);
   }
 
-  // Values set by hand on air.
-  const manual = live ? Object.entries(live).filter(([k, v]) => k.endsWith('__manual') && v.trim()) : [];
-  const cols = table?.columns ?? [];
-  const [ovKey, setOvKey] = useState('');
-  const [ovValue, setOvValue] = useState('');
-  const [ovMode, setOvMode] = useState<'for' | 'trigger' | 'removed'>('for');
-  const [ovSecs, setOvSecs] = useState(10);
-  const [ovTrigger, setOvTrigger] = useState('end');
-  const targets = [...cols.map((c) => ({ key: columnKey(ds.key, c), label: c })), ...template.fields.map((f) => ({ key: f.key, label: f.label }))];
-  const target = targets.find((x) => x.key === ovKey) ?? targets[0];
-  const [newRow, setNewRow] = useState<Record<string, string>>({});
-  const [where, setWhere] = useState<'after' | 'end'>('after');
-  const label = (k: string) => targets.find((x) => x.key === k)?.label ?? k;
-  const remaining = (m: string) => {
-    if (m === 'removed') return 'until removed';
-    if (m.startsWith('trigger:')) return `until “${m.slice(8)}”`;
-    if (m.startsWith('until:')) return `${Math.max(0, Math.ceil((+m.slice(6) - (Date.now() + serverOffset)) / 1000))} s left`;
-    return m;
-  };
-  useEffect(() => {
-    if (!manual.some(([, m]) => m.startsWith('until:'))) return;
-    const h = setInterval(() => tick((n) => n + 1), 500);
-    return () => clearInterval(h);
-  }, [manual.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
   return (
     <div className="ods">
       <div className="ods-bar">
         <Rows3 size={14} className="ods-icon" />
         <strong>{ds.name}</strong>
-        <span className="muted small">{ds.change === 'fade' ? 'crossfade' : ds.change === 'cut' ? 'cut' : 'out › in'}</span>
+        <div className="opx-seg tiny" title="How the graphic changes row">
+          {CHANGES.map((x) => (
+            <button key={x.id} className={change === x.id ? 'on' : ''} title={x.hint} disabled={!operate} onClick={() => set({ [changeKey(ds.key)]: x.id })}>
+              {x.label}
+            </button>
+          ))}
+        </div>
         <span className="spacer" />
         <button className="opx-btn small" title="Previous row as NEXT (←)" disabled={next <= 1} onClick={() => onDraft({ [rowKey(ds.key)]: String(next - 1) })}>
           <ChevronLeft size={13} />
@@ -284,95 +272,172 @@ export function DataSetPanel({
           <Repeat size={13} /> Loop
         </button>
       </div>
+    </div>
+  );
+}
 
-      <div className="ods-manual-box">
-        <div className="ods-manual-title">
-          <PenLine size={13} /> Values by hand
-        </div>
-        <div className="ods-line">
-          <select value={target?.key ?? ''} onChange={(e) => setOvKey(e.target.value)}>
-            {targets.map((x) => (
-              <option key={x.key} value={x.key}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-          <input placeholder="Value" value={ovValue} onChange={(e) => setOvValue(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-          <div className="ods-seg">
-            <button className={ovMode === 'for' ? 'on' : ''} onClick={() => setOvMode('for')}>
-              for
-            </button>
-            <button className={ovMode === 'trigger' ? 'on' : ''} onClick={() => setOvMode('trigger')}>
-              until trigger
-            </button>
-            <button className={ovMode === 'removed' ? 'on' : ''} onClick={() => setOvMode('removed')}>
-              until removed
-            </button>
-          </div>
-          {ovMode === 'for' && (
-            <>
-              <input type="number" className="ods-num" min={1} value={ovSecs} onChange={(e) => setOvSecs(Math.max(1, +e.target.value || 1))} onKeyDown={(e) => e.stopPropagation()} />
-              <span className="muted small">s</span>
-            </>
-          )}
-          {ovMode === 'trigger' && <input className="ods-trigger" value={ovTrigger} onChange={(e) => setOvTrigger(e.target.value)} onKeyDown={(e) => e.stopPropagation()} title="Trigger name" />}
-          <button
-            className="opx-btn small blue"
-            disabled={!onAir || !operate || !target}
-            title={onAir ? 'Set this value on air now' : 'Take the graphic first'}
-            onClick={() => target && command({ action: 'update', zone, data: { [target.key]: ovValue, [manualKey(target.key)]: ovMode === 'for' ? `for:${ovSecs}` : ovMode === 'trigger' ? `trigger:${ovTrigger.trim() || 'end'}` : 'removed' } })}
-          >
-            Override
-          </button>
-        </div>
-        {manual.map(([k, m]) => {
-          const key = k.slice(0, -'__manual'.length);
-          return (
-            <div key={k} className="ods-override">
-              <PenLine size={12} />
-              <b>{label(key)}</b> = {live?.[key]}
-              <span className="ods-left">{remaining(m)}</span>
-              <button title="Back to the data" onClick={() => command({ action: 'update', zone, data: { [k]: '', ...(template.fields.some((f) => f.key === key) ? { [key]: draft[key] ?? '' } : {}) } })}>
-                <X size={12} />
-              </button>
-            </div>
-          );
-        })}
-        <div className="ods-line ods-add">
-          <span className="muted small">Add a row</span>
-          {cols.map((c) => (
-            <input key={c} placeholder={c} value={newRow[c] ?? ''} onChange={(e) => setNewRow({ ...newRow, [c]: e.target.value })} onKeyDown={(e) => e.stopPropagation()} />
+/** How a graphic changes row (the operator's choice, kept in the item; the Designer's is the default). */
+const CHANGES: { id: RowChange; label: string; hint: string }[] = [
+  { id: 'outIn', label: 'Out › In', hint: 'The graphic goes out, then comes in with the new row' },
+  { id: 'fade', label: 'Fade', hint: 'Cross-fade to the new row' },
+  { id: 'cut', label: 'Cut', hint: 'The values change at once' },
+];
+const changeKey = (k: string) => `${k}__change`;
+
+/**
+ * Values set by hand on air, and rows added by hand, of a data set: in the
+ * left part of the item, with its fields.
+ */
+export function DataSetHand({ ds, template, draft, onAir, operate, zone, onDraft, command }: { ds: DataSet; template: Template; draft: Data; onAir: PlayoutItem | undefined; operate: boolean; zone: string | undefined; onDraft: (patch: Data) => void; command: (c: Command) => void }) {
+  const t = useDatasetRows(ds, draft);
+  const serverOffset = useApp((s) => s.serverOffset ?? 0);
+  const live = onAir ? shownData(onAir) : undefined;
+  const conf = live ?? draft;
+  const added = parseAdded(conf[addedKey(ds.key)]);
+  const table = t ? withAdded(t, added) : null;
+  const total = table?.rows.length ?? 0;
+  const air = live ? Math.min(rowOf(live, ds), Math.max(total, 1)) : null;
+  const [, tick] = useState(0);
+  const set = (patch: Data) => {
+    onDraft(patch);
+    if (onAir) command({ action: 'update', zone, data: patch });
+  };
+  // Values set by hand on air.
+  const manual = live ? Object.entries(live).filter(([k, v]) => k.endsWith('__manual') && v.trim()) : [];
+  const cols = table?.columns ?? [];
+  const [ovKey, setOvKey] = useState('');
+  const [ovValue, setOvValue] = useState('');
+  const [ovMode, setOvMode] = useState<'for' | 'trigger' | 'removed'>('for');
+  const [ovSecs, setOvSecs] = useState(10);
+  const [ovTrigger, setOvTrigger] = useState('end');
+  const targets = [...cols.map((c) => ({ key: columnKey(ds.key, c), label: c })), ...template.fields.map((f) => ({ key: f.key, label: f.label }))];
+  const target = targets.find((x) => x.key === ovKey) ?? targets[0];
+  const [newRow, setNewRow] = useState<Record<string, string>>({});
+  const [where, setWhere] = useState<'after' | 'end'>('after');
+  const label = (k: string) => targets.find((x) => x.key === k)?.label ?? k;
+  const remaining = (m: string) => {
+    if (m === 'removed') return 'until removed';
+    if (m.startsWith('trigger:')) return `until “${m.slice(8)}”`;
+    if (m.startsWith('until:')) return `${Math.max(0, Math.ceil((+m.slice(6) - (Date.now() + serverOffset)) / 1000))} s left`;
+    return m;
+  };
+  useEffect(() => {
+    if (!manual.some(([, m]) => m.startsWith('until:'))) return;
+    const h = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(h);
+  }, [manual.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="ods-hand">
+      <span className="opx-label">
+        <span>
+          <PenLine size={12} /> Values by hand{template.datasets && template.datasets.length > 1 ? ` · ${ds.name}` : ''}
+        </span>
+      </span>
+      <div className="ods-line">
+        <select value={target?.key ?? ''} onChange={(e) => setOvKey(e.target.value)}>
+          {targets.map((x) => (
+            <option key={x.key} value={x.key}>
+              {x.label}
+            </option>
           ))}
-          <div className="ods-seg">
-            <button className={where === 'after' ? 'on' : ''} disabled={air === null} onClick={() => setWhere('after')}>
-              after the one on air
-            </button>
-            <button className={where === 'end' || air === null ? 'on' : ''} onClick={() => setWhere('end')}>
-              at the end
-            </button>
-          </div>
-          <button
-            className="opx-btn small blue"
-            disabled={!Object.values(newRow).some((v) => v.trim())}
-            onClick={() => {
-              const at = where === 'after' && air !== null ? air + 1 : null;
-              const cells = Object.fromEntries(Object.entries(newRow).filter(([, v]) => v.trim()));
-              // The added row is next; the one on air stays.
-              set({ [addedKey(ds.key)]: JSON.stringify([...added, at ? { at, cells } : { cells }]) });
-              onDraft({ [rowKey(ds.key)]: String(at ?? total + 1) });
-              setNewRow({});
-            }}
-          >
-            <Plus size={12} /> Add row
+        </select>
+        <input placeholder="Value" value={ovValue} onChange={(e) => setOvValue(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+        <div className="opx-seg tiny">
+          <button className={ovMode === 'for' ? 'on' : ''} title="For a number of seconds" onClick={() => setOvMode('for')}>
+            For
+          </button>
+          <button className={ovMode === 'trigger' ? 'on' : ''} title="Until a trigger is fired" onClick={() => setOvMode('trigger')}>
+            Trigger
+          </button>
+          <button className={ovMode === 'removed' ? 'on' : ''} title="Until you remove it" onClick={() => setOvMode('removed')}>
+            Removed
           </button>
         </div>
+        {ovMode === 'for' && (
+          <>
+            <input type="number" className="ods-num" min={1} value={ovSecs} onChange={(e) => setOvSecs(Math.max(1, +e.target.value || 1))} onKeyDown={(e) => e.stopPropagation()} />
+            <span className="muted small">s</span>
+          </>
+        )}
+        {ovMode === 'trigger' && <input className="ods-trigger" value={ovTrigger} onChange={(e) => setOvTrigger(e.target.value)} onKeyDown={(e) => e.stopPropagation()} title="Trigger name" />}
+        <button
+          className="opx-btn small"
+          disabled={!onAir || !operate || !target}
+          title={onAir ? 'Set this value on air now' : 'Take the graphic first'}
+          onClick={() => target && command({ action: 'update', zone, data: { [target.key]: ovValue, [manualKey(target.key)]: ovMode === 'for' ? `for:${ovSecs}` : ovMode === 'trigger' ? `trigger:${ovTrigger.trim() || 'end'}` : 'removed' } })}
+        >
+          Override
+        </button>
+      </div>
+      {manual.map(([k, m]) => {
+        const key = k.slice(0, -'__manual'.length);
+        return (
+          <div key={k} className="ods-override">
+            <PenLine size={12} />
+            <b>{label(key)}</b> = {live?.[key]}
+            <span className="ods-left">{remaining(m)}</span>
+            <button title="Back to the data" onClick={() => command({ action: 'update', zone, data: { [k]: '', ...(template.fields.some((f) => f.key === key) ? { [key]: draft[key] ?? '' } : {}) } })}>
+              <X size={12} />
+            </button>
+          </div>
+        );
+      })}
+      <span className="opx-label ods-hand-sub">Add a row</span>
+      <div className="ods-line">
+        {cols.map((c) => (
+          <input key={c} placeholder={c} value={newRow[c] ?? ''} onChange={(e) => setNewRow({ ...newRow, [c]: e.target.value })} onKeyDown={(e) => e.stopPropagation()} />
+        ))}
+        <div className="opx-seg tiny">
+          <button className={where === 'after' ? 'on' : ''} disabled={air === null} title="After the row on air" onClick={() => setWhere('after')}>
+            After air
+          </button>
+          <button className={where === 'end' || air === null ? 'on' : ''} title="At the end of the list" onClick={() => setWhere('end')}>
+            At the end
+          </button>
+        </div>
+        <button
+          className="opx-btn small"
+          disabled={!Object.values(newRow).some((v) => v.trim())}
+          onClick={() => {
+            const at = where === 'after' && air !== null ? air + 1 : null;
+            const cells = Object.fromEntries(Object.entries(newRow).filter(([, v]) => v.trim()));
+            // The added row is next; the one on air stays.
+            set({ [addedKey(ds.key)]: JSON.stringify([...added, at ? { at, cells } : { cells }]) });
+            onDraft({ [rowKey(ds.key)]: String(at ?? total + 1) });
+            setNewRow({});
+          }}
+        >
+          <Plus size={12} /> Add row
+        </button>
       </div>
     </div>
   );
 }
 
-/** Row buttons of the data sets of a graphic on air (internal controls). */
-export function AirRows({ sets, item, command, zone }: { sets: DataSet[]; item: PlayoutItem; command: (c: Command) => void; zone: string }) {
+/** The rows of the data sets of a graphic on air (its controls): NEXT row, previous / following. */
+export function AirRows({ sets, item, command, zone, nextRowOf }: { sets: DataSet[]; item: PlayoutItem; command: (c: Command) => void; zone: string; nextRowOf?: (dataset: string) => number | undefined }) {
+  useEffect(() => {
+    // N: the NEXT row of the first data set.
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest('input, textarea, select') || e.key.toLowerCase() !== 'n' || e.metaKey || e.ctrlKey) return;
+      const ds = sets[0];
+      if (!ds) return;
+      e.preventDefault();
+      command({ action: 'row', dataset: ds.key, row: nextOf(ds), zone });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+  const nextOf = (ds: DataSet) => {
+    const data = shownData(item);
+    const row = rowOf(data, ds);
+    const total = parseInt(item.data[`${ds.key}__count`] ?? '0', 10) || 0;
+    const loop = data[loopKey(ds.key)] === '1';
+    const chosen = nextRowOf?.(ds.key);
+    if (chosen && chosen !== row && chosen <= Math.max(total, chosen)) return chosen;
+    return row < total ? row + 1 : loop ? 1 : row;
+  };
   return (
     <>
       {sets.map((ds) => {
@@ -381,21 +446,27 @@ export function AirRows({ sets, item, command, zone }: { sets: DataSet[]; item: 
         const total = parseInt(item.data[`${ds.key}__count`] ?? '0', 10) || 0;
         const auto = parseFloat(data[autoKey(ds.key)] ?? '') || 0;
         const go = (r: number) => command({ action: 'row', dataset: ds.key, row: r, zone });
+        const next = nextOf(ds);
         return (
-          <div key={ds.key} className="opx-widget">
-            <Rows3 size={13} className="ods-icon" />
-            <span className="opx-widget-name">
-              <strong>{ds.name}</strong>
-              <span className="muted small">
-                row {row} / {total}
-                {auto ? ` · auto every ${auto} s` : ''}
+          <div key={ds.key} className="opx-rows">
+            <div className="opx-rows-head">
+              <Rows3 size={13} className="ods-icon" />
+              <span className="opx-widget-name">
+                <strong>{ds.name}</strong>
+                <span className="muted small">
+                  row {row} / {total}
+                  {auto ? ` · auto every ${auto} s` : ''}
+                </span>
               </span>
-            </span>
-            <button className="opx-sq" title="Previous row" disabled={row <= 1} onClick={() => go(row - 1)}>
-              <ChevronLeft size={13} />
-            </button>
-            <button className="opx-sq" title="Next row" disabled={row >= total} onClick={() => go(row + 1)}>
-              <ChevronRight size={13} />
+              <button className="opx-sq" title="Previous row" disabled={row <= 1} onClick={() => go(row - 1)}>
+                <ChevronLeft size={13} />
+              </button>
+              <button className="opx-sq" title="Following row" disabled={row >= total} onClick={() => go(row + 1)}>
+                <ChevronRight size={13} />
+              </button>
+            </div>
+            <button className="opx-btn big green" disabled={next === row} onClick={() => go(next)} title="Show the NEXT row on air (N)">
+              <ChevronsRight size={16} /> Next row · {next}
             </button>
           </div>
         );
