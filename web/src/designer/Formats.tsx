@@ -93,7 +93,7 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
                 <span className="fmt-preview">{p.id === 'custom' ? <Shape width={w} height={h} /> : <Shape width={p.width} height={p.height} />}</span>
                 <strong>{p.name}</strong>
                 <span className="fmt-size">{p.id === 'custom' ? `${w}×${h}` : `${p.width}×${p.height}`}</span>
-                <span className="fmt-hint">{already ? `Already in the project (${already.name})` : p.hint}</span>
+                {already && <span className="fmt-hint">Already in the project ({already.name})</span>}
               </button>
             );
           })}

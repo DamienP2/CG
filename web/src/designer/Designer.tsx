@@ -18,6 +18,7 @@ import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
+import { projectPath, setLeaveGuard } from '../router';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -60,6 +61,26 @@ function usePlayback(fps: number) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, fps]);
+}
+
+/** Asks before leaving the designer while changes are not in the Operator yet. */
+function useLeaveUnpublished(project: Project | null) {
+  const changed = project?.drafts?.length ?? 0;
+  const id = project?.id;
+  useEffect(() => {
+    if (!changed || !id) return;
+    const here = projectPath(id, 'designer');
+    return setLeaveGuard(
+      (path) => !path.startsWith(here),
+      () =>
+        confirmDialog({
+          title: 'Leave without publishing?',
+          message: `${changed} template${changed > 1 ? 's have' : ' has'} changes the Operator does not have yet. They stay saved here as drafts; publish them from the Project block to put them on air.`,
+          confirm: 'Leave',
+          cancel: 'Stay',
+        }),
+    );
+  }, [changed, id]);
 }
 
 function useAutosave() {
@@ -312,6 +333,7 @@ export function Designer() {
   usePlayback(fps);
   useShortcuts();
   const saveState = useAutosave();
+  useLeaveUnpublished(project);
   const lock = useEditLock(project, template?.id);
 
   // Opening another project: start on its first template.

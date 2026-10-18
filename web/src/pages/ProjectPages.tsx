@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import type { FrameRate } from '../engine/types';
 import { navigate } from '../router';
 import { api, useApp } from '../store';
-import { FORMATS } from './Projects';
+import { FormatButtons } from '../designer/ProjectPanel';
 import { confirmDialog } from '../ui/dialogs';
 
 type ProjectMeta = {
@@ -15,24 +15,21 @@ type ProjectMeta = {
   frameRate: FrameRate;
 };
 
-const fps = (r: FrameRate) => +(r.num / r.den).toFixed(2);
-const formatIndex = (p: { width: number; height: number; frameRate: FrameRate }) => FORMATS.findIndex((f) => f.width === p.width && f.height === p.height && f.rate.num * p.frameRate.den === p.frameRate.num * f.rate.den);
 
 /** Name, description and design format of a project. */
 export function ProjectSettings({ project }: { project: ProjectMeta }) {
   const { toast, channels } = useApp();
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description);
-  const [format, setFormat] = useState(formatIndex(project));
+  const [format, setFormat] = useState({ width: project.width, height: project.height, rate: project.frameRate });
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setName(project.name);
     setDescription(project.description);
-    setFormat(formatIndex(project));
+    setFormat({ width: project.width, height: project.height, rate: project.frameRate });
   }, [project.id, project.name, project.description, project.width, project.height, project.frameRate.num, project.frameRate.den]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const f = format >= 0 ? FORMATS[format] : null;
-  const dirty = name.trim() !== project.name || description !== project.description || format !== formatIndex(project);
+  const dirty = name.trim() !== project.name || description !== project.description || format.width !== project.width || format.height !== project.height || format.rate.num * project.frameRate.den !== project.frameRate.num * format.rate.den;
   const url = `/api/projects/${encodeURIComponent(project.id)}`;
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,9 +38,9 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
       await api('PUT', url, {
         name: name.trim(),
         description,
-        width: f?.width ?? project.width,
-        height: f?.height ?? project.height,
-        frameRate: f?.rate ?? project.frameRate,
+        width: format.width,
+        height: format.height,
+        frameRate: format.rate,
       });
       toast('Project saved');
     } catch (err) {
@@ -88,22 +85,11 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
               <span className="set-label">Description</span>
               <input value={description} placeholder="What this project is for" onChange={(e) => setDescription(e.target.value)} />
             </label>
-            <label className="set-field">
+            <div className="set-field">
               <span className="set-label">Design format</span>
-              <select value={format} onChange={(e) => setFormat(+e.target.value)}>
-                {format < 0 && (
-                  <option value={-1}>
-                    {project.width}×{project.height} · {fps(project.frameRate)} fps
-                  </option>
-                )}
-                {FORMATS.map((x, i) => (
-                  <option key={x.label} value={i}>
-                    {x.label}
-                  </option>
-                ))}
-              </select>
+              <FormatButtons width={format.width} height={format.height} rate={format.rate} onSize={(width, height) => setFormat({ ...format, width, height })} onRate={(rate) => setFormat({ ...format, rate })} />
               <span className="set-hint">The original format of the templates. Changing it does not move or rescale existing layers; channels in another format scale the graphics to fit.</span>
-            </label>
+            </div>
             <div className="row end">
               <button className="btn primary" disabled={busy || !dirty || !name.trim()}>
                 <Save size={14} /> Save
