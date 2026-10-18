@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { zoneArea } from '../engine/zones';
 import type { Area, Zone } from '../engine/types';
 import { useApp } from '../store';
+import { dragArea, useAreaSnap, type Handle } from './Guides';
 
-type Handle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const MIN = 0.02;
 
@@ -18,6 +18,10 @@ export function ZoneOverlay({ zones, format, width, height, scale, current, only
   const [draft, setDraft] = useState<{ id: string; area: Area } | null>(null);
   const draftRef = useRef<{ id: string; area: Area } | null>(null);
   const drag = useRef<{ id: string; mode: Handle; x: number; y: number; start: Area } | null>(null);
+  // Edges on the guides and areas (Alt: free).
+  const snap = useAreaSnap();
+  const snapRef = useRef(snap);
+  snapRef.current = snap;
   const portrait = height > width;
   const W = width * scale;
   const H = height * scale;
@@ -26,29 +30,13 @@ export function ZoneOverlay({ zones, format, width, height, scale, current, only
     const move = (e: PointerEvent) => {
       const d = drag.current;
       if (!d) return;
-      const snap = e.shiftKey ? 0.01 : 0.001;
-      const r = (v: number) => Math.round(v / snap) * snap;
-      const dx = (e.clientX - d.x) / W;
-      const dy = (e.clientY - d.y) / H;
-      let { x, y, width: w, height: h } = d.start;
-      if (d.mode === 'move') {
-        x = Math.min(1 - w, Math.max(0, r(x + dx)));
-        y = Math.min(1 - h, Math.max(0, r(y + dy)));
-      } else {
-        if (d.mode.includes('e')) w = Math.min(1 - x, Math.max(MIN, r(w + dx)));
-        if (d.mode.includes('s')) h = Math.min(1 - y, Math.max(MIN, r(h + dy)));
-        if (d.mode.includes('w')) {
-          const nx = Math.max(0, Math.min(x + w - MIN, r(x + dx)));
-          w += x - nx;
-          x = nx;
-        }
-        if (d.mode.includes('n')) {
-          const ny = Math.max(0, Math.min(y + h - MIN, r(y + dy)));
-          h += y - ny;
-          y = ny;
-        }
-      }
-      draftRef.current = { id: d.id, area: { x, y, width: w, height: h } };
+      const area = dragArea(d.start, d.mode, (e.clientX - d.x) / W, (e.clientY - d.y) / H, {
+        step: e.shiftKey ? 0.01 : 0.001,
+        min: MIN,
+        snap: e.altKey ? null : snapRef.current,
+        near: { x: 6 / W, y: 6 / H },
+      });
+      draftRef.current = { id: d.id, area };
       setDraft(draftRef.current);
     };
     const up = () => {

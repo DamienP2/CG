@@ -88,6 +88,66 @@ export function snapShift(edges: number[], targets: number[], threshold: number)
   return best;
 }
 
+/** What zones and areas snap to, in fractions of the frame; null when snapping is off. */
+export function useAreaSnap(): { x: number[]; y: number[] } | null {
+  const view = useGuidesView();
+  const project = useApp((s) => s.project);
+  const draft = useDraft();
+  if (!view.snap || !project) return null;
+  const g = draft.id === project.id && draft.g ? draft.g : (project.guides ?? DEFAULT_GUIDES);
+  return snapTargets(g, 1, 1, view.safe);
+}
+
+export type Handle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+/**
+ * An area moved or resized from `start` by (dx, dy), in fractions: in
+ * `step`s, at least `min` wide, inside the frame, and with its edges (or
+ * centre, when moved) on the nearest snap target within `near`.
+ */
+export function dragArea(start: Area, mode: Handle, dx: number, dy: number, o: { step: number; min: number; snap: { x: number[]; y: number[] } | null; near: { x: number; y: number } }): Area {
+  const r = (v: number) => Math.round(v / o.step) * o.step;
+  // Not to its own edges where it was.
+  const own = (v: number[], a: number, b: number) => v.filter((t) => Math.abs(t - a) > 1e-6 && Math.abs(t - b) > 1e-6);
+  const tx = o.snap ? own(o.snap.x, start.x, start.x + start.width) : [];
+  const ty = o.snap ? own(o.snap.y, start.y, start.y + start.height) : [];
+  const sx = (edges: number[]) => snapShift(edges, tx, o.near.x);
+  const sy = (edges: number[]) => snapShift(edges, ty, o.near.y);
+  let { x, y, width: w, height: h } = start;
+  if (mode === 'move') {
+    x = r(x + dx);
+    y = r(y + dy);
+    x += sx([x, x + w / 2, x + w]);
+    y += sy([y, y + h / 2, y + h]);
+    return { x: Math.min(1 - w, Math.max(0, x)), y: Math.min(1 - h, Math.max(0, y)), width: w, height: h };
+  }
+  if (mode.includes('e')) {
+    let right = r(x + w + dx);
+    right += sx([right]);
+    w = Math.min(1 - x, Math.max(o.min, right - x));
+  }
+  if (mode.includes('s')) {
+    let bottom = r(y + h + dy);
+    bottom += sy([bottom]);
+    h = Math.min(1 - y, Math.max(o.min, bottom - y));
+  }
+  if (mode.includes('w')) {
+    let nx = r(x + dx);
+    nx += sx([nx]);
+    nx = Math.max(0, Math.min(x + w - o.min, nx));
+    w += x - nx;
+    x = nx;
+  }
+  if (mode.includes('n')) {
+    let ny = r(y + dy);
+    ny += sy([ny]);
+    ny = Math.max(0, Math.min(y + h - o.min, ny));
+    h += y - ny;
+    y = ny;
+  }
+  return { x, y, width: w, height: h };
+}
+
 /** What layers snap to, in px: the frame, its centre, the guides, safe areas and areas to keep clear. */
 export function snapTargets(g: Guides, w: number, h: number, safe: boolean): { x: number[]; y: number[] } {
   const x = [0, w / 2, w, ...g.vertical.map((v) => v * w)];
@@ -240,7 +300,6 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
 
 const pct = (a: Area) => ({ left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.width * 100}%`, height: `${a.height * 100}%` });
 
-type Handle = 'move' | 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const round = (v: number) => Math.round(v * 10000) / 10000;
 
@@ -261,35 +320,22 @@ function RectEditor({
   onDone: () => void;
 }) {
   const drag = useRef<{ id: string; mode: Handle; x: number; y: number; start: Area } | null>(null);
+  const snap = useAreaSnap();
+  const snapRef = useRef(snap);
+  snapRef.current = snap;
   const [draft, setDraft] = useState<{ id: string; area: Area } | null>(null);
   const draftRef = useRef(draft);
   useEffect(() => {
     const move = (e: PointerEvent) => {
       const d = drag.current;
       if (!d) return;
-      const step = e.shiftKey ? 0.01 : 0.001;
-      const r = (v: number) => Math.round(v / step) * step;
-      const dx = (e.clientX - d.x) / width;
-      const dy = (e.clientY - d.y) / height;
-      let { x, y, width: w, height: h } = d.start;
-      if (d.mode === 'move') {
-        x = Math.min(1 - w, Math.max(0, r(x + dx)));
-        y = Math.min(1 - h, Math.max(0, r(y + dy)));
-      } else {
-        if (d.mode.includes('e')) w = Math.min(1 - x, Math.max(0.01, r(w + dx)));
-        if (d.mode.includes('s')) h = Math.min(1 - y, Math.max(0.01, r(h + dy)));
-        if (d.mode.includes('w')) {
-          const nx = Math.max(0, Math.min(x + w - 0.01, r(x + dx)));
-          w += x - nx;
-          x = nx;
-        }
-        if (d.mode.includes('n')) {
-          const ny = Math.max(0, Math.min(y + h - 0.01, r(y + dy)));
-          h += y - ny;
-          y = ny;
-        }
-      }
-      draftRef.current = { id: d.id, area: { x, y, width: w, height: h } };
+      const area = dragArea(d.start, d.mode, (e.clientX - d.x) / width, (e.clientY - d.y) / height, {
+        step: e.shiftKey ? 0.01 : 0.001,
+        min: 0.01,
+        snap: e.altKey ? null : snapRef.current,
+        near: { x: 6 / width, y: 6 / height },
+      });
+      draftRef.current = { id: d.id, area };
       setDraft(draftRef.current);
     };
     const up = () => {
