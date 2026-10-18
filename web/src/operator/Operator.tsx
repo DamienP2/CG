@@ -9,7 +9,7 @@ import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, uploadAsset, useApp } from '../store';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
-import { lookup, useBoundData, useSources } from '../data/dataStore';
+import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
@@ -437,7 +437,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                           {f.binding && <span className="opx-from">● from {sourceName(f.binding.source)}</span>}
                         </span>
                         {live ? (
-                          <span className="opx-bound" title={`${f.binding!.path} — read ${readMode === 'live' ? 'live' : 'on take'}`}>
+                          <span className="opx-bound" title={`${bindingLabel(f.binding!)} — read ${readMode === 'live' ? 'live' : 'on take'}`}>
                             {boundDraft[f.key] ?? draft[f.key] ?? '…'}
                           </span>
                         ) : (
@@ -698,7 +698,7 @@ function DataBlock({
     const patch: Record<string, string> = {};
     await Promise.all(
       bound.map(async (f) => {
-        const v = await lookup(f.binding!.source, f.binding!.path, draft, f.binding!.filters, f.binding!.sort);
+        const v = await readBinding(f.binding!, draft);
         if (v !== null) patch[f.key] = v;
       }),
     );
@@ -768,7 +768,7 @@ function DataBlock({
             {bound.map((f) => (
               <div key={f.key} className="opx-map">
                 <span>{f.label}</span>
-                <code>{f.binding!.path || '(no path)'}</code>
+                <code>{bindingLabel(f.binding!)}</code>
               </div>
             ))}
           </div>

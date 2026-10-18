@@ -134,6 +134,7 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
         layers: cx.out,
         zone: opts.zone.clone(),
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
     };

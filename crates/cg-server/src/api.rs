@@ -126,6 +126,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/data/sources/{id}/refresh", post(refresh_source))
         .route("/api/data/test", post(test_source))
         .route("/api/data/lookup", post(data_lookup))
+        .route("/api/data/pipeline", post(data_pipeline))
         .route("/api/mos/info", get(mos_info))
         .route("/api/system/update", get(update_info))
         .route("/api/system/update/settings", put(update_settings))
@@ -1913,6 +1914,60 @@ async fn data_lookup(
             &q.data,
         ),
     )])))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PipelineQuery {
+    source: String,
+    #[serde(default)]
+    list: String,
+    #[serde(default)]
+    steps: Vec<cg_core::DataStep>,
+    #[serde(default)]
+    data: cg_core::anim::Data,
+}
+
+#[derive(Serialize)]
+struct Stage {
+    columns: Vec<String>,
+    rows: Vec<Vec<String>>,
+    /// Rows before the cut to 200.
+    total: usize,
+}
+
+#[derive(Serialize)]
+struct PipelineResult {
+    /// The source's table, then the table after each step.
+    stages: Vec<Stage>,
+    /// What a field fed by the last step reads.
+    text: String,
+}
+
+/// Runs a table pipeline on a source's current value (Data canvas previews).
+async fn data_pipeline(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+    Json(q): Json<PipelineQuery>,
+) -> ApiResult<Json<PipelineResult>> {
+    let v = s
+        .data
+        .value(&q.source)
+        .ok_or_else(|| not_found("value for this data source"))?;
+    let stages = cg_core::datapath::pipeline(&v, &q.list, &q.steps, &q.data)
+        .ok_or_else(|| not_found("list in this data source"))?;
+    let text = stages.last().map(|t| t.text()).unwrap_or_default();
+    Ok(Json(PipelineResult {
+        text,
+        stages: stages
+            .into_iter()
+            .map(|t| Stage {
+                total: t.rows.len(),
+                rows: t.rows.into_iter().take(200).collect(),
+                columns: t.columns,
+            })
+            .collect(),
+    }))
 }
 
 // --------------------------------------------------------------- update ----

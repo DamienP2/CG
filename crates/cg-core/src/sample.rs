@@ -196,6 +196,7 @@ pub fn lower_third() -> Template {
 
     Template {
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -326,6 +327,7 @@ pub fn score_bug() -> Template {
     score.props.insert(AnchorX, n(0.5));
     Template {
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -462,6 +464,7 @@ pub fn clock() -> Template {
     fade(&mut time, 4.0, 30.0);
     Template {
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -569,6 +572,7 @@ pub fn ticker() -> Template {
     crawl.tracks.insert(Y, bar.tracks[&Y].clone());
     Template {
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -630,6 +634,7 @@ pub fn credits() -> Template {
     fade(&mut roll, 0.0, 60.0);
     Template {
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
         zone: String::new(),
@@ -658,6 +663,7 @@ pub fn credits() -> Template {
 fn simple(id: &str, name: &str, duration: f64, fields: Vec<Field>, layers: Vec<Layer>) -> Template {
     Template {
         logic: Default::default(),
+        dataflow: None,
         revision: 0,
         marker_model: 0,
         zone: String::new(),

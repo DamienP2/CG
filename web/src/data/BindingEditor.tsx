@@ -4,7 +4,7 @@ import type { Data, Field, FieldBinding, Template } from '../engine/types';
 import { navigate } from '../router';
 import { api } from '../store';
 import { JsonTree } from './JsonTree';
-import { lookup, useData, useSources } from './dataStore';
+import { readBinding, useData, useSources } from './dataStore';
 
 /** The first `[n]` of a path, for the "every item" / "operator picks" shortcuts. */
 const FIRST_INDEX = /\[(-?\d+)\]/;
@@ -38,7 +38,7 @@ export function BindingEditor({
       return;
     }
     let live = true;
-    const h = setTimeout(() => lookup(b.source, b.path, data, b.filters, b.sort).then((v) => live && setValue(v)), 200);
+    const h = setTimeout(() => readBinding(b, data).then((v) => live && setValue(v)), 200);
     return () => {
       live = false;
       clearTimeout(h);

@@ -2,6 +2,7 @@ import { Check, Copy, ExternalLink, Image as ImageIcon, MapPin, Network, Pencil,
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { joinAddr, splitAddr, VIDEO_FORMATS, type ChannelConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type SystemInfo } from './types';
+import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 
 /*
@@ -120,6 +121,26 @@ export function Outputs() {
   const [wire, setWire] = useState<{ from: string; moving?: string; x: number; y: number } | null>(null);
   const [addMenu, setAddMenu] = useState<{ picture: string; x: number; y: number } | null>(null);
   const planeRef = useRef<HTMLDivElement>(null);
+  const cv = useCanvasView('outputs', '.oc-node');
+  // Node widths, per browser.
+  const [widths, setWidths] = useState<Record<string, number>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('pulse.outputs.widths') ?? '{}');
+    } catch {
+      return {};
+    }
+  });
+  const setWidth = (id: string, w: number) =>
+    setWidths((cur) => {
+      const next = { ...cur, [id]: w };
+      try {
+        localStorage.setItem('pulse.outputs.widths', JSON.stringify(next));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  const widthOf = (id: string) => widths[id] ?? NODE_W;
 
   const load = async () => {
     const i = await api<SystemInfo>('GET', '/api/system');
@@ -382,11 +403,15 @@ export function Outputs() {
     if (e.button !== 0) return;
     e.preventDefault();
     setSel(id);
+    if ((e.target as HTMLElement).closest('.cv-resize')) return;
     const start = { mx: e.clientX, my: e.clientY, ...pos[id] };
     const chId = ch.id;
+    const z = cv.view.zoom;
     const move = (ev: PointerEvent) =>
-      setLayout((l) => ({ ...l, [chId]: { ...(l[chId] ?? {}), [id]: { x: Math.max(0, Math.round(start.x + ev.clientX - start.mx)), y: Math.max(30, Math.round(start.y + ev.clientY - start.my)) } } }));
+      setLayout((l) => ({ ...l, [chId]: { ...(l[chId] ?? {}), [id]: { x: Math.round(start.x + (ev.clientX - start.mx) / z), y: Math.round(start.y + (ev.clientY - start.my) / z) } } }));
+    document.body.classList.add('cv-moving');
     const up = () => {
+      document.body.classList.remove('cv-moving');
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
@@ -399,8 +424,7 @@ export function Outputs() {
   // void to create one there. From a destination's input: drop on another
   // picture to feed it from there.
   const planePoint = (ev: { clientX: number; clientY: number }) => {
-    const r = planeRef.current!.getBoundingClientRect();
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    return cv.toWorld(ev.clientX, ev.clientY);
   };
   const startWire = (e: React.PointerEvent, from: string, moving?: string) => {
     if (e.button !== 0) return;
@@ -517,8 +541,8 @@ export function Outputs() {
           </header>
 
           <div className="oc-body">
-            <div className="oc-canvas">
-              <div ref={planeRef} className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height }} onPointerDown={() => setAddMenu(null)}>
+            <div {...cv.viewport} className={`oc-canvas ${cv.viewport.className}`} onPointerDown={(e) => (setAddMenu(null), cv.viewport.onPointerDown(e))}>
+              <div ref={planeRef} data-canvas-void className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height, ...cv.spaceStyle }} onPointerDown={() => setAddMenu(null)}>
                 <span className="oc-col" style={{ left: COL.program }}>
                   Source
                 </span>
@@ -533,7 +557,7 @@ export function Outputs() {
                     const a = pos[e.from];
                     const b = pos[e.to];
                     if (!a || !b || e.to === wire?.moving) return null;
-                    const x1 = a.x + NODE_W;
+                    const x1 = a.x + widthOf(e.from);
                     const y1 = a.y + 27;
                     const x2 = b.x;
                     const y2 = b.y + 27;
@@ -544,7 +568,7 @@ export function Outputs() {
                     pos[`pic:${wire.from}`] &&
                     (() => {
                       const a = pos[`pic:${wire.from}`];
-                      const x1 = a.x + NODE_W;
+                      const x1 = a.x + widthOf(`pic:${wire.from}`);
                       const y1 = a.y + 27;
                       const c = Math.max(40, Math.abs(wire.x - x1) / 2);
                       return <path className="oc-wire-live" d={`M${x1},${y1} C${x1 + c},${y1} ${wire.x - c},${wire.y} ${wire.x},${wire.y}`} stroke={KIND.picture.color} />;
@@ -554,7 +578,7 @@ export function Outputs() {
                   const k = KIND[n.kind];
                   const Icon = k.icon;
                   return (
-                    <div key={n.id} data-node={n.id} className={`oc-node ${n.kind} ${n.id === selNode?.id ? 'sel' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)}>
+                    <div key={n.id} data-node={n.id} className={`oc-node ${n.kind} ${n.id === selNode?.id ? 'sel' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, width: widthOf(n.id), ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)}>
                       <div className="oc-node-head">
                         <span className="oc-icon">
                           <Icon size={15} />
@@ -575,6 +599,7 @@ export function Outputs() {
                       )}
                       {n.kind === 'program' && <span className="oc-port out" />}
                       {n.kind === 'picture' && <span className="oc-port out grab" title="Drag to an output to feed it, or into the empty canvas to add one" onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
+                      <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setWidth(n.id, w))} />
                     </div>
                   );
                 })}
@@ -598,6 +623,7 @@ export function Outputs() {
                   </div>
                 )}
               </div>
+              {cv.controls}
             </div>
 
             <aside className="oc-inspector">

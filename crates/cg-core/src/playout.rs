@@ -560,6 +560,7 @@ mod tests {
             frame_rate: FrameRate::default(),
             templates: vec![Template {
                 logic: Default::default(),
+                dataflow: None,
                 revision: 0,
                 marker_model: crate::model::MARKER_MODEL,
                 id: "t".into(),

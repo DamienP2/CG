@@ -7382,3 +7382,273 @@ body.dragging-guide .guide span {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+/* Node canvases: pan and zoom (ui/canvasView). */
+.cv-viewport {
+  overflow: hidden !important;
+  touch-action: none;
+}
+.cv-viewport.hand,
+.cv-viewport.hand * {
+  cursor: grab !important;
+}
+.cv-viewport.panning,
+.cv-viewport.panning * {
+  cursor: grabbing !important;
+}
+.cv-viewport > [data-canvas-void] {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+body.cv-moving,
+body.cv-moving * {
+  cursor: move !important;
+}
+.logic-node {
+  cursor: move;
+}
+.logic-node .ln-head {
+  cursor: move;
+}
+.logic-node input,
+.logic-node textarea,
+.logic-node [data-scroll] {
+  cursor: auto;
+}
+.logic-node select,
+.logic-node button,
+.logic-node label {
+  cursor: pointer;
+}
+.logic-node .port {
+  cursor: crosshair;
+}
+.cv-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.cv-controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+.cv-controls button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.cv-controls span {
+  min-width: 42px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+.cv-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize !important;
+  background: linear-gradient(135deg, transparent 50%, var(--line-2) 50%, var(--line-2) 60%, transparent 60%, transparent 70%, var(--line-2) 70%, var(--line-2) 80%, transparent 80%);
+  border-bottom-right-radius: var(--radius);
+  opacity: 0.6;
+}
+.logic-node:hover .cv-resize {
+  opacity: 1;
+}
+.cv-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  transform: translate(8px, 8px);
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+}
+/* Data canvas v4: tables through filter, sort and transform nodes. */
+.logic-node.kind-transform,
+.logic-palette .kind-transform {
+  --kind: #a78bfa;
+}
+.logic-palette .kind-transform > svg {
+  color: var(--kind);
+  flex: none;
+}
+.dc-node.sized {
+  display: flex;
+  flex-direction: column;
+}
+.dc-node.sized > .ln-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dc-node.sized .dc-table-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dc-node.sized .dc-table-scroll {
+  flex: 1;
+  max-height: none;
+}
+.dc-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.dc-sec-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.dc-sec-title em {
+  text-transform: none;
+  font-style: normal;
+  color: var(--text-3);
+  font-weight: 400;
+}
+.dc-sec .dc-steps {
+  padding: 0;
+}
+.dc-cond {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.dc-cond select,
+.dc-cond input {
+  flex: 1;
+  min-width: 0;
+}
+.dc-cond .btn.small {
+  padding: 0 6px;
+  flex: none;
+}
+.dc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.dc-chip.on {
+  background: var(--kind);
+  border-color: var(--kind);
+  color: #0b0d14;
+  font-weight: 600;
+}
+.dc-chip.missing {
+  border-style: dashed;
+  opacity: 0.7;
+}
+.dc-chip.clear {
+  font-family: inherit;
+}
+.dc-chip-n {
+  font-size: 9.5px;
+  opacity: 0.75;
+}
+.dc-result {
+  display: block;
+  max-height: 120px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  border-left: 3px solid var(--live);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+.dc-result em {
+  color: var(--text-3);
+}
+.dc-none {
+  color: var(--text-3);
+  font-style: italic;
+  text-align: center !important;
+}
+.dc-table-title strong {
+  color: var(--text-2);
+  margin-right: 6px;
+}
+.seg.tiny {
+  margin-left: auto;
+}
+.seg.tiny button {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+.cv-viewport {
+  position: relative;
+}
+.logic-wires .wire-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  cursor: pointer;
+  pointer-events: stroke;
+}
+.logic-wires .wire-g .wire {
+  pointer-events: none;
+}
+.logic-wires .wire-g:hover .wire {
+  stroke: var(--live);
+  stroke-width: 4;
+}
+.logic-node:hover,
+.logic-node:focus-within {
+  z-index: 3;
+}
+.logic-editor .logic-palette,
+.logic-editor > header,
+.cv-viewport {
+  user-select: none;
+}

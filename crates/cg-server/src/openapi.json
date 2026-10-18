@@ -2625,6 +2625,91 @@
      }
     }
    }
+  },
+  "/api/data/pipeline": {
+   "post": {
+    "tags": [
+     "Data"
+    ],
+    "summary": "Run a table pipeline",
+    "description": "Reads `list` of the source's value (dotted keys, \"\" = the root) as a table, then applies the `steps` in order: `filter` (`where` conditions, `any`, rows `from`/`count`, `columns`), `sort` (`keys`), `transform` (text `ops` on `columns`). Returns the table after each stage (at most 200 rows each) and the text a field fed by the last step reads (a line per row, cells joined by a space).",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "source"
+        ],
+        "properties": {
+         "source": {
+          "type": "string"
+         },
+         "list": {
+          "type": "string"
+         },
+         "steps": {
+          "type": "array",
+          "items": {
+           "type": "object"
+          }
+         },
+         "data": {
+          "$ref": "#/components/schemas/Data"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Stages and text",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "stages": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "columns": {
+              "type": "array",
+              "items": {
+               "type": "string"
+              }
+             },
+             "rows": {
+              "type": "array",
+              "items": {
+               "type": "array",
+               "items": {
+                "type": "string"
+               }
+              }
+             },
+             "total": {
+              "type": "integer"
+             }
+            }
+           }
+          },
+          "text": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No value for this source, or no list at this place"
+     }
+    }
+   }
   }
  },
  "components": {

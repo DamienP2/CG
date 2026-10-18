@@ -1,8 +1,9 @@
 import { Calculator, Crosshair, Hash, Link2, Ruler, Split, Target, TextCursorInput, Trash2, Wand2, X } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
 import { INPUTS, measureLayer, nodeValues, type LVal } from '../engine/logic';
 import { PROPS, type Cmp, type Logic, type LogicNode, type MathOp, type Prop, type Template, type TextMetric } from '../engine/types';
+import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
 
@@ -78,7 +79,7 @@ export function makeNode(type: LogicNode['type'], t: Template, x: number, y: num
 }
 
 const portIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + INPUTS[n.type].indexOf(port) * ROW + ROW / 2 });
-const portOut = (n: LogicNode) => ({ x: n.x + NODE_W, y: n.y + HEAD / 2 });
+const portOut = (n: LogicNode, w = NODE_W) => ({ x: n.x + w, y: n.y + HEAD / 2 });
 
 function curve(a: { x: number; y: number }, b: { x: number; y: number }) {
   const dx = Math.max(40, Math.abs(b.x - a.x) / 2);
@@ -259,7 +260,27 @@ export const inputLabel = (n: LogicNode, port: string) => (n.type === 'condition
 
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const { template, update, frame, previewData } = useDesigner();
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const cv = useCanvasView(`logic.${template?.id ?? ''}`);
+  // Node widths, per browser.
+  const sizesKey = `pulse.logicSizes.${template?.id ?? ''}`;
+  const [sizes, setSizesState] = useState<Record<string, number>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(sizesKey) ?? '{}');
+    } catch {
+      return {};
+    }
+  });
+  const setSize = (id: string, w: number) =>
+    setSizesState((cur) => {
+      const next = { ...cur, [id]: w };
+      try {
+        localStorage.setItem(sizesKey, JSON.stringify(next));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  const widthOf = (n: LogicNode) => sizes[n.id] ?? NODE_W;
   const [selected, setSelected] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: string; x: number; y: number } | null>(null);
   const [preset, setPreset] = useState(false);
@@ -287,23 +308,19 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
       if (n) Object.assign(n, patch);
     }, key);
 
-  const canvasPoint = (clientX: number, clientY: number) => {
-    const el = canvasRef.current!;
-    const r = el.getBoundingClientRect();
-    return { x: clientX - r.left + el.scrollLeft, y: clientY - r.top + el.scrollTop };
-  };
+  const canvasPoint = cv.toWorld;
 
   const add = (type: LogicNode['type']) => {
-    const el = canvasRef.current;
-    const x = (el?.scrollLeft ?? 0) + 60 + ((logic.nodes.length * 30) % 300);
-    const y = (el?.scrollTop ?? 0) + 60 + ((logic.nodes.length * 40) % 360);
+    const v = cv.visible();
+    const x = Math.round(v.x + 60 + ((logic.nodes.length * 30) % 300));
+    const y = Math.round(v.y + 60 + ((logic.nodes.length * 40) % 360));
     const n = makeNode(type, template, x, y);
     edit((l) => void l.nodes.push(n));
     setSelected(n.id);
   };
 
   const dragNode = (e: React.PointerEvent, n: LogicNode) => {
-    if ((e.target as HTMLElement).closest('select, input, button, .port')) return;
+    if (e.button !== 0 || (e.target as HTMLElement).closest('select, input, button, .port, .cv-resize')) return;
     e.preventDefault();
     setSelected(n.id);
     const start = canvasPoint(e.clientX, e.clientY);
@@ -311,9 +328,11 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     useDesigner.setState({ lastCoalesce: null });
     const move = (ev: PointerEvent) => {
       const p = canvasPoint(ev.clientX, ev.clientY);
-      setNode(n.id, { x: Math.max(0, Math.round(base.x + p.x - start.x)), y: Math.max(0, Math.round(base.y + p.y - start.y)) }, `logic-move-${n.id}`);
+      setNode(n.id, { x: Math.round(base.x + p.x - start.x), y: Math.round(base.y + p.y - start.y) }, `logic-move-${n.id}`);
     };
+    document.body.classList.add('cv-moving');
     const up = () => {
+      document.body.classList.remove('cv-moving');
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
@@ -372,10 +391,13 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
           ))}
         </aside>
         <div
-          className="logic-canvas"
-          ref={canvasRef}
+          {...cv.viewport}
+          className={`logic-canvas ${cv.viewport.className}`}
           tabIndex={0}
-          onPointerDown={() => setSelected(null)}
+          onPointerDown={(e) => {
+            setSelected(null);
+            cv.viewport.onPointerDown(e);
+          }}
           onKeyDown={(e) => {
             if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !(e.target as HTMLElement).closest('input, select')) {
               edit((l) => {
@@ -386,7 +408,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
             }
           }}
         >
-          <div className="logic-space">
+          <div className="logic-space" data-canvas-void style={cv.spaceStyle}>
             <svg className="logic-wires">
               {logic.edges.map((e, i) => {
                 const a = nodes.get(e.from);
@@ -395,7 +417,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                 return (
                   <path
                     key={i}
-                    d={curve(portOut(a), portIn(b, e.port))}
+                    d={curve(portOut(a, widthOf(a)), portIn(b, e.port))}
                     className="wire"
                     onPointerDown={(ev) => {
                       ev.stopPropagation();
@@ -406,12 +428,12 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                   </path>
                 );
               })}
-              {wire && nodes.get(wire.from) && <path d={curve(portOut(nodes.get(wire.from)!), wire)} className="wire live" />}
+              {wire && nodes.get(wire.from) && <path d={curve(portOut(nodes.get(wire.from)!, widthOf(nodes.get(wire.from)!)), wire)} className="wire live" />}
             </svg>
             {logic.nodes.map((n) => {
               const k = KINDS.find((x) => x.type === n.type)!;
               return (
-                <div key={n.id} className={`logic-node kind-${n.type} ${selected === n.id ? 'sel' : ''}`} style={{ left: n.x, top: n.y, width: NODE_W }} onPointerDown={(e) => (e.stopPropagation(), dragNode(e, n))}>
+                <div key={n.id} className={`logic-node kind-${n.type} ${selected === n.id ? 'sel' : ''}`} style={{ left: n.x, top: n.y, width: widthOf(n) }} onPointerDown={(e) => (e.stopPropagation(), dragNode(e, n))}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <k.icon size={12} />
                     <span>{k.label}</span>
@@ -439,6 +461,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                   <div className="ln-body">
                     <LogicNodeBody n={n} template={template} setNode={setNode} />
                   </div>
+                  <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setSize(n.id, w))} />
                 </div>
               );
             })}
@@ -452,14 +475,16 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </div>
+          {cv.controls}
           {preset && (
             <FitPreset
               template={template}
               onClose={() => setPreset(false)}
               onCreate={(ns, es) =>
                 edit((l) => {
-                  const ox = (canvasRef.current?.scrollLeft ?? 0) + 20;
-                  const oy = (canvasRef.current?.scrollTop ?? 0) + 20 + (l.nodes.length ? 320 : 0);
+                  const v = cv.visible();
+                  const ox = Math.round(v.x + 20);
+                  const oy = Math.round(v.y + 20 + (l.nodes.length ? 320 : 0));
                   l.nodes.push(...ns.map((n) => ({ ...n, x: n.x + ox, y: n.y + oy })));
                   l.edges.push(...es);
                 })

@@ -797,6 +797,83 @@ pub struct FieldBinding {
     /// Sorts a list of the source before the path reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sort: Option<DataSort>,
+    /// Table pipeline (the Data canvas): the list read as rows (dotted
+    /// keys, "" = the root), then `steps`. When set, `path`, `filters`
+    /// and `sort` are not used (see [`crate::datapath::pipeline`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<DataStep>,
+}
+
+/// One node of the table pipeline between a source and a field.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DataStep {
+    /// Keeps the rows matching the conditions (all of them, or any with
+    /// `any`), then rows `from` (1 = first, negative = from the end),
+    /// `count` of them (0 = all), then the `columns` (empty = all).
+    Filter {
+        #[serde(default, rename = "where")]
+        conditions: Vec<Condition>,
+        #[serde(default)]
+        any: bool,
+        #[serde(default)]
+        from: i64,
+        #[serde(default)]
+        count: usize,
+        #[serde(default)]
+        columns: Vec<String>,
+    },
+    /// Orders the rows by the keys, the first key first.
+    Sort {
+        #[serde(default)]
+        keys: Vec<SortKey>,
+    },
+    /// Text operations on the cells of `columns` (empty = all). `join`
+    /// makes the whole table one text, `default` fills an empty table.
+    Transform {
+        #[serde(default)]
+        columns: Vec<String>,
+        #[serde(default)]
+        ops: Vec<DataFilter>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Condition {
+    pub column: String,
+    pub op: CondOp,
+    /// Compared value; `{key}` is replaced by the item's data.
+    #[serde(default)]
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CondOp {
+    Eq,
+    Ne,
+    Contains,
+    NotContains,
+    StartsWith,
+    Gt,
+    Ge,
+    Lt,
+    Le,
+    Empty,
+    NotEmpty,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SortKey {
+    pub column: String,
+    #[serde(default)]
+    pub descending: bool,
+    #[serde(default)]
+    pub numeric: bool,
 }
 
 /// Sorts the list at `list` (dotted keys from the root, "" = the root) by
@@ -896,6 +973,11 @@ pub struct Template {
     /// Relations between values (node graph), see [`crate::logic`].
     #[serde(default, skip_serializing_if = "crate::logic::Logic::is_empty")]
     pub logic: crate::logic::Logic,
+    /// The Data canvas graph (sources, filters, sorts, transforms and their
+    /// wires), kept as the editor wrote it; the fields' bindings are
+    /// compiled from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataflow: Option<serde_json::Value>,
     /// Published revision (1, 2…); 0 for a template never published.
     #[serde(default)]
     pub revision: u32,
@@ -923,6 +1005,7 @@ impl Template {
             layers: Vec::new(),
             zone: zone.into(),
             logic: Default::default(),
+            dataflow: None,
             revision: 0,
             marker_model: MARKER_MODEL,
         }

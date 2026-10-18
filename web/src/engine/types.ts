@@ -173,6 +173,35 @@ export interface FieldBinding {
   filters?: DataFilter[];
   /** Sorts a list of the source before the path reads it. */
   sort?: DataSort;
+  /** Table pipeline (compiled from the Data canvas): the list read as rows, then the steps. */
+  list?: string;
+  steps?: DataStep[];
+}
+
+/** A step of the table pipeline (mirror of model::DataStep). */
+export type DataStep =
+  | { type: 'filter'; where: Condition[]; any?: boolean; from: number; count: number; columns: string[] }
+  | { type: 'sort'; keys: SortKey[] }
+  | { type: 'transform'; columns: string[]; ops: DataFilter[] };
+
+export type CondOp = 'eq' | 'ne' | 'contains' | 'notContains' | 'startsWith' | 'gt' | 'ge' | 'lt' | 'le' | 'empty' | 'notEmpty';
+export interface Condition {
+  column: string;
+  op: CondOp;
+  value: string;
+}
+export interface SortKey {
+  column: string;
+  descending?: boolean;
+  numeric?: boolean;
+}
+
+/** A node of the Data canvas graph: a source's list, or a step. */
+export type FlowNode = { id: string; x: number; y: number } & ({ type: 'source'; source: string; list: string } | DataStep);
+/** The Data canvas graph; an edge goes to a node id or to `field:<key>`. */
+export interface DataFlow {
+  nodes: FlowNode[];
+  edges: { from: string; to: string }[];
 }
 
 /** Sorts the list at `list` (dotted keys, "" = the root) by `by` (mirror of model::DataSort). */
@@ -236,6 +265,8 @@ export interface Template {
   zone: string;
   /** Relations between values (node graph). */
   logic?: Logic;
+  /** The Data canvas graph; the fields' bindings are compiled from it. */
+  dataflow?: DataFlow;
   /** Published revision (0: never published). */
   revision?: number;
   /** Marker model (MARKER_MODEL); older templates are converted by the server. */
