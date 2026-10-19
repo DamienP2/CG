@@ -1159,6 +1159,7 @@ mod tests {
             locked: false,
             manual_start: false,
             scale_lock: false,
+            timeline: None,
             props: BTreeMap::new(),
             tracks: BTreeMap::new(),
             bindings: BTreeMap::new(),

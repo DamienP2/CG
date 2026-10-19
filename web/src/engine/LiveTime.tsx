@@ -20,8 +20,8 @@ export function useTicker(active: boolean): number {
 }
 
 /** Provides widget time (server clock + time on air) to a scene. */
-export function LiveTime({ ageSecs, clientNow, layerAge, widgetState, fps, children }: { ageSecs: number; clientNow: number; layerAge?: (l: Layer) => number; widgetState?: (layerId: string) => unknown; fps?: number; children: React.ReactNode }) {
+export function LiveTime({ ageSecs, clientNow, layerAge, widgetState, fps, lang, children }: { ageSecs: number; clientNow: number; layerAge?: (l: Layer) => number; widgetState?: (layerId: string) => unknown; fps?: number; lang?: string; children: React.ReactNode }) {
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
-  return <TimeContext.Provider value={{ nowMs: clientNow + offset, ageSecs, defaultTz: tz, layerAge, widgetState, fps }}>{children}</TimeContext.Provider>;
+  return <TimeContext.Provider value={{ nowMs: clientNow + offset, ageSecs, defaultTz: tz, layerAge, widgetState, fps, lang }}>{children}</TimeContext.Provider>;
 }

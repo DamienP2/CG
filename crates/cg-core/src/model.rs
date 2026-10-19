@@ -652,6 +652,10 @@ pub enum ClockMode {
     Timer,
 }
 
+fn default_language() -> String {
+    "fr".into()
+}
+
 fn default_font() -> String {
     "Inter".into()
 }
@@ -700,6 +704,10 @@ pub struct Layer {
     /// Scale X and Y change together (designer setting).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scale_lock: bool,
+    /// Properties shown on the Designer's timeline (animatable); none =
+    /// position, size and opacity. Properties with keyframes always are.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeline: Option<Vec<Prop>>,
     /// Static (base) values; a property with keyframes ignores its base value.
     #[serde(default)]
     pub props: BTreeMap<Prop, Value>,
@@ -1582,6 +1590,9 @@ pub struct Project {
     /// Designer aids: guides, safe areas, areas to keep clear.
     #[serde(default, skip_serializing_if = "Guides::is_default")]
     pub guides: Guides,
+    /// Language of the texts (hyphenation rules, French spaces): "fr", "en"…
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 impl Project {

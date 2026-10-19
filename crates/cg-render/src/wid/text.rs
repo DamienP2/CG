@@ -67,7 +67,7 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         min_size: *min_size,
         max_lines: c.max_lines as usize,
         hyphen: c.break_mode == BreakMode::Hyphen,
-        lang: &c.lang,
+        lang: if c.lang.is_empty() { d.lang } else { &c.lang },
         ellipsis_end: c.fit_end == FitEnd::Ellipsis,
     };
     let fit = tx::fit_lines(&content, &opts, &mut |s, z| {

@@ -270,6 +270,7 @@ fn layer(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
         locked: false,
         manual_start: false,
         scale_lock: false,
+        timeline: None,
         props: BTreeMap::new(),
         tracks: BTreeMap::new(),
         bindings: BTreeMap::new(),

@@ -39,6 +39,7 @@ import { newId, num, propValue } from '../engine/evaluate';
 import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template } from '../engine/types';
 import { NumberField } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
+import { onTimeline, setOnTimeline } from '../engine/timelineProps';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 import { ICONS, moveLayer, type DropPos } from './LayersPanel';
@@ -452,9 +453,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       </div>,
     );
     if (!open) continue;
-    const extra = animated.filter((p) => !IN_ROWS.has(p));
+    // Only what is on the timeline (position, size, opacity by default; the ◆ of the properties adds more).
+    const tl = onTimeline(layer);
+    const extra = PROPS.filter((p) => tl.has(p) && !IN_ROWS.has(p));
     const groups = [
-      ...PROP_ROWS,
+      ...PROP_ROWS.filter((g) => g.props.some((p) => tl.has(p))),
       ...extra.map((p) => ({
         label: PROP_LABELS[p],
         props: [p] as Prop[],
@@ -475,6 +478,21 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         <div key={`${layer.id}-${g.label}`} className={`tl-label prop ${isAnim ? 'animated' : ''}`} style={{ paddingLeft: 14 + depth * 14 }}>
           {keyNav(layer, g.props, true)}
           <span className="prop-name">{g.label}</span>
+          <button
+            className="tl-off"
+            title="Remove from the timeline"
+            onClick={async () => {
+              const keyed = g.props.some((p) => layer.tracks[p]?.length);
+              if (keyed && !(await confirmDialog({ title: `Remove ${g.label} from the timeline?`, message: 'Its keyframes are deleted; the value at the playhead stays.', confirm: 'Remove', danger: true }))) return;
+              st.update((t) => {
+                const l = findLayer(t, layer.id)!;
+                for (const p of g.props) if (l.tracks[p]?.length) l.props[p] = propValue(l, p, frame);
+                setOnTimeline(l, g.props, false);
+              });
+            }}
+          >
+            <X size={10} />
+          </button>
           {g.label === 'Scale' && (
             <button className={`tl-lock ${layer.scaleLock ? 'on' : ''}`} title={layer.scaleLock ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => st.update((t) => void (findLayer(t, layer.id)!.scaleLock = !layer.scaleLock || undefined))}>
               {layer.scaleLock ? <LinkIcon size={11} /> : <Unlink size={11} />}

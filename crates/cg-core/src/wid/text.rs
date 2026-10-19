@@ -95,7 +95,7 @@ impl Default for Config {
         Self {
             max_lines: 0,
             break_mode: BreakMode::Word,
-            lang: "fr".into(),
+            lang: String::new(),
             fit_end: FitEnd::Clip,
             italic: false,
             fill_type: FillType::Solid,

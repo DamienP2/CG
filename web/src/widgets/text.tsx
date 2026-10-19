@@ -3,14 +3,15 @@
 // Same picture as crates/cg-render/src/wid/text.rs; fit chain in engine/textFit.ts
 // (fitLines, mirror of text::fit_lines); language rules in crates/cg-core/src/wid/text.rs.
 import type { CSSProperties } from 'react';
-import { Type } from 'lucide-react';
-import { col, cssColor, holdFrame, interpolateText, num, resolveLayer, transformText, type Resolved } from '../engine/evaluate';
-import type { Data, FontStyle, Layer, Template, TextOverflow } from '../engine/types';
+import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Italic, Strikethrough, Type, Underline } from 'lucide-react';
+import { Segmented } from '../ui/fields';
+import { col, cssColor, interpolateText, num, propValue, resolveLayer, transformText, type Resolved } from '../engine/evaluate';
+import type { Data, Layer, Template, TextOverflow } from '../engine/types';
 import { useFonts } from '../engine/fonts';
-import { useDesigner } from '../designer/designerStore';
-import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
-import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { ColorPick, Content, defineWidget, hex, Note, Num, Range, Section, Seg, Select, Text, Toggle, type LayerOf, type Warning } from './kit';
+import { useApp } from '../store';
+import { fitLines, graphemes, type FitLines } from '../engine/textFit';
+import { ColorGroupRow, GroupRow } from '../designer/Inspector';
+import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Toggle, type LayerOf, type Warning } from './kit';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -47,7 +48,7 @@ export interface State {}
 export const D: Required<Config> = {
   maxLines: 0,
   breakMode: 'word',
-  lang: 'fr',
+  lang: '',
   fitEnd: 'clip',
   italic: false,
   fillType: 'solid',
@@ -121,7 +122,7 @@ export interface TextLayout {
 }
 
 /** The fit of the layer with these values (same as the Rust renderer). */
-export function layoutText(l: TextLayer, r: Resolved, data: Data): TextLayout {
+export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string): TextLayout {
   const k = cfg(l);
   const text = shownText(l, data);
   const size0 = num(r.fontSize);
@@ -143,7 +144,7 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data): TextLayout {
       minSize: l.minSize ?? 0.6,
       maxLines: k.maxLines,
       hyphen: k.breakMode === 'hyphen',
-      lang: k.lang,
+      lang: k.lang || lang || useApp.getState().project?.language || 'fr',
       ellipsisEnd: k.fitEnd === 'ellipsis',
     },
     (s, size) => measure(fontCss(fam, l.fontWeight, size, k.italic), ls, s),
@@ -156,7 +157,7 @@ const fitBadge = (l: TextLayer, f: FitLines) => (f.overflows ? (l.overflow === '
 
 // --------------------------------------------------------------- render --
 
-function Render({ layer, r, w, h, data, designer }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean }) {
+function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string }) {
   const k = cfg(layer);
   const text = shownText(layer, data);
   if (!text.trim())
@@ -166,7 +167,7 @@ function Render({ layer, r, w, h, data, designer }: { layer: TextLayer; r: Resol
         <div style={{ position: 'absolute', left: 14, top: 10, font: '600 22px Inter, sans-serif', color: 'rgba(255,255,255,.45)', whiteSpace: 'nowrap' }}>Empty text · nothing on air</div>
       </>
     ) : null;
-  const L = layoutText(layer, r, data);
+  const L = layoutText(layer, r, data, lang);
   const { fit, pad, avail, ls } = L;
   const size = fit.size;
   const sx = fit.squeeze;
@@ -272,209 +273,233 @@ const OVERFLOWS: [TextOverflow, string, string][] = [
   ['visible', 'Overflow', 'Drawn outside its box'],
 ];
 
-const STAGE: Record<FitLines['stage'], string> = {
-  fit: 'Fits at the set size',
-  squeeze: 'Narrower',
-  shrink: 'Smaller',
-  end: 'Minimums reached',
-  clip: 'Too long: cut at the box',
-  ellipsis: 'Too long: shortened with “…”',
-  visible: 'Too long: goes out of its box',
-};
-
-/** The chain Wrap → Narrower → Smaller → Cut / “…”, lit up to the step reached with the preview values. */
-function FitChain({ layer, r, data }: { layer: TextLayer; r: Resolved; data: Data }) {
+function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Template; edit: (fn: (l: TextLayer) => void, key?: string) => void }) {
   const k = cfg(layer);
-  if (!shownText(layer, data).trim()) return <Note>Empty text: nothing on air; the box keeps its size.</Note>;
-  const { fit } = layoutText(layer, r, data);
-  const mode = layer.overflow ?? 'fit';
-  const order = ['fit', 'squeeze', 'shrink', 'end'];
-  const reached = mode === 'fit' ? order.indexOf(fit.stage) : fit.stage === 'fit' ? 0 : 3;
-  const chip = (label: string, i: number, on = true) => (
-    <span
-      key={label}
-      style={{ padding: '2px 7px', borderRadius: 6, fontSize: 11, fontWeight: 700, ...(i <= reached && on ? (i === reached && i > 0 ? { background: '#f59e0b', color: '#241500' } : { background: 'var(--accent, #7c5cff)', color: '#fff' }) : { background: '#232838', color: '#6b7290' }) }}
-    >
-      {label}
-    </span>
-  );
-  const arrow = (i: number) => (
-    <span key={`a${i}`} style={{ color: '#6b7290' }}>
-      →
-    </span>
-  );
-  const chain =
-    mode === 'fit'
-      ? [chip(layer.wrap ? 'Wrap' : 'As typed', 0), arrow(1), chip('Narrower', 1, !layer.wrap), arrow(2), chip('Smaller', 2), arrow(3), chip(k.fitEnd === 'ellipsis' ? '“…”' : 'Cut', 3)]
-      : [chip(layer.wrap ? 'Wrap' : 'As typed', 0), arrow(1), chip(mode === 'ellipsis' ? '“…”' : mode === 'clip' ? 'Cut' : 'Overflow', 3)];
-  const pct = (v: number) => `${Math.round(v * 100)} %`;
-  return (
-    <div className="wk-row full" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
-      <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>{chain}</div>
-      <div className="hint wk-note" style={{ margin: 0 }}>
-        {STAGE[fit.stage]} · <b>{Math.round(fit.size)} px</b> · width <b>{pct(fit.squeeze)}</b> · {fit.lines.length} line{fit.lines.length > 1 ? 's' : ''}
-        {fit.forced ? (
-          <>
-            {' · '}
-            <b style={{ color: 'var(--warn)' }}>forced hyphenation</b>
-          </>
-        ) : fit.hyphenated ? (
-          ' · hyphenated'
-        ) : (
-          ''
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Inspector({ layer, data, template, edit }: { layer: TextLayer; data: Data; template: Template; edit: (fn: (l: TextLayer) => void, key?: string) => void }) {
-  const k = cfg(layer);
-  const frame = useDesigner((s) => s.frame);
-  const r = resolveLayer(layer as Layer, frame, data, holdFrame(template));
-  const scrolling = !!layer.scroll && layer.scroll !== 'none';
   const set = (key: string, v: unknown) => edit((l) => void ((l as unknown as Record<string, unknown>)[key] = v));
   const mode = layer.overflow ?? 'fit';
-  const arabic = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/.test(layer.text);
+  const stroke = num(propValue(layer as Layer, 'strokeWidth', 0)) > 0;
   return (
     <>
-      <Section id="text-content" title="Text">
-        <Content path="text" value="" multiline placeholder="Text ({{key}} from the Data canvas)" />
+      <Section id="text-content" title="Content">
+        <Content path="text" value="" multiline lorem expose placeholder="Text" />
+      </Section>
+      <Section id="text-font" title="Typography">
+        <FontRow layer={layer} set={set} />
+        <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
+        <Num label="Line height" value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
+        <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
+        <Row label="Align">
+          <Segmented
+            value={k.justify ? 'justify' : layer.align}
+            onChange={(v) =>
+              edit((l) => {
+                if (v === 'justify') (l as Config).justify = true;
+                else {
+                  (l as Config).justify = undefined;
+                  l.align = v as TextLayer['align'];
+                }
+              })
+            }
+            options={[
+              { value: 'left', label: <AlignLeft size={13} />, title: 'Left' },
+              { value: 'center', label: <AlignCenter size={13} />, title: 'Centre' },
+              { value: 'right', label: <AlignRight size={13} />, title: 'Right' },
+              { value: 'justify', label: <AlignJustify size={13} />, title: 'Justify (not the last line)' },
+            ]}
+          />
+          <Segmented value={k.italic ? 'i' : ''} onChange={() => set('italic', !k.italic || undefined)} options={[{ value: 'i', label: <Italic size={13} />, title: 'Italic' }]} />
+        </Row>
+        <Row label="Vertical">
+          <Segmented
+            value={layer.verticalAlign}
+            onChange={(v) => set('verticalAlign', v)}
+            options={[
+              { value: 'top', label: <AlignVerticalJustifyStart size={13} />, title: 'Top' },
+              { value: 'middle', label: <AlignVerticalJustifyCenter size={13} />, title: 'Middle' },
+              { value: 'bottom', label: <AlignVerticalJustifyEnd size={13} />, title: 'Bottom' },
+            ]}
+          />
+        </Row>
+        <Row label="Case">
+          <Segmented
+            value={layer.uppercase ? 'upper' : (layer.transform ?? 'none')}
+            onChange={(v) =>
+              edit((l) => {
+                l.uppercase = false;
+                l.transform = v === 'none' ? undefined : (v as TextLayer['transform']);
+              })
+            }
+            options={[
+              { value: 'none', label: '—', title: 'As typed' },
+              { value: 'upper', label: 'AA', title: 'UPPER CASE' },
+              { value: 'lower', label: 'aa', title: 'lower case' },
+              { value: 'capitalize', label: 'Aa', title: 'Each Word' },
+            ]}
+          />
+          <Segmented
+            value={layer.decoration ?? 'none'}
+            onChange={(v) => set('decoration', v === 'none' ? undefined : v)}
+            options={[
+              { value: 'none', label: '—', title: 'No decoration' },
+              { value: 'underline', label: <Underline size={13} />, title: 'Underline' },
+              { value: 'lineThrough', label: <Strikethrough size={13} />, title: 'Strike through' },
+            ]}
+          />
+        </Row>
+      </Section>
+      <Section id="text-colour" title="Colour">
         <Seg
-          label="Direction"
-          path="dir"
-          value={k.dir}
+          label="Fill"
+          path="fillType"
+          value={k.fillType}
           options={[
-            ['ltr', 'Left → right'],
-            ['rtl', 'Right → left'],
+            ['solid', 'Solid'],
+            ['gradient', 'Gradient'],
           ]}
         />
-        {(k.dir === 'rtl' || arabic) && <Note>Right to left (Arabic, Hebrew): the browser shapes the text; the on-air renderer puts the lines in visual order but has no text shaping, so Arabic letters are drawn unjoined (isolated forms) there. Hebrew is fine.</Note>}
-        <Seg
-          label="Scroll"
-          value={layer.scroll ?? 'none'}
-          onChange={(v) => edit((l) => void (l.scroll = v === 'none' ? undefined : v))}
-          options={[
-            ['none', 'Fixed', 'The text stays in place'],
-            ['horizontal', 'Horizontal', 'The lines one after the other, right to left (ticker)'],
-            ['vertical', 'Vertical', 'Bottom to top (credit roll)'],
-          ]}
-        />
-        {scrolling && (
+        <ColorGroupRow layer={layer as Layer} prop="fill" label={k.fillType === 'gradient' ? 'From' : 'Color'} />
+        {k.fillType === 'gradient' && (
           <>
-            <Num label="Speed" value={layer.speed ?? 120} min={1} max={2000} unit=" px/s" onChange={(v) => edit((l) => void (l.speed = v), `speed-${layer.id}`)} />
-            {layer.scroll === 'horizontal' ? (
-              <Text label="Separator" value={layer.separator ?? '   •   '} onChange={(v) => edit((l) => void (l.separator = v), `sep-${layer.id}`)} />
-            ) : (
-              <Toggle label="Loop" value={!!layer.looping} text="Comes round again" onChange={(v) => edit((l) => void (l.looping = v || undefined))} />
-            )}
+            <ColorPick label="To" path="color2" value={D.color2} />
+            <Num label="Angle" path="gradAngle" value={k.gradAngle} min={0} max={360} unit="°" />
           </>
         )}
       </Section>
-      {!scrolling && (
-        <Section id="text-fit" title="Lines and fit">
-          <Seg
-            label="Lines"
-            value={layer.wrap ? 'paragraph' : 'single'}
-            onChange={(v) => edit((l) => void (l.wrap = v === 'paragraph' || undefined))}
-            options={[
-              ['single', 'As typed', 'Line breaks only where you type them'],
-              ['paragraph', 'Paragraph', 'Lines wrap at the width of the box'],
-            ]}
-          />
-          {layer.wrap && (
-            <>
-              <Range label="Max lines" path="maxLines" value={k.maxLines} min={0} max={12} fmt={(v) => (v ? `${v}` : 'No limit')} />
-              <Seg
-                label="Line break"
-                path="breakMode"
-                value={k.breakMode}
-                options={[
-                  ['word', 'Whole word'],
-                  ['hyphen', 'Hyphenation'],
-                ]}
-              />
-            </>
-          )}
-          <Select label="Language" path="lang" value={k.lang} options={HYPHEN_LANGS} />
-          <Seg label="Too long" value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS} />
-          {mode === 'fit' && (
-            <>
-              <Range label="Narrower to" value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit=" %" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
-              <Range label="Smaller to" value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit=" %" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
-              <Seg
-                label="Then"
-                path="fitEnd"
-                value={k.fitEnd}
-                options={[
-                  ['clip', 'Cut at the box'],
-                  ['ellipsis', 'Shorten with “…”'],
-                ]}
-              />
-              <Range label="Warn under" value={Math.round((layer.warnBelow ?? 0.8) * 100)} min={20} max={100} unit=" %" onChange={(v) => edit((l) => void (l.warnBelow = v / 100), `warn-${layer.id}`)} />
-            </>
-          )}
-          <FitChain layer={layer} r={r} data={data} />
-          <Note>Each step is tried in this order (a single line gets narrower first; a paragraph wraps). The language sets the hyphenation rules and the French spaces (no line starts with “:” or “»”). A word longer than the line is hyphenated, that word only, when nothing else fits.</Note>
-        </Section>
-      )}
-      <Section id="text-font" title="Font">
-        <div className="pp-typo">
-          <FontControls layer={layer as Layer & FontStyle} set={set} />
-          <Toggle label="Style" path="italic" value={false} text="Italic" />
-          <Toggle label="Justify" path="justify" value={false} text="Lines fill the width (not the last one)" />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
-          <Num label="Line height" value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
-          <Seg
-            label="Colour"
-            path="fillType"
-            value={k.fillType}
-            options={[
-              ['solid', 'Solid'],
-              ['gradient', 'Gradient'],
-            ]}
-          />
-          <ColorGroupRow layer={layer as Layer} prop="fill" label={k.fillType === 'gradient' ? 'From' : 'Color'} />
-          {k.fillType === 'gradient' && (
-            <>
-              <ColorPick label="To" path="color2" value={D.color2} />
-              <Range label="Angle" path="gradAngle" value={k.gradAngle} min={0} max={360} unit="°" />
-            </>
-          )}
-        </div>
-      </Section>
-      <Section id="text-stroke" title="Stroke and shadow">
-        <ColorGroupRow layer={layer as Layer} prop="stroke" label="Stroke" />
-        <GroupRow layer={layer as Layer} spec={{ label: 'Stroke width', props: ['strokeWidth'], min: 0, precision: 1, suffix: 'px' }} />
-        <Toggle label="Placement" path="strokeOutside" value={false} text="Outside, behind the fill" />
-        <Toggle label="Shadow" path="shadow" value={false} text="Drop shadow" />
+      <Section id="text-effects" title="Effects">
+        <Toggle
+          label="Stroke"
+          value={stroke}
+          onChange={(v) =>
+            edit((l) => {
+              l.props.strokeWidth = v ? 2 : 0;
+              // A stroke turned on must show: an invisible colour becomes black.
+              const sc = col(l.props.stroke ?? [0, 0, 0, 0]);
+              if (v && sc[3] === 0) l.props.stroke = [0, 0, 0, 1];
+            })
+          }
+        />
+        {stroke && (
+          <>
+            <ColorGroupRow layer={layer as Layer} prop="stroke" label="Color" />
+            <GroupRow layer={layer as Layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, precision: 1, suffix: 'px' }} />
+            <Seg
+              label="Placement"
+              path="strokeOutside"
+              value={false}
+              options={[
+                [false, 'Centred'],
+                [true, 'Outside'],
+              ]}
+            />
+          </>
+        )}
+        <Toggle label="Shadow" path="shadow" value={false} />
         {k.shadow && (
           <>
-            <ColorPick label="Shadow color" path="shadowColor" value={D.shadowColor} />
-            <Range label="Offset X" path="shadowX" value={k.shadowX} min={-30} max={30} unit=" px" />
-            <Range label="Offset Y" path="shadowY" value={k.shadowY} min={-30} max={30} unit=" px" />
-            <Range label="Blur" path="shadowBlur" value={k.shadowBlur} min={0} max={60} unit=" px" />
+            <ColorPick label="Color" path="shadowColor" value={D.shadowColor} />
+            <Num label="Offset X" path="shadowX" value={k.shadowX} min={-200} max={200} unit="px" />
+            <Num label="Offset Y" path="shadowY" value={k.shadowY} min={-200} max={200} unit="px" />
+            <Num label="Blur" path="shadowBlur" value={k.shadowBlur} min={0} max={200} unit="px" />
+          </>
+        )}
+        <Toggle label="Band" path="band" value={false} />
+        {k.band && (
+          <>
+            <ColorPick label="Color" path="bandColor" value={D.bandColor} />
+            <Num label="Padding" path="bandPadX" value={k.bandPadX} min={0} max={200} unit="px" />
+            <Num label="Gap" path="bandGap" value={k.bandGap} min={0} max={200} unit="px" />
+            <Num label="Corners" path="bandRadius" value={k.bandRadius} min={0} max={200} unit="px" />
+            <Toggle label="Accent" path="bandAccent" value={true} />
+            {k.bandAccent && <ColorPick label="Accent color" path="bandAccentColor" value={D.bandAccentColor} />}
           </>
         )}
       </Section>
-      <Section id="text-band" title="Line background">
-        <Toggle label="Band" path="band" value={false} text="One coloured band per line" />
-        {k.band && (
+      <Section id="text-fit" title="When the text is too long">
+        <Seg
+          label="Lines"
+          value={layer.wrap ? 'paragraph' : 'single'}
+          onChange={(v) => edit((l) => void (l.wrap = v === 'paragraph' || undefined))}
+          options={[
+            ['single', 'As typed', 'Line breaks only where you type them'],
+            ['paragraph', 'Paragraph', 'Lines wrap at the width of the box'],
+          ]}
+        />
+        {layer.wrap && (
           <>
-            <ColorPick label="Band color" path="bandColor" value={D.bandColor} />
-            <Range label="Side padding" path="bandPadX" value={k.bandPadX} min={0} max={80} unit=" px" />
-            <Range label="Gap between" path="bandGap" value={k.bandGap} min={0} max={40} unit=" px" />
-            <Range label="Corners" path="bandRadius" value={k.bandRadius} min={0} max={40} unit=" px" />
-            <Toggle label="Accent" path="bandAccent" value={true} text="Bar at the start" />
-            {k.bandAccent && <ColorPick label="Accent color" path="bandAccentColor" value={D.bandAccentColor} />}
-            <Note>Each band hugs its own line (synthé style), on the side of the alignment.</Note>
+            <Num label="Max lines" path="maxLines" value={k.maxLines} min={0} max={99} />
+            <Seg
+              label="Line break"
+              path="breakMode"
+              value={k.breakMode}
+              options={[
+                ['word', 'Whole word'],
+                ['hyphen', 'Hyphenation'],
+              ]}
+            />
+          </>
+        )}
+        <Seg label="Behaviour" value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS} />
+        {mode === 'fit' && (
+          <>
+            <Num label="Narrower to" value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit="%" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
+            <Num label="Smaller to" value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
+            <Seg
+              label="Then"
+              path="fitEnd"
+              value={k.fitEnd}
+              options={[
+                ['clip', 'Cut'],
+                ['ellipsis', '…'],
+              ]}
+            />
           </>
         )}
       </Section>
     </>
   );
 }
+
+/** Font and weight, from the fonts of Assets. */
+function FontRow({ layer, set }: { layer: TextLayer; set: (key: string, v: unknown) => void }) {
+  const families = useFonts((s) => s.families);
+  const current = families.find((f) => f.family.toLowerCase() === layer.fontFamily.toLowerCase());
+  const weights = current?.weights ?? [400, 700];
+  return (
+    <Row label="Font">
+      <select
+        value={current?.family ?? layer.fontFamily}
+        style={{ fontFamily: `"${current?.family ?? layer.fontFamily}"`, flex: 1, minWidth: 0 }}
+        onChange={(e) => {
+          const fam = families.find((f) => f.family === e.target.value);
+          set('fontFamily', e.target.value);
+          if (fam && !fam.weights.includes(layer.fontWeight))
+            set(
+              'fontWeight',
+              fam.weights.reduce((a, b) => (Math.abs(b - layer.fontWeight) < Math.abs(a - layer.fontWeight) ? b : a)),
+            );
+        }}
+      >
+        {!current && <option value={layer.fontFamily}>{layer.fontFamily} (missing)</option>}
+        {families.map((f) => (
+          <option key={f.family} value={f.family} style={{ fontFamily: `"${f.family}"` }}>
+            {f.family}
+          </option>
+        ))}
+      </select>
+      <select value={layer.fontWeight} style={{ width: 96, flex: 'none' }} onChange={(e) => set('fontWeight', +e.target.value)}>
+        {[...new Set([...weights, layer.fontWeight])]
+          .sort((a, b) => a - b)
+          .map((w) => (
+            <option key={w} value={w}>
+              {WEIGHTS[w] ?? w}
+            </option>
+          ))}
+      </select>
+    </Row>
+  );
+}
+
+const WEIGHTS: Record<number, string> = { 100: 'Thin', 200: 'Extra light', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' };
 
 const missingFont = (l: TextLayer) => {
   const fams = useFonts.getState().families;
@@ -511,7 +536,7 @@ export default defineWidget({
   create: () => ({}),
   ownsLook: true,
   content: ['text'],
-  Render: ({ layer, r, w, h, data, designer }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} />,
+  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} />,
   Inspector: ({ layer, data, template, edit }) => <Inspector layer={layer} data={data} template={template} edit={edit} />,
   warnings: (layer, { data, r }) => {
     const out: Warning[] = [];

@@ -831,6 +831,7 @@ mod tests {
     fn project() -> Project {
         Project {
             guides: Default::default(),
+            language: "fr".into(),
             id: "p".into(),
             name: "p".into(),
             description: String::new(),

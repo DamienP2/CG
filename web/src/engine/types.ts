@@ -95,6 +95,8 @@ export type Layer = LayerKind & {
   manualStart?: boolean;
   /** Scale X and Y change together. */
   scaleLock?: boolean;
+  /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
+  timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
   tracks: Partial<Record<Prop, Keyframe[]>>;
   bindings: Partial<Record<Prop, string>>;
@@ -352,6 +354,8 @@ export interface Project {
   width: number;
   height: number;
   frameRate: FrameRate;
+  /** Language of the texts (hyphenation, French spaces), "fr" by default. */
+  language?: string;
   templates: Template[];
   rundown: RundownItem[];
   zones: Zone[];

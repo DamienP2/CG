@@ -57,6 +57,8 @@ pub(crate) struct Draw<'a, 'b> {
     pub fps: f64,
     /// The operator's state of this widget (`Null` = default).
     pub state: &'a serde_json::Value,
+    /// The project's language.
+    pub lang: &'a str,
 }
 
 impl Draw<'_, '_> {

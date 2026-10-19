@@ -49,7 +49,7 @@ export function Program({ project, live, width, height }: { project: Project; li
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
-            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps}>
+            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
               <Scene template={t} frame={item.frame} data={item.data} />
             </LiveTime>
           </div>

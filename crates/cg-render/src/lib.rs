@@ -84,6 +84,8 @@ struct Ctx<'a> {
     /// project frame rate its ages are counted in.
     item: Option<&'a cg_core::PlayoutItem>,
     fps: f64,
+    /// The project's language (texts without their own).
+    lang: &'a str,
 }
 
 impl Ctx<'_> {
@@ -281,6 +283,7 @@ impl Renderer {
                     logic,
                     item: Some(item),
                     fps,
+                    lang: &project.language,
                 };
                 self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref());
                 // A data set row change: the old values fade out above.
@@ -336,6 +339,7 @@ impl Renderer {
             logic,
             item: None,
             fps: project.frame_rate.as_f64().max(1.0),
+            lang: &project.language,
         };
         // As on air: only what is inside the template's zone.
         let zone_mask = project
@@ -456,6 +460,7 @@ impl Renderer {
                 hold: ctx.template.hold_frame(),
                 fps: ctx.fps,
                 state,
+                lang: ctx.lang,
             };
             if wid::draw(&mut d) {
                 return;

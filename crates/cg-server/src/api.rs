@@ -488,6 +488,7 @@ async fn create_project(
         }
         None => Project {
             guides: Default::default(),
+            language: "fr".into(),
             id: String::new(),
             name: String::new(),
             description: String::new(),
@@ -619,6 +620,9 @@ struct ProjectMeta {
     width: u32,
     height: u32,
     frame_rate: FrameRate,
+    /// Texts' language; unchanged when absent.
+    #[serde(default)]
+    language: Option<String>,
 }
 
 async fn put_project_meta(
@@ -635,6 +639,9 @@ async fn put_project_meta(
     p.width = m.width;
     p.height = m.height;
     p.frame_rate = m.frame_rate;
+    if let Some(l) = m.language.filter(|l| !l.trim().is_empty()) {
+        p.language = l.trim().to_string();
+    }
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }

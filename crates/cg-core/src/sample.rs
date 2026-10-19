@@ -33,6 +33,7 @@ fn layer(
         locked: false,
         manual_start: false,
         scale_lock: false,
+        timeline: None,
         props: props.iter().copied().collect(),
         tracks: BTreeMap::new(),
         bindings: BTreeMap::new(),
@@ -1042,6 +1043,7 @@ fn demo_project_layers() -> Project {
     data.insert("title".to_string(), "Physicist & chemist".to_string());
     Project {
         guides: Default::default(),
+        language: "fr".into(),
         id: "demo".into(),
         name: "Demo show".into(),
         description: String::new(),

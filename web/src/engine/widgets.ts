@@ -17,6 +17,8 @@ export interface TimeCtx {
   widgetState?: (layerId: string) => unknown;
   /** Project frame rate. */
   fps?: number;
+  /** Project language (texts' hyphenation and spaces). */
+  lang?: string;
 }
 
 /** A scrolling text, as the ticker or roll it behaves like (mirrors LayerKind::scrolling_as). */

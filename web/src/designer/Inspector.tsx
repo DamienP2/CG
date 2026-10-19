@@ -1,4 +1,4 @@
-import { RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Braces, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink, Upload } from 'lucide-react';
+import { Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink, Upload } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
@@ -11,6 +11,7 @@ import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
 import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, useDesigner } from './designerStore';
 import { isTimed } from '../engine/widgets';
+import { onTimeline, setOnTimeline } from '../engine/timelineProps';
 import { WidgetRunButtons } from './WidgetRun';
 import { AreaInspector, useGuidesView } from './Guides';
 import { fitLayer, layerText } from '../engine/Scene';
@@ -180,38 +181,30 @@ const TRANSFORM_ROWS: RowSpec[] = [
   },
 ];
 
-/** ◀ ◆ ▶ of a row: previous key, key at the playhead (all its properties), next key. */
-function RowKeys({ layer, props }: { layer: Layer; props: Prop[] }) {
-  const { frame, update, setFrame } = useDesigner();
-  const frames = [...new Set(props.flatMap((p) => (layer.tracks[p] ?? []).map((k) => k.frame)))].sort((a, b) => a - b);
-  const prev = [...frames].reverse().find((f) => f < frame - 0.5);
-  const next = frames.find((f) => f > frame + 0.5);
-  const here = frames.some((f) => Math.abs(f - frame) < 0.5);
+/**
+ * ◆ of a property row. Off the timeline (dim): click puts the property on
+ * the timeline. On it (yellow): click adds / removes the keyframe at the
+ * playhead (filled when there is one).
+ */
+export function TimelineButton({ layer, props }: { layer: Layer; props: Prop[] }) {
+  const { frame, update } = useDesigner();
+  const on = props.every((p) => onTimeline(layer).has(p));
+  const here = props.some((p) => (layer.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5));
   return (
-    <span className="pp-keys">
-      <button title="Previous keyframe" disabled={prev === undefined} onClick={() => prev !== undefined && setFrame(prev)}>
-        <ChevronLeft size={12} />
-      </button>
-      <button
-        className={here ? 'on' : ''}
-        title={here ? 'Remove the keyframe at the playhead' : 'Add a keyframe at the playhead'}
-        onClick={() => {
-          update((t) => {
-            const l = findLayer(t, layer.id)!;
-            for (const p of props) if (here === (l.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5)) toggleKeyAt(l, p, frame);
-          });
-          if (!here)
-            useDesigner.setState((st) => ({
-              expanded: { ...st.expanded, [layer.id]: true },
-            }));
-        }}
-      >
-        <Diamond size={11} fill={here ? 'currentColor' : 'none'} />
-      </button>
-      <button title="Next keyframe" disabled={next === undefined} onClick={() => next !== undefined && setFrame(next)}>
-        <ChevronRight size={12} />
-      </button>
-    </span>
+    <button
+      className={`pp-tl ${on ? 'on' : ''} ${here ? 'key' : ''}`}
+      title={!on ? 'Not on the timeline: click to animate it' : here ? 'Remove the keyframe at the playhead' : 'On the timeline: click to add a keyframe at the playhead'}
+      onClick={() => {
+        update((t) => {
+          const l = findLayer(t, layer.id)!;
+          if (!on) return setOnTimeline(l, props, true);
+          for (const p of props) if (here === (l.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5)) toggleKeyAt(l, p, frame);
+        });
+        if (on && !here) useDesigner.setState((st) => ({ expanded: { ...st.expanded, [layer.id]: true } }));
+      }}
+    >
+      <Diamond size={12} fill={here ? 'currentColor' : 'none'} />
+    </button>
   );
 }
 
@@ -226,74 +219,57 @@ function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
   );
 }
 
-/** { } next to a field: makes this property a variable (the operator or a data source sets it). */
-function ExposeButton({ layer, prop }: { layer: Layer; prop: Prop }) {
+/** (•) at the end of a row: exposes the property to the Operator (a variable he sets), or stops. */
+export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) {
   const { update, template } = useDesigner();
   const [open, setOpen] = useState(false);
-  if (!template) return null;
-  const bound = layer.bindings[prop];
-  const field = template.fields.find((f) => f.key === bound);
-  const isColor = prop === 'fill' || prop === 'stroke';
-  const name = PROP_LABELS[prop] ?? prop;
-  const expose = () => {
+  if (!template) return <span className="pp-op-space" />;
+  const bound = props.map((p) => layer.bindings[p]).filter((k): k is string => !!k);
+  const on = bound.length > 0;
+  const fields = template.fields.filter((f) => bound.includes(f.key));
+  const expose = () =>
     update((t) => {
       const l = findLayer(t, layer.id)!;
-      const key = fieldKey(`${l.name} ${name}`, new Set(t.fields.map((f) => f.key)));
-      // Default: what is seen on air.
-      const v = propValue(l, prop, holdFrame(t));
-      const def = isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3));
-      t.fields.push({
-        key,
-        label: `${l.name} · ${name}`,
-        kind: isColor ? 'color' : 'number',
-        default: def,
-      });
-      l.bindings[prop] = key;
+      for (const prop of props) {
+        const isColor = prop === 'fill' || prop === 'stroke';
+        const name = PROP_LABELS[prop] ?? prop;
+        const key = fieldKey(`${l.name} ${name}`, new Set(t.fields.map((f) => f.key)));
+        // Default: what is seen on air.
+        const v = propValue(l, prop, holdFrame(t));
+        t.fields.push({ key, label: `${l.name} · ${name}`, kind: isColor ? 'color' : 'number', default: isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3)) });
+        l.bindings[prop] = key;
+      }
     });
-    setOpen(false);
-  };
-  const unbind = () => {
+  const unbind = () =>
     update((t) => {
       const l = findLayer(t, layer.id)!;
-      delete l.bindings[prop];
-      // A field made for this binding and used nowhere else goes too.
-      const used = t.layers.some((x) => Object.values(x.bindings).includes(bound!)) || t.layers.some((x) => x.type === 'text' && x.text.includes(`{{${bound}}}`));
-      if (!used) t.fields = t.fields.filter((f) => f.key !== bound);
+      for (const prop of props) {
+        const key = l.bindings[prop];
+        delete l.bindings[prop];
+        // A field made for this binding and used nowhere else goes too.
+        const used = !!key && (t.layers.some((x) => Object.values(x.bindings).includes(key)) || t.layers.some((x) => JSON.stringify(x).includes(`{{${key}}}`)));
+        if (key && !used) t.fields = t.fields.filter((f) => f.key !== key);
+      }
     });
-    setOpen(false);
-  };
-  const others = template.fields.filter((f) => f.key !== bound && (isColor ? f.kind === 'color' : f.kind === 'number' || f.kind === 'text'));
+  const fromSource = fields.some((f) => f.binding?.source);
   return (
     <span className="bind">
-      <button className={`pp-expose ${bound ? 'on' : ''}`} title={bound ? `Set by the variable “${field?.label ?? bound}”` : `Expose ${name} as a variable`} onClick={() => setOpen(!open)}>
-        <Braces size={12} />
+      <button className={`pp-op ${on ? 'on' : ''}`} title={on ? `Exposed to the Operator (${fields.map((f) => f.label).join(', ') || bound.join(', ')})${fromSource ? ' · fed by a data source' : ''} · click to stop` : 'Expose to the Operator'} onClick={() => (on ? setOpen(!open) : expose())}>
+        <Radio size={13} />
       </button>
       {open && (
         <div className="popover" onMouseLeave={() => setOpen(false)}>
-          {bound ? (
-            <>
-              <div className="popover-note">
-                {name} is set by the variable <strong>{field?.label ?? bound}</strong>.
-              </div>
-              <button onClick={unbind}>Stop exposing</button>
-            </>
-          ) : (
-            <button className="primary" onClick={expose}>
-              + Expose {name} as a variable
-            </button>
-          )}
-          {others.length > 0 && <div className="popover-note">Or use an existing variable:</div>}
-          {others.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => {
-                update((t) => void (findLayer(t, layer.id)!.bindings[prop] = f.key));
-                setOpen(false);
-              }}
-            >
-              {f.label} <code>{f.key}</code>
-            </button>
-          ))}
+          <div className="popover-note">
+            Exposed to the Operator as <strong>{fields.map((f) => f.label).join(', ') || bound.join(', ')}</strong>.
+          </div>
+          <button
+            onClick={() => {
+              unbind();
+              setOpen(false);
+            }}
+          >
+            Stop exposing
+          </button>
         </div>
       )}
     </span>
@@ -354,17 +330,12 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
     }, `prop-${layer.id}-${spec.label}`);
   return (
     <div className={`pp-row ${spec.props.some((p) => isAnimated(layer, p)) ? 'animated' : ''}`}>
-      <RowKeys layer={layer} props={spec.props} />
-      <span className="pp-label">{spec.label}</span>
-      {spec.lock ? (
-        <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => update((t) => void (findLayer(t, layer.id)!.scaleLock = !locked || undefined))}>
-          {locked ? <LinkIcon size={12} /> : <Unlink size={12} />}
-        </button>
-      ) : (
-        <span className="pp-lock-space" />
-      )}
-      <LogicBadge layer={layer} props={spec.props} />
-      <div className={`pp-fields n${spec.props.length}`}>
+      <TimelineButton layer={layer} props={spec.props} />
+      <span className="pp-label">
+        {spec.label}
+        <LogicBadge layer={layer} props={spec.props} />
+      </span>
+      <div className="pp-fields">
         {spec.props.map((p, i) => (
           <span key={p} className="pp-field">
             {driven.has(p) ? (
@@ -372,15 +343,20 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
             ) : (
               <NumberField label={spec.fields?.[i]} value={num(propValue(layer, p, frame))} display={spec.display} suffix={spec.suffix} precision={spec.precision} min={spec.min} max={spec.max} onChange={(nv) => setValue(p, nv)} />
             )}
-            <ExposeButton layer={layer} prop={p} />
           </span>
         ))}
+        {spec.lock && (
+          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => update((t) => void (findLayer(t, layer.id)!.scaleLock = !locked || undefined))}>
+            {locked ? <LinkIcon size={12} /> : <Unlink size={12} />}
+          </button>
+        )}
+        {overridden && (
+          <button className="override-mark" title="Changed in this format — click to use the main layout again" onClick={() => updateBase((t) => spec.props.forEach((p) => resetOverride(findLayer(t, layer.id)!, format, p)))}>
+            <RotateCcw size={10} />
+          </button>
+        )}
       </div>
-      {overridden && (
-        <button className="override-mark" title="Changed in this format — click to use the main layout again" onClick={() => updateBase((t) => spec.props.forEach((p) => resetOverride(findLayer(t, layer.id)!, format, p)))}>
-          <RotateCcw size={10} />
-        </button>
-      )}
+      <ExposeButton layer={layer} props={spec.props} />
     </div>
   );
 }
@@ -391,12 +367,13 @@ export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fil
   const driven = useContext(DrivenContext).get(prop);
   return (
     <div className={`pp-row ${isAnimated(layer, prop) ? 'animated' : ''}`}>
-      <RowKeys layer={layer} props={[prop]} />
-      <span className="pp-label">{label}</span>
-      <span className="pp-lock-space" />
-      <LogicBadge layer={layer} props={[prop]} />
-      <div className="pp-fields n1">
-        <span className="pp-field">
+      <TimelineButton layer={layer} props={[prop]} />
+      <span className="pp-label">
+        {label}
+        <LogicBadge layer={layer} props={[prop]} />
+      </span>
+      <div className="pp-fields">
+        <span className="pp-field color">
           {driven ? (
             <span className="pp-driven" title="Set by data (Data canvas): read only">
               <span className="dc-swatch" style={{ background: toHex(col(driven), true) }} />
@@ -405,10 +382,10 @@ export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fil
           ) : (
             <ColorField value={col(propValue(layer, prop, frame))} onChange={(c) => update((t) => setProp(findLayer(t, layer.id)!, prop, c as Value, frame), `prop-${layer.id}-${prop}`)} />
           )}
-          <ExposeButton layer={layer} prop={prop} />
         </span>
+        <OverrideMark layer={layer} prop={prop} />
       </div>
-      <OverrideMark layer={layer} prop={prop} />
+      <ExposeButton layer={layer} props={[prop]} />
     </div>
   );
 }
@@ -1101,44 +1078,46 @@ function LayerInspector({ layer }: { layer: Layer }) {
             <GroupRow key={r.label} layer={layer} spec={r} />
           ))}
         </Group>
-        <Group id="contents" title="Contents" level={2}>
-          {hasLook && <ColorGroupRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} />}
-          {hasLook && layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorGroupRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} />}
-          {hasLook &&
-            STYLE.filter((st) => (st.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((st) => (
-              <GroupRow
-                key={st.prop}
-                layer={layer}
-                spec={{
-                  label: st.label === 'Stroke W' ? 'Stroke width' : st.label,
-                  props: [st.prop],
-                  min: st.min,
-                  precision: st.precision,
-                  suffix: 'px',
-                }}
-              />
-            ))}
-          {layer.type === 'image' && !spec?.Inspector && (
-            <div className="row">
-              <span className="prop-label">Fit</span>
-              <Segmented
-                value={layer.fit}
-                onChange={(v) => edit((l) => void (l.type === 'image' && (l.fit = v)))}
-                options={[
-                  { value: 'contain', label: 'Contain' },
-                  { value: 'cover', label: 'Cover' },
-                  { value: 'stretch', label: 'Stretch' },
-                ]}
-              />
-            </div>
-          )}
-          {layer.type === 'group' && (
-            <label className="check">
-              <input type="checkbox" checked={!!layer.clip} onChange={(e) => edit((l) => void (l.type === 'group' && (l.clip = e.target.checked)))} />
-              Clip children to group bounds
-            </label>
-          )}
-        </Group>
+        {(hasLook || layer.type === 'group' || (layer.type === 'image' && !spec?.Inspector)) && (
+          <Group id="contents" title="Contents" level={2}>
+            {hasLook && <ColorGroupRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} />}
+            {hasLook && layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorGroupRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} />}
+            {hasLook &&
+              STYLE.filter((st) => (st.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((st) => (
+                <GroupRow
+                  key={st.prop}
+                  layer={layer}
+                  spec={{
+                    label: st.label === 'Stroke W' ? 'Stroke width' : st.label,
+                    props: [st.prop],
+                    min: st.min,
+                    precision: st.precision,
+                    suffix: 'px',
+                  }}
+                />
+              ))}
+            {layer.type === 'image' && !spec?.Inspector && (
+              <div className="row">
+                <span className="prop-label">Fit</span>
+                <Segmented
+                  value={layer.fit}
+                  onChange={(v) => edit((l) => void (l.type === 'image' && (l.fit = v)))}
+                  options={[
+                    { value: 'contain', label: 'Contain' },
+                    { value: 'cover', label: 'Cover' },
+                    { value: 'stretch', label: 'Stretch' },
+                  ]}
+                />
+              </div>
+            )}
+            {layer.type === 'group' && (
+              <label className="check">
+                <input type="checkbox" checked={!!layer.clip} onChange={(e) => edit((l) => void (l.type === 'group' && (l.clip = e.target.checked)))} />
+                Clip children to group bounds
+              </label>
+            )}
+          </Group>
+        )}
         <Group id="reveal" title="Reveal mask" level={2}>
           {[
             { label: 'Left', props: ['cropLeft'] as Prop[] },

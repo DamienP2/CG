@@ -1,3 +1,4 @@
+import { HYPHEN_LANGS } from '../engine/textFit';
 import { ChevronDown, History, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../engine/types';
@@ -109,7 +110,7 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
     if (saveState === 'saved') setSavedAt(Date.now());
   }, [saveState]);
 
-  const meta = (patch: Partial<{ name: string; width: number; height: number; frameRate: Project['frameRate'] }>) =>
+  const meta = (patch: Partial<{ name: string; width: number; height: number; frameRate: Project['frameRate']; language: string }>) =>
     api('PUT', url, { name: project.name, description: project.description ?? '', width: project.width, height: project.height, frameRate: project.frameRate, ...patch }).catch((e) => toast((e as Error).message, 'error'));
 
   const rename = async () => {
@@ -153,7 +154,21 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
             <ChevronDown size={11} />
           </button>
         </div>
-        {formatOpen && <FormatButtons width={project.width} height={project.height} rate={project.frameRate} disabled={readOnly} onSize={(w, h) => void setSize(w, h)} onRate={(r) => void setRate(r)} />}
+        {formatOpen && (
+          <>
+            <FormatButtons width={project.width} height={project.height} rate={project.frameRate} disabled={readOnly} onSize={(w, h) => void setSize(w, h)} onRate={(r) => void setRate(r)} />
+            <label className="pjp-lang" title="Hyphenation rules and French spaces of every text of the project">
+              <span>Language of the texts</span>
+              <select value={project.language ?? 'fr'} disabled={readOnly} onChange={(e) => void meta({ language: e.target.value })}>
+                {HYPHEN_LANGS.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
         <div className="pjp-publish">
           <ProjectPublish project={project} readOnly={readOnly} />
         </div>

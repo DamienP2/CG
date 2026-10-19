@@ -188,7 +188,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
         <div ref={sceneRef} onPointerDown={onPointerDown} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} widgetState={(id) => widgetState[id]} fps={fps}>
+            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} widgetState={(id) => widgetState[id]} fps={fps} lang={_project.language}>
               <Scene template={template} frame={frame} data={data} interactive />
             </LiveTime>
           </Viewport>

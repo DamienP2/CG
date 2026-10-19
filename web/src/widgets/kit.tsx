@@ -4,7 +4,8 @@
 // file is what they share: the definition of a widget and the controls of
 // the inspector and of the Operator, styled like the rest of the app.
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
+import { useDesigner } from '../designer/designerStore';
 import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evaluate';
 import type { Data, Layer, LayerType, PlayoutItem, Prop, Template, Value } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
@@ -194,11 +195,13 @@ export function Section({ id, title, children, actions, level = 1, closed }: { i
 }
 
 /** A labelled row of the inspector. */
-export function Row({ label, children, title }: { label?: ReactNode; children: ReactNode; title?: string }) {
+export function Row({ label, children, title, lead, tail }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode }) {
   return (
     <div className={`row wk-row ${label === undefined ? 'full' : ''}`} title={title}>
+      {lead ?? <span className="wk-gut" />}
       {label !== undefined && <span className="prop-label">{label}</span>}
       <div className="wk-ctl">{children}</div>
+      {tail ?? <span className="wk-gut" />}
     </div>
   );
 }
@@ -264,7 +267,9 @@ export function Num(p: { label?: ReactNode; path?: string; value?: number; onCha
   const [v, set] = useBind<number>(p.path, p.value, p.onChange);
   return (
     <Row label={p.label}>
-      <NumberField value={Number(v ?? 0)} min={p.min} max={p.max} step={p.step ?? 1} precision={p.precision ?? 0} suffix={p.unit} onChange={(x) => set(x, true)} />
+      <span className="pp-field">
+        <NumberField value={Number(v ?? 0)} min={p.min} max={p.max} step={p.step ?? 1} precision={p.precision ?? 0} suffix={p.unit?.trim()} onChange={(x) => set(x, true)} />
+      </span>
     </Row>
   );
 }
@@ -275,7 +280,9 @@ export function ColorPick(p: { label?: ReactNode; path?: string; value?: string;
   const c = parseHex(v ?? '') ?? [1, 1, 1, 1];
   return (
     <Row label={p.label}>
-      <ColorField value={c} onChange={(x) => set(toHex(x, x[3] < 1), true)} />
+      <span className="pp-field color">
+        <ColorField value={c} onChange={(x) => set(toHex(x, x[3] < 1), true)} />
+      </span>
     </Row>
   );
 }
@@ -308,17 +315,82 @@ export const wiredKeys = (s: string) => [...String(s ?? '').matchAll(/\{\{(\w+)\
  * canvas ({{key}}), it shows the data's value, greyed and read only: it is
  * changed in the Data canvas.
  */
-export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string }) {
+export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean }) {
   const [v, set] = useBind<string>(p.path, p.value, p.onChange);
-  const { data } = useContext(BindContext);
+  const { data, obj } = useContext(BindContext);
+  const { template, update } = useDesigner();
   const raw = String(v ?? '');
-  if (wiredKeys(raw).length) return <DataValue label={p.label} value={interpolateText(raw, data)} multiline={p.multiline} />;
+  const layer = obj as { id?: string; name?: string };
+  // Exposed to the Operator: the whole content is one variable he types (no data source).
+  const single = /^\{\{(\w+)\}\}$/.exec(raw.trim());
+  const field = single ? template?.fields.find((f) => f.key === single[1]) : undefined;
+  const exposed = !!field && !field.binding?.source;
+  if (wiredKeys(raw).length && !exposed) return <DataValue label={p.label} value={interpolateText(raw, data)} multiline={p.multiline} />;
+  const value = exposed ? field!.default : raw;
+  const change = (x: string) => (exposed ? update((t) => void (t.fields.find((f) => f.key === field!.key)!.default = x), `field-${field!.key}`) : set(x, true));
+  const canExpose = p.expose !== false && !!p.path && !!layer.id;
+  const toggleExpose = () =>
+    update((t) => {
+      const l = t.layers.find((x) => x.id === layer.id)!;
+      if (exposed) {
+        // Back to a plain content: the value typed so far.
+        setPath(l, p.path!, field!.default);
+        const still = t.layers.some((x) => x.id !== l.id && JSON.stringify(x).includes(`{{${field!.key}}}`));
+        if (!still) t.fields = t.fields.filter((f) => f.key !== field!.key);
+        return;
+      }
+      const taken = new Set(t.fields.map((f) => f.key));
+      let key =
+        String(l.name || 'text')
+          .normalize('NFD')
+          .replace(/[^A-Za-z0-9]+(.)?/g, (_, ch: string | undefined) => (ch ? ch.toUpperCase() : ''))
+          .replace(/^./, (ch) => ch.toLowerCase()) || 'text';
+      if (!/^[a-z]/i.test(key)) key = `t${key}`;
+      for (let i = 2; taken.has(key); i++) key = key.replace(/\d*$/, String(i));
+      t.fields.push({ key, label: l.name || key, kind: p.multiline ? 'multiline' : 'text', default: raw });
+      setPath(l, p.path!, `{{${key}}}`);
+    });
+  const inline = p.label === undefined;
   return (
-    <Row label={p.label}>
-      <TextInput multiline={p.multiline} value={raw} placeholder={p.placeholder} onChange={(x) => set(x, true)} />
+    <Row
+      label={p.label}
+      tail={
+        canExpose && !inline ? (
+          <button className={`pp-op ${exposed ? 'on' : ''}`} title={exposed ? 'Exposed to the Operator · click to stop' : 'Expose to the Operator'} onClick={toggleExpose}>
+            <Radio size={13} />
+          </button>
+        ) : undefined
+      }
+    >
+      <div className="wk-content">
+        <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />
+        {(p.lorem || (canExpose && inline) || exposed) && (
+          <div className="wk-content-tools">
+            {p.lorem && (
+              <button className="wk-chip" title="Fill with a fake text" onClick={() => change(nextLorem(value))}>
+                <WandSparkles size={12} /> Lorem
+              </button>
+            )}
+            {canExpose && inline ? (
+              <button className={`wk-chip op ${exposed ? 'on' : ''}`} title={exposed ? `Exposed to the Operator as “${field!.label}” · click to stop` : 'Expose to the Operator'} onClick={toggleExpose}>
+                <Radio size={12} /> {exposed ? 'Exposed to the Operator' : 'Expose to the Operator'}
+              </button>
+            ) : (
+              exposed && (
+                <span className="wk-exposed">
+                  <Radio size={12} /> Exposed to the Operator
+                </span>
+              )
+            )}
+          </div>
+        )}
+      </div>
     </Row>
   );
 }
+
+const LOREMS = ['Marie Curie, physicist and chemist', 'Breaking: the city council votes the new budget tonight', 'Live from the Stade de France: the final kicks off in ten minutes', 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt'];
+const nextLorem = (cur: string) => LOREMS[(LOREMS.indexOf(cur) + 1) % LOREMS.length];
 
 /** A value coming from data: greyed, read only. */
 export function DataValue({ label, value, multiline }: { label?: ReactNode; value: string; multiline?: boolean }) {
