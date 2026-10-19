@@ -11,7 +11,7 @@ import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
 import { fitLines, graphemes, type FitLines } from '../engine/textFit';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Toggle, type LayerOf, type Warning } from './kit';
+import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -70,7 +70,7 @@ export const D: Required<Config> = {
   justify: false,
   dir: 'ltr',
 };
-const cfg = (c: Config): Required<Config> => ({ ...D, ...c });
+const cfg = (c: Config): Required<Config> => withDefaults(D, c);
 
 type TextLayer = LayerOf<'text'>;
 

@@ -11,7 +11,7 @@ import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Note, Range, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Note, Range, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 
 export interface Config {
@@ -79,7 +79,7 @@ const D: Required<Config> = {
   shadow: false,
 };
 type K = Required<Config>;
-const cfg = (c: Config): K => ({ ...D, ...c });
+const cfg = (c: Config): K => withDefaults(D, c);
 type TwLayer = LayerOf<'typewriter'>;
 
 // ------------------------------------------------------------- timeline --

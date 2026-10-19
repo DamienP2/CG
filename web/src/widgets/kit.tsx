@@ -161,6 +161,13 @@ function useBind<V>(path: string | undefined, value: V | undefined, onChange: ((
   return [value as V, (v) => onChange?.(v)];
 }
 
+/** The settings over their defaults; a setting cleared to `undefined` keeps its default. */
+export function withDefaults<D extends object, C extends object>(d: D, c: C): Omit<D, keyof C> & { [K in keyof C]-?: K extends keyof D ? Exclude<C[K], undefined> | D[K] : C[K] } {
+  const out: Record<string, unknown> = { ...(d as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(c)) if (v !== undefined) out[k] = v;
+  return out as never;
+}
+
 /** Collapsible group of the inspector (open state kept per browser), like General / Properties. */
 export function Section({ id, title, children, actions, level = 1, closed }: { id: string; title: string; children: ReactNode; actions?: ReactNode; level?: 1 | 2; closed?: boolean }) {
   const key = `pulse.insp.${id}`;

@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pentagon } from 'lucide-react';
 import { useApp } from '../store';
 import { num } from '../engine/evaluate';
-import { Btns, clamp, defineWidget, Handle, Note, Range, Row, Section, Seg, Toggle, type Warning } from './kit';
+import { Btns, clamp, defineWidget, Handle, Note, Range, Row, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillRule, type FillStyle, type Pt, type StrokeStyle } from './shape';
 
 export interface Config {
@@ -37,7 +37,7 @@ const FREE_DEFAULT = (): Pt[] => [
   [0.24, 0.5],
 ];
 const D = { mode: 'regular' as const, sides: 6, startAngle: 0, star: false, inner: 50, tri: 'equilateral' as const, triDir: 'up' as const, clickAdd: true, round: 0, fillRule: 'nonzero' as FillRule };
-const cfg = (c: Config) => ({ ...D, ...c, verts: c.verts ?? FREE_DEFAULT() });
+const cfg = (c: Config) => ({ ...withDefaults(D, c), verts: c.verts ?? FREE_DEFAULT() });
 const DEG = Math.PI / 180;
 const f4 = (v: number) => +v.toFixed(4);
 

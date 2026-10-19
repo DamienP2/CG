@@ -3,7 +3,7 @@
 import { Square } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import { GroupRow } from '../designer/Inspector';
-import { clamp, defineWidget, Handle, Note, Range, Section, Seg, Toggle, type Warning } from './kit';
+import { clamp, defineWidget, Handle, Note, Range, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillStyle, type Pt, type StrokeStyle } from './shape';
 
 export interface Config {
@@ -41,7 +41,7 @@ const D: Required<Omit<Config, 'fillStyle' | 'strokeStyle'>> = {
   trapRight: 200,
   vertexRound: 0,
 };
-const cfg = (c: Config) => ({ ...D, ...c });
+const cfg = (c: Config) => withDefaults(D, c);
 
 export const maxSkew = (w: number) => Math.max(0, w - 1);
 

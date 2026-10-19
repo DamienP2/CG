@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { Circle } from 'lucide-react';
 import { col, cssColor, num } from '../engine/evaluate';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Bound, Btns, clamp, defineWidget, Handle, Note, Range, Section, Seg, Toggle, useBound, type Warning } from './kit';
+import { Bound, Btns, clamp, defineWidget, Handle, Note, Range, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, ShapeSvg, STROKE, type FillStyle, type StrokeStyle } from './shape';
 
 export interface Config {
@@ -26,7 +26,7 @@ export interface Config {
 export interface State {}
 
 const D = { circle: false, start: 0, end: 360, portion: 'sector' as const, inner: 0 };
-const cfg = (c: Config) => ({ ...D, ...c });
+const cfg = (c: Config) => withDefaults(D, c);
 const strokeOf = (c: Config): StrokeStyle => ({ position: 'center', ...c.strokeStyle });
 const DEG = Math.PI / 180;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;

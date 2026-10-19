@@ -7,7 +7,7 @@ import { textWidth } from '../engine/widgets';
 import type { Data } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Range, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Range, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 
 export interface Config {
   shape?: 'linear' | 'ring' | 'segments';
@@ -67,7 +67,7 @@ const D = {
   labelColor: '#ffffff',
   easing: 'out' as NonNullable<Config['easing']>,
 };
-const cfg = (l: Config) => ({ ...D, ...l }) as typeof D & { thickness?: number };
+const cfg = (l: Config) => withDefaults(D, l) as typeof D & { thickness?: number };
 const LH = 1.2;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 

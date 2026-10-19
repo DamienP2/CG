@@ -1,3 +1,4 @@
+import { Boundary } from '../ui/Boundary';
 import { Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink, Upload } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
@@ -1066,7 +1067,9 @@ function LayerInspector({ layer }: { layer: Layer }) {
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
       {spec?.Inspector ? (
-        <SpecInspector layer={layer} />
+        <Boundary resetKey={layer} fallback={<div className="hint wk-note">This widget's settings cannot be shown.</div>}>
+          <SpecInspector layer={layer} />
+        </Boundary>
       ) : (
         <Group id="general" title="General">
           <LayerGeneral layer={layer} />

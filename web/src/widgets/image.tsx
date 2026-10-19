@@ -6,7 +6,7 @@ import { Image } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, Handle, hex, Msg, Note, Num, Range, Row, Section, Seg, Toggle, useFrame, useKeys, wiredKeys, type Warning } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, Handle, hex, Msg, Note, Num, Range, Row, Section, Seg, Toggle, useFrame, useKeys, wiredKeys, type Warning, withDefaults } from './kit';
 
 export interface Crop {
   l: number;
@@ -47,7 +47,7 @@ type Rect = [number, number, number, number];
 type ImgLayer = Config & { id: string; src: string; fit: 'contain' | 'cover' | 'stretch'; props: Record<string, unknown> };
 
 const D = { tileScale: 100, focal: { x: 0.5, y: 0.5 }, crop: { l: 0, t: 0, r: 0, b: 0 }, mask: 'none' as const, radius: 28, colorize: 'none' as const, tint: '#ff3b5c', fallback: '', frames: [] as string[], fps: 12, playMode: 'loop' as const, loops: 3, start: 'in' as const };
-const cfg = (c: Config) => ({ ...D, ...c });
+const cfg = (c: Config) => withDefaults(D, c);
 const fitOf = (l: ImgLayer): Fit => l.fitMode ?? l.fit ?? 'contain';
 
 /** The frame in the box and its radius (mirrors frame_rect). */
@@ -384,7 +384,7 @@ export default defineWidget({
             <Content label="File" path="src" />
           ) : (
             <Row label="File">
-              <AssetPicker value={l.src} onChange={(v) => ed((x) => void ((x.src = v), (x.crop = undefined)))} />
+              <AssetPicker value={l.src} onChange={(v) => ed((x) => void ((x.src = v), delete x.crop))} />
             </Row>
           )}
           {k.frames.length > 0 && <Note>An animated sequence is set: its frames are played instead of this file.</Note>}

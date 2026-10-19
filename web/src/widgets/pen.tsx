@@ -6,7 +6,7 @@ import { PenTool } from 'lucide-react';
 import { col, cssColor, num } from '../engine/evaluate';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, Catcher, clamp, ColorPick, defineWidget, getPath, Handle, Note, Range, Row, Section, Seg, Toggle, useBound, type Warning } from './kit';
+import { Btns, Catcher, clamp, ColorPick, defineWidget, getPath, Handle, Note, Range, Row, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
 import { FILL, ShapeSvg, STROKE, type FillRule, type FillStyle, type StrokeStyle } from './shape';
 
 export interface PenPoint {
@@ -46,7 +46,7 @@ type Pt = [number, number];
 const P = (x: number, y: number, o: Partial<PenPoint> = {}): Required<PenPoint> => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0, type: 'corner', mode: 'symmetric', ...o });
 const DEFAULT_PTS = () => [P(0.05, 0.85, { type: 'curve', ox: 0.1, oy: -0.55 }), P(0.5, 0.5, { type: 'curve', ix: -0.14, iy: -0.2, ox: 0.14, oy: 0.2 }), P(0.94, 0.14, { type: 'curve', ix: -0.1, iy: 0.55 })];
 const D = { closed: false, fixedWidth: true, refW: 1100, refH: 560, arrowStart: 'none' as Arrow, arrowEnd: 'triangle' as Arrow, arrowSize: 3.5, fillOn: false, fillRule: 'nonzero' as FillRule, vStart: 0, vEnd: 100, drawIn: true };
-const cfg = (c: Config) => ({ ...D, ...c, points: (c.points ?? DEFAULT_PTS()).map((p) => ({ ...P(0, 0), ...p })) });
+const cfg = (c: Config) => ({ ...withDefaults(D, c), points: (c.points ?? DEFAULT_PTS()).map((p) => ({ ...P(0, 0), ...p })) });
 const strokeOf = (c: Config) => ({ ...STROKE, cap: 'round' as const, join: 'round' as const, ...c.strokeStyle });
 const f4 = (v: number) => +v.toFixed(4);
 const r2 = (v: number) => Math.round(v * 100) / 100;

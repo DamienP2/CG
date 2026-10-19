@@ -12,7 +12,7 @@ import { Hash } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Range, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Range, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 
 export interface Config {
@@ -85,7 +85,7 @@ const D: Required<Config> = {
   plateColor: '#160f33',
 };
 type K = Required<Config>;
-const cfg = (c: Config): K => ({ ...D, ...c }) as K;
+const cfg = (c: Config): K => withDefaults(D, c) as K;
 type CLayer = LayerOf<'counter'>;
 
 // --------------------------------------------------------------- format --

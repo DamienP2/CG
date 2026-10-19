@@ -1,5 +1,6 @@
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
+import { Boundary } from '../ui/Boundary';
 import { createContext, memo, useContext, useEffect, useReducer, type CSSProperties } from 'react';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
@@ -361,7 +362,11 @@ function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; f
   const r = useContext(LogicContext).get(layer.id) ?? resolveLayer(layer, frame, data, hold);
   const def = widgetOf(layer.type)!;
   const Render = def.Render!;
-  return <Render layer={layer as never} r={r} w={num(r.width)} h={num(r.height)} data={data} time={time} state={time.widgetState?.(layer.id)} frame={frame} hold={hold} fps={time.fps ?? 50} designer={interactive} />;
+  return (
+    <Boundary resetKey={layer}>
+      <Render layer={layer as never} r={r} w={num(r.width)} h={num(r.height)} data={data} time={time} state={time.widgetState?.(layer.id)} frame={frame} hold={hold} fps={time.fps ?? 50} designer={interactive} />
+    </Boundary>
+  );
 }
 
 const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold, interactive }: { layer: Layer; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
