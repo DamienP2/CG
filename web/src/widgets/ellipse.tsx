@@ -4,9 +4,8 @@
 import { useEffect } from 'react';
 import { Circle } from 'lucide-react';
 import { col, cssColor, num } from '../engine/evaluate';
-import { ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Bound, Btns, clamp, defineWidget, Handle, Note, Range, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
-import { FillStrokeSections, ShapeSvg, STROKE, type FillStyle, type StrokeStyle } from './shape';
+import { Bound, Btns, clamp, defineWidget, Handle, Num, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
+import { FillStrokeSections, ShapeSvg, StrokeRows, type FillStyle, type ShapeEdit, type StrokeStyle } from './shape';
 
 export interface Config {
   circle?: boolean;
@@ -86,43 +85,21 @@ export function outline(c: Config, w: number, h: number): { d: string; closed: b
   return { d: `M${cx} ${cy}L${r3(a[0])} ${r3(a[1])}` + arc + 'Z', closed: true };
 }
 
-/** Stroke group of an arc: colour, width, style and ends (the stroke is centred). */
+/** Stroke group of an arc: colour, width, style and ends (the stroke is centred, always on). */
 function ArcStroke({ layer }: { layer: Parameters<typeof FillStrokeSections>[0]['layer'] }) {
   return (
     <Section id="ellipse-arc-stroke" title="Stroke">
-      <ColorGroupRow layer={layer} prop="stroke" label="Color" />
-      <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
-      <Seg
-        label="Style"
-        path="strokeStyle.dash"
-        value={STROKE.dash}
-        options={[
-          ['solid', 'Solid'],
-          ['dashed', 'Dashes'],
-          ['dotted', 'Dots'],
-        ]}
-      />
-      <Seg
-        label="Ends"
-        path="strokeStyle.cap"
-        value={STROKE.cap}
-        options={[
-          ['butt', 'Flat'],
-          ['round', 'Round'],
-          ['square', 'Square'],
-        ]}
-      />
-      <Note>An arc stroke is centred on the outline.</Note>
+      <StrokeRows layer={layer} caps joins={false} />
     </Section>
   );
 }
 
 /** Fill / Stroke groups showing the centred stroke of older ellipses. */
-function Look({ layer }: { layer: Parameters<typeof FillStrokeSections>[0]['layer'] & Config }) {
+function Look({ layer, edit }: { layer: Parameters<typeof FillStrokeSections>[0]['layer'] & Config; edit: ShapeEdit }) {
   const b = useBound();
   return (
     <Bound obj={{ ...layer, strokeStyle: strokeOf(layer) }} set={b.set}>
-      <FillStrokeSections layer={layer} id="ellipse" />
+      <FillStrokeSections layer={layer} id="ellipse" edit={edit} />
     </Bound>
   );
 }
@@ -133,16 +110,7 @@ export default defineWidget({
   label: 'Ellipse',
   group: 'Shapes & tools',
   icon: Circle,
-  presets: [{ label: 'Circle' }, { label: 'Ellipse', patch: { circle: false, end: 360, inner: 0 } }, { label: 'Pie', patch: { end: 300, inner: 0 } }, { label: 'Ring', patch: { end: 360, inner: 55 } }, { label: 'Arc', patch: { portion: 'arc', start: 270, end: 450 } }],
-  create: () => ({
-    circle: true,
-    start: 0,
-    end: 300,
-    inner: 55,
-    fillStyle: { kind: 'linear', color2: '#ff3b5c', angle: 135 },
-    strokeStyle: { position: 'inside', cap: 'round', join: 'round' },
-    props: { width: 600, height: 600, fill: [0.486, 0.361, 1, 1], stroke: [0.98, 0.8, 0.08, 1], strokeWidth: 0 },
-  }),
+  create: () => ({ circle: true, strokeStyle: { position: 'inside' }, props: { width: 600, height: 600 } }),
   ownsLook: true,
   Render: ({ layer, r, w, h, data }) => {
     const p = outline(layer, w, h);
@@ -161,7 +129,6 @@ export default defineWidget({
   },
   Inspector: ({ layer, edit }) => {
     const k = cfg(layer);
-    const sw = sweep(layer);
     return (
       <>
         <Section id="ellipse-shape" title="Shape">
@@ -170,7 +137,6 @@ export default defineWidget({
             exposeValue={k.circle}
             label="Circle"
             value={k.circle}
-            text="Lock the proportions"
             onChange={(v) =>
               edit((l) => {
                 l.circle = v;
@@ -178,11 +144,8 @@ export default defineWidget({
               })
             }
           />
-          <Range label="Start angle" path="start" value={k.start} min={0} max={360} unit="°" />
-          <Range label="End angle" path="end" value={k.end} min={0} max={720} fmt={(v) => `${v}°${v > 360 ? ` (${v - 360}°)` : ''}`} />
-          <Note>
-            Sweep <b style={{ color: 'var(--text)' }}>{Math.round(sw)}°</b> · 0° is 12 o'clock, clockwise · an end past 360° wraps round · 360° of sweep = full ellipse.
-          </Note>
+          <Num label="Start" path="start" value={k.start} min={0} max={360} unit="°" />
+          <Num label="End" path="end" value={k.end} min={0} max={720} unit="°" />
           <Btns
             label="Quick"
             list={[
@@ -201,27 +164,19 @@ export default defineWidget({
                 l.portion = v;
                 if (v === 'arc' && !num(l.props.strokeWidth ?? 0)) {
                   l.props.strokeWidth = 28;
-                  l.props.stroke = [0.98, 0.8, 0.08, 1];
+                  if (col(l.props.stroke ?? [0, 0, 0, 0])[3] === 0) l.props.stroke = [1, 1, 1, 1];
                 }
               })
             }
             options={[
-              ['sector', 'Sector', 'Pie slice: closed through the centre'],
-              ['arc', 'Arc', 'The outline only'],
-              ['chord', 'Chord', 'Closed by a straight line'],
+              ['sector', 'Sector'],
+              ['arc', 'Arc'],
+              ['chord', 'Chord'],
             ]}
           />
-          {k.portion === 'sector' ? (
-            <>
-              <Range label="Inner radius" path="inner" value={k.inner} min={0} max={100} unit=" %" />
-              <Note>Above 0 %: a ring (full sweep) or a donut slice.</Note>
-            </>
-          ) : (
-            <Note>{k.portion === 'arc' ? 'Arc: only the stroke is drawn (fill ignored). Its width, style and ends are in Stroke.' : 'Chord: the arc closed by a straight line. Inner radius does not apply.'}</Note>
-          )}
-          <Note>Orange dots: start, end and inner radius with the mouse.</Note>
+          {k.portion === 'sector' && <Num label="Inner radius" path="inner" value={k.inner} min={0} max={100} unit="%" />}
         </Section>
-        {k.portion === 'arc' ? <ArcStroke layer={layer} /> : <Look layer={layer} />}
+        {k.portion === 'arc' ? <ArcStroke layer={layer} /> : <Look layer={layer} edit={edit} />}
       </>
     );
   },

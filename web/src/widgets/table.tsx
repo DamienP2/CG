@@ -6,8 +6,8 @@ import { Table } from 'lucide-react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { GroupRow } from '../designer/Inspector';
-import { ColorField } from '../ui/fields';
-import { Btns, clamp, Content, defineWidget, easeOut, GridEditor, Handle, hex, ListEditor, Msg, Note, Num, parseCsv, Range, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { ColorField, NumberField } from '../ui/fields';
+import { Btns, clamp, Content, defineWidget, easeOut, GridEditor, Handle, hex, ListEditor, Note, Num, parseCsv, Range, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, tw, type FitCfg, type Overflow } from './table-text';
 
 export interface Col {
@@ -433,35 +433,6 @@ const FMTS: [string, string][] = [
   ['0 %', '45 %'],
 ];
 
-export const SAMPLE: string[][] = [
-  ['Flag', 'Team', 'P', 'W', 'D', 'L', 'GD', 'Pts'],
-  ...(
-    [
-      ['AUT', 'Austria', 8, 2, 2, 4, -6, 8],
-      ['BEL', 'Belgium', 8, 3, 3, 2, 1, 12],
-      ['CRO', 'Croatia', 8, 3, 2, 3, 0, 11],
-      ['DEN', 'Denmark', 8, 3, 1, 4, -2, 10],
-      ['ENG', 'England', 8, 5, 2, 1, 9, 17],
-      ['FRA', 'France', 8, 6, 1, 1, 14, 19],
-      ['GER', 'Germany', 8, 4, 2, 2, 5, 14],
-      ['ITA', 'Italy', 8, 4, 1, 3, 2, 13],
-      ['NED', 'Netherlands', 8, 4, 3, 1, 6, 15],
-      ['POL', 'Poland', 8, 1, 3, 4, -9, 6],
-      ['POR', 'Portugal', 8, 5, 1, 2, 7, 16],
-      ['ESP', 'Spain', 8, 5, 3, 0, 12, 18],
-      ['SWE', 'Sweden', 8, 1, 1, 6, -12, 4],
-      ['SUI', 'Switzerland', 8, 2, 3, 3, -3, 9],
-    ] as (string | number)[][]
-  ).map((r) => r.map(String)),
-];
-const SAMPLE_COLS: Col[] = [
-  { src: 'Flag', label: '', type: 'image', align: 'center', w: 90, pct: 8 },
-  { src: 'Team', label: 'Team', type: 'text', align: 'left', w: 380, pct: 38 },
-  ...['P', 'W', 'D', 'L'].map((s) => ({ src: s, label: s, type: 'number' as const, align: 'center' as const, w: 90, pct: 9 })),
-  { src: 'GD', label: 'GD', type: 'number', align: 'center', w: 100, pct: 9, fmt: '+0' },
-  { src: 'Pts', label: 'Pts', type: 'number', align: 'center', w: 100, pct: 9 },
-];
-
 type TL = Config & { props: Record<string, unknown>; id: string };
 const sizeOf = (l: TL) => vnum((l.props.fontSize as number) ?? 30);
 
@@ -500,18 +471,17 @@ export default defineWidget({
   group: 'Data',
   icon: Table,
   create: () => ({
-    grid: SAMPLE.map((r) => [...r]),
-    cols: SAMPLE_COLS,
-    title: { on: true, text: 'Nations Cup · Standings' },
-    headerColOn: true,
-    headerCol: 'Team',
-    showRank: true,
-    merges: [{ on: false, row: 14, col: 4, span: 4, text: 'Under appeal' }],
-    cf: { neg: true, negColor: '#ff6b81', top3: true, top3Color: '#facc15' },
-    sortCol: 'Pts',
-    sortDir: 'desc',
-    emptyText: 'Standings available after the first match',
-    props: { width: 1200, height: 700, fontSize: 30 },
+    grid: [
+      ['Name', 'Value'],
+      ['Alpha', '1'],
+      ['Beta', '2'],
+      ['Gamma', '3'],
+    ],
+    st: { header: { bg: '#00000000', color: '#ffffffb3' }, even: { ...DST.odd } },
+    borders: { innerH: { on: false, width: 1, color: '#ffffff14' } },
+    cf: { neg: false },
+    cascade: { on: false },
+    props: { width: 1200, height: 400, fontSize: 30 },
   }),
   ownsLook: true,
   content: ['link', 'grid'],
@@ -520,56 +490,61 @@ export default defineWidget({
     return k.cascade.on || k.pageMode === 'scroll';
   },
   Render: ({ layer, r, w, data, time, state }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} />,
-  Inspector: ({ layer, data, edit }) => {
+  Inspector: ({ layer, data, edit, set }) => {
     const k = cfg(layer);
     const m = model(k, data);
-    const pages = pageCount(k, m);
     const srcOpts = [...new Set([...m.head, ...k.cols.map((c) => c.src)])].filter(Boolean).map((h) => [h, h] as [string, string]);
     const colOpts: [string, string][] = k.cols.map((c) => [c.src, c.label || c.src]);
+    const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
     return (
       <>
         <Section id="table-data" title="Data">
-          <Content label="Linked source" path="link" placeholder="{{key}} with CSV / JSON rows (optional)" />
-          {k.link.trim() ? (
-            <Note>The rows come from the linked value (CSV with a header line, or JSON: array of objects or of arrays), read each time it changes. Clear the field to type the rows by hand.</Note>
-          ) : (
-            <>
-              <Note>Type in the grid. Import CSV… pastes a CSV or a spreadsheet selection (comma, semicolon or tab). First row = column names. A cell may hold a {'{{key}}'}.</Note>
+          <Content label="Source" path="link" placeholder="{{key}}" />
+          {!k.link.trim() && (
+            <Row expose="grid" exposeValue={k.grid}>
               <GridEditor path="grid" header csv />
-            </>
+            </Row>
           )}
-          {m.unmapped.map((h) => (
-            <div key={h}>
-              <Msg level="warn">New column '{h}' in the data — not mapped, ignored on air.</Msg>
-              <Btns list={[{ label: `Map '${h}'`, cls: 'violet', onClick: () => edit((l) => void (l.cols = [...(l.cols ?? []), { src: h, label: h, type: 'number', align: 'center', w: 100, pct: 8, fmt: '0.0', on: true }])) }]} />
-            </div>
-          ))}
+          {m.unmapped.length > 0 && <Btns list={m.unmapped.map((h) => ({ label: `Map '${h}'`, cls: 'violet', onClick: () => edit((l) => void (l.cols = [...(l.cols ?? []), { src: h, label: h, type: 'number', align: 'center', w: 100, pct: 8, fmt: '0.0', on: true }])) }))} />}
         </Section>
         <Section id="table-cols" title="Columns">
-          <Note>Mapping: source column → label, content type (text, image = asset path or code, number). No column = every column of the data as text.</Note>
-          <ListEditor
-            path="cols"
-            toggle="on"
-            fields={[
-              { key: 'src', options: srcOpts.length ? srcOpts : [['', '—']], w: 84 },
-              { key: 'label', placeholder: 'Label' },
-              {
-                key: 'type',
-                options: [
-                  ['text', 'Text'],
-                  ['image', 'Image'],
-                  ['number', 'Number'],
-                ],
-                w: 84,
-              },
+          <Row expose="cols" exposeValue={k.cols}>
+            <ListEditor
+              path="cols"
+              toggle="on"
+              fields={[
+                { key: 'src', options: srcOpts.length ? srcOpts : [['', '—']], w: 84 },
+                { key: 'label', placeholder: 'Label' },
+                {
+                  key: 'type',
+                  options: [
+                    ['text', 'Text'],
+                    ['image', 'Image'],
+                    ['number', 'Number'],
+                  ],
+                  w: 84,
+                },
+              ]}
+              add={() => ({ src: m.head[0] ?? '', label: 'New', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true })}
+              addLabel="Column"
+            />
+          </Row>
+          <Seg
+            label="Width"
+            path="widthMode"
+            value={k.widthMode}
+            options={[
+              ['auto', 'Auto'],
+              ['fixed', 'px'],
+              ['percent', '%'],
             ]}
-            add={() => ({ src: m.head[0] ?? '', label: 'New', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true })}
-            addLabel="Column"
           />
-          <Note>Per column: alignment{k.widthMode !== 'auto' ? `, width (${k.widthMode === 'fixed' ? 'px' : '%'})` : ''}, number format.</Note>
-          {k.cols.map((c, i) =>
-            c.on ? (
-              <Row expose={[`cols.${i}.align`, `cols.${i}.fmt`]} exposeValue={{ [`cols.${i}.align`]: c.align, [`cols.${i}.fmt`]: c.fmt }} key={i} label={c.label || c.src}>
+          {k.cols.map((c, i) => {
+            if (!c.on) return null;
+            const wk = k.widthMode === 'fixed' ? 'w' : 'pct';
+            const paths = [`cols.${i}.align`, ...(k.widthMode !== 'auto' ? [`cols.${i}.${wk}`] : []), ...(c.type === 'number' ? [`cols.${i}.fmt`] : [])];
+            return (
+              <Row expose={paths} exposeValue={{ [`cols.${i}.align`]: c.align, [`cols.${i}.${wk}`]: c[wk], [`cols.${i}.fmt`]: c.fmt }} key={i} label={c.label || c.src}>
                 <div style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0 }}>
                   <select style={{ flex: 1, minWidth: 0 }} value={c.align} onChange={(e) => edit((l) => void (l.cols![i] = { ...l.cols![i], align: e.target.value as Col['align'] }))}>
                     <option value="left">Left</option>
@@ -577,15 +552,9 @@ export default defineWidget({
                     <option value="right">Right</option>
                   </select>
                   {k.widthMode !== 'auto' && (
-                    <input
-                      type="number"
-                      min={0}
-                      style={{ width: 64, flex: 'none' }}
-                      title={k.widthMode === 'fixed' ? 'px' : '%'}
-                      value={k.widthMode === 'fixed' ? c.w : c.pct}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      onChange={(e) => e.target.value !== '' && edit((l) => void (l.cols![i] = { ...l.cols![i], [k.widthMode === 'fixed' ? 'w' : 'pct']: +e.target.value }), `colw-${layer.id}-${i}`)}
-                    />
+                    <span className="pp-field" style={{ width: 84, flex: 'none' }}>
+                      <NumberField value={c[wk]} min={0} suffix={k.widthMode === 'fixed' ? 'px' : '%'} onChange={(v) => edit((l) => void (l.cols![i] = { ...l.cols![i], [wk]: v }), `colw-${layer.id}-${i}`)} />
+                    </span>
                   )}
                   {c.type === 'number' && (
                     <select style={{ flex: 1, minWidth: 0 }} value={c.fmt} onChange={(e) => edit((l) => void (l.cols![i] = { ...l.cols![i], fmt: e.target.value }))}>
@@ -598,50 +567,37 @@ export default defineWidget({
                   )}
                 </div>
               </Row>
-            ) : null,
-          )}
-          {m.missing.length > 0 && <Msg level="error">Mapped column(s) not in the data: {m.missing.join(', ')} — not shown.</Msg>}
+            );
+          })}
         </Section>
         <Section id="table-structure" title="Structure">
-          <Toggle label="Title bar" path="title.on" value={k.title.on} text="Show a title above the table" />
-          {k.title.on && <Content label="Title" path="title.text" value={k.title.text} />}
-          <Toggle label="Header row" path="headerRow" value={k.headerRow} text="Column names on top" />
-          <Toggle label="Header column" path="headerColOn" value={k.headerColOn} text="Style one column as a header" />
+          <Toggle label="Title" path="title.on" value={k.title.on} />
+          {k.title.on && <Content label="Text" path="title.text" value={k.title.text} />}
+          <Toggle label="Header row" path="headerRow" value={k.headerRow} />
+          <Toggle label="Header column" path="headerColOn" value={k.headerColOn} />
           {k.headerColOn && <Select label="Column" path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />}
-          <Toggle label="Rank" path="showRank" value={k.showRank} text="Add a # column (display order)" />
-          <Note>Merge cells: row (rank on the whole table), first column (1 = left), number of cells, optional text.</Note>
-          <ListEditor
-            path="merges"
-            toggle="on"
-            fields={[
-              { key: 'row', placeholder: 'Row', w: 46, num: true },
-              { key: 'col', placeholder: 'Col', w: 46, num: true },
-              { key: 'span', placeholder: 'Cells', w: 50, num: true },
-              { key: 'text', placeholder: 'Text (optional)' },
-            ]}
-            add={() => ({ on: true, row: 2, col: 3, span: 2, text: '' })}
-            addLabel="Merge cells"
-          />
+          <Toggle label="Rank" path="showRank" value={k.showRank} />
+          <Toggle label="Merges" value={k.merges.length > 0} onChange={(v) => set('merges', v ? [{ on: true, row: 2, col: 1, span: 2, text: '' }] : [])} />
+          {k.merges.length > 0 && (
+            <Row expose="merges" exposeValue={k.merges}>
+              <ListEditor
+                path="merges"
+                toggle="on"
+                fields={[
+                  { key: 'row', placeholder: 'Row', w: 46, num: true },
+                  { key: 'col', placeholder: 'Col', w: 46, num: true },
+                  { key: 'span', placeholder: 'Cells', w: 50, num: true },
+                  { key: 'text', placeholder: 'Text' },
+                ]}
+                add={() => ({ on: true, row: 2, col: 1, span: 2, text: '' })}
+                addLabel="Merge"
+              />
+            </Row>
+          )}
         </Section>
-        <Section id="table-dims" title="Dimensions">
-          <Seg
-            label="Column width"
-            path="widthMode"
-            value={k.widthMode}
-            options={[
-              ['auto', 'Auto'],
-              ['fixed', 'Fixed px'],
-              ['percent', '%'],
-            ]}
-          />
-          <Note>{k.widthMode === 'auto' ? 'Auto: from the longest content; text columns share the rest of the width.' : k.widthMode === 'fixed' ? 'Fixed: the px value of each column (Columns).' : 'Percent: share of the width after the # column (Columns).'}</Note>
-          <Range label="Row height" path="rowH" value={k.rowH} min={30} max={160} unit=" px" />
-          <Range label="Padding" path="pad" value={k.pad} min={0} max={50} unit=" px" />
-          <Range label="Cell spacing" path="gap" value={k.gap} min={0} max={24} unit=" px" />
-          <GroupRow layer={layer as never} spec={{ label: 'Text size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <Range label="Header size" path="headSize" value={k.headSize} min={12} max={48} unit=" px" />
-        </Section>
-        <Section id="table-overflow" title="Text overflow">
+        <Section id="table-text" title="Text">
+          <GroupRow layer={layer as never} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
+          {k.headerRow && <Num label="Header size" path="headSize" value={k.headSize} min={6} max={200} unit="px" />}
           <Seg
             label="Too long"
             path="overflow"
@@ -649,28 +605,40 @@ export default defineWidget({
             options={[
               ['shrink', 'Shrink'],
               ['squeeze', 'Squeeze'],
-              ['ellipsis', 'Ellipsis …'],
+              ['ellipsis', '…'],
             ]}
           />
-          {k.overflow === 'shrink' && <Range label="Min size" path="minSize" value={k.minSize} min={8} max={40} unit=" px" />}
-          {k.overflow !== 'ellipsis' && <Range label="Min width" path="minSqueeze" value={k.minSqueeze} min={40} max={100} unit=" %" />}
-          <Note>Same chain as the Text widget: shrink down to the min size, then squeeze down to the min width, then ellipsis.</Note>
+          {k.overflow === 'shrink' && <Num label="Min size" path="minSize" value={k.minSize} min={4} max={200} unit="px" />}
+          {k.overflow !== 'ellipsis' && <Num label="Min width" path="minSqueeze" value={k.minSqueeze} min={20} max={100} unit="%" />}
         </Section>
-        <Section id="table-styles" title="Styles">
-          <Note>Background · text colour per level.</Note>
-          <PairRow label="Header" path="st.header" />
-          <PairRow label="Header column" path="st.hcol" />
-          <PairRow label="Odd rows" path="st.odd" />
-          <PairRow label="Even rows" path="st.even" />
-          <PairRow label="Highlighted" path="st.hl" />
-          <PairRow label="Top 3" path="st.top3" />
-          <ColorPickRow label="Table bg" path="st.tableBg" value={k.st.tableBg} />
-          <Toggle label="Single cell" path="cell.on" value={k.cell.on} text="Style one cell" />
+        <Section id="table-cells" title="Cells">
+          <Num label="Row height" path="rowH" value={k.rowH} min={30} max={160} unit="px" />
+          <Num label="Padding" path="pad" value={k.pad} min={0} max={200} unit="px" />
+          <Num label="Spacing" path="gap" value={k.gap} min={0} max={100} unit="px" />
+        </Section>
+        <Section id="table-styles" title="Colors">
+          <ColorPickRow label="Background" path="st.tableBg" value={k.st.tableBg} />
+          <PairRow label="Rows" path="st.odd" />
+          <Toggle label="Zebra" value={zebra} onChange={(v) => set('st.even', v ? { ...(k.st.odd.bg === DST.even.bg ? DST.odd : DST.even), color: k.st.odd.color } : { ...k.st.odd })} />
+          {zebra && <PairRow label="Even rows" path="st.even" />}
+          {k.headerRow && <PairRow label="Header" path="st.header" />}
+          {k.headerColOn && <PairRow label="Header col." path="st.hcol" />}
+          <PairRow label="Highlight" path="st.hl" />
+          <Toggle label="Negative" path="cf.neg" value={k.cf.neg} />
+          {k.cf.neg && <ColorPickRow label="Color" path="cf.negColor" value={k.cf.negColor} />}
+          <Toggle label="Top 3" path="cf.top3" value={k.cf.top3} />
+          {k.cf.top3 && (
+            <>
+              <PairRow label="Rows" path="st.top3" />
+              <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />
+            </>
+          )}
+          <Toggle label="One cell" path="cell.on" value={k.cell.on} />
           {k.cell.on && (
             <>
               <Num label="Row" path="cell.row" value={k.cell.row} min={1} />
               <Num label="Column" path="cell.col" value={k.cell.col} min={1} />
-              <PairRow label="Cell" path="cell" />
+              <PairRow label="Colors" path="cell" />
             </>
           )}
         </Section>
@@ -678,64 +646,57 @@ export default defineWidget({
           {(
             [
               ['outer', 'Outer'],
-              ['innerH', 'Inner horiz.'],
-              ['innerV', 'Inner vert.'],
+              ['innerH', 'Rows'],
+              ['innerV', 'Columns'],
             ] as const
           ).map(([b, lab]) => (
             <div key={b}>
-              <Toggle label={lab} path={`borders.${b}.on`} value={k.borders[b].on} text="Show" />
+              <Toggle label={lab} path={`borders.${b}.on`} value={k.borders[b].on} />
               {k.borders[b].on && (
                 <>
-                  <Range label="Width" path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={12} unit=" px" />
-                  <ColorPickRow label="Colour" path={`borders.${b}.color`} value={k.borders[b].color} />
+                  <Num label="Width" path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={50} unit="px" />
+                  <ColorPickRow label="Color" path={`borders.${b}.color`} value={k.borders[b].color} />
                 </>
               )}
             </div>
           ))}
         </Section>
-        <Section id="table-cf" title="Conditional formatting" closed>
-          <Toggle label="Negative" path="cf.neg" value={k.cf.neg} text="Negative numbers in colour" />
-          {k.cf.neg && <ColorPickRow label="Colour" path="cf.negColor" value={k.cf.negColor} />}
-          <Toggle label="Top 3" path="cf.top3" value={k.cf.top3} text="Highlight the first three rows" />
-          {k.cf.top3 && <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />}
-        </Section>
         <Section id="table-sort" title="Sort" closed>
           <Select label="Column" path="sortCol" value={k.sortCol} options={[['', 'Data order'], ...colOpts]} />
-          <Seg
-            label="Direction"
-            path="sortDir"
-            value={k.sortDir}
-            options={[
-              ['desc', '↓ Descending'],
-              ['asc', '↑ Ascending'],
-            ]}
-          />
+          {!!k.sortCol && (
+            <Seg
+              label="Direction"
+              path="sortDir"
+              value={k.sortDir}
+              options={[
+                ['desc', '↓', 'Descending'],
+                ['asc', '↑', 'Ascending'],
+              ]}
+            />
+          )}
         </Section>
-        <Section id="table-pages" title="Pagination" closed>
-          <Range label="Rows per page" path="perPage" value={k.perPage} min={1} max={20} />
+        <Section id="table-pages" title="Pages" closed>
+          <Num label="Rows per page" path="perPage" value={k.perPage} min={1} max={99} />
           <Seg
             label="Mode"
             path="pageMode"
             value={k.pageMode}
             options={[
-              ['pages', 'By pages'],
-              ['scroll', 'Continuous scroll'],
+              ['pages', 'Pages'],
+              ['scroll', 'Scroll'],
             ]}
           />
           {k.pageMode === 'pages' ? (
             <>
-              <Toggle label="Header" path="repeatHeader" value={k.repeatHeader} text="Repeat the header on every page" />
-              <Toggle label="Indicator" path="indicator" value={k.indicator} text='Show "page 2/4" on air' />
+              <Toggle label="Repeat header" path="repeatHeader" value={k.repeatHeader} />
+              <Toggle label="Indicator" path="indicator" value={k.indicator} />
             </>
           ) : (
-            <Range label="Speed" path="scrollSpeed" value={k.scrollSpeed} min={10} max={200} unit=" px/s" />
+            <Num label="Speed" path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />
           )}
-          <Note>
-            {m.rows.length} rows → {pages} page(s).
-          </Note>
         </Section>
-        <Section id="table-anim" title="Row animation" closed>
-          <Toggle label="Cascade" path="cascade.on" value={k.cascade.on} text="Rows appear one after the other" />
+        <Section id="table-anim" title="Cascade" closed>
+          <Toggle label="Cascade" path="cascade.on" value={k.cascade.on} />
           {k.cascade.on && (
             <>
               <Seg
@@ -748,20 +709,19 @@ export default defineWidget({
                   ['flip', 'Flip'],
                 ]}
               />
-              <Range label="Offset" path="cascade.offset" value={k.cascade.offset} min={0} max={300} step={5} unit=" ms" />
-              <Range label="Duration" path="cascade.dur" value={k.cascade.dur} min={100} max={1500} step={10} unit=" ms" />
+              <Num label="Offset" path="cascade.offset" value={k.cascade.offset} min={0} max={5000} step={5} unit="ms" />
+              <Num label="Duration" path="cascade.dur" value={k.cascade.dur} min={10} max={5000} step={10} unit="ms" />
             </>
           )}
-          <Note>The cascade plays at the In and at each page change.</Note>
         </Section>
-        <Section id="table-empty" title="Empty data" closed>
+        <Section id="table-empty" title="Empty" closed>
           <Seg
             label="No rows"
             path="emptyMode"
             value={k.emptyMode}
             options={[
-              ['message', 'Fallback message'],
-              ['hide', 'Hide the table'],
+              ['message', 'Message'],
+              ['hide', 'Hide'],
             ]}
           />
           {k.emptyMode === 'message' && <Text label="Message" path="emptyText" value={k.emptyText} />}

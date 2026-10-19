@@ -68,7 +68,7 @@ impl Default for Config {
             shape: QuadShape::Rect,
             lock_ratio: false,
             per_corner: false,
-            corners: [60.0, 0.0, 60.0, 0.0],
+            corners: [0.0, 0.0, 0.0, 0.0],
             skew_unit: SkewUnit::Px,
             skew_px: 120.0,
             skew_deg: 15.0,

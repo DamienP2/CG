@@ -3,7 +3,7 @@
 import { Square } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import { GroupRow } from '../designer/Inspector';
-import { clamp, defineWidget, Handle, Note, Range, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
+import { clamp, defineWidget, Handle, Num, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillStyle, type Pt, type StrokeStyle } from './shape';
 
 export interface Config {
@@ -31,7 +31,7 @@ const D: Required<Omit<Config, 'fillStyle' | 'strokeStyle'>> = {
   shape: 'rect',
   lockRatio: false,
   perCorner: false,
-  corners: [60, 0, 60, 0],
+  corners: [0, 0, 0, 0],
   skewUnit: 'px',
   skewPx: 120,
   skewDeg: 15,
@@ -116,8 +116,7 @@ export default defineWidget({
   label: 'Quad',
   group: 'Shapes & tools',
   icon: Square,
-  presets: [{ label: 'Rectangle' }, { label: 'Diamond', patch: { shape: 'diamond' } }, { label: 'Parallelogram', patch: { shape: 'parallelogram' } }, { label: 'Trapezoid', patch: { shape: 'trapezoid' } }],
-  create: () => ({ props: { width: 500, height: 120, fill: [0.486, 0.361, 1, 1], cornerRadius: 0 } }),
+  create: () => ({ props: { width: 500, height: 120 } }),
   ownsLook: true,
   Render: ({ layer, r, w, h, data }) => <ShapeSvg d={outline(layer, w, h, num(r.cornerRadius))} w={w} h={h} r={r} fill={layer.fillStyle} stroke={layer.strokeStyle} data={data} />,
   Inspector: ({ layer, edit }) => {
@@ -141,7 +140,6 @@ export default defineWidget({
             exposeValue={!!k.lockRatio}
             label="Square"
             value={k.lockRatio}
-            text="Lock the proportions"
             onChange={(v) =>
               edit((l) => {
                 l.lockRatio = v || undefined;
@@ -151,27 +149,26 @@ export default defineWidget({
           />
           {k.shape === 'rect' && (
             <>
-              <Toggle label="Corners" path="perCorner" value={false} text="One radius per corner" />
+              <Toggle label="Per corner" path="perCorner" value={false} />
               {!k.perCorner ? (
                 <GroupRow layer={layer} spec={{ label: 'Radius', props: ['cornerRadius'], min: 0, suffix: 'px' }} />
               ) : (
-                ['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((label, i) => <Range key={label} label={label} path={`corners.${i}`} value={k.corners[i]} min={0} max={600} unit=" px" />)
+                ['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((label, i) => <Num key={label} label={label} path={`corners.${i}`} value={k.corners[i]} min={0} max={600} unit="px" />)
               )}
             </>
           )}
           {k.shape === 'parallelogram' && (
             <>
               <Seg
-                label="Slant in"
+                label="Slant"
                 path="skewUnit"
                 value={k.skewUnit}
                 options={[
-                  ['px', 'Offset px'],
-                  ['deg', 'Angle °'],
+                  ['px', 'px'],
+                  ['deg', '°'],
                 ]}
               />
-              {k.skewUnit === 'px' ? <Range label="Offset" path="skewPx" value={k.skewPx} min={-1000} max={1000} unit=" px" /> : <Range label="Angle" path="skewDeg" value={k.skewDeg} min={-80} max={80} unit="°" />}
-              <Note>The sign gives the direction; beyond what keeps the sides from crossing, it is capped.</Note>
+              {k.skewUnit === 'px' ? <Num label="Offset" path="skewPx" value={k.skewPx} min={-1000} max={1000} unit="px" /> : <Num label="Angle" path="skewDeg" value={k.skewDeg} min={-80} max={80} unit="°" />}
             </>
           )}
           {k.shape === 'trapezoid' && (
@@ -181,24 +178,23 @@ export default defineWidget({
                 path="trapMode"
                 value={k.trapMode}
                 options={[
-                  ['percent', '% of the bottom'],
-                  ['offsets', 'Left / right offsets'],
+                  ['percent', 'Width %'],
+                  ['offsets', 'Offsets'],
                 ]}
               />
               {k.trapMode === 'percent' ? (
-                <Range label="Top width" path="trapTop" value={k.trapTop} min={0} max={100} unit=" %" />
+                <Num label="Top width" path="trapTop" value={k.trapTop} min={0} max={100} unit="%" />
               ) : (
                 <>
-                  <Range label="Left offset" path="trapLeft" value={k.trapLeft} min={0} max={2000} unit=" px" />
-                  <Range label="Right offset" path="trapRight" value={k.trapRight} min={0} max={2000} unit=" px" />
+                  <Num label="Left offset" path="trapLeft" value={k.trapLeft} min={0} max={2000} unit="px" />
+                  <Num label="Right offset" path="trapRight" value={k.trapRight} min={0} max={2000} unit="px" />
                 </>
               )}
             </>
           )}
-          {k.shape !== 'rect' && <Range label="Round corners" path="vertexRound" value={k.vertexRound} min={0} max={300} unit=" px" />}
-          <Note>Orange dots on the stage set the radius, the slant or the offsets with the mouse.</Note>
+          {k.shape !== 'rect' && <Num label="Radius" path="vertexRound" value={k.vertexRound} min={0} max={300} unit="px" />}
         </Section>
-        <FillStrokeSections layer={layer} id="quad" />
+        <FillStrokeSections layer={layer} id="quad" edit={edit} />
       </>
     );
   },

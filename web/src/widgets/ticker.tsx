@@ -7,7 +7,7 @@ import { ArrowLeftRight } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { FontControls, GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, Range, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, clamp, ColorPick, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
 
 export interface Item {
@@ -575,16 +575,6 @@ function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; 
 }
 
 // ----------------------------------------------------------- inspector --
-const Q0: Item[] = [
-  { cat: 'URGENT', text: 'Storm warning upgraded to red for the north-west coast from 6 pm', on: true },
-  { cat: '', text: 'Parliament adopts the 2027 budget after a 14-hour session', on: true },
-  { cat: 'SPORT', text: 'Ligue 1: Lyon beat Nantes 3–1 and move up to third', on: true },
-  { cat: 'ECONOMY', text: 'CAC 40 closes up 0.8 % at 8,214 points', on: true },
-  { cat: 'WEATHER', text: 'Tomorrow: sunny spells in the south, up to 21 °C', on: true },
-  { cat: '', text: 'Rail strike: two trains out of three expected on Monday', on: true },
-  { cat: 'SPORT', text: 'Tennis: semi-final tonight at 8 pm on our channel', on: false },
-];
-
 function warningsOf(l: TL, data: Data, state: unknown, W: number, H: number): Warning[] {
   const k = cfg(l);
   const st = (state ?? {}) as State;
@@ -609,33 +599,16 @@ export default defineWidget({
   label: 'Ticker',
   group: 'Data',
   icon: ArrowLeftRight,
-  presets: [{ label: 'Ticker' }, { label: 'Flip ticker', patch: { mode: 'flip' } }, { label: 'Roll ticker', patch: { mode: 'roll' } }],
   create: () => ({
-    text: '',
+    text: 'First headline\nSecond headline',
     separator: '—',
     speed: 140,
     fontFamily: 'Inter',
-    fontWeight: 800,
+    fontWeight: 700,
     align: 'left',
     verticalAlign: 'middle',
     uppercase: false,
-    items: Q0.map((x) => ({ ...x })),
-    sepType: 'symbol',
-    sepSymbol: '●',
-    sepColor: '#ff3b5c',
-    cats: [
-      { name: 'URGENT', bg: '#ff3b5c', color: '#ffffff', text: '#ffb3c0' },
-      { name: 'SPORT', bg: '#22c55e', color: '#04140a', text: '' },
-      { name: 'ECONOMY', bg: '#38bdf8', color: '#04121c', text: '' },
-      { name: 'WEATHER', bg: '#f59e0b', color: '#241500', text: '' },
-    ],
-    title: { on: true, text: 'INFO', bg: '#ff3b5c', color: '#ffffff', w: 190 },
-    barBg: '#0f1222',
-    spacing: 70,
-    fade: true,
-    fadeW: 90,
-    emptyText: 'More news in a moment',
-    startFull: true,
+    spacing: 40,
     props: { width: 1920, height: 80, fontSize: 34, fill: [1, 1, 1, 1] },
   }),
   ownsLook: true,
@@ -646,75 +619,11 @@ export default defineWidget({
     const l = layer as unknown as TL;
     const k = cfg(l);
     const cats: [string, string][] = [['', '—'], ...k.cats.map((c) => [c.name, c.name] as [string, string])];
-    const sp = l.speed ?? 140;
-    const h = num(l.props.height as number) || 80;
     return (
       <>
-        <Section id="ticker-mode" title="Mode & motion">
-          <Seg
-            label="Mode"
-            path="mode"
-            value={k.mode}
-            options={[
-              ['crawl', 'Crawl ⇠', 'Horizontal, continuous'],
-              ['roll', 'Roll ⇡', 'Vertical, line by line'],
-              ['flip', 'Flip ⧉', 'One item at a time'],
-            ]}
-          />
-          {k.mode === 'crawl' && (
-            <Seg
-              label="Direction"
-              path="dir"
-              value={k.dir}
-              options={[
-                ['left', '← Right to left'],
-                ['right', '→ Left to right'],
-              ]}
-            />
-          )}
-          {k.mode === 'roll' && (
-            <Seg
-              label="Direction"
-              path="rollDir"
-              value={k.rollDir}
-              options={[
-                ['up', '↑ Up'],
-                ['down', '↓ Down'],
-              ]}
-            />
-          )}
-          <Range label={k.mode === 'flip' ? 'Scroll speed' : 'Speed'} path="speed" value={sp} min={10} max={800} step={5} unit=" px/s" />
-          {k.mode !== 'crawl' && <Range label={k.mode === 'flip' ? 'Per item' : 'Hold per line'} path="itemDur" value={k.itemDur} min={1} max={20} step={0.5} fmt={(v) => `${v.toFixed(1)} s`} />}
-          {k.mode === 'flip' && (
-            <>
-              <Seg
-                label="Transition"
-                path="trans"
-                value={k.trans}
-                options={[
-                  ['slide', 'Slide up'],
-                  ['push', 'Push'],
-                  ['fade', 'Fade'],
-                  ['flip', 'Flip 3D'],
-                ]}
-              />
-              <Range label="Transition" path="transDur" value={k.transDur} min={0.1} max={2} step={0.05} fmt={(v) => `${v.toFixed(2)} s`} />
-              <Note>An item longer than the zone scrolls within its slot (after a short hold).</Note>
-            </>
-          )}
-          {k.mode === 'crawl' && <Toggle label="At the In" path="startFull" value={k.startFull} text="Zone already full (else enters from the edge)" />}
-          <Note>
-            {k.mode === 'crawl'
-              ? `Constant speed whatever the item length: ${sp} px/s = ${(sp / 25).toFixed(2)} px/frame at 25 fps. Position computed from the clock, never by increments.`
-              : k.mode === 'roll'
-                ? `Line change: ${(h / sp).toFixed(2)} s at ${sp} px/s, then ${k.itemDur} s hold.`
-                : `${k.itemDur} s per item, ${k.transDur} s transition.`}
-          </Note>
-        </Section>
-        <Section id="ticker-items" title="Items">
+        <Section id="ticker-items" title="Content">
           {k.items.length ? (
-            <>
-              <Note>Items of the list (the Operator edits its own queue, seeded from these). A text may hold a {'{{key}}'}: a value of several lines or a JSON array gives several items.</Note>
+            <Row expose="items" exposeValue={k.items}>
               <ListEditor
                 path="items"
                 toggle="on"
@@ -725,19 +634,43 @@ export default defineWidget({
                 add={() => ({ cat: '', text: 'New item', on: true })}
                 addLabel="Item"
               />
-            </>
+            </Row>
           ) : (
             <>
-              <Content label="Lines" path="text" multiline placeholder="One item per line" />
-              <Btns list={[{ label: 'Convert to items (categories, on / off)', cls: 'violet', onClick: () => set('items', layerItems(l)) }]} />
+              <Content path="text" multiline placeholder="One item per line" />
+              <Btns list={[{ label: 'Items', title: 'Convert to items (categories, on / off)', onClick: () => set('items', layerItems(l)) }]} />
+            </>
+          )}
+          <Toggle label="Title" path="title.on" value={k.title.on} />
+          {k.title.on && (
+            <>
+              <Content label="Text" path="title.text" value={k.title.text} />
+              <ColorPick label="Background" path="title.bg" value={k.title.bg} />
+              <ColorPick label="Color" path="title.color" value={k.title.color} />
+              <Num label="Width" path="title.w" value={k.title.w} min={80} max={500} unit="px" />
             </>
           )}
         </Section>
+        <Section id="ticker-cats" title="Categories" closed>
+          <Row expose="cats" exposeValue={k.cats}>
+            <ListEditor
+              path="cats"
+              fields={[
+                { key: 'name', placeholder: 'Name' },
+                { key: 'bg', color: true, w: 40 },
+                { key: 'color', color: true, w: 40 },
+                { key: 'text', color: true, w: 40 },
+              ]}
+              add={() => ({ name: 'NEW', bg: '#7c5cff', color: '#ffffff', text: '' })}
+              addLabel="Category"
+            />
+          </Row>
+        </Section>
         <Section id="ticker-look" title="Look">
-          <ColorPick label="Bar" path="barBg" value={k.barBg || '#00000000'} />
           <FontControls layer={layer as never} set={set} />
           <GroupRow layer={layer as never} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <ColorGroupRow layer={layer as never} prop="fill" label="Text" />
+          <ColorGroupRow layer={layer as never} prop="fill" label="Color" />
+          <Num label="Spacing" path="spacing" value={k.spacing} min={0} max={300} unit="px" />
           <Seg
             label="Separator"
             path="sepType"
@@ -751,65 +684,87 @@ export default defineWidget({
           />
           {k.sepType === 'text' && <Text label="Text" path="separator" value={l.separator} />}
           {k.sepType === 'symbol' && <Seg label="Symbol" path="sepSymbol" value={k.sepSymbol} options={['●', '◆', '▶', '■', '★', '|', '/']} />}
-          {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label="Sep. colour" path="sepColor" value={k.sepColor || '#ffffff'} />}
+          {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label="Sep. color" path="sepColor" value={k.sepColor || '#ffffff'} />}
           {k.sepType === 'image' && (
             <Row expose="sepImage" exposeValue={k.sepImage} label="Logo">
               <AssetPicker value={k.sepImage} onChange={(v) => set('sepImage', v)} />
             </Row>
           )}
+          <Toggle label="Bar" value={!!k.barBg} onChange={(v) => set('barBg', v ? '#0f1222' : '')} />
+          {!!k.barBg && <ColorPick label="Color" path="barBg" value={k.barBg} />}
+          <Toggle label="Edge fade" path="fade" value={k.fade} />
+          {k.fade && <Num label="Width" path="fadeW" value={k.fadeW} min={10} max={300} unit="px" />}
         </Section>
-        <Section id="ticker-cats" title="Categories" closed>
-          <Note>Each category has its own chip (background · text) and an optional item text colour.</Note>
-          <ListEditor
-            path="cats"
-            fields={[
-              { key: 'name', placeholder: 'Name' },
-              { key: 'bg', color: true, w: 40 },
-              { key: 'color', color: true, w: 40 },
-              { key: 'text', color: true, w: 40 },
+        <Section id="ticker-mode" title="Motion">
+          <Seg
+            label="Mode"
+            path="mode"
+            value={k.mode}
+            options={[
+              ['crawl', 'Crawl', 'Horizontal, continuous'],
+              ['roll', 'Roll', 'Vertical, line by line'],
+              ['flip', 'Flip', 'One item at a time'],
             ]}
-            add={() => ({ name: 'NEW', bg: '#7c5cff', color: '#ffffff', text: '' })}
-            addLabel="Category"
           />
-        </Section>
-        <Section id="ticker-title" title="Title block">
-          <Toggle label="Title" path="title.on" value={k.title.on} text="Fixed block on the left" />
-          {k.title.on && (
+          {k.mode === 'crawl' && (
+            <Seg
+              label="Direction"
+              path="dir"
+              value={k.dir}
+              options={[
+                ['left', '←', 'Right to left'],
+                ['right', '→', 'Left to right'],
+              ]}
+            />
+          )}
+          {k.mode === 'roll' && (
+            <Seg
+              label="Direction"
+              path="rollDir"
+              value={k.rollDir}
+              options={[
+                ['up', '↑', 'Up'],
+                ['down', '↓', 'Down'],
+              ]}
+            />
+          )}
+          <Num label="Speed" path="speed" value={l.speed ?? 140} min={10} max={5000} step={5} unit="px/s" />
+          {k.mode !== 'crawl' && <Num label={k.mode === 'flip' ? 'Per item' : 'Hold'} path="itemDur" value={k.itemDur} min={k.mode === 'flip' ? 0.5 : 0} max={60} step={0.5} precision={1} unit="s" />}
+          {k.mode === 'flip' && (
             <>
-              <Content label="Text" path="title.text" value={k.title.text} />
-              <ColorPick label="Background" path="title.bg" value={k.title.bg} />
-              <ColorPick label="Text colour" path="title.color" value={k.title.color} />
-              <Range label="Width" path="title.w" value={k.title.w} min={80} max={500} unit=" px" />
+              <Seg
+                label="Transition"
+                path="trans"
+                value={k.trans}
+                options={[
+                  ['slide', 'Slide'],
+                  ['push', 'Push'],
+                  ['fade', 'Fade'],
+                  ['flip', 'Flip'],
+                ]}
+              />
+              <Num label="Duration" path="transDur" value={k.transDur} min={0.1} max={2} step={0.05} precision={2} unit="s" />
             </>
           )}
-        </Section>
-        <Section id="ticker-space" title="Spacing & edges" closed>
-          <Range label="Spacing" path="spacing" value={k.spacing} min={0} max={300} unit=" px" />
-          <Toggle label="Edge fade" path="fade" value={k.fade} text={k.mode === 'crawl' ? 'Fade left and right' : 'Fade top and bottom'} />
-          {k.fade && <Range label="Fade width" path="fadeW" value={k.fadeW} min={10} max={300} unit=" px" />}
-        </Section>
-        <Section id="ticker-end" title="End of list" closed>
+          {k.mode === 'crawl' && <Toggle label="Start full" path="startFull" value={k.startFull} />}
           <Seg
-            label="At the end"
+            label="End"
             path="end"
             value={k.end}
             options={[
-              ['loop', 'Loop ∞'],
-              ['passes', 'N passes'],
+              ['loop', 'Loop'],
+              ['passes', 'Passes'],
               ['stop', 'Stop'],
             ]}
           />
           {k.end === 'passes' && <Num label="Passes" path="passes" value={k.passes} min={1} max={99} />}
-          <Note>A pass = the whole queue once. After the last pass the zone empties (the bar stays until OUT).</Note>
-        </Section>
-        <Section id="ticker-empty" title="Empty queue" closed>
           <Seg
-            label="Nothing to show"
+            label="If empty"
             path="emptyMode"
             value={k.emptyMode}
             options={[
-              ['message', 'Fallback message'],
-              ['hide', 'Hide the ticker'],
+              ['message', 'Message'],
+              ['hide', 'Hide'],
             ]}
           />
           {k.emptyMode === 'message' && <Text label="Message" path="emptyText" value={k.emptyText} />}

@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Pentagon } from 'lucide-react';
 import { useApp } from '../store';
 import { num } from '../engine/evaluate';
-import { Btns, clamp, defineWidget, Handle, Note, Range, Row, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
+import { Btns, clamp, defineWidget, Handle, Num, Row, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillRule, type FillStyle, type Pt, type StrokeStyle } from './shape';
 
 export interface Config {
@@ -305,8 +305,7 @@ export default defineWidget({
   label: 'Polygon',
   group: 'Shapes & tools',
   icon: Pentagon,
-  presets: [{ label: 'Hexagon' }, { label: 'Star', patch: { star: true, sides: 5, inner: 45 } }, { label: 'Triangle', patch: { mode: 'triangle' } }, { label: 'Free polygon', patch: { mode: 'free' } }],
-  create: () => ({ strokeStyle: { position: 'inside' }, props: { width: 600, height: 600, fill: [0.486, 0.361, 1, 1], stroke: [1, 1, 1, 1], strokeWidth: 10 } }),
+  create: () => ({ props: { width: 600, height: 600 } }),
   ownsLook: true,
   Render: ({ layer, r, w, h, data }) => {
     const k = cfg(layer);
@@ -338,11 +337,10 @@ export default defineWidget({
           />
           {k.mode === 'regular' && (
             <>
-              <Range label="Sides" path="sides" value={k.sides} min={3} max={64} />
-              <Range label="Start angle" path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
-              <Toggle label="Star" path="star" value={k.star} text="Alternate outer and inner points" />
-              {k.star && <Range label="Inner radius" path="inner" value={k.inner} min={1} max={100} unit=" %" />}
-              <Note>0° puts the first vertex at the top. Orange dots: drag the start angle and the inner radius.</Note>
+              <Num label="Sides" path="sides" value={k.sides} min={3} max={64} />
+              <Num label="Rotation" path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
+              <Toggle label="Star" path="star" value={k.star} />
+              {k.star && <Num label="Inner radius" path="inner" value={k.inner} min={1} max={100} unit="%" />}
             </>
           )}
           {k.mode === 'triangle' && (
@@ -358,31 +356,28 @@ export default defineWidget({
                 ]}
               />
               <Seg
-                label="Points to"
+                label="Direction"
                 path="triDir"
                 value={k.triDir}
                 options={[
-                  ['up', '▲ Up'],
-                  ['down', '▼ Down'],
-                  ['left', '◀ Left'],
-                  ['right', '▶ Right'],
+                  ['up', '▲', 'Up'],
+                  ['down', '▼', 'Down'],
+                  ['left', '◀', 'Left'],
+                  ['right', '▶', 'Right'],
                 ]}
               />
-              <Note>{k.tri === 'equilateral' ? 'Equilateral keeps its true proportions: the largest one that fits the box, centred.' : 'Fills the box: resize the box to change the proportions.'}</Note>
             </>
           )}
-          {k.mode !== 'free' && <Btns list={[{ label: 'Edit as free polygon', cls: 'ghost', title: 'Copies the current vertices into a free polygon', onClick: toFree }]} />}
+          {k.mode !== 'free' && <Btns list={[{ label: 'Edit as free', cls: 'ghost', title: 'Copy these vertices into a free polygon', onClick: toFree }]} />}
           {k.mode === 'free' && (
             <>
-              <Toggle label="Stage click" path="clickAdd" value={k.clickAdd} text="Click on the shape adds a vertex" />
-              <Note>Drag the orange dots to move vertices. Click on the shape inserts a vertex on the nearest side (Alt+click always does; turn the toggle off to move the box). Delete removes the selected vertex.</Note>
               <VertexList layer={layer as L} edit={edit as unknown as Edit} />
-              <Note>Fill rule (in Fill) matters only when the free polygon crosses itself: Non-zero fills the crossing, Even-odd leaves it empty.</Note>
+              <Toggle label="Click to add" path="clickAdd" value={k.clickAdd} expose={false} />
             </>
           )}
-          <Range label="Round vertices" path="round" value={k.round} min={0} max={400} unit=" px" />
+          <Num label="Rounding" path="round" value={k.round} min={0} max={400} unit="px" />
         </Section>
-        <FillStrokeSections layer={layer} id="polygon" rule={k.mode === 'free'} />
+        <FillStrokeSections layer={layer} id="polygon" edit={edit} rule={k.mode === 'free'} />
       </>
     );
   },

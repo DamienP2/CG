@@ -1,11 +1,11 @@
 // What the shape widgets share (quad, polygon, ellipse, pen): fill and
 // stroke styles, outlines as path commands, and their inspector sections.
 // Mirror of crates/cg-core/src/wid/shape.rs and cg-render/src/wid/shape.rs.
-import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
+import { col, cssColor, interpolateText, num, propValue, type Resolved } from '../engine/evaluate';
 import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow, AssetPicker } from '../designer/Inspector';
 import { useEffect, useState } from 'react';
-import { ColorPick, getPath, hex, Range, Row, Section, Seg, useBound } from './kit';
+import { ColorPick, getPath, hex, Num, Row, Section, Seg, Toggle, useBound } from './kit';
 
 export type FillKind = 'none' | 'solid' | 'linear' | 'radial' | 'image';
 export type ImageFill = 'contain' | 'cover' | 'stretch' | 'tile';
@@ -169,13 +169,34 @@ export function useImageSize(src: string): [[number, number], (s: [number, numbe
   return [sizes.get(src) ?? s, set];
 }
 
+/** The Stroke toggle of a shape: on gives a visible stroke (4 px, black when its colour is transparent), off sets the width to 0. */
+export function StrokeToggle({ layer, edit, width = 4 }: { layer: Layer; edit: ShapeEdit; width?: number }) {
+  return (
+    <Toggle
+      expose="props.strokeWidth"
+      exposeValue={num(propValue(layer, 'strokeWidth', 0))}
+      label="Stroke"
+      value={num(propValue(layer, 'strokeWidth', 0)) > 0}
+      onChange={(v) =>
+        edit((l) => {
+          l.props.strokeWidth = v ? width : 0;
+          if (v && col(l.props.stroke ?? [0, 0, 0, 0])[3] === 0) l.props.stroke = [0, 0, 0, 1];
+        })
+      }
+    />
+  );
+}
+
+export type ShapeEdit = (fn: (l: { props: Layer['props'] }) => void) => void;
+
 /**
  * Fill and Stroke groups of the inspector: the colours and the width are
  * the layer's animated properties (keyframes), the rest is `fillStyle` /
  * `strokeStyle` of the layer.
  */
-export function FillStrokeSections({ layer, id, rule, caps, noPosition }: { layer: Layer; id: string; rule?: boolean; caps?: boolean; noPosition?: boolean }) {
+export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition }: { layer: Layer; id: string; edit: ShapeEdit; rule?: boolean; caps?: boolean; noPosition?: boolean }) {
   const f = { ...FILL, ...(layer as { fillStyle?: FillStyle }).fillStyle };
+  const stroke = num(propValue(layer, 'strokeWidth', 0)) > 0;
   return (
     <>
       <Section id={`${id}-fill`} title="Fill">
@@ -193,12 +214,13 @@ export function FillStrokeSections({ layer, id, rule, caps, noPosition }: { laye
         />
         {f.kind !== 'none' && f.kind !== 'image' && <ColorGroupRow layer={layer} prop="fill" label={f.kind === 'solid' ? 'Color' : 'From'} />}
         {(f.kind === 'linear' || f.kind === 'radial') && <GradientTo />}
-        {f.kind === 'linear' && <Range label="Angle" path="fillStyle.angle" min={0} max={360} unit="°" />}
+        {f.kind === 'linear' && <Num label="Angle" path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
         {f.kind === 'image' && <ImageSource />}
         {f.kind === 'image' && (
           <Seg
             label="Fit"
             path="fillStyle.fit"
+            value={FILL.fit}
             options={[
               ['contain', 'Contain'],
               ['cover', 'Cover'],
@@ -211,61 +233,74 @@ export function FillStrokeSections({ layer, id, rule, caps, noPosition }: { laye
           <Seg
             label="Fill rule"
             path="fillRule"
+            value="nonzero"
             options={[
-              ['nonzero', 'Non-zero', 'Self-crossing parts are filled'],
-              ['evenodd', 'Even-odd', 'Self-crossing parts alternate (holes)'],
+              ['nonzero', 'Non-zero'],
+              ['evenodd', 'Even-odd'],
             ]}
           />
         )}
       </Section>
       <Section id={`${id}-stroke`} title="Stroke">
-        <ColorGroupRow layer={layer} prop="stroke" label="Color" />
-        <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
-        {!noPosition && (
-          <Seg
-            label="Position"
-            path="strokeStyle.position"
-            value={STROKE.position}
-            options={[
-              ['inside', 'Inside'],
-              ['center', 'Centre'],
-              ['outside', 'Outside'],
-            ]}
-          />
-        )}
+        <StrokeToggle layer={layer} edit={edit} />
+        {stroke && <StrokeRows layer={layer} caps={caps} position={!noPosition} />}
+      </Section>
+    </>
+  );
+}
+
+/** Colour, width and style rows of a stroke. */
+export function StrokeRows({ layer, caps, joins = true, position, capDefault = STROKE.cap, joinDefault = STROKE.join }: { layer: Layer; caps?: boolean; joins?: boolean; position?: boolean; capDefault?: StrokeStyle['cap']; joinDefault?: StrokeStyle['join'] }) {
+  return (
+    <>
+      <ColorGroupRow layer={layer} prop="stroke" label="Color" />
+      <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+      {position && (
         <Seg
-          label="Style"
-          path="strokeStyle.dash"
-          value={STROKE.dash}
+          label="Position"
+          path="strokeStyle.position"
+          value={STROKE.position}
           options={[
-            ['solid', 'Solid'],
-            ['dashed', 'Dashes'],
-            ['dotted', 'Dots'],
+            ['inside', 'Inside'],
+            ['center', 'Centre'],
+            ['outside', 'Outside'],
           ]}
         />
+      )}
+      <Seg
+        label="Style"
+        path="strokeStyle.dash"
+        value={STROKE.dash}
+        options={[
+          ['solid', 'Solid'],
+          ['dashed', 'Dashes'],
+          ['dotted', 'Dots'],
+        ]}
+      />
+      {joins && (
         <Seg
           label="Joins"
           path="strokeStyle.join"
-          value={STROKE.join}
+          value={joinDefault}
           options={[
             ['miter', 'Miter'],
             ['round', 'Round'],
             ['bevel', 'Bevel'],
           ]}
         />
-        {caps && (
-          <Seg
-            label="Ends"
-            path="strokeStyle.cap"
-            value={STROKE.cap}
-            options={[
-              ['butt', 'Flat'],
-              ['round', 'Round'],
-              ['square', 'Square'],
-            ]}
-          />
-        )}
-      </Section>
+      )}
+      {caps && (
+        <Seg
+          label="Ends"
+          path="strokeStyle.cap"
+          value={capDefault}
+          options={[
+            ['butt', 'Flat'],
+            ['round', 'Round'],
+            ['square', 'Square'],
+          ]}
+        />
+      )}
     </>
   );
 }

@@ -6,8 +6,8 @@ import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { ColorField } from '../ui/fields';
-import { Area, Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Range, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { ColorField, NumberField, Segmented } from '../ui/fields';
+import { Area, Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
 
 type Kind = 'section' | 'line' | 'logo' | 'space';
@@ -501,23 +501,25 @@ function StyleRows({ label, path, s }: { label: string; path: string; s: St }) {
   return (
     <>
       <Row expose={[`${path}.color`, `${path}.size`]} exposeValue={{ [`${path}.color`]: s.color, [`${path}.size`]: s.size }} label={label}>
-        <div style={{ flex: '0 0 112px', minWidth: 0, overflow: 'hidden' }}>
+        <span className="pp-field color" style={{ flex: 1, minWidth: 0 }}>
           <ColorField value={parseHex(s.color) ?? [1, 1, 1, 1]} onChange={(c) => b.set(`${path}.color`, toHex(c, c[3] < 1), true)} />
-        </div>
-        <input type="range" min={12} max={90} value={s.size} onChange={(e) => b.set(`${path}.size`, +e.target.value, true)} />
-        <span className="wk-val">{s.size}px</span>
+        </span>
+        <span className="pp-field" style={{ flex: 'none' }}>
+          <NumberField value={s.size} min={1} max={400} suffix="px" onChange={(x) => b.set(`${path}.size`, x, true)} />
+        </span>
       </Row>
-      <Seg
-        label=""
-        path={`${path}.weight`}
-        value={s.weight}
-        options={[
-          [500, 'Med'],
-          [700, 'Bold'],
-          [900, 'Black'],
-        ]}
-      />
-      <Toggle label="" path={`${path}.upper`} value={s.upper} text="CAPS" />
+      <Row expose={[`${path}.weight`, `${path}.upper`]} exposeValue={{ [`${path}.weight`]: s.weight, [`${path}.upper`]: s.upper }} label="">
+        <Segmented
+          value={String(s.weight)}
+          onChange={(x) => b.set(`${path}.weight`, +x)}
+          options={[
+            { value: '500', label: 'Med' },
+            { value: '700', label: 'Bold' },
+            { value: '900', label: 'Black' },
+          ]}
+        />
+        <Segmented value={s.upper ? 'u' : ''} onChange={() => b.set(`${path}.upper`, !s.upper)} options={[{ value: 'u', label: 'AA', title: 'Upper case' }]} />
+      </Row>
     </>
   );
 }
@@ -528,66 +530,48 @@ export default defineWidget({
   label: 'Credits',
   group: 'Data',
   icon: ScrollText,
-  presets: [{ label: 'Credits roll' }, { label: 'Credits crawl', patch: { mode: 'crawl' } }, { label: 'Credits cards', patch: { mode: 'pages' } }],
-  create: () => ({ entries: parse(TEXT0), importText: TEXT0, props: { width: 1100, height: 1000 } }),
+  create: () => ({ entries: parse(TEXT0), importText: TEXT0, fade: false, panel: false, props: { width: 1100, height: 1000 } }),
   ownsLook: true,
   content: ['entries', 'link'],
   live: () => true,
   Render: ({ layer, w, h, data, time, state }) => <CreditsRender layer={layer} w={w} h={h} data={data} time={time} state={state} />,
-  Inspector: ({ layer, data, edit }) => {
+  Inspector: ({ layer, edit }) => {
     const l = layer as unknown as CL;
     const k = cfg(l);
-    const [w, h] = sizeOf(l);
-    const g = geo(k, entriesOf(k, data), w, h);
-    const v = optim(k, nominal(k, g.x) * g.x);
     const set = (fn: (x: Config) => void) => edit((x) => fn(x as never));
     return (
       <>
-        <Section id="credits-type" title="Type">
-          <Seg
-            label="Type"
-            path="mode"
-            value={k.mode}
-            options={[
-              ['roll', 'Roll ⇡', 'Vertical'],
-              ['crawl', 'Crawl ⇠', 'Horizontal'],
-              ['pages', 'Pages ▤', 'Cards'],
-            ]}
-          />
-        </Section>
         <Section id="credits-content" title="Content">
-          <Content label="Linked source" path="link" placeholder="{{key}} with credits text / JSON (optional)" />
-          {k.link.trim() ? (
-            <Note>The entries come from the linked value: credits text (# Section, Role | Name, [logo …]) or a JSON array of {'{section, role, name, logo}'}.</Note>
-          ) : (
+          <Content label="Source" path="link" placeholder="{{key}}" />
+          {!k.link.trim() && (
             <>
-              <Note>Kinds: Section title · Line role | name · Logo (asset path, or a name → generated plate) · Space. Texts may hold a {'{{key}}'}.</Note>
-              <ListEditor
-                path="entries"
-                fields={[
-                  {
-                    key: 'kind',
-                    options: [
-                      ['section', 'Section'],
-                      ['line', 'Line'],
-                      ['logo', 'Logo'],
-                      ['space', 'Space'],
-                    ],
-                    w: 82,
-                  },
-                  { key: 'a', placeholder: 'Role / title / logo' },
-                  { key: 'b', placeholder: 'Name' },
-                ]}
-                add={() => ({ kind: 'line', a: 'Role', b: 'Name' })}
-                addLabel="Entry"
-              />
-              <Area label="Import" path="importText" value={k.importText} />
-              <Note>One line per entry: # Section, Role | Name (or ; / tab from a spreadsheet), [logo /assets/x.png], empty line = space.</Note>
+              <Row expose="entries" exposeValue={k.entries}>
+                <ListEditor
+                  path="entries"
+                  fields={[
+                    {
+                      key: 'kind',
+                      options: [
+                        ['section', 'Section'],
+                        ['line', 'Line'],
+                        ['logo', 'Logo'],
+                        ['space', 'Space'],
+                      ],
+                      w: 82,
+                    },
+                    { key: 'a', placeholder: 'Role / title / logo' },
+                    { key: 'b', placeholder: 'Name' },
+                  ]}
+                  add={() => ({ kind: 'line', a: 'Role', b: 'Name' })}
+                  addLabel="Entry"
+                />
+              </Row>
+              <Area label="Import" path="importText" value={k.importText} placeholder="# Section" />
               <Btns
                 list={[
-                  { label: 'Import (replace)', cls: 'violet', onClick: () => set((x) => void (x.entries = parse(k.importText))) },
-                  { label: 'Append', onClick: () => set((x) => void (x.entries = [...k.entries, ...parse(k.importText)])) },
-                  { label: 'Content → text', cls: 'ghost', onClick: () => set((x) => void (x.importText = toText(k.entries))) },
+                  { label: 'Replace', cls: 'violet', title: 'Replace the entries with the imported text', onClick: () => set((x) => void (x.entries = parse(k.importText))) },
+                  { label: 'Append', title: 'Append the imported text to the entries', onClick: () => set((x) => void (x.entries = [...k.entries, ...parse(k.importText)])) },
+                  { label: 'To text', cls: 'ghost', title: 'Entries to import text', onClick: () => set((x) => void (x.importText = toText(k.entries))) },
                 ]}
               />
             </>
@@ -599,13 +583,13 @@ export default defineWidget({
             path="layout"
             value={k.layout}
             options={[
-              ['one', '1 centred'],
-              ['two', '2 · role | name'],
-              ['three', '3 columns'],
+              ['one', '1'],
+              ['two', '2'],
+              ['three', '3'],
             ]}
           />
           <Seg
-            label="Alignment"
+            label="Align"
             path="align"
             value={k.align}
             options={[
@@ -614,63 +598,80 @@ export default defineWidget({
               ['right', 'Right'],
             ]}
           />
-          <Range label="Gutter" path="gutter" value={k.gutter} min={0} max={200} unit=" px" />
-          <Range label="Section gap" path="sectionGap" value={k.sectionGap} min={0} max={300} unit=" px" />
-          <Range label="Line gap" path="lineGap" value={k.lineGap} min={0} max={80} unit=" px" />
-          <Range label="Space height" path="spaceH" value={k.spaceH} min={0} max={300} unit=" px" />
-          <Range label="Logo height" path="logoH" value={k.logoH} min={40} max={400} unit=" px" />
+          <Num label="Gutter" path="gutter" value={k.gutter} min={0} max={1000} unit="px" />
+          <Num label="Section gap" path="sectionGap" value={k.sectionGap} min={0} max={1000} unit="px" />
+          <Num label="Line gap" path="lineGap" value={k.lineGap} min={0} max={1000} unit="px" />
+          <Num label="Space" path="spaceH" value={k.spaceH} min={0} max={1000} unit="px" />
+          <Num label="Logo height" path="logoH" value={k.logoH} min={10} max={1000} unit="px" />
         </Section>
-        <Section id="credits-styles" title="Styles" closed>
-          <StyleRows label="Section title" path="st.section" s={k.st.section} />
+        <Section id="credits-styles" title="Styles">
+          <StyleRows label="Section" path="st.section" s={k.st.section} />
           <StyleRows label="Role" path="st.role" s={k.st.role} />
           <StyleRows label="Name" path="st.name" s={k.st.name} />
+          <Toggle label="Panel" path="panel" value={k.panel} />
+          {k.panel && <ColorPick label="Color" path="panelColor" value={k.panelColor} />}
+          <Toggle label="Fade" path="fade" value={k.fade} />
+          {k.fade && <Num label="Size" path="fadeSize" value={k.fadeSize} min={1} max={1000} unit="px" />}
         </Section>
-        <Section id="credits-speed" title="Speed">
+        <Section id="credits-motion" title="Motion">
+          <Seg
+            label="Mode"
+            path="mode"
+            value={k.mode}
+            options={[
+              ['roll', 'Roll', 'Vertical'],
+              ['crawl', 'Crawl', 'Horizontal'],
+              ['pages', 'Pages', 'Cards'],
+            ]}
+          />
           {k.mode === 'pages' ? (
             <>
               <Seg
-                label="Set by"
-                path="speedMode"
+                expose="speedMode"
+                exposeValue={k.speedMode}
+                exposeOptions={[
+                  ['duration', 'Total'],
+                  ['card', 'Per card'],
+                ]}
+                label="Speed by"
                 value={k.speedMode === 'pxs' ? 'card' : k.speedMode}
+                onChange={(x) => set((c) => void (c.speedMode = x))}
                 options={[
-                  ['duration', 'Total duration'],
+                  ['duration', 'Total'],
                   ['card', 'Per card'],
                 ]}
               />
-              {k.speedMode === 'duration' ? <Num label="Total" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Range label="Per card" path="cardDur" value={k.cardDur} min={1} max={20} step={0.5} fmt={(x) => `${x.toFixed(1)} s`} />}
-              <Note>
-                {g.x} cards × {(k.speedMode === 'duration' ? k.duration / Math.max(1, g.x) : k.cardDur).toFixed(1)} s = <b>{fmtDur(g.x * (k.speedMode === 'duration' ? k.duration / Math.max(1, g.x) : k.cardDur))}</b>
-              </Note>
+              {k.speedMode === 'duration' ? <Num label="Total" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label="Per card" path="cardDur" value={k.cardDur} min={0.5} max={600} step={0.5} precision={1} unit="s" />}
             </>
           ) : (
             <>
               <Seg
-                label="Set by"
-                path="speedMode"
+                expose="speedMode"
+                exposeValue={k.speedMode}
+                exposeOptions={[
+                  ['duration', 'Duration'],
+                  ['pxs', 'px/s'],
+                ]}
+                label="Speed by"
                 value={k.speedMode === 'card' ? 'pxs' : k.speedMode}
+                onChange={(x) => set((c) => void (c.speedMode = x))}
                 options={[
-                  ['duration', 'Total duration → speed'],
-                  ['pxs', 'px/s → duration'],
+                  ['duration', 'Duration'],
+                  ['pxs', 'px/s'],
                 ]}
               />
-              {k.speedMode === 'duration' ? <Num label="Duration" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Range label="Speed" path="pxs" value={k.pxs} min={10} max={800} unit=" px/s" />}
-              <Toggle label="Optimised" path="optimised" value={k.optimised} text="Whole px per frame (no shimmer)" />
-              <Note>
-                Travel {Math.round(g.x)} px → <b>{v.toFixed(0)} px/s</b> = <b>{(v / 25).toFixed(k.optimised ? 0 : 2)} px/frame</b> · duration <b>{fmtDur(g.x / Math.max(1e-6, v))}</b>
-                {k.optimised ? ' (rounded to whole px/frame)' : ''}
-              </Note>
-              <Range label="Readable max" path="maxPxs" value={k.maxPxs} min={60} max={800} step={10} unit=" px/s" />
+              {k.speedMode === 'duration' ? <Num label="Duration" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label="Speed" path="pxs" value={k.pxs} min={1} max={5000} unit="px/s" />}
+              <Num label="Max speed" path="maxPxs" value={k.maxPxs} min={10} max={5000} step={10} unit="px/s" />
+              <Toggle label="Whole px" path="optimised" value={k.optimised} />
             </>
           )}
-        </Section>
-        <Section id="credits-start" title="Start & end">
           <Seg
             label="Start"
             path="start"
             value={k.start}
             options={[
               ['off', 'Off screen'],
-              ['on', 'Already on screen'],
+              ['on', 'On screen'],
             ]}
           />
           <Seg
@@ -678,26 +679,19 @@ export default defineWidget({
             path="end"
             value={k.end}
             options={[
-              ['exit', 'Full exit'],
-              ['stop', 'Stop on the last element'],
+              ['exit', 'Exit'],
+              ['stop', 'Stop'],
             ]}
           />
           <Seg
-            label="Short content"
+            label="If short"
             path="shortMode"
             value={k.shortMode}
             options={[
-              ['center', 'Stops centred'],
-              ['exit', 'Passes and exits'],
+              ['center', 'Centre'],
+              ['exit', 'Exit'],
             ]}
           />
-          <Note>{k.mode === 'pages' ? `${g.x} card(s).` : `Content ${Math.round(g.len)} px for a ${k.mode === 'crawl' ? w : h} px box${g.short ? ' — shorter than the screen: no empty scroll.' : '.'}`}</Note>
-        </Section>
-        <Section id="credits-look" title="Look" closed>
-          <Toggle label="Fade" path="fade" value={k.fade} text={k.mode === 'crawl' ? 'Fade left and right' : 'Fade top and bottom'} />
-          {k.fade && <Range label="Fade size" path="fadeSize" value={k.fadeSize} min={10} max={400} unit=" px" />}
-          <Toggle label="Panel" path="panel" value={k.panel} text="Dark panel behind the credits" />
-          {k.panel && <ColorPick label="Panel colour" path="panelColor" value={k.panelColor} />}
         </Section>
       </>
     );

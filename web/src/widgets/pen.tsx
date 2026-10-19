@@ -4,10 +4,10 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { PenTool } from 'lucide-react';
 import { col, cssColor, num } from '../engine/evaluate';
-import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
+import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, Catcher, clamp, ColorPick, defineWidget, getPath, Handle, Note, Range, Row, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
-import { FILL, ShapeSvg, STROKE, type FillRule, type FillStyle, type StrokeStyle } from './shape';
+import { Btns, Catcher, clamp, ColorPick, defineWidget, getPath, Handle, Num, Row, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
+import { FILL, ShapeSvg, STROKE, StrokeRows, type FillRule, type FillStyle, type StrokeStyle } from './shape';
 
 export interface PenPoint {
   x: number;
@@ -305,48 +305,58 @@ function FillSection({ layer }: { layer: L }) {
   const k = cfg(layer);
   const f = { ...FILL, ...k.fillStyle };
   const b = useBound();
+  if (!k.closed)
+    return (
+      <Section id="pen-fill" title="Fill">
+        <Toggle label="Fill" value={false} disabled="Close the path to fill it" />
+      </Section>
+    );
   return (
     <Section id="pen-fill" title="Fill">
-      {!k.closed ? (
+      <Toggle label="Fill" path="fillOn" value={false} />
+      {k.fillOn && (
         <>
-          <Toggle label="Fill" value={false} text="Fill the path" disabled="Close the path to fill it" />
-          <Note>Disabled while the path is open.{k.fillOn ? ' The fill comes back when the path is closed.' : ''}</Note>
-        </>
-      ) : (
-        <>
-          <Toggle label="Fill" path="fillOn" value={false} text="Fill the path" />
-          {k.fillOn && (
+          <Seg
+            label="Type"
+            path="fillStyle.kind"
+            value={f.kind}
+            options={[
+              ['solid', 'Solid'],
+              ['linear', 'Linear'],
+              ['radial', 'Radial'],
+              ['image', 'Image'],
+            ]}
+          />
+          {f.kind !== 'image' && f.kind !== 'none' && <ColorGroupRow layer={layer as never} prop="fill" label={f.kind === 'solid' ? 'Color' : 'From'} />}
+          {(f.kind === 'linear' || f.kind === 'radial') && <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />}
+          {f.kind === 'linear' && <Num label="Angle" path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
+          {f.kind === 'image' && (
             <>
+              <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label="Picture">
+                <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
+              </Row>
               <Seg
-                label="Type"
-                path="fillStyle.kind"
-                value={f.kind}
+                label="Fit"
+                path="fillStyle.fit"
+                value={FILL.fit}
                 options={[
-                  ['solid', 'Solid'],
-                  ['linear', 'Linear'],
-                  ['radial', 'Radial'],
-                  ['image', 'Image'],
-                ]}
-              />
-              {f.kind !== 'image' && f.kind !== 'none' && <ColorGroupRow layer={layer as never} prop="fill" label={f.kind === 'solid' ? 'Color' : 'From'} />}
-              {(f.kind === 'linear' || f.kind === 'radial') && <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />}
-              {f.kind === 'linear' && <Range label="Angle" path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
-              {f.kind === 'image' && (
-                <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label="Picture">
-                  <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
-                </Row>
-              )}
-              <Seg
-                label="Fill rule"
-                path="fillRule"
-                value={k.fillRule}
-                options={[
-                  ['nonzero', 'Non-zero'],
-                  ['evenodd', 'Even-odd'],
+                  ['contain', 'Contain'],
+                  ['cover', 'Cover'],
+                  ['stretch', 'Stretch'],
+                  ['tile', 'Tile'],
                 ]}
               />
             </>
           )}
+          <Seg
+            label="Fill rule"
+            path="fillRule"
+            value={k.fillRule}
+            options={[
+              ['nonzero', 'Non-zero'],
+              ['evenodd', 'Even-odd'],
+            ]}
+          />
         </>
       )}
     </Section>
@@ -368,7 +378,7 @@ export default defineWidget({
   label: 'Pen',
   group: 'Shapes & tools',
   icon: PenTool,
-  create: () => ({ points: DEFAULT_PTS(), strokeStyle: { position: 'center', cap: 'round', join: 'round' }, refW: 1100, refH: 560, props: { width: 1100, height: 560, stroke: [0.98, 0.8, 0.08, 1], strokeWidth: 16, fill: [0.486, 0.361, 1, 1] } }),
+  create: () => ({ points: DEFAULT_PTS(), arrowEnd: 'none', refW: 1100, refH: 560, props: { width: 1100, height: 560, stroke: [1, 1, 1, 1], strokeWidth: 16 } }),
   ownsLook: true,
   live: (l) => l.drawIn !== false,
   Render: ({ layer, r, w, h, data, time, frame, hold, fps, designer }) => {
@@ -442,20 +452,11 @@ export default defineWidget({
             value={tool}
             onChange={(v) => setTool(layer.id, v)}
             options={[
-              ['edit', '✥ Edit points'],
-              ['add', '✚ Add points'],
+              ['edit', '✥ Edit', 'Move points and handles (Esc)'],
+              ['add', '✚ Add', 'Click on the stage to add a point'],
             ]}
           />
-          <Note>
-            {tool === 'add' ? (
-              <>
-                <b style={{ color: 'var(--warn)' }}>Click on the stage</b> (inside the box) adds a point after the selected one; click and drag pulls out curve handles. Esc goes back to Edit.
-              </>
-            ) : (
-              'Drag the orange dots: points, and the two handles of the selected curve point. In Edit, dragging elsewhere moves the box.'
-            )}
-          </Note>
-          <Toggle label="Closed" path="closed" value={k.closed} text="Join the last point to the first" />
+          <Toggle label="Closed" path="closed" value={k.closed} />
           <PointList layer={lay} edit={ed} />
           {p && (
             <>
@@ -485,9 +486,9 @@ export default defineWidget({
                     })
                   }
                   options={[
-                    ['symmetric', 'Symmetric', 'Same length, opposite'],
-                    ['asymmetric', 'Asymmetric', 'Opposite, own lengths'],
-                    ['broken', 'Broken', 'Independent: a cusp'],
+                    ['symmetric', 'Symmetric'],
+                    ['asymmetric', 'Asymmetric'],
+                    ['broken', 'Broken'],
                   ]}
                 />
               )}
@@ -499,7 +500,7 @@ export default defineWidget({
               p && {
                 label: '⇄ Reverse',
                 cls: 'ghost',
-                title: 'Swap start and end (arrows and drawing direction)',
+                title: 'Swap start and end',
                 onClick: () =>
                   ed(
                     (l) =>
@@ -522,69 +523,30 @@ export default defineWidget({
           />
         </Section>
         <Section id="pen-stroke" title="Stroke">
-          <ColorGroupRow layer={layer} prop="stroke" label="Color" />
-          <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
-          <Seg
-            label="Style"
-            path="strokeStyle.dash"
-            value={STROKE.dash}
-            options={[
-              ['solid', 'Solid'],
-              ['dashed', 'Dashes'],
-              ['dotted', 'Dots'],
-            ]}
-          />
-          <Seg
-            label="Ends"
-            path="strokeStyle.cap"
-            value="round"
-            options={[
-              ['butt', 'Flat'],
-              ['round', 'Round'],
-              ['square', 'Square'],
-            ]}
-          />
-          <Seg
-            label="Joins"
-            path="strokeStyle.join"
-            value="round"
-            options={[
-              ['miter', 'Miter'],
-              ['round', 'Round'],
-              ['bevel', 'Bevel'],
-            ]}
-          />
-          <Toggle label="Fixed width" path="fixedWidth" value={k.fixedWidth} text="Keep the width when the box is resized" />
+          <StrokeRows layer={layer} caps capDefault="round" joinDefault="round" />
+          <Toggle label="Fixed width" path="fixedWidth" value={k.fixedWidth} />
           {!k.fixedWidth && (
             <>
-              <Note>
-                The width scales with the box: drawn at {k.refW}×{k.refH}, now {Math.round(w)}×{Math.round(h)} → <b style={{ color: 'var(--text)' }}>{strokeWidth(layer, num(layer.props.strokeWidth ?? 0), w, h).toFixed(1)} px</b>.
-              </Note>
-              <Btns list={[{ label: 'Use the current size as reference', cls: 'ghost', onClick: () => ed((l) => void ((l.refW = Math.round(w)), (l.refH = Math.round(h)))) }]} />
+              <Num label="Ref. width" path="refW" value={k.refW} min={1} max={10000} unit="px" />
+              <Num label="Ref. height" path="refH" value={k.refH} min={1} max={10000} unit="px" />
+              <Btns list={[{ label: 'Use current size', cls: 'ghost', title: 'Reference size = the box now', onClick: () => ed((l) => void ((l.refW = Math.round(w)), (l.refH = Math.round(h)))) }]} />
             </>
           )}
         </Section>
         <Section id="pen-arrows" title="Arrows">
           <Seg label="Start" path="arrowStart" value={k.arrowStart} options={ARROWS} />
           <Seg label="End" path="arrowEnd" value={k.arrowEnd} options={ARROWS} />
-          <Range label="Size" path="arrowSize" value={k.arrowSize} min={1.5} max={8} step={0.5} fmt={(v) => `${v}× width`} />
-          <Note>Arrows sit on the visible tip: when the stroke draws itself, the head travels with it.</Note>
+          {(k.arrowStart !== 'none' || k.arrowEnd !== 'none') && <Num label="Size" path="arrowSize" value={k.arrowSize} min={1.5} max={8} step={0.5} precision={1} unit="×" />}
         </Section>
         <FillSection layer={lay} />
-        <Section id="pen-portion" title="Visible portion">
-          <Range label="Start" path="vStart" value={k.vStart} min={0} max={100} unit=" %" />
-          <Range label="End" path="vEnd" value={k.vEnd} min={0} max={100} unit=" %" />
-          <Toggle label="Draw at In" path="drawIn" value={k.drawIn} text="The In animation draws the stroke from Start to End" />
-          <Note>TAKE (In) replays the drawing over the template's In (1 s without one); OUT erases it from the start.</Note>
+        <Section id="pen-portion" title="Drawing">
+          <Num label="Start" path="vStart" value={k.vStart} min={0} max={100} unit="%" />
+          <Num label="End" path="vEnd" value={k.vEnd} min={0} max={100} unit="%" />
+          <Toggle label="Draw at In" path="drawIn" value={k.drawIn} />
         </Section>
       </>
     );
   },
-  Operator: () => (
-    <p className="hint wk-note">
-      <span className="none">No specific control: the stroke draws itself with the In animation (TAKE) and erases with OUT.</span>
-    </p>
-  ),
   Overlay: ({ layer, w, h, scale, edit }) => {
     useUi();
     const lay = layer as unknown as L;
