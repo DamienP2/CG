@@ -8,6 +8,7 @@ import { Output } from './output/Output';
 import { ApiDocs } from './pages/ApiDocs';
 import { Login } from './pages/Login';
 import { MosPlugin } from './mos/Plugin';
+import { EmbedPreview } from './embed/Preview';
 import { Projects } from './pages/Projects';
 import { MediaLibrary } from './pages/Media';
 import { Outputs } from './outputs/Outputs';
@@ -48,11 +49,12 @@ function useRoute(): Route {
 export function App() {
   const route = useRoute();
   if (route.page === 'mosPlugin') return <MosPlugin />;
+  if (route.page === 'embedPreview') return <EmbedPreview />;
   if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} rendition={route.rendition} />;
   return <Studio route={route} />;
 }
 
-function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin' }> }) {
+function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin' | 'embedPreview' }> }) {
   const { auth, init, connect, projects, channels, toasts } = useApp();
   const user = auth?.user;
 

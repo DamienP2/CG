@@ -18,6 +18,7 @@ export type Route =
   | { page: 'legacyDesigner'; projectId: string | null }
   | { page: 'legacyOperator'; channelId: string | null }
   | { page: 'mosPlugin' }
+  | { page: 'embedPreview' }
   | { page: 'output'; channelId: string | null; rendition: string | null };
 
 const SUBS: ProjectPage[] = ['designer', 'operator', 'data', 'media', 'settings'];
@@ -47,6 +48,8 @@ export function parseRoute(path = location.pathname): Route {
       return { page: 'outputs' };
     case 'mos':
       return second === 'plugin' ? { page: 'mosPlugin' } : { page: 'projects' };
+    case 'embed':
+      return second === 'preview' ? { page: 'embedPreview' } : { page: 'projects' };
     case 'api-docs':
       return { page: 'apiDocs' };
     case 'output':
