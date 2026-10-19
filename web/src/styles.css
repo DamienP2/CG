@@ -4693,8 +4693,6 @@ a.btn {
 }
 .logo {
   flex: none;
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px var(--line-2);
 }
 
 /* ---------- outputs (node canvas) ---------- */

@@ -185,7 +185,7 @@ export function MosPlugin() {
     <div className="mos-plugin">
       <header>
         <Logo size={20} />
-        <strong>Pulse CG</strong>
+        <strong>Pulse</strong>
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>

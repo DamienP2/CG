@@ -35,7 +35,6 @@ export function Login() {
         <div className="brand big">
           <Logo size={30} />
           <span>Pulse</span>
-          <em>CG</em>
         </div>
         <p className="muted">{auth?.serverName}</p>
         {firstRun ? (

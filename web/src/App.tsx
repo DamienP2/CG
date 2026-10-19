@@ -102,7 +102,6 @@ function Brand() {
     <div className="brand">
       <Logo size={22} />
       <span>Pulse</span>
-      <em>CG</em>
     </div>
   );
 }
