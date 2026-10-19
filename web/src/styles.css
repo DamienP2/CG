@@ -8779,11 +8779,12 @@ body.cv-moving * {
   flex-wrap: wrap;
 }
 /* Designer: a text too long for its box (reduced under its warning, or cut). */
+/* Overflow is no longer flagged on the stage (data-fit stays for tests). */
 [data-fit] {
-  outline: 2px solid var(--warn);
-  outline-offset: 2px;
+  outline: none;
 }
 [data-fit]::after {
+  display: none;
   content: attr(data-fit);
   position: absolute;
   left: 0;
@@ -10030,4 +10031,17 @@ body.cv-moving * {
 .opx-fields .wk-ctl > .pp-field,
 .opx-fields .wk-ctl > .wk-tog {
   flex: none;
+}
+.wk-from {
+  width: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--pvw);
+}
+.wired-value .wk-from.in {
+  position: absolute;
+  right: 4px;
+  top: 6px;
+  width: auto;
+  pointer-events: none;
 }

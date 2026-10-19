@@ -4,7 +4,7 @@
 // file is what they share: the definition of a widget and the controls of
 // the inspector and of the Operator, styled like the rest of the app.
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Database, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
 import { fieldUsed, formatSetting, newFieldKey, settingKind } from '../engine/settings';
 import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evaluate';
@@ -170,14 +170,19 @@ export function withDefaults<D extends object, C extends object>(d: D, c: C): Om
 }
 
 /** Collapsible group of the inspector (open state kept per browser), like General / Properties. */
+/** Which section of a widget's inspector opens by default: the first one (its content); the others start closed. */
+export const FirstSection = createContext<((id: string) => boolean) | null>(null);
+
 export function Section({ id, title, children, actions, level = 1, closed }: { id: string; title: string; children: ReactNode; actions?: ReactNode; level?: 1 | 2; closed?: boolean }) {
-  const key = `pulse.insp.${id}`;
+  const key = `pulse.insp2.${id}`;
+  const first = useContext(FirstSection);
   const [open, setOpen] = useState(() => {
+    const byDefault = !closed && (first ? first(id) : true);
     try {
       const v = localStorage.getItem(key);
-      return v === null ? !closed : v !== '0';
+      return v === null ? byDefault : v !== '0';
     } catch {
-      return !closed;
+      return byDefault;
     }
   });
   const toggle = () => {
@@ -470,11 +475,16 @@ const nextLorem = (cur: string) => LOREMS[(LOREMS.indexOf(cur) + 1) % LOREMS.len
 /** A value coming from data: greyed, read only. */
 export function DataValue({ label, value, multiline }: { label?: ReactNode; value: string; multiline?: boolean }) {
   return (
-    <Row label={label} title="Comes from data: change it in the Data canvas">
-      <div className="wired-value">
-        {multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}
-        <span className="wired-from">From data</span>
-      </div>
+    <Row
+      label={label}
+      title="Comes from data: change it in the Data canvas"
+      tail={
+        <span className="wk-from" title="From data: set in the Data canvas">
+          <Database size={13} />
+        </span>
+      }
+    >
+      <div className="wired-value">{multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}</div>
     </Row>
   );
 }

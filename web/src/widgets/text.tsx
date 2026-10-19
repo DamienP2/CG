@@ -5,7 +5,7 @@
 import type { CSSProperties } from 'react';
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Italic, Strikethrough, Type, Underline } from 'lucide-react';
 import { Segmented } from '../ui/fields';
-import { col, cssColor, interpolateText, num, propValue, resolveLayer, transformText, type Resolved } from '../engine/evaluate';
+import { col, cssColor, interpolateText, num, propValue, transformText, type Resolved } from '../engine/evaluate';
 import type { Data, Layer, Template, TextOverflow } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
@@ -555,7 +555,7 @@ export default defineWidget({
   content: ['text'],
   Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} />,
   Inspector: ({ layer, data, template, edit }) => <Inspector layer={layer} data={data} template={template} edit={edit} />,
-  warnings: (layer, { data, r }) => {
+  warnings: (layer, { data }) => {
     const out: Warning[] = [];
     const text = shownText(layer, data);
     if (!text.trim()) return [{ level: 'info', text: 'Empty text: nothing goes on air; the box keeps its size.' }];
@@ -563,14 +563,6 @@ export default defineWidget({
     const fb = fallbackChars(text, layer.fontFamily);
     if (fb.length) out.push({ level: 'info', text: `${fb.join(' ')} not in ${layer.fontFamily}: drawn with a fallback font (colour emoji / symbols), never an empty box.` });
     if (/[؀-ۿݐ-ݿ]/.test(text)) out.push({ level: 'info', text: 'Arabic: the on-air renderer has no text shaping, the letters are drawn unjoined there.', op: true });
-    if (layer.scroll && layer.scroll !== 'none') return out;
-    const rr = r ?? resolveLayer(layer as Layer, 1e9, data, 1e9);
-    const { fit } = layoutText(layer, rr, data);
-    if (fit.stage === 'end' && cfg(layer).fitEnd === 'ellipsis') out.push({ level: 'warn', text: `Text too long: shortened with “…” at ${Math.round(fit.size)} px and ${Math.round(fit.squeeze * 100)} % width.` });
-    else if (fit.stage === 'end' || fit.stage === 'clip') out.push({ level: 'error', text: 'Text does not fit: it is cut at the box.' });
-    else if (fit.stage === 'ellipsis') out.push({ level: 'warn', text: 'Text too long: shortened with “…”.' });
-    else if (fit.stage === 'visible') out.push({ level: 'warn', text: 'Text too long: it goes out of its box.' });
-    if (fit.forced) out.push({ level: 'info', text: 'A word is longer than the line: hyphenated, that word only.' });
     return out;
   },
 });

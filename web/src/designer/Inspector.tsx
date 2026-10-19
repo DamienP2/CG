@@ -1,8 +1,8 @@
 import { Boundary } from '../ui/Boundary';
 import { AssetPicker } from './AssetPicker';
 import { fieldUsed } from '../engine/settings';
-import { Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
@@ -21,7 +21,7 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, Row as KitRow, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
 
 interface PropSpec {
   prop: Prop;
@@ -105,12 +105,12 @@ export function Section({ title, children, actions }: { title: string; children:
 
 /** Collapsible group of the properties panel (state kept per browser). */
 function Group({ id, title, level = 1, children, actions }: { id: string; title: string; level?: 1 | 2; children: React.ReactNode; actions?: React.ReactNode }) {
-  const key = `pulse.insp.${id}`;
+  const key = `pulse.insp2.${id}`;
   const [open, setOpen] = useState(() => {
     try {
-      return localStorage.getItem(key) !== '0';
+      return localStorage.getItem(key) === '1';
     } catch {
-      return true;
+      return false;
     }
   });
   const toggle = () => {
@@ -820,7 +820,9 @@ function WiredValue({ value, multiline }: { value: string; multiline?: boolean }
   return (
     <div className="wired-value" title="Comes from data: change it in the Data canvas">
       {multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}
-      <span className="wired-from">From data</span>
+      <span className="wk-from in" title="From data: set in the Data canvas">
+        <Database size={12} />
+      </span>
     </div>
   );
 }
@@ -949,20 +951,29 @@ function SpecInspector({ layer }: { layer: Layer }) {
   const set = (path: string, v: unknown, coalesce?: boolean) => edit((l) => setPath(l, path, v), coalesce ? `${path}-${layer.id}` : undefined);
   const act = (op: string, args?: unknown) => void actWidget(layer.id, op, args);
   const Insp = def.Inspector!;
+  // The first section drawn (the widget's content) opens; the others start closed.
+  const firstRef = useRef<{ type: string; id: string | null }>({ type: layer.type, id: null });
+  if (firstRef.current.type !== layer.type) firstRef.current = { type: layer.type, id: null };
+  const claimFirst = (id: string) => {
+    if (firstRef.current.id === null) firstRef.current.id = id;
+    return firstRef.current.id === id;
+  };
   const Op = def.Operator;
   const r = resolveLayer(layer, useDesigner.getState().frame, data, holdFrame(template));
   const warnings = (def.warnings?.(layer as never, { data, state, r }) ?? []).filter((w) => w.op !== 'only');
   return (
     <Bound obj={layer} set={set} data={data}>
-      <Warnings list={warnings} />
-      <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
-      {Op && (
-        <SpecSection id={`try-${def.id}`} title="Operator · try it" closed>
-          <div className="wk-op">
-            <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
-          </div>
-        </SpecSection>
-      )}
+      <FirstSection.Provider value={claimFirst}>
+        <Warnings list={warnings} />
+        <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
+        {Op && (
+          <SpecSection id={`try-${def.id}`} title="Operator · try it" closed>
+            <div className="wk-op">
+              <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
+            </div>
+          </SpecSection>
+        )}
+      </FirstSection.Provider>
     </Bound>
   );
 }
