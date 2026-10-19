@@ -7,7 +7,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { ChevronDown, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
 import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evaluate';
-import type { Data, Layer, LayerType, PlayoutItem, Prop, Template, Value } from '../engine/types';
+import type { Data, FieldKind, Layer, LayerType, PlayoutItem, Prop, Template, Value } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { alertDialog, confirmDialog, promptDialog } from '../ui/dialogs';
@@ -322,53 +322,59 @@ export const wiredKeys = (s: string) => [...String(s ?? '').matchAll(/\{\{(\w+)\
  * canvas ({{key}}), it shows the data's value, greyed and read only: it is
  * changed in the Data canvas.
  */
-export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean }) {
-  const [v, set] = useBind<string>(p.path, p.value, p.onChange);
+/** A content the Designer can expose to the Operator: exposed, it is exactly `{{key}}` with a field of its own (no data source), and editing it edits the field's default. */
+export function useExposable(path: string | undefined, value: string | undefined, onChange: ((v: string) => void) | undefined, kind: FieldKind, expose?: boolean) {
+  const [v, set] = useBind<string>(path, value, onChange);
   const { data, obj } = useContext(BindContext);
   const { template, update } = useDesigner();
   const raw = String(v ?? '');
   const layer = obj as { id?: string; name?: string };
-  // Exposed to the Operator: the whole content is one variable he types (no data source).
   const single = /^\{\{(\w+)\}\}$/.exec(raw.trim());
   const field = single ? template?.fields.find((f) => f.key === single[1]) : undefined;
   const exposed = !!field && !field.binding?.source;
-  if (wiredKeys(raw).length && !exposed) return <DataValue label={p.label} value={interpolateText(raw, data)} multiline={p.multiline} />;
-  const value = exposed ? field!.default : raw;
+  const wired = wiredKeys(raw).length > 0 && !exposed;
+  const shown = exposed ? field!.default : raw;
   const change = (x: string) => (exposed ? update((t) => void (t.fields.find((f) => f.key === field!.key)!.default = x), `field-${field!.key}`) : set(x, true));
-  const canExpose = p.expose !== false && !!p.path && !!layer.id;
+  const canExpose = expose !== false && !!path && !!layer.id;
   const toggleExpose = () =>
     update((t) => {
       const l = t.layers.find((x) => x.id === layer.id)!;
       if (exposed) {
-        // Back to a plain content: the value typed so far.
-        setPath(l, p.path!, field!.default);
+        // Back to a plain content: the value set so far.
+        setPath(l, path!, field!.default);
         const still = t.layers.some((x) => x.id !== l.id && JSON.stringify(x).includes(`{{${field!.key}}}`));
         if (!still) t.fields = t.fields.filter((f) => f.key !== field!.key);
         return;
       }
       const taken = new Set(t.fields.map((f) => f.key));
       let key =
-        String(l.name || 'text')
+        String(l.name || kind)
           .normalize('NFD')
           .replace(/[^A-Za-z0-9]+(.)?/g, (_, ch: string | undefined) => (ch ? ch.toUpperCase() : ''))
-          .replace(/^./, (ch) => ch.toLowerCase()) || 'text';
+          .replace(/^./, (ch) => ch.toLowerCase()) || kind;
       if (!/^[a-z]/i.test(key)) key = `t${key}`;
       for (let i = 2; taken.has(key); i++) key = key.replace(/\d*$/, String(i));
-      t.fields.push({ key, label: l.name || key, kind: p.multiline ? 'multiline' : 'text', default: raw });
-      setPath(l, p.path!, `{{${key}}}`);
+      t.fields.push({ key, label: l.name || key, kind, default: raw });
+      setPath(l, path!, `{{${key}}}`);
     });
+  return { raw, data, field, exposed, wired, shown, change, canExpose, toggleExpose };
+}
+
+/** The radio button of a row: exposes the content to the Operator. */
+export function ExposeToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? 'Exposed to the Operator · click to stop' : 'Expose to the Operator'} onClick={onClick}>
+      <Radio size={13} />
+    </button>
+  );
+}
+
+export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean }) {
+  const { raw, data, field, exposed, wired, shown: value, change, canExpose, toggleExpose } = useExposable(p.path, p.value, p.onChange, p.multiline ? 'multiline' : 'text', p.expose);
+  if (wired) return <DataValue label={p.label} value={interpolateText(raw, data)} multiline={p.multiline} />;
   const inline = p.label === undefined;
   return (
-    <Row
-      label={p.label}
-      tail={
-        canExpose && !inline ? (
-          <button className={`pp-op ${exposed ? 'on' : ''}`} title={exposed ? 'Exposed to the Operator · click to stop' : 'Expose to the Operator'} onClick={toggleExpose}>
-            <Radio size={13} />
-          </button>
-        ) : undefined
-      }
-    >
+    <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={toggleExpose} /> : undefined}>
       <div className="wk-content">
         <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />
         {(p.lorem || (canExpose && inline) || exposed) && (

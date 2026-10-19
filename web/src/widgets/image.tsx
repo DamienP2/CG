@@ -1,12 +1,12 @@
 // Image: fits (incl. original size and tile), focal point, crop, rounded / circle mask, stroke,
-// colorize, fallback picture when the source is missing, animated sequence (list of pictures).
+// colorize, fallback picture when the source is missing.
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { Image } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, Handle, hex, Msg, Note, Num, Range, Row, Section, Seg, Toggle, useFrame, useKeys, wiredKeys, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Num, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
 
 export interface Crop {
   l: number;
@@ -302,53 +302,22 @@ function Thumb({ src, size, layer, edit }: { src: string; size: [number, number]
   );
 }
 
-function seqLine(c: Config, st: State | undefined, now: number, age: number) {
-  const q = seqInfo(c, st, now, age);
-  const manual = cfg(c).start === 'manual';
-  const state = !manual || st?.playing ? q.ended ? <b>■ finished</b> : <b style={{ color: '#9ff0bd' }}>▶ playing</b> : q.ended ? <b>■ finished</b> : <b style={{ color: '#fcd38a' }}>❚❚ paused</b>;
+/** The picture: chosen in the library, or exposed to the Operator (who then picks it); from data it is read only. */
+function PictureRow() {
+  const x = useExposable('src', '', undefined, 'image');
+  const b = useBound();
+  if (x.wired) return <DataValue label="Picture" value={interpolateText(x.raw, x.data)} />;
   return (
-    <p className="hint wk-note" style={{ fontFamily: 'var(--mono, monospace)' }}>
-      {state} · frame {String(q.idx + 1).padStart(2, '0')}/{q.n} · loop {Math.min(q.lap, q.loops)}/{q.loops === Infinity ? '∞' : q.loops}
-    </p>
-  );
-}
-
-function SeqReadout({ layer, state, offset, age }: { layer: Config; state: unknown; offset: number; age?: number }) {
-  const now = useFrame() + offset;
-  return seqLine(layer, state as State, now, age ?? 0);
-}
-
-function FramesEditor({ layer, edit }: { layer: ImgLayer; edit: (fn: (l: ImgLayer) => void, key?: string) => void }) {
-  const frames = cfg(layer).frames;
-  const put = (fn: (f: string[]) => void) =>
-    edit((l) => {
-      const f = [...cfg(l).frames];
-      fn(f);
-      l.frames = f;
-    });
-  return (
-    <Row label={`Frames · ${frames.length}`}>
-      <div className="wk-list">
-        {frames.map((f, i) => (
-          <div key={i} className="wk-item">
-            <span className="hint" style={{ flex: '0 0 22px', fontWeight: 700 }}>
-              {i + 1}
-            </span>
-            <div style={{ flex: '1 1 0', minWidth: 0 }}>
-              <AssetPicker value={f} onChange={(v) => put((x) => void (x[i] = v))} />
-            </div>
-            <button className="wk-x" title="Up" disabled={!i} onClick={() => put((x) => void ([x[i - 1], x[i]] = [x[i], x[i - 1]]))}>
-              ↑
-            </button>
-            <button className="wk-x" title="Remove" onClick={() => put((x) => void x.splice(i, 1))}>
-              ✕
-            </button>
-          </div>
-        ))}
-        <button className="opx-btn small wk-add" onClick={() => put((x) => void x.push(x[x.length - 1] ?? ''))}>
-          + Frame
-        </button>
-      </div>
+    <Row label="Picture" tail={x.canExpose ? <ExposeToggle on={x.exposed} onClick={x.toggleExpose} /> : undefined}>
+      <AssetPicker
+        value={x.shown}
+        clearable={false}
+        onChange={(v) => {
+          x.change(v);
+          // A new picture: the old crop means nothing for it.
+          if (!x.exposed) b.set('crop', undefined);
+        }}
+      />
     </Row>
   );
 }
@@ -359,7 +328,7 @@ export default defineWidget({
   label: 'Image',
   group: 'Shapes & tools',
   icon: Image,
-  presets: [{ label: 'Image' }, { label: 'Speaker portrait', patch: { mask: 'circle', fit: 'cover' } }, { label: 'Animated sequence', patch: { frames: [''], fit: 'contain', mask: 'none' } }],
+  presets: [{ label: 'Image' }, { label: 'Speaker portrait', patch: { mask: 'circle', fit: 'cover' } }],
   create: () => ({ src: '', fit: 'cover', mask: 'rounded', radius: 28, props: { width: 800, height: 560, stroke: [1, 1, 1, 1], strokeWidth: 0 } }),
   ownsLook: true,
   content: ['src'],
@@ -372,35 +341,16 @@ export default defineWidget({
     const k = cfg(l);
     const fit = fitOf(l);
     const { src, st, missing } = resolve(l, data, 0);
-    const wanted = wantedSrc(l, data, 0);
     const cropping = ui.crop.has(layer.id);
     const view = ui.view.get(layer.id) ?? 'program';
-    const cropped = cropOf(l);
-    const big = st.s === 'ok' && st.size[0] * st.size[1] > 3840 * 2160;
+    const stroke = num(l.props.strokeWidth as never) > 0;
     return (
       <>
-        <Section id="image-source" title="Source">
-          {wiredKeys(l.src).length ? (
-            <Content label="File" path="src" />
-          ) : (
-            <Row label="File">
-              <AssetPicker value={l.src} onChange={(v) => ed((x) => void ((x.src = v), delete x.crop))} />
-            </Row>
-          )}
-          {k.frames.length > 0 && <Note>An animated sequence is set: its frames are played instead of this file.</Note>}
-          {missing ? (
-            <Note>
-              <span style={{ color: '#ffb3c0' }}>{wanted ? 'Not found in the library' : 'No picture chosen'} — showing the fallback.</span>
-            </Note>
-          ) : st.s === 'ok' ? (
-            <Note>
-              {st.size[0]}×{st.size[1]} px{big ? ' · large: decoded once at load and cached, nothing is decoded per frame' : ''}
-            </Note>
-          ) : null}
+        <Section id="image-source" title="Picture">
+          <PictureRow />
           <Row label="Fallback">
-            <AssetPicker value={k.fallback} onChange={(v) => ed((x) => void (x.fallback = v))} />
+            <AssetPicker value={k.fallback} title="Choose the fallback picture" placeholder="None" onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
           </Row>
-          <Note>Shown on air instead of the picture when the file cannot be found (without one, a neutral channel slate): never an empty frame or an error icon.</Note>
         </Section>
         <Section id="image-fit" title="Fit & crop">
           <Seg
@@ -420,37 +370,27 @@ export default defineWidget({
               ['tile', 'Tile'],
             ]}
           />
-          {fit === 'tile' && <Range label="Tile size" path="tileScale" value={k.tileScale} min={5} max={200} unit=" %" />}
-          {fit === 'cover' && (
-            <>
-              <Note>Focal point: the orange dot on the stage, or click the thumbnail. It stays in view when Cover crops.</Note>
-              {!missing && st.s === 'ok' && <Thumb src={src} size={st.size} layer={l} edit={ed} />}
-            </>
+          {fit === 'tile' && <Num label="Tile size" path="tileScale" value={k.tileScale} min={5} max={400} unit="%" />}
+          {fit === 'cover' && !missing && st.s === 'ok' && (
+            <Row label="Focal point">
+              <Thumb src={src} size={st.size} layer={l} edit={ed} />
+            </Row>
           )}
-          {fit !== 'tile' ? (
+          {fit !== 'tile' && (
             <>
-              <Toggle label="Crop" value={cropping} text="Edit the crop on the stage" onChange={(v) => setUi(() => (v ? ui.crop.add(layer.id) : ui.crop.delete(layer.id)))} />
-              {cropping ? (
+              <Toggle label="Crop" value={cropping} onChange={(v) => setUi(() => (v ? ui.crop.add(layer.id) : ui.crop.delete(layer.id)))} />
+              {cropping && (
                 <>
-                  {(['l', 't', 'r', 'b'] as const).map((s) => (
-                    <Range key={s} label={{ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s]} path={`crop.${s}`} value={0} min={0} max={0.9} step={0.01} fmt={(v) => `${Math.round(v * 100)} %`} />
+                  {(['l', 'r', 't', 'b'] as const).map((s) => (
+                    <Num key={s} label={{ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s]} value={Math.round(cropOf(l)[s] * 100)} min={0} max={95} unit="%" onChange={(v) => ed((x) => void (x.crop = { ...cropOf(x), [s]: v / 100 }), `crop-${layer.id}`)} />
                   ))}
-                  <Btns
-                    list={[
-                      { label: 'Reset crop', cls: 'ghost', onClick: () => ed((x) => void (x.crop = undefined)) },
-                      { label: 'Done', cls: 'violet', onClick: () => setUi(() => ui.crop.delete(layer.id)) },
-                    ]}
-                  />
+                  <Btns list={[{ label: 'Reset crop', cls: 'ghost', onClick: () => ed((x) => void delete x.crop) }]} />
                 </>
-              ) : (
-                cropped.l + cropped.t + cropped.r + cropped.b > 0 && <Note>Cropped: {(['l', 't', 'r', 'b'] as const).map((s) => `${Math.round(cropped[s] * 100)}%`).join(' · ')} (left, top, right, bottom).</Note>
               )}
             </>
-          ) : (
-            <Note>Tile repeats the whole picture: the crop does not apply.</Note>
           )}
         </Section>
-        <Section id="image-shape" title="Shape & stroke">
+        <Section id="image-shape" title="Shape">
           <Seg
             label="Mask"
             path="mask"
@@ -461,10 +401,23 @@ export default defineWidget({
               ['circle', 'Circle'],
             ]}
           />
-          {k.mask === 'rounded' && <Range label="Radius" path="radius" value={k.radius} min={0} max={400} unit=" px" />}
-          {k.mask === 'circle' && <Note>Circle of the smallest side, centred: the speaker portrait.</Note>}
-          <ColorGroupRow layer={layer} prop="stroke" label="Stroke" />
-          <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+          {k.mask === 'rounded' && <Num label="Radius" path="radius" value={k.radius} min={0} max={2000} unit="px" />}
+          <Toggle
+            label="Stroke"
+            value={stroke}
+            onChange={(v) =>
+              ed((x) => {
+                x.props.strokeWidth = v ? 4 : 0;
+                if (v && col((x.props.stroke as never) ?? [0, 0, 0, 0])[3] === 0) x.props.stroke = [1, 1, 1, 1];
+              })
+            }
+          />
+          {stroke && (
+            <>
+              <ColorGroupRow layer={layer} prop="stroke" label="Color" />
+              <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+            </>
+          )}
         </Section>
         <Section id="image-colorize" title="Colorize">
           <Seg
@@ -473,43 +426,11 @@ export default defineWidget({
             value={k.colorize}
             options={[
               ['none', 'Off'],
-              ['replace', 'Replace colour', 'Single-colour logo: every opaque pixel takes the colour'],
-              ['tint', 'Tint', 'Monochrome picture: greys take the colour'],
+              ['replace', 'Replace', 'Every opaque pixel takes the colour (one-colour logos)'],
+              ['tint', 'Tint', 'Greys take the colour'],
             ]}
           />
           {k.colorize !== 'none' && <ColorPick label="Colour" path="tint" value={D.tint} />}
-          {k.colorize === 'replace' && <Msg level="info">Replace colour is meant for one-colour logos (SVG or PNG with transparency): on a photo it gives a flat silhouette.</Msg>}
-        </Section>
-        <Section id="image-seq" title="Animated sequence" closed={!k.frames.length}>
-          <FramesEditor layer={l} edit={ed} />
-          {k.frames.length > 0 ? (
-            <>
-              <Range label="Frame rate" path="fps" value={k.fps} min={2} max={30} unit=" fps" />
-              <Seg
-                label="Playback"
-                path="playMode"
-                value={k.playMode}
-                options={[
-                  ['loop', 'Loop'],
-                  ['once', 'Once'],
-                  ['count', 'N loops'],
-                ]}
-              />
-              {k.playMode === 'count' && <Num label="Loops" path="loops" value={k.loops} min={1} max={99} />}
-              <Seg
-                label="Start"
-                path="start"
-                value={k.start}
-                options={[
-                  ['in', 'At In'],
-                  ['manual', 'Manual'],
-                ]}
-              />
-              <Note>{k.start === 'in' ? 'Plays from the first frame at every TAKE.' : 'Waits on the first frame: the Operator has Play, Pause, Restart.'}</Note>
-            </>
-          ) : (
-            <Note>Add the pictures of the sequence (PNG with transparency, in order): they replace the file and play at the frame rate.</Note>
-          )}
         </Section>
         <Section id="image-preview" title="Output preview" closed>
           <Seg
@@ -519,61 +440,14 @@ export default defineWidget({
             options={[
               ['program', 'Program'],
               ['fill', 'Fill'],
-              ['key', 'Key (alpha)'],
+              ['key', 'Key'],
             ]}
           />
-          <Note>Designer only. Key shows the alpha as white on black, Fill the colours over black. Pictures are premultiplied when loaded: no dark fringe round logos on the key/fill output.</Note>
         </Section>
       </>
     );
   },
-  Operator: ({ layer, state, data, act, time }) => {
-    useStore();
-    const l = layer as unknown as ImgLayer;
-    const k = cfg(l);
-    const st = state as State | undefined;
-    const manual = k.frames.length > 0 && k.start === 'manual';
-    const [offset] = useState(() => time.nowMs - Date.now());
-    const now = () => Date.now() + offset;
-    useKeys(
-      manual
-        ? {
-            ' ': () => act(st?.playing ? 'pause' : 'play'),
-            r: () => act('restart'),
-            R: () => act('restart'),
-          }
-        : {},
-    );
-    const missing = resolve(l, data, 0).missing;
-    if (!k.frames.length || missing)
-      return (
-        <p className="hint wk-note">
-          <span className="none">{missing ? 'Fallback picture on air — see the alert above.' : 'No control for a still picture: it is taken and taken out like any graphic.'}</span>
-        </p>
-      );
-    if (!manual)
-      return (
-        <>
-          <SeqReadout layer={l} state={st} offset={offset} age={time.ageSecs} />
-          <p className="hint wk-note">
-            <span className="none">Sequence starts at In: no control needed. Set Start to Manual in the Designer for Play / Pause / Restart.</span>
-          </p>
-        </>
-      );
-    const ended = seqInfo(l, st, now(), 0).ended;
-    return (
-      <>
-        <Btns
-          list={[
-            { label: '▶ Play', cls: 'green big', keyHint: 'Space', disabled: !!st?.playing && !ended, onClick: () => act('play') },
-            { label: '❚❚ Pause', cls: 'big', disabled: !st?.playing, onClick: () => act('pause') },
-            { label: '↺ Restart', cls: 'violet big', keyHint: 'R', onClick: () => act('restart') },
-          ]}
-        />
-        <SeqReadout layer={l} state={st} offset={offset} />
-      </>
-    );
-  },
+
   Overlay: ({ layer, w, h, scale, edit }) => {
     useStore();
     const l = layer as unknown as ImgLayer;

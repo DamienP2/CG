@@ -1,11 +1,12 @@
 import { Boundary } from '../ui/Boundary';
-import { Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink, Upload } from 'lucide-react';
+import { AssetPicker } from './AssetPicker';
+import { Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
 import { MAIN_FORMAT, TEXT_LIKE, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
-import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
+import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
 import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
@@ -417,69 +418,7 @@ function OverrideMark({ layer, prop }: { layer: Layer; prop: Prop }) {
   );
 }
 
-export function AssetPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const projectId = useApp((s) => s.projectId);
-  const [own, setOwn] = useState<MediaFile[]>([]);
-  const [shared, setShared] = useState<MediaFile[]>([]);
-  const toast = useApp((s) => s.toast);
-  const refresh = () => {
-    const images = (l: MediaFile[]) => l.filter((m) => m.kind === 'image');
-    if (projectId)
-      api<MediaFile[]>('GET', mediaUrl(projectId))
-        .then((l) => setOwn(images(l)))
-        .catch(() => {});
-    api<MediaFile[]>('GET', mediaUrl(null))
-      .then((l) => setShared(images(l)))
-      .catch(() => {});
-  };
-  useEffect(refresh, [projectId]);
-  const known = [...own, ...shared].some((m) => m.src === value);
-  return (
-    <div className="asset-picker">
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">— choose an image —</option>
-        {!known && value && <option value={value}>{value}</option>}
-        {own.length > 0 && (
-          <optgroup label="Project media">
-            {own.map((m) => (
-              <option key={m.src} value={m.src}>
-                {m.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {shared.length > 0 && (
-          <optgroup label="Shared media">
-            {shared.map((m) => (
-              <option key={m.src} value={m.src}>
-                {m.name}
-              </option>
-            ))}
-          </optgroup>
-        )}
-      </select>
-      <label className="btn small" title="Upload an image to the project media">
-        <Upload size={13} />
-        <input
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            try {
-              const src = await uploadAsset(f, projectId);
-              refresh();
-              onChange(src);
-            } catch (err) {
-              toast(`Upload failed: ${(err as Error).message}`, 'error');
-            }
-          }}
-        />
-      </label>
-    </div>
-  );
-}
+export { AssetPicker };
 
 export type Attrs = Record<string, unknown>;
 

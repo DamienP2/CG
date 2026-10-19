@@ -1,3 +1,4 @@
+import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, Zap, GripVertical } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
@@ -8,7 +9,7 @@ import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
 import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
-import { api, can, uploadAsset, useApp } from '../store';
+import { api, can, useApp } from '../store';
 import { Program } from '../output/Program';
 import { useWheelSteps } from '../ui/fields';
 import { AirRows, DataSetHand, DataSetPanel } from './DataSets';
@@ -63,7 +64,6 @@ function NumberStepper({ value, onChange }: { value: string; onChange: (v: strin
 }
 
 export function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
-  const toast = useApp((s) => s.toast);
   switch (field.kind) {
     case 'multiline':
       return <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
@@ -91,23 +91,7 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
         </div>
       );
     case 'image':
-      return (
-        <div className="row">
-          <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} placeholder="/assets/…" />
-          <label className="btn small">
-            Upload
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadAsset(f, useApp.getState().projectId).then(onChange, (err) => toast(String(err), 'error'));
-              }}
-            />
-          </label>
-        </div>
-      );
+      return <AssetPicker value={value} onChange={onChange} />;
     default:
       return <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
   }

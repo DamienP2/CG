@@ -9649,3 +9649,232 @@ body.cv-moving * {
   color: var(--text);
   border-color: var(--text-3);
 }
+/* Picture row: thumbnail + name; opens the library. */
+.pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 4px 0 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+}
+.pick:hover {
+  border-color: var(--line-2);
+}
+.pick-th {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  flex: none;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px #ffffff1a;
+  background: repeating-conic-gradient(#2a2e40 0 25%, #1c1f2c 0 50%) 0 0 / 8px 8px;
+}
+.pick-th img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pick-nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.pick-nm.ph {
+  color: var(--text-3);
+}
+.pick-x {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+.pick-x:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+/* Picture library */
+.lib-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #05060acc;
+  display: grid;
+  place-items: center;
+}
+.lib {
+  width: min(980px, calc(100vw - 32px));
+  height: min(680px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: 0 30px 80px #000c;
+  overflow: hidden;
+}
+.lib-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.lib-h h2 {
+  margin: 0 8px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.lib-h .grow {
+  flex: 1;
+}
+.lib-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+.lib-tabs button {
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  padding: 4px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lib-tabs button.on {
+  background: var(--panel-3);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.lib-tabs b {
+  font-weight: 500;
+  color: var(--text-3);
+  margin-left: 5px;
+}
+.lib-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  width: 220px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-3);
+}
+.lib-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  height: 100%;
+  padding: 0;
+  outline: none;
+}
+.lib-b {
+  flex: 1;
+  overflow: auto;
+  padding: 14px;
+  position: relative;
+}
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+.lib-card {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--panel-2);
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  color: inherit;
+}
+.lib-card:hover {
+  border-color: var(--line-2);
+}
+.lib-card.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(124, 92, 255, 0.16));
+}
+.lib-im {
+  aspect-ratio: 16 / 10;
+  padding: 8px;
+  background: repeating-conic-gradient(#20232f 0 25%, #191c27 0 50%) 0 0 / 14px 14px;
+}
+.lib-im img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.lib-meta {
+  padding: 7px 9px 8px;
+}
+.lib-meta b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lib-meta span {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+.lib-empty {
+  color: var(--text-3);
+  padding: 60px 0;
+  text-align: center;
+}
+.lib-drop {
+  position: absolute;
+  inset: 8px;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: #7c5cff1f;
+  display: none;
+  place-items: center;
+  font-weight: 600;
+  color: var(--accent-2, #9d85ff);
+  pointer-events: none;
+}
+.lib-b.dragging .lib-drop {
+  display: grid;
+}
+.lib-f {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+}
+.lib-sel {
+  flex: 1;
+  color: var(--text-2);
+  font-size: 12px;
+}
