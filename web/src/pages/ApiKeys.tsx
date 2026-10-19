@@ -45,6 +45,9 @@ export function ApiKeys({ users }: { users: User[] }) {
         <KeyRound size={16} />
         <h2>API keys</h2>
         <div className="spacer" />
+        <a className="btn small" href="/premiere/strata-premiere.zip" title="The Premiere Pro panel, set to this server (it updates itself from it)">
+          Premiere panel
+        </a>
         <a className="btn small" href="/api-docs">
           API documentation
         </a>

@@ -1,13 +1,19 @@
 # Installs the Strata panel for Premiere Pro (current user).
-# Usage: right-click > Run with PowerShell (from the unzipped folder)
+# Usage: right-click > Run with PowerShell (from the unzipped folder),
+# or: powershell -File install-windows.ps1 -Server http://cg-server:8080
+# The panel then updates itself from the Strata server.
+param([string]$Server = "")
 $ErrorActionPreference = "Stop"
-$here = Split-Path -Parent $PSScriptRoot
+$src = Join-Path $PSScriptRoot "io.pulsecg.premiere"
+if (-not (Test-Path $src)) { $src = Split-Path -Parent $PSScriptRoot }
 $dest = Join-Path $env:APPDATA "Adobe\CEP\extensions\io.pulsecg.premiere"
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-foreach ($item in "CSXS", "host", "index.html", "panel.js", "panel.css", ".debug") {
-  Copy-Item -Recurse -Force (Join-Path $here $item) $dest
+foreach ($item in "CSXS", "host", "ui", "index.html", "loader.js", ".debug", "strata.ini") {
+  $from = Join-Path $src $item
+  if (Test-Path $from) { Copy-Item -Recurse -Force $from $dest }
 }
+if ($Server) { Set-Content -Path (Join-Path $dest "strata.ini") -Value "[strata]`nserver=$Server" }
 # The panel is not signed by Adobe Exchange: allow unsigned extensions.
 foreach ($v in 9..13) {
   New-Item -Force -Path "HKCU:\Software\Adobe\CSXS.$v" | Out-Null

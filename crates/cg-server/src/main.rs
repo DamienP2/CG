@@ -10,6 +10,7 @@ mod locks;
 mod media;
 mod mos;
 mod paths;
+mod premiere;
 mod render;
 mod service;
 mod state;
@@ -429,6 +430,7 @@ pub async fn serve(
 
         let app = api::router()
             .route("/fonts/{name}", get(web::font))
+            .merge(premiere::router())
             .nest_service("/assets", ServeDir::new(data_dir.join("assets")));
         let app = match &args.web_dir {
             Some(dir) => {

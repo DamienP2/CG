@@ -28,19 +28,34 @@ Si la séquence est verticale (9:16), c'est la mise en page 9:16 du projet qui e
 
 ## Installation
 
-Le panneau fonctionne avec Premiere Pro 2020 (14.0) et les versions suivantes, sur macOS et Windows.
+Le panneau fonctionne avec Premiere Pro 2020 (14.0) et les versions suivantes, sur macOS et Windows. Il s'installe pour l'utilisateur courant, sans droits d'administrateur.
 
-1. Télécharger `pulse-cg-premiere-panel.zip` depuis la release, puis le décompresser.
-2. Lancer le script d'installation :
-   - **macOS** : `./install/install-mac.sh` dans le Terminal ;
-   - **Windows** : clic droit sur `install\install-windows.ps1` → *Exécuter avec PowerShell*.
-3. Redémarrer Premiere Pro, puis ouvrir **Fenêtre → Extensions → Strata**.
-4. Dans le panneau, cliquer sur ⚙ et renseigner :
-   - l'adresse du serveur, par exemple `http://cg-server:8080` ;
+**Installateurs** (dans la release) :
+
+- **macOS** : `Strata-Premiere-<version>-macos.pkg` ;
+- **Windows** : `Strata-Premiere-<version>-windows.msi`. En déploiement silencieux, le serveur peut être fixé : `msiexec /i Strata-Premiere.msi /qn SERVER=http://cg-server:8080`.
+
+**Depuis le serveur** : Strata → Utilisateurs → API keys → **Premiere panel** télécharge un zip déjà réglé sur ce serveur. Le décompresser, puis lancer `./install-mac.sh` dans le Terminal (macOS) ou clic droit sur `install-windows.ps1` → *Exécuter avec PowerShell* (Windows). Les deux scripts acceptent aussi l'adresse du serveur en argument.
+
+Ensuite :
+
+1. Redémarrer Premiere Pro, puis ouvrir **Fenêtre → Extensions → Strata**.
+2. Dans le panneau, cliquer sur ⚙ et renseigner :
+   - l'adresse du serveur, si l'installateur ne l'a pas déjà mise, par exemple `http://cg-server:8080` ;
    - une **clé d'API** (Strata → Utilisateurs → API keys), d'un compte designer ou opérateur ;
    - si besoin, le dossier des rendus (par défaut `Documents/Strata Renders/<projet>/`).
 
-Le script active `PlayerDebugMode`, qui autorise les extensions non signées par Adobe Exchange. Pour une diffusion à grande échelle, le panneau peut être signé en `.zxp` avec `ZXPSignCmd`.
+L'installation active `PlayerDebugMode`, qui autorise les extensions non signées par Adobe Exchange. Pour une diffusion à grande échelle, le panneau peut être signé en `.zxp` avec `ZXPSignCmd`.
+
+## Mises à jour
+
+Le panneau suit le serveur, comme l'application : seul un petit lanceur (`loader.js`) est installé, et l'interface du panneau (`ui/`, `host/premiere.jsx`) est chargée depuis le serveur Strata à chaque ouverture. Mettre le serveur à jour met donc à jour tous les panneaux.
+
+- **Hors ligne** : la dernière version chargée est gardée, puis, à défaut, celle installée.
+- **Lanceur** : quand le serveur a un lanceur plus récent, un bandeau vert *A new version of the Strata panel is ready* apparaît. **Update** réécrit l'extension dans le dossier de l'utilisateur et recharge le panneau ; si le manifeste a changé, il faut redémarrer Premiere.
+- La version chargée et sa provenance sont indiquées dans ⚙.
+
+Pour les développeurs : toute modification de `loader.js`, `index.html` ou `CSXS/manifest.xml` doit incrémenter `LOADER_VERSION` dans `loader.js`, sinon les panneaux déjà installés ne la recevront pas.
 
 ## Remarques
 

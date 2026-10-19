@@ -1,0 +1,106 @@
+<div id="update" class="update hidden"></div>
+<header class="head">
+  <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="m3.5 20.6 12.5 6.4 12.5-6.4" fill="none" stroke="#9d85ff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><path d="M16 4.6 28.5 11 16 17.4 3.5 11z" fill="#7c5cff"/><path d="m10.2 11.9 6.2-3.2 3.4 1.7-6.2 3.2z" fill="#fff" opacity=".9"/><path d="m14.2 13.9 6.2-3.2 2 1-6.2 3.2z" fill="#ff3b5c"/></svg>
+  <select id="project" title="Strata project"></select>
+  <span id="dot" class="dot" title="Not connected"></span>
+  <button id="toggleSettings" class="ib" title="Server">⚙</button>
+</header>
+
+<section id="settings" class="settings hidden">
+  <label>Server <input id="server" placeholder="http://cg-server:8080" /></label>
+  <label>API key <input id="key" type="password" placeholder="pcg_…" /></label>
+  <label>Folder <input id="folder" placeholder="Documents/Strata Renders" /></label>
+  <div class="end"><span id="about" class="about"></span><span class="sp"></span><button id="saveSettings" class="btn primary">Connect</button></div>
+</section>
+
+<nav id="tabs" class="tabs hidden">
+  <button data-tab="graphics" class="on">Graphics</button>
+  <button data-tab="markers">From markers</button>
+  <button data-tab="renders">Renders <span id="running" class="n hidden"></span></button>
+</nav>
+
+<div id="editing" class="editing hidden"></div>
+
+<main id="body" class="body hidden">
+  <!-- Graphics -->
+  <div id="tab-graphics">
+    <section class="sec">
+      <input id="search" class="search" placeholder="Search a template" />
+      <div id="filters" class="chips"></div>
+      <div id="templates" class="grid"></div>
+    </section>
+    <div id="editor" class="hidden">
+      <section class="sec">
+        <div class="sec-h">
+          Preview<span class="sp"></span>
+          <div id="bgs" class="seg">
+            <button data-bg="frame" title="Over the frame under the playhead">Playhead</button>
+            <button data-bg="alpha" class="on">Alpha</button>
+            <button data-bg="black">Black</button>
+          </div>
+          <button id="safe" class="ib" title="Safe areas">▢</button>
+        </div>
+        <div id="pv" class="pv">
+          <div id="pvBg" class="pv-bg alpha"></div>
+          <iframe id="pvFrame" title="Preview"></iframe>
+          <div id="pvSafe" class="safe hidden"></div>
+        </div>
+        <div id="scrub" class="scrub"></div>
+        <div class="transport">
+          <button id="play" class="btn icon" title="Play">▶</button>
+          <span id="pvTc" class="tc"></span>
+        </div>
+        <div id="warn" class="warn hidden"></div>
+      </section>
+      <section class="sec">
+        <div class="sec-h">Values<span class="sp"></span><button id="reset" class="ib" title="Back to the template's values">↺</button></div>
+        <div id="fields"></div>
+      </section>
+      <section class="sec">
+        <div class="sec-h">Timing</div>
+        <div class="f">
+          <span>On air</span>
+          <div id="durModes" class="seg">
+            <button data-dur="value" class="on">Duration</button>
+            <button data-dur="inout" title="The sequence In and Out points">In → Out</button>
+            <button data-dur="clip" title="As long as the clip selected in the timeline">Selected clip</button>
+          </div>
+        </div>
+        <div id="holdRow" class="f"><span></span><div class="num"><input id="hold" type="number" min="0" step="0.5" value="5" /><i>s</i></div></div>
+        <div class="f"><span>Out anim.</span><button id="withOut" class="tog on"><i></i></button></div>
+        <div class="f"><span>Track</span><select id="track"></select></div>
+        <div id="sum" class="sum"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Markers -->
+  <div id="tab-markers" class="hidden">
+    <section class="sec">
+      <div class="sec-h">Sequence markers<span class="sp"></span><button id="reloadMarkers" class="ib" title="Read the markers again">↻</button></div>
+      <div id="markers"></div>
+    </section>
+    <section class="sec">
+      <div id="mapTitle" class="sec-h"></div>
+      <div id="map" class="map"></div>
+    </section>
+    <section class="sec">
+      <button id="batch" class="btn primary wide"></button>
+      <div id="batchMeta" class="meta"></div>
+    </section>
+  </div>
+
+  <!-- Renders -->
+  <div id="tab-renders" class="hidden"><div id="queue"></div></div>
+</main>
+
+<footer id="foot" class="foot hidden">
+  <div class="row">
+    <button id="insert" class="btn primary">↓ Insert at playhead</button>
+    <button id="toBin" class="btn" title="Render and import into the bin only">Bin</button>
+  </div>
+  <div id="meta" class="meta"></div>
+</footer>
+<div id="status" class="status"></div>
+
+

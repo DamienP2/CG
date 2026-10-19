@@ -926,6 +926,9 @@
     store.set('server', S.server);
     store.set('key', S.key);
     store.set('folder', S.folder);
+    // A new server serves its own panel: start again through the loader.
+    var L = window.STRATA_LOADER;
+    if (L && S.server !== L.server) return location.reload();
     connect();
   };
   $('project').onchange = function () {
@@ -951,6 +954,37 @@
     refreshSequence().catch(function () {});
   });
 
+  // --------------------------------------------------------------- updates
+
+  /** The panel's version, and the banner when the server has a newer extension to install. */
+  function renderUpdate() {
+    var L = window.STRATA_LOADER;
+    if (!L) return;
+    var from = { server: 'from the server', cache: 'offline copy', installed: 'installed copy' }[L.from] || L.from;
+    $('about').textContent = 'Panel ' + L.ui + ' · ' + from;
+    var box = $('update');
+    box.classList.toggle('hidden', !L.updateAvailable);
+    if (!L.updateAvailable) return;
+    box.innerHTML = '<span>A new version of the Strata panel is ready.</span><span class="sp"></span><button id="installUpdate" class="btn primary">Update</button>';
+    $('installUpdate').onclick = function () {
+      this.disabled = true;
+      this.textContent = 'Updating…';
+      L.install().then(
+        function (r) {
+          if (r.restart) {
+            box.innerHTML = '<span>Updated. Restart Premiere Pro to finish.</span>';
+          } else {
+            r.reload();
+          }
+        },
+        function (e) {
+          box.innerHTML = '<span>Update failed: ' + esc(e.message) + '</span>';
+        },
+      );
+    };
+  }
+
   loadSettings();
+  renderUpdate();
   connect();
 })();

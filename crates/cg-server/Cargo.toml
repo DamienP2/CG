@@ -24,7 +24,7 @@ axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util = "0.3"
-rust-embed = { version = "8", features = ["mime-guess"] }
+rust-embed = { version = "8", features = ["mime-guess", "include-exclude"] }
 directories = "6"
 if-addrs = "0.15"
 gethostname = "1"
