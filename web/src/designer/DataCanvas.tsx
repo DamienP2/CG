@@ -6,7 +6,7 @@ import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { api } from '../store';
-import { columnKey, rowKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
+import { columnKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -14,6 +14,7 @@ import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { ICONS } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
+import { getPath, setPath } from '../widgets/kit';
 
 /*
  * Data canvas. The data goes through as tables:
@@ -31,14 +32,66 @@ import { WidgetRunButtons } from './WidgetRun';
 
 export const useDataCanvas = create<{ open: boolean; set: (open: boolean) => void }>((set) => ({ open: false, set: (open) => set({ open }) }));
 
+/** Content edited by hand only (a data set's table goes into the widget's source next to it). */
+const HAND_ONLY = new Set(['grid', 'entries']);
 /** What a layer shows, wired by default: its text, or its picture. */
 function contentOf(l: Layer): string[] {
   const spec = widgetOf(l.type)?.content;
-  if (spec) return spec;
+  if (spec) return spec.filter((p) => !HAND_ONLY.has(p));
   if (l.type === 'image') return ['src'];
   return typeof (l as { text?: unknown }).text === 'string' ? ['text'] : [];
 }
-const contentValue = (l: Layer, port: string) => String((l as unknown as Record<string, unknown>)[port] ?? '');
+/** Content ports taking a whole table (a data set's All rows). */
+const TABLE_PORTS: Record<string, string> = { table: 'link', credits: 'link', chart: 'csv', ticker: 'items' };
+const takesTable = (l: Layer, port: string) => TABLE_PORTS[l.type] === port;
+const CONTENT_LABEL: Record<string, string> = { src: 'Picture', text: 'Text', link: 'Rows', csv: 'Rows', items: 'Items', 'title.text': 'Title' };
+type Item = { cat?: string; text?: string; on?: boolean };
+const contentValue = (l: Layer, port: string) => {
+  if (port === 'items') return ((l as { items?: Item[] }).items ?? []).map((i) => i.text ?? '').join('\n');
+  return String(getPath(l, port) ?? '');
+};
+/** "12 rows · Team, Pts…" for a data set's whole table. */
+function tableSummary(v: string): string | null {
+  if (!v.startsWith('[[')) return null;
+  try {
+    const a = JSON.parse(v) as string[][];
+    const head = a[0] ?? [];
+    return `${a.length - 1} rows · ${head.slice(0, 3).join(', ')}${head.length > 3 ? '…' : ''}`;
+  } catch {
+    return null;
+  }
+}
+/** Wires `{{key}}` into a layer's content port (`x` is the draft layer). */
+function wireContent(x: Layer, port: string, key: string) {
+  const token = `{{${key}}}`;
+  const l = x as unknown as Record<string, unknown>;
+  if (port === 'text') {
+    const cur = String(l.text ?? '');
+    if (!cur.includes(token)) l.text = cur.trim() && /\{\{\w+\}\}/.test(cur) ? `${cur} ${token}` : token;
+  } else if (port === 'items') l.items = [{ cat: '', text: token, on: true }];
+  else {
+    setPath(l, port, token);
+    if (x.type === 'chart' && port === 'csv') l.source = 'csv';
+  }
+}
+/** Takes `{{key}}` out of a layer's content port. */
+function unwireContent(x: Layer, port: string, key: string) {
+  const token = `{{${key}}}`;
+  const l = x as unknown as Record<string, unknown>;
+  if (port === 'items') {
+    l.items = ((l.items as Item[] | undefined) ?? []).filter((i) => !(i.text ?? '').includes(token));
+    return;
+  }
+  setPath(
+    l,
+    port,
+    String(getPath(l, port) ?? '')
+      .split(token)
+      .join('')
+      .replace(/ {2,}/g, ' ')
+      .trim(),
+  );
+}
 /** A {{key}} in a layer's text or picture. */
 const tokensIn = (l: Layer, port: string, key: string) => contentValue(l, port).includes(`{{${key}}}`);
 
@@ -106,8 +159,6 @@ function loadLayout(id: string): Layout {
     return empty;
   }
 }
-
-const tokenOf = (key: string) => `{{${key}}}`;
 
 type Pt = { x: number; y: number };
 function curve(a: Pt, b: Pt) {
@@ -350,7 +401,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   // Data set columns: where their ports are (the node reports its columns).
   const columnPorts = new Map<string, Pt>();
-  for (const n of flow.nodes) if (n.type === 'dataset') (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), { x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 }));
+  for (const n of flow.nodes)
+    if (n.type === 'dataset') {
+      // All the rows first (for tables, credits…), then each column of the current row.
+      const at = (i: number) => ({ x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 });
+      columnPorts.set(tableKey(n.key), at(0));
+      (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), at(i + 1)));
+    }
   /** Where a value wired by key starts: a variable, or a data set column. */
   const keyOut = (key: string): Pt | null => (nodePos.has(`f:${key}`) ? outOf(`f:${key}`, widthOf(`f:${key}`, W.field)) : (columnPorts.get(key) ?? null));
   const wiredKey = (k: string) => template.fields.some((f) => f.key === k) || columnPorts.has(k);
@@ -377,13 +434,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           title: `${key} → ${l.name} ${content ? port : PROP_LABELS[port as Prop]} (click to remove)`,
           onClick: () =>
             update((t) => {
-              const x = findLayer(t, l.id)! as unknown as Record<string, unknown> & Layer;
-              if (content)
-                x[port] = String(x[port] ?? '')
-                  .split(tokenOf(key))
-                  .join('')
-                  .replace(/ {2,}/g, ' ')
-                  .trim();
+              const x = findLayer(t, l.id)!;
+              if (content) unwireContent(x, port, key);
               else delete x.bindings[port as Prop];
             }),
         });
@@ -454,14 +506,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     if (!layerId || !p) return;
     if (w.kind === 'field') {
       update((t) => {
-        const l = findLayer(t, layerId)! as unknown as Record<string, unknown> & Layer;
-        if (p === 'src') l.src = tokenOf(w.key);
-        else if (p === 'text') {
-          const cur = String(l.text ?? '');
-          if (!cur.includes(tokenOf(w.key))) l.text = cur.trim() && /\{\{\w+\}\}/.test(cur) ? `${cur} ${tokenOf(w.key)}` : tokenOf(w.key);
-        } else l.bindings[p as Prop] = w.key;
+        const l = findLayer(t, layerId)!;
+        if (contentOf(l).includes(p)) wireContent(l, p, w.key);
+        else l.bindings[p as Prop] = w.key;
       });
-    } else if (w.kind === 'logic' && p !== 'text' && p !== 'src') {
+    } else if (w.kind === 'logic' && !contentOf(findLayer(template, layerId)!).includes(p)) {
       editLogic((l) => {
         let to = l.nodes.find((n) => n.type === 'target' && n.layer === layerId && n.prop === p)?.id;
         if (!to) {
@@ -846,8 +895,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       return (
                         <div key={port} className={`ln-content ${isWired ? 'wired' : ''}`} style={{ height: CROW }}>
                           <div className="ln-input" style={{ height: ROW }}>
-                            <span className="port in" data-layer={l.id} data-port={port} title="Drop a variable here" />
-                            {port === 'src' ? <ImageIcon size={11} /> : <Type size={11} />} {port === 'src' ? 'Picture' : 'Text'}
+                            <span className="port in" data-layer={l.id} data-port={port} title={takesTable(l, port) ? "Drop a data set's All rows here (or a variable)" : 'Drop a variable here'} />
+                            {port === 'src' ? <ImageIcon size={11} /> : takesTable(l, port) ? <Rows3 size={11} /> : <Type size={11} />} {CONTENT_LABEL[port] ?? port}
                             {isWired && <span className="dc-from">from data</span>}
                           </div>
                           {isWired && port === 'src' && cellType(result) === 'image' ? (
@@ -856,10 +905,12 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                             </span>
                           ) : isWired ? (
                             <span className="dc-value live" title={`Result: ${result}`}>
-                              {result === '' ? '(empty)' : result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')}
+                              {result === '' ? '(empty)' : tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ '))}
                             </span>
+                          ) : port === 'items' ? (
+                            <span className="dc-value">{raw ? `${raw.split('\n').length} items (Inspector)` : 'No items'}</span>
                           ) : (
-                            <input className="dc-content-input" value={raw} title="Default value (until a variable is wired)" onChange={(e) => update((t) => void ((findLayer(t, l.id) as unknown as Record<string, unknown>)[port] = e.target.value), `content-${l.id}`)} />
+                            <input className="dc-content-input" value={raw} placeholder={takesTable(l, port) ? "A data set's All rows" : undefined} title="Default value (until a variable is wired)" onChange={(e) => update((t) => setPath(findLayer(t, l.id), port, e.target.value), `content-${l.id}-${port}`)} />
                           )}
                         </div>
                       );
@@ -1252,6 +1303,12 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
   const row = Math.min(Math.max(1, parseInt(data[rowKey(node.key)] ?? '1', 10) || 1), Math.max(1, total));
   return (
     <>
+      <div className="ds-col ds-all" style={{ height: DS_ROW }}>
+        <Rows3 size={11} className="dc-type" />
+        <span className="ds-name">All rows</span>
+        <span className="ds-val">{t ? `${total} × ${cols.length} table` : ''}</span>
+        <span className="port out" title={`Drag to a Table, Credits, Ticker or Chart: the whole table (key ${tableKey(node.key)})`} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
+      </div>
       {cols.map((c, i) => {
         const Icon = TYPE_ICON[types[i]];
         const v = t?.rows[row - 1]?.[i] ?? '';

@@ -7,7 +7,7 @@ import { ArrowLeftRight } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { FontControls, GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
 
 export interface Item {
@@ -112,6 +112,17 @@ export function expand(items: Item[], data: Data): Item[] {
     if (t.trim().startsWith('[')) {
       try {
         const a = JSON.parse(t.trim());
+        // A data set's table: its text (or first) column, its category column.
+        const tb = Array.isArray(a) ? headerRows(a) : null;
+        if (tb) {
+          const ti = Math.max(0, findCol(tb.head, ['text', 'title', 'headline']));
+          const ci = findCol(tb.head, ['cat', 'category']);
+          for (const r of tb.rows) {
+            const text = (r[ti] ?? '').trim();
+            if (text) out.push({ cat: ci >= 0 ? (r[ci] ?? '') : it.cat, text, on: true });
+          }
+          continue;
+        }
         if (Array.isArray(a)) {
           for (const v of a) {
             const text = typeof v === 'string' ? v : v && typeof v === 'object' ? String(v.text ?? v.title ?? '') : JSON.stringify(v);

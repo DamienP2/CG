@@ -203,6 +203,8 @@ export interface DataSet {
 /** Data keys of a data set: its row, its number of rows, each column of the current row. */
 export const rowKey = (key: string) => `${key}__row`;
 export const countKey = (key: string) => `${key}__count`;
+/** All the rows of a data set, for widgets showing a table: JSON `[[header…], [cells…], …]`. */
+export const tableKey = (key: string) => `${key}__table`;
 export const columnKey = (key: string, column: string) => `${key}_${column.replace(/[^A-Za-z0-9]/g, '_')}`;
 
 /** A node of the Data canvas graph: a source's list, a step, or a data set. */

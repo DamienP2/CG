@@ -682,6 +682,16 @@ export function GridEditor(p: { path?: string; value?: string[][]; onChange?: (v
 }
 
 /** Rows of a CSV text (`,` `;` or tab; quotes allowed). */
+const cellOf = (v: unknown) => (v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v));
+/** A data set's whole table (`[["col", …], [cell, …], …]`: the header, then the rows). */
+export function headerRows(a: unknown[]): { head: string[]; rows: string[][] } | null {
+  if (!a.length || !a.every((r) => Array.isArray(r))) return null;
+  const [h, ...rows] = a as unknown[][];
+  return { head: h.map(cellOf), rows: rows.map((r) => r.map(cellOf)) };
+}
+/** The column named one of `names` (any case), or -1. */
+export const findCol = (head: string[], names: string[]) => head.findIndex((h) => names.includes(h.trim().toLowerCase()));
+
 export function parseCsv(text: string): string[][] {
   const lines = text
     .replace(/\r/g, '')

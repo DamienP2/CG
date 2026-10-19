@@ -5,6 +5,7 @@ import { interpolateText } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { parseCsv } from './kit';
 import { roundedPolygon } from './shape';
+import { parseRows } from './table';
 
 export type ChartType = 'columns' | 'areas' | 'lines' | 'pie';
 export type Marker = 'none' | 'circle' | 'square' | 'diamond';
@@ -149,7 +150,11 @@ export type St = ReturnType<typeof st>;
 // ------------------------------------------------------------------- data --
 
 export function resolveGrid(c: Cfg, data: Data): string[][] {
-  if (c.source === 'csv') return parseCsv(interpolateText(c.csv, data));
+  if (c.source === 'csv') {
+    // CSV, or JSON rows (a data set's table).
+    const t = interpolateText(c.csv, data);
+    return t.trimStart().startsWith('[') ? parseRows(t) : parseCsv(t);
+  }
   return c.data.map((r) => r.map((s) => interpolateText(String(s ?? ''), data)));
 }
 

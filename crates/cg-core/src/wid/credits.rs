@@ -289,6 +289,59 @@ pub fn to_text(es: &[Entry]) -> String {
         .join("\n")
 }
 
+/// Entries from a table (a data set): its section / logo / role / name
+/// columns, else the first two columns as role and name.
+fn table_entries(head: &[String], rows: &[Vec<String>]) -> Vec<Entry> {
+    use super::table::find_col;
+    let section = find_col(head, &["section"]);
+    let logo = find_col(head, &["logo"]);
+    let mut role = find_col(head, &["role", "job", "function"]);
+    let mut name = find_col(head, &["name", "person"]);
+    if section.is_none() && logo.is_none() && role.is_none() && name.is_none() {
+        (role, name) = if head.len() >= 2 {
+            (Some(0), Some(1))
+        } else {
+            (None, Some(0))
+        };
+    }
+    let cell = |r: &Vec<String>, i: Option<usize>| {
+        i.and_then(|i| r.get(i))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    };
+    let mut out = Vec::new();
+    for r in rows {
+        let (s, l, a, b) = (
+            cell(r, section),
+            cell(r, logo),
+            cell(r, role),
+            cell(r, name),
+        );
+        if !s.is_empty() {
+            out.push(Entry {
+                kind: Kind::Section,
+                a: s,
+                b: String::new(),
+            });
+        }
+        if !l.is_empty() {
+            out.push(Entry {
+                kind: Kind::Logo,
+                a: l,
+                b: String::new(),
+            });
+        }
+        if !b.is_empty() || !a.is_empty() {
+            out.push(Entry {
+                kind: Kind::Line,
+                a,
+                b,
+            });
+        }
+    }
+    out
+}
+
 /// The entries shown: the linked value (credits text, or JSON rows
 /// {section?, role, name}), else the entries with their `{{key}}` filled.
 pub fn entries(c: &Config, data: &Data) -> Vec<Entry> {
@@ -297,6 +350,9 @@ pub fn entries(c: &Config, data: &Data) -> Vec<Entry> {
         let t = v.trim();
         if t.starts_with('[') {
             if let Ok(serde_json::Value::Array(a)) = serde_json::from_str::<serde_json::Value>(t) {
+                if let Some((head, rows)) = super::table::header_rows(&a) {
+                    return table_entries(&head, &rows);
+                }
                 let mut out = Vec::new();
                 let s = |o: &serde_json::Map<String, serde_json::Value>, k: &str| {
                     o.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()

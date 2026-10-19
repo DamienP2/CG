@@ -461,6 +461,29 @@ fn json_cell(v: &serde_json::Value) -> String {
     }
 }
 
+/// A data set's whole table (`[["col", …], [cell, …], …]`: the header,
+/// then the rows), as header and rows.
+pub fn header_rows(a: &[serde_json::Value]) -> Option<(Vec<String>, Vec<Vec<String>>)> {
+    let (head, rows) = a.split_first()?;
+    if !a.iter().all(|r| r.is_array()) {
+        return None;
+    }
+    let cells = |r: &serde_json::Value| {
+        r.as_array()
+            .unwrap()
+            .iter()
+            .map(json_cell)
+            .collect::<Vec<_>>()
+    };
+    Some((cells(head), rows.iter().map(cells).collect()))
+}
+
+/// The column named one of `names` (any case).
+pub fn find_col(head: &[String], names: &[&str]) -> Option<usize> {
+    head.iter()
+        .position(|h| names.iter().any(|n| h.trim().eq_ignore_ascii_case(n)))
+}
+
 /// Rows of a linked value: a JSON array (of arrays, or of objects: the keys
 /// make the header) or CSV text.
 pub fn parse_rows(text: &str) -> Vec<Vec<String>> {
@@ -1141,5 +1164,41 @@ mod tests {
         assert_eq!(m.unmapped, vec!["xG".to_string()]);
         d.insert("rows".into(), "Team;Pts\nC;1\nD;2\nE;3".into());
         assert_eq!(model(&c, &d).rows.len(), 3);
+    }
+}
+
+#[cfg(test)]
+mod dataset_table_tests {
+    use super::*;
+
+    #[test]
+    fn a_data_set_table_feeds_table_credits_ticker_and_chart() {
+        let all = r#"[["Role","Name"],["Director","Ada"],["Writer","Linus"]]"#;
+        assert_eq!(parse_rows(all)[2], vec!["Writer", "Linus"]);
+        let data: Data = [("ds__table".to_string(), all.to_string())].into();
+        let c: super::super::credits::Config =
+            serde_json::from_value(serde_json::json!({"link": "{{ds__table}}"})).unwrap();
+        let es = super::super::credits::entries(&c, &data);
+        assert_eq!((es[0].a.as_str(), es[0].b.as_str()), ("Director", "Ada"));
+        assert_eq!(es.len(), 2);
+        let items = super::super::ticker::expand(
+            &[super::super::ticker::Item {
+                cat: String::new(),
+                text: "{{ds__table}}".into(),
+                on: true,
+            }],
+            &data,
+        );
+        assert_eq!(
+            items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>(),
+            ["Director", "Writer"]
+        );
+        let ch: super::super::chart::Config =
+            serde_json::from_value(serde_json::json!({"source": "csv", "csv": "{{ds__table}}"}))
+                .unwrap();
+        assert_eq!(
+            super::super::chart::resolve_grid(&ch, &data)[1],
+            vec!["Director", "Ada"]
+        );
     }
 }

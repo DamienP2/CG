@@ -8267,6 +8267,11 @@ body.cv-moving * {
   border-bottom: 1px solid var(--line);
   font-size: 12px;
 }
+/* The whole table: for tables, credits, tickers, charts. */
+.ds-col.ds-all {
+  background: color-mix(in srgb, #facc15 7%, transparent);
+  font-weight: 600;
+}
 .ds-col .port.out {
   position: absolute;
   right: -6px;

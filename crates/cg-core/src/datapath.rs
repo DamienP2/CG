@@ -627,6 +627,12 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
         .unwrap_or(1)
         .clamp(1, n.max(1));
     let mut changed = set(ds.count_key(), n.to_string(), data);
+    let all: Vec<&Vec<String>> = std::iter::once(&t.columns).chain(t.rows.iter()).collect();
+    changed |= set(
+        ds.table_key(),
+        serde_json::to_string(&all).unwrap_or_default(),
+        data,
+    );
     for (i, c) in t.columns.iter().enumerate() {
         let key = ds.column_key(c);
         // Set by hand: kept until the operator (or its time, or a trigger) lets go.
@@ -1081,6 +1087,11 @@ mod tests {
         assert_eq!(data["standings_team"], "PSG");
         assert_eq!(data["standings_club_city"], "Paris");
         assert_eq!(data["standings__count"], "2");
+        // All the rows, for a table widget.
+        assert_eq!(
+            data["standings__table"],
+            r#"[["team","club.city"],["PSG","Paris"],["OM","Marseille"]]"#
+        );
         data.insert("standings__row".into(), "2".into());
         bind_datasets(&t, &mut data, &store);
         assert_eq!(data["standings_team"], "OM");

@@ -515,7 +515,15 @@ pub fn parse_csv(text: &str) -> Vec<Vec<String>> {
 /// The grid with the data values in (CSV source parsed).
 pub fn resolve_grid(c: &Config, data: &Data) -> Vec<Vec<String>> {
     match c.source {
-        Source::Csv => parse_csv(&interpolate_text(&c.csv, data)),
+        // CSV, or JSON rows (a data set's table).
+        Source::Csv => {
+            let t = interpolate_text(&c.csv, data);
+            if t.trim_start().starts_with('[') {
+                super::table::parse_rows(&t)
+            } else {
+                parse_csv(&t)
+            }
+        }
         Source::Grid => c
             .data
             .iter()

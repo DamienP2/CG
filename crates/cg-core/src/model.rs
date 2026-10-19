@@ -956,6 +956,10 @@ impl DataSet {
     pub fn count_key(&self) -> String {
         format!("{}__count", self.key)
     }
+    /// All its rows, for widgets showing a table: JSON `[[header…], [cells…], …]`.
+    pub fn table_key(&self) -> String {
+        format!("{}__table", self.key)
+    }
     /// Seconds between rows when the rows go on by themselves (empty: off).
     pub fn auto_key(&self) -> String {
         format!("{}__auto", self.key)

@@ -7,7 +7,7 @@ import { ScrollText } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
-import { Area, Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { Area, Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
 
 type Kind = 'section' | 'line' | 'logo' | 'space';
@@ -128,12 +128,30 @@ export function parse(text: string): E[] {
   return out;
 }
 export const toText = (es: E[]) => es.map((e) => (e.kind === 'section' ? `# ${e.a}` : e.kind === 'logo' ? `[logo ${e.a}]` : e.kind === 'space' ? '' : e.a ? `${e.a} | ${e.b}` : e.b)).join('\n');
+/** Entries from a table (a data set): its section / logo / role / name columns, else the first two columns as role and name. */
+function tableEntries(head: string[], rows: string[][]): E[] {
+  const section = findCol(head, ['section']);
+  const logo = findCol(head, ['logo']);
+  let role = findCol(head, ['role', 'job', 'function']);
+  let name = findCol(head, ['name', 'person']);
+  if (section < 0 && logo < 0 && role < 0 && name < 0) [role, name] = head.length >= 2 ? [0, 1] : [-1, 0];
+  const cell = (r: string[], i: number) => (i >= 0 ? (r[i] ?? '').trim() : '');
+  const out: E[] = [];
+  for (const r of rows) {
+    if (cell(r, section)) out.push({ kind: 'section', a: cell(r, section), b: '' });
+    if (cell(r, logo)) out.push({ kind: 'logo', a: cell(r, logo), b: '' });
+    if (cell(r, role) || cell(r, name)) out.push({ kind: 'line', a: cell(r, role), b: cell(r, name) });
+  }
+  return out;
+}
 export function entriesOf(k: K, data: Data): E[] {
   if (k.link.trim()) {
     const v = interpolateText(k.link, data);
     if (v.trim().startsWith('[')) {
       try {
         const a = JSON.parse(v.trim());
+        const t = Array.isArray(a) ? headerRows(a) : null;
+        if (t) return tableEntries(t.head, t.rows);
         if (Array.isArray(a)) {
           const out: E[] = [];
           for (const r of a) {
