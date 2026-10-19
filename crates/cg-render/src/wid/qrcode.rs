@@ -389,7 +389,7 @@ mod tests {
         for text in [
             "https://vote.pulse.tv/final",
             "HELLO 123",
-            &"Pulse CG live vote. ".repeat(12),
+            &"Strata live vote. ".repeat(12),
         ] {
             for ec in [Ecl::L, Ecl::M, Ecl::Q, Ecl::H] {
                 let (n, m) = qr_modules_ec(text, ec).unwrap();

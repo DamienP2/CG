@@ -1,4 +1,4 @@
-# Installs the Pulse CG panel for Premiere Pro (current user).
+# Installs the Strata panel for Premiere Pro (current user).
 # Usage: right-click > Run with PowerShell (from the unzipped folder)
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $PSScriptRoot
@@ -14,4 +14,4 @@ foreach ($v in 9..13) {
   Set-ItemProperty -Path "HKCU:\Software\Adobe\CSXS.$v" -Name PlayerDebugMode -Value "1"
 }
 Write-Host "Installed in $dest"
-Write-Host "Restart Premiere Pro, then open Window > Extensions > Pulse CG."
+Write-Host "Restart Premiere Pro, then open Window > Extensions > Strata."

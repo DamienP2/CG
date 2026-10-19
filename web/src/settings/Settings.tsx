@@ -120,7 +120,7 @@ export function Settings() {
           <div>
             <h1>{info.config.name}</h1>
             <p className="muted">
-              Pulse CG {info.version} · {info.hostname} · {info.os}/{info.arch} · up {uptime(info.uptimeSecs)}
+              Strata {info.version} · {info.hostname} · {info.os}/{info.arch} · up {uptime(info.uptimeSecs)}
             </p>
           </div>
           <div className="spacer" />

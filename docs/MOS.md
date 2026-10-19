@@ -1,12 +1,12 @@
 # Connecter un système de rédaction (MOS)
 
-Pulse CG est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group), iNews, ENPS, Octopus, Dina, etc.
+Strata est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group), iNews, ENPS, Octopus, Dina, etc.
 
-- Les journalistes placent les habillages dans leurs sujets avec le **plugin HTML5** de Pulse CG.
-- Le système de rédaction envoie les **conducteurs** (running orders) à Pulse CG.
+- Les journalistes placent les habillages dans leurs sujets avec le **plugin HTML5** de Strata.
+- Le système de rédaction envoie les **conducteurs** (running orders) à Strata.
 - Chaque conducteur devient une **playlist** du projet, avec un élément par habillage, dans l'ordre des sujets. L'opérateur les joue depuis la page Opérateur, avec les boutons Take / Out des lignes ou par l'automation.
 
-## 1. Côté Pulse CG
+## 1. Côté Strata
 
 1. **Réglages → Rédaction (MOS)** :
    - cocher *Accept newsroom connections* ;
@@ -24,10 +24,10 @@ Pulse CG est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group)
 
 1. **Déclarer le MOS device** :
    - MOS ID `pulsecg.mos` ;
-   - adresse IP du serveur Pulse CG ;
+   - adresse IP du serveur Strata ;
    - ports bas / haut 10540 / 10541 ;
    - profils 0, 1 et 2 ;
-   - encodage UCS-2 (UTF-16), standard MOS. Pulse CG accepte aussi l'UTF-8.
+   - encodage UCS-2 (UTF-16), standard MOS. Strata accepte aussi l'UTF-8.
 2. **Déclarer le plugin HTML5** de ce MOS device :
    ```
    http://<serveur-pulse-cg>:8080/mos/plugin?key=pcg_…
@@ -37,7 +37,7 @@ Pulse CG est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group)
 
 ## 3. Utilisation
 
-**Journaliste**, dans le sujet, ouvre le plugin Pulse CG :
+**Journaliste**, dans le sujet, ouvre le plugin Strata :
 - choisit le template et remplit les champs ; l'aperçu se met à jour en direct ;
 - clique sur **Add to the story**, ou glisse l'élément dans le texte.
 
@@ -70,6 +70,6 @@ Format des éléments créés par le plugin (`mosExternalMetadata`, schéma `htt
 
 ## Limites actuelles
 
-- **Pas de retour d'état vers la rédaction.** Pulse CG n'envoie pas encore `roItemStat` (PLAY / STOP) : la rédaction ne voit pas quel habillage est à l'antenne.
+- **Pas de retour d'état vers la rédaction.** Strata n'envoie pas encore `roItemStat` (PLAY / STOP) : la rédaction ne voit pas quel habillage est à l'antenne.
 - **Profils 3 à 7 non pris en charge.** Il n'y a pas d'objets créés côté device ni de contrôle de playout par la rédaction (`roCtrl` est seulement accusé). Le Take reste chez l'opérateur, ou passe par l'API (`POST /api/channels/{id}/items/{item}/take`).
 - **Validation sur une vraie Saga à faire.** L'intégration a été testée avec un simulateur MOS, pas avec Saga elle-même : la première mise en service doit être faite avec l'administrateur Saga.

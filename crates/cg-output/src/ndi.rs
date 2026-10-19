@@ -5,8 +5,8 @@
 //! the SDK redistributable) is loaded when the first NDI output opens. Without
 //! it, opening an output returns `OutputError::Unsupported` with where it was
 //! looked for. The server settings (or `NDI_LIB_PATH`) point to the library
-//! explicitly; otherwise the runtime shipped next to the server by the Pulse
-//! CG installers is used, then the NDI SDK / NDI Tools install folders.
+//! explicitly; otherwise the runtime shipped next to the server by the Strata
+//! installers is used, then the NDI SDK / NDI Tools install folders.
 
 use std::ffi::{c_char, c_void, CString};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -95,7 +95,7 @@ fn candidates() -> Vec<String> {
         c.push(configured);
     }
     c.extend(std::env::var("NDI_LIB_PATH"));
-    // The runtime shipped with Pulse CG, next to the server.
+    // The runtime shipped with Strata, next to the server.
     if let Some(dir) = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(|d| d.to_path_buf()))
@@ -216,7 +216,7 @@ fn load() -> Result<Lib, String> {
         ));
     }
     Err(format!(
-        "NDI runtime not found (reinstall Pulse CG, or install the NDI SDK; looked for {})",
+        "NDI runtime not found (reinstall Strata, or install the NDI SDK; looked for {})",
         tried.join(", ")
     ))
 }

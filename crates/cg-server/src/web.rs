@@ -9,7 +9,7 @@ use rust_embed::RustEmbed;
 #[folder = "../../web/dist"]
 struct WebApp;
 
-const NOT_BUILT: &str = "<!doctype html><meta charset=utf-8><title>Pulse CG</title>\
+const NOT_BUILT: &str = "<!doctype html><meta charset=utf-8><title>Strata</title>\
 <body style=\"font:15px system-ui;background:#0b0c12;color:#e6e8f2;padding:40px\">\
 <h2>Web app not built</h2><p>Run <code>cd web &amp;&amp; npm install &amp;&amp; npm run build</code> \
 then rebuild the server, or start it with <code>--web-dir web/dist</code>.</p>";

@@ -1,4 +1,4 @@
-/** The Pulse logo: three layers, the top one carrying a lower third. `mono`: all white. */
+/** The Strata logo: three layers, the top one carrying a lower third. `mono`: all white. */
 export function Logo({ size = 20, mono = false }: { size?: number; mono?: boolean }) {
   const [a, b, c] = mono ? ['#fff', '#fff', '#fff'] : ['#7c5cff', '#ff3b5c', '#9d85ff'];
   return (

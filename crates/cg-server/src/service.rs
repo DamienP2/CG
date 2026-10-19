@@ -100,7 +100,7 @@ mod imp {
         )?;
         let unit = format!(
             "[Unit]\n\
-             Description=Pulse CG broadcast graphics server\n\
+             Description=Strata broadcast graphics server\n\
              After=network-online.target\n\
              Wants=network-online.target\n\n\
              [Service]\n\
@@ -297,7 +297,7 @@ mod imp {
     use super::*;
     use crate::paths::SERVICE_NAME;
 
-    const DISPLAY_NAME: &str = "Pulse CG Server";
+    const DISPLAY_NAME: &str = "Strata Server";
     const FIREWALL_RULE: &str = "Pulse CG Server";
 
     fn manager(access: ServiceManagerAccess) -> Result<ServiceManager> {

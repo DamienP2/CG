@@ -2,7 +2,7 @@
 name = "cg-tray"
 version.workspace = true
 edition.workspace = true
-description = "Pulse CG desktop companion: menu bar / system tray app"
+description = "Strata desktop companion: menu bar / system tray app"
 
 [[bin]]
 name = "pulse-cg-tray"

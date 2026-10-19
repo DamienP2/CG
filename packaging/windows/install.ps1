@@ -1,4 +1,4 @@
-# Pulse CG — Windows installer (Windows service + firewall rule).
+# Strata — Windows installer (Windows service + firewall rule).
 # Usage (elevated PowerShell):  .\install.ps1 [-Bind 0.0.0.0:8080] [-DataDir C:\ProgramData\PulseCG]
 param(
   [string]$Bind = "0.0.0.0:8080",

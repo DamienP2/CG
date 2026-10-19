@@ -4,7 +4,7 @@
 //! are closed binary formats; the open route out of After Effects is the
 //! Bodymovin / LottieFiles exporter, whose JSON describes compositions,
 //! layers, transforms and keyframes. This module turns such a file into a
-//! Pulse CG template:
+//! Strata template:
 //!
 //! - shape layers (rectangles, ellipses with fill / stroke), solids, texts,
 //!   images, null objects and precompositions;
@@ -338,7 +338,7 @@ impl Converter {
     }
 
     /// Converts the layers of one composition. Lottie lists them top first;
-    /// Pulse paints the first one at the bottom.
+    /// Strata paints the first one at the bottom.
     fn comp(&mut self, layers: &[Json], parent: Option<&str>, origin: (f64, f64), time: Time) {
         let ids: HashSet<i64> = layers
             .iter()

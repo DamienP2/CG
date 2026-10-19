@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Pulse CG Server — Windows Installer package (WiX Toolset v5).
+  Strata Server — Windows Installer package (WiX Toolset v5).
   Build: wix build pulse-cg.wxs -arch x64 -ext WixToolset.Util.wixext -ext WixToolset.Firewall.wixext
-         -d Version=0.1.0 -d BinDir=<dir with cg-server.exe> -d DocsDir=<repo root> -o PulseCG.msi
-  Silent install with a custom port: msiexec /i PulseCG.msi /qn PORT=80
+         -d Version=0.1.0 -d BinDir=<dir with cg-server.exe> -d DocsDir=<repo root> -o Strata.msi
+  Silent install with a custom port: msiexec /i Strata.msi /qn PORT=80
   (LISTEN_ADDR restricts the interface, e.g. LISTEN_ADDR=10.10.0.21)
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
      xmlns:fire="http://wixtoolset.org/schemas/v4/wxs/firewall">
-  <Package Name="Pulse CG Server"
-           Manufacturer="Pulse CG"
+  <Package Name="Strata Server"
+           Manufacturer="Strata"
            Version="$(var.Version)"
            UpgradeCode="c38ad561-9f05-45ea-ab99-17ee287adb85"
            Scope="perMachine"
            Codepage="1252"
            Compressed="yes">
-    <SummaryInformation Description="Pulse CG broadcast graphics server" />
+    <SummaryInformation Description="Strata broadcast graphics server" />
     <MajorUpgrade DowngradeErrorMessage="Une version plus récente de [ProductName] est déjà installée." />
     <MediaTemplate EmbedCab="yes" />
 
@@ -32,7 +32,7 @@
       <Directory Id="INSTALLFOLDER" Name="PulseCG" />
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="MenuFolder" Name="Pulse CG" />
+      <Directory Id="MenuFolder" Name="Strata" />
     </StandardDirectory>
 
     <ComponentGroup Id="Product" Directory="INSTALLFOLDER">
@@ -42,7 +42,7 @@
         </File>
         <ServiceInstall Id="ServiceInstall"
                         Name="pulse-cg"
-                        DisplayName="Pulse CG Server"
+                        DisplayName="Strata Server"
                         Description="Broadcast character generator: HTML5, SDI and SMPTE ST 2110 graphics playout"
                         Type="ownProcess"
                         Start="auto"
@@ -61,7 +61,7 @@
       <!-- Notification-area app, started at every logon. -->
       <Component Id="TrayApp">
         <File Id="TrayExe" Source="$(var.BinDir)\pulse-cg-tray.exe" KeyPath="yes" />
-        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="Pulse CG" Type="string" Value="&quot;[#TrayExe]&quot; --background" />
+        <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="Strata" Type="string" Value="&quot;[#TrayExe]&quot; --background" />
       </Component>
       <!-- One unversioned file per component (auto-generated GUIDs). -->
       <Component Id="DocInstall">
@@ -83,10 +83,10 @@
       </Component>
       <?endif ?>
       <Component Id="StartMenu" Directory="MenuFolder">
-        <Shortcut Id="TrayShortcut" Name="Pulse CG" Description="Pulse CG server status, settings and shortcuts" Target="[#TrayExe]" WorkingDirectory="INSTALLFOLDER" />
-        <Shortcut Id="UninstallShortcut" Name="Uninstall Pulse CG" Description="Remove Pulse CG (your data is kept)" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]" Icon="PulseCG.ico" />
-        <util:InternetShortcut Id="DesignerShortcut" Name="Pulse CG Designer" Target="http://localhost:[PORT]/designer" Type="url" />
-        <util:InternetShortcut Id="OperatorShortcut" Name="Pulse CG Operator" Target="http://localhost:[PORT]/operator" Type="url" />
+        <Shortcut Id="TrayShortcut" Name="Strata" Description="Strata server status, settings and shortcuts" Target="[#TrayExe]" WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="UninstallShortcut" Name="Uninstall Strata" Description="Remove Strata (your data is kept)" Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]" Icon="PulseCG.ico" />
+        <util:InternetShortcut Id="DesignerShortcut" Name="Strata Designer" Target="http://localhost:[PORT]/designer" Type="url" />
+        <util:InternetShortcut Id="OperatorShortcut" Name="Strata Operator" Target="http://localhost:[PORT]/operator" Type="url" />
         <RemoveFolder Id="RemoveMenuFolder" On="uninstall" />
         <RegistryValue Root="HKLM" Key="Software\PulseCG" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
       </Component>
@@ -101,7 +101,7 @@
       <Custom Action="LaunchTray" After="InstallFinalize" Condition="NOT (REMOVE~=&quot;ALL&quot;)" />
     </InstallExecuteSequence>
 
-    <Feature Id="Main" Title="Pulse CG Server">
+    <Feature Id="Main" Title="Strata Server">
       <ComponentGroupRef Id="Product" />
     </Feature>
   </Package>

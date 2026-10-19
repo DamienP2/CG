@@ -1,6 +1,6 @@
-/* Pulse CG panel for Premiere Pro (CEP).
+/* Strata panel for Premiere Pro (CEP).
  *
- * Picks a template of a Pulse CG project, fills its values with a live
+ * Picks a template of a Strata project, fills its values with a live
  * preview (the server's HTML5 renderer in an iframe), asks the server to
  * render it at the active sequence's size and frame rate (QuickTime, PNG
  * with alpha) and lays the clip on a free video track. A clip placed by the
@@ -198,7 +198,7 @@
     if (!S.server || !S.key) {
       $('settings').classList.remove('hidden');
       show(false);
-      status('Enter the Pulse CG server and an API key.');
+      status('Enter the Strata server and an API key.');
       return;
     }
     status('Connecting…');
@@ -598,7 +598,7 @@
   // ---------------------------------------------------------------- render
 
   function outputFolder() {
-    var base = S.folder ? S.folder : path.join(os.homedir(), 'Documents', 'Pulse CG Renders');
+    var base = S.folder ? S.folder : path.join(os.homedir(), 'Documents', 'Strata Renders');
     var dir = path.join(base, S.project.name.replace(/[\\/:*?"<>|]/g, '-'));
     fs.mkdirSync(dir, { recursive: true });
     return dir;

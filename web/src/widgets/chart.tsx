@@ -29,7 +29,7 @@ const SAMPLES: Record<string, { data: string[][]; axis: { suffix: string; decima
   share: {
     data: [
       ['Channel', 'Share'],
-      ['Pulse TV', '24.5'],
+      ['Strata TV', '24.5'],
       ['TF Nord', '18.2'],
       ['Canal Est', '14.9'],
       ['Info 24', '9.1'],

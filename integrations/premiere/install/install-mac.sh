@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs the Pulse CG panel for Premiere Pro (current user).
+# Installs the Strata panel for Premiere Pro (current user).
 # Usage: ./install/install-mac.sh   (from the unzipped folder)
 set -eu
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -12,4 +12,4 @@ for v in 9 10 11 12 13; do
   defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1
 done
 echo "Installed in $DEST"
-echo "Restart Premiere Pro, then open Window > Extensions > Pulse CG."
+echo "Restart Premiere Pro, then open Window > Extensions > Strata."

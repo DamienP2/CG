@@ -89,7 +89,7 @@ fn alert(message: &str) {
     {
         let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
         let script = format!(
-            "display alert \"Pulse CG\" message \"{}\" as critical",
+            "display alert \"Strata\" message \"{}\" as critical",
             esc(message)
         );
         let _ = Command::new("osascript").args(["-e", &script]).spawn();
@@ -99,7 +99,7 @@ fn alert(message: &str) {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let ps = format!(
-            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Pulse CG', 'OK', 'Error')",
+            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Strata', 'OK', 'Error')",
             message.replace('\'', "''")
         );
         let _ = Command::new("powershell")
@@ -144,7 +144,7 @@ fn service(action: &'static str) {
             }
         };
         if let Err(e) = result {
-            alert(&format!("Could not {action} the Pulse CG server.\n\n{e}"));
+            alert(&format!("Could not {action} the Strata server.\n\n{e}"));
         }
     });
 }
@@ -154,7 +154,7 @@ fn service(action: &'static str) {
 fn uninstall() {
     #[cfg(target_os = "macos")]
     let r = Command::new("open")
-        .arg("/Applications/Pulse CG/Uninstall Pulse CG.app")
+        .arg("/Applications/Strata/Uninstall Strata.app")
         .spawn();
     #[cfg(windows)]
     let r = Command::new("explorer.exe")
@@ -196,13 +196,13 @@ fn poll(proxy: EventLoopProxy<UserEvent>) {
                     name: j
                         .get("name")
                         .and_then(|n| n.as_str())
-                        .unwrap_or("Pulse CG")
+                        .unwrap_or("Strata")
                         .to_string(),
                     port: port_from(&j, "bind").unwrap_or(port),
                 })
                 .unwrap_or(Status {
                     running: false,
-                    name: "Pulse CG".into(),
+                    name: "Strata".into(),
                     port,
                 });
             if proxy.send_event(UserEvent::Status(status)).is_err() {
@@ -246,15 +246,15 @@ struct Items {
 impl Items {
     fn new() -> (Menu, Self) {
         let items = Self {
-            status: MenuItem::new("Pulse CG — checking…", false, None),
+            status: MenuItem::new("Strata — checking…", false, None),
             designer: MenuItem::new("Open Designer", false, None),
             operator: MenuItem::new("Open Operator", false, None),
             settings: MenuItem::new("Server Settings…", false, None),
             output: MenuItem::new("Open HTML5 Output", false, None),
             restart: MenuItem::new("Restart Engine", false, None),
             start_stop: MenuItem::new("Start Server", true, None),
-            uninstall: MenuItem::new("Uninstall Pulse CG…", true, None),
-            quit: MenuItem::new("Quit Pulse CG", true, None),
+            uninstall: MenuItem::new("Uninstall Strata…", true, None),
+            quit: MenuItem::new("Quit Strata", true, None),
         };
         let menu = Menu::new();
         let _ = menu.append_items(&[
@@ -279,7 +279,7 @@ impl Items {
         let label = if s.running {
             format!("● {} — running on port {}", s.name, s.port)
         } else {
-            "○ Pulse CG server is stopped".to_string()
+            "○ Strata server is stopped".to_string()
         };
         self.status.set_text(&label);
         for item in [
@@ -331,7 +331,7 @@ pub fn run() {
     let mut tray: Option<TrayIcon> = None;
     let mut status = Status {
         running: false,
-        name: "Pulse CG".into(),
+        name: "Strata".into(),
         port: discover_port(),
     };
     let mut first_status = true;
@@ -346,7 +346,7 @@ pub fn run() {
                 let builder = TrayIconBuilder::new().with_icon_templated(icon());
                 #[cfg(windows)]
                 let builder = TrayIconBuilder::new().with_icon(icon());
-                let mut builder = builder.with_tooltip("Pulse CG");
+                let mut builder = builder.with_tooltip("Strata");
                 if let Some(m) = menu.take() {
                     builder = builder.with_menu(Box::new(m));
                 }

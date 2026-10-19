@@ -36,7 +36,7 @@ use crate::state::{AppState, ChannelRt, Shared};
 #[command(
     name = "cg-server",
     version,
-    about = "Pulse CG — broadcast character generator server",
+    about = "Strata — broadcast character generator server",
     args_conflicts_with_subcommands = true
 )]
 struct Cli {
@@ -338,7 +338,7 @@ pub async fn serve(
 ) -> anyhow::Result<()> {
     let data_dir = args.data_dir.clone().unwrap_or_else(paths::user_data_dir);
     std::fs::create_dir_all(data_dir.join("assets"))?;
-    tracing::info!(version = env!("CARGO_PKG_VERSION"), data_dir = %data_dir.display(), "starting Pulse CG");
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), data_dir = %data_dir.display(), "starting Strata");
 
     let (stop_tx, stop_rx) = watch::channel(false);
     tokio::spawn(async move {

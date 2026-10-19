@@ -4,8 +4,8 @@ fn main() {
     {
         let mut res = winresource::WindowsResource::new();
         res.set_icon("../../assets/icons/pulse-cg.ico");
-        res.set("FileDescription", "Pulse CG");
-        res.set("ProductName", "Pulse CG");
+        res.set("FileDescription", "Strata");
+        res.set("ProductName", "Strata");
         if let Err(e) = res.compile() {
             println!("cargo:warning=cannot embed the icon: {e}");
         }

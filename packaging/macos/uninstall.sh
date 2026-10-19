@@ -1,5 +1,5 @@
 #!/bin/sh
-# Removes Pulse CG (service, menu bar app, uninstaller, command line tool).
+# Removes Strata (service, menu bar app, uninstaller, command line tool).
 # Data in /Library/Application Support/PulseCG is kept unless --purge.
 set -u
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root: sudo $0 $*" >&2; exit 1; }
@@ -12,15 +12,15 @@ USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
 pkill -x pulse-cg-tray 2>/dev/null
 rm -f /Library/LaunchAgents/com.pulsecg.tray.plist
 
-rm -rf "/Applications/Pulse CG" "/Applications/Pulse CG.app"
+rm -rf "/Applications/Strata" "/Applications/Pulse CG" "/Applications/Pulse CG.app"
 rm -f /usr/local/bin/cg-server
 rm -rf /usr/local/pulse-cg
 pkgutil --forget com.pulsecg.server >/dev/null 2>&1
 
 if [ "${1:-}" = "--purge" ]; then
   rm -rf "/Library/Application Support/PulseCG" /Library/Logs/PulseCG
-  echo "Pulse CG and its data have been removed."
+  echo "Strata and its data have been removed."
 else
-  echo "Pulse CG removed. Data kept in /Library/Application Support/PulseCG."
+  echo "Strata removed. Data kept in /Library/Application Support/PulseCG."
 fi
 exit 0

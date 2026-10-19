@@ -404,7 +404,7 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
       return {
         ...base,
         type,
-        text: 'PRESENTED BY\nJane Doe\n\nDIRECTED BY\nJohn Smith\n\nPRODUCED BY\nPulse CG',
+        text: 'PRESENTED BY\nJane Doe\n\nDIRECTED BY\nJohn Smith\n\nPRODUCED BY\nStrata',
         speed: 60,
         loop: true,
         ...font('center', 600),

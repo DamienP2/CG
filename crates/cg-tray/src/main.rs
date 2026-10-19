@@ -1,4 +1,4 @@
-//! Pulse CG desktop companion.
+//! Strata desktop companion.
 //!
 //! A small menu bar (macOS) / notification area (Windows) app installed next
 //! to the server: it shows whether the server runs, opens the Designer,
@@ -16,5 +16,5 @@ fn main() {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn main() {
-    eprintln!("The Pulse CG tray app is available on macOS and Windows; on Linux use `cg-server service status` and the web UI.");
+    eprintln!("The Strata tray app is available on macOS and Windows; on Linux use `cg-server service status` and the web UI.");
 }

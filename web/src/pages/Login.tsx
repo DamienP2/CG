@@ -34,7 +34,7 @@ export function Login() {
       <form className="login-card" onSubmit={submit}>
         <div className="brand big">
           <Logo size={30} />
-          <span>Pulse</span>
+          <span>Strata</span>
         </div>
         <p className="muted">{auth?.serverName}</p>
         {firstRun ? (

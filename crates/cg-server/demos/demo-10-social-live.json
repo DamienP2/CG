@@ -47,7 +47,7 @@
       "key": "topic",
       "label": "Topic",
       "kind": "text",
-      "default": "Live from the Pulse summit"
+      "default": "Live from the Strata summit"
      },
      {
       "key": "accent",
@@ -512,7 +512,7 @@
       "key": "sponsors",
       "label": "Sponsors",
       "kind": "multiline",
-      "default": "Pulse CG\nYour brand here\nThanks to our partners"
+      "default": "Strata\nYour brand here\nThanks to our partners"
      }
     ],
     "layers": [

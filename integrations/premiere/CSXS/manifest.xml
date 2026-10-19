@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Pulse CG panel for Adobe Premiere Pro (CEP). -->
-<ExtensionManifest Version="9.0" ExtensionBundleId="io.pulsecg.premiere" ExtensionBundleVersion="0.8.0" ExtensionBundleName="Pulse CG">
+<!-- Strata panel for Adobe Premiere Pro (CEP). -->
+<ExtensionManifest Version="9.0" ExtensionBundleId="io.pulsecg.premiere" ExtensionBundleVersion="0.8.0" ExtensionBundleName="Strata">
   <ExtensionList>
     <Extension Id="io.pulsecg.premiere.panel" Version="0.8.0" />
   </ExtensionList>
@@ -33,7 +33,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>Pulse CG</Menu>
+          <Menu>Strata</Menu>
           <Geometry>
             <Size>
               <Height>760</Height>

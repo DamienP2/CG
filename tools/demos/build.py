@@ -2,7 +2,7 @@
 """Builds the demo projects bank (crates/cg-server/demos/*.json).
 
 Ten projects, from a single lower third to a multi-format live show, that
-together use every feature of Pulse CG: zones and their areas, playlists,
+together use every feature of Strata: zones and their areas, playlists,
 markers (on air, pauses resumed by the operator, a delay or a trigger),
 widgets, variables of every kind, data filters and operations (logic),
 formats, guides, safe areas and areas to keep clear.
@@ -514,7 +514,7 @@ demos.append(project(
 VERT = {'id': 'vertical', 'name': '9:16', 'width': 1080, 'height': 1920}
 lt = T('social-lt', 'Speaker', 'lower', duration=80, on_air=50)
 lt.field('name', 'Name', 'Alex Martin')
-lt.field('topic', 'Topic', 'Live from the Pulse summit')
+lt.field('topic', 'Topic', 'Live from the Strata summit')
 lt.field('accent', 'Accent', '#ff3b5c', kind='color')
 g = lt.group('Speaker', 120, 800, 1100, 170, clip=True, tracks=wipe(50))
 lt.t['layers'][-1]['overrides'] = {'vertical': {'props': {'x': 60.0, 'y': 1420.0, 'width': 960.0, 'height': 220.0}}}
@@ -537,7 +537,7 @@ ac = T('social-clock', 'Studio clock', 'clockz', duration=60, on_air=30)
 ac.widget('analogClock', 'Clock', 1700, 60, 160, 160, None, {'fill': INK, 'stroke': WHITE}, tracks=fade(30), timezone='', seconds=True, accent='#ff3b5c')
 ac.t['layers'][-1]['overrides'] = {'vertical': {'props': {'x': 880.0, 'y': 40.0, 'width': 160.0, 'height': 160.0}}}
 sl = T('sponsors', 'Sponsors', 'sponsors', duration=60, on_air=30)
-sl.field('sponsors', 'Sponsors', 'Pulse CG\nYour brand here\nThanks to our partners', kind='multiline')
+sl.field('sponsors', 'Sponsors', 'Strata\nYour brand here\nThanks to our partners', kind='multiline')
 g = sl.group('Sponsors', 1260, 900, 600, 100, tracks=fade(30))
 sl.t['layers'][-1]['overrides'] = {'vertical': {'props': {'x': 140.0, 'y': 1700.0, 'width': 800.0, 'height': 110.0}}}
 sl.rect('Plate', 0, 0, 600, 100, VIOLET, g, radius=50)

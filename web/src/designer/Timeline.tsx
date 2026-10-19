@@ -928,7 +928,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
     <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
       <button
         className={`add-btn ${open ? 'on' : ''}`}
-        title="Basics and Pulse CG widgets"
+        title="Basics and Strata widgets"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setOpen(

@@ -1,43 +1,43 @@
-# Installer le serveur Pulse CG
+# Installer le serveur Strata
 
 Le serveur tient dans **un seul exécutable**, `cg-server`. Il contient le moteur de rendu, l'API, la web app (Designer, Opérateur, sortie HTML5) et les polices Inter. Il n'a besoin ni de Node, ni de navigateur, ni de runtime à installer sur le serveur.
 
 | OS | Paquet | Service | Données | Journaux |
 | --- | --- | --- | --- | --- |
 | Linux x86_64 / arm64 (toutes distributions, binaire statique) | `pulse-cg-<version>-linux-*.tar.gz` | systemd `pulse-cg` (compte système dédié) | `/var/lib/pulse-cg` | `journalctl -u pulse-cg -f` |
-| macOS 11 ou plus récent (Apple Silicon / Intel) | **`PulseCG-<version>-macos-universal.dmg`** ou `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
-| Windows Server 2016 ou plus récent / Windows 10+ x64 | **`PulseCG-<version>-windows-x64.msi`** ou `pulse-cg-<version>-windows-x86_64.zip` | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
+| macOS 11 ou plus récent (Apple Silicon / Intel) | **`Strata-<version>-macos-universal.dmg`** ou `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
+| Windows Server 2016 ou plus récent / Windows 10+ x64 | **`Strata-<version>-windows-x64.msi`** ou `pulse-cg-<version>-windows-x86_64.zip` | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
 
 Les paquets sont produits par la CI (`.github/workflows/release.yml`) à chaque tag `v*`.
 
 ## Windows : installateur MSI (recommandé)
 
-Double-cliquez sur **`PulseCG-<version>-windows-x64.msi`**. Le MSI :
+Double-cliquez sur **`Strata-<version>-windows-x64.msi`**. Le MSI :
 - copie le binaire dans `C:\Program Files\PulseCG` et l'ajoute au `PATH` ;
 - crée le service `pulse-cg` (démarrage automatique, redémarrage en cas d'échec) et le démarre ;
-- ajoute la règle de pare-feu et les raccourcis *Pulse CG Designer* / *Operator* dans le menu Démarrer ;
-- se met à jour en installant simplement une version plus récente (données conservées) ; se désinstalle depuis *Paramètres → Applications*, le raccourci *Uninstall Pulse CG* du menu Démarrer ou le menu de l'icône Pulse CG.
+- ajoute la règle de pare-feu et les raccourcis *Strata Designer* / *Operator* dans le menu Démarrer ;
+- se met à jour en installant simplement une version plus récente (données conservées) ; se désinstalle depuis *Paramètres → Applications*, le raccourci *Uninstall Strata* du menu Démarrer ou le menu de l'icône Strata.
 
 Déploiement silencieux (GPO, Intune, SCCM) :
 ```powershell
-msiexec /i PulseCG-0.1.0-windows-x64.msi /qn PORT=8080 LISTEN_ADDR=0.0.0.0
+msiexec /i Strata-0.1.0-windows-x64.msi /qn PORT=8080 LISTEN_ADDR=0.0.0.0
 ```
 Lors d'une mise à jour silencieuse, repassez `PORT` si vous l'aviez changé.
 
 ## macOS : image disque .dmg (recommandé)
 
-1. Ouvrez **`PulseCG-<version>-macos-universal.dmg`** (Apple Silicon et Intel).
-2. Double-cliquez sur **Install Pulse CG <version>.pkg** et suivez l'assistant (en français ou en anglais selon la langue du Mac).
+1. Ouvrez **`Strata-<version>-macos-universal.dmg`** (Apple Silicon et Intel).
+2. Double-cliquez sur **Install Strata <version>.pkg** et suivez l'assistant (en français ou en anglais selon la langue du Mac).
 
-L'installateur range tout dans **Applications ▸ Pulse CG** :
-- **Pulse CG** : l'application de la barre des menus (état du serveur, Designer, Opérateur, Réglages) ;
-- **Désinstaller Pulse CG** : supprime Pulse CG en proposant de garder ou d'effacer les données.
+L'installateur range tout dans **Applications ▸ Strata** :
+- **Strata** : l'application de la barre des menus (état du serveur, Designer, Opérateur, Réglages) ;
+- **Désinstaller Strata** : supprime Strata en proposant de garder ou d'effacer les données.
 
 Le serveur tourne comme service système (launchd) et démarre avec le Mac ; l'application de la barre des menus démarre à l'ouverture de session. Une mise à jour s'installe par-dessus et conserve les données.
 
-> Tant que le paquet n'est pas signé avec un certificat Apple *Developer ID* et notarisé, macOS affiche « développeur non identifié » : ouvrez *Réglages Système → Confidentialité et sécurité* et cliquez sur **Ouvrir quand même**, ou installez en ligne de commande : `sudo installer -pkg "/Volumes/Pulse CG <version>/Install Pulse CG <version>.pkg" -target /`. La CI signe et notarise automatiquement dès que les secrets `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD`, `MACOS_APP_IDENTITY`, `MACOS_INSTALLER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` sont configurés dans le dépôt.
+> Tant que le paquet n'est pas signé avec un certificat Apple *Developer ID* et notarisé, macOS affiche « développeur non identifié » : ouvrez *Réglages Système → Confidentialité et sécurité* et cliquez sur **Ouvrir quand même**, ou installez en ligne de commande : `sudo installer -pkg "/Volumes/Strata <version>/Install Strata <version>.pkg" -target /`. La CI signe et notarise automatiquement dès que les secrets `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD`, `MACOS_APP_IDENTITY`, `MACOS_INSTALLER_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` et `APPLE_APP_PASSWORD` sont configurés dans le dépôt.
 
-Désinstallation : **Applications ▸ Pulse CG ▸ Désinstaller Pulse CG**, le menu *Uninstall Pulse CG…* de l'icône, ou en ligne de commande `sudo /usr/local/pulse-cg/uninstall.sh` (`--purge` pour effacer aussi les données).
+Désinstallation : **Applications ▸ Strata ▸ Désinstaller Strata**, le menu *Uninstall Strata…* de l'icône, ou en ligne de commande `sudo /usr/local/pulse-cg/uninstall.sh` (`--purge` pour effacer aussi les données).
 
 ## Linux
 
@@ -52,9 +52,9 @@ Désinstallation : `sudo ./uninstall.sh` (`--purge` pour supprimer aussi les don
 
 Les archives `.tar.gz` / `.zip` restent disponibles pour une installation scriptée : `sudo ./install.sh` sur macOS, `install.cmd` ou `.\install.ps1` (PowerShell administrateur) sur Windows.
 
-## L'application « Pulse CG » (macOS et Windows)
+## L'application « Strata » (macOS et Windows)
 
-Les installateurs `.pkg` et `.msi` ajoutent l'application **Pulse CG** : une icône dans la barre des menus (macOS) ou la zone de notification (Windows). Elle démarre à l'ouverture de session et donne :
+Les installateurs `.pkg` et `.msi` ajoutent l'application **Strata** : une icône dans la barre des menus (macOS) ou la zone de notification (Windows). Elle démarre à l'ouverture de session et donne :
 
 - l'état du serveur (nom, port, en marche ou arrêté) ;
 - l'accès direct au **Designer**, à l'**Opérateur**, aux **Réglages** et à la sortie HTML5 ;
@@ -128,7 +128,7 @@ cg-server service install --bind 0.0.0.0:8080 --data-dir <dossier>
 cg-server                       # données dans le profil utilisateur
 cg-server --data-dir ./data     # ou dans un dossier choisi
 ```
-Le dossier utilisateur par défaut est `~/.local/share/pulsecg` (Linux), `~/Library/Application Support/com.PulseCG.Pulse-CG` (macOS) ou `%APPDATA%\PulseCG\Pulse CG\data` (Windows). Les variables `CG_BIND`, `CG_DATA_DIR` et `CG_WEB_DIR` remplacent les options équivalentes.
+Le dossier utilisateur par défaut est `~/.local/share/pulsecg` (Linux), `~/Library/Application Support/com.PulseCG.Pulse-CG` (macOS) ou `%APPDATA%\PulseCG\Strata\data` (Windows). Les variables `CG_BIND`, `CG_DATA_DIR` et `CG_WEB_DIR` remplacent les options équivalentes.
 
 ## Notes pour la production broadcast
 

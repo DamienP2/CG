@@ -722,7 +722,7 @@ impl Default for Labels {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Provider {
-    /// Pulse vector data (own): no attribution required.
+    /// Strata vector data (own): no attribution required.
     #[default]
     Own,
     /// OpenStreetMap (ODbL): attribution required.
@@ -734,14 +734,14 @@ pub enum Provider {
 impl Provider {
     pub fn name(self) -> &'static str {
         match self {
-            Provider::Own => "Pulse vector data (own)",
+            Provider::Own => "Strata vector data (own)",
             Provider::Osm => "OpenStreetMap (ODbL)",
             Provider::Sat => "Satellite imagery (licensed)",
         }
     }
     pub fn text(self) -> &'static str {
         match self {
-            Provider::Own => "Map data: Pulse CG",
+            Provider::Own => "Map data: Strata",
             Provider::Osm => "© OpenStreetMap contributors",
             Provider::Sat => "Imagery © licensed provider",
         }

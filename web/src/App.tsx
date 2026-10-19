@@ -101,7 +101,7 @@ function Brand() {
   return (
     <div className="brand">
       <Logo size={22} />
-      <span>Pulse</span>
+      <span>Strata</span>
     </div>
   );
 }
@@ -130,7 +130,7 @@ function UserMenu() {
 function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'outputs' | 'users' | 'settings' | 'apiDocs' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
-    document.title = 'Pulse CG';
+    document.title = 'Strata';
   }, []);
   const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
     <button className={route.page === page ? 'on' : ''} onClick={() => navigate(path)}>
@@ -176,7 +176,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
     if (useApp.getState().projectId !== projectId) openProject(projectId);
   }, [projectId, openProject]);
   useEffect(() => {
-    document.title = summary ? `${summary.name} · Pulse CG` : 'Pulse CG';
+    document.title = summary ? `${summary.name} · Strata` : 'Strata';
   }, [summary?.name]);
 
   // Pages a role cannot see.

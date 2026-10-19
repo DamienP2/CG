@@ -2,7 +2,7 @@
 
 ## Ce qu'on reprend de chaque produit
 
-| | MXMZ | Singular.live | Flowics | **Pulse CG** |
+| | MXMZ | Singular.live | Flowics | **Strata** |
 | --- | --- | --- | --- | --- |
 | Création | Timeline et keyframes façon AE, stop points | Composer web, animations par états | Templates paramétrables | Timeline et keyframes AE dans le navigateur, marqueurs pause et out |
 | Rendu | Moteur natif, sortie SDI | Navigateur (HTML5) | Navigateur (HTML5) | **Un seul modèle de scène, deux moteurs** : Rust (baseband) et DOM (HTML5) |

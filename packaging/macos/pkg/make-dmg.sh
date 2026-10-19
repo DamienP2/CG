@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wraps the installer in a disk image with the Pulse CG icon on the volume
+# Wraps the installer in a disk image with the Strata icon on the volume
 # and on the package (icons survive the download inside a .dmg, not a .zip).
 # Usage: packaging/macos/pkg/make-dmg.sh <installer.pkg> <version> <output.dmg>
 set -eu
@@ -24,12 +24,12 @@ iconutil -c icns "$WORK/icon.iconset" -o "$WORK/icon.icns"
 
 STAGE="$WORK/stage"
 mkdir -p "$STAGE"
-NAME="Install Pulse CG $VERSION.pkg"
+NAME="Install Strata $VERSION.pkg"
 cp "$PKG" "$STAGE/$NAME"
 # Custom Finder icon on the package file.
 osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSWorkspace.sharedWorkspace.setIconForFileOptions(\$.NSImage.alloc.initWithContentsOfFile('$WORK/icon.icns'), '$STAGE/$NAME', 0)" >/dev/null
 
-hdiutil create -quiet -fs HFS+ -volname "Pulse CG $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
+hdiutil create -quiet -fs HFS+ -volname "Strata $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
 mkdir -p "$WORK/mnt"
 hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$WORK/mnt" "$WORK/rw.dmg"
 cp "$WORK/icon.icns" "$WORK/mnt/.VolumeIcon.icns"

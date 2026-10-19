@@ -237,7 +237,7 @@ pub struct ServerConfig {
 }
 
 fn default_name() -> String {
-    "Pulse CG".into()
+    "Strata".into()
 }
 
 fn yes() -> bool {
@@ -282,6 +282,10 @@ impl ServerConfig {
                 c
             }
         };
+        // The product was called Pulse CG: a server never renamed takes the new name.
+        if c.name == "Pulse CG" {
+            c.name = default_name();
+        }
         let legacy = c.outputs.take();
         if c.channels.is_empty() {
             let mut ch = ChannelConfig::new("main", "Channel 1");

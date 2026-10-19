@@ -1,5 +1,5 @@
 //! MOS 2.8 device: lets a newsroom system (Saga by Fonn Group, iNews, ENPS,
-//! Octopus…) drive Pulse CG.
+//! Octopus…) drive Strata.
 //!
 //! - Journalists add graphics to their stories with the HTML5 MOS plugin
 //!   (`/mos/plugin`): it produces MOS items whose payload names a template
@@ -279,7 +279,7 @@ pub fn playlist_id(ro_id: &str) -> String {
 }
 
 /// Writes a running order into a project: one playlist, one rundown item
-/// per Pulse CG graphic of the stories, in order. Returns the number of items.
+/// per Strata graphic of the stories, in order. Returns the number of items.
 pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usize {
     let pl = playlist_id(&ro.id);
     let name = if ro.slug.is_empty() {
@@ -398,7 +398,7 @@ fn list_mach_info() -> String {
     .map(|(n, v)| format!("<mosProfile number=\"{n}\">{v}</mosProfile>"))
     .collect();
     format!(
-        "<listMachInfo><manufacturer>Pulse CG</manufacturer><model>Pulse CG</model><hwRev></hwRev><swRev>{}</swRev><DOM></DOM><SN>{}</SN><ID>{}</ID><time>{}</time><mosRev>2.8.5</mosRev><supportedProfiles deviceType=\"MOS\">{profiles}</supportedProfiles></listMachInfo>",
+        "<listMachInfo><manufacturer>Strata</manufacturer><model>Strata</model><hwRev></hwRev><swRev>{}</swRev><DOM></DOM><SN>{}</SN><ID>{}</ID><time>{}</time><mosRev>2.8.5</mosRev><supportedProfiles deviceType=\"MOS\">{profiles}</supportedProfiles></listMachInfo>",
         env!("CARGO_PKG_VERSION"),
         esc(&host),
         esc(&host),
@@ -412,7 +412,7 @@ fn mos_objects(projects: &[std::sync::Arc<Project>], mos_id: &str) -> String {
     for p in projects {
         for t in &p.templates {
             out.push_str(&format!(
-                "<mosObj><objID>{}/{}</objID><objSlug>{} — {}</objSlug><mosAbstract>{}</mosAbstract><objGroup>{}</objGroup><objType>STILL</objType><objTB>{}</objTB><objRev>1</objRev><objDur>{}</objDur><status>NEW</status><objAir>READY</objAir><createdBy>Pulse CG</createdBy><created>{}</created><description>{}</description><mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>{SCHEMA}</mosSchema><mosPayload><pulsecg project=\"{}\" template=\"{}\"/></mosPayload></mosExternalMetadata></mosObj>",
+                "<mosObj><objID>{}/{}</objID><objSlug>{} — {}</objSlug><mosAbstract>{}</mosAbstract><objGroup>{}</objGroup><objType>STILL</objType><objTB>{}</objTB><objRev>1</objRev><objDur>{}</objDur><status>NEW</status><objAir>READY</objAir><createdBy>Strata</createdBy><created>{}</created><description>{}</description><mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>{SCHEMA}</mosSchema><mosPayload><pulsecg project=\"{}\" template=\"{}\"/></mosPayload></mosExternalMetadata></mosObj>",
                 esc(&p.id),
                 esc(&t.id),
                 esc(&p.name),
@@ -721,7 +721,7 @@ async fn handle(state: &Shared, xml: &str) -> Option<String> {
 }
 
 /// Project receiving a running order: configured, else the project of its
-/// first Pulse CG item, else the first project.
+/// first Strata item, else the first project.
 async fn target_project(state: &Shared, ro: &RunningOrder) -> Option<String> {
     let lib = state.library.read().await;
     let cfg = &state.config.mos;

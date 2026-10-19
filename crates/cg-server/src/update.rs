@@ -517,7 +517,7 @@ fn binary_version(path: &Path) -> Result<String> {
     let text = String::from_utf8_lossy(&out.stdout);
     match text.trim().strip_prefix("cg-server ") {
         Some(v) if out.status.success() => Ok(v.trim().to_string()),
-        _ => bail!("this is not a Pulse CG server for {PLATFORM}"),
+        _ => bail!("this is not a Strata server for {PLATFORM}"),
     }
 }
 

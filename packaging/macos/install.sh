@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pulse CG — macOS installer (launchd). Usage: sudo ./install.sh [--bind 0.0.0.0:8080] [--data-dir DIR]
+# Strata — macOS installer (launchd). Usage: sudo ./install.sh [--bind 0.0.0.0:8080] [--data-dir DIR]
 set -eu
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root: sudo $0 $*" >&2; exit 1; }
 HERE=$(cd "$(dirname "$0")" && pwd)

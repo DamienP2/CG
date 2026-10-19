@@ -38,7 +38,7 @@ function FontsPanel({ canEdit }: { canEdit: boolean }) {
   const toast = useApp((s) => s.toast);
   const groups: [string, string, typeof families][] = [
     ['Uploaded', 'Added here, for every project', families.filter((f) => f.source === 'uploaded')],
-    ['Built in', 'Shipped with Pulse CG', families.filter((f) => f.source === 'bundled')],
+    ['Built in', 'Shipped with Strata', families.filter((f) => f.source === 'bundled')],
     ['Server', 'Installed on the machine', families.filter((f) => f.source === 'system')],
   ];
   const remove = async (file: string, family: string) => {

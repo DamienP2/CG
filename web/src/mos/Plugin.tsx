@@ -123,7 +123,7 @@ export function MosPlugin() {
         setProjects(ps);
         setProjectId((cur) => cur || (ps.some((p) => p.id === i.projectId) ? i.projectId : (ps[0]?.id ?? '')));
       })
-      .catch((e) => setError(key ? `Cannot reach Pulse CG: ${(e as Error).message}` : 'Add ?key=pcg_… (an API key) to the plugin URL.'));
+      .catch((e) => setError(key ? `Cannot reach Strata: ${(e as Error).message}` : 'Add ?key=pcg_… (an API key) to the plugin URL.'));
     // Editing an existing item: the newsroom system sends it to us.
     const onMessage = (ev: MessageEvent) => {
       if (typeof ev.data !== 'string' || !ev.data.includes('ncsItem')) return;
@@ -185,7 +185,7 @@ export function MosPlugin() {
     <div className="mos-plugin">
       <header>
         <Logo size={20} />
-        <strong>Pulse</strong>
+        <strong>Strata</strong>
         <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>

@@ -9,4 +9,4 @@ if [ "${1:-}" = "--purge" ]; then
   rm -rf /var/lib/pulse-cg
   userdel pulse-cg 2>/dev/null || true
 fi
-echo "Pulse CG removed."
+echo "Strata removed."

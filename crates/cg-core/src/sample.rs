@@ -615,7 +615,7 @@ pub fn ticker() -> Template {
                 key: "items".into(),
                 label: "Headlines (one per line)".into(),
                 kind: FieldKind::Multiline,
-                default: "Pulse CG renders HTML5, SDI and ST 2110 from one engine\nTickers, clocks and rolls are now built in\nOne project per show, one channel per studio".into(),
+                default: "Strata renders HTML5, SDI and ST 2110 from one engine\nTickers, clocks and rolls are now built in\nOne project per show, one channel per studio".into(),
                 binding: None, min: None, max: None, options: Vec::new() },
         ],
         layers: vec![bar, label_bg, label, crawl],
@@ -679,7 +679,7 @@ pub fn credits() -> Template {
             label: "Credits (one per line)".into(),
             kind: FieldKind::Multiline,
             default:
-                "PULSE CG\n\nDirector\nJane Doe\n\nGraphics\nPulse CG Engine\n\nThanks for watching"
+                "PULSE CG\n\nDirector\nJane Doe\n\nGraphics\nStrata Engine\n\nThanks for watching"
                     .into(),
             binding: None,
             min: None,

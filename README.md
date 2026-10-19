@@ -1,4 +1,4 @@
-# Pulse CG — serveur d'habillage broadcast
+# Strata — serveur d'habillage broadcast
 
 Générateur de caractères (CG) temps réel qui combine :
 
@@ -14,8 +14,8 @@ Architecture, choix techniques et feuille de route : [`docs/ARCHITECTURE.md`](do
 
 Le serveur est distribué sous la forme d'**un exécutable autonome** par plateforme : il embarque l'UI web, les polices et le moteur. Il s'installe en **service natif** : systemd sous Linux, launchd sous macOS, service Windows.
 
-- **Windows** : installateur `.msi` avec l'app **Pulse CG** (zone de notification) (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
-- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel) avec l'app **Pulse CG** (barre des menus).
+- **Windows** : installateur `.msi` avec l'app **Strata** (zone de notification) (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
+- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel) avec l'app **Strata** (barre des menus).
 - **Linux** : archive avec binaire statique et `sudo ./install.sh` (systemd).
 
 Les mises à jour suivantes se font **sans désinstaller**, depuis **Réglages → Mises à jour** : en ligne (releases GitHub) ou en déposant l'archive de la version (serveurs hors ligne), avec retour automatique à la version précédente si la nouvelle ne démarre pas.
@@ -71,7 +71,7 @@ Le serveur se règle dans la page **Settings**, les chaînes et leurs sorties da
 
 ```json
 {
-  "name": "Pulse CG",
+  "name": "Strata",
   "bind": "0.0.0.0:8080",
   "publicOutputs": true,
   "timezone": "Europe/Paris",
@@ -115,7 +115,7 @@ Chaque chaîne se règle sur un **canvas de nodes** : *Program* (la chaîne) →
 - **HTML5** : lien web `/output/<chaîne>[/<picture>]` (fond transparent, noir ou vert), pour OBS, vMix, CasparCG, un lecteur web ou un écran.
 - **SDI** : carte Blackmagic DeckLink, Fill + Key (keyer externe), keyer interne ou Fill seul, genlock. Nécessite Desktop Video et un serveur compilé avec la fonction `decklink`.
 - **ST 2110** : Fill + Key (deux flux ST 2110-20 YCbCr 4:2:2 10 bits + KEY), RGBA (un flux 4:4:4:4 8 bits) ou YCbCrA (un flux 4:2:2:4 10 bits) ; interface réseau, multicast, TTL, SDP. Le serveur doit être discipliné en PTP.
-- **NDI** : nom de source, groupes, avec ou sans alpha. Le runtime NDI est installé avec Pulse CG (installeurs macOS et Windows : `lib/libndi.dylib` à côté du serveur sur macOS, `Processing.NDI.Lib.x64.dll` sur Windows) et utilisé directement. Le champ *NDI runtime* d'un node NDI (ou `NDI_LIB_PATH`) force une autre bibliothèque si besoin. Les paquets Linux, statiques, n'ont pas de sortie NDI. NDI® est une marque déposée de Vizrt NDI AB (https://ndi.video) ; le runtime est redistribué selon la licence du NDI SDK. Le détail de l'état de la sortie liste les emplacements essayés.
+- **NDI** : nom de source, groupes, avec ou sans alpha. Le runtime NDI est installé avec Strata (installeurs macOS et Windows : `lib/libndi.dylib` à côté du serveur sur macOS, `Processing.NDI.Lib.x64.dll` sur Windows) et utilisé directement. Le champ *NDI runtime* d'un node NDI (ou `NDI_LIB_PATH`) force une autre bibliothèque si besoin. Les paquets Linux, statiques, n'ont pas de sortie NDI. NDI® est une marque déposée de Vizrt NDI AB (https://ndi.video) ; le runtime est redistribué selon la licence du NDI SDK. Le détail de l'état de la sortie liste les emplacements essayés.
 
 ### Formats multiples (16:9, 9:16, 1:1…)
 Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et un 9:16 pour les réseaux sociaux.
@@ -128,7 +128,7 @@ Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et 
 - **Diffusion** : une chaîne peut avoir des **déclinaisons** (Réglages → chaîne → *Autres formats*), chacune avec sa page HTML5 `/output/<chaîne>/<format>` et ses sorties ST 2110 / SDI. **Un seul TAKE** joue partout, et chaque image utilise le format du projet le plus proche de ses proportions. Le moniteur Program de l'opérateur passe d'un format à l'autre.
 
 ### Rédaction (MOS)
-Pulse CG est un **MOS device 2.8** pour Saga (Fonn Group), iNews, ENPS, Octopus…
+Strata est un **MOS device 2.8** pour Saga (Fonn Group), iNews, ENPS, Octopus…
 
 - Les journalistes placent les habillages dans leurs sujets avec le plugin HTML5 `/mos/plugin`.
 - Chaque conducteur envoyé par la rédaction devient une playlist du projet.
@@ -156,7 +156,7 @@ Onglet **Data** : les sources de données du serveur, relues à intervalle régu
 Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains projets** et à **certaines chaînes**. Les mots de passe sont hachés avec Argon2 (`users.json`). Le navigateur garde la session dans un cookie HttpOnly. L'automation peut utiliser `Authorization: Bearer <token>` (jeton renvoyé par `POST /api/auth/login`). Les pages `/output/<chaîne>` restent accessibles sans connexion pour les browser sources ; l'option se désactive dans les Réglages.
 
 ### Designer
-- **Insertion** (au-dessus de la colonne *Layers* de la timeline) : rectangle, ellipse, trait, texte, image, groupe (avec masque *clip*), et le bouton **+** qui ouvre les *Basics* et les *Pulse CG widgets*.
+- **Insertion** (au-dessus de la colonne *Layers* de la timeline) : rectangle, ellipse, trait, texte, image, groupe (avec masque *clip*), et le bouton **+** qui ouvre les *Basics* et les *Strata widgets*.
 - **Widgets préfabriqués** : ils sont rendus à l'identique en HTML5 et par le moteur Rust, animables (position, opacité, crop…) et reliables aux champs de données `{{clé}}` :
   - **Horloge** (heure dans n'importe quel fuseau, date) ;
   - **Compte à rebours** vers une heure ou une date ;

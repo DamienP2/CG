@@ -6,6 +6,7 @@ if [ "$USER_ID" != "0" ]; then
   launchctl bootout "gui/$USER_ID/com.pulsecg.tray" 2>/dev/null || true
 fi
 pkill -x pulse-cg-tray 2>/dev/null || true
-# Versions up to 0.1.2 installed the app directly in /Applications.
-rm -rf "/Applications/Pulse CG.app"
+# Versions up to 0.1.2 installed the app directly in /Applications; before
+# the rename to Strata, everything went into /Applications/Pulse CG.
+rm -rf "/Applications/Pulse CG.app" "/Applications/Pulse CG"
 exit 0

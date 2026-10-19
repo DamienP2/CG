@@ -106,7 +106,7 @@ jobs:
           wix build packaging/windows/msi/pulse-cg.wxs -arch x64 \
             -ext WixToolset.Util.wixext -ext WixToolset.Firewall.wixext \
             -d Version="$VERSION" -d BinDir="target/${{ matrix.target }}/release" -d DocsDir=. "${NDI[@]}" \
-            -o "dist/PulseCG-$SUFFIX-windows-x64.msi"
+            -o "dist/Strata-$SUFFIX-windows-x64.msi"
       - uses: actions/upload-artifact@v4
         with:
           name: pulse-cg-${{ matrix.platform }}
@@ -171,7 +171,7 @@ jobs:
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           [ "$GITHUB_REF_TYPE" = tag ] && VERSION=${GITHUB_REF_NAME#v}
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
-          packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/PulseCG-$SUFFIX-macos-universal.pkg"
+          packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/Strata-$SUFFIX-macos-universal.pkg"
           pkgutil --payload-files dist/*.pkg | grep -E "Applications|cg-server$"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
@@ -186,7 +186,7 @@ jobs:
           xcrun stapler staple dist/*.pkg
       # Disk image: keeps the custom icons on the download (after notarization).
       - name: Disk image
-        run: packaging/macos/pkg/make-dmg.sh dist/PulseCG-$SUFFIX-macos-universal.pkg "$VERSION" "dist/PulseCG-$SUFFIX-macos-universal.dmg"
+        run: packaging/macos/pkg/make-dmg.sh dist/Strata-$SUFFIX-macos-universal.pkg "$VERSION" "dist/Strata-$SUFFIX-macos-universal.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: pulse-cg-macos-installer

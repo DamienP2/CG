@@ -53,10 +53,10 @@ else
   echo "warning: no NDI runtime to bundle (NDI_DIR)"
 fi
 
-APPS="$WORK/root/Applications/Pulse CG"
+APPS="$WORK/root/Applications/Strata"
 mkdir -p "$APPS"
-make_app "Pulse CG" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
-make_app "Uninstall Pulse CG" "$HERE/uninstaller/uninstall" uninstall "$HERE/uninstaller" "$ROOT/assets/icons/uninstall-macos-1024.png"
+make_app "Strata" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
+make_app "Uninstall Strata" "$HERE/uninstaller/uninstall" uninstall "$HERE/uninstaller" "$ROOT/assets/icons/uninstall-macos-1024.png"
 
 mkdir -p "$WORK/root/Library/LaunchAgents"
 cp "$HERE/com.pulsecg.tray.plist" "$WORK/root/Library/LaunchAgents/"
@@ -67,8 +67,8 @@ if [ -n "${MACOS_APP_IDENTITY:-}" ]; then
   # Same team as the server, so the hardened runtime loads it.
   [ -f "$PAYLOAD/lib/libndi.dylib" ] && sign "$PAYLOAD/lib/libndi.dylib"
   sign "$PAYLOAD/cg-server"
-  sign "$APPS/Pulse CG.app"
-  sign "$APPS/Uninstall Pulse CG.app"
+  sign "$APPS/Strata.app"
+  sign "$APPS/Uninstall Strata.app"
 fi
 
 # --- package ---------------------------------------------------------------------

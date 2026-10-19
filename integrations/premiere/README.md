@@ -1,6 +1,6 @@
-# Panneau Pulse CG pour Adobe Premiere Pro
+# Panneau Strata pour Adobe Premiere Pro
 
-Ce panneau permet d'utiliser les habillages Pulse CG en post-production.
+Ce panneau permet d'utiliser les habillages Strata en post-production.
 
 ## Graphics
 
@@ -34,11 +34,11 @@ Le panneau fonctionne avec Premiere Pro 2020 (14.0) et les versions suivantes, s
 2. Lancer le script d'installation :
    - **macOS** : `./install/install-mac.sh` dans le Terminal ;
    - **Windows** : clic droit sur `install\install-windows.ps1` → *Exécuter avec PowerShell*.
-3. Redémarrer Premiere Pro, puis ouvrir **Fenêtre → Extensions → Pulse CG**.
+3. Redémarrer Premiere Pro, puis ouvrir **Fenêtre → Extensions → Strata**.
 4. Dans le panneau, cliquer sur ⚙ et renseigner :
    - l'adresse du serveur, par exemple `http://cg-server:8080` ;
-   - une **clé d'API** (Pulse CG → Utilisateurs → API keys), d'un compte designer ou opérateur ;
-   - si besoin, le dossier des rendus (par défaut `Documents/Pulse CG Renders/<projet>/`).
+   - une **clé d'API** (Strata → Utilisateurs → API keys), d'un compte designer ou opérateur ;
+   - si besoin, le dossier des rendus (par défaut `Documents/Strata Renders/<projet>/`).
 
 Le script active `PlayerDebugMode`, qui autorise les extensions non signées par Adobe Exchange. Pour une diffusion à grande échelle, le panneau peut être signé en `.zxp` avec `ZXPSignCmd`.
 

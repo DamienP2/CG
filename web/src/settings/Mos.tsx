@@ -48,7 +48,7 @@ export function MosCard({ mos, onChange, Card, Field }: { mos: MosConfig; onChan
       }
     >
       <p className="hint">
-        Saga (Fonn Group), iNews, ENPS, Octopus… send their running orders to Pulse CG over MOS 2.8. Each running order becomes a playlist of the project, with one item per graphic placed by the journalists
+        Saga (Fonn Group), iNews, ENPS, Octopus… send their running orders to Strata over MOS 2.8. Each running order becomes a playlist of the project, with one item per graphic placed by the journalists
         with the plugin.
       </p>
       <div className="set-grid">

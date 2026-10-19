@@ -100,7 +100,7 @@ export const STYLES = {
   mono: { water: '#101217', land: '#2c3039', border: '#6b7181', road: '#9ca3af' },
 };
 export const PROVIDERS = {
-  own: { name: 'Pulse vector data (own)', text: 'Map data: Pulse CG', required: false },
+  own: { name: 'Strata vector data (own)', text: 'Map data: Strata', required: false },
   osm: { name: 'OpenStreetMap (ODbL)', text: '© OpenStreetMap contributors', required: true },
   sat: { name: 'Satellite imagery (licensed)', text: 'Imagery © licensed provider', required: true },
 };

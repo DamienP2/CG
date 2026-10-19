@@ -1,5 +1,5 @@
 #!/bin/sh
-# Pulse CG — Linux installer (systemd). Usage: sudo ./install.sh [--bind 0.0.0.0:8080] [--data-dir DIR]
+# Strata — Linux installer (systemd). Usage: sudo ./install.sh [--bind 0.0.0.0:8080] [--data-dir DIR]
 set -eu
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root: sudo $0 $*" >&2; exit 1; }
 command -v systemctl >/dev/null || { echo "systemd is required (run 'cg-server run' under your own init system otherwise)" >&2; exit 1; }

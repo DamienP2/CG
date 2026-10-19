@@ -82,7 +82,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         const v = ((await r.json()) as { version: string }).version;
         if (v !== waiting) {
           clearInterval(h);
-          toast(`Pulse CG ${v} is running`, 'info');
+          toast(`Strata ${v} is running`, 'info');
           setTimeout(() => location.reload(), 600);
         }
       } catch {
@@ -112,7 +112,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     load();
   };
   const install = async () => {
-    if (!latest || !(await confirmDialog({ title: `Install Pulse CG ${latest.version}?`, message: restartNote, confirm: 'Install' }))) return;
+    if (!latest || !(await confirmDialog({ title: `Install Strata ${latest.version}?`, message: restartNote, confirm: 'Install' }))) return;
     await api('POST', '/api/system/update/install').catch((e) => toast((e as Error).message, 'error'));
     load();
     // The status poll turns into the "waiting for restart" poll.

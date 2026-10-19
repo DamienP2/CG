@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Downloads the NDI SDK and extracts its runtime library, to ship it with
-# Pulse CG (the NDI SDK licence allows redistributing the runtime with an
+# Strata (the NDI SDK licence allows redistributing the runtime with an
 # application, with its licence and the NDI trademark notice).
 #
 # Usage: packaging/ndi/fetch-runtime.sh <macos|windows> <out-dir>

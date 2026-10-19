@@ -1,4 +1,4 @@
-/* Pulse CG panel — Premiere Pro side (ExtendScript).
+/* Strata panel — Premiere Pro side (ExtendScript).
    Returns plain "OK:…" / "ERR:…" strings: old ExtendScript has no JSON.
    Lists come back one item per line, fields separated by tabs. */
 
@@ -96,7 +96,7 @@ function pcg_freeTrack(start, end) {
 }
 
 function pcg_importItem(path) {
-  var bin = pcg_bin("Pulse CG");
+  var bin = pcg_bin("Strata");
   if (!app.project.importFiles([path], true, bin, false)) return null;
   for (var i = bin.children.numItems - 1; i >= 0; i--) {
     var c = bin.children[i];
@@ -105,7 +105,7 @@ function pcg_importItem(path) {
   return null;
 }
 
-/** Imports `path` into the "Pulse CG" bin; with a track index, also lays it
+/** Imports `path` into the "Strata" bin; with a track index, also lays it
     on that video track at `at` seconds (the playhead when negative). */
 function pcg_import(path, trackIndex, at) {
   var s = app.project.activeSequence;
@@ -123,7 +123,7 @@ function pcg_import(path, trackIndex, at) {
 function pcg_replaceSelected(path) {
   var s = app.project.activeSequence;
   var sel = pcg_selection();
-  if (!s || !sel) return "ERR:Select the Pulse CG clip to update in the timeline.";
+  if (!s || !sel) return "ERR:Select the Strata clip to update in the timeline.";
   var start = sel[0].start.seconds;
   var t = sel[1];
   var item = pcg_importItem(path);
