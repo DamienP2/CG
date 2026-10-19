@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
-use crate::model::{Layer, LayerKind, Project, Resume, RowChange, Template, ZoneTransition};
+use crate::model::{
+    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, Template, ZoneTransition,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -723,19 +725,42 @@ impl ChannelState {
     pub fn auto_resume(&mut self, project: &Project) -> bool {
         let fps = project.frame_rate.as_f64().max(1.0);
         let mut changed = false;
-        for item in self.layers.values_mut() {
+        let mut gone = Vec::new();
+        for (layer, item) in self.layers.iter_mut() {
             if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
                 continue;
             }
             let Some(t) = project.template(&item.template_id) else {
                 continue;
             };
+            // On air with an automatic out: goes out once held long enough.
+            let on_air = item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
+            let auto_out = t
+                .markers
+                .iter()
+                .find(|m| m.kind == MarkerKind::Out)
+                .and_then(|m| match m.resume {
+                    Resume::After { seconds } => Some(seconds.max(0.0) * fps),
+                    _ => None,
+                });
+            if on_air {
+                if auto_out.is_some_and(|a| item.held >= a) {
+                    if !begin_out(project, item) {
+                        gone.push(*layer);
+                    }
+                    changed = true;
+                }
+                continue;
+            }
             let due = t
                 .pause_at(item.frame)
                 .is_some_and(|m| matches!(m.resume, Resume::After { seconds } if item.held >= seconds.max(0.0) * fps));
             if due {
                 changed |= resume(t, item);
             }
+        }
+        for layer in gone {
+            self.layers.remove(&layer);
         }
         changed
     }
@@ -826,7 +851,7 @@ impl ChannelState {
 mod tests {
     use super::*;
     use crate::model::Resume;
-    use crate::model::{FrameRate, Marker, MarkerKind};
+    use crate::model::{FrameRate, Marker};
 
     fn project() -> Project {
         Project {
@@ -1215,6 +1240,33 @@ mod tests {
             ch.tick(1.0);
         }
         assert!(ch.layers.is_empty());
+    }
+
+    #[test]
+    fn auto_out_after_the_hold() {
+        let mut p = project();
+        let fps = p.frame_rate.as_f64();
+        let t = &mut p.templates[0];
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        let hold = t.hold_frame();
+        t.markers[0].resume = Resume::After {
+            seconds: 10.0 / fps,
+        };
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        for _ in 0..(hold as usize + 5) {
+            ch.tick(1.0);
+        }
+        assert_eq!(
+            (ch.layers[&1].frame, ch.layers[&1].phase),
+            (hold, Phase::Holding)
+        );
+        assert!(!ch.auto_resume(&p));
+        for _ in 0..10 {
+            ch.tick(1.0);
+        }
+        assert!(ch.auto_resume(&p));
+        assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
 
     #[test]

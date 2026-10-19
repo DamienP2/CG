@@ -619,6 +619,15 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           </div>
           <div className="tl-right" style={{ width }}>
             <div className="tl-ruler" onPointerDown={scrub}>
+              {/* IN: from the start to the hold (on air); OUT: from the hold to the end. */}
+              <div className="tl-zone in" style={{ left: 0, width: (outF ?? template.duration) * zoom }}>
+                <small>{((outF ?? template.duration) / fps).toFixed(2)} s</small>IN
+              </div>
+              {outF !== undefined && (
+                <div className="tl-zone out" style={{ left: outF * zoom, width: (template.duration - outF) * zoom }}>
+                  OUT<small>{((template.duration - outF) / fps).toFixed(2)} s</small>
+                </div>
+              )}
               {Array.from({ length: Math.floor(template.duration / step) + 1 }, (_, i) => (
                 <div key={i} className="tick" style={{ left: i * step * zoom }}>
                   <span>{i * step}</span>
@@ -632,17 +641,16 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     key={m.id}
                     className={`tl-marker ${role} ${moving ? 'moving' : ''} ${editing?.id === m.id ? 'editing' : ''}`}
                     style={{ left: m.frame * zoom }}
-                    title={`${role === 'onair' ? 'On air: the take holds here, the out animation starts here' : m.name} · ${formatTime(m.frame, fps)} — drag to move, click to edit, double-click to go there`}
+                    title={`${role === 'onair' ? 'End of IN, start of OUT: the take holds here on air' : m.name} · ${formatTime(m.frame, fps)} — drag to move, click to edit, double-click to go there`}
                     onPointerDown={(e) => dragMarker(e, m.id)}
                     onDoubleClick={() => st.setFrame(m.frame)}
                   >
                     {moving ? (
                       <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
                     ) : role === 'onair' ? (
-                      <>
-                        <span className="mk-in">On air</span>
-                        <span className="mk-out">Out</span>
-                      </>
+                      <span className="mk-hold" title={m.resume?.type === 'after' ? `Goes out by itself after ${m.resume.seconds} s` : 'Holds until Take out'}>
+                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : '∞'}
+                      </span>
                     ) : (
                       <span>
                         {m.name}
@@ -705,13 +713,33 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
     <div ref={ref} className="menu marker-editor" style={{ position: 'fixed', left: Math.max(8, pos.left), bottom: pos.bottom, top: 'auto' }} onKeyDown={(e) => e.stopPropagation()}>
       <header>
         <span className={`marker-dot ${onAir ? 'onair' : 'pause'}`} />
-        <strong>{onAir ? 'On air · Out' : 'Pause'}</strong>
+        <strong>{onAir ? 'IN → OUT' : 'Pause'}</strong>
         <div className="spacer" />
         <button className="icon-btn ghost" title="Close" onClick={onClose}>
           <X size={14} />
         </button>
       </header>
-      {onAir && <p className="hint">The take holds here; Take out plays on from here to the end. It cannot be removed.</p>}
+      {onAir && (
+        <>
+          <div className="me-field">
+            <span>Hold</span>
+            <div className="seg">
+              <button className={resume.type !== 'after' ? 'on' : ''} title="Stays on air until Take out" onClick={() => edit((x) => void delete x.resume)}>
+                Until Take out
+              </button>
+              <button className={resume.type === 'after' ? 'on' : ''} title="Goes out by itself after the delay" onClick={() => edit((x) => void (x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : 5 }))}>
+                Auto out
+              </button>
+            </div>
+          </div>
+          {resume.type === 'after' && (
+            <label className="me-field">
+              <span>After</span>
+              <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
+            </label>
+          )}
+        </>
+      )}
       {!onAir && (
         <label className="me-field">
           <span>Name</span>
