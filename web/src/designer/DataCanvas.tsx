@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, INPUTS, measureLayer, nodeValues } from '../engine/logic';
+import { applyLogic, measureLayer } from '../engine/logic';
 import { api } from '../store';
 import { columnKey, rowKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
@@ -13,7 +13,6 @@ import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { ICONS } from './LayersPanel';
-import { fmt, inputLabel, KINDS, LogicNodeBody, makeNode } from './LogicEditor';
 import { WidgetRunButtons } from './WidgetRun';
 
 /*
@@ -85,8 +84,6 @@ const CONDITIONS: { op: CondOp; label: string; value: boolean }[] = [
   { op: 'empty', label: 'is empty', value: false },
   { op: 'notEmpty', label: 'is not empty', value: false },
 ];
-
-const OPERATIONS = KINDS.filter((k) => k.type !== 'field' && k.type !== 'target');
 
 const W = { source: 360, step: 320, field: 250, logic: 210, layer: 260 };
 const HEAD = 34;
@@ -250,13 +247,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     applyLogic(template.logic, m, values, measureLayer(template.layers, values, interpolateText));
     return m;
   }, [template, frame, values]);
-  const logicValues = useMemo(() => nodeValues(logic, resolved, values, measureLayer(template.layers, values, interpolateText)), [logic, resolved, values, template.layers]);
 
   // ---- What the canvas shows and where.
-  const operations = logic.nodes.filter((n) => n.type !== 'field' && n.type !== 'target');
-  const targets = logic.nodes.filter((n): n is LogicNode & { type: 'target' } => n.type === 'target');
-  const wiredPorts = (l: Layer) =>
-    new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...targets.filter((t) => t.layer === l.id && logic.edges.some((e) => e.to === t.id)).map((t) => t.prop), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c)))]);
+  const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c)))]);
   /** Content ports always; properties when unfolded (or wired). */
   const ports = (l: Layer) => {
     const wired = wiredPorts(l);
@@ -308,7 +301,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     if (!p || top < 0) return null;
     return { x: p.x, y: p.y + top + ROW / 2 };
   };
-  const logicIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + INPUTS[n.type].indexOf(port) * ROW + ROW / 2 });
   const logicOut = (n: LogicNode) => ({ x: n.x + widthOf(n.id, W.logic), y: n.y + HEAD / 2 });
 
   // ---- Editing the template.
@@ -397,19 +389,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         });
     }
   const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
-  logic.edges.forEach((e, i) => {
-    const a = nodes.get(e.from);
-    const b = nodes.get(e.to);
-    if (!a || !b) return;
-    const from = a.type === 'field' ? keyOut(a.key) : logicOut(a);
-    let to: Pt | null;
-    if (b.type === 'target') {
-      const l = template.layers.find((x) => x.id === b.layer);
-      to = l ? layerIn(l, b.prop) : null;
-    } else to = logicIn(b, e.port);
-    if (!from || !to) return;
-    wires.push({ d: curve(from, to), title: 'Click to remove', onClick: () => editLogic((l) => void l.edges.splice(i, 1)) });
-  });
 
   // ---- Wiring with the mouse.
   const point = cv.toWorld;
@@ -684,17 +663,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               <em>Rows the operator steps through · a port per column</em>
             </span>
           </button>
-
-          <div className="dc-pal-title">Operations</div>
-          {OPERATIONS.map((k) => (
-            <button key={k.type} className={`kind-${k.type}`} onPointerDown={(e) => fromPalette(e, k.label, (at) => editLogic((l) => void l.nodes.push(makeNode(k.type, template, at.x, at.y))))}>
-              <k.icon size={14} />
-              <span>
-                <strong>{k.label}</strong>
-                <em>{k.hint}</em>
-              </span>
-            </button>
-          ))}
         </aside>
 
         <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`}>
@@ -852,43 +820,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     )}
                   </div>
                   {resizer(`f:${f.key}`, false)}
-                </div>
-              );
-            })}
-
-            {/* Operations (the logic graph) */}
-            {operations.map((n) => {
-              const k = KINDS.find((x) => x.type === n.type)!;
-              return (
-                <div key={n.id} className={`logic-node dc-node kind-${n.type}`} style={{ left: n.x, top: n.y, width: widthOf(n.id, W.logic) }} onPointerDown={(e) => dragNode(e, n.id, 'logic')}>
-                  <div className="ln-head" style={{ height: HEAD }}>
-                    <k.icon size={12} />
-                    <span>{k.label}</span>
-                    <span className="ln-value">{fmt(logicValues.get(n.id))}</span>
-                    <button
-                      className="ln-del"
-                      title="Delete"
-                      onClick={() =>
-                        editLogic((l) => {
-                          l.nodes = l.nodes.filter((x) => x.id !== n.id);
-                          l.edges = l.edges.filter((x) => x.from !== n.id && x.to !== n.id);
-                        })
-                      }
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                    <span className="port out" title="Drag to an input or a layer's value" onPointerDown={(e) => startWire(e, { kind: 'logic', id: n.id })} />
-                  </div>
-                  {INPUTS[n.type].map((port) => (
-                    <div key={port} className="ln-input" style={{ height: ROW }}>
-                      <span className="port in" data-logic={n.id} data-port={port} />
-                      <span>{inputLabel(n, port)}</span>
-                    </div>
-                  ))}
-                  <div className="ln-body">
-                    <LogicNodeBody n={n} template={template} setNode={setNode} />
-                  </div>
-                  {resizer(n.id, false)}
                 </div>
               );
             })}
