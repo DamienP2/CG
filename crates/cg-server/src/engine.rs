@@ -145,6 +145,11 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
             let mut changed = st.tick(step);
             if let Some(p) = &project {
                 changed |= st.auto_resume(p);
+                // Auto next between the graphics of a playlist.
+                if st.auto_next(p) {
+                    crate::state::bind_state(p, &mut st, &state.data.store(), None, None);
+                    changed = true;
+                }
                 // Rows going on by themselves, values set by hand for a time:
                 // the data is read again for them.
                 let rows = st.auto_rows(p);

@@ -292,6 +292,8 @@ pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usi
         None => p.playlists.push(cg_core::Playlist {
             id: pl.clone(),
             name,
+            auto_next: Default::default(),
+            looping: Default::default(),
         }),
     }
     // Keep the position of the running order's items in the rundown.
@@ -323,6 +325,8 @@ pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usi
             playlist: pl.clone(),
             layer: 0,
             data: i.data.clone(),
+            auto_secs: Default::default(),
+            hold: Default::default(),
         })
         .collect();
     let n = items.len();

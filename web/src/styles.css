@@ -8772,9 +8772,6 @@ body.cv-moving * {
   font-size: 11px;
   color: #38bdf8;
 }
-.opx-edit.wide-data {
-  grid-template-columns: minmax(200px, 0.7fr) minmax(0, 1.6fr);
-}
 .ods-switch {
   white-space: nowrap;
 }
@@ -9934,4 +9931,103 @@ body.cv-moving * {
   color: #0b0c12;
   font: 700 10px/14px var(--mono);
   white-space: nowrap;
+}
+
+/* Operator v3: values | data, resizable (half and half by default). */
+.opx-fields-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.opx-fields-col .opx-fields {
+  flex: 1;
+}
+.opx-fields-foot {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+.opx-fields-foot .opx-btn {
+  flex: 1;
+  justify-content: center;
+}
+.opx-vgap {
+  position: relative;
+  background: var(--line);
+  cursor: col-resize;
+}
+.opx-vgap::after {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+.opx-vgap:hover {
+  background: var(--accent);
+}
+.opx-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.opx-sub {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 2px 0 4px;
+}
+.opx-fields .wk-row .opx-bound {
+  flex: 1;
+  min-height: 28px;
+}
+.opx-auto {
+  color: var(--pvw);
+}
+.opx-hold {
+  color: var(--warn);
+}
+.opx-acts button.on {
+  color: var(--pvw);
+}
+.opx-next-name {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.85;
+  margin-left: 6px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ods-bar {
+  flex-wrap: wrap;
+}
+.ods-bar .ods-every {
+  width: 54px;
+}
+.ods-prog.line {
+  flex: none;
+  height: 2px;
+  border-radius: 0;
+}
+.ods-bar .ods-break {
+  flex-basis: 100%;
+  height: 0;
+}
+.opx-gr-main > .muted.small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opx-fields .wk-ctl > * {
+  flex: 1;
+  min-width: 0;
+}
+.opx-fields .wk-ctl > .pp-field,
+.opx-fields .wk-ctl > .wk-tog {
+  flex: none;
 }

@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsRight, PenLine, Plus, Repeat, Rows3, Timer, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsRight, PenLine, Plus, Repeat, Rows3, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { pipeline, useData, type Stage } from '../data/dataStore';
 import { Cell } from '../designer/DataCanvas';
@@ -192,7 +192,36 @@ export function DataSetPanel({
             </>
           )}
         </span>
+        <span className="ods-break" />
+        <button className={`ods-switch ${auto ? 'on' : ''}`} disabled={!operate} title="The next row by itself, once the graphic holds on air; only you stop it" onClick={() => set({ [autoKey(ds.key)]: auto ? '' : String(every) })}>
+          <span className="ods-knob" />
+          Auto next
+        </button>
+        <input
+          className="ods-every"
+          type="number"
+          min={1}
+          max={3600}
+          value={every}
+          title="Seconds per row"
+          onChange={(e) => {
+            const v = Math.max(1, +e.target.value || 1);
+            setEvery(v);
+            if (auto) set({ [autoKey(ds.key)]: String(v) });
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+        />
+        <span className="muted small">s</span>
+        <button className={`ods-switch ${loop ? 'on' : ''}`} title="After the last row, the first again" onClick={() => set({ [loopKey(ds.key)]: loop ? '' : '1' })}>
+          <span className="ods-knob" />
+          <Repeat size={13} /> Loop
+        </button>
       </div>
+      {auto > 0 && (
+        <div className="ods-prog line">
+          <i style={{ width: `${progress * 100}%` }} />
+        </div>
+      )}
       <div className="ods-rows">
         {t === undefined && <p className="opx-hint pad">Loading the rows…</p>}
         {t === null && <p className="opx-hint pad">No data from {ds.source} yet.</p>}
@@ -245,32 +274,6 @@ export function DataSetPanel({
             </tbody>
           </table>
         )}
-      </div>
-      <div className="ods-auto">
-        <button className={`ods-switch ${auto ? 'on' : ''}`} disabled={!operate} title="The next row by itself, once the graphic holds on air; only you stop it" onClick={() => set({ [autoKey(ds.key)]: auto ? '' : String(every) })}>
-          <span className="ods-knob" />
-          <Timer size={13} /> Auto: next row every
-        </button>
-        <input
-          type="number"
-          min={1}
-          max={3600}
-          value={every}
-          onChange={(e) => {
-            const v = Math.max(1, +e.target.value || 1);
-            setEvery(v);
-            if (auto) set({ [autoKey(ds.key)]: String(v) });
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-        />
-        <span className="muted small">s</span>
-        <div className="ods-prog">
-          <i style={{ width: `${progress * 100}%` }} />
-        </div>
-        <button className={`ods-switch ${loop ? 'on' : ''}`} title="After the last row, the first again" onClick={() => set({ [loopKey(ds.key)]: loop ? '' : '1' })}>
-          <span className="ods-knob" />
-          <Repeat size={13} /> Loop
-        </button>
       </div>
     </div>
   );

@@ -1,9 +1,10 @@
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Square, Trash2, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import { rowKey, type Command, type Field, type Layer, type Marker, type PlayoutItem, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { rowKey, type Command, type Field, type Layer, type Marker, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
@@ -11,7 +12,8 @@ import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, useApp } from '../store';
 import { Program } from '../output/Program';
-import { useWheelSteps } from '../ui/fields';
+import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
+import { Row } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel } from './DataSets';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
@@ -27,46 +29,13 @@ import { Splitter, useLayout } from '../ui/Splitter';
  *           controls of the graphics on air (widgets, values, triggers)
  */
 
-/** Number field: − / + buttons, arrow keys and the mouse wheel once clicked. */
-function NumberStepper({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const live = useRef(value);
-  live.current = value;
-  const bump = (d: number) => {
-    const v = +((parseFloat(live.current) || 0) + d).toFixed(3);
-    live.current = String(v);
-    onChange(String(v));
-  };
-  useWheelSteps(ref, (steps, e) => bump(steps * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1)));
-  return (
-    <div className="stepper">
-      <button className="btn small" onClick={() => bump(-1)}>
-        −
-      </button>
-      <input
-        ref={ref}
-        value={value}
-        title="Click, then use the mouse wheel or trackpad (Shift ×10, Alt ×0.1)"
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            e.preventDefault();
-            bump((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
-          }
-        }}
-      />
-      <button className="btn small" onClick={() => bump(1)}>
-        +
-      </button>
-    </div>
-  );
-}
-
+/** The control of an exposed value, as in the Designer (text, choices, number, colour, picture, on / off). */
 export function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
-  // An exposed setting with choices (alignment, mask…): pick one.
-  if (field.options?.length)
-    return (
+  if (field.options?.length) {
+    const short = field.options.length <= 4 && field.options.every(([, l]) => l.length <= 12);
+    return short ? (
+      <Segmented value={value} onChange={onChange} options={field.options.map(([v, l]) => ({ value: v, label: l }))} />
+    ) : (
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {!field.options.some(([v]) => v === value) && <option value={value}>{value}</option>}
         {field.options.map(([v, l]) => (
@@ -76,37 +45,47 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
         ))}
       </select>
     );
+  }
   switch (field.kind) {
     case 'multiline':
-      return <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
+      return <TextInput multiline value={value} onChange={onChange} />;
     case 'number':
-      if (field.min !== undefined && field.max !== undefined && field.max > field.min)
-        return (
-          <div className="row slider-row">
-            <input type="range" min={field.min} max={field.max} step={(field.max - field.min) / 200} value={parseFloat(value) || 0} onChange={(e) => onChange(e.target.value)} />
-            <NumberStepper value={value} onChange={onChange} />
-          </div>
-        );
-      return <NumberStepper value={value} onChange={onChange} />;
+      return (
+        <span className="pp-field">
+          <NumberField value={parseFloat(value) || 0} min={field.min} max={field.max} step={1} precision={value.includes('.') ? Math.min(3, value.split('.')[1].length) : 0} onChange={(v) => onChange(String(v))} />
+        </span>
+      );
     case 'boolean':
       return (
-        <label className="switch">
-          <input type="checkbox" checked={value === 'true'} onChange={(e) => onChange(e.target.checked ? 'true' : 'false')} />
-          <span>{value === 'true' ? 'On' : 'Off'}</span>
-        </label>
+        <button className={`wk-tog ${value === 'true' ? 'on' : ''}`} onClick={() => onChange(value === 'true' ? 'false' : 'true')}>
+          <i />
+        </button>
       );
     case 'color':
       return (
-        <div className="row">
-          <input type="color" value={toHex(parseHex(value) ?? [1, 1, 1, 1])} onChange={(e) => onChange(e.target.value)} />
-          <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-        </div>
+        <span className="pp-field color">
+          <ColorField value={parseHex(value) ?? [1, 1, 1, 1]} onChange={(x) => onChange(toHex(x, x[3] < 1))} />
+        </span>
       );
     case 'image':
       return <AssetPicker value={value} onChange={onChange} />;
     default:
-      return <input value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;
+      return <TextInput value={value} onChange={onChange} />;
   }
+}
+
+/** Fields grouped by layer ("Name · Vertical": group Name, label Vertical). */
+function fieldGroups(fields: Field[]): { title: string; fields: { f: Field; label: string }[] }[] {
+  const out: { title: string; fields: { f: Field; label: string }[] }[] = [];
+  for (const f of fields) {
+    const at = f.label.indexOf(' · ');
+    const title = at > 0 ? f.label.slice(0, at) : '';
+    const label = at > 0 ? f.label.slice(at + 3) : f.label;
+    let g = out.find((x) => x.title === title);
+    if (!g) out.push((g = { title, fields: [] }));
+    g.fields.push({ f, label });
+  }
+  return out;
 }
 
 const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
@@ -157,7 +136,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const canEdit = can.operate(auth?.user);
   const operate = canEdit && !!channelId;
   const command: typeof send = (cmd) => operate && send(cmd, channelId!);
-  const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200 });
+  const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200, fields: 50 });
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
@@ -175,6 +154,14 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const playlists = project?.playlists ?? [];
   const activeList = playlists.find((p) => p.id === playlistId)?.id ?? playlists[0]?.id ?? '';
   const items = rundown.filter((r) => r.playlist === activeList || !playlists.some((p) => p.id === r.playlist));
+  const activePl = playlists.find((p) => p.id === activeList);
+  const setPlaylist = (patch: Partial<Playlist>) =>
+    project &&
+    api(
+      'PUT',
+      `/api/projects/${encodeURIComponent(project.id)}/playlists`,
+      playlists.map((p) => (p.id === activeList ? { ...p, ...patch } : p)),
+    ).catch((e) => toast((e as Error).message, 'error'));
   const item = rundown.find((r) => r.id === cued) ?? null;
   const template = item ? project?.templates.find((t) => t.id === item.templateId) : undefined;
   const readMode: ReadMode = item?.read ?? 'live';
@@ -273,6 +260,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const previewFormat = formatFor(project, main.width, main.height);
   const itemZone = item ? zoneOf(item) : undefined;
   const fps = project.frameRate.num / project.frameRate.den || 1;
+  // The data part only when the graphic reads data (a source or a data set).
+  const hasData = !!template && (!!template.datasets?.length || template.fields.some((f) => f.binding?.source));
 
   return (
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
@@ -307,6 +296,16 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <section className="opx-pane grow">
           <header className="opx-head">
             <span className="opx-title">Graphics · {playlists.find((p) => p.id === activeList)?.name ?? ''}</span>
+            {activePl && canEdit && (
+              <>
+                <button className={`opx-btn small ${activePl.autoNext ? 'violet' : ''}`} title="Auto next: each graphic takes the next one after its time (set on each graphic)" onClick={() => setPlaylist({ autoNext: !activePl.autoNext || undefined })}>
+                  <Timer size={13} /> Auto next
+                </button>
+                <button className={`opx-btn small ${activePl.loop ? 'violet' : ''}`} title="Loop: after the last graphic, the first again" onClick={() => setPlaylist({ loop: !activePl.loop || undefined })}>
+                  <Repeat size={13} />
+                </button>
+              </>
+            )}
             {canEdit && (
               <button className="opx-add" title="Add a graphic from a template" onClick={() => setAdding(!adding)}>
                 <Plus size={15} />
@@ -347,6 +346,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 onTake={() => takeItem(r)}
                 onOut={() => outZone(zoneOf(r))}
                 onRename={(name) => setItem(r.id, { name })}
+                autoNext={!!activePl?.autoNext}
+                onAuto={(patch) => setItem(r.id, patch)}
                 onDuplicate={() => {
                   const next = [...rundown];
                   next.splice(rundown.indexOf(r) + 1, 0, { ...structuredClone(r), id: newId(), name: `${r.name} copy` });
@@ -392,8 +393,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
             {!items.length && <p className="opx-hint">Empty playlist: add graphics from your templates with +.</p>}
           </div>
           <footer className="opx-foot">
-            <button className="opx-btn big red" disabled={!item || !operate} onClick={take} title="F1 / Enter">
-              <Play size={15} fill="currentColor" /> Take
+            <button className="opx-btn big red" disabled={!item || !operate} onClick={take} title={`F1 / Enter: takes ${item?.name ?? 'the next graphic'}`}>
+              <SkipForward size={15} fill="currentColor" /> Next
+              {item && <span className="opx-next-name">{item.name}</span>}
             </button>
             <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12: everything out at once">
               Clear all
@@ -431,46 +433,76 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   {template.name} · zone {itemZone?.name ?? '—'}
                 </span>
               </header>
-              <div className={`opx-edit ${template.datasets?.length ? 'wide-data' : ''}`}>
-                <div className="opx-fields">
-                  {template.fields.length === 0 && <p className="opx-hint">This graphic has no variables: take it as it is.</p>}
-                  {template.fields.map((f) => {
-                    const live = f.binding && readMode !== 'manual';
-                    return (
-                      <label key={f.key} className="opx-field">
-                        <span className="opx-label">
-                          {f.label}
-                          {f.binding && <span className="opx-from">● from {sourceName(f.binding.source)}</span>}
-                        </span>
-                        {live ? (
-                          <span className="opx-bound" title={`${bindingLabel(f.binding!)} — read ${readMode === 'live' ? 'live' : 'on take'}`}>
-                            {boundDraft[f.key] ?? draft[f.key] ?? '…'}
-                          </span>
-                        ) : (
-                          <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => editDraft({ [f.key]: v })} />
-                        )}
-                        {fitWarnings
-                          .filter((w) => w.keys.includes(f.key))
-                          .map((w) => (
-                            <FitWarning key={w.layer.id} w={w} />
-                          ))}
-                      </label>
-                    );
-                  })}
-                  {fitWarnings
-                    .filter((w) => !w.keys.some((k) => template.fields.some((f) => f.key === k)))
-                    .map((w) => (
-                      <FitWarning key={w.layer.id} w={w} named />
+              <div className="opx-edit" style={{ gridTemplateColumns: hasData ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
+                <div className="opx-fields-col">
+                  <div className="opx-fields">
+                    {fieldGroups(template.fields).map((g) => (
+                      <div key={g.title} className="opx-group">
+                        {g.title && <div className="opx-sub">{g.title}</div>}
+                        {g.fields.map(({ f, label }) => {
+                          const live = f.binding && readMode !== 'manual';
+                          return (
+                            <div key={f.key}>
+                              <Row label={label}>
+                                {live ? (
+                                  <span className="opx-bound" title={`${bindingLabel(f.binding!)} · ${sourceName(f.binding!.source)}, read ${readMode === 'live' ? 'live' : 'on take'}`}>
+                                    {boundDraft[f.key] ?? draft[f.key] ?? '…'}
+                                  </span>
+                                ) : (
+                                  <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => editDraft({ [f.key]: v })} />
+                                )}
+                              </Row>
+                              {fitWarnings
+                                .filter((w) => w.keys.includes(f.key))
+                                .map((w) => (
+                                  <FitWarning key={w.layer.id} w={w} />
+                                ))}
+                            </div>
+                          );
+                        })}
+                      </div>
                     ))}
-                  {template.datasets?.map((ds) => (
-                    <DataSetHand key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
-                  ))}
+                    {fitWarnings
+                      .filter((w) => !w.keys.some((k) => template.fields.some((f) => f.key === k)))
+                      .map((w) => (
+                        <FitWarning key={w.layer.id} w={w} named />
+                      ))}
+                    {template.datasets?.map((ds) => (
+                      <DataSetHand key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                    ))}
+                  </div>
+                  <footer className="opx-fields-foot">
+                    <button
+                      className="opx-btn violet"
+                      disabled={!operate || !onAirByItem.get(item.id)}
+                      title={onAirByItem.get(item.id) ? 'Send these values to the graphic on air' : 'Not on air: the values go with the take'}
+                      onClick={() => command({ action: 'update', zone: itemZone?.id, data: { ...defaultData(template), ...draft } })}
+                    >
+                      <RefreshCw size={13} /> Update
+                    </button>
+                  </footer>
                 </div>
-                <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
-                  {template.datasets?.map((ds, i) => (
-                    <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={i === 0} />
-                  ))}
-                </DataBlock>
+                {hasData && (
+                  <>
+                    <div
+                      className="opx-vgap"
+                      title="Drag to resize · double-click: half and half"
+                      onDoubleClick={() => setLayout('fields', 50)}
+                      onPointerDown={(e) => {
+                        const box = e.currentTarget.parentElement!.getBoundingClientRect();
+                        const move = (ev: PointerEvent) => setLayout('fields', Math.round(Math.max(25, Math.min(75, ((ev.clientX - box.left) / box.width) * 100))));
+                        const up = () => (window.removeEventListener('pointermove', move), window.removeEventListener('pointerup', up));
+                        window.addEventListener('pointermove', move);
+                        window.addEventListener('pointerup', up);
+                      }}
+                    />
+                    <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
+                      {template.datasets?.map((ds, i) => (
+                        <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={i === 0} />
+                      ))}
+                    </DataBlock>
+                  </>
+                )}
               </div>
             </>
           ) : (
@@ -536,11 +568,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               <span className="opx-title">Controls</span>
             )}
           </header>
-          {selItem && selZone ? (
-            <AirControls project={project} zone={selZone} item={selItem} command={command} onSaveData={(data) => selItem.rundownId && setItem(selItem.rundownId, { data })} nextRowOf={(key) => nextRowOf(selItem, key)} />
-          ) : (
-            <p className="opx-hint pad">Nothing on air. The controls of the graphics on air show here: their widgets, values and triggers.</p>
-          )}
+          {selItem && selZone ? <AirControls project={project} zone={selZone} item={selItem} command={command} nextRowOf={(key) => nextRowOf(selItem, key)} /> : <p className="opx-hint pad">Nothing on air.</p>}
         </section>
       </div>
     </div>
@@ -636,6 +664,9 @@ function GraphicRow(props: {
   onTake: () => void;
   onOut: () => void;
   onRename: (name: string) => void;
+  /** The playlist goes on by itself: show and set this graphic's time. */
+  autoNext: boolean;
+  onAuto: (patch: Partial<RundownItem>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
   drag: { over: 'before' | 'after' | null; onStart: (e: React.DragEvent) => void; onOver: (e: React.DragEvent) => void; onDrop: (e: React.DragEvent) => void; onEnd: () => void };
@@ -644,6 +675,7 @@ function GraphicRow(props: {
   const t = project.templates.find((x) => x.id === item.templateId);
   const paused = air && isPaused(air, project);
   const [renaming, setRenaming] = useState(false);
+  const [autoAt, setAutoAt] = useState<DOMRect | null>(null);
   return (
     <div className={`opx-gr ${props.selected ? 'on' : ''} ${air ? 'air' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
       {props.editable && (
@@ -688,11 +720,16 @@ function GraphicRow(props: {
         )}
         <span className="muted small">
           <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? 'no zone'} · {t?.name ?? 'missing template'}
+          {props.autoNext && item.autoSecs !== undefined && <span className="opx-auto"> · next {item.autoSecs} s</span>}
+          {item.hold && <span className="opx-hold"> · hold</span>}
         </span>
         <MiniTimeline template={t} air={air} />
       </span>
       {props.editable && (
         <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
+          <button title="Auto next of this graphic: its time on air, hold anyway" className={item.autoSecs !== undefined || item.hold ? 'on' : ''} onClick={(e) => setAutoAt(autoAt ? null : e.currentTarget.getBoundingClientRect())}>
+            <Timer size={13} />
+          </button>
           <button title="Duplicate" onClick={props.onDuplicate}>
             <Copy size={13} />
           </button>
@@ -701,7 +738,60 @@ function GraphicRow(props: {
           </button>
         </span>
       )}
+      {autoAt && <AutoNextEditor item={item} at={autoAt} onChange={props.onAuto} onClose={() => setAutoAt(null)} />}
     </div>
+  );
+}
+
+/** Auto next settings of one graphic: its time on air before the next one, hold anyway. */
+function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at: DOMRect; onChange: (patch: Partial<RundownItem>) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('pointerdown', down);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('keydown', key);
+    };
+  }, [onClose]);
+  const auto = item.autoSecs !== undefined;
+  return createPortal(
+    <div ref={ref} className="menu marker-editor" style={{ position: 'fixed', left: Math.max(8, at.left - 240), top: at.bottom + 6 }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <header>
+        <Timer size={13} />
+        <strong>{item.name}</strong>
+        <div className="spacer" />
+        <button className="icon-btn ghost" title="Close" onClick={onClose}>
+          <X size={14} />
+        </button>
+      </header>
+      <div className="me-field">
+        <span>Next</span>
+        <div className="seg">
+          <button className={!auto ? 'on' : ''} title="The operator takes the next graphic" onClick={() => onChange({ autoSecs: undefined })}>
+            Operator
+          </button>
+          <button className={auto ? 'on' : ''} title="The next graphic is taken after this time on air" onClick={() => onChange({ autoSecs: item.autoSecs ?? 10 })}>
+            After
+          </button>
+        </div>
+      </div>
+      {auto && (
+        <label className="me-field">
+          <span>On air for</span>
+          <NumberField value={item.autoSecs ?? 10} min={0} step={1} suffix="s" onChange={(v) => onChange({ autoSecs: Math.max(0, v) })} />
+        </label>
+      )}
+      <div className="me-field">
+        <span>Hold anyway</span>
+        <button className={`wk-tog ${item.hold ? 'on' : ''}`} title="Stays on air when the next graphic is taken" onClick={() => onChange({ hold: !item.hold || undefined })}>
+          <i />
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -830,29 +920,19 @@ function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutIt
   );
 }
 
-function AirControls({ project, zone, item, command, onSaveData, nextRowOf }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; onSaveData: (d: Record<string, string>) => void; nextRowOf?: (dataset: string) => number | undefined }) {
+function AirControls({ project, zone, item, command, nextRowOf }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined }) {
   const t = project.templates.find((x) => x.id === item.templateId);
   if (!t) return null;
   const target = { zone: zone.id };
   const timed = t.layers.filter(isTimed);
-  const numbers = t.fields.filter((f) => f.kind === 'number' && !f.binding);
   // Pauses waiting for a trigger, and values set by hand until one.
   const triggers = [...new Set([...t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])), ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : []))])];
   const waiting = pauseOf(item, project);
-  const setValue = (key: string, v: string) => {
-    const data = { ...item.data, [key]: v };
-    command({ action: 'update', ...target, data });
-    onSaveData(data);
-  };
-  const r = item.rundownId ? project.rundown.find((x) => x.id === item.rundownId) : undefined;
   return (
     <div className="opx-controls">
       <div className="opx-actions sticky">
         <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title="F2 / Space">
           <ChevronsRight size={14} /> Continue
-        </button>
-        <button className="opx-btn violet" disabled={!r} title="Send the item's saved data to the graphic on air" onClick={() => r && command({ action: 'update', ...target, data: { ...defaultData(t), ...r.data } })}>
-          <RefreshCw size={13} /> Update
         </button>
         <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
           <CircleStop size={14} /> Out
@@ -884,26 +964,6 @@ function AirControls({ project, zone, item, command, onSaveData, nextRowOf }: { 
             </div>
           );
         })}
-      {numbers.length > 0 && (
-        <div className="opx-numbers">
-          {numbers.map((f) => {
-            const v = item.data[f.key] ?? f.default;
-            const bump = (d: number) => setValue(f.key, String(+((parseFloat(v) || 0) + d).toFixed(3)));
-            return (
-              <div key={f.key} className="opx-number">
-                <span>{f.label}</span>
-                <button className="opx-mini" onClick={() => bump(-1)}>
-                  −
-                </button>
-                <strong>{v}</strong>
-                <button className="opx-mini" onClick={() => bump(1)}>
-                  +
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
       {triggers.length > 0 && (
         <div className="opx-triggers">
           <span className="opx-label">Triggers</span>
@@ -914,7 +974,7 @@ function AirControls({ project, zone, item, command, onSaveData, nextRowOf }: { 
           ))}
         </div>
       )}
-      {!timed.length && !numbers.length && !triggers.length && !t.datasets?.length && !t.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">This graphic has no internal controls.</p>}
+      {!timed.length && !triggers.length && !t.datasets?.length && !t.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">This graphic has no internal controls.</p>}
     </div>
   );
 }

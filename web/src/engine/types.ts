@@ -341,6 +341,10 @@ export interface RundownItem {
   data: Record<string, string>;
   /** When bound fields read their source (default: live). */
   read?: ReadMode;
+  /** Auto next (playlist set to auto next): seconds on air before the next graphic; none = the operator takes it. */
+  autoSecs?: number;
+  /** Stays on air when the next graphic is taken (in another zone). */
+  hold?: boolean;
 }
 
 /** `live`: on take and on every change of the source; `take`: once, on take; `manual`: when the operator asks. */
@@ -395,6 +399,10 @@ export interface Exclusion {
 export interface Playlist {
   id: string;
   name: string;
+  /** The graphics go on to the next one by themselves (RundownItem.autoSecs). */
+  autoNext?: boolean;
+  /** After the last graphic, the first again. */
+  loop?: boolean;
 }
 
 export type Phase = 'playing' | 'holding' | 'out' | 'outHold';

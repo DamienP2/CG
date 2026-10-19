@@ -1445,6 +1445,14 @@ pub struct RundownItem {
     /// When the fields bound to data sources are read.
     #[serde(default, skip_serializing_if = "ReadMode::is_live")]
     pub read: ReadMode,
+    /// Auto next (its playlist set to auto next): seconds on air, from the
+    /// take, before the next graphic of the playlist is taken; none = the
+    /// operator takes the next one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_secs: Option<f64>,
+    /// Stays on air when the next graphic is taken (in another zone).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hold: bool,
 }
 
 /// When a rundown item reads its data sources.
@@ -1472,6 +1480,13 @@ impl ReadMode {
 pub struct Playlist {
     pub id: String,
     pub name: String,
+    /// The graphics go on to the next one by themselves (see
+    /// [`RundownItem::auto_secs`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_next: bool,
+    /// After the last graphic, the first again.
+    #[serde(default, rename = "loop", skip_serializing_if = "std::ops::Not::not")]
+    pub looping: bool,
 }
 
 /// What happens when a graphic is taken in a zone that is already on air.
@@ -1741,6 +1756,8 @@ impl Project {
             self.playlists.push(Playlist {
                 id: "main".into(),
                 name: "Main".into(),
+                auto_next: Default::default(),
+                looping: Default::default(),
             });
             changed = true;
         }

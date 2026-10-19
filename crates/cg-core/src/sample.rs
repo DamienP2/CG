@@ -1027,10 +1027,14 @@ pub fn demo_project() -> Project {
         Playlist {
             id: "show".into(),
             name: "Show".into(),
+            auto_next: Default::default(),
+            looping: Default::default(),
         },
         Playlist {
             id: "widgets".into(),
             name: "Widgets".into(),
+            auto_next: Default::default(),
+            looping: Default::default(),
         },
     ];
     for r in &mut p.rundown {
@@ -1083,6 +1087,8 @@ fn demo_project_layers() -> Project {
                 template_id: "lower-third".into(),
                 layer: 10,
                 data,
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1096,6 +1102,8 @@ fn demo_project_layers() -> Project {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1106,6 +1114,8 @@ fn demo_project_layers() -> Project {
                 template_id: "clock".into(),
                 layer: 30,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1116,6 +1126,8 @@ fn demo_project_layers() -> Project {
                 template_id: "ticker".into(),
                 layer: 40,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1126,6 +1138,8 @@ fn demo_project_layers() -> Project {
                 template_id: "credits".into(),
                 layer: 50,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1136,6 +1150,8 @@ fn demo_project_layers() -> Project {
                 template_id: "analog-clock".into(),
                 layer: 31,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1146,6 +1162,8 @@ fn demo_project_layers() -> Project {
                 template_id: "poll".into(),
                 layer: 60,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1156,6 +1174,8 @@ fn demo_project_layers() -> Project {
                 template_id: "qr-code".into(),
                 layer: 70,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
             RundownItem {
                 read: Default::default(),
@@ -1166,6 +1186,8 @@ fn demo_project_layers() -> Project {
                 template_id: "countdown".into(),
                 layer: 80,
                 data: BTreeMap::new(),
+                auto_secs: Default::default(),
+                hold: Default::default(),
             },
         ],
     }

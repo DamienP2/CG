@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
 use crate::model::{
-    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, Template, ZoneTransition,
+    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, RundownItem, Template, ZoneTransition,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +73,9 @@ pub struct PlayoutItem {
     /// What the operator changed in the spec widgets (`wid`), by layer id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub widgets: BTreeMap<String, serde_json::Value>,
+    /// Auto next has taken the graphic after this one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub advanced: bool,
 }
 
 /// A cross-fade from the data the graphic had (drawn fading out above it).
@@ -157,6 +160,7 @@ impl PlayoutItem {
             pause_ahead: false,
             fade: None,
             widgets: BTreeMap::new(),
+            advanced: Default::default(),
         }
     }
 
@@ -765,6 +769,94 @@ impl ChannelState {
         changed
     }
 
+    /// Auto next between graphics: a graphic of a playlist set to auto next
+    /// that has been on air for its seconds takes the next graphic of the
+    /// playlist (the first after the last when it loops); it goes out unless
+    /// it holds anyway or the next one plays in its zone (which replaces
+    /// it). Returns true when something was taken.
+    pub fn auto_next(&mut self, project: &Project) -> bool {
+        let fps = project.frame_rate.as_f64().max(1.0);
+        let zone_of = |r: &RundownItem| {
+            if r.zone.is_empty() {
+                project
+                    .template(&r.template_id)
+                    .map(|t| t.zone.clone())
+                    .unwrap_or_default()
+            } else {
+                r.zone.clone()
+            }
+        };
+        let mut takes = Vec::new();
+        let mut outs = Vec::new();
+        for (layer, item) in self.layers.iter_mut() {
+            if item.advanced || matches!(item.phase, Phase::Out | Phase::OutHold) {
+                continue;
+            }
+            let Some(r) = item
+                .rundown_id
+                .as_ref()
+                .and_then(|id| project.rundown.iter().find(|x| &x.id == id))
+            else {
+                continue;
+            };
+            let Some(secs) = r.auto_secs else { continue };
+            let Some(list) = project
+                .playlists
+                .iter()
+                .find(|p| p.id == r.playlist && p.auto_next)
+            else {
+                continue;
+            };
+            if item.age / fps < secs.max(0.0) {
+                continue;
+            }
+            item.advanced = true;
+            let items: Vec<&RundownItem> = project
+                .rundown
+                .iter()
+                .filter(|x| x.playlist == r.playlist)
+                .collect();
+            let at = items.iter().position(|x| x.id == r.id).unwrap_or(0);
+            let next = items
+                .get(at + 1)
+                .or(if list.looping { items.first() } else { None });
+            let same_zone = next.is_some_and(|n| zone_of(n) == zone_of(r));
+            if let Some(n) = next {
+                takes.push((*n).clone());
+            }
+            if !r.hold && !same_zone {
+                outs.push(*layer);
+            }
+        }
+        for layer in &outs {
+            if let Some(item) = self.layers.get_mut(layer) {
+                if !begin_out(project, item) {
+                    self.layers.remove(layer);
+                }
+            }
+        }
+        let changed = !takes.is_empty() || !outs.is_empty();
+        for n in takes {
+            let Some(t) = project.template(&n.template_id) else {
+                continue;
+            };
+            let mut data = t.default_data();
+            data.extend(n.data.clone());
+            let zone = zone_of(&n);
+            let _ = self.apply(
+                project,
+                Command::Take {
+                    zone: (!zone.is_empty()).then_some(zone),
+                    layer: None,
+                    template_id: n.template_id.clone(),
+                    data: Some(data),
+                    rundown_id: Some(n.id.clone()),
+                },
+            );
+        }
+        changed
+    }
+
     /// Data sets going on by themselves: the next row once the graphic has
     /// held on air (on the on-air marker, after its in animation) for the
     /// data set's seconds. Returns true when a row changed.
@@ -912,6 +1004,80 @@ mod tests {
                 areas: Default::default(),
             }],
         }
+    }
+
+    #[test]
+    fn auto_next_between_graphics() {
+        use crate::model::{Playlist, RundownItem, Zone};
+        let mut p = project();
+        let fps = p.frame_rate.as_f64();
+        let mut t2 = p.templates[0].clone();
+        t2.id = "t2".into();
+        t2.zone = "z2".into();
+        p.templates.push(t2);
+        p.zones.push(Zone {
+            id: "z2".into(),
+            layer: 2,
+            ..p.zones[0].clone()
+        });
+        p.playlists.push(Playlist {
+            id: "pl".into(),
+            name: "Show".into(),
+            auto_next: true,
+            looping: false,
+        });
+        let item = |id: &str, t: &str, secs: Option<f64>, hold: bool| RundownItem {
+            id: id.into(),
+            name: id.into(),
+            template_id: t.into(),
+            zone: String::new(),
+            playlist: "pl".into(),
+            layer: 0,
+            data: Default::default(),
+            read: Default::default(),
+            auto_secs: secs,
+            hold,
+        };
+        p.rundown = vec![
+            item("a", "t", Some(1.0), false),
+            item("b", "t2", None, false),
+        ];
+        let take_a = |st: &mut ChannelState, p: &Project| {
+            st.apply(
+                p,
+                Command::Take {
+                    zone: Some("z".into()),
+                    layer: None,
+                    template_id: "t".into(),
+                    data: None,
+                    rundown_id: Some("a".into()),
+                },
+            )
+            .unwrap();
+        };
+        let mut st = ChannelState::default();
+        take_a(&mut st, &p);
+        st.tick(fps * 0.5);
+        assert!(!st.auto_next(&p));
+        st.tick(fps * 0.6);
+        assert!(st.auto_next(&p));
+        // b in its zone; a goes out.
+        assert_eq!(st.layers[&2].rundown_id.as_deref(), Some("b"));
+        assert_eq!(st.layers[&1].phase, Phase::Out);
+        assert!(!st.auto_next(&p), "only once");
+        // Hold anyway: a stays.
+        p.rundown[0].hold = true;
+        let mut st = ChannelState::default();
+        take_a(&mut st, &p);
+        st.tick(fps * 1.2);
+        assert!(st.auto_next(&p));
+        assert_ne!(st.layers[&1].phase, Phase::Out);
+        // Playlist without auto next: nothing.
+        p.playlists[0].auto_next = false;
+        let mut st = ChannelState::default();
+        take_a(&mut st, &p);
+        st.tick(fps * 5.0);
+        assert!(!st.auto_next(&p));
     }
 
     #[test]
