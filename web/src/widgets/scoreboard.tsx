@@ -7,7 +7,7 @@ import { Trophy } from 'lucide-react';
 import { interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, getPath, Note, Num, Range, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, getPath, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { col, ink, mix, poly, rrect, tf, ellipse, Pt, type Cmd } from './scoreboard-paint';
 
 export type Sport = 'football' | 'rugby' | 'basketball' | 'handball' | 'volleyball' | 'tennis' | 'generic';
@@ -1022,20 +1022,22 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
 
 // -------------------------------------------------------------- inspector --
 
-function TeamLogo({ i }: { i: number }) {
+function TeamLogo({ i, label }: { i: number; label: string }) {
   const b = useBound();
   return (
-    <Row expose={`teams.${i}.logo`} exposeValue={String(getPath(b.obj, `teams.${i}.logo`) ?? '')} label="Picture">
+    <Row expose={`teams.${i}.logo`} exposeValue={String(getPath(b.obj, `teams.${i}.logo`) ?? '')} label={label}>
       <AssetPicker value={String(getPath(b.obj, `teams.${i}.logo`) ?? '')} onChange={(v) => b.set(`teams.${i}.logo`, v)} />
     </Row>
   );
 }
 
-function CrestPreview({ t, data }: { t: Required<Team>; data: Data }) {
-  const p = new Pt();
-  crest(p, t, 2, 2, 40, data);
-  return <div style={{ position: 'relative', width: 44, height: 44 }}>{p.svg(44, 44)}</div>;
-}
+/** The plainest board: compact, score and clock only. */
+const PLAIN: Config = {
+  version: 'compact',
+  showCrest: false,
+  fields: { period: false, clock: true, fouls: false, timeouts: false, cards: false, poss: false, sets: false },
+  anim: { banner: false },
+};
 
 function applyPreset(l: Config & { props: Record<string, unknown> }, sp: Sport) {
   const pr = PRESETS[sp];
@@ -1053,11 +1055,10 @@ export default defineWidget({
   label: 'Scoreboard',
   group: 'Sport & interaction',
   icon: Trophy,
-  presets: (['football', 'rugby', 'basketball', 'handball', 'volleyball', 'tennis', 'generic'] as Sport[]).map((sp) => {
-    const pr = PRESETS[sp];
-    return { label: pr.name, hint: pr.rules, patch: { preset: sp, fields: { ...pr.fields }, digits: pr.digits, clock: { dir: pr.dir, len: pr.len || 45, extra: pr.extra, tenths: true }, layout: pr.kind === 'tennis' ? 'stacked' : 'horizontal' } };
-  }),
-  create: () => ({ props: { width: 1500, height: 170 } }),
+  create: () => {
+    const [bw, bh] = sizeAt(cfg(PLAIN), {}, {}, 0, 100);
+    return { ...PLAIN, props: { width: Math.ceil((bw * 120) / bh), height: 120 } };
+  },
   ownsLook: true,
   live: () => true,
   Render: ({ layer, w, h, data, time, state }) => {
@@ -1084,13 +1085,18 @@ export default defineWidget({
         l.props.width = Math.ceil((bw * row) / 100);
         l.props.height = Math.ceil((bh * row) / 100);
       });
+    // Teams not stored yet (defaults) are written out before the first edit of one of them.
+    const ensure = (i: number) => () =>
+      !layer.teams?.[i] &&
+      edit((l) => {
+        const ks = cfg(l);
+        l.teams = Array.from({ length: Math.max(n, ks.teams.length) }, (_, j) => ({ ...team(ks, j) }));
+      });
+    const points = pr.kind === 'points';
     return (
       <>
         <Section id="sb-sport" title="Sport">
           <Select expose="preset" exposeValue={k.preset} label="Preset" value={k.preset} onChange={(v) => edit((l) => applyPreset(l as never, v as Sport))} options={(Object.keys(PRESETS) as Sport[]).map((sp) => [sp, PRESETS[sp].name] as const)} />
-          <Note>
-            <b>Rules:</b> {pr.rules} Changing the preset sets its fields and clock; the match on air keeps its state (Reset match in the Operator).
-          </Note>
           {pr.kind === 'tennis' && (
             <Seg
               label="Best of"
@@ -1106,105 +1112,28 @@ export default defineWidget({
         <Section id="sb-teams" title="Teams">
           {Array.from({ length: n }, (_, i) => {
             const t = team(k, i);
-            const ensure = () =>
-              edit((l) => {
-                const ks = cfg(l);
-                l.teams = Array.from({ length: Math.max(n, ks.teams.length) }, (_, j) => ({ ...team(ks, j) }));
-              });
             return (
-              <div key={i} onFocusCapture={() => !layer.teams?.[i] && ensure()} onPointerDownCapture={() => !layer.teams?.[i] && ensure()}>
-                <Row label={`Team ${i + 1}`}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <CrestPreview t={t} data={data} />
-                    <span className="hint">
-                      {shortOf(t)} {!t.short.trim() && '(auto)'}
-                    </span>
-                  </div>
-                </Row>
-                <Text label="Name" path={`teams.${i}.name`} value={t.name} placeholder="Full name" />
-                <Text label="Short (3)" path={`teams.${i}.short`} value={t.short} placeholder={`auto: ${autoShort(t.name)}`} />
-                <ColorPick label="Primary" path={`teams.${i}.c1`} value={t.c1} />
-                <ColorPick label="Secondary" path={`teams.${i}.c2`} value={t.c2} />
-                <Seg
-                  label="Badge"
-                  path={`teams.${i}.crest`}
-                  value={t.crest}
-                  options={[
-                    ['shield', 'Shield'],
-                    ['round', 'Round'],
-                    ['diamond', 'Diamond'],
-                  ]}
-                />
-                <TeamLogo i={i} />
-                <Content label="Score feed" path={`teams.${i}.score`} value={t.score} placeholder="manual · or {{key}} from data" />
-              </div>
+              <Section key={i} id={`sb-team-${i}`} title={`Team ${i + 1}`} level={2}>
+                <div onFocusCapture={ensure(i)} onPointerDownCapture={ensure(i)}>
+                  <Text label="Name" path={`teams.${i}.name`} value={t.name} placeholder="Full name" />
+                  <Text label="Short" path={`teams.${i}.short`} value={t.short} placeholder={autoShort(t.name)} />
+                  <ColorPick label="Primary" path={`teams.${i}.c1`} value={t.c1} />
+                  <ColorPick label="Secondary" path={`teams.${i}.c2`} value={t.c2} />
+                  <Content label="Score feed" path={`teams.${i}.score`} value={t.score} placeholder="{{key}}" />
+                </div>
+              </Section>
             );
           })}
-          <Btns
-            list={[
-              { label: '+ Add team', disabled: !pr.multi, title: pr.multi ? '' : 'Only the Generic preset has more than 2 teams', onClick: () => edit((l) => void (l.teams = [...Array.from({ length: n }, (_, j) => ({ ...team(cfg(l), j) })), { ...SAMPLE[n % 4] }])) },
-              { label: '− Last team', cls: 'ghost', disabled: n <= 2, onClick: () => edit((l) => void (l.teams = (l.teams ?? []).slice(0, n - 1))) },
-            ]}
-          />
-          <Toggle label="Logos" path="showCrest" value={true} text="Show the crests" />
-          <Note>Short name: 3 letters (longer is cut); empty → made from the name. In the full version a name too long for its space shows the short name. Without a picture a badge with the initial is generated.</Note>
-        </Section>
-        <Section id="sb-fields" title="Fields">
-          <Toggle label="Period" path="fields.period" value={k.fields.period} text={pr.kind === 'points' ? 'Half / quarter / period' : 'Current set'} />
-          <Toggle label="Clock" path="fields.clock" value={k.fields.clock} text="Match clock" disabled={pr.kind !== 'points' ? 'No clock in this sport' : undefined} />
-          <Toggle label="Sets" path="fields.sets" value={k.fields.sets} text="Sets won" disabled={pr.kind === 'tennis' ? 'Tennis always shows sets / games / points' : pr.kind !== 'sets' ? 'Only for set sports' : undefined} />
-          <Toggle label="Fouls" path="fields.fouls" value={k.fields.fouls} text="Team fouls (full version)" />
-          <Toggle label="Timeouts" path="fields.timeouts" value={k.fields.timeouts} text="Timeouts left (full version)" disabled={pr.timeouts ? undefined : 'No timeouts in this sport'} />
-          <Toggle label="Cards" path="fields.cards" value={k.fields.cards} text="Cards (full version)" disabled={pr.cards.length ? undefined : 'No cards in this sport'} />
-          <Toggle label={pr.poss} path="fields.poss" value={k.fields.poss} text={`${pr.poss} indicator`} />
-          <Seg
-            label="Score width"
-            path="digits"
-            value={k.digits}
-            options={[
-              [2, '2 digits'],
-              [3, '3 digits'],
-            ]}
-          />
-          <Note>The score cell keeps the reserved width: a longer score is compressed, the board never moves.</Note>
-        </Section>
-        <Section id="sb-clock" title="Clock">
-          <Seg
-            label="Direction"
-            path="clock.dir"
-            value={k.clock.dir}
-            options={[
-              ['up', 'Stopwatch ↑'],
-              ['down', 'Countdown ↓'],
-              ['none', 'None'],
-            ]}
-          />
-          <Num label="Period" path="clock.len" value={k.clock.len} min={1} max={90} unit=" min" />
-          <Num label="Extra period" path="clock.extra" value={k.clock.extra} min={0} max={30} unit=" min" />
-          <Toggle label="Tenths" path="clock.tenths" value={k.clock.tenths} text="Countdown shows tenths under 1 min" />
-          <Note>Timestamp-based (no drift). {pr.cumulative ? 'Halves continue the time (2nd half starts at 45:00).' : 'Each period restarts.'} A countdown stops at 0. Added time (+3) shows with the clock.</Note>
+          {(pr.multi || n > 2) && (
+            <Btns
+              list={[
+                pr.multi && { label: '+ Add team', onClick: () => edit((l) => void (l.teams = [...Array.from({ length: n }, (_, j) => ({ ...team(cfg(l), j) })), { ...SAMPLE[n % 4] }])) },
+                n > 2 && { label: '− Last team', cls: 'ghost', onClick: () => edit((l) => void (l.teams = (l.teams ?? []).slice(0, n - 1))) },
+              ]}
+            />
+          )}
         </Section>
         <Section id="sb-layout" title="Layout">
-          <Seg
-            label="Layout"
-            path="layout"
-            value={k.layout}
-            options={[
-              ['horizontal', 'Horizontal'],
-              ['stacked', 'Stacked'],
-            ]}
-          />
-          {pr.kind === 'tennis' && <Note>Tennis always uses the stacked table (sets · games · points).</Note>}
-          <Seg
-            label="Order"
-            path="order"
-            value={k.order}
-            options={[
-              ['clockFirst', 'Clock first'],
-              ['clockMid', 'Clock between'],
-              ['clockLast', 'Clock last'],
-            ]}
-          />
           <Seg
             label="Version"
             path="version"
@@ -1214,14 +1143,93 @@ export default defineWidget({
               ['full', 'Full'],
             ]}
           />
-          <Range label="Name space" path="nameW" value={k.nameW} min={2.5} max={9} step={0.1} fmt={(v) => `${v.toFixed(1)} × h`} />
-          <Range label="Corners" path="radius" value={k.radius} min={0} max={30} unit=" px" />
-          <Btns list={[{ label: 'Fit the box to the board', onClick: fit }]} />
-          <Note>The board is drawn at the largest size that fits the box (top left); the banner area is below it.</Note>
-        </Section>
-        <Section id="sb-anim" title="Animations">
+          {pr.kind !== 'tennis' && (
+            <Seg
+              label="Layout"
+              path="layout"
+              value={k.layout}
+              options={[
+                ['horizontal', 'Horizontal'],
+                ['stacked', 'Stacked'],
+              ]}
+            />
+          )}
           <Seg
-            label="Score change"
+            label="Order"
+            path="order"
+            value={k.order}
+            options={[
+              ['clockFirst', 'Clock first'],
+              ['clockMid', 'Between'],
+              ['clockLast', 'Clock last'],
+            ]}
+          />
+          {k.version === 'full' && <Num label="Name space" path="nameW" value={k.nameW} min={2.5} max={9} step={0.1} precision={1} unit="×h" />}
+          <Seg
+            label="Score width"
+            path="digits"
+            value={k.digits}
+            options={[
+              [2, '2 digits'],
+              [3, '3 digits'],
+            ]}
+          />
+          <Num label="Corners" path="radius" value={k.radius} min={0} max={30} unit="px" />
+          <Btns list={[{ label: 'Fit box', title: 'Fit the box to the board', onClick: fit }]} />
+        </Section>
+        <Section id="sb-elements" title="Elements">
+          <Toggle label="Period" path="fields.period" value={k.fields.period} />
+          {pr.kind === 'sets' && <Toggle label="Sets" path="fields.sets" value={k.fields.sets} />}
+          <Toggle label={pr.poss} path="fields.poss" value={k.fields.poss} />
+          <Toggle label="Fouls" path="fields.fouls" value={k.fields.fouls} />
+          {pr.timeouts > 0 && <Toggle label="Timeouts" path="fields.timeouts" value={k.fields.timeouts} />}
+          {pr.cards.length > 0 && <Toggle label="Cards" path="fields.cards" value={k.fields.cards} />}
+          <Toggle label="Crests" path="showCrest" value={k.showCrest} />
+          {k.showCrest &&
+            Array.from({ length: n }, (_, i) => {
+              const t = team(k, i);
+              return (
+                <div key={i} onFocusCapture={ensure(i)} onPointerDownCapture={ensure(i)}>
+                  <Seg
+                    label={shortOf(t)}
+                    path={`teams.${i}.crest`}
+                    value={t.crest}
+                    options={[
+                      ['shield', 'Shield'],
+                      ['round', 'Round'],
+                      ['diamond', 'Diamond'],
+                    ]}
+                  />
+                  <TeamLogo i={i} label="Picture" />
+                </div>
+              );
+            })}
+        </Section>
+        {points && (
+          <Section id="sb-clock" title="Clock">
+            <Toggle label="Clock" path="fields.clock" value={k.fields.clock} />
+            {k.fields.clock && (
+              <>
+                <Seg
+                  label="Direction"
+                  path="clock.dir"
+                  value={k.clock.dir}
+                  options={[
+                    ['up', 'Up ↑'],
+                    ['down', 'Down ↓'],
+                    ['none', 'None'],
+                  ]}
+                />
+                <Num label="Period" path="clock.len" value={k.clock.len} min={1} max={90} unit="min" />
+                <Num label="Extra period" path="clock.extra" value={k.clock.extra} min={0} max={30} unit="min" />
+                {k.clock.dir === 'down' && <Toggle label="Tenths" path="clock.tenths" value={k.clock.tenths} />}
+              </>
+            )}
+          </Section>
+        )}
+        <Section id="sb-anim" title="Animation">
+          <Seg
+            label="Score"
             path="anim.score"
             value={k.anim.score}
             options={[
@@ -1230,26 +1238,26 @@ export default defineWidget({
               ['none', 'None'],
             ]}
           />
-          <Toggle label="Event" path="anim.banner" value={k.anim.banner} text="Banners (GOAL!, TRY!, cards…)" />
-          <Range label="Banner time" path="anim.evDur" value={k.anim.evDur} min={1} max={8} step={0.1} unit=" s" />
+          <Toggle label="Banners" path="anim.banner" value={k.anim.banner} />
+          {k.anim.banner && <Num label="Duration" path="anim.evDur" value={k.anim.evDur} min={1} max={8} step={0.1} precision={1} unit="s" />}
         </Section>
-        <Section id="sb-source" title="Source">
-          <Seg
-            label="Priority"
-            path="source.rule"
-            value={k.source.rule}
-            options={[
-              ['override', 'Manual override, then feed'],
-              ['manual', 'Manual wins'],
-              ['feed', 'Feed wins'],
-            ]}
-          />
-          {k.source.rule === 'override' && <Range label="Override" path="source.overS" value={k.source.overS} min={5} max={120} unit=" s" />}
-          <Note>A team's score follows data when its Score feed is wired to a key ({'{{key}}'}). A manual change in the Operator wins as the rule says; the Operator sees the active source. Not for tennis / volleyball.</Note>
-        </Section>
-        <Section id="sb-safety" title="Operator safety">
-          <Range label="Anti-double press" path="debounce" value={k.debounce} min={0} max={1000} step={50} unit=" ms" />
-          <Note>The same button pressed twice within this time counts once. Undo is always available (last 80 actions).</Note>
+        <Section id="sb-control" title="Control">
+          {points && (
+            <>
+              <Seg
+                label="Priority"
+                path="source.rule"
+                value={k.source.rule}
+                options={[
+                  ['override', 'Override', 'Manual override, then feed'],
+                  ['manual', 'Manual', 'Manual wins'],
+                  ['feed', 'Feed', 'Feed wins'],
+                ]}
+              />
+              {k.source.rule === 'override' && <Num label="Override" path="source.overS" value={k.source.overS} min={5} max={120} unit="s" />}
+            </>
+          )}
+          <Num label="Debounce" path="debounce" value={k.debounce} min={0} max={1000} step={50} unit="ms" />
         </Section>
       </>
     );
@@ -1292,7 +1300,7 @@ export default defineWidget({
       const h = num(r.height);
       const [bw, bh] = sizeAt(k, s, data, now, 100);
       const row = (100 * Math.min(w / bw, h / bh)) | 0;
-      if (row < 30) out.push({ level: 'warn', text: `The box is small for the board (row height ${row} px): use “Fit the box to the board” or enlarge it.` });
+      if (row < 30) out.push({ level: 'warn', text: `The box is small for the board (row height ${row} px): use “Fit box” or enlarge it.` });
     }
     return out;
   },

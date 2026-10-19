@@ -5,7 +5,7 @@ import { ChartColumn } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { GroupRow } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, Range, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
 import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Config as LConfig, type Out, type Prim, type State as LState } from './chart-layout';
 
 /** Settings of the layer (flattened into it; every field optional). */
@@ -127,13 +127,7 @@ export default defineWidget({
   label: 'Chart',
   group: 'Data',
   icon: ChartColumn,
-  presets: [
-    { label: 'Columns', hint: 'Grouped, stacked or 100 %' },
-    { label: 'Lines', patch: { chartType: 'lines' } },
-    { label: 'Areas', patch: { chartType: 'areas', areaMode: 'stacked' } },
-    { label: 'Pie', patch: { chartType: 'pie', data: SAMPLES.share.data, axis: { suffix: ' %', decimals: 1 }, labels: { value: false, pct: true, name: true, pos: 'outside' }, title: { text: 'Audience share', sub: 'Yesterday · 4+' } } },
-  ],
-  create: () => ({ chartType: 'columns', data: SAMPLE.map((r) => r.slice()), props: { width: 1460, height: 820, fontSize: 26 } }),
+  create: () => ({ chartType: 'columns', data: SAMPLE.map((r) => r.slice()), title: { pos: 'none' }, labels: { value: false }, panel: { on: false }, props: { width: 1460, height: 820, fontSize: 26 } }),
   ownsLook: true,
   live: () => true,
   content: ['csv', 'title.text'],
@@ -145,8 +139,57 @@ export default defineWidget({
     const c = cfg(layer);
     const P = parse(c, resolveGrid(c, data));
     const type = c.chartType;
+    const pct = type === 'columns' && c.colMode === 'percent';
+    const labelsOn = c.labels.value || c.labels.pct || c.labels.name;
     return (
       <>
+        <Section id="chart-data" title="Data">
+          <Seg
+            label="Source"
+            path="source"
+            value={c.source}
+            options={[
+              ['grid', 'Table'],
+              ['csv', 'CSV'],
+            ]}
+          />
+          {c.source === 'csv' ? (
+            <Content label="CSV" path="csv" value="" multiline placeholder={'Month;Martin;Durand\nJan;28;24'} />
+          ) : (
+            <>
+              <Select
+                label="Sample"
+                value=""
+                options={[
+                  ['', 'Load…'],
+                  ['poll', 'Poll'],
+                  ['budget', 'Budget'],
+                  ['share', 'Audience share'],
+                ]}
+                onChange={(v) =>
+                  SAMPLES[v] &&
+                  edit((l) => {
+                    l.data = SAMPLES[v].data.map((r) => r.slice());
+                    l.axis = { ...l.axis, ...SAMPLES[v].axis };
+                  })
+                }
+              />
+              <Row expose="data" exposeValue={c.data}>
+                <GridEditor path="data" value={c.data} header csv />
+              </Row>
+            </>
+          )}
+          <Seg
+            label="Missing"
+            path="missing"
+            value={c.missing}
+            options={[
+              ['gap', 'Gap'],
+              ['interp', 'Interpolate'],
+              ['zero', 'Zero'],
+            ]}
+          />
+        </Section>
         <Section id="chart-chart" title="Chart">
           <Seg
             label="Type"
@@ -182,62 +225,32 @@ export default defineWidget({
               ]}
             />
           )}
-          <GroupRow layer={layer} spec={{ label: 'Text size', props: ['fontSize'], min: 8, suffix: 'px' }} />
-        </Section>
-        <Section id="chart-data" title="Data">
-          <Seg
-            label="Source"
-            path="source"
-            value={c.source}
-            options={[
-              ['grid', 'Typed'],
-              ['csv', 'CSV'],
-            ]}
-          />
-          {c.source === 'csv' ? (
+          {type === 'pie' && (
             <>
-              <Content label="CSV" path="csv" value="" multiline placeholder={'Month;Martin;Durand\nJan;28;24'} />
-              <Note>Paste CSV text, or wire a {'{{key}}'} whose data value is CSV text (a linked source of the Data canvas). First column: categories; first row: series names.</Note>
-            </>
-          ) : (
-            <>
-              <Select
-                label="Sample"
-                value=""
+              <Select label="Series" path="pie.series" value={c.pie.series} options={P.ser.map((x, j) => [j, x] as const)} />
+              <Seg
+                label="Sort"
+                path="pie.sort"
+                value={c.pie.sort}
                 options={[
-                  ['', 'Load a sample…'],
-                  ['poll', 'Poll (3 series × 6 months)'],
-                  ['budget', 'Budget (negative values)'],
-                  ['share', 'Audience share (pie)'],
+                  ['none', 'As typed'],
+                  ['desc', 'Largest'],
+                  ['asc', 'Smallest'],
                 ]}
-                onChange={(v) =>
-                  SAMPLES[v] &&
-                  edit((l) => {
-                    l.data = SAMPLES[v].data.map((r) => r.slice());
-                    l.axis = { ...l.axis, ...SAMPLES[v].axis };
-                  })
-                }
               />
-              <GridEditor path="data" value={c.data} header csv />
-              <Note>First column: categories. Other columns: one series each (header = name). Empty cell = missing value. A cell may hold a {'{{key}}'} of the Data canvas.</Note>
+              <Num label="Start angle" path="pie.start" value={c.pie.start} min={0} max={359} unit="°" />
+              <Num label="Donut" path="pie.donut" value={c.pie.donut} min={0} max={85} unit="%" />
+              {c.pie.donut > 30 && <Toggle label="Total" path="pie.centerTotal" value={c.pie.centerTotal} />}
+              <Select label="Exploded" path="pie.explode" value={c.pie.explode} options={[[-1, 'None'] as const, ...P.cats.map((x) => [x.ri, x.name] as const)]} />
+              {c.pie.explode >= 0 && <Num label="Distance" path="pie.explodeDist" value={c.pie.explodeDist} min={0} max={400} unit="px" />}
+              <Toggle label="Others" path="pie.others" value={c.pie.others} />
+              {c.pie.others && <Num label="Under" path="pie.othersPct" value={c.pie.othersPct} min={0} max={50} step={0.5} precision={1} unit="%" />}
             </>
           )}
-          <Seg
-            label="Missing"
-            path="missing"
-            value={c.missing}
-            options={[
-              ['gap', 'Gap'],
-              ['interp', 'Interpolate'],
-              ['zero', 'As zero'],
-            ]}
-          />
         </Section>
         {type !== 'pie' && (
           <Section id="chart-axes" title="Axes">
-            {type === 'columns' && c.colMode === 'percent' ? (
-              <Note>100 %: the axis is fixed at 0 – 100 %.</Note>
-            ) : (
+            {!pct && (
               <>
                 <Seg
                   label="Range"
@@ -254,44 +267,46 @@ export default defineWidget({
                     <Num label="Max" path="axis.max" value={c.axis.max} precision={2} />
                   </>
                 )}
-                {type === 'lines' && c.axis.auto && <Toggle label="Zero" path="axis.zero" value={c.axis.zero} text="Start the axis at zero" />}
+                {type === 'lines' && c.axis.auto && <Toggle label="From zero" path="axis.zero" value={c.axis.zero} />}
               </>
             )}
-            <Range label="Ticks" path="axis.ticks" value={c.axis.ticks} min={2} max={12} />
-            <Seg
-              label="Decimals"
-              path="axis.decimals"
-              value={c.axis.decimals}
-              options={[
-                [0, '0'],
-                [1, '0.0'],
-                [2, '0.00'],
-              ]}
-            />
-            <Text label="Prefix" path="axis.prefix" value={c.axis.prefix} placeholder="$" />
-            <Text label="Suffix" path="axis.suffix" value={c.axis.suffix} placeholder=" %" />
-            <Seg
-              label="Thousands"
-              path="axis.sep"
-              value={c.axis.sep}
-              options={[
-                ['space', '1 000'],
-                ['comma', '1,000'],
-                ['none', '1000'],
-              ]}
-            />
-            <Toggle label="Grid" path="axis.grid" value={c.axis.grid} text="Horizontal lines" />
-            <Toggle label="" path="axis.vgrid" value={c.axis.vgrid} text="Vertical lines" />
-            <Text label="X title" path="axis.xTitle" value={c.axis.xTitle} placeholder="e.g. Month" />
-            <Text label="Y title" path="axis.yTitle" value={c.axis.yTitle} placeholder="e.g. % of voters" />
+            <Num label="Ticks" path="axis.ticks" value={c.axis.ticks} min={2} max={12} />
+            <Toggle label="Grid" path="axis.grid" value={c.axis.grid} />
+            <Toggle label="Vertical grid" path="axis.vgrid" value={c.axis.vgrid} />
+            <Text label="X title" path="axis.xTitle" value={c.axis.xTitle} />
+            <Text label="Y title" path="axis.yTitle" value={c.axis.yTitle} />
           </Section>
         )}
-        {type !== 'pie' && (
+        <Section id="chart-format" title="Numbers">
+          <Seg
+            label="Decimals"
+            path="axis.decimals"
+            value={c.axis.decimals}
+            options={[
+              [0, '0'],
+              [1, '0.0'],
+              [2, '0.00'],
+            ]}
+          />
+          <Text label="Prefix" path="axis.prefix" value={c.axis.prefix} placeholder="$" />
+          <Text label="Suffix" path="axis.suffix" value={c.axis.suffix} placeholder=" %" />
+          <Seg
+            label="Thousands"
+            path="axis.sep"
+            value={c.axis.sep}
+            options={[
+              ['space', '1 000'],
+              ['comma', '1,000'],
+              ['none', '1000'],
+            ]}
+          />
+        </Section>
+        {type !== 'pie' ? (
           <Section id="chart-series" title="Series">
             {P.ser.map((name, j) => {
               const s = seriesStyle(c, j);
               return (
-                <Row expose={[`series.${j}.color`, `series.${j}.width`]} exposeValue={{ [`series.${j}.color`]: s.color, [`series.${j}.width`]: s.width }} key={j} label={name}>
+                <Row expose={[`series.${j}.color`, `series.${j}.width`, `series.${j}.marker`]} exposeValue={{ [`series.${j}.color`]: s.color, [`series.${j}.width`]: s.width, [`series.${j}.marker`]: s.marker }} key={j} label={name}>
                   <input type="color" value={s.color.slice(0, 7)} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), color: e.target.value }), `chs-${layer.id}-${j}`)} />
                   {type !== 'columns' && (
                     <>
@@ -302,8 +317,8 @@ export default defineWidget({
                           </option>
                         ))}
                       </select>
-                      <select title="Markers" value={s.marker} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), marker: e.target.value as never }))}>
-                        <option value="none">No marker</option>
+                      <select title="Marker" value={s.marker} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), marker: e.target.value as never }))}>
+                        <option value="none">—</option>
                         <option value="circle">● Circle</option>
                         <option value="square">■ Square</option>
                         <option value="diamond">◆ Diamond</option>
@@ -313,35 +328,11 @@ export default defineWidget({
                 </Row>
               );
             })}
-            {type !== 'columns' && (
-              <>
-                <Toggle label="Smoothing" path="smooth" value={c.smooth} text="Smooth curves" />
-                <Note>Width 0 px on an area: no outline line.</Note>
-              </>
-            )}
-            {type === 'areas' && <Range label="Area opacity" path="areaOpacity" value={c.areaOpacity} min={0.1} max={1} step={0.05} />}
+            {type !== 'columns' && <Toggle label="Smooth" path="smooth" value={c.smooth} />}
+            {type === 'areas' && <Num label="Area opacity" expose="areaOpacity" exposeValue={c.areaOpacity} value={Math.round(c.areaOpacity * 100)} min={10} max={100} unit="%" onChange={(v) => edit((l) => void (l.areaOpacity = v / 100), `chao-${layer.id}`)} />}
           </Section>
-        )}
-        {type === 'pie' && (
-          <Section id="chart-pie" title="Pie">
-            <Select label="Series" path="pie.series" value={c.pie.series} options={P.ser.map((x, j) => [j, x] as const)} />
-            <Range label="Start angle" path="pie.start" value={c.pie.start} min={0} max={359} unit="°" />
-            <Seg
-              label="Sort"
-              path="pie.sort"
-              value={c.pie.sort}
-              options={[
-                ['none', 'As typed'],
-                ['desc', 'Largest first'],
-                ['asc', 'Smallest first'],
-              ]}
-            />
-            <Range label="Donut" path="pie.donut" value={c.pie.donut} min={0} max={85} fmt={(v) => (v ? `${v} %` : 'Full pie')} />
-            {c.pie.donut > 30 && <Toggle label="Centre" path="pie.centerTotal" value={c.pie.centerTotal} text="Show the total in the hole" />}
-            <Select label="Exploded" path="pie.explode" value={c.pie.explode} options={[[-1, 'None'] as const, ...P.cats.map((x) => [x.ri, x.name] as const)]} />
-            {c.pie.explode >= 0 && <Range label="Distance" path="pie.explodeDist" value={c.pie.explodeDist} min={5} max={90} unit=" px" />}
-            <Toggle label="Others" path="pie.others" value={c.pie.others} text="Group small slices" />
-            {c.pie.others && <Range label="Under" path="pie.othersPct" value={c.pie.othersPct} min={1} max={15} step={0.5} unit=" %" />}
+        ) : (
+          <Section id="chart-slices" title="Slices">
             {P.cats.slice(0, 12).map((x, i) => (
               <ColorPick
                 expose={`sliceColors.${i}`}
@@ -355,63 +346,101 @@ export default defineWidget({
           </Section>
         )}
         <Section id="chart-labels" title="Labels">
-          <Toggle label="Show" path="labels.value" value={c.labels.value} text="Value" />
-          <Toggle label="" path="labels.pct" value={c.labels.pct} text="Percentage" />
-          <Toggle label="" path="labels.name" value={c.labels.name} text={type === 'pie' ? 'Slice name' : type === 'columns' ? 'Series name' : 'Series name at the line end'} />
-          <Seg
-            label="Position"
-            path="labels.pos"
-            value={c.labels.pos}
-            options={[
-              ['inside', 'Inside'],
-              ['outside', type === 'pie' ? 'Outside + leader' : 'Outside'],
-            ]}
+          <Toggle
+            expose={['labels.value', 'labels.pct', 'labels.name']}
+            exposeValue={{ 'labels.value': c.labels.value, 'labels.pct': c.labels.pct, 'labels.name': c.labels.name }}
+            label="Labels"
+            value={labelsOn}
+            onChange={(v) => edit((l) => void (l.labels = { ...l.labels, value: v, pct: false, name: false }))}
           />
-          <Seg
-            label="Overlap"
-            path="labels.overlap"
-            value={c.labels.overlap}
-            options={[
-              ['offset', 'Offset'],
-              ['hide', 'Hide'],
-            ]}
-          />
-          {type === 'pie' && <Range label="Min slice" path="labels.minSize" value={c.labels.minSize} min={0} max={10} step={0.5} unit=" %" />}
-          <Note>
-            {type === 'pie'
-              ? 'Offset: crowded labels are moved apart (small slices go outside with a leader line). Hide: no label under the minimum slice size, nor when it would overlap.'
-              : 'Offset: labels that collide are moved (staggered or pushed apart, outside when a bar is too small). Hide: they are dropped.'}
-          </Note>
+          {labelsOn && (
+            <>
+              <Toggle label="Value" path="labels.value" value={c.labels.value} />
+              <Toggle label="Percentage" path="labels.pct" value={c.labels.pct} />
+              <Toggle label="Name" path="labels.name" value={c.labels.name} />
+              <Seg
+                label="Position"
+                path="labels.pos"
+                value={c.labels.pos}
+                options={[
+                  ['inside', 'Inside'],
+                  ['outside', 'Outside'],
+                ]}
+              />
+              <Seg
+                label="Overlap"
+                path="labels.overlap"
+                value={c.labels.overlap}
+                options={[
+                  ['offset', 'Offset'],
+                  ['hide', 'Hide'],
+                ]}
+              />
+              {type === 'pie' && <Num label="Min slice" path="labels.minSize" value={c.labels.minSize} min={0} max={10} step={0.5} precision={1} unit="%" />}
+            </>
+          )}
         </Section>
-        <Section id="chart-title" title="Title & legend" closed>
-          <Content label="Title" path="title.text" value={c.title.text} />
-          <Content label="Subtitle" path="title.sub" value={c.title.sub} />
-          <Seg
-            label="Title"
-            path="title.pos"
-            value={c.title.pos}
-            options={[
+        <Section id="chart-layout" title="Layout">
+          <GroupRow layer={layer} spec={{ label: 'Text size', props: ['fontSize'], min: 8, suffix: 'px' }} />
+          <Toggle
+            expose="title.pos"
+            exposeValue={c.title.pos}
+            exposeOptions={[
               ['left', 'Left'],
               ['center', 'Centre'],
               ['none', 'Hidden'],
             ]}
+            label="Title"
+            value={c.title.pos !== 'none'}
+            onChange={(v) => edit((l) => void (l.title = { ...l.title, pos: v ? 'left' : 'none' }))}
           />
-          <Seg
-            label="Legend"
-            path="legend"
-            value={c.legend}
-            options={[
+          {c.title.pos !== 'none' && (
+            <>
+              <Content label="Title" path="title.text" value={c.title.text} />
+              <Content label="Subtitle" path="title.sub" value={c.title.sub} />
+              <Seg
+                expose={false}
+                label="Align"
+                path="title.pos"
+                value={c.title.pos}
+                options={[
+                  ['left', 'Left'],
+                  ['center', 'Centre'],
+                ]}
+              />
+            </>
+          )}
+          <Toggle
+            expose="legend"
+            exposeValue={c.legend}
+            exposeOptions={[
               ['top', 'Top'],
               ['bottom', 'Bottom'],
               ['right', 'Right'],
               ['none', 'None'],
             ]}
+            label="Legend"
+            value={c.legend !== 'none'}
+            onChange={(v) => edit((l) => void (l.legend = v ? 'top' : 'none'))}
           />
-          <Toggle label="Panel" path="panel.on" value={c.panel.on} text="Background panel" />
+          {c.legend !== 'none' && (
+            <Seg
+              expose={false}
+              label="Position"
+              path="legend"
+              value={c.legend}
+              options={[
+                ['top', 'Top'],
+                ['bottom', 'Bottom'],
+                ['right', 'Right'],
+              ]}
+            />
+          )}
+          <Toggle label="Panel" path="panel.on" value={c.panel.on} />
           {c.panel.on && (
             <>
-              <ColorPick label="Panel colour" path="panel.color" value={c.panel.color} />
-              <Range label="Panel opacity" path="panel.opacity" value={c.panel.opacity} min={0.2} max={1} step={0.02} />
+              <ColorPick label="Color" path="panel.color" value={c.panel.color} />
+              <Num label="Opacity" expose="panel.opacity" exposeValue={c.panel.opacity} value={Math.round(c.panel.opacity * 100)} min={0} max={100} unit="%" onChange={(v) => edit((l) => void (l.panel = { ...l.panel, opacity: v / 100 }), `chpo-${layer.id}`)} />
             </>
           )}
         </Section>
@@ -421,7 +450,7 @@ export default defineWidget({
             path="anim.fx"
             value={c.anim.fx}
             options={[
-              ['auto', 'By type'],
+              ['auto', 'Auto'],
               ['grow', 'Grow'],
               ['draw', 'Draw'],
               ['sweep', 'Sweep'],
@@ -429,10 +458,9 @@ export default defineWidget({
               ['none', 'Cut'],
             ]}
           />
-          <Note>By type: columns grow, lines and areas draw from left to right, the pie sweeps round. It runs from the take (scrub the timeline to replay it here).</Note>
-          <Range label="Duration" path="anim.dur" value={c.anim.dur} min={0.2} max={3} step={0.1} unit=" s" />
-          <Range label="Stagger" path="anim.stagger" value={c.anim.stagger} min={0} max={400} step={10} unit=" ms" />
-          <Range label="Update" path="anim.upd" value={c.anim.upd} min={0} max={3} step={0.1} fmt={(v) => (v ? `${v.toFixed(1)} s` : 'Cut')} />
+          <Num label="Duration" path="anim.dur" value={c.anim.dur} min={0} max={30} step={0.1} precision={1} unit="s" />
+          <Num label="Stagger" path="anim.stagger" value={c.anim.stagger} min={0} max={5000} step={10} unit="ms" />
+          <Num label="Update" path="anim.upd" value={c.anim.upd} min={0} max={30} step={0.1} precision={1} unit="s" />
           <Seg
             label="Curve"
             path="anim.curve"
@@ -448,12 +476,11 @@ export default defineWidget({
             path="reveal"
             value={c.reveal}
             options={[
-              ['all', 'All at once'],
-              ['series', 'Series by series'],
-              ['categories', type === 'pie' ? 'Slice by slice' : 'Category by category'],
+              ['all', 'All'],
+              ['series', 'By series'],
+              ['categories', type === 'pie' ? 'By slice' : 'By category'],
             ]}
           />
-          <Note>Update: on Reload, values are interpolated from what is on screen (no restart). A category added on air grows in on its own. Reveal: the Operator shows the next step.</Note>
         </Section>
       </>
     );

@@ -12,7 +12,7 @@ import { Hash } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Range, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 
 export interface Config {
@@ -665,126 +665,80 @@ function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unk
 
 function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => void, key?: string) => void }) {
   const c = cfg(layer);
-  const p = partsOf(layer);
   const set = (key: string, v: unknown) => edit((l) => void ((l as unknown as Record<string, unknown>)[key] = v));
   const limits = c.min != null || c.max != null;
-  const sample = format(p.fmt, 1234567.891).replace(/ /g, '⍽').replace(/ /g, '·');
+  const affixed = !!(layer.prefix || layer.suffix);
   return (
     <>
       <Section id="ct-value" title="Value">
-        <Content label="Value" path="to" value="" placeholder="Number, or {{key}} (linked source)" />
+        <Content label="Value" path="to" value="" placeholder="Number or {{key}}" />
+        <Text label="Prefix" path="prefix" value="" />
+        <Text label="Suffix" path="suffix" value="" />
         <Text label="Count from" path="from" value="0" />
-        <Num label="Intro" path="duration" value={2} min={0} step={0.1} precision={1} unit=" s" />
-        <Note>On air the counter counts up from “Count from” during the intro; then each new value (source or Operator) rolls from the value shown. Wire “Value” in the Data canvas to a source (votes, donations, audience…).</Note>
-        <Toggle label="Limits" value={limits} text="Minimum and maximum" onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
+        <Num label="Intro" path="duration" value={2} min={0} step={0.1} precision={1} unit="s" />
+        <Num label="Step + / −" path="step" value={1} min={0} step={1} precision={3} />
+        <Toggle label="Limits" value={limits} onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
         {limits && (
           <>
             <Num expose="min" exposeValue={c.min ?? 0} label="Minimum" value={c.min ?? 0} step={1} precision={3} onChange={(v) => set('min', v)} />
             <Num expose="max" exposeValue={c.max ?? 0} label="Maximum" value={c.max ?? 0} step={1} precision={3} onChange={(v) => set('max', v)} />
           </>
         )}
-        <Num label="Step + / −" path="step" value={1} min={0} step={1} precision={3} />
       </Section>
       <Section id="ct-format" title="Format">
         <Select label="Language" path="locale" value={c.locale} options={LOCALES} />
-        <Range expose="decimals" exposeValue={layer.decimals} label="Decimals" value={layer.decimals} min={0} max={3} onChange={(v) => set('decimals', v)} />
-        <Toggle expose="grouping" exposeValue={layer.grouping} label="Thousands" value={layer.grouping} text="Group separators" onChange={(v) => set('grouping', v)} />
-        <Toggle label="Sign" path="plus" value={false} text="Show + for positive values" />
-        <Toggle label="Compact" path="compact" value={false} text="Short notation (1,2 M)" />
-        <Note>
-          Sample: <b>{sample}</b>
-          {c.locale === 'fr-FR' && !c.compact ? ' — ⍽ = narrow no-break space (U+202F)' : ''}
-        </Note>
+        <Num expose="decimals" exposeValue={layer.decimals} label="Decimals" value={layer.decimals} min={0} max={3} onChange={(v) => set('decimals', v)} />
+        <Toggle expose="grouping" exposeValue={layer.grouping} label="Thousands" value={layer.grouping} onChange={(v) => set('grouping', v)} />
+        <Toggle label="Plus sign" path="plus" value={false} />
+        <Toggle label="Compact" path="compact" value={false} />
       </Section>
-      <Section id="ct-affix" title="Prefix and suffix">
-        <Text label="Prefix" path="prefix" value="" placeholder="€, +…" />
-        <Text label="Suffix" path="suffix" value="" placeholder="%, voix…" />
-        <Btns
-          label="Presets"
-          list={(
-            [
-              ['€ ', '', 'Donations'],
-              ['', ' %', 'Percent'],
-              ['', 'voix', 'Votes'],
-            ] as const
-          ).map(([pre, suf, label]) => ({ label, cls: 'ghost', onClick: () => edit((l) => void Object.assign(l, { prefix: pre, suffix: suf })) }))}
-        />
-        <Range label="Size" path="affixSize" value={c.affixSize} min={20} max={100} unit=" %" />
-        <ColorPick expose="affixColor" exposeValue={c.affixColor || '#ffffff'} label="Color" value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
-        <Seg
-          label="Weight"
-          path="affixWeight"
-          value={c.affixWeight}
-          options={[
-            [0, 'Same'],
-            [400, 'Regular'],
-            [700, 'Bold'],
-            [900, 'Black'],
-          ]}
-        />
-        <Seg
-          label="Position"
-          path="affixRaise"
-          value={c.affixRaise}
-          options={[
-            ['baseline', 'Baseline'],
-            ['top', 'Raised'],
-          ]}
-        />
-        <Range label="Gap" path="affixGap" value={c.affixGap} min={0} max={60} unit=" px" />
-      </Section>
-      <Section id="ct-figures" title="Figures">
+      <Section id="ct-figures" title="Style">
         <div className="pp-typo">
           <FontControls layer={layer as Layer & FontStyle} set={set} />
           <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
           <ColorGroupRow layer={layer as Layer} prop="fill" label="Color" />
         </div>
-        <Toggle label="Tabular" path="tabular" value={false} text="Fixed-width figures" />
+        <Toggle label="Tabular" path="tabular" value={false} />
         <Seg
           label="Reserve width"
           path="reserve"
           value={c.reserve}
           options={[
             ['off', 'Off'],
-            ['max', 'For min / max'],
+            ['max', 'Min / max'],
             ['chars', 'Digits'],
           ]}
         />
-        {c.reserve === 'chars' && <Range label="Digits" path="reserveChars" value={c.reserveChars} min={1} max={16} />}
-        {c.reserve === 'max' && !limits && <Msg level="info">Set the limits (Value) to reserve the width of the minimum and maximum.</Msg>}
-        <Note>Tabular figures + reserved width: the number never shifts sideways while it changes.</Note>
-        <Toggle label="Plate" path="plate" value={false} text="Background plate" />
-        {c.plate && <ColorPick label="Plate color" path="plateColor" value={D.plateColor} />}
-      </Section>
-      <Section id="ct-trans" title="Transition">
-        <Seg
-          label="Type"
-          path="transition"
-          value={c.transition}
-          options={[
-            ['none', 'Cut'],
-            ['roll', 'Numeric roll'],
-            ['odometer', 'Odometer'],
-            ['flip', 'Flip'],
-          ]}
-        />
-        {c.transition !== 'none' && (
+        {c.reserve === 'chars' && <Num label="Digits" path="reserveChars" value={c.reserveChars} min={1} max={16} />}
+        {affixed && (
           <>
-            <Range label="Duration" path="transMs" value={c.transMs} min={100} max={5000} step={50} unit=" ms" />
-            <Select
-              label="Curve"
-              path="easing"
-              value={c.easing}
+            <Num label="Affix size" path="affixSize" value={c.affixSize} min={20} max={100} unit="%" />
+            <ColorPick expose="affixColor" exposeValue={c.affixColor || '#ffffff'} label="Affix color" value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
+            <Seg
+              label="Affix weight"
+              path="affixWeight"
+              value={c.affixWeight}
               options={[
-                ['linear', 'Linear'],
-                ['out', 'Ease out'],
-                ['inOut', 'Ease in-out'],
-                ['back', 'Overshoot'],
+                [0, 'Same'],
+                [400, 'Regular'],
+                [700, 'Bold'],
+                [900, 'Black'],
               ]}
             />
+            <Seg
+              label="Affix position"
+              path="affixRaise"
+              value={c.affixRaise}
+              options={[
+                ['baseline', 'Baseline'],
+                ['top', 'Raised'],
+              ]}
+            />
+            <Num label="Affix gap" path="affixGap" value={c.affixGap} min={0} max={60} unit="px" />
           </>
         )}
-        {c.transition === 'odometer' && c.compact && <Msg level="info">Compact notation has no digit reels: the odometer uses the numeric roll.</Msg>}
+        <Toggle label="Plate" path="plate" value={false} />
+        {c.plate && <ColorPick label="Plate color" path="plateColor" value={D.plateColor} />}
       </Section>
       <Section id="ct-color" title="Color by value">
         <Seg
@@ -810,12 +764,40 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
             addLabel="Threshold"
           />
         )}
-        {c.colorMode === 'thresholds' && <Note>Below all thresholds: the Color of Figures.</Note>}
         {c.colorMode === 'trend' && (
           <>
             <ColorPick label="Up" path="upColor" value={D.upColor} />
             <ColorPick label="Down" path="downColor" value={D.downColor} />
-            <Range label="Hold" path="trendHold" value={c.trendHold} min={0} max={10} step={0.5} fmt={(x) => (x ? `${x} s` : 'Until next')} />
+            <Num label="Hold" path="trendHold" value={c.trendHold} min={0} max={10} step={0.5} precision={1} unit="s" />
+          </>
+        )}
+      </Section>
+      <Section id="ct-trans" title="Transition">
+        <Seg
+          label="Type"
+          path="transition"
+          value={c.transition}
+          options={[
+            ['none', 'Cut'],
+            ['roll', 'Roll'],
+            ['odometer', 'Odometer'],
+            ['flip', 'Flip'],
+          ]}
+        />
+        {c.transition !== 'none' && (
+          <>
+            <Num label="Duration" path="transMs" value={c.transMs} min={100} max={5000} step={50} unit="ms" />
+            <Select
+              label="Curve"
+              path="easing"
+              value={c.easing}
+              options={[
+                ['linear', 'Linear'],
+                ['out', 'Ease out'],
+                ['inOut', 'Ease in-out'],
+                ['back', 'Overshoot'],
+              ]}
+            />
           </>
         )}
       </Section>
@@ -831,34 +813,19 @@ export default defineWidget({
   icon: Hash,
   create: () => ({
     from: '0',
-    to: '1284350',
+    to: '1234',
     duration: 2,
     decimals: 0,
     prefix: '',
-    suffix: 'voix',
+    suffix: '',
     grouping: true,
     fontFamily: 'Inter',
-    fontWeight: 900,
+    fontWeight: 700,
     align: 'center',
     verticalAlign: 'middle',
     uppercase: false,
-    min: 0,
-    max: 10000000,
-    step: 1000,
-    affixSize: 30,
-    affixColor: '#a594ff',
-    affixWeight: 700,
-    affixGap: 18,
     tabular: true,
-    reserve: 'max',
-    colorMode: 'trend',
-    thresholds: [
-      { from: '0', color: '#ffffff' },
-      { from: '2000000', color: '#facc15' },
-      { from: '5000000', color: '#ff3b5c' },
-    ],
-    plate: true,
-    props: { width: 1200, height: 260, fontSize: 140, fill: [1, 1, 1, 1] },
+    props: { width: 800, height: 220, fontSize: 140, fill: [1, 1, 1, 1] },
   }),
   ownsLook: true,
   live: () => true,

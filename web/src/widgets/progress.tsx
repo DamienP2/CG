@@ -7,7 +7,7 @@ import { textWidth } from '../engine/widgets';
 import type { Data } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Range, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 
 export interface Config {
   shape?: 'linear' | 'ring' | 'segments';
@@ -360,8 +360,28 @@ function fitBox(l: L, shape: string, orient: string) {
 function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l: L) => void, key?: string) => void }) {
   const e = effOf(layer, data);
   const c = e.c;
+  const stroke = num(layer.props.strokeWidth ?? 0) > 0;
   return (
     <>
+      <Section id="progress-value" title="Value">
+        <Seg
+          label="Input"
+          path="input"
+          value="value"
+          options={[
+            ['value', 'Min / max'],
+            ['percent', '%'],
+          ]}
+        />
+        <Content label="Value" path="value" value="" placeholder="64" />
+        {c.input === 'value' && (
+          <>
+            <Content label="Min" path="min" value="" placeholder="0" />
+            <Content label="Max" path="max" value="100" placeholder="100" />
+          </>
+        )}
+        <Num label="Step" path="step" value={5} min={0} step={1} precision={2} />
+      </Section>
       <Section id="progress-shape" title="Shape">
         <Seg
           expose="shape"
@@ -400,44 +420,22 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
         )}
         {c.shape === 'segments' && (
           <>
-            <Range label="Segments" path="segments" value={10} min={2} max={40} />
-            <Range label="Gap" path="segGap" value={10} min={0} max={40} unit=" px" />
+            <Num label="Segments" path="segments" value={10} min={2} max={40} />
+            <Num label="Gap" path="segGap" value={10} min={0} max={40} unit="px" />
             <Seg
-              label="Partial value"
+              label="Partial"
               path="segPartial"
               value="partial"
               options={[
-                ['partial', 'Partial segment'],
-                ['round', 'Whole segments'],
+                ['partial', 'Partial'],
+                ['round', 'Whole'],
               ]}
             />
           </>
         )}
-      </Section>
-      <Section id="progress-value" title="Value">
-        <Seg
-          label="Input"
-          path="input"
-          value="value"
-          options={[
-            ['value', 'Value / min / max'],
-            ['percent', '%'],
-          ]}
-        />
-        <Content label="Value" path="value" value="" placeholder="64 or {{key}}" />
-        {c.input === 'value' && (
-          <>
-            <Content label="Min" path="min" value="" placeholder="0" />
-            <Content label="Max" path="max" value="100" placeholder="100" />
-          </>
-        )}
-        <Num label="Step" path="step" value={5} min={0} step={1} precision={2} />
-        <Note>Out-of-range values are accepted and capped at 0 / 100 %. The value can come from data ({'{{key}}'}); the Operator can set it on air.</Note>
-      </Section>
-      <Section id="progress-dir" title="Direction">
         {c.shape === 'ring' ? (
           <>
-            <Range label="Start angle" path="angle" value={0} min={0} max={359} unit="°" />
+            <Num label="Start angle" path="angle" value={0} min={0} max={359} unit="°" />
             <Seg
               label="Turn"
               path="circleDir"
@@ -448,7 +446,6 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
                 ['center', 'Both ways'],
               ]}
             />
-            <Note>0° = top. “Both ways” grows from the start angle in both directions.</Note>
           </>
         ) : (
           <Seg
@@ -460,12 +457,12 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
                 ? [
                     ['start', 'Left → right'],
                     ['end', 'Right → left'],
-                    ['center', 'From the centre'],
+                    ['center', 'Centre'],
                   ]
                 : [
                     ['start', 'Bottom → top'],
                     ['end', 'Top → bottom'],
-                    ['center', 'From the centre'],
+                    ['center', 'Centre'],
                   ]
             }
           />
@@ -473,21 +470,14 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
       </Section>
       <Section id="progress-style" title="Style">
         <ColorPick label="Track" path="track" value="#ffffff33" />
-        <Seg
-          label="Bar"
-          path="gradient"
-          value={false}
-          options={[
-            [false, 'Colour'],
-            [true, 'Gradient'],
-          ]}
-        />
-        <ColorGroupRow layer={layer} prop="fill" label={c.gradient ? 'From' : 'Bar colour'} />
+        <ColorGroupRow layer={layer} prop="fill" label={c.gradient ? 'From' : 'Bar'} />
+        <Toggle label="Gradient" path="gradient" value={false} />
         {c.gradient && <ColorPick label="To" path="color2" value="#22c55e" />}
         <Toggle
+          expose="thickness"
+          exposeValue={c.thickness ?? 56}
           label="Thickness"
           value={c.thickness != null}
-          text="Thinner than the box"
           onChange={(v) =>
             edit((l) => {
               if (v) (l as L & Config).thickness = 56;
@@ -495,58 +485,98 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
             })
           }
         />
-        {c.thickness != null && <Range label="" path="thickness" value={56} min={2} max={200} unit=" px" />}
-        <Toggle label="Ends" path="rounded" value={false} text="Rounded ends (a tiny value stays a clean dot)" />
+        {c.thickness != null && <Num label="Width" path="thickness" value={56} min={2} max={2000} unit="px" />}
+        <Toggle label="Rounded" path="rounded" value={false} />
         {!c.rounded && <GroupRow layer={layer} spec={{ label: 'Corners', props: ['cornerRadius'], min: 0, suffix: 'px' }} />}
-        <GroupRow layer={layer} spec={{ label: 'Stroke', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
-        {num(layer.props.strokeWidth ?? 0) > 0 && <ColorGroupRow layer={layer} prop="stroke" label="Stroke colour" />}
-      </Section>
-      <Section id="progress-steps" title="Colour steps">
-        <Note>Under X %, the bar takes this colour (the lowest matching step wins, over the gradient).</Note>
-        <ListEditor
-          path="steps"
-          value={[]}
-          toggle="on"
-          fields={[
-            { key: 'below', num: true, w: 60, placeholder: '%' },
-            { key: 'color', color: true, w: 40 },
-          ]}
-          add={() => ({ on: true, below: 20, color: '#ff3b5c' })}
-          addLabel="Add a step"
+        <Toggle
+          expose="props.strokeWidth"
+          exposeValue={num(layer.props.strokeWidth ?? 0)}
+          label="Stroke"
+          value={stroke}
+          onChange={(v) =>
+            edit((l) => {
+              l.props.strokeWidth = v ? 2 : 0;
+              const sc = col(l.props.stroke ?? [0, 0, 0, 0]);
+              if (v && sc[3] === 0) l.props.stroke = [1, 1, 1, 1];
+            })
+          }
         />
+        {stroke && (
+          <>
+            <ColorGroupRow layer={layer} prop="stroke" label="Color" />
+            <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+          </>
+        )}
+        <Toggle
+          expose="steps"
+          exposeValue={c.steps}
+          label="Steps"
+          value={c.steps.length > 0}
+          onChange={(v) =>
+            edit((l) => {
+              if (v) (l as L & Config).steps = [{ on: true, below: 20, color: '#ff3b5c' }];
+              else delete (l as L & Config).steps;
+            })
+          }
+        />
+        {c.steps.length > 0 && (
+          <ListEditor
+            path="steps"
+            value={[]}
+            toggle="on"
+            fields={[
+              { key: 'below', num: true, w: 60, placeholder: '%' },
+              { key: 'color', color: true, w: 40 },
+            ]}
+            add={() => ({ on: true, below: 20, color: '#ff3b5c' })}
+            addLabel="Step"
+          />
+        )}
       </Section>
       <Section id="progress-label" title="Label">
-        <Seg
-          label="Show"
-          path="label"
-          value="none"
-          options={[
-            ['pct', '%'],
-            ['value', 'Value / max'],
+        <Toggle
+          expose="label"
+          exposeValue={c.label}
+          exposeOptions={[
             ['none', 'None'],
+            ['pct', '%'],
+            ['value', 'Value'],
           ]}
+          label="Label"
+          value={c.label !== 'none'}
+          onChange={(v) => edit((l) => void ((l as L & Config).label = v ? 'pct' : 'none'))}
         />
         {c.label !== 'none' && (
           <>
+            <Seg
+              expose={false}
+              label="Show"
+              path="label"
+              value="none"
+              options={[
+                ['pct', '%'],
+                ['value', 'Value / max'],
+              ]}
+            />
             <Seg
               label="Where"
               path="labelPos"
               value="inside"
               options={[
                 ['inside', 'Inside'],
-                ['end', 'At the end'],
+                ['end', 'End'],
                 ['beside', 'Beside'],
               ]}
             />
-            <Range label="Size" path="labelSize" value={30} min={12} max={80} unit=" px" />
-            <ColorPick label="Colour" path="labelColor" value="#ffffff" />
-            <Range label="Decimals" path="decimals" value={0} min={0} max={2} />
+            <Num label="Size" path="labelSize" value={30} min={1} max={400} unit="px" />
+            <ColorPick label="Color" path="labelColor" value="#ffffff" />
+            <Num label="Decimals" path="decimals" value={0} min={0} max={3} />
             {c.label === 'value' && <Text label="Unit" path="unit" value="" placeholder="€, pts…" />}
           </>
         )}
       </Section>
       <Section id="progress-anim" title="Transition">
-        <Range label="Duration" path="duration" value={1} min={0} max={3} step={0.05} unit=" s" />
+        <Num label="Duration" path="duration" value={0} min={0} max={60} step={0.05} precision={2} unit="s" />
         <Seg
           label="Curve"
           path="easing"
@@ -558,7 +588,6 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
             ['back', 'Overshoot'],
           ]}
         />
-        <Note>The bar grows from the min at the In, then eases from value to value when the operator changes it.</Note>
       </Section>
     </>
   );
@@ -640,9 +669,6 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
           { label: '↺ Reset', cls: 'big', keyHint: 'R', confirm: item ? `${layer.name} is on air: back to the min?` : undefined, onClick: () => act('reset') },
         ]}
       />
-      <Note>
-        <span style={{ fontFamily: 'var(--mono, monospace)', fontSize: 10.5 }}>API: POST /api/channels/&#123;id&#125;/command &#123;action:'act', target:'{layer.name}', op:'set', args:&#123;value:64&#125;&#125; · ops: set, step &#123;by:5&#125;, inc, dec, reset</span>
-      </Note>
     </div>
   );
 }
@@ -678,25 +704,11 @@ export default defineWidget({
   label: 'Progress bar',
   group: 'Data',
   icon: SlidersHorizontal,
-  presets: [
-    { label: 'Progress bar', hint: 'Linear, value / max' },
-    { label: 'Ring', hint: 'Circular progress', patch: { shape: 'ring', labelPos: 'inside', props: { width: 460, height: 460, fill: [0.486, 0.361, 1, 1] } } },
-    { label: 'Segmented bar', hint: 'N segments', patch: { shape: 'segments', rounded: true } },
-    { label: 'Vertical bar', hint: 'Bottom → top', patch: { orient: 'v', props: { width: 220, height: 640, fill: [0.486, 0.361, 1, 1] } } },
-  ],
   create: () => ({
     value: '64',
     max: '100',
     duration: 0.6,
     track: '#2a2346',
-    thickness: 56,
-    rounded: true,
-    gradient: true,
-    color2: '#22c55e',
-    steps: [{ on: true, below: 20, color: '#ff3b5c' }],
-    label: 'pct' as const,
-    labelPos: 'inside' as const,
-    labelSize: 30,
     props: { width: 1200, height: 140, fill: [0.486, 0.361, 1, 1] },
   }),
   ownsLook: true,

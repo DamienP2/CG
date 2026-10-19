@@ -11,7 +11,7 @@ import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Note, Range, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 
 export interface Config {
@@ -487,22 +487,47 @@ function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: un
 function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) => void, key?: string) => void }) {
   const c = cfg(layer);
   const set = (key: string, v: unknown) => edit((l) => void ((l as unknown as Record<string, unknown>)[key] = v));
-  const unitName = c.unit === 'char' ? ' char/s' : c.unit === 'word' ? ' words/s' : ' lines/s';
+  const unitName = c.unit === 'char' ? 'char/s' : c.unit === 'word' ? 'words/s' : 'lines/s';
   return (
     <>
       <Section id="tw-texts" title="Texts">
-        <Content path="text" value="" multiline placeholder="Text to type ({{key}} from the Data canvas)" />
-        <ListEditor path="more" value={c.more} fields={[{ key: 'text', placeholder: 'Next text to type' }]} add={() => ({ text: 'New text' })} addLabel="Text" />
-        <Note>The texts are typed one after the other (see Chaining). Characters are grapheme clusters: an emoji 👩‍💻, a flag 🇫🇷 or a letter with a combining accent counts as one.</Note>
-        <Seg
-          label="Edited while typing"
-          path="onEdit"
-          value={c.onEdit}
-          options={[
-            ['restart', 'Restart'],
-            ['continue', 'Continue'],
-          ]}
-        />
+        <Content path="text" value="" multiline placeholder="Text" />
+        <ListEditor label="Then" path="more" value={c.more} fields={[{ key: 'text', placeholder: 'Next text' }]} add={() => ({ text: 'New text' })} addLabel="Text" />
+      </Section>
+      <Section id="tw-style" title="Style">
+        <div className="pp-typo">
+          <FontControls layer={layer as Layer & FontStyle} set={set} />
+          <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
+          <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
+          <ColorGroupRow layer={layer as Layer} prop="fill" label="Color" />
+        </div>
+        <Num label="Line height" path="lineHeight" value={c.lineHeight} min={0.9} max={2} step={0.05} precision={2} unit="×" />
+        <Toggle label="Frozen layout" path="frozen" value={true} />
+        <Toggle label="Auto-shrink" path="autoShrink" value={false} />
+        {c.autoShrink && <Num label="Min size" path="minSize" value={c.minSize} min={8} max={Math.max(8, num(layer.props.fontSize ?? 64))} unit="px" />}
+        <Toggle label="Plate" path="plate" value={false} />
+        {c.plate && <ColorPick label="Plate color" path="plateColor" value={D.plateColor} />}
+        <Toggle label="Shadow" path="shadow" value={false} />
+      </Section>
+      <Section id="tw-cursor" title="Cursor">
+        <Toggle label="Cursor" path="cursor" value={true} />
+        {layer.cursor && (
+          <>
+            <Seg
+              label="Shape"
+              path="cursorCh"
+              value={c.cursorCh}
+              options={[
+                ['|', '|'],
+                ['_', '_'],
+                ['█', '█'],
+              ]}
+            />
+            <ColorPick expose="cursorColor" exposeValue={c.cursorColor || '#ffffff'} label="Color" value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
+            <Toggle label="Blink" path="cursorBlink" value={true} />
+            <Toggle label="Hide at end" path="cursorHide" value={false} />
+          </>
+        )}
       </Section>
       <Section id="tw-typing" title="Typing">
         <Seg
@@ -521,14 +546,12 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
           value={c.speedMode}
           options={[
             ['rate', 'Units / s'],
-            ['duration', 'Total duration'],
+            ['duration', 'Duration'],
           ]}
         />
-        {c.speedMode === 'rate' ? <Range label="Speed" path="speed" value={layer.speed} min={1} max={80} unit={unitName} /> : <Range label="Duration" path="duration" value={c.duration} min={0.5} max={20} step={0.5} fmt={(v) => `${v.toFixed(1)} s`} />}
-        <Range label="Variation" path="jitter" value={c.jitter} min={0} max={80} unit=" %" />
-        <Range label="Punctuation pause" path="punctPause" value={c.punctPause} min={0} max={1200} step={20} unit=" ms" />
-      </Section>
-      <Section id="tw-appear" title="Appearance">
+        {c.speedMode === 'rate' ? <Num label="Speed" path="speed" value={layer.speed} min={1} max={80} unit={unitName} /> : <Num label="Duration" path="duration" value={c.duration} min={0.5} max={20} step={0.5} precision={1} unit="s" />}
+        <Num label="Variation" path="jitter" value={c.jitter} min={0} max={80} unit="%" />
+        <Num label="Punctuation" path="punctPause" value={c.punctPause} min={0} max={1200} step={20} unit="ms" />
         <Seg
           label="Each unit"
           path="appear"
@@ -539,58 +562,33 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
             ['slide', 'Slide up'],
           ]}
         />
-        {c.appear !== 'instant' && <Range label="Duration" path="appearMs" value={c.appearMs} min={40} max={800} step={10} unit=" ms" />}
-      </Section>
-      <Section id="tw-cursor" title="Cursor">
-        <Toggle label="Cursor" path="cursor" value={true} text="Show the cursor" />
-        {layer.cursor && (
-          <>
-            <Seg
-              label="Shape"
-              path="cursorCh"
-              value={c.cursorCh}
-              options={[
-                ['|', '|'],
-                ['_', '_'],
-                ['█', '█'],
-              ]}
-            />
-            <ColorPick expose="cursorColor" exposeValue={c.cursorColor || '#ffffff'} label="Color" value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
-            <Toggle label="Blink" path="cursorBlink" value={true} text="Blinks when idle" />
-            <Toggle label="At the end" path="cursorHide" value={false} text="Hides at the end" />
-          </>
-        )}
-      </Section>
-      <Section id="tw-chain" title="Chaining">
+        {c.appear !== 'instant' && <Num label="Fade time" path="appearMs" value={c.appearMs} min={40} max={800} step={10} unit="ms" />}
         <Seg
-          label="Erase"
-          path="erase"
-          value={c.erase}
+          label="If edited"
+          path="onEdit"
+          value={c.onEdit}
           options={[
-            ['backspace', 'Backspace'],
-            ['block', 'All at once'],
+            ['restart', 'Restart'],
+            ['continue', 'Continue'],
           ]}
         />
-        {c.erase === 'backspace' && <Range label="Erase speed" path="eraseRate" value={c.eraseRate} min={5} max={200} unit=" char/s" />}
-        <Range label="Delay before" path="hold" value={c.hold} min={0} max={10} step={0.1} fmt={(v) => `${v.toFixed(1)} s`} />
-        <Toggle label="Loop" path="chainLoop" value={false} text="Back to the first text" />
       </Section>
-      <Section id="tw-style" title="Layout and style">
-        <Toggle label="Frozen layout" path="frozen" value={true} text="Final position from the start" />
-        <Note>{c.frozen ? 'The whole text is laid out before typing (the rest is invisible): no word ever jumps to the next line.' : 'Off for comparison: words jump to the next line while typing.'}</Note>
-        <div className="pp-typo">
-          <FontControls layer={layer as Layer & FontStyle} set={set} />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
-          <ColorGroupRow layer={layer as Layer} prop="fill" label="Color" />
-        </div>
-        <Toggle label="Auto-shrink" path="autoShrink" value={false} text="Fit the complete text" />
-        {c.autoShrink && <Range label="Min size" path="minSize" value={c.minSize} min={8} max={Math.max(8, num(layer.props.fontSize ?? 64))} unit=" px" />}
-        <Range label="Line height" path="lineHeight" value={c.lineHeight} min={0.9} max={2} step={0.05} fmt={(v) => `×${v.toFixed(2)}`} />
-        <Toggle label="Plate" path="plate" value={false} text="Background plate" />
-        {c.plate && <ColorPick label="Plate color" path="plateColor" value={D.plateColor} />}
-        <Toggle label="Shadow" path="shadow" value={false} text="Soft drop shadow" />
-      </Section>
+      {c.more.length > 0 && (
+        <Section id="tw-chain" title="Chaining">
+          <Num label="Hold" path="hold" value={c.hold} min={0} max={10} step={0.1} precision={1} unit="s" />
+          <Seg
+            label="Erase"
+            path="erase"
+            value={c.erase}
+            options={[
+              ['backspace', 'Backspace'],
+              ['block', 'All at once'],
+            ]}
+          />
+          {c.erase === 'backspace' && <Num label="Erase speed" path="eraseRate" value={c.eraseRate} min={5} max={200} unit="char/s" />}
+          <Toggle label="Loop" path="chainLoop" value={false} />
+        </Section>
+      )}
     </>
   );
 }
@@ -602,24 +600,15 @@ export default defineWidget({
   group: 'Data',
   icon: Keyboard,
   create: () => ({
-    text: 'BREAKING — Le Parlement adopte la réforme des retraites après quatorze heures de débat.',
+    text: 'Le Parlement adopte la réforme après quatorze heures de débat.',
     speed: 32,
     cursor: true,
     fontFamily: 'Inter',
-    fontWeight: 800,
+    fontWeight: 700,
     align: 'left',
     verticalAlign: 'middle',
     uppercase: false,
-    more: [{ text: 'Le Premier ministre s’exprimera ce soir à 20 h, en direct de Matignon.' }, { text: 'Bourse : le CAC 40 termine la séance en hausse de 1,8 %.' }],
-    jitter: 30,
-    punctPause: 280,
-    cursorColor: '#ff3b5c',
-    cursorHide: true,
-    chainLoop: true,
-    autoShrink: true,
-    plate: true,
-    shadow: true,
-    props: { width: 1360, height: 260, fontSize: 64, fill: [1, 1, 1, 1] },
+    props: { width: 1360, height: 200, fontSize: 64, fill: [1, 1, 1, 1] },
   }),
   ownsLook: true,
   live: () => true,

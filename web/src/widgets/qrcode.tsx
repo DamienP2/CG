@@ -6,7 +6,7 @@ import { QrCode } from 'lucide-react';
 import { col, interpolateText, num, toHex, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
-import { Area, ColorPick, Content, defineWidget, Msg, Note, Range, Row, Section, Seg, Toggle, type Warning } from './kit';
+import { Area, ColorPick, Content, defineWidget, Num, Row, Section, Seg, Toggle, type Warning } from './kit';
 
 type Ecl = 'L' | 'M' | 'Q' | 'H';
 export interface Config {
@@ -537,81 +537,17 @@ function Render({ layer, r, w, h, data }: { layer: QrLayer; r: Resolved; w: numb
   return <Svg layer={layer} r={r} w={w} h={h} data={data} q={q} />;
 }
 
-function ReadableCheck({ layer, data }: { layer: QrLayer; data: Data }) {
-  const c = cfg(layer);
-  const q = useMatrix(payload(c, layer.data, data), c.ecl);
-  const ck = check(layer, data, undefined, q);
-  if (!ck.ready) return <Note>Encoding…</Note>;
-  if (ck.ok)
-    return (
-      <Msg level="ok">
-        <b>Readable ✓</b> — self-decode OK (level {ck.decode?.ecl}, mask {ck.decode?.mask}, {ck.decode?.blocks} RS block{ck.decode?.blocks === 1 ? '' : 's'}), contrast {ck.cr ? `${ck.cr.toFixed(1)}:1` : '?'}, module {ck.screenPx} px on screen, quiet zone {c.quiet}
-        {c.logo.on ? `, logo ${ck.logo?.[0]} % within budget` : ''}.
-      </Msg>
-    );
-  return (
-    <Msg level="error">
-      <b>Not readable</b>:{' '}
-      {ck.issues
-        .filter((i) => i.level === 'error')
-        .map((i) => i.text)
-        .join(' ')}
-    </Msg>
-  );
-}
-
-function PayloadInfo({ layer, data }: { layer: QrLayer; data: Data }) {
-  const c = cfg(layer);
-  const text = payload(c, layer.data, data);
-  const q = useMatrix(text, c.ecl);
-  const bytes = new TextEncoder().encode(text).length;
-  return (
-    <>
-      <Note>Encoded payload:</Note>
-      <pre style={{ margin: '2px 0 4px', padding: '6px 8px', background: '#0b0d14', borderRadius: 6, font: '11px/1.35 ui-monospace, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 110, overflow: 'auto' }}>{text || <i>empty</i>}</pre>
-      <Note>{!text ? 'Nothing to encode.' : q === undefined ? 'Encoding…' : q === null ? <b style={{ color: '#ff8da1' }}>Too long for a QR code at level {c.ecl}.</b> : `Version ${(q.size - 17) / 4} · ${q.size}×${q.size} modules · ${bytes} bytes · level ${c.ecl}`}</Note>
-    </>
-  );
-}
-
-function LogoInfo({ layer, data }: { layer: QrLayer; data: Data }) {
-  const c = cfg(layer);
-  const q = useMatrix(payload(c, layer.data, data), c.ecl);
-  if (!q) return null;
-  const s = structure(q.size, c.ecl);
-  if (!s) return null;
-  const [pct] = logoSize(c, s);
-  const d = damage(s, pct);
-  return (
-    <Note>
-      Drawn at <b>{pct} %</b> of the width (level {c.ecl} cap {LOGO_MAX[c.ecl]} %). Hides {d.modules} modules → {d.cws} codewords; worst block {d.worst} / {d.cap} repairable.
-    </Note>
-  );
-}
-
-function SizeInfo({ layer, data }: { layer: QrLayer; data: Data }) {
-  const c = cfg(layer);
-  const q = useMatrix(payload(c, layer.data, data), c.ecl);
-  if (!q) return null;
-  const g = geo(c, interpolateText(c.label.text, data), q.size, num((layer.props.width ?? 520) as number), num((layer.props.height ?? 640) as number));
-  return (
-    <Note>
-      Module = <b>{g.m} px</b> (whole pixels) · code {g.px}×{g.px} px.
-    </Note>
-  );
-}
-
 export default defineWidget({
   id: 'qrcode',
   type: 'qrCode',
   label: 'QR code',
   group: 'Sport & interaction',
   icon: QrCode,
-  create: () => ({ data: 'https://vote.pulse.tv/final', background: '#ffffff', radius: 18, label: { on: true, text: 'Scan to vote' }, props: { width: 520, height: 640, fill: [0.078, 0.063, 0.165, 1] } }),
+  create: () => ({ data: 'https://vote.pulse.tv/final', background: '#ffffff', props: { width: 520, height: 520, fill: [0, 0, 0, 1] } }),
   ownsLook: true,
   content: ['data'],
   Render: ({ layer, r, w, h, data }) => <Render layer={layer as QrLayer} r={r} w={w} h={h} data={data} />,
-  Inspector: ({ layer, data, set }) => {
+  Inspector: ({ layer, set }) => {
     const L = layer as QrLayer;
     const c = cfg(L);
     return (
@@ -630,12 +566,7 @@ export default defineWidget({
               ['sms', 'SMS'],
             ]}
           />
-          {c.kind === 'url' && (
-            <>
-              <Content label="Address" path="data" value="" placeholder="https://…" />
-              {L.data && !/\{\{/.test(L.data) && !/^[a-z][a-z0-9+.-]*:/i.test(L.data) && <Msg level="warn">No https:// — phones may read it as plain text.</Msg>}
-            </>
-          )}
+          {c.kind === 'url' && <Content label="Address" path="data" value="" placeholder="https://…" />}
           {c.kind === 'text' && <Content label="Text" path="data" value="" multiline />}
           {c.kind === 'vcard' && (
             <>
@@ -650,7 +581,7 @@ export default defineWidget({
           )}
           {c.kind === 'wifi' && (
             <>
-              <Content label="Network (SSID)" path="wifi.ssid" value="" />
+              <Content label="Network" path="wifi.ssid" value="" />
               <Seg
                 label="Security"
                 path="wifi.security"
@@ -662,7 +593,7 @@ export default defineWidget({
                 ]}
               />
               {c.wifi.security !== 'nopass' && <Content label="Password" path="wifi.password" value="" />}
-              <Toggle label="Hidden" path="wifi.hidden" value={c.wifi.hidden} text="Hidden network" />
+              <Toggle label="Hidden" path="wifi.hidden" value={c.wifi.hidden} />
             </>
           )}
           {c.kind === 'email' && (
@@ -678,36 +609,26 @@ export default defineWidget({
               <Content label="Message" path="sms.message" value="" />
             </>
           )}
-          <PayloadInfo layer={L} data={data} />
         </Section>
-        <Section id="qr-ecl" title="Error correction">
+        <Section id="qr-colours" title="Colour">
+          <ColorGroupRow layer={layer} prop="fill" label="Modules" />
           <Seg
-            label="Level"
-            path="ecl"
-            value={c.ecl}
+            label="Background"
+            path="transparent"
+            value={c.transparent}
             options={[
-              ['L', 'L · 7 %', 'Recovers ~7 % damage'],
-              ['M', 'M · 15 %', 'Recovers ~15 % damage'],
-              ['Q', 'Q · 25 %', 'Recovers ~25 % damage'],
-              ['H', 'H · 30 %', 'Recovers ~30 % damage — use with a logo'],
+              [false, 'Solid'],
+              [true, 'None'],
             ]}
           />
-          <Note>
-            Higher levels add redundancy: a bigger code (more modules) for the same content. H is recommended with a logo (logo up to {LOGO_MAX.H} % of the width; L {LOGO_MAX.L} %, M {LOGO_MAX.M} %, Q {LOGO_MAX.Q} %).
-          </Note>
-        </Section>
-        <Section id="qr-colours" title="Colours">
-          <ColorGroupRow layer={layer} prop="fill" label="Modules" />
-          <Toggle label="Background" path="transparent" value={c.transparent} text="Transparent" />
           {!c.transparent ? (
-            <ColorPick label="Background" path="background" value="#ffffff" />
-          ) : (
             <>
-              <ColorPick label="Backdrop (check)" path="backdrop" value={c.backdrop} />
-              <Note>Transparent: the stage shows through the light modules. The contrast check uses this backdrop colour.</Note>
+              <ColorPick label="Color" path="background" value="#ffffff" />
+              <Num label="Corners" path="radius" value={c.radius} min={0} max={60} unit="px" />
             </>
+          ) : (
+            <ColorPick label="Backdrop" path="backdrop" value={c.backdrop} />
           )}
-          <Range label="Card corners" path="radius" value={c.radius} min={0} max={60} unit=" px" />
         </Section>
         <Section id="qr-style" title="Style">
           <Seg
@@ -730,43 +651,52 @@ export default defineWidget({
               ['circle', 'Circle'],
             ]}
           />
-          <Toggle label="Finder colour" path="finderSame" value={c.finderSame} text="Same as modules" />
-          {!c.finderSame && <ColorPick label="Finders" path="finderColor" value={c.finderColor} />}
-          <Note>Squares render with crisp edges; rounded and dots keep anti-aliasing but stay on the whole-pixel grid.</Note>
+          <Seg
+            label="Finder color"
+            path="finderSame"
+            value={c.finderSame}
+            options={[
+              [true, 'Same'],
+              [false, 'Own'],
+            ]}
+          />
+          {!c.finderSame && <ColorPick label="Color" path="finderColor" value={c.finderColor} />}
         </Section>
-        <Section id="qr-logo" title="Logo">
-          <Toggle label="Centre logo" path="logo.on" value={c.logo.on} text="Show a logo" />
+        <Section id="qr-extras" title="Extras">
+          <Toggle label="Logo" path="logo.on" value={c.logo.on} />
           {c.logo.on && (
             <>
               <Row expose="logo.src" exposeValue={c.logo.src} label="Picture">
                 <AssetPicker value={c.logo.src} onChange={(v) => set('logo.src', v)} />
               </Row>
-              {!c.logo.src && <ColorPick label="Colour" path="logo.color" value={c.logo.color} />}
-              <Range label="Max size" path="logo.size" value={c.logo.size} min={5} max={40} unit=" %" />
-              <LogoInfo layer={L} data={data} />
+              {!c.logo.src && <ColorPick label="Color" path="logo.color" value={c.logo.color} />}
+              <Num label="Max size" path="logo.size" value={c.logo.size} min={5} max={40} unit="%" />
             </>
           )}
-        </Section>
-        <Section id="qr-size" title="Quiet zone & size">
-          <Range label="Quiet zone" path="quiet" value={c.quiet} min={0} max={10} unit=" modules" />
-          {c.quiet < 4 && <Msg level="warn">Below 4 modules: allowed, but some readers fail.</Msg>}
-          <Range label="Min module" path="minPx" value={c.minPx} min={2} max={20} unit=" px" />
-          <SizeInfo layer={L} data={data} />
-        </Section>
-        <Section id="qr-label" title="Label">
-          <Toggle label="Label" path="label.on" value={c.label.on} text="Text under the code" />
+          <Toggle label="Caption" path="label.on" value={c.label.on} />
           {c.label.on && (
             <>
               <Content label="Text" path="label.text" value={c.label.text} placeholder="Scan to vote" />
-              <Range label="Size" path="label.size" value={c.label.size} min={16} max={72} unit=" px" />
-              <ColorPick label="Text" path="label.color" value={c.label.color} />
+              <Num label="Size" path="label.size" value={c.label.size} min={16} max={72} unit="px" />
+              <ColorPick label="Color" path="label.color" value={c.label.color} />
               <ColorPick label="Pill" path="label.bg" value={c.label.bg} />
             </>
           )}
         </Section>
-        <Section id="qr-check" title="Readability check">
-          <ReadableCheck layer={L} data={data} />
-          <Note>The code is read back from the drawn matrix (format bits, unmasking, Reed-Solomon check of every block), then contrast, quiet zone, logo damage per block and on-screen module size are checked. No camera involved.</Note>
+        <Section id="qr-code" title="Code">
+          <Seg
+            label="Correction"
+            path="ecl"
+            value={c.ecl}
+            options={[
+              ['L', 'L · 7 %', 'Recovers ~7 % damage'],
+              ['M', 'M · 15 %', 'Recovers ~15 % damage'],
+              ['Q', 'Q · 25 %', 'Recovers ~25 % damage'],
+              ['H', 'H · 30 %', 'Recovers ~30 % damage (logo)'],
+            ]}
+          />
+          <Num label="Quiet zone" path="quiet" value={c.quiet} min={0} max={10} unit="mod" />
+          <Num label="Min module" path="minPx" value={c.minPx} min={2} max={20} unit="px" />
         </Section>
       </>
     );
@@ -778,6 +708,7 @@ export default defineWidget({
     const ck = check(L, data, r, text ? matrix(text, c.ecl) : null);
     if (!ck.ready) return [];
     const out = ck.issues.slice();
+    if (c.kind === 'url' && L.data && !/\{\{/.test(L.data) && !/^[a-z][a-z0-9+.-]*:/i.test(L.data)) out.push({ level: 'warn', text: 'No https:// — phones may read it as plain text.' });
     if (ck.ok && !out.some((i) => i.level === 'warn')) out.unshift({ level: 'ok', text: 'Readable ✓' });
     return out;
   },

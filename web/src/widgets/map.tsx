@@ -7,7 +7,7 @@ import { useRef, useState } from 'react';
 import { Map as MapIcon } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Msg, Note, Num, Range, Readout, Row, Section, Seg, Select, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { col, ellipse, mix, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
   cfg,
@@ -776,12 +776,7 @@ export default defineWidget({
   label: 'Map',
   group: 'Sport & interaction',
   icon: MapIcon,
-  presets: [
-    { label: 'France · election', hint: 'France regions coloured by the winner' },
-    { label: 'France · weather', hint: 'Temperatures on a colour scale', patch: { zones: { ...WEATHER, scale: SCALE } } },
-    { label: 'World · routes', hint: 'Equal Earth world map', patch: { projection: 'equalearth', view: { lat: 20, lon: 10, zoom: 2.4, rot: 0, tilt: 0 }, layers: { markers: true, routes: true, zones: false, labels: true } } },
-  ],
-  create: () => ({ props: { width: 1600, height: 840 } }),
+  create: () => ({ markers: [], routes: [], showRoads: false, layers: { markers: false, routes: false, zones: false, labels: true }, props: { width: 1600, height: 840 } }),
   ownsLook: true,
   live: () => true,
   Render: ({ layer, w, h, data, time, state, designer }) => {
@@ -796,7 +791,156 @@ export default defineWidget({
     const [v] = viewAt(k, (state ?? {}) as State, Date.now(), num(layer.props.width ?? 1600));
     return (
       <>
-        <Section id="map-base" title="Base map">
+        <Section id="map-view" title="View">
+          <Num label="Latitude" path="view.lat" value={k.view.lat} min={-85} max={85} step={0.01} precision={3} unit="°" />
+          <Num label="Longitude" path="view.lon" value={k.view.lon} min={-180} max={180} step={0.01} precision={3} unit="°" />
+          <Num label="Zoom" path="view.zoom" value={k.view.zoom} min={1.5} max={18} step={0.05} precision={2} />
+          <Num label="Rotation" path="view.rot" value={k.view.rot} min={-180} max={180} unit="°" />
+          <Num label="Tilt" path="view.tilt" value={k.view.tilt} min={0} max={60} unit="°" />
+          <Toggle label="Drag to pan" value={k.dragPans} onChange={(x) => edit((l) => void (l.dragPans = x || undefined))} />
+          <Btns list={[{ label: '+ Key view', title: 'Save this view as a key view', onClick: () => edit((l) => void (l.views = [...cfg(l).views, { name: `View ${cfg(l).views.length + 1}`, ...clampView(cfg(l).view) }])) }]} />
+        </Section>
+        <Section id="map-views" title="Key views">
+          <Row expose="views" exposeValue={k.views}>
+            <ListEditor
+              path="views"
+              value={k.views}
+              fields={[
+                { key: 'name', placeholder: 'Name' },
+                { key: 'lat', num: true, w: 58 },
+                { key: 'lon', num: true, w: 58 },
+                { key: 'zoom', num: true, w: 44 },
+                { key: 'rot', num: true, w: 40 },
+                { key: 'tilt', num: true, w: 36 },
+              ]}
+              add={() => ({ name: `View ${k.views.length + 1}`, ...clampView(k.view) })}
+              addLabel="Key view"
+              min={1}
+              minMsg="At least one key view"
+            />
+          </Row>
+          <Btns list={k.views.map((kv) => ({ label: `◎ ${kv.name}`, title: 'Show in the Designer', onClick: () => edit((l) => void (l.view = clampView(kv as View))) }))} label="Preview" />
+        </Section>
+        <Section id="map-markers" title="Markers">
+          <Toggle label="Markers" path="layers.markers" value={true} />
+          {k.layers.markers && (
+            <>
+              <Row expose="markers" exposeValue={k.markers}>
+                <ListEditor
+                  path="markers"
+                  value={k.markers}
+                  toggle="on"
+                  fields={[
+                    { key: 'name', placeholder: 'Label' },
+                    { key: 'lat', w: 58, placeholder: 'lat' },
+                    { key: 'lon', w: 58, placeholder: 'lon' },
+                    {
+                      key: 'icon',
+                      w: 74,
+                      options: [
+                        ['pin', 'Pin'],
+                        ['dot', 'Dot'],
+                        ['star', 'Star'],
+                        ['stadium', 'Stadium'],
+                        ['plane', 'Plane'],
+                      ],
+                    },
+                    { key: 'color', w: 34, color: true },
+                  ]}
+                  add={() => ({ on: true, name: 'New marker', lat: v.lat.toFixed(3), lon: v.lon.toFixed(3), icon: 'pin', color: '#ff3b5c' })}
+                  addLabel="Marker"
+                />
+              </Row>
+              <Num label="Size" path="mkSize" value={k.mkSize} min={1} max={400} unit="px" />
+            </>
+          )}
+        </Section>
+        <Section id="map-routes" title="Routes">
+          <Toggle label="Routes" path="layers.routes" value={true} />
+          {k.layers.routes && (
+            <>
+              <Row expose="routes" exposeValue={k.routes}>
+                <ListEditor
+                  path="routes"
+                  value={k.routes}
+                  toggle="on"
+                  fields={[
+                    { key: 'name', placeholder: 'Name', w: 96 },
+                    { key: 'path', placeholder: 'Paris > Tokyo' },
+                    { key: 'color', w: 34, color: true },
+                    { key: 'dur', num: true, w: 36, placeholder: 's' },
+                  ]}
+                  add={() => ({ on: true, name: 'Route', path: 'Paris > New York', color: '#38bdf8', dur: 4 })}
+                  addLabel="Route"
+                />
+              </Row>
+              <Seg
+                label="Path"
+                path="curve"
+                value={k.curve}
+                options={[
+                  ['gc', 'Great circle'],
+                  ['straight', 'Straight'],
+                ]}
+              />
+              <Num label="Width" path="routeW" value={k.routeW} min={1} max={100} unit="px" />
+              <Toggle label="Plane" path="planeHead" value={true} />
+            </>
+          )}
+        </Section>
+        <Section id="map-zones" title="Zones">
+          <Toggle label="Zones" path="layers.zones" value={true} />
+          {k.layers.zones && (
+            <>
+              <Btns
+                label="Sample"
+                list={[
+                  { label: 'Election', onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...ELECTION })) },
+                  { label: 'Weather', onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...WEATHER, scale: SCALE })) },
+                ]}
+              />
+              <Seg
+                label="Values"
+                path="zones.mode"
+                value={k.zones.mode}
+                options={[
+                  ['category', 'Categories'],
+                  ['scale', 'Scale'],
+                ]}
+              />
+              <Row expose="zones.rows" exposeValue={k.zones.rows}>
+                <GridEditor path="zones.rows" value={k.zones.rows} header csv />
+              </Row>
+              {k.zones.mode === 'category' ? (
+                <ListEditor label="Categories" path="zones.categories" value={k.zones.categories as Record<string, unknown>[]} fields={[{ key: 'name' }, { key: 'color', w: 34, color: true }]} add={() => ({ name: 'New', color: '#a594ff' })} addLabel="Category" />
+              ) : (
+                <>
+                  <ListEditor
+                    label="Scale"
+                    path="zones.scale"
+                    value={k.zones.scale as Record<string, unknown>[]}
+                    fields={[
+                      { key: 'v', num: true, w: 60 },
+                      { key: 'color', w: 34, color: true },
+                    ]}
+                    add={() => ({ v: 0, color: '#ffffff' })}
+                    addLabel="Stop"
+                  />
+                  <Text label="Unit" path="zones.unit" value={k.zones.unit} />
+                </>
+              )}
+              <Num label="Opacity" expose="zones.opacity" exposeValue={k.zones.opacity} value={Math.round(k.zones.opacity * 100)} min={0} max={100} unit="%" onChange={(x) => edit((l) => void (l.zones = { ...l.zones, opacity: x / 100 }), `mzo-${layer.id}`)} />
+              <Toggle label="Legend" path="zones.legend" value={true} />
+              {k.zones.legend && (
+                <>
+                  <Text label="Title" path="zones.title" value={k.zones.title} />
+                  <Seg label="Position" path="zones.legendPos" value={k.zones.legendPos} options={POS} />
+                </>
+              )}
+            </>
+          )}
+        </Section>
+        <Section id="map-base" title="Map">
           <Seg
             expose="style"
             exposeValue={k.style}
@@ -809,67 +953,70 @@ export default defineWidget({
               })
             }
             options={[
-              ['vector', 'Clean vector'],
+              ['vector', 'Vector'],
               ['satellite', 'Satellite'],
-              ['mono', 'Monochrome'],
+              ['mono', 'Mono'],
             ]}
           />
-          <ColorPick label="Water" path="colors.water" value={k.colors.water} />
-          <ColorPick label="Land" path="colors.land" value={k.colors.land} />
-          <ColorPick label="Borders" path="colors.border" value={k.colors.border} />
-          <ColorPick label="Roads" path="colors.road" value={k.colors.road} />
-          <Toggle label="Borders" path="showBorders" value={true} text="Country borders" />
-          <Toggle label="Roads" path="showRoads" value={true} text="Motorways and ring roads" />
-          <Toggle label="Graticule" path="graticule" value={false} text="Lat / lon grid every 30°" />
-          <Range label="Corners" path="radius" value={k.radius} min={0} max={60} unit=" px" />
-          <Msg level="ok">Offline: the whole map is built in (vector data, no tiles, no network). Every key view is ready before the In — nothing to preload, never a grey tile.</Msg>
-          <Note>Coarse hand-made outlines of the world, France regions and a Paris / Stade de France detail (from zoom 9). Satellite = latitude-banded land colours.</Note>
-        </Section>
-        <Section id="map-proj" title="Projection">
           <Seg
             label="Projection"
             path="projection"
             value={k.projection}
             options={[
-              ['mercator', 'Web Mercator'],
+              ['mercator', 'Mercator'],
               ['equalearth', 'Equal Earth'],
-              ['equirect', 'Equirectangular'],
+              ['equirect', 'Equirect.'],
             ]}
           />
-          <Note>Web Mercator for city and stadium views. Equal Earth for world maps (true areas). Mercator and equirectangular repeat across 180°.</Note>
+          <ColorPick label="Water" path="colors.water" value={k.colors.water} />
+          <ColorPick label="Land" path="colors.land" value={k.colors.land} />
+          <Toggle label="Borders" path="showBorders" value={true} />
+          {k.showBorders && <ColorPick label="Color" path="colors.border" value={k.colors.border} />}
+          <Toggle label="Roads" path="showRoads" value={true} />
+          {k.showRoads && <ColorPick label="Color" path="colors.road" value={k.colors.road} />}
+          <Toggle label="Graticule" path="graticule" value={false} />
+          {k.graticule && !k.showBorders && <ColorPick label="Color" path="colors.border" value={k.colors.border} />}
+          <Num label="Corners" path="radius" value={k.radius} min={0} max={2000} unit="px" />
         </Section>
-        <Section id="map-view" title="View">
-          <Num label="Centre lat" path="view.lat" value={k.view.lat} min={-85} max={85} step={0.01} precision={3} unit="°" />
-          <Num label="Centre lon" path="view.lon" value={k.view.lon} min={-180} max={180} step={0.01} precision={3} unit="°" />
-          <Range label="Zoom" path="view.zoom" value={k.view.zoom} min={1.5} max={18} step={0.05} fmt={(x) => x.toFixed(2)} />
-          <Range label="Rotation" path="view.rot" value={k.view.rot} min={-180} max={180} unit="°" />
-          <Range label="3D tilt" path="view.tilt" value={k.view.tilt} min={0} max={60} unit="°" />
-          <Toggle label="Drag on stage" path="dragPans" value={false} text="Pans the map (wheel zooms)" />
-          <Btns list={[{ label: '+ Save as key view', onClick: () => edit((l) => void (l.views = [...cfg(l).views, { name: `View ${cfg(l).views.length + 1}`, ...clampView(cfg(l).view) }])) }]} />
-          <Note>This is the view before any Operator action. On air the Operator goes from key view to key view.</Note>
+        <Section id="map-labels" title="Labels">
+          <Toggle label="Labels" path="layers.labels" value={true} />
+          {k.layers.labels && (
+            <>
+              <Toggle label="Cities" path="labels.cities" value={true} />
+              <Toggle label="Countries" path="labels.countries" value={true} />
+              <Num label="Importance" path="labels.minImp" value={k.labels.minImp} min={1} max={10} />
+              <Num label="Size" path="labels.size" value={k.labels.size} min={1} max={400} unit="px" />
+              <Toggle label="Collisions" path="labels.collide" value={true} />
+              {k.labels.collide && (
+                <>
+                  <Num label="Spacing" path="labels.pad" value={k.labels.pad} min={0} max={200} unit="px" />
+                  <Toggle label="Show hidden" value={k.labels.showHidden} onChange={(x) => edit((l) => void (l.labels = { ...l.labels, showHidden: x || undefined }))} />
+                </>
+              )}
+            </>
+          )}
         </Section>
-        <Section id="map-views" title="Key views">
-          <ListEditor
-            path="views"
-            value={k.views}
-            fields={[
-              { key: 'name', placeholder: 'Name' },
-              { key: 'lat', num: true, w: 58 },
-              { key: 'lon', num: true, w: 58 },
-              { key: 'zoom', num: true, w: 44 },
-              { key: 'rot', num: true, w: 40 },
-              { key: 'tilt', num: true, w: 36 },
-            ]}
-            add={() => ({ name: `View ${k.views.length + 1}`, ...clampView(k.view) })}
-            addLabel="Key view"
-            min={1}
-            minMsg="At least one key view"
-          />
-          <Btns list={k.views.map((kv) => ({ label: `◎ ${kv.name}`, title: 'Show it in the Designer (sets the view above)', onClick: () => edit((l) => void (l.view = clampView(kv as View))) }))} label="Preview" />
-          <Note>Fields: name, lat, lon, zoom, rotation, tilt.</Note>
+        <Section id="map-att" title="Attribution">
+          <Select label="Provider" path="attribution.provider" value={k.attribution.provider} options={(Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]).map((x) => [x, PROVIDERS[x].name] as const)} />
+          <Toggle label="Show" path="attribution.show" value={prov.required ? true : k.attribution.show} disabled={prov.required ? 'Required by the licence' : undefined} />
+          {(k.attribution.show || prov.required) && (
+            <>
+              <Seg label="Position" path="attribution.pos" value={k.attribution.pos} options={POS} />
+              <Seg
+                label="Style"
+                path="attribution.style"
+                value={k.attribution.style}
+                options={[
+                  ['dark', 'Dark'],
+                  ['light', 'Light'],
+                  ['minimal', 'Text'],
+                ]}
+              />
+            </>
+          )}
         </Section>
         <Section id="map-trans" title="Transition">
-          <Range label="Duration" path="transition.dur" value={k.transition.dur} min={0} max={8} step={0.1} unit=" s" />
+          <Num label="Duration" path="transition.dur" value={k.transition.dur} min={0} max={60} step={0.1} precision={1} unit="s" />
           <Seg
             label="Curve"
             path="transition.ease"
@@ -882,142 +1029,8 @@ export default defineWidget({
               ['sine', 'Sine'],
             ]}
           />
-          <Toggle label="Fly effect" path="transition.fly" value={true} text="Zoom out, travel, zoom in" />
-          {k.transition.fly && <Range label="Fly height" path="transition.flyAmt" value={k.transition.flyAmt} min={0} max={1} step={0.05} fmt={(x) => `${Math.round(x * 100)} %`} />}
-        </Section>
-        <Section id="map-markers" title="Markers">
-          <Toggle label="Layer" path="layers.markers" value={true} text="Show markers" />
-          <ListEditor
-            path="markers"
-            value={k.markers}
-            toggle="on"
-            fields={[
-              { key: 'name', placeholder: 'Label' },
-              { key: 'lat', w: 58, placeholder: 'lat' },
-              { key: 'lon', w: 58, placeholder: 'lon' },
-              {
-                key: 'icon',
-                w: 74,
-                options: [
-                  ['pin', 'Pin'],
-                  ['dot', 'Dot'],
-                  ['star', 'Star'],
-                  ['stadium', 'Stadium'],
-                  ['plane', 'Plane'],
-                ],
-              },
-              { key: 'color', w: 34, color: true },
-            ]}
-            add={() => ({ on: true, name: 'New marker', lat: v.lat.toFixed(3), lon: v.lon.toFixed(3), icon: 'pin', color: '#ff3b5c' })}
-            addLabel="Marker"
-          />
-          <Range label="Size" path="mkSize" value={k.mkSize} min={20} max={70} unit=" px" />
-          <Note>Lat / lon may come from data ({'{{key}}'}). Invalid coordinates (beyond ±90 / ±180, empty or not a number): the marker is ignored and the Operator is alerted.</Note>
-        </Section>
-        <Section id="map-routes" title="Routes">
-          <Toggle label="Layer" path="layers.routes" value={true} text="Show routes" />
-          <ListEditor
-            path="routes"
-            value={k.routes}
-            toggle="on"
-            fields={[
-              { key: 'name', placeholder: 'Name', w: 96 },
-              { key: 'path', placeholder: 'Paris > Tokyo or 48.8,2.3 > …' },
-              { key: 'color', w: 34, color: true },
-              { key: 'dur', num: true, w: 36 },
-            ]}
-            add={() => ({ on: true, name: 'Route', path: 'Paris > New York', color: '#38bdf8', dur: 4 })}
-            addLabel="Route"
-          />
-          <Seg
-            label="Path"
-            path="curve"
-            value={k.curve}
-            options={[
-              ['gc', 'Great circle'],
-              ['straight', 'Straight'],
-            ]}
-          />
-          <Range label="Width" path="routeW" value={k.routeW} min={2} max={16} unit=" px" />
-          <Toggle label="Head" path="planeHead" value={true} text="Plane at the tip while drawing" />
-          <Note>Waypoints: a city name or “lat,lon”, separated by “&gt;”. Last field: seconds of the animated drawing (from the Operator's “Draw”). Legs across 180° take the short way.</Note>
-        </Section>
-        <Section id="map-zones" title="Zones · data">
-          <Toggle label="Layer" path="layers.zones" value={true} text="Coloured zones (France regions, up to zoom 10)" />
-          <Btns
-            label="Sample"
-            list={[
-              { label: 'Election', onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...ELECTION })) },
-              { label: 'Weather', onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...WEATHER, scale: SCALE })) },
-            ]}
-          />
-          <Seg
-            label="Values"
-            path="zones.mode"
-            value={k.zones.mode}
-            options={[
-              ['category', 'Categories'],
-              ['scale', 'Numbers on a scale'],
-            ]}
-          />
-          <GridEditor path="zones.rows" value={k.zones.rows} header csv />
-          <Note>Region (name or id) · value · details. Cells may hold {'{{key}}'} from the Data canvas.</Note>
-          {k.zones.mode === 'category' ? (
-            <ListEditor label="Categories" path="zones.categories" value={k.zones.categories as Record<string, unknown>[]} fields={[{ key: 'name' }, { key: 'color', w: 34, color: true }]} add={() => ({ name: 'New', color: '#a594ff' })} addLabel="Category" />
-          ) : (
-            <>
-              <ListEditor
-                label="Scale"
-                path="zones.scale"
-                value={k.zones.scale as Record<string, unknown>[]}
-                fields={[
-                  { key: 'v', num: true, w: 60 },
-                  { key: 'color', w: 34, color: true },
-                ]}
-                add={() => ({ v: 0, color: '#ffffff' })}
-                addLabel="Stop"
-              />
-              <Row expose="zones.unit" exposeValue={k.zones.unit} label="Unit">
-                <input value={k.zones.unit} onChange={(e) => edit((l) => void (l.zones = { ...cfg(l).zones, unit: e.target.value }), 'zu')} onKeyDown={(e) => e.stopPropagation()} />
-              </Row>
-            </>
-          )}
-          <Row expose="zones.title" exposeValue={k.zones.title} label="Title">
-            <input value={k.zones.title} onChange={(e) => edit((l) => void (l.zones = { ...cfg(l).zones, title: e.target.value }), 'zt')} onKeyDown={(e) => e.stopPropagation()} />
-          </Row>
-          <Range label="Opacity" path="zones.opacity" value={k.zones.opacity} min={0.2} max={1} step={0.05} />
-          <Toggle label="Legend" path="zones.legend" value={true} text="Show the legend" />
-          <Seg label="Legend at" path="zones.legendPos" value={k.zones.legendPos} options={POS} />
-        </Section>
-        <Section id="map-labels" title="Labels">
-          <Toggle label="Layer" path="layers.labels" value={true} text="Show labels" />
-          <Toggle label="Cities" path="labels.cities" value={true} text="Cities and places" />
-          <Toggle label="Countries" path="labels.countries" value={true} text="Countries and continents" />
-          <Range label="Min. importance" path="labels.minImp" value={k.labels.minImp} min={1} max={10} />
-          <Range label="Text size" path="labels.size" value={k.labels.size} min={14} max={44} unit=" px" />
-          <Toggle label="Collisions" path="labels.collide" value={true} text="Hide the less important label when two overlap" />
-          <Range label="Spacing" path="labels.pad" value={k.labels.pad} min={0} max={40} unit=" px" />
-          <Toggle label="Debug" path="labels.showHidden" value={false} text="Show hidden labels (red, Designer only)" />
-        </Section>
-        <Section id="map-att" title="Attribution">
-          <Select label="Provider" path="attribution.provider" value={k.attribution.provider} options={(Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]).map((x) => [x, PROVIDERS[x].name] as const)} />
-          <Seg label="Position" path="attribution.pos" value={k.attribution.pos} options={POS} />
-          <Seg
-            label="Style"
-            path="attribution.style"
-            value={k.attribution.style}
-            options={[
-              ['dark', 'Dark'],
-              ['light', 'Light'],
-              ['minimal', 'Text only'],
-            ]}
-          />
-          <Toggle label="Show" path="attribution.show" value={prov.required ? true : k.attribution.show} text="Show the attribution" disabled={prov.required ? `The ${prov.name} licence requires the attribution: it cannot be removed.` : undefined} />
-          {prov.required && (
-            <Msg level="info">
-              🔒 Mandatory with {prov.name}: “{prov.text}” always shows.
-            </Msg>
-          )}
+          <Toggle label="Fly" path="transition.fly" value={true} />
+          {k.transition.fly && <Num label="Height" expose="transition.flyAmt" exposeValue={k.transition.flyAmt} value={Math.round(k.transition.flyAmt * 100)} min={0} max={100} unit="%" onChange={(x) => edit((l) => void (l.transition = { ...l.transition, flyAmt: x / 100 }), `mfa-${layer.id}`)} />}
         </Section>
       </>
     );

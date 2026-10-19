@@ -9,7 +9,7 @@ import type { Data, Layer, FontStyle } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Range, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import * as T from './timer-fmt';
 
 export type Config = T.Config;
@@ -275,11 +275,9 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
   const e = T.eff(layer, data);
   const c = e.c;
   const mode = e.mode;
-  const now = useFrame();
   const list = PRESETS[mode];
-  const preview = T.hasToken(e.format) ? `${c.prefix ? c.prefix + ' ' : ''}${sampleText(layer, data, e.format)}${c.suffix ? ' ' + c.suffix : ''}` : null;
   const zoneMode = c.tzOffset != null ? 'offset' : layer.timezone?.trim() ? 'named' : 'machine';
-  void now;
+  const affixed = !!(c.prefix || c.suffix || (mode === 'clock' && c.cities));
   return (
     <>
       <Section id="timer-main" title="Timer">
@@ -302,7 +300,6 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             })
           }
         />
-        <Note>Changing the mode keeps the style and resets the format. The layer name is how the API, Stream Deck and GPI reach this timer.</Note>
         <Row expose="format" exposeValue={layer.format} label="Preset">
           <select
             value={list.some((p) => p[0] === layer.format) ? layer.format : '__custom'}
@@ -322,35 +319,62 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
                 {f} → {sampleText(layer, data, f)}
               </option>
             ))}
-            <option value="__custom">Custom format…</option>
+            <option value="__custom">Custom</option>
           </select>
         </Row>
         <Text label="Format" path="format" placeholder="HH:mm:ss" />
-        {preview != null ? (
-          <Note>
-            Preview: <b style={{ fontFamily: 'var(--mono, monospace)' }}>{preview}</b>
-          </Note>
-        ) : (
-          <Msg level="error">No token in the format: add HH, mm, ss…</Msg>
+        <Content label="Prefix" path="prefix" value="" />
+        <Content label="Suffix" path="suffix" value="" />
+        {mode === 'clock' && (
+          <>
+            <Toggle
+              expose="cities"
+              exposeValue={c.cities}
+              label="Cities"
+              value={c.cities}
+              onChange={(v) =>
+                edit((l) => {
+                  const x = l as L & Config;
+                  x.cities = v;
+                  if (v && !x.cityList?.length)
+                    x.cityList = [
+                      { label: 'Paris', zone: 'Europe/Paris' },
+                      { label: 'New York', zone: 'America/New_York' },
+                      { label: 'Tokyo', zone: 'Asia/Tokyo' },
+                    ];
+                  if (v) x.format = 'HH:mm';
+                })
+              }
+            />
+            {c.cities && (
+              <ListEditor
+                path="cityList"
+                value={[]}
+                fields={[
+                  { key: 'label', placeholder: 'City' },
+                  { key: 'zone', w: 150, options: [['', 'Server'], ...ZONES.map((z) => [z, z] as [string, string])] },
+                ]}
+                add={() => ({ label: 'London', zone: 'Europe/London' })}
+                addLabel="City"
+                min={1}
+              />
+            )}
+          </>
         )}
-        <Note>
-          Tokens: <b>HH</b> hours · <b>mm</b> minutes · <b>ss</b> seconds · <b>S</b> tenths · <b>SS</b> hundredths · <b>FF</b> frames · <b>DD</b>/<b>D</b> day or days · <b>MMMM</b> <b>MMM</b> month · <b>YYYY</b> year · <b>dddd</b> <b>ddd</b> weekday · <b>A</b> AM/PM. Text in [brackets] is shown as
-          is; “:” is the separator. Older tokens (yyyy dd d hh h m s f) still work.
-        </Note>
       </Section>
 
       <Section id="timer-digits" title="Digits">
-        <Toggle label="Tabular" path="tabular" value={false} text="Fixed-width digits (every digit the same width)" />
+        <Toggle label="Tabular" path="tabular" value={false} />
         <Seg
-          label="Leading zeros"
+          label="Zeros"
           path="zeros"
           value="pad"
           options={[
-            ['pad', 'Show · 00:01:05'],
-            ['trim', 'Hide · 1:05'],
+            ['pad', '00:01:05'],
+            ['trim', '1:05'],
           ]}
         />
-        {T.timed(e) && <Toggle label="Hours" path="hoursAuto" value={false} text="Hours (and days) only when needed" />}
+        {T.timed(e) && <Toggle label="Auto hours" path="hoursAuto" value={false} />}
         <Seg
           label="Separator"
           path="sep"
@@ -363,7 +387,82 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             ['.', '.'],
           ]}
         />
-        <Toggle label="Blink" path="sepBlink" value={false} text="Blinking separator (once a second)" />
+        <Toggle label="Blink" path="sepBlink" value={false} />
+        {mode === 'clock' && (
+          <>
+            <Seg
+              label="Hours"
+              path="h12"
+              value={false}
+              options={[
+                [false, '24 h'],
+                [true, '12 h'],
+              ]}
+            />
+            {c.h12 && (
+              <>
+                <Text label="AM" path="am" value="AM" />
+                <Text label="PM" path="pm" value="PM" />
+              </>
+            )}
+          </>
+        )}
+        {mode === 'date' && (
+          <>
+            <Select label="Language" path="lang" value="en-GB" options={T.LANGS} />
+            <Seg
+              label="Case"
+              path="case"
+              value="none"
+              options={[
+                ['none', 'As is'],
+                ['first', 'First'],
+                ['words', 'Words'],
+                ['upper', 'UPPER'],
+                ['lower', 'lower'],
+              ]}
+            />
+          </>
+        )}
+      </Section>
+
+      <Section id="timer-style" title="Style">
+        <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
+        <GroupRow layer={layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
+        <ColorGroupRow layer={layer} prop="fill" label="Colour" />
+        {affixed && (
+          <>
+            <Num label="Affix size" path="affix.size" value={30} min={15} max={100} unit="%" />
+            <ColorPick label="Affix colour" path="affix.color" value="#a594ff" />
+            <Seg
+              label="Affix weight"
+              path="affix.weight"
+              value={800}
+              options={[
+                [500, 'Medium'],
+                [700, 'Bold'],
+                [800, 'Extra'],
+                [900, 'Black'],
+              ]}
+            />
+            <Toggle label="Affix caps" path="affix.upper" value={true} />
+          </>
+        )}
+        <Toggle label="Plate" path="plate.on" value={false} />
+        {c.plate.on && (
+          <>
+            <ColorPick label="Colour" path="plate.color" value={T.DEF.plate.color} />
+            <Num label="Radius" path="plate.radius" value={22} min={0} max={80} unit="px" />
+            <Num label="Padding" path="plate.padX" value={46} min={0} max={120} unit="px" />
+            <Num label="Padding V" path="plate.padY" value={14} min={0} max={80} unit="px" />
+            <Toggle label="Accent" path="plate.accent" value={true} />
+            {c.plate.accent && <ColorPick label="Accent colour" path="plate.accentColor" value="#ff3b5c" />}
+            <Toggle label="Shadow" path="plate.shadow" value={true} />
+          </>
+        )}
+        <Toggle label="Reserve width" path="reserve" value={false} />
+        {c.reserve && <Toggle label="Guide" path="guide" value={true} />}
+        <Toggle label="Shrink to fit" path="fit" value={false} />
       </Section>
 
       {!T.timed(e) && (
@@ -376,8 +475,8 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             value={zoneMode}
             options={[
               ['machine', 'Server'],
-              ['named', 'Named zone'],
-              ['offset', 'Manual offset'],
+              ['named', 'Named'],
+              ['offset', 'Offset'],
             ]}
             onChange={(v) =>
               edit((l) => {
@@ -391,108 +490,27 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             }
           />
           {zoneMode === 'named' && <Select label="Zone name" path="timezone" value="Europe/Paris" options={ZONES.includes(layer.timezone) ? ZONES : [layer.timezone, ...ZONES]} />}
-          {zoneMode === 'offset' && <Range label="UTC offset" path="tzOffset" value={0} min={-12} max={14} step={0.25} fmt={(v) => `UTC${v < 0 ? '−' : '+'}${Math.floor(Math.abs(v))}:${String((Math.abs(v) % 1) * 60).padStart(2, '0')}`} />}
-          <Note>{mode === 'date' ? 'The date switches at midnight in this zone.' : 'Named zones follow summer / winter time by themselves. “Server” is the zone of the playout server.'}</Note>
-        </Section>
-      )}
-      {mode === 'clock' && (
-        <Section id="timer-clock" title="Clock">
-          <Seg
-            label="Hours"
-            path="h12"
-            value={false}
-            options={[
-              [false, '24 h'],
-              [true, '12 h'],
-            ]}
-          />
-          {c.h12 && (
+          {zoneMode === 'offset' && <Num label="UTC offset" path="tzOffset" value={0} min={-12} max={14} step={0.25} precision={2} unit="h" />}
+          {mode === 'clock' && (
             <>
-              <Text label="AM text" path="am" value="AM" />
-              <Text label="PM text" path="pm" value="PM" />
+              <Seg
+                label="Fine in"
+                path="fineUnit"
+                value="s"
+                options={[
+                  ['s', 'Seconds'],
+                  ['f', 'Frames'],
+                ]}
+              />
+              {c.fineUnit === 's' ? <Num label="Fine offset" path="fine" value={0} min={-10} max={10} step={0.1} precision={1} unit="s" /> : <Num label="Fine offset" path="fine" value={0} min={-50} max={50} step={1} unit="fr" />}
             </>
           )}
-          <Row label="Source">
-            <div className="wk-btns">
-              <button className="opx-btn small violet" title="The playout server's clock; every client applies its offset to the server">
-                System clock
-              </button>
-              <button className="opx-btn small" disabled title="No timecode input on this product">
-                LTC
-              </button>
-              <button className="opx-btn small" disabled title="No timecode input on this product">
-                VITC
-              </button>
-            </div>
-          </Row>
-          <Note>The server clock is the reference (clients apply the server offset). LTC / VITC need a timecode input, which this product has not.</Note>
-          <Seg
-            label="Fine offset in"
-            path="fineUnit"
-            value="s"
-            options={[
-              ['s', 'Seconds'],
-              ['f', 'Frames'],
-            ]}
-          />
-          {c.fineUnit === 's' ? <Range label="Fine offset" path="fine" value={0} min={-10} max={10} step={0.1} unit=" s" /> : <Range label="Fine offset" path="fine" value={0} min={-50} max={50} step={1} unit=" fr" />}
-          <Toggle
-            expose="cities"
-            exposeValue={c.cities}
-            label="Cities"
-            value={c.cities}
-            text="Several city clocks side by side"
-            onChange={(v) =>
-              edit((l) => {
-                const x = l as L & Config;
-                x.cities = v;
-                if (v && !x.cityList?.length)
-                  x.cityList = [
-                    { label: 'Paris', zone: 'Europe/Paris' },
-                    { label: 'New York', zone: 'America/New_York' },
-                    { label: 'Tokyo', zone: 'Asia/Tokyo' },
-                  ];
-                if (v) x.format = 'HH:mm';
-              })
-            }
-          />
-          {c.cities && (
-            <ListEditor
-              path="cityList"
-              value={[]}
-              fields={[
-                { key: 'label', placeholder: 'City' },
-                { key: 'zone', w: 150, options: [['', 'Server'], ...ZONES.map((z) => [z, z] as [string, string])] },
-              ]}
-              add={() => ({ label: 'London', zone: 'Europe/London' })}
-              addLabel="Add a city"
-              min={1}
-            />
-          )}
-        </Section>
-      )}
-      {mode === 'date' && (
-        <Section id="timer-date" title="Date">
-          <Select label="Language" path="lang" value="en-GB" options={T.LANGS} />
-          <Note>Day and month names use this language, whatever the language of the app.</Note>
-          <Seg
-            label="Case"
-            path="case"
-            value="none"
-            options={[
-              ['none', 'As is'],
-              ['first', 'First'],
-              ['words', 'Words'],
-              ['upper', 'UPPER'],
-              ['lower', 'lower'],
-            ]}
-          />
         </Section>
       )}
       {mode === 'stopwatch' && (
         <Section id="timer-sw" title="Stopwatch">
           <DurField label="Start value" value={c.swStart} onChange={(v) => set('swStart', v)} expose="swStart" />
-          <Toggle label="Limit" path="swLimitOn" value={false} text="Stop, continue or restart at a limit" />
+          <Toggle label="Limit" path="swLimitOn" value={false} />
           {c.swLimitOn && (
             <>
               <DurField label="Limit at" value={c.swLimit} min={1000} onChange={(v) => set('swLimit', v)} expose="swLimit" />
@@ -531,8 +549,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
               ['near', 'Nearest'],
             ]}
           />
-          <Range label="Split hold" path="splitHold" value={5} min={1} max={15} unit=" s" />
-          <Note>Split freezes the display for this time; the stopwatch keeps running behind.</Note>
+          <Num label="Split hold" path="splitHold" value={5} min={1} max={15} unit="s" />
         </Section>
       )}
       {mode === 'countdown' && (
@@ -542,21 +559,20 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             path="cdTarget"
             value="duration"
             options={[
-              ['duration', 'A duration'],
-              ['time', 'A time'],
+              ['duration', 'Duration'],
+              ['time', 'Time'],
             ]}
           />
           {c.cdTarget === 'duration' ? (
             <DurField label="Duration" value={c.cdDuration} min={1000} onChange={(v) => set('cdDuration', v)} expose="cdDuration" />
           ) : (
             <>
-              <Text label="Date" path="tDate" value="" placeholder="today (YYYY-MM-DD)" />
+              <Text label="Date" path="tDate" value="" placeholder="YYYY-MM-DD" />
               <Text label="Time" path="tTime" value="20:00:00" placeholder="20:00:00" />
               <Select label="Zone" path="tZone" value="" options={[['', 'Server'] as [string, string], ...ZONES.map((z) => [z, z] as [string, string])]} />
-              <Note>A target time is absolute: it does not move with summer / winter time.</Note>
             </>
           )}
-          <Toggle label="Round up" path="roundUp" value={true} text="Round up (shows 5:00 at start, 0:00 only at zero)" />
+          <Toggle label="Round up" path="roundUp" value={true} />
           <Seg
             label="At zero"
             path="atZero"
@@ -571,11 +587,10 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           {c.atZero === 'overrun' && (
             <>
               <ColorPick label="Overrun text" path="overColor" value="#ff3b5c" />
-              <Text label="Overrun bg" path="overBg" value="" placeholder="none (plate colour)" />
+              <Text label="Overrun bg" path="overBg" value="" placeholder="#hex" />
             </>
           )}
-          {c.atZero === 'restart' && c.cdTarget === 'time' && <Msg level="info">Restart needs a duration: a countdown to a time freezes at zero.</Msg>}
-          <Toggle label="Banner" path="banner" value={false} text="Show a banner at zero (4 s)" />
+          <Toggle label="Banner" path="banner" value={false} />
           {c.banner && (
             <>
               <Content label="Banner text" path="bannerText" value="" />
@@ -598,14 +613,12 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
                 ['ext', 'External'],
               ]}
             />
-            {c.startMode === 'at' && <Text label="Start at" path="startAt" value="20:00:00" placeholder="20:00:00 (server zone)" />}
-            {c.startMode === 'ext' && <Note>Started by the API (Stream Deck, GPI box): POST /api/channels/&#123;id&#125;/command &#123;action:'act', target:'{layer.name}', op:'start'&#125;.</Note>}
-            {T.isTarget(e) && <Note>A countdown to a time always runs; the start mode applies to durations and the stopwatch.</Note>}
-            <Toggle label="Off air" path="offAir" value={true} text="Time runs off air (at the In it shows its real value)" />
+            {c.startMode === 'at' && <Text label="Start at" path="startAt" value="20:00:00" placeholder="20:00:00" />}
+            <Toggle label="Run off air" path="offAir" value={true} />
           </Section>
-          <Section id="timer-steps" title="Style steps">
-            <Note>{mode === 'countdown' ? 'Under X seconds left, apply this text colour, background and blink (the smallest matching step wins).' : 'From X seconds elapsed, apply this text colour, background and blink.'}</Note>
+          <Section id="timer-steps" title="Steps">
             <ListEditor
+              label="Steps"
               path="steps"
               value={[]}
               toggle="on"
@@ -623,52 +636,11 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
                 },
               ]}
               add={() => ({ on: true, at: 30, color: '#facc15', bg: '', blink: false })}
-              addLabel="Add a step"
+              addLabel="Step"
             />
           </Section>
         </>
       )}
-      <Section id="timer-width" title="Width">
-        <Toggle label="Reserve" path="reserve" value={false} text="Size on the widest value of the format" />
-        <Toggle label="Guide" path="guide" value={true} text="Show the reserved width (faint, Designer only)" />
-        <Toggle label="Fit" path="fit" value={false} text="Shrink to fit the box width" />
-        <Note>{c.reserve ? 'The value keeps the width of its widest form (e.g. 88:88): 9:59 → 10:00 moves nothing.' : 'Off: the text box follows the value, so 9:59 → 10:00 moves the plate.'}</Note>
-      </Section>
-      <Section id="timer-style" title="Text style">
-        <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
-        <GroupRow layer={layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-        <ColorGroupRow layer={layer} prop="fill" label="Colour" />
-        <Toggle label="Plate" path="plate.on" value={false} text="Background plate" />
-        {c.plate.on && (
-          <>
-            <ColorPick label="Plate colour" path="plate.color" value={T.DEF.plate.color} />
-            <Range label="Radius" path="plate.radius" value={22} min={0} max={80} unit=" px" />
-            <Range label="Padding" path="plate.padX" value={46} min={0} max={120} unit=" px" />
-            <Range label="Padding V" path="plate.padY" value={14} min={0} max={80} unit=" px" />
-            <Toggle label="Accent" path="plate.accent" value={true} text="Accent bar on the left" />
-            {c.plate.accent && <ColorPick label="Accent colour" path="plate.accentColor" value="#ff3b5c" />}
-            <Toggle label="Shadow" path="plate.shadow" value={true} text="Drop shadow" />
-          </>
-        )}
-      </Section>
-      <Section id="timer-affix" title="Prefix / suffix" closed={!c.prefix && !c.suffix}>
-        <Content label="Prefix" path="prefix" value="" placeholder="J-, Live in…" />
-        <Content label="Suffix" path="suffix" value="" placeholder="min" />
-        <Range label="Size" path="affix.size" value={30} min={15} max={100} unit=" %" />
-        <ColorPick label="Colour" path="affix.color" value="#a594ff" />
-        <Seg
-          label="Weight"
-          path="affix.weight"
-          value={800}
-          options={[
-            [500, 'Medium'],
-            [700, 'Bold'],
-            [800, 'Extra'],
-            [900, 'Black'],
-          ]}
-        />
-        <Toggle label="Capitals" path="affix.upper" value={true} text="Uppercase" />
-      </Section>
     </>
   );
 }
@@ -900,29 +872,9 @@ const timerDef = () =>
     label: 'Timer',
     group: 'Time',
     icon: Timer,
-    presets: [
-      { label: 'Clock', hint: 'Time of day', patch: {} },
-      { label: 'Date', hint: 'Day and month names', patch: { timerMode: 'date', format: 'dddd D MMMM YYYY', case: 'first', plate: { on: false } } },
-      { label: 'Stopwatch', hint: 'Start, pause, split', patch: { timerMode: 'stopwatch', mode: 'elapsed', format: 'mm:ss', steps: STEPS.stopwatch } },
-      { label: 'Countdown', hint: 'To zero or to a time', patch: { timerMode: 'countdown', mode: 'timer', format: 'mm:ss', steps: STEPS.countdown } },
-      {
-        label: 'City clocks',
-        hint: 'Several zones side by side',
-        patch: {
-          cities: true,
-          format: 'HH:mm',
-          cityList: [
-            { label: 'Paris', zone: 'Europe/Paris' },
-            { label: 'New York', zone: 'America/New_York' },
-            { label: 'Tokyo', zone: 'Asia/Tokyo' },
-          ],
-          props: { width: 1600, height: 300, fontSize: 120, fill: [1, 1, 1, 1] },
-        },
-      },
-    ],
     create: () => ({
       mode: 'time' as const,
-      format: 'HH:mm:ss',
+      format: 'HH:mm',
       timezone: '',
       target: '',
       fontFamily: 'Inter',
@@ -931,12 +883,7 @@ const timerDef = () =>
       verticalAlign: 'middle' as const,
       uppercase: false,
       timerMode: 'clock' as const,
-      tabular: true,
-      reserve: true,
-      fit: true,
-      hoursAuto: true,
       lang: 'fr-FR',
-      plate: { on: true },
       props: { width: 900, height: 300, fontSize: 150, fill: [1, 1, 1, 1] },
     }),
     live: () => true,
