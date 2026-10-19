@@ -58,6 +58,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+          # A tag's cache serves no other run (caches are scoped to their ref): restore only.
+          save-if: false
       - name: musl C toolchain (ring, used for HTTPS update checks)
         if: matrix.pkg == 'linux'
         run: |
@@ -136,6 +138,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: macos-universal
+          # A tag's cache serves no other run (caches are scoped to their ref): restore only.
+          save-if: false
       - name: Build universal binary
         run: |
           for t in aarch64-apple-darwin x86_64-apple-darwin; do

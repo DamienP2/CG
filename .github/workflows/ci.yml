@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Branches only: a release tag runs the Release workflow (and its own checks).
   push:
+    branches: ['**']
   pull_request:
 
 jobs:
