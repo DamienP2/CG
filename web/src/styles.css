@@ -4437,8 +4437,9 @@ input.mono {
   margin: -6px 0;
 }
 .tl-insert .tool {
-  width: 28px;
+  width: 26px;
   height: 28px;
+  flex: none;
 }
 .add-btn {
   width: 28px;
@@ -9629,4 +9630,22 @@ body.cv-moving * {
 }
 .wk-ctl > .segmented:not(:only-child):last-child {
   flex: none;
+}
+.tl-insert {
+  overflow: hidden;
+}
+.tl-insert .menu-wrap {
+  flex: none;
+}
+/* Folder: not a widget, so a quieter outlined button beside "+". */
+.add-btn.folder {
+  flex: none;
+  margin-left: 4px;
+  background: transparent;
+  border-style: dashed;
+  color: var(--text-2);
+}
+.add-btn.folder:hover {
+  color: var(--text);
+  border-color: var(--text-3);
 }

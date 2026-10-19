@@ -9,7 +9,11 @@ import {
   Eye,
   EyeOff,
   Flag,
-  Folder,
+  FolderPlus,
+  PenTool,
+  ArrowLeftRight,
+  ScrollText,
+  Clock,
   Globe,
   Image,
   Lock,
@@ -821,11 +825,23 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       <button className="tool" title="Image" onClick={() => onAdd('image')}>
         <Image size={15} />
       </button>
-      <button className="tool" title="Group" onClick={() => onAdd('group')}>
-        <Folder size={15} />
+      <button className="tool" title="Pen" onClick={() => onAdd('pen')}>
+        <PenTool size={15} />
+      </button>
+      <button className="tool" title="Ticker" onClick={() => onAdd('ticker')}>
+        <ArrowLeftRight size={15} />
+      </button>
+      <button className="tool" title="Credits" onClick={() => onAdd('credits')}>
+        <ScrollText size={15} />
+      </button>
+      <button className="tool" title="Clock" onClick={() => onAdd('clock', {}, 'Clock')}>
+        <Clock size={15} />
       </button>
       <div className="spacer" />
       <AddMenu onAdd={onAdd} />
+      <button className="add-btn folder" title="New folder (group)" onClick={() => onAdd('group')}>
+        <FolderPlus size={14} />
+      </button>
     </div>
   );
 }

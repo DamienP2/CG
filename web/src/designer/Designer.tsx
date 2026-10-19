@@ -269,46 +269,46 @@ function TemplateList({ project }: { project: Project }) {
         const { published, draft } = publishState(project, t.id);
         const unpublished = draft || !published;
         return (
-        <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== t.id && load(t))}>
-          <img src={thumbnailUrl(project.id, t, format, true)} alt="" loading="lazy" />
-          <span className="tpl-text">
-            <span>{t.name}</span>
-            {(() => {
-              const z = project.zones.find((z) => z.id === t.zone);
-              return z ? (
-                <em className="tpl-zone" style={{ ['--zc' as string]: z.color }}>
-                  {z.name}
-                </em>
-              ) : null;
-            })()}
-          </span>
-          {unpublished && <span className="tpl-draft" title={published ? 'Changes not in the Operator yet (publish from the properties on the right)' : 'New: not in the Operator yet'} />}
-          <div className="item-actions">
-            <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
-              <Copy size={12} />
-            </button>
-            <button
-              className="icon-btn ghost"
-              title={designTemplates(project).length < 2 ? 'A project keeps at least one template' : 'Delete'}
-              disabled={designTemplates(project).length < 2}
-              onClick={async (e) => {
-                e.stopPropagation();
-                if (!(await confirmDialog({ title: `Delete the template “${t.name}”?`, message: 'Rundown items using it are removed too.', confirm: 'Delete', danger: true }))) return;
-                await deleteTemplate(t.id).catch((err) => toast(String(err), 'error'));
-                if (template?.id === t.id) load(designTemplates(project).find((x) => x.id !== t.id) ?? null);
-              }}
-            >
-              <Trash2 size={12} />
-            </button>
+          <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== t.id && load(t))}>
+            <img src={thumbnailUrl(project.id, t, format, true)} alt="" loading="lazy" />
+            <span className="tpl-text">
+              <span>{t.name}</span>
+              {(() => {
+                const z = project.zones.find((z) => z.id === t.zone);
+                return z ? (
+                  <em className="tpl-zone" style={{ ['--zc' as string]: z.color }}>
+                    {z.name}
+                  </em>
+                ) : null;
+              })()}
+            </span>
+            {unpublished && <span className="tpl-draft" title={published ? 'Changes not in the Operator yet (publish from the properties on the right)' : 'New: not in the Operator yet'} />}
+            <div className="item-actions">
+              <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
+                <Copy size={12} />
+              </button>
+              <button
+                className="icon-btn ghost"
+                title={designTemplates(project).length < 2 ? 'A project keeps at least one template' : 'Delete'}
+                disabled={designTemplates(project).length < 2}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!(await confirmDialog({ title: `Delete the template “${t.name}”?`, message: 'Rundown items using it are removed too.', confirm: 'Delete', danger: true }))) return;
+                  await deleteTemplate(t.id).catch((err) => toast(String(err), 'error'));
+                  if (template?.id === t.id) load(designTemplates(project).find((x) => x.id !== t.id) ?? null);
+                }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
           </div>
-        </div>
         );
       })}
     </div>
   );
 }
 
-const MIN_LEFT = 280;
+const MIN_LEFT = 320;
 
 export function Designer() {
   const project = useApp((s) => s.project);
@@ -322,7 +322,7 @@ export function Designer() {
   const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
   // Panel sizes, adjustable with the splitters.
   const [layout, setLayout] = useLayout('pulse.designerLayout', {
-    left: 280,
+    left: 320,
     right: 380,
     timeline: 300,
   });
@@ -372,7 +372,7 @@ export function Designer() {
       }}
     >
       <aside className="panel left">
-        <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={280} onChange={(v) => setLayout('left', v)} />
+        <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={320} onChange={(v) => setLayout('left', v)} />
         <ProjectPanel project={project} saveState={saveState} readOnly={lock.state.status === 'held'} />
         <TemplateList project={project} />
       </aside>
