@@ -142,7 +142,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         <Brand />
         <div className="tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
-          {tab('media', '/media', <Images size={14} />, 'Media')}
+          {tab('media', '/media', <Images size={14} />, 'Assets')}
           {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, 'Outputs')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
           {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
@@ -232,7 +232,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           {tab('designer', <PenTool size={14} />, 'Designer')}
           {tab('operator', <Radio size={14} />, 'Operator')}
           {tab('data', <Database size={14} />, 'Connectors')}
-          {tab('media', <Images size={14} />, 'Media')}
+          {tab('media', <Images size={14} />, 'Assets')}
           {tab('settings', <SettingsIcon size={14} />, 'Settings')}
         </div>
         <div className="spacer" />

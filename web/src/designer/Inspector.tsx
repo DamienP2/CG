@@ -768,7 +768,6 @@ const WEIGHT_NAMES: Record<number, string> = {
 /** Font picker: the fonts the server really has (bundled, uploaded, system). */
 export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
   const families = useFonts((s) => s.families);
-  const toast = useApp((s) => s.toast);
   // The list is loaded at start, which fails before logging in.
   useEffect(() => {
     if (!families.length) void loadFonts();
@@ -780,21 +779,7 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
     ['Built in', families.filter((f) => f.source === 'bundled')],
     ['Server', families.filter((f) => f.source === 'system')],
   ];
-  const upload = async (file: File) => {
-    const name = file.name.replace(/[^A-Za-z0-9._-]/g, '_');
-    try {
-      const res = await fetch(`/api/fonts/${encodeURIComponent(name)}`, {
-        method: 'PUT',
-        body: file,
-        credentials: 'same-origin',
-      });
-      if (!res.ok) throw new Error(await res.text());
-      await loadFonts();
-      toast(`Font ${file.name} added`, 'info');
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    }
-  };
+
   return (
     <>
       <div className="row">
@@ -832,10 +817,6 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
               </option>
             ))}
         </select>
-        <label className="icon-btn ghost" title="Add a font (.ttf, .otf, .woff)">
-          <Upload size={13} />
-          <input type="file" accept=".ttf,.otf,.woff,.woff2,.ttc" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
-        </label>
       </div>
       <div className="row">
         <Segmented
@@ -1201,63 +1182,45 @@ export function EasingCurve({ easing, size = 120 }: { easing: Easing; size?: num
   );
 }
 
-function KeyframeInspector() {
-  const { template, selectedKeys, update } = useDesigner();
-  if (!template || !selectedKeys.length) return null;
-  const first = selectedKeys[0];
-  const k = findLayer(template, first.layerId)?.tracks[first.prop]?.find((x) => x.frame === first.frame);
-  if (!k) return null;
+/** The easing of the stretch between two keyframes (clicked in the timeline): nothing else. */
+function SegmentInspector() {
+  const { template, selectedSegment: seg, update } = useDesigner();
+  if (!template || !seg) return null;
+  const layer = findLayer(template, seg.layerId);
+  const k = seg.props.map((p) => layer?.tracks[p]?.find((x) => x.frame === seg.frame)).find(Boolean);
+  if (!layer || !k) return null;
+  const next = Math.min(...seg.props.flatMap((p) => (layer.tracks[p] ?? []).filter((x) => x.frame > seg.frame).map((x) => x.frame)));
   const setEasing = (e: Easing) =>
     update((t) => {
-      for (const ref of selectedKeys) {
-        const kk = findLayer(t, ref.layerId)?.tracks[ref.prop]?.find((x) => x.frame === ref.frame);
+      for (const p of seg.props) {
+        const kk = findLayer(t, seg.layerId)?.tracks[p]?.find((x) => x.frame === seg.frame);
         if (kk) kk.easing = e;
       }
     });
   const bez = k.easing.type === 'bezier' ? k.easing : { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
   return (
-    <Section title={`Keyframe${selectedKeys.length > 1 ? `s (${selectedKeys.length})` : ''} · frame ${k.frame}`}>
-      <div className="row">
-        <span className="prop-label">Easing</span>
-        <select
-          value={k.easing.type}
-          onChange={(e) => {
-            const type = e.target.value as Easing['type'];
-            setEasing(type === 'bezier' ? { type, ...bez } : ({ type } as Easing));
-          }}
-        >
-          {EASINGS.map((e) => (
-            <option key={e.value} value={e.value}>
-              {e.label}
-            </option>
-          ))}
-        </select>
+    <Section title={`Easing · ${layer.name} · ${seg.props.map((p) => PROP_LABELS[p]).join(', ')}`}>
+      <p className="hint">
+        From frame {seg.frame} to {Number.isFinite(next) ? next : '…'}
+      </p>
+      <div className="easing-picks">
+        {EASINGS.map((e) => (
+          <button key={e.value} className={k.easing.type === e.value ? 'on' : ''} title={e.label} onClick={() => setEasing(e.value === 'bezier' ? { type: 'bezier', ...bez } : ({ type: e.value } as Easing))}>
+            <EasingCurve easing={e.value === 'bezier' ? { type: 'bezier', ...bez } : ({ type: e.value } as Easing)} size={44} />
+            <span>{e.label}</span>
+          </button>
+        ))}
       </div>
       <div className="easing-box">
         <EasingCurve easing={k.easing} />
         {k.easing.type === 'bezier' && (
           <div className="bez-grid">
             {(['x1', 'y1', 'x2', 'y2'] as const).map((c) => (
-              <NumberField
-                key={c}
-                label={c}
-                value={bez[c]}
-                step={0.01}
-                precision={2}
-                display={1}
-                onChange={(v) =>
-                  setEasing({
-                    type: 'bezier',
-                    ...bez,
-                    [c]: c.startsWith('x') ? Math.min(1, Math.max(0, v)) : v,
-                  })
-                }
-              />
+              <NumberField key={c} label={c} value={bez[c]} step={0.01} precision={2} display={1} onChange={(v) => setEasing({ type: 'bezier', ...bez, [c]: c.startsWith('x') ? Math.min(1, Math.max(0, v)) : v })} />
             ))}
           </div>
         )}
       </div>
-      <p className="hint">The curve applies to the segment leaving this keyframe.</p>
     </Section>
   );
 }
@@ -1440,7 +1403,7 @@ function TemplateInspector({ template }: { template: Template }) {
 }
 
 export function Inspector() {
-  const { template, selected } = useDesigner();
+  const { template, selected, selectedSegment } = useDesigner();
   const editSafe = useGuidesView((s) => s.editSafe);
   const project = useApp((s) => s.project);
   if (editSafe && project)
@@ -1460,8 +1423,9 @@ export function Inspector() {
   const layer = selected.length === 1 ? findLayer(template, selected[0]) : undefined;
   return (
     <div className="inspector">
-      <KeyframeInspector />
-      {layer ? (
+      {selectedSegment ? (
+        <SegmentInspector />
+      ) : layer ? (
         <LayerInspector layer={layer} />
       ) : selected.length > 1 ? (
         <Section title="Selection">

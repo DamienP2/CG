@@ -85,7 +85,9 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       if (!d || !st.template) return;
       let dx = (e.clientX - d.startX) / scale;
       let dy = (e.clientY - d.startY) / scale;
-      const snap = e.shiftKey ? 10 : 1;
+      // Shift while moving: one axis only, the one moved the most.
+      const axis = d.mode === 'move' && e.shiftKey ? (Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y') : null;
+      const snap = e.shiftKey && d.mode !== 'move' ? 10 : 1;
       const r = (v: number) => Math.round(v / snap) * snap;
       // Snap the box's edges (and centre when moving) to the guides, edges and areas.
       const first = Object.values(d.start)[0];
@@ -104,6 +106,8 @@ export function Stage({ project: _project, size, showZones, background }: { proj
           if (d.mode.includes('n')) dy += snapShift([ny], ty, th);
         }
       }
+      if (axis === 'x') dy = 0;
+      if (axis === 'y') dx = 0;
       st.update((t) => {
         for (const [id, s] of Object.entries(d.start)) {
           const l = findLayer(t, id);
@@ -182,12 +186,19 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
       <div className={`stage-frame bg-${background}`} onPointerDown={(e) => e.stopPropagation()}>
         <div ref={sceneRef} onPointerDown={onPointerDown} style={{ position: 'relative' }}>
-          <Viewport width={project.width} height={project.height} scale={scale}>
+          <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
             <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} widgetState={(id) => widgetState[id]} fps={fps}>
               <Scene template={template} frame={frame} data={data} interactive />
             </LiveTime>
           </Viewport>
+          {/* What is outside the picture still shows, greyed (it is cut on air). */}
+          <div className="stage-outside" aria-hidden>
+            <i style={{ left: -5000, top: -5000, width: 10000 + project.width * scale, height: 5000 }} />
+            <i style={{ left: -5000, top: project.height * scale, width: 10000 + project.width * scale, height: 5000 }} />
+            <i style={{ left: -5000, top: 0, width: 5000, height: project.height * scale }} />
+            <i style={{ left: project.width * scale, top: 0, width: 5000, height: project.height * scale }} />
+          </div>
           <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
           {showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {boxes.map((b) => (

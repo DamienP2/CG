@@ -307,6 +307,31 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     );
   };
 
+  /** The stretches between two keyframes: a click edits their easing. */
+  const segments = (layer: Layer, props: Prop[]) => {
+    const starts = new Map<number, number>();
+    for (const p of props) {
+      const ks = [...(layer.tracks[p] ?? [])].sort((x, y) => x.frame - y.frame);
+      for (let i = 0; i + 1 < ks.length; i++) starts.set(ks[i].frame, Math.max(starts.get(ks[i].frame) ?? 0, ks[i + 1].frame));
+    }
+    const seg = st.selectedSegment;
+    return [...starts].map(([from, to]) => {
+      const on = !!seg && seg.layerId === layer.id && seg.frame === from && seg.props.some((p) => props.includes(p));
+      return (
+        <div
+          key={`seg-${from}`}
+          className={`kf-seg ${on ? 'sel' : ''}`}
+          style={{ left: from * zoom + 6, width: Math.max(0, (to - from) * zoom - 12) }}
+          title="Click: easing of this stretch"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            st.selectSegment({ layerId: layer.id, props: props.filter((p) => layer.tracks[p]?.some((k) => k.frame === from)), frame: from });
+          }}
+        />
+      );
+    });
+  };
+
   const body: React.ReactNode[] = [];
   const labels: React.ReactNode[] = [];
   const track = (layer: Layer, props: Prop[]) => {
@@ -318,6 +343,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     return (
       <>
         {b > a && <div className="tl-span" style={{ left: a * zoom, width: (b - a) * zoom }} />}
+        {segments(layer, props)}
         {keys.map(({ p, k }) => diamond({ layerId: layer.id, prop: p, frame: k.frame }, k))}
       </>
     );

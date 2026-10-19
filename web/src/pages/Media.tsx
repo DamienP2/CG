@@ -2,6 +2,7 @@ import { Check, Copy, Download, File, FileAudio, Film, Image as ImageIcon, Searc
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 import { confirmDialog } from '../ui/dialogs';
+import { loadFonts, useFonts } from '../engine/fonts';
 
 type Kind = MediaFile['kind'];
 
@@ -13,6 +14,79 @@ const KINDS: { kind: Kind | 'all'; label: string; icon: typeof File }[] = [
   { kind: 'font', label: 'Fonts', icon: Type },
   { kind: 'other', label: 'Other', icon: File },
 ];
+
+const FONT_FILE = /\.(ttf|otf|woff2?|ttc)$/i;
+
+/** Adds fonts to the server (shared by every project). */
+async function uploadFonts(files: File[], toast: (m: string, k?: 'info' | 'error') => void) {
+  for (const file of files) {
+    const name = file.name.replace(/[^A-Za-z0-9._-]/g, '_');
+    try {
+      const res = await fetch(`/api/fonts/${encodeURIComponent(name)}`, { method: 'PUT', body: file, credentials: 'same-origin' });
+      if (!res.ok) throw new Error(await res.text());
+      toast(`Font ${file.name} added`, 'info');
+    } catch (e) {
+      toast(`${file.name}: ${(e as Error).message}`, 'error');
+    }
+  }
+  await loadFonts();
+}
+
+/** The fonts of the server: uploaded ones (removable), built in, installed on the machine. */
+function FontsPanel({ canEdit }: { canEdit: boolean }) {
+  const families = useFonts((s) => s.families);
+  const toast = useApp((s) => s.toast);
+  const groups: [string, string, typeof families][] = [
+    ['Uploaded', 'Added here, for every project', families.filter((f) => f.source === 'uploaded')],
+    ['Built in', 'Shipped with Pulse CG', families.filter((f) => f.source === 'bundled')],
+    ['Server', 'Installed on the machine', families.filter((f) => f.source === 'system')],
+  ];
+  const remove = async (file: string, family: string) => {
+    if (!(await confirmDialog({ title: `Remove ${family} (${file})?`, message: 'Texts using it fall back to Inter.', confirm: 'Remove', danger: true }))) return;
+    try {
+      await api('DELETE', `/api/fonts/${encodeURIComponent(file)}`);
+      await loadFonts();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
+  return (
+    <div className="fonts-panel">
+      {canEdit && (
+        <label className="btn small fonts-add">
+          <Upload size={13} /> Add fonts (.ttf, .otf, .woff)
+          <input type="file" multiple hidden accept=".ttf,.otf,.woff,.woff2,.ttc" onChange={(e) => e.target.files && void uploadFonts([...e.target.files], toast)} />
+        </label>
+      )}
+      {groups
+        .filter(([, , l]) => l.length)
+        .map(([title, hint, list]) => (
+          <section key={title} className="fonts-group">
+            <h3>
+              {title} <span className="muted small">{hint}</span>
+            </h3>
+            <div className="fonts-list">
+              {list.map((f) => (
+                <div key={f.family} className="font-row">
+                  <span className="font-sample" style={{ fontFamily: `"${f.family}"` }}>
+                    {f.family}
+                  </span>
+                  <span className="muted small">{f.weights.join(' · ')}</span>
+                  <span className="spacer" />
+                  {canEdit &&
+                    (f.files ?? []).map((file) => (
+                      <button key={file} className="icon-btn danger" title={`Remove ${file}`} onClick={() => void remove(file, f.family)}>
+                        <Trash2 size={13} />
+                      </button>
+                    ))}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+    </div>
+  );
+}
 
 const ICON: Record<Kind, typeof File> = { image: ImageIcon, video: Film, audio: FileAudio, font: Type, other: File };
 
@@ -37,6 +111,10 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const canUpload = !!user && user.role !== 'viewer';
   const canDelete = can.design(user);
   const [files, setFiles] = useState<MediaFile[] | null>(null);
+  const families = useFonts((s) => s.families);
+  useEffect(() => {
+    if (!families.length) void loadFonts();
+  }, [families.length]);
   const [kind, setKind] = useState<Kind | 'all'>('all');
   const [query, setQuery] = useState('');
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -58,7 +136,13 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   }, [url]);
 
   const upload = async (list: FileList | File[]) => {
-    const todo = [...list];
+    // Fonts are global: they go to the server's fonts, never to a project.
+    const fonts = [...list].filter((f) => FONT_FILE.test(f.name));
+    if (fonts.length) {
+      if (projectId) toast('Fonts are shared by every project: add them in Assets (top bar).', 'error');
+      else await uploadFonts(fonts, toast);
+    }
+    const todo = [...list].filter((f) => !FONT_FILE.test(f.name));
     if (!todo.length) return;
     const existing = new Set(files?.map((f) => f.name));
     const replaced = todo.filter((f) => existing.has(mediaName(f.name))).map((f) => mediaName(f.name));
@@ -131,9 +215,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       <div className="library-inner">
         <div className="settings-head">
           <div>
-            <h1>{projectId ? 'Media' : 'Shared media'}</h1>
+            <h1>{projectId ? 'Assets' : 'Shared assets'}</h1>
             <p className="muted">
-              {projectId ? 'Images, videos and files of this project.' : 'Images, videos and files every project can use.'} {files ? `${files.length} file${files.length === 1 ? '' : 's'} · ${formatSize(total)}` : ''}
+              {projectId ? 'Images, videos and files of this project. Fonts are shared: see Assets in the top bar.' : 'Images, videos, files and fonts every project can use.'} {files ? `${files.length} file${files.length === 1 ? '' : 's'} · ${formatSize(total)}` : ''}
             </p>
           </div>
           <div className="spacer" />
@@ -147,9 +231,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
 
         <div className="media-toolbar">
           <div className="seg">
-            {KINDS.filter((k) => k.kind === 'all' || counts[k.kind]).map(({ kind: k, label, icon: Icon }) => (
+            {KINDS.filter((k) => k.kind === 'all' || (k.kind === 'font' ? !projectId : counts[k.kind])).map(({ kind: k, label, icon: Icon }) => (
               <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>
-                <Icon size={13} /> {label} <span className="count">{counts[k] ?? 0}</span>
+                <Icon size={13} /> {label} <span className="count">{k === 'font' ? families.length : (counts[k] ?? 0)}</span>
               </button>
             ))}
           </div>
@@ -182,7 +266,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
           </div>
         )}
 
-        {files && files.length === 0 ? (
+        {kind === 'font' && !projectId ? (
+          <FontsPanel canEdit={canDelete} />
+        ) : files && files.length === 0 ? (
           <label className={`media-empty ${canUpload ? '' : 'static'}`}>
             <UploadCloud size={36} />
             <strong>No media yet</strong>
@@ -239,7 +325,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       {dragging && (
         <div className="drop-overlay">
           <UploadCloud size={42} />
-          <strong>Drop to upload to {projectId ? 'this project' : 'the shared media'}</strong>
+          <strong>Drop to upload to {projectId ? 'this project' : 'the shared assets'}</strong>
         </div>
       )}
     </div>

@@ -7,6 +7,8 @@ export interface FontFamily {
   family: string;
   weights: number[];
   source: 'bundled' | 'uploaded' | 'system';
+  /** Uploaded fonts: their files (to remove them in Assets). */
+  files?: string[];
 }
 
 export const useFonts = create<{ families: FontFamily[]; /** Bumped when a font finishes loading (text measurements change). */ ready: number }>(() => ({ families: [], ready: 0 }));
@@ -25,11 +27,7 @@ export async function loadFonts(): Promise<void> {
     const rules = families
       // Inter is declared statically in styles.css.
       .filter((f) => f.family !== 'Inter')
-      .flatMap((f) =>
-        f.weights.map(
-          (w) => `@font-face{font-family:"${cssEsc(f.family)}";font-weight:${w};font-style:normal;font-display:block;src:url("/api/fonts/file/${encodeURIComponent(f.family)}/${w}")}`,
-        ),
-      )
+      .flatMap((f) => f.weights.map((w) => `@font-face{font-family:"${cssEsc(f.family)}";font-weight:${w};font-style:normal;font-display:block;src:url("/api/fonts/file/${encodeURIComponent(f.family)}/${w}")}`))
       .join('\n');
     let style = document.getElementById('pcg-fonts') as HTMLStyleElement | null;
     if (!style) {

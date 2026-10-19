@@ -512,7 +512,7 @@ export function Projects() {
                     {link('designer', <PenTool size={15} />, 'Designer', design)}
                     {link('operator', <Radio size={15} />, 'Operator', can.operate(user))}
                     {link('data', <Database size={15} />, 'Data', design)}
-                    {link('media', <Images size={15} />, 'Media', can.operate(user))}
+                    {link('media', <Images size={15} />, 'Assets', can.operate(user))}
                     {link('settings', <SettingsIcon size={15} />, 'Settings', design)}
                   </div>
                 </div>

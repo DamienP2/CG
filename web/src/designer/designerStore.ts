@@ -27,6 +27,8 @@ interface DesignerStore {
   loop: boolean;
   selected: string[];
   selectedKeys: KeyRef[];
+  /** The segment between two keyframes whose easing is edited: its start keyframe, in each property of the row. */
+  selectedSegment: { layerId: string; props: Prop[]; frame: number } | null;
   expanded: Record<string, boolean>;
   zoom: number;
   previewData: Data;
@@ -52,6 +54,7 @@ interface DesignerStore {
   setPlaying: (p: boolean) => void;
   select: (ids: string[]) => void;
   selectKeys: (keys: KeyRef[]) => void;
+  selectSegment: (s: DesignerStore['selectedSegment']) => void;
   toggleExpanded: (id: string) => void;
   set: (partial: Partial<DesignerStore>) => void;
   controlWidget: (layerId: string, c: 'start' | 'pause' | 'reset' | 'playhead') => void;
@@ -84,6 +87,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   loop: false,
   selected: [],
   selectedKeys: [],
+  selectedSegment: null,
   expanded: {},
   zoom: 8,
   previewData: {},
@@ -103,6 +107,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
       playing: false,
       selected: [],
       selectedKeys: [],
+      selectedSegment: null,
       previewData: t ? defaultData(t) : {},
       lastCoalesce: null,
       widgetRun: {},
@@ -170,8 +175,9 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
     if (playing && t && get().frame >= t.duration - 1e-3) set({ frame: 0 });
     set({ playing });
   },
-  select: (selected) => set({ selected }),
-  selectKeys: (selectedKeys) => set({ selectedKeys }),
+  select: (selected) => set({ selected, selectedSegment: null }),
+  selectKeys: (selectedKeys) => set({ selectedKeys, selectedSegment: null }),
+  selectSegment: (selectedSegment) => set({ selectedSegment, selectedKeys: [] }),
   toggleExpanded: (id) => set({ expanded: { ...get().expanded, [id]: !get().expanded[id] } }),
   set: (partial) => set(partial),
 

@@ -99,7 +99,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/fonts/file/{family}/{weight}", get(font_file))
         .route(
             "/api/fonts/{name}",
-            put(upload_font).layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+            put(upload_font)
+                .delete(delete_font)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
         )
         .route("/api/assets", get(list_assets))
         .route("/api/assets/{name}", put(put_asset))
@@ -1532,6 +1534,24 @@ async fn upload_font(
     Ok(Json(serde_json::json!({ "name": name })))
 }
 
+/// Removes an uploaded font file.
+async fn delete_font(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(name): Path<String>,
+) -> ApiResult<StatusCode> {
+    require(matches!(me.role, Role::Admin | Role::Designer))?;
+    if !valid_asset_name(&name) {
+        return Err(bad("invalid font name"));
+    }
+    let path = s.assets_dir().join("fonts").join(&name);
+    tokio::fs::remove_file(&path)
+        .await
+        .map_err(|_| not_found("font"))?;
+    cg_render::fonts_changed();
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn ttf_magic(b: &[u8]) -> Option<()> {
     matches!(
         b.get(..4)?,
@@ -1708,7 +1728,8 @@ async fn qr(Query(q): Query<QrQuery>) -> ApiResult<Json<serde_json::Value>> {
     if q.data.len() > 2048 {
         return Err(bad("too long for a QR code"));
     }
-    let (size, modules) = cg_render::qr_modules_ec(&q.data, q.ec.unwrap_or_default()).ok_or_else(|| bad("cannot encode"))?;
+    let (size, modules) = cg_render::qr_modules_ec(&q.data, q.ec.unwrap_or_default())
+        .ok_or_else(|| bad("cannot encode"))?;
     let modules: String = modules.iter().map(|d| if *d { '1' } else { '0' }).collect();
     Ok(Json(
         serde_json::json!({ "size": size, "modules": modules }),

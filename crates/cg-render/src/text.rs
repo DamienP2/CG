@@ -50,6 +50,9 @@ pub struct FontFamily {
     pub weights: Vec<u16>,
     /// "bundled", "uploaded" or "system".
     pub source: &'static str,
+    /// Uploaded fonts: their file names (to remove them).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
 }
 
 /// Bumped when fonts are added: renderers reload their font database.
@@ -109,9 +112,19 @@ impl FontStore {
                     family: name.clone(),
                     weights: Vec::new(),
                     source,
+                    files: Vec::new(),
                 });
             if !e.weights.contains(&face.weight.0) {
                 e.weights.push(face.weight.0);
+            }
+            if let fontdb::Source::File(p) | fontdb::Source::SharedFile(p, _) = &face.source {
+                if source == "uploaded" {
+                    if let Some(n) = p.file_name().and_then(|n| n.to_str()) {
+                        if !e.files.iter().any(|f| f == n) {
+                            e.files.push(n.to_string());
+                        }
+                    }
+                }
             }
         }
         let mut out: Vec<FontFamily> = map.into_values().collect();
