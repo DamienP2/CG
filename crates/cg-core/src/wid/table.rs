@@ -584,7 +584,7 @@ pub fn fmt_num(s: &str, f: &str) -> String {
                 let b = digits.as_bytes();
                 let mut o = String::new();
                 for (i, ch) in b.iter().enumerate() {
-                    if i > 0 && (b.len() - i) % 3 == 0 {
+                    if i > 0 && (b.len() - i).is_multiple_of(3) {
                         o.push(' ');
                     }
                     o.push(*ch as char);

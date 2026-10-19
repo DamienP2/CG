@@ -957,11 +957,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                 let tw = tw2(&txt, lfs);
                 let fits = hh >= lfs * 1.35;
                 let is_top = grouped
-                    || (v >= 0.0
-                        && (0..ns)
-                            .filter(|k| tv[i][*k].unwrap_or(0.0) > 0.0)
-                            .next_back()
-                            == Some(j));
+                    || (v >= 0.0 && (0..ns).rfind(|k| tv[i][*k].unwrap_or(0.0) > 0.0) == Some(j));
                 let mut inside = l.pos == LabelPos::Inside || !grouped;
                 if inside && !fits {
                     if l.overlap == Overlap::Offset && is_top {
@@ -1339,7 +1335,8 @@ fn pie(
         }
     }
     let total_t: f32 = slices.iter().map(|s| s.target).sum();
-    out.pie_zero = !(total_t > 0.0);
+    // NaN counts as zero.
+    out.pie_zero = total_t.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater);
     match pc.sort {
         PieSort::Desc => slices.sort_by(|a, b| {
             b.target

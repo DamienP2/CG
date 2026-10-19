@@ -1273,8 +1273,10 @@ mod tests {
 
     #[test]
     fn reveal_steps_and_highlight() {
-        let mut c = Config::default();
-        c.reveal = RevealMode::Series;
+        let c = Config {
+            reveal: RevealMode::Series,
+            ..Default::default()
+        };
         let l = layer(c);
         let mut st = State::default();
         let data = Data::new();

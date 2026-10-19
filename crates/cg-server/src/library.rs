@@ -216,7 +216,7 @@ impl Library {
             .filter_map(|b| serde_json::from_slice::<VersionHead>(&b).ok())
             .map(|h| h.info)
             .collect();
-        out.sort_by(|a, b| b.at.cmp(&a.at));
+        out.sort_by_key(|v| std::cmp::Reverse(v.at));
         out
     }
 

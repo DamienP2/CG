@@ -458,7 +458,7 @@ pub struct Structure {
 }
 
 pub fn structure(size: usize, ecl: Ecl) -> Option<Structure> {
-    if size < 21 || (size - 17) % 4 != 0 {
+    if size < 21 || !(size - 17).is_multiple_of(4) {
         return None;
     }
     let v = (size - 17) / 4;

@@ -4,6 +4,9 @@
 //! the scene evaluation is independent from the rasteriser so a GPU backend
 //! (wgpu) can be added behind the same `Renderer` API.
 
+// Drawing functions take the canvas, the box, the style and the time: many arguments by nature.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 mod text;
 mod wid;
 

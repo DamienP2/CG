@@ -343,9 +343,9 @@ pub fn group_before(f: &Fmt, n: usize, i: usize) -> bool {
     }
     let from_right = n - i;
     if l.indian {
-        from_right == 3 || (from_right > 3 && (from_right - 3) % 2 == 0)
+        from_right == 3 || (from_right > 3 && (from_right - 3).is_multiple_of(2))
     } else {
-        from_right % 3 == 0
+        from_right.is_multiple_of(3)
     }
 }
 
@@ -588,8 +588,7 @@ pub fn color_for(c: &Config, v: f64, anim: Option<&Anim>, now_ms: i64) -> Option
                 .collect();
             t.sort_by(|a, b| a.0.total_cmp(&b.0));
             t.iter()
-                .filter(|(n, _)| v >= *n)
-                .last()
+                .rfind(|(n, _)| v >= *n)
                 .map(|(_, col)| col.to_string())
         }
         ColorMode::Trend => {

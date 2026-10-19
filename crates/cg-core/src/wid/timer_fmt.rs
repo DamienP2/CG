@@ -208,10 +208,7 @@ pub fn dur_segs(ms: f64, fmt: &str, fps: f64, round: Rounding, o: DigitOpts) -> 
         .collect();
     // Hide the leading zero units (days, hours), never minutes:seconds.
     if o.trim || o.hours_auto {
-        loop {
-            let Some(i) = parts.iter().position(|p| matches!(p.0, Tok::T(_))) else {
-                break;
-            };
+        while let Some(i) = parts.iter().position(|p| matches!(p.0, Tok::T(_))) {
             let Tok::T(x) = parts[i].0 else { break };
             if !(is_day(x) || is_hour(x)) || parts[i].1 != 0 {
                 break;

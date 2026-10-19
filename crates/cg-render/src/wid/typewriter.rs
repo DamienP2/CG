@@ -329,8 +329,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         let (glyphs, _) = tx::glyph_run(&chain, &text, size, ls, 0.0);
         // Grapheme of each glyph.
         let mut owner = Vec::new();
-        let mut gi = a;
-        for gr in &g[a..b] {
+        for (gi, gr) in g[a..b].iter().enumerate().map(|(k, gr)| (a + k, gr)) {
             if !gr.contains('\n') && !gr.contains('\r') {
                 for ch in gr.chars() {
                     if !tx::invisible(ch) {
@@ -338,7 +337,6 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                     }
                 }
             }
-            gi += 1;
         }
         // Cursor after the last shown grapheme (at the start of a line after a line break).
         let after_break = vis.shown == 0 || g.get(vis.shown - 1).is_some_and(|x| x.contains('\n'));
