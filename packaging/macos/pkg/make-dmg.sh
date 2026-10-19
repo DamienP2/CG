@@ -14,6 +14,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# hdiutil fails now and then with "Resource busy" (code 16) while macOS
+# still scans or indexes the image: try again a few times.
+retry() {
+  n=0
+  until "$@"; do
+    n=$((n + 1))
+    [ "$n" -ge 5 ] && return 1
+    echo "retrying ($n): $*" >&2
+    sleep $((n * 3))
+  done
+}
+
 # Icon from the artwork.
 mkdir -p "$WORK/icon.iconset"
 for s in 16 32 128 256 512; do
@@ -29,13 +41,13 @@ cp "$PKG" "$STAGE/$NAME"
 # Custom Finder icon on the package file.
 osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSWorkspace.sharedWorkspace.setIconForFileOptions(\$.NSImage.alloc.initWithContentsOfFile('$WORK/icon.icns'), '$STAGE/$NAME', 0)" >/dev/null
 
-hdiutil create -quiet -fs HFS+ -volname "Strata $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
+retry hdiutil create -ov -quiet -fs HFS+ -volname "Strata $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
 mkdir -p "$WORK/mnt"
-hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$WORK/mnt" "$WORK/rw.dmg"
+retry hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$WORK/mnt" "$WORK/rw.dmg"
 cp "$WORK/icon.icns" "$WORK/mnt/.VolumeIcon.icns"
 SetFile -a C "$WORK/mnt" 2>/dev/null || xattr -wx com.apple.FinderInfo "0000000000000000040000000000000000000000000000000000000000000000" "$WORK/mnt"
-hdiutil detach -quiet "$WORK/mnt"
+retry hdiutil detach -quiet "$WORK/mnt" || retry hdiutil detach -force -quiet "$WORK/mnt"
 rm -f "$OUT"
-hdiutil convert -quiet "$WORK/rw.dmg" -format UDZO -o "$OUT"
+retry hdiutil convert -ov -quiet "$WORK/rw.dmg" -format UDZO -o "$OUT"
 echo "built $OUT"
 exit 0
