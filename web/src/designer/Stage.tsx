@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { settingDefaults } from '../engine/settings';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { hasLiveWidgets, Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, num, propValue } from '../engine/evaluate';
@@ -28,7 +29,8 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   const project = { ..._project, width: size.width, height: size.height };
   const { template, frame, previewData, selected, format } = useDesigner();
   // Bound fields show their live value, like on air.
-  const data = useBoundData(template, previewData);
+  const bound = useBoundData(template, previewData);
+  const data = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);

@@ -798,6 +798,8 @@ export default defineWidget({
       <>
         <Section id="map-base" title="Base map">
           <Seg
+            expose="style"
+            exposeValue={k.style}
             label="Style"
             value={k.style}
             onChange={(sv) =>
@@ -975,12 +977,12 @@ export default defineWidget({
                 add={() => ({ v: 0, color: '#ffffff' })}
                 addLabel="Stop"
               />
-              <Row label="Unit">
+              <Row expose="zones.unit" exposeValue={k.zones.unit} label="Unit">
                 <input value={k.zones.unit} onChange={(e) => edit((l) => void (l.zones = { ...cfg(l).zones, unit: e.target.value }), 'zu')} onKeyDown={(e) => e.stopPropagation()} />
               </Row>
             </>
           )}
-          <Row label="Title">
+          <Row expose="zones.title" exposeValue={k.zones.title} label="Title">
             <input value={k.zones.title} onChange={(e) => edit((l) => void (l.zones = { ...cfg(l).zones, title: e.target.value }), 'zt')} onKeyDown={(e) => e.stopPropagation()} />
           </Row>
           <Range label="Opacity" path="zones.opacity" value={k.zones.opacity} min={0.2} max={1} step={0.05} />

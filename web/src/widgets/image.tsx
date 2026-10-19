@@ -348,12 +348,19 @@ export default defineWidget({
       <>
         <Section id="image-source" title="Picture">
           <PictureRow />
-          <Row label="Fallback">
+          <Row expose="fallback" exposeValue={k.fallback} label="Fallback">
             <AssetPicker value={k.fallback} title="Choose the fallback picture" placeholder="None" onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
           </Row>
         </Section>
         <Section id="image-fit" title="Fit & crop">
           <Seg
+            expose="fit"
+            exposeValue={l.fit}
+            exposeOptions={[
+              ['contain', 'Contain'],
+              ['cover', 'Cover'],
+              ['stretch', 'Stretch'],
+            ]}
             label="Fit"
             value={fit}
             onChange={(v) =>
@@ -372,7 +379,7 @@ export default defineWidget({
           />
           {fit === 'tile' && <Num label="Tile size" path="tileScale" value={k.tileScale} min={5} max={400} unit="%" />}
           {fit === 'cover' && !missing && st.s === 'ok' && (
-            <Row label="Focal point">
+            <Row expose={['focal.x', 'focal.y']} exposeValue={{ 'focal.x': k.focal.x, 'focal.y': k.focal.y }} label="Focal point">
               <Thumb src={src} size={st.size} layer={l} edit={ed} />
             </Row>
           )}
@@ -382,7 +389,17 @@ export default defineWidget({
               {cropping && (
                 <>
                   {(['l', 'r', 't', 'b'] as const).map((s) => (
-                    <Num key={s} label={{ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s]} value={Math.round(cropOf(l)[s] * 100)} min={0} max={95} unit="%" onChange={(v) => ed((x) => void (x.crop = { ...cropOf(x), [s]: v / 100 }), `crop-${layer.id}`)} />
+                    <Num
+                      expose={`crop.${s}`}
+                      exposeValue={cropOf(l)[s]}
+                      key={s}
+                      label={{ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s]}
+                      value={Math.round(cropOf(l)[s] * 100)}
+                      min={0}
+                      max={95}
+                      unit="%"
+                      onChange={(v) => ed((x) => void (x.crop = { ...cropOf(x), [s]: v / 100 }), `crop-${layer.id}`)}
+                    />
                   ))}
                   <Btns list={[{ label: 'Reset crop', cls: 'ghost', onClick: () => ed((x) => void delete x.crop) }]} />
                 </>
@@ -403,6 +420,8 @@ export default defineWidget({
           />
           {k.mask === 'rounded' && <Num label="Radius" path="radius" value={k.radius} min={0} max={2000} unit="px" />}
           <Toggle
+            expose="props.strokeWidth"
+            exposeValue={num(l.props.strokeWidth as never)}
             label="Stroke"
             value={stroke}
             onChange={(v) =>

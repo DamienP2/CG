@@ -1,6 +1,7 @@
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
 import { Boundary } from '../ui/Boundary';
+import { withSettings } from './settings';
 import { createContext, memo, useContext, useEffect, useReducer, type CSSProperties } from 'react';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
@@ -408,6 +409,8 @@ export function childrenMap(layers: Layer[], includeHidden = false): Map<string 
 
 /** Renders a template at native resolution (the caller scales it). */
 export const Scene = memo(function Scene({ template, frame, data, interactive }: SceneProps) {
+  // Settings exposed to the Operator, set from the data.
+  template = withSettings(template, data);
   const childrenOf = childrenMap(template.layers);
   const hold = holdFrame(template);
   // Text measured by the logic changes when fonts finish loading.

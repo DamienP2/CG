@@ -1025,7 +1025,7 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
 function TeamLogo({ i }: { i: number }) {
   const b = useBound();
   return (
-    <Row label="Picture">
+    <Row expose={`teams.${i}.logo`} exposeValue={String(getPath(b.obj, `teams.${i}.logo`) ?? '')} label="Picture">
       <AssetPicker value={String(getPath(b.obj, `teams.${i}.logo`) ?? '')} onChange={(v) => b.set(`teams.${i}.logo`, v)} />
     </Row>
   );
@@ -1087,7 +1087,7 @@ export default defineWidget({
     return (
       <>
         <Section id="sb-sport" title="Sport">
-          <Select label="Preset" value={k.preset} onChange={(v) => edit((l) => applyPreset(l as never, v as Sport))} options={(Object.keys(PRESETS) as Sport[]).map((sp) => [sp, PRESETS[sp].name] as const)} />
+          <Select expose="preset" exposeValue={k.preset} label="Preset" value={k.preset} onChange={(v) => edit((l) => applyPreset(l as never, v as Sport))} options={(Object.keys(PRESETS) as Sport[]).map((sp) => [sp, PRESETS[sp].name] as const)} />
           <Note>
             <b>Rules:</b> {pr.rules} Changing the preset sets its fields and clock; the match on air keeps its state (Reset match in the Operator).
           </Note>

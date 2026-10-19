@@ -49,8 +49,8 @@ export function ZonesDialog({ onClose }: { onClose: () => void }) {
           </button>
         </header>
         <p className="hint">
-          A zone is an area of the screen that shows <strong>one template at a time</strong> (lower third, bug, ticker, full screen…). Several zones can be on air together. Taking a template in a busy zone first plays
-          the out animation of the graphic on air (<em>sequential</em>), or replaces it at once (<em>cut</em>). The top of the list is in front.
+          A zone is an area of the screen that shows <strong>one template at a time</strong> (lower third, bug, ticker, full screen…). Several zones can be on air together. Taking a template in a busy zone first plays the out animation of the graphic on air (<em>sequential</em>), or replaces it at
+          once (<em>cut</em>). The top of the list is in front.
         </p>
         <div className="zone-list">
           {zones.map((z, i) => (

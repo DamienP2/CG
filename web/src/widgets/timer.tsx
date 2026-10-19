@@ -244,7 +244,7 @@ function TimerView({ layer, r, w, h, data, time, state, fps, designer }: { layer
 
 // ------------------------------------------------------------ inspector --
 
-function DurField({ label, value, onChange, min = 0 }: { label: string; value: number; onChange: (ms: number) => void; min?: number }) {
+function DurField({ label, value, onChange, min = 0, expose }: { label: string; value: number; onChange: (ms: number) => void; min?: number; expose?: string }) {
   const toast = useApp((s) => s.toast);
   const [txt, setTxt] = useState<string | null>(null);
   const commit = () => {
@@ -255,7 +255,7 @@ function DurField({ label, value, onChange, min = 0 }: { label: string; value: n
     setTxt(null);
   };
   return (
-    <Row label={label}>
+    <Row label={label} expose={expose} exposeValue={value}>
       <input style={{ fontFamily: 'var(--mono, monospace)' }} value={txt ?? T.plainDur(value)} placeholder="mm:ss" onChange={(ev) => setTxt(ev.target.value)} onBlur={commit} onKeyDown={(ev) => (ev.stopPropagation(), ev.key === 'Enter' && commit())} />
     </Row>
   );
@@ -284,6 +284,8 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
     <>
       <Section id="timer-main" title="Timer">
         <Seg
+          expose="timerMode"
+          exposeValue={mode}
           label="Mode"
           value={mode}
           options={MODES}
@@ -301,7 +303,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           }
         />
         <Note>Changing the mode keeps the style and resets the format. The layer name is how the API, Stream Deck and GPI reach this timer.</Note>
-        <Row label="Preset">
+        <Row expose="format" exposeValue={layer.format} label="Preset">
           <select
             value={list.some((p) => p[0] === layer.format) ? layer.format : '__custom'}
             onChange={(ev) => {
@@ -367,6 +369,9 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
       {!T.timed(e) && (
         <Section id="timer-zone" title="Time zone">
           <Seg
+            expose="timezone"
+            exposeValue={(layer as L & Config).timezone ?? ''}
+            exposeOptions={[]}
             label="Zone"
             value={zoneMode}
             options={[
@@ -432,6 +437,8 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           />
           {c.fineUnit === 's' ? <Range label="Fine offset" path="fine" value={0} min={-10} max={10} step={0.1} unit=" s" /> : <Range label="Fine offset" path="fine" value={0} min={-50} max={50} step={1} unit=" fr" />}
           <Toggle
+            expose="cities"
+            exposeValue={c.cities}
             label="Cities"
             value={c.cities}
             text="Several city clocks side by side"
@@ -484,11 +491,11 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
       )}
       {mode === 'stopwatch' && (
         <Section id="timer-sw" title="Stopwatch">
-          <DurField label="Start value" value={c.swStart} onChange={(v) => set('swStart', v)} />
+          <DurField label="Start value" value={c.swStart} onChange={(v) => set('swStart', v)} expose="swStart" />
           <Toggle label="Limit" path="swLimitOn" value={false} text="Stop, continue or restart at a limit" />
           {c.swLimitOn && (
             <>
-              <DurField label="Limit at" value={c.swLimit} min={1000} onChange={(v) => set('swLimit', v)} />
+              <DurField label="Limit at" value={c.swLimit} min={1000} onChange={(v) => set('swLimit', v)} expose="swLimit" />
               <Seg
                 label="At the limit"
                 path="swLimitMode"
@@ -502,6 +509,9 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             </>
           )}
           <Seg
+            expose="format"
+            exposeValue={e.format}
+            exposeOptions={[]}
             label="Precision"
             value={/FF$/.test(e.format) ? 'f' : /SS$/.test(e.format) ? 'h' : /S$/.test(e.format) ? 't' : 's'}
             options={[
@@ -537,7 +547,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             ]}
           />
           {c.cdTarget === 'duration' ? (
-            <DurField label="Duration" value={c.cdDuration} min={1000} onChange={(v) => set('cdDuration', v)} />
+            <DurField label="Duration" value={c.cdDuration} min={1000} onChange={(v) => set('cdDuration', v)} expose="cdDuration" />
           ) : (
             <>
               <Text label="Date" path="tDate" value="" placeholder="today (YYYY-MM-DD)" />

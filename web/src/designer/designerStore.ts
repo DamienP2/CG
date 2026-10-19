@@ -1,3 +1,4 @@
+import { syncSettingDefaults } from '../engine/settings';
 import { widgetOf } from '../widgets';
 import { api, useApp } from '../store';
 import { create } from 'zustand';
@@ -121,6 +122,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
     const edited = view(base, format)!;
     recipe(edited);
     const next = format === MAIN_FORMAT ? edited : fromFormatView(base, edited, format);
+    syncSettingDefaults(next);
     const now = performance.now();
     const coalesce = coalesceKey && lastCoalesce?.key === coalesceKey && now - lastCoalesce.at < 800;
     set({
@@ -144,6 +146,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
     if (!base || readOnly) return;
     const next = structuredClone(base);
     recipe(next);
+    syncSettingDefaults(next);
     set({ base: next, template: view(next, format), past: [...past.slice(-HISTORY), base], future: [], lastCoalesce: null, edits: get().edits + 1 });
   },
 

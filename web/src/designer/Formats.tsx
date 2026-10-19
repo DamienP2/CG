@@ -186,7 +186,11 @@ export function FormatBar({ project }: { project: Project }) {
             title={`Remove the ${current.name} format from the project`}
             onClick={async () => {
               if (!(await confirmDialog({ title: `Remove the ${current.name} format?`, message: 'Its layouts in every template of the project are deleted.', confirm: 'Remove', danger: true }))) return;
-              await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/formats`, (project.formats ?? []).filter((f) => f.id !== current.id)).catch((e) => toast((e as Error).message, 'error'));
+              await api(
+                'PUT',
+                `/api/projects/${encodeURIComponent(project.id)}/formats`,
+                (project.formats ?? []).filter((f) => f.id !== current.id),
+              ).catch((e) => toast((e as Error).message, 'error'));
               setFormat(MAIN_FORMAT);
             }}
           >

@@ -194,12 +194,7 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
   };
   return (
     <div className="publish">
-      <button
-        className="btn small primary"
-        disabled={busy || readOnly}
-        title={`Not yet in the Operator: ${changed.map((t) => `${t.name}${isNew(t.id) ? ' (new)' : ''}`).join(', ')}`}
-        onClick={publish}
-      >
+      <button className="btn small primary" disabled={busy || readOnly} title={`Not yet in the Operator: ${changed.map((t) => `${t.name}${isNew(t.id) ? ' (new)' : ''}`).join(', ')}`} onClick={publish}>
         <Upload size={13} /> {busy ? 'Publishing…' : `Publish ${changed.length} change${changed.length > 1 ? 's' : ''} to Operator`}
       </button>
     </div>

@@ -255,6 +255,8 @@ impl Renderer {
         for (layer, item) in &state.layers {
             if let Some(t) = project.template(&item.template_id) {
                 let t = t.in_format(format);
+                // Settings the Operator was given (mask, font, logo…).
+                let t = t.with_settings(&item.data);
                 // Only what is inside the zone shows on air.
                 let zone_mask = project
                     .zone_at(*layer)
@@ -323,7 +325,8 @@ impl Renderer {
             .find(|f| f.id == format)
             .map(|f| (f.width, f.height))
             .unwrap_or((project.width, project.height));
-        let template = &*template.in_format(format);
+        let template = template.in_format(format);
+        let template = &*template.with_settings(data);
         let mut pm = Pixmap::new(width.max(1), height.max(1)).expect("valid size");
         let time = TimeCtx {
             now_ms: now_ms(),

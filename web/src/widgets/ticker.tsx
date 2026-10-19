@@ -753,7 +753,7 @@ export default defineWidget({
           {k.sepType === 'symbol' && <Seg label="Symbol" path="sepSymbol" value={k.sepSymbol} options={['●', '◆', '▶', '■', '★', '|', '/']} />}
           {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label="Sep. colour" path="sepColor" value={k.sepColor || '#ffffff'} />}
           {k.sepType === 'image' && (
-            <Row label="Logo">
+            <Row expose="sepImage" exposeValue={k.sepImage} label="Logo">
               <AssetPicker value={k.sepImage} onChange={(v) => set('sepImage', v)} />
             </Row>
           )}

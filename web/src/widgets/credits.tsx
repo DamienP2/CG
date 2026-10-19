@@ -500,7 +500,7 @@ function StyleRows({ label, path, s }: { label: string; path: string; s: St }) {
   const b = useBound();
   return (
     <>
-      <Row label={label}>
+      <Row expose={[`${path}.color`, `${path}.size`]} exposeValue={{ [`${path}.color`]: s.color, [`${path}.size`]: s.size }} label={label}>
         <div style={{ flex: '0 0 112px', minWidth: 0, overflow: 'hidden' }}>
           <ColorField value={parseHex(s.color) ?? [1, 1, 1, 1]} onChange={(c) => b.set(`${path}.color`, toHex(c, c[3] < 1), true)} />
         </div>

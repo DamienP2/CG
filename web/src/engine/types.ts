@@ -100,6 +100,8 @@ export type Layer = LayerKind & {
   props: Partial<Record<Prop, Value>>;
   tracks: Partial<Record<Prop, Keyframe[]>>;
   bindings: Partial<Record<Prop, string>>;
+  /** Settings exposed to the Operator: dotted path in the layer → data field key. */
+  settingBindings?: Record<string, string>;
   /** Per-format changes (9:16…), by format id. */
   overrides?: Record<string, LayerOverride>;
 };
@@ -150,6 +152,8 @@ export interface Field {
   /** Range of a number (slider). */
   min?: number;
   max?: number;
+  /** Choices of an exposed setting (value, label): the Operator picks one. */
+  options?: [string, string][];
 }
 
 /** A data source and a path in its value (`rows[{row}].name`, `items[*].title`…). */

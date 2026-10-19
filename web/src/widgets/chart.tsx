@@ -291,7 +291,7 @@ export default defineWidget({
             {P.ser.map((name, j) => {
               const s = seriesStyle(c, j);
               return (
-                <Row key={j} label={name}>
+                <Row expose={[`series.${j}.color`, `series.${j}.width`]} exposeValue={{ [`series.${j}.color`]: s.color, [`series.${j}.width`]: s.width }} key={j} label={name}>
                   <input type="color" value={s.color.slice(0, 7)} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), color: e.target.value }), `chs-${layer.id}-${j}`)} />
                   {type !== 'columns' && (
                     <>
@@ -343,7 +343,14 @@ export default defineWidget({
             <Toggle label="Others" path="pie.others" value={c.pie.others} text="Group small slices" />
             {c.pie.others && <Range label="Under" path="pie.othersPct" value={c.pie.othersPct} min={1} max={15} step={0.5} unit=" %" />}
             {P.cats.slice(0, 12).map((x, i) => (
-              <ColorPick key={i} label={x.name} value={sliceColor(c, i)} onChange={(v) => edit((l) => void ((l.sliceColors ??= PAL.slice(0, Math.max(i + 1, P.cats.length)).map((_, k) => sliceColor(c, k)))[i] = v), `chsl-${layer.id}-${i}`)} />
+              <ColorPick
+                expose={`sliceColors.${i}`}
+                exposeValue={sliceColor(c, i)}
+                key={i}
+                label={x.name}
+                value={sliceColor(c, i)}
+                onChange={(v) => edit((l) => void ((l.sliceColors ??= PAL.slice(0, Math.max(i + 1, P.cats.length)).map((_, k) => sliceColor(c, k)))[i] = v), `chsl-${layer.id}-${i}`)}
+              />
             ))}
           </Section>
         )}

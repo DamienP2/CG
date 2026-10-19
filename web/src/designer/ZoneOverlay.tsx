@@ -80,11 +80,7 @@ export function ZoneOverlay({ zones, format, width, height, scale, current, only
           if (whole && !mine && active !== z.id) return null;
           const editing = active === z.id || mine;
           return (
-            <div
-              key={z.id}
-              className={`zone-box ${mine ? 'mine' : ''} ${active === z.id ? 'active' : ''}`}
-              style={{ left: area.x * W, top: area.y * H, width: area.width * W, height: area.height * H, ['--zc' as string]: z.color }}
-            >
+            <div key={z.id} className={`zone-box ${mine ? 'mine' : ''} ${active === z.id ? 'active' : ''}`} style={{ left: area.x * W, top: area.y * H, width: area.width * W, height: area.height * H, ['--zc' as string]: z.color }}>
               {mine && !whole && <span className="zone-veil" />}
               <span className="zone-tab" title="Drag to move the zone (Shift: 1% steps)" onPointerDown={(e) => begin(e, z, 'move', area)}>
                 {z.name}

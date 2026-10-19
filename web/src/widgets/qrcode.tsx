@@ -738,7 +738,7 @@ export default defineWidget({
           <Toggle label="Centre logo" path="logo.on" value={c.logo.on} text="Show a logo" />
           {c.logo.on && (
             <>
-              <Row label="Picture">
+              <Row expose="logo.src" exposeValue={c.logo.src} label="Picture">
                 <AssetPicker value={c.logo.src} onChange={(v) => set('logo.src', v)} />
               </Row>
               {!c.logo.src && <ColorPick label="Colour" path="logo.color" value={c.logo.color} />}

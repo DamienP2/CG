@@ -1,5 +1,6 @@
 import { Boundary } from '../ui/Boundary';
 import { AssetPicker } from './AssetPicker';
+import { fieldUsed } from '../engine/settings';
 import { Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
@@ -20,7 +21,7 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, Row as KitRow, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
 
 interface PropSpec {
   prop: Prop;
@@ -224,7 +225,6 @@ function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
 /** (•) at the end of a row: exposes the property to the Operator (a variable he sets), or stops. */
 export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) {
   const { update, template } = useDesigner();
-  const [open, setOpen] = useState(false);
   if (!template) return <span className="pp-op-space" />;
   const bound = props.map((p) => layer.bindings[p]).filter((k): k is string => !!k);
   const on = bound.length > 0;
@@ -249,32 +249,14 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
         const key = l.bindings[prop];
         delete l.bindings[prop];
         // A field made for this binding and used nowhere else goes too.
-        const used = !!key && (t.layers.some((x) => Object.values(x.bindings).includes(key)) || t.layers.some((x) => JSON.stringify(x).includes(`{{${key}}}`)));
-        if (key && !used) t.fields = t.fields.filter((f) => f.key !== key);
+        if (key && !fieldUsed(t, key)) t.fields = t.fields.filter((f) => f.key !== key);
       }
     });
   const fromSource = fields.some((f) => f.binding?.source);
   return (
-    <span className="bind">
-      <button className={`pp-op ${on ? 'on' : ''}`} title={on ? `Exposed to the Operator (${fields.map((f) => f.label).join(', ') || bound.join(', ')})${fromSource ? ' · fed by a data source' : ''} · click to stop` : 'Expose to the Operator'} onClick={() => (on ? setOpen(!open) : expose())}>
-        <Radio size={13} />
-      </button>
-      {open && (
-        <div className="popover" onMouseLeave={() => setOpen(false)}>
-          <div className="popover-note">
-            Exposed to the Operator as <strong>{fields.map((f) => f.label).join(', ') || bound.join(', ')}</strong>.
-          </div>
-          <button
-            onClick={() => {
-              unbind();
-              setOpen(false);
-            }}
-          >
-            Stop exposing
-          </button>
-        </div>
-      )}
-    </span>
+    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? `Exposed to the Operator (${fields.map((f) => f.label).join(', ') || bound.join(', ')})${fromSource ? ' · fed by a data source' : ''} · click to stop` : 'Expose to the Operator'} onClick={() => (on ? unbind() : expose())}>
+      <Radio size={13} />
+    </button>
   );
 }
 
@@ -699,8 +681,7 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
 
   return (
     <>
-      <div className="row">
-        <span className="prop-label">Font</span>
+      <KitRow label="Font" expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }}>
         <select
           value={current?.family ?? layer.fontFamily}
           onChange={(e) => {
@@ -734,8 +715,8 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
               </option>
             ))}
         </select>
-      </div>
-      <div className="row">
+      </KitRow>
+      <KitRow label="Align" expose={['align', 'verticalAlign', 'uppercase']} exposeValue={{ align: layer.align, verticalAlign: layer.verticalAlign, uppercase: !!layer.uppercase }}>
         <Segmented
           value={layer.align}
           onChange={(v) => set('align', v)}
@@ -759,9 +740,9 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
             AA
           </button>
         )}
-      </div>
+      </KitRow>
       {layer.type === 'text' && (
-        <div className="row">
+        <KitRow label="Case" expose={['transform', 'decoration']} exposeValue={{ transform: layer.transform ?? 'none', decoration: layer.decoration ?? 'none' }}>
           <Segmented
             value={layer.uppercase ? 'upper' : (layer.transform ?? 'none')}
             onChange={(v) => {
@@ -798,7 +779,7 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
               },
             ]}
           />
-        </div>
+        </KitRow>
       )}
     </>
   );

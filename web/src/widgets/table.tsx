@@ -418,7 +418,7 @@ function PairRow({ label, path }: { label: string; path: string }) {
   const d = path.split('.').reduce<unknown>((a, x) => (a as Record<string, unknown> | undefined)?.[x], { st: DST, cell: { bg: '#facc15', color: '#111111' } }) as Pair;
   const pick = (k: 'bg' | 'color') => <ColorField value={parseHex(v[k] ?? d?.[k] ?? '#ffffff') ?? [1, 1, 1, 1]} onChange={(c) => b.set(`${path}.${k}`, toHex(c, c[3] < 1), true)} />;
   return (
-    <Row label={label}>
+    <Row expose={[`${path}.bg`, `${path}.color`]} exposeValue={{ [`${path}.bg`]: v.bg ?? d?.bg, [`${path}.color`]: v.color ?? d?.color }} label={label}>
       <div style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0 }}>
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>{pick('bg')}</div>
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>{pick('color')}</div>
@@ -569,7 +569,7 @@ export default defineWidget({
           <Note>Per column: alignment{k.widthMode !== 'auto' ? `, width (${k.widthMode === 'fixed' ? 'px' : '%'})` : ''}, number format.</Note>
           {k.cols.map((c, i) =>
             c.on ? (
-              <Row key={i} label={c.label || c.src}>
+              <Row expose={[`cols.${i}.align`, `cols.${i}.fmt`]} exposeValue={{ [`cols.${i}.align`]: c.align, [`cols.${i}.fmt`]: c.fmt }} key={i} label={c.label || c.src}>
                 <div style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0 }}>
                   <select style={{ flex: 1, minWidth: 0 }} value={c.align} onChange={(e) => edit((l) => void (l.cols![i] = { ...l.cols![i], align: e.target.value as Col['align'] }))}>
                     <option value="left">Left</option>
@@ -827,7 +827,7 @@ function ColorPickRow({ label, path, value }: { label: string; path: string; val
   const b = useBound();
   const v = (path.split('.').reduce<unknown>((a, x) => (a as Record<string, unknown> | undefined)?.[x], b.obj) as string | undefined) ?? value;
   return (
-    <Row label={label}>
+    <Row expose={path} exposeValue={v} label={label}>
       <ColorField value={parseHex(v) ?? [1, 1, 1, 1]} onChange={(c) => b.set(path, toHex(c, c[3] < 1), true)} />
     </Row>
   );

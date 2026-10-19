@@ -1163,6 +1163,7 @@ mod tests {
             props: BTreeMap::new(),
             tracks: BTreeMap::new(),
             bindings: BTreeMap::new(),
+            setting_bindings: BTreeMap::new(),
             overrides: BTreeMap::new(),
         }
     }

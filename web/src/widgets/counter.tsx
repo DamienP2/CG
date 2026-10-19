@@ -679,16 +679,16 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
         <Toggle label="Limits" value={limits} text="Minimum and maximum" onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
         {limits && (
           <>
-            <Num label="Minimum" value={c.min ?? 0} step={1} precision={3} onChange={(v) => set('min', v)} />
-            <Num label="Maximum" value={c.max ?? 0} step={1} precision={3} onChange={(v) => set('max', v)} />
+            <Num expose="min" exposeValue={c.min ?? 0} label="Minimum" value={c.min ?? 0} step={1} precision={3} onChange={(v) => set('min', v)} />
+            <Num expose="max" exposeValue={c.max ?? 0} label="Maximum" value={c.max ?? 0} step={1} precision={3} onChange={(v) => set('max', v)} />
           </>
         )}
         <Num label="Step + / −" path="step" value={1} min={0} step={1} precision={3} />
       </Section>
       <Section id="ct-format" title="Format">
         <Select label="Language" path="locale" value={c.locale} options={LOCALES} />
-        <Range label="Decimals" value={layer.decimals} min={0} max={3} onChange={(v) => set('decimals', v)} />
-        <Toggle label="Thousands" value={layer.grouping} text="Group separators" onChange={(v) => set('grouping', v)} />
+        <Range expose="decimals" exposeValue={layer.decimals} label="Decimals" value={layer.decimals} min={0} max={3} onChange={(v) => set('decimals', v)} />
+        <Toggle expose="grouping" exposeValue={layer.grouping} label="Thousands" value={layer.grouping} text="Group separators" onChange={(v) => set('grouping', v)} />
         <Toggle label="Sign" path="plus" value={false} text="Show + for positive values" />
         <Toggle label="Compact" path="compact" value={false} text="Short notation (1,2 M)" />
         <Note>
@@ -710,7 +710,7 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
           ).map(([pre, suf, label]) => ({ label, cls: 'ghost', onClick: () => edit((l) => void Object.assign(l, { prefix: pre, suffix: suf })) }))}
         />
         <Range label="Size" path="affixSize" value={c.affixSize} min={20} max={100} unit=" %" />
-        <ColorPick label="Color" value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
+        <ColorPick expose="affixColor" exposeValue={c.affixColor || '#ffffff'} label="Color" value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
         <Seg
           label="Weight"
           path="affixWeight"

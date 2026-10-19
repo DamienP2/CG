@@ -286,9 +286,9 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
       <Section id="text-font" title="Typography">
         <FontRow layer={layer} set={set} />
         <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-        <Num label="Line height" value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
+        <Num expose="lineHeight" exposeValue={layer.lineHeight ?? 1.2} label="Line height" value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
         <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
-        <Row label="Align">
+        <Row expose={['align', 'justify', 'italic']} exposeValue={{ align: layer.align, justify: k.justify, italic: k.italic }} label="Align">
           <Segmented
             value={k.justify ? 'justify' : layer.align}
             onChange={(v) =>
@@ -309,7 +309,16 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
           />
           <Segmented value={k.italic ? 'i' : ''} onChange={() => set('italic', !k.italic || undefined)} options={[{ value: 'i', label: <Italic size={13} />, title: 'Italic' }]} />
         </Row>
-        <Row label="Vertical">
+        <Row
+          expose="verticalAlign"
+          exposeValue={layer.verticalAlign}
+          exposeOptions={[
+            ['top', 'Top'],
+            ['middle', 'Middle'],
+            ['bottom', 'Bottom'],
+          ]}
+          label="Vertical"
+        >
           <Segmented
             value={layer.verticalAlign}
             onChange={(v) => set('verticalAlign', v)}
@@ -320,7 +329,7 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
             ]}
           />
         </Row>
-        <Row label="Case">
+        <Row expose={['transform', 'decoration']} exposeValue={{ transform: layer.transform ?? 'none', decoration: layer.decoration ?? 'none' }} label="Case">
           <Segmented
             value={layer.uppercase ? 'upper' : (layer.transform ?? 'none')}
             onChange={(v) =>
@@ -367,6 +376,8 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
       </Section>
       <Section id="text-effects" title="Effects">
         <Toggle
+          expose="props.strokeWidth"
+          exposeValue={num(propValue(layer as Layer, 'strokeWidth', 0))}
           label="Stroke"
           value={stroke}
           onChange={(v) =>
@@ -416,6 +427,12 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
       </Section>
       <Section id="text-fit" title="When the text is too long">
         <Seg
+          expose="wrap"
+          exposeValue={!!layer.wrap}
+          exposeOptions={[
+            ['false', 'As typed'],
+            ['true', 'Paragraph'],
+          ]}
           label="Lines"
           value={layer.wrap ? 'paragraph' : 'single'}
           onChange={(v) => edit((l) => void (l.wrap = v === 'paragraph' || undefined))}
@@ -438,11 +455,11 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
             />
           </>
         )}
-        <Seg label="Behaviour" value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS} />
+        <Seg expose="overflow" exposeValue={mode} label="Behaviour" value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS} />
         {mode === 'fit' && (
           <>
-            <Num label="Narrower to" value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit="%" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
-            <Num label="Smaller to" value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
+            <Num expose="squeeze" exposeValue={layer.squeeze ?? 0.8} label="Narrower to" value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit="%" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
+            <Num expose="minSize" exposeValue={layer.minSize ?? 0.6} label="Smaller to" value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
             <Seg
               label="Then"
               path="fitEnd"
@@ -465,7 +482,7 @@ function FontRow({ layer, set }: { layer: TextLayer; set: (key: string, v: unkno
   const current = families.find((f) => f.family.toLowerCase() === layer.fontFamily.toLowerCase());
   const weights = current?.weights ?? [400, 700];
   return (
-    <Row label="Font">
+    <Row expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }} label="Font">
       <select
         value={current?.family ?? layer.fontFamily}
         style={{ fontFamily: `"${current?.family ?? layer.fontFamily}"`, flex: 1, minWidth: 0 }}

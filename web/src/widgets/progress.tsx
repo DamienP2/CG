@@ -364,6 +364,8 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
     <>
       <Section id="progress-shape" title="Shape">
         <Seg
+          expose="shape"
+          exposeValue={c.shape}
           label="Shape"
           value={c.shape}
           options={[
@@ -380,6 +382,8 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
         />
         {c.shape !== 'ring' && (
           <Seg
+            expose="orient"
+            exposeValue={c.orient}
             label="Orientation"
             value={c.orient}
             options={[

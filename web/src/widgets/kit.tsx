@@ -6,6 +6,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
+import { fieldUsed, formatSetting, newFieldKey, settingKind } from '../engine/settings';
 import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evaluate';
 import type { Data, FieldKind, Layer, LayerType, PlayoutItem, Prop, Template, Value } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
@@ -201,15 +202,60 @@ export function Section({ id, title, children, actions, level = 1, closed }: { i
   );
 }
 
-/** A labelled row of the inspector. */
-export function Row({ label, children, title, lead, tail }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode }) {
+/** Settings a row exposes to the Operator: a path in the layer, several, or none. */
+export type Expose = string | readonly string[] | false | undefined;
+
+/** A labelled row of the inspector; `expose` adds its expose-to-Operator button. */
+export function Row({ label, children, title, lead, tail, expose, exposeValue, exposeOptions }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][] }) {
   return (
     <div className={`row wk-row ${label === undefined ? 'full' : ''}`} title={title}>
       {lead ?? <span className="wk-gut" />}
       {label !== undefined && <span className="prop-label">{label}</span>}
       <div className="wk-ctl">{children}</div>
-      {tail ?? <span className="wk-gut" />}
+      {tail ?? (expose ? <ExposeSetting paths={typeof expose === 'string' ? [expose] : expose} label={typeof label === 'string' ? label : undefined} value={exposeValue} options={exposeOptions} /> : <span className="wk-gut" />)}
     </div>
+  );
+}
+
+/** The radio button exposing settings of the layer to the Operator: one click exposes, one click stops. */
+export function ExposeSetting({ paths, label, value, options }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][] }) {
+  const { obj } = useContext(BindContext);
+  const { template, update } = useDesigner();
+  const layer = obj as Layer | undefined;
+  if (!template || !layer?.id || !template.layers.some((l) => l.id === layer.id)) return <span className="wk-gut" />;
+  const sb = layer.settingBindings ?? {};
+  const fields = paths.map((p) => template.fields.find((f) => f.key === sb[p]));
+  const on = fields.every(Boolean);
+  const toggle = () =>
+    update((t) => {
+      const l = t.layers.find((x) => x.id === layer.id)!;
+      l.settingBindings ??= {};
+      if (on) {
+        for (const p of paths) {
+          const key = l.settingBindings[p];
+          delete l.settingBindings[p];
+          if (key && !fieldUsed(t, key)) t.fields = t.fields.filter((f) => f.key !== key);
+        }
+        if (!Object.keys(l.settingBindings).length) delete l.settingBindings;
+        return;
+      }
+      for (const p of paths) {
+        if (l.settingBindings[p] && t.fields.some((f) => f.key === l.settingBindings![p])) continue;
+        // The value the Designer shows (its default when the layer does not set it).
+        let cur = getPath(l, p);
+        if (cur === undefined) cur = paths.length === 1 ? value : (value as Record<string, unknown> | undefined)?.[p];
+        const last = p.split('.').pop()!;
+        const name = paths.length > 1 || !label ? last.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (x) => x.toUpperCase()) : label;
+        const key = newFieldKey(t, `${l.name} ${name}`);
+        t.fields.push({ key, label: `${l.name} · ${name}`, kind: settingKind(cur, p), default: formatSetting(cur), ...(options?.length && paths.length === 1 ? { options } : {}) });
+        l.settingBindings[p] = key;
+      }
+    });
+  const names = fields.filter(Boolean).map((f) => f!.label);
+  return (
+    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? `Exposed to the Operator (${names.join(', ')}) · click to stop` : 'Expose to the Operator'} onClick={toggle}>
+      <Radio size={13} />
+    </button>
   );
 }
 
@@ -217,21 +263,32 @@ type Opt<V> = readonly [V, ReactNode, string?] | V;
 const opts = <V,>(o: readonly Opt<V>[]) => o.map((x) => (Array.isArray(x) ? (x as readonly [V, ReactNode, string?]) : ([x as V, String(x)] as const)));
 
 /** Segmented choice (like Lines / Scroll of the text). */
-export function Seg<V extends string | number | boolean>(p: { label?: ReactNode; path?: string; value?: V; onChange?: (v: V) => void; options: readonly Opt<V>[]; title?: string }) {
+export function Seg<V extends string | number | boolean>(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: V; onChange?: (v: V) => void; options: readonly Opt<V>[]; title?: string }) {
   const [v, set] = useBind<V>(p.path, p.value, p.onChange);
   const o = opts(p.options);
   return (
-    <Row label={p.label} title={p.title}>
+    <Row
+      label={p.label}
+      expose={p.expose ?? p.path}
+      exposeValue={p.exposeValue ?? (p.path ? v : undefined)}
+      exposeOptions={p.exposeOptions ?? (p.path || typeof p.expose === 'string' ? o.map(([val, lab]) => [String(val), typeof lab === 'string' ? lab : String(val)] as [string, string]) : undefined)}
+      title={p.title}
+    >
       <Segmented value={String(v)} onChange={(s) => set(o.find((x) => String(x[0]) === s)![0])} options={o.map(([val, lab, tip]) => ({ value: String(val), label: lab, title: tip }))} />
     </Row>
   );
 }
 
-export function Select<V extends string | number>(p: { label?: ReactNode; path?: string; value?: V; onChange?: (v: V) => void; options: readonly Opt<V>[] }) {
+export function Select<V extends string | number>(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: V; onChange?: (v: V) => void; options: readonly Opt<V>[] }) {
   const [v, set] = useBind<V>(p.path, p.value, p.onChange);
   const o = opts(p.options);
   return (
-    <Row label={p.label}>
+    <Row
+      label={p.label}
+      expose={p.expose ?? p.path}
+      exposeValue={p.exposeValue ?? (p.path ? v : undefined)}
+      exposeOptions={p.exposeOptions ?? (p.path || typeof p.expose === 'string' ? o.map(([val, lab]) => [String(val), typeof lab === 'string' ? lab : String(val)] as [string, string]) : undefined)}
+    >
       <select value={String(v ?? '')} onChange={(e) => set(o.find((x) => String(x[0]) === e.target.value)![0])}>
         {o.map(([val, lab]) => (
           <option key={String(val)} value={String(val)}>
@@ -244,10 +301,10 @@ export function Select<V extends string | number>(p: { label?: ReactNode; path?:
 }
 
 /** On / off switch with its text. `disabled`: the reason it cannot change. */
-export function Toggle(p: { label?: ReactNode; path?: string; value?: boolean; onChange?: (v: boolean) => void; text?: ReactNode; disabled?: string }) {
+export function Toggle(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: boolean; onChange?: (v: boolean) => void; text?: ReactNode; disabled?: string }) {
   const [v, set] = useBind<boolean>(p.path, p.value, p.onChange);
   return (
-    <Row label={p.label}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
       <button className={`wk-tog ${v ? 'on' : ''}`} disabled={!!p.disabled} title={p.disabled} onClick={() => set(!v)}>
         <i />
         {p.text && <span>{p.text}</span>}
@@ -257,12 +314,12 @@ export function Toggle(p: { label?: ReactNode; path?: string; value?: boolean; o
 }
 
 /** Slider with its value. */
-export function Range(p: { label?: ReactNode; path?: string; value?: number; onChange?: (v: number) => void; min: number; max: number; step?: number; unit?: string; fmt?: (v: number) => string }) {
+export function Range(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: number; onChange?: (v: number) => void; min: number; max: number; step?: number; unit?: string; fmt?: (v: number) => string }) {
   const [v, set] = useBind<number>(p.path, p.value, p.onChange);
   const step = p.step ?? 1;
   const val = Number(v ?? 0);
   return (
-    <Row label={p.label}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
       <input type="range" min={p.min} max={p.max} step={step} value={val} onChange={(e) => set(+e.target.value, true)} />
       <span className="wk-val">{p.fmt ? p.fmt(val) : `${+val.toFixed(step < 1 ? 2 : 0)}${p.unit ?? ''}`}</span>
     </Row>
@@ -270,10 +327,10 @@ export function Range(p: { label?: ReactNode; path?: string; value?: number; onC
 }
 
 /** Number field (drag the label, wheel, arrows), like the properties. */
-export function Num(p: { label?: ReactNode; path?: string; value?: number; onChange?: (v: number) => void; min?: number; max?: number; step?: number; precision?: number; unit?: string }) {
+export function Num(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: number; onChange?: (v: number) => void; min?: number; max?: number; step?: number; precision?: number; unit?: string }) {
   const [v, set] = useBind<number>(p.path, p.value, p.onChange);
   return (
-    <Row label={p.label}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
       <span className="pp-field">
         <NumberField value={Number(v ?? 0)} min={p.min} max={p.max} step={p.step ?? 1} precision={p.precision ?? 0} suffix={p.unit?.trim()} onChange={(x) => set(x, true)} />
       </span>
@@ -282,11 +339,11 @@ export function Num(p: { label?: ReactNode; path?: string; value?: number; onCha
 }
 
 /** `#rrggbb[aa]` colour. */
-export function ColorPick(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void }) {
+export function ColorPick(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: string; onChange?: (v: string) => void }) {
   const [v, set] = useBind<string>(p.path, p.value, p.onChange);
   const c = parseHex(v ?? '') ?? [1, 1, 1, 1];
   return (
-    <Row label={p.label}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
       <span className="pp-field color">
         <ColorField value={c} onChange={(x) => set(toHex(x, x[3] < 1), true)} />
       </span>
@@ -295,20 +352,20 @@ export function ColorPick(p: { label?: ReactNode; path?: string; value?: string;
 }
 
 /** One-line text. */
-export function Text(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; placeholder?: string }) {
+export function Text(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: string; onChange?: (v: string) => void; placeholder?: string }) {
   const [v, set] = useBind<string>(p.path, p.value, p.onChange);
   return (
-    <Row label={p.label}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
       <TextInput value={String(v ?? '')} placeholder={p.placeholder} onChange={(x) => set(x, true)} />
     </Row>
   );
 }
 
 /** Several lines of text. */
-export function Area(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; placeholder?: string }) {
+export function Area(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: string; onChange?: (v: string) => void; placeholder?: string }) {
   const [v, set] = useBind<string>(p.path, p.value, p.onChange);
   return (
-    <Row label={p.label}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
       <TextInput multiline value={String(v ?? '')} placeholder={p.placeholder} onChange={(x) => set(x, true)} />
     </Row>
   );
@@ -380,7 +437,7 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
         {(p.lorem || (canExpose && inline) || exposed) && (
           <div className="wk-content-tools">
             {p.lorem && (
-              <button className="wk-chip" title="Fill with a fake text" onClick={() => change(nextLorem(value))}>
+              <button className="wk-chip" title="Fill with Lorem ipsum (click again for a longer one)" onClick={() => change(nextLorem(value))}>
                 <WandSparkles size={12} /> Lorem
               </button>
             )}
@@ -402,7 +459,12 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
   );
 }
 
-const LOREMS = ['Marie Curie, physicist and chemist', 'Breaking: the city council votes the new budget tonight', 'Live from the Stade de France: the final kicks off in ten minutes', 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt'];
+const LOREMS = [
+  'Lorem ipsum dolor sit amet',
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit',
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+  'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
+];
 const nextLorem = (cur: string) => LOREMS[(LOREMS.indexOf(cur) + 1) % LOREMS.length];
 
 /** A value coming from data: greyed, read only. */
@@ -544,7 +606,13 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
       )}
     </div>
   );
-  return p.label === undefined ? box : <Row label={p.label}>{box}</Row>;
+  return p.label === undefined ? (
+    box
+  ) : (
+    <Row label={p.label} expose={p.path} exposeValue={items}>
+      {box}
+    </Row>
+  );
 }
 
 /** Grid of strings (first row = header when `header`), with CSV paste. */

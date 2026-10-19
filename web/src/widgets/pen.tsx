@@ -277,7 +277,7 @@ function PointList({ layer, edit }: { layer: L; edit: Edit }) {
       l.points = ps;
     }, `pt-${layer.id}-${i}-${ax}`);
   return (
-    <Row label={`Points · ${k.points.length}`}>
+    <Row expose="points" exposeValue={k.points} label={`Points · ${k.points.length}`}>
       <div className="wk-list">
         {k.points.map((p, i) => (
           <div key={i} className="wk-item" style={i === sel ? { background: 'rgba(124,92,255,.18)', borderRadius: 6 } : undefined}>
@@ -332,7 +332,7 @@ function FillSection({ layer }: { layer: L }) {
               {(f.kind === 'linear' || f.kind === 'radial') && <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />}
               {f.kind === 'linear' && <Range label="Angle" path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
               {f.kind === 'image' && (
-                <Row label="Picture">
+                <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label="Picture">
                   <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
                 </Row>
               )}
@@ -460,6 +460,8 @@ export default defineWidget({
           {p && (
             <>
               <Seg
+                expose={`points.${sel}.type`}
+                exposeValue={p.type}
                 label={`Point ${sel + 1}`}
                 value={p.type}
                 onChange={(v) => ed((l) => setType(l, sel, v, w, h))}
@@ -470,6 +472,8 @@ export default defineWidget({
               />
               {p.type === 'curve' && (
                 <Seg
+                  expose={`points.${sel}.mode`}
+                  exposeValue={p.mode}
                   label="Handles"
                   value={p.mode}
                   onChange={(v) =>

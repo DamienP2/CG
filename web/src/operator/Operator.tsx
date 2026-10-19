@@ -64,6 +64,18 @@ function NumberStepper({ value, onChange }: { value: string; onChange: (v: strin
 }
 
 export function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+  // An exposed setting with choices (alignment, mask…): pick one.
+  if (field.options?.length)
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {!field.options.some(([v]) => v === value) && <option value={value}>{value}</option>}
+        {field.options.map(([v, l]) => (
+          <option key={v} value={v}>
+            {l}
+          </option>
+        ))}
+      </select>
+    );
   switch (field.kind) {
     case 'multiline':
       return <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />;

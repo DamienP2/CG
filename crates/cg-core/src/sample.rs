@@ -37,6 +37,7 @@ fn layer(
         props: props.iter().copied().collect(),
         tracks: BTreeMap::new(),
         bindings: BTreeMap::new(),
+        setting_bindings: BTreeMap::new(),
         overrides: BTreeMap::new(),
     }
 }
@@ -223,6 +224,7 @@ pub fn lower_third() -> Template {
                 binding: None,
                 min: None,
                 max: None,
+                options: Vec::new(),
             },
             Field {
                 key: "title".into(),
@@ -232,6 +234,7 @@ pub fn lower_third() -> Template {
                 binding: None,
                 min: None,
                 max: None,
+                options: Vec::new(),
             },
         ],
         layers: vec![group, accent, plate, sub, name, title],
@@ -360,6 +363,7 @@ pub fn score_bug() -> Template {
                 binding: None,
                 min: None,
                 max: None,
+                options: Vec::new(),
             },
             Field {
                 key: "away".into(),
@@ -369,6 +373,7 @@ pub fn score_bug() -> Template {
                 binding: None,
                 min: None,
                 max: None,
+                options: Vec::new(),
             },
             Field {
                 key: "homeScore".into(),
@@ -378,6 +383,7 @@ pub fn score_bug() -> Template {
                 binding: None,
                 min: None,
                 max: None,
+                options: Vec::new(),
             },
             Field {
                 key: "awayScore".into(),
@@ -387,6 +393,7 @@ pub fn score_bug() -> Template {
                 binding: None,
                 min: None,
                 max: None,
+                options: Vec::new(),
             },
         ],
         layers: vec![
@@ -603,14 +610,13 @@ pub fn ticker() -> Template {
         duration: 80.0,
         markers: vec![marker(20.0, "On air", MarkerKind::Pause), marker(60.0, "Out", MarkerKind::Out)],
         fields: vec![
-            Field { key: "label".into(), label: "Label".into(), kind: FieldKind::Text, default: "Breaking".into(), binding: None, min: None, max: None },
+            Field { key: "label".into(), label: "Label".into(), kind: FieldKind::Text, default: "Breaking".into(), binding: None, min: None, max: None, options: Vec::new() },
             Field {
                 key: "items".into(),
                 label: "Headlines (one per line)".into(),
                 kind: FieldKind::Multiline,
                 default: "Pulse CG renders HTML5, SDI and ST 2110 from one engine\nTickers, clocks and rolls are now built in\nOne project per show, one channel per studio".into(),
-                binding: None, min: None, max: None,
-            },
+                binding: None, min: None, max: None, options: Vec::new() },
         ],
         layers: vec![bar, label_bg, label, crawl],
     }
@@ -678,6 +684,7 @@ pub fn credits() -> Template {
             binding: None,
             min: None,
             max: None,
+            options: Vec::new(),
         }],
         layers: vec![shade, roll],
     }
@@ -712,6 +719,7 @@ fn field(key: &str, label: &str, kind: FieldKind, default: &str) -> Field {
         binding: None,
         min: None,
         max: None,
+        options: Vec::new(),
     }
 }
 

@@ -137,6 +137,8 @@ export default defineWidget({
             ]}
           />
           <Toggle
+            expose="lockRatio"
+            exposeValue={!!k.lockRatio}
             label="Square"
             value={k.lockRatio}
             text="Lock the proportions"

@@ -716,6 +716,11 @@ pub struct Layer {
     /// Bind a property (colour or number) to a data field key.
     #[serde(default)]
     pub bindings: BTreeMap<Prop, String>,
+    /// Bind a setting of the layer (a dotted path in its JSON: `mask`,
+    /// `crop.l`, `teams.0.logo`…) to a data field key: what the Designer
+    /// exposes to the Operator beyond the animatable properties.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub setting_bindings: BTreeMap<String, String>,
     /// Changes in the project's other formats (9:16, 1:1…), by format id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, LayerOverride>,
@@ -895,6 +900,9 @@ pub struct Field {
     pub min: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<f64>,
+    /// Choices of an exposed setting (value, label): the Operator picks one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<(String, String)>,
 }
 
 /// Where a field takes its value: a data source and a path in it.
@@ -1255,6 +1263,30 @@ impl Template {
                 if let Some(v) = o.visible {
                     l.visible = v;
                 }
+            }
+        }
+        std::borrow::Cow::Owned(t)
+    }
+
+    /// The template with its exposed settings set from `data` (see
+    /// [`Layer::setting_bindings`]); without any, it is borrowed unchanged.
+    pub fn with_settings(&self, data: &BTreeMap<String, String>) -> std::borrow::Cow<'_, Template> {
+        let bound = |l: &Layer| l.setting_bindings.values().any(|k| data.contains_key(k));
+        if !self.layers.iter().any(bound) {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut t = self.clone();
+        for l in t.layers.iter_mut().filter(|l| bound(l)) {
+            let Ok(mut json) = serde_json::to_value(&*l) else {
+                continue;
+            };
+            for (path, key) in &l.setting_bindings {
+                if let Some(raw) = data.get(key) {
+                    set_setting(&mut json, path, raw);
+                }
+            }
+            if let Ok(patched) = serde_json::from_value::<Layer>(json) {
+                *l = patched;
             }
         }
         std::borrow::Cow::Owned(t)
@@ -1862,5 +1894,108 @@ mod tests {
         assert_eq!(t.next_stop_after(0.0), 10.0);
         assert_eq!(t.next_stop_after(10.0), 100.0);
         assert_eq!(t.hold_frame(), 100.0);
+    }
+}
+
+/// Sets `path` (dotted, numbers index lists) in `root` to `raw`, read as
+/// the type of the value already there (number, true/false, text, JSON).
+fn set_setting(root: &mut serde_json::Value, path: &str, raw: &str) {
+    use serde_json::Value as J;
+    let mut cur = root;
+    let parts: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+    let Some((last, head)) = parts.split_last() else {
+        return;
+    };
+    for part in head {
+        cur = match cur {
+            J::Array(a) => match part.parse::<usize>().ok().and_then(|i| a.get_mut(i)) {
+                Some(v) => v,
+                None => return,
+            },
+            J::Object(o) => o
+                .entry(part.to_string())
+                .or_insert_with(|| J::Object(Default::default())),
+            _ => return,
+        };
+    }
+    let slot = match cur {
+        J::Array(a) => match last.parse::<usize>().ok().and_then(|i| a.get_mut(i)) {
+            Some(v) => v,
+            None => return,
+        },
+        J::Object(o) => o.entry(last.to_string()).or_insert(J::Null),
+        _ => return,
+    };
+    let t = raw.trim();
+    let new = match slot {
+        J::Number(_) => t
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map(J::Number),
+        J::Bool(_) => match t {
+            "true" | "1" | "yes" | "on" => Some(J::Bool(true)),
+            "false" | "0" | "no" | "off" | "" => Some(J::Bool(false)),
+            _ => None,
+        },
+        J::String(_) => Some(J::String(raw.to_string())),
+        J::Array(_) | J::Object(_) => serde_json::from_str(t).ok(),
+        J::Null => Some(
+            serde_json::from_str::<J>(t)
+                .ok()
+                .filter(|v| v.is_number() || v.is_boolean())
+                .unwrap_or_else(|| J::String(raw.to_string())),
+        ),
+    };
+    if let Some(v) = new {
+        *slot = v;
+    }
+}
+
+#[cfg(test)]
+mod setting_tests {
+    use super::*;
+
+    #[test]
+    fn exposed_settings_follow_the_data() {
+        let mut j = serde_json::json!({"mask": "rounded", "radius": 28, "crop": {"l": 0.1}, "on": false, "teams": [{"logo": "a.png"}]});
+        set_setting(&mut j, "mask", "circle");
+        set_setting(&mut j, "radius", "40");
+        set_setting(&mut j, "crop.l", "0.25");
+        set_setting(&mut j, "on", "true");
+        set_setting(&mut j, "teams.0.logo", "b.png");
+        set_setting(&mut j, "radius", "oops");
+        set_setting(&mut j, "missing.deep", "3");
+        assert_eq!(
+            j,
+            serde_json::json!({"mask": "circle", "radius": 40.0, "crop": {"l": 0.25}, "on": true, "teams": [{"logo": "b.png"}], "missing": {"deep": 3}})
+        );
+    }
+
+    #[test]
+    fn a_template_takes_the_operator_settings() {
+        let p = crate::sample::demo_project();
+        let is_text = |l: &Layer| matches!(l.kind, LayerKind::Text { .. });
+        let mut t = p
+            .templates
+            .iter()
+            .find(|t| t.layers.iter().any(is_text))
+            .unwrap()
+            .clone();
+        let i = t.layers.iter().position(is_text).unwrap();
+        t.layers[i]
+            .setting_bindings
+            .insert("verticalAlign".into(), "va".into());
+        let data = BTreeMap::from([("va".to_string(), "bottom".to_string())]);
+        let out = t.with_settings(&data);
+        let LayerKind::Text { vertical_align, .. } = &out.layers[i].kind else {
+            panic!()
+        };
+        assert_eq!(serde_json::to_value(vertical_align).unwrap(), "bottom");
+        // Without the field in the data, the template is untouched.
+        assert!(matches!(
+            t.with_settings(&BTreeMap::new()),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 }

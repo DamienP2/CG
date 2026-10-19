@@ -278,7 +278,7 @@ function GradientTo() {
 function ImageSource() {
   const b = useBound();
   return (
-    <Row label="Picture">
+    <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label="Picture">
       <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
     </Row>
   );

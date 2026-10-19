@@ -555,7 +555,7 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
                 ['█', '█'],
               ]}
             />
-            <ColorPick label="Color" value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
+            <ColorPick expose="cursorColor" exposeValue={c.cursorColor || '#ffffff'} label="Color" value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
             <Toggle label="Blink" path="cursorBlink" value={true} text="Blinks when idle" />
             <Toggle label="At the end" path="cursorHide" value={false} text="Hides at the end" />
           </>

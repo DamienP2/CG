@@ -166,6 +166,8 @@ export default defineWidget({
       <>
         <Section id="ellipse-shape" title="Shape">
           <Toggle
+            expose="circle"
+            exposeValue={k.circle}
             label="Circle"
             value={k.circle}
             text="Lock the proportions"
@@ -190,6 +192,8 @@ export default defineWidget({
             ]}
           />
           <Seg
+            expose="portion"
+            exposeValue={k.portion}
             label="Portion"
             value={k.portion}
             onChange={(v) =>

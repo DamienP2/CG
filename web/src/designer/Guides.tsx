@@ -261,15 +261,7 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
             { id: 'title', label: 'Title safe', kind: 'title', area: safeRects(g)[1] },
             ...g.exclusions.map((x) => ({ id: x.id, label: x.name, kind: 'exclusion' as const, area: { x: x.x, y: x.y, width: x.width, height: x.height } })),
           ]}
-          onChange={(id, a) =>
-            setG(
-              id === 'action'
-                ? { ...g, actionArea: a }
-                : id === 'title'
-                  ? { ...g, titleArea: a }
-                  : { ...g, exclusions: g.exclusions.map((x) => (x.id === id ? { ...x, ...a } : x)) },
-            )
-          }
+          onChange={(id, a) => setG(id === 'action' ? { ...g, actionArea: a } : id === 'title' ? { ...g, titleArea: a } : { ...g, exclusions: g.exclusions.map((x) => (x.id === id ? { ...x, ...a } : x)) })}
           onDone={() => view.set({ editSafe: false })}
         />
       )}
@@ -304,21 +296,7 @@ const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const round = (v: number) => Math.round(v * 10000) / 10000;
 
 /** Rectangles moved and resized on the stage (safe areas, areas to keep clear), like the zones. */
-function RectEditor({
-  width,
-  height,
-  px,
-  rects,
-  onChange,
-  onDone,
-}: {
-  width: number;
-  height: number;
-  px: { width: number; height: number };
-  rects: { id: string; label: string; kind: 'safe' | 'title' | 'exclusion'; area: Area }[];
-  onChange: (id: string, a: Area) => void;
-  onDone: () => void;
-}) {
+function RectEditor({ width, height, px, rects, onChange, onDone }: { width: number; height: number; px: { width: number; height: number }; rects: { id: string; label: string; kind: 'safe' | 'title' | 'exclusion'; area: Area }[]; onChange: (id: string, a: Area) => void; onDone: () => void }) {
   const drag = useRef<{ id: string; mode: Handle; x: number; y: number; start: Area } | null>(null);
   const snap = useAreaSnap();
   const snapRef = useRef(snap);
@@ -463,11 +441,7 @@ export function SafeMenu({ project }: { project: Project }) {
       {(g.actionArea || g.titleArea) && <p className="hint">Placed by hand on the stage; a margin above puts it back in the centre.</p>}
       <div className="gm-title">
         Areas to keep clear
-        <button
-          className="icon-btn ghost"
-          title="Add an area (a channel bug top right)"
-          onClick={() => setG({ ...g, exclusions: [...g.exclusions, { id: newId(), name: 'Channel bug', x: 0.85, y: 0.05, width: 0.1, height: 0.09 }] })}
-        >
+        <button className="icon-btn ghost" title="Add an area (a channel bug top right)" onClick={() => setG({ ...g, exclusions: [...g.exclusions, { id: newId(), name: 'Channel bug', x: 0.85, y: 0.05, width: 0.1, height: 0.09 }] })}>
           <Plus size={13} />
         </button>
       </div>

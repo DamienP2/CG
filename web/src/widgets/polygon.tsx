@@ -250,7 +250,7 @@ function VertexList({ layer, edit }: { layer: L; edit: Edit }) {
       l.verts = vs;
     }, `vert-${layer.id}-${i}-${ax}`);
   return (
-    <Row label="Vertices">
+    <Row expose="verts" exposeValue={k.verts} label="Vertices">
       <div className="wk-list">
         {k.verts.map((v, i) => (
           <div key={i} className="wk-item" style={i === sel ? { background: 'rgba(124,92,255,.18)', borderRadius: 6 } : undefined}>

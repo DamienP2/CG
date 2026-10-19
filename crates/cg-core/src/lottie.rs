@@ -274,6 +274,7 @@ fn layer(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
         props: BTreeMap::new(),
         tracks: BTreeMap::new(),
         bindings: BTreeMap::new(),
+        setting_bindings: BTreeMap::new(),
         overrides: BTreeMap::new(),
     }
 }
@@ -1124,6 +1125,7 @@ impl Converter {
             binding: None,
             min: None,
             max: None,
+            options: Vec::new(),
         });
         Some((
             LayerKind::Text {
