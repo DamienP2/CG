@@ -1,4 +1,4 @@
-import { Calculator, Crosshair, Hash, Link2, Ruler, Split, Target, TextCursorInput, Trash2, Wand2, X } from 'lucide-react';
+import { Calculator, Crosshair, Hash, Link2, Ruler, Split, Target, TextCursorInput, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
 import { INPUTS, measureLayer, nodeValues, type LVal } from '../engine/logic';
@@ -87,76 +87,6 @@ function curve(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 export const fmt = (v: LVal | undefined) => (v === undefined ? '' : typeof v === 'number' ? String(+v.toFixed(2)) : `“${v.length > 18 ? `${v.slice(0, 18)}…` : v}”`);
-
-/** "Fit a box to a text": text width + 2 × padding → box width. */
-function FitPreset({ template, onCreate, onClose }: { template: Template; onCreate: (nodes: LogicNode[], edges: Logic['edges']) => void; onClose: () => void }) {
-  const texts = template.layers.filter((l) => l.type === 'text');
-  const boxes = template.layers.filter((l) => l.type !== 'text');
-  const [text, setText] = useState(texts[0]?.id ?? '');
-  const [box, setBox] = useState(boxes[0]?.id ?? '');
-  const [padding, setPadding] = useState(30);
-  const [min, setMin] = useState(0);
-  const create = () => {
-    const tw = { id: newId(), type: 'textSize' as const, layer: text, metric: 'width' as TextMetric, x: 40, y: 60 };
-    const pad = { id: newId(), type: 'constant' as const, value: padding * 2, x: 40, y: 200 };
-    const add = { id: newId(), type: 'math' as const, op: 'add' as MathOp, x: 320, y: 100 };
-    const mn = { id: newId(), type: 'constant' as const, value: min, x: 320, y: 260 };
-    const mx = { id: newId(), type: 'math' as const, op: 'max' as MathOp, x: 600, y: 140 };
-    const target = { id: newId(), type: 'target' as const, layer: box, prop: 'width' as Prop, mode: 'set' as const, x: 880, y: 140 };
-    onCreate(
-      [tw, pad, add, mn, mx, target],
-      [
-        { from: tw.id, to: add.id, port: 'a' },
-        { from: pad.id, to: add.id, port: 'b' },
-        { from: add.id, to: mx.id, port: 'a' },
-        { from: mn.id, to: mx.id, port: 'b' },
-        { from: mx.id, to: target.id, port: 'in' },
-      ],
-    );
-    onClose();
-  };
-  return (
-    <div className="logic-preset" onPointerDown={(e) => e.stopPropagation()}>
-      <strong>Fit a box to a text</strong>
-      <label>
-        Text
-        <select value={text} onChange={(e) => setText(e.target.value)}>
-          {texts.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Box
-        <select value={box} onChange={(e) => setBox(e.target.value)}>
-          {boxes.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Padding (each side)
-        <input type="number" value={padding} onChange={(e) => setPadding(+e.target.value)} />
-      </label>
-      <label>
-        Minimum width
-        <input type="number" value={min} onChange={(e) => setMin(+e.target.value)} />
-      </label>
-      <div className="row">
-        <button className="btn" onClick={onClose}>
-          Cancel
-        </button>
-        <button className="btn primary" disabled={!text || !box} onClick={create}>
-          Create
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /** Settings of a logic node (layer, property, operation…), shared by the Logic and Data editors. */
 export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template: Template; setNode: (id: string, patch: Partial<LogicNode>, key?: string) => void }) {
@@ -283,7 +213,6 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const widthOf = (n: LogicNode) => sizes[n.id] ?? NODE_W;
   const [selected, setSelected] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: string; x: number; y: number } | null>(null);
-  const [preset, setPreset] = useState(false);
   const logic: Logic = template?.logic ?? { nodes: [], edges: [] };
 
   // Live values at the playhead.
@@ -371,9 +300,6 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
         <h2>Logic — {template.name}</h2>
         <span className="muted small">Wire sources into operations and targets. Values shown live at the playhead.</span>
         <div className="spacer" />
-        <button className="btn small" onClick={() => setPreset(!preset)}>
-          <Wand2 size={13} /> Fit a box to a text…
-        </button>
         <button className="icon-btn ghost" onClick={onClose} title="Close">
           <X size={16} />
         </button>
@@ -467,30 +393,11 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
             })}
             {!logic.nodes.length && (
               <div className="logic-empty">
-                <p>
-                  No relation yet. Add nodes from the left, then drag from an output (right dot) to an input (left dot).
-                  <br />
-                  Example: <em>Text size</em> (name) → <em>Math</em> A + B with <em>Number</em> 60 → <em>Set property</em> plate width.
-                </p>
+                <p>No relation yet. Add nodes from the left, then drag from an output (right dot) to an input (left dot).</p>
               </div>
             )}
           </div>
           {cv.controls}
-          {preset && (
-            <FitPreset
-              template={template}
-              onClose={() => setPreset(false)}
-              onCreate={(ns, es) =>
-                edit((l) => {
-                  const v = cv.visible();
-                  const ox = Math.round(v.x + 20);
-                  const oy = Math.round(v.y + 20 + (l.nodes.length ? 320 : 0));
-                  l.nodes.push(...ns.map((n) => ({ ...n, x: n.x + ox, y: n.y + oy })));
-                  l.edges.push(...es);
-                })
-              }
-            />
-          )}
         </div>
       </div>
     </div>

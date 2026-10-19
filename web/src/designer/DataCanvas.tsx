@@ -1453,9 +1453,11 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
 
 export function DataCanvasButton({ className = 'btn small' }: { className?: string }) {
   const open = useDataCanvas((s) => s.set);
+  // What the canvas holds: its nodes and the fields fed by a source.
+  const count = useDesigner((s) => (s.template?.dataflow?.nodes.length ?? 0) + (s.template?.fields.filter((f) => f.binding?.source).length ?? 0));
   return (
-    <button className={className} onClick={() => open(true)} title="Sources, filters, variables, operations and the layers' values, on a canvas">
-      <Database size={13} /> Data
+    <button className={`${className} ${count ? 'on' : ''}`} onClick={() => open(true)} title="Sources, filters, variables, operations and the layers' values, on a canvas">
+      <Database size={13} /> Data{count ? ` · ${count}` : ''}
     </button>
   );
 }
