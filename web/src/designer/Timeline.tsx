@@ -847,7 +847,7 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       >
         <Minus size={15} />
       </button>
-      <button className="tool" title="Text (single line, paragraph or scrolling: see General)" onClick={() => onAdd('text')}>
+      <button className="tool" title="Text" onClick={() => onAdd('text')}>
         <Type size={15} />
       </button>
       <button className="tool" title="Image" onClick={() => onAdd('image')}>
@@ -890,13 +890,9 @@ type Tab = (typeof TABS)[number];
 
 /** The + menu: the spec widgets by group, then the older widgets (built on first use: the registry imports this module's neighbours). */
 const menu = (): Record<Tab, MenuItem[]> => ({
-  ...(Object.fromEntries(
-    TABS.slice(0, 4).map((g) => [g, WIDGET_LIST.filter((w) => w.group === g).flatMap((w) => (w.presets?.length ? w.presets : [{ label: w.label, hint: undefined, patch: undefined }]).map((p) => ({ label: p.label, hint: p.hint, icon: w.icon, type: w.type, patch: p.patch })))]),
-  ) as Record<Exclude<Tab, 'More'>, MenuItem[]>),
+  ...(Object.fromEntries(TABS.slice(0, 4).map((g) => [g, WIDGET_LIST.filter((w) => w.group === g).map((w) => ({ label: w.label, icon: w.icon, type: w.type }))])) as Record<Exclude<Tab, 'More'>, MenuItem[]>),
   More: [
     { label: 'Analog clock', icon: ICONS.analogClock, preset: 'analogClock' },
-    { label: 'Rotator', icon: ICONS.rotator, preset: 'rotator' },
-    { label: 'Slideshow', icon: ICONS.slideshow, preset: 'slideshow' },
     { label: 'Video', icon: Video, soon: true },
     { label: 'Animation (Lottie)', icon: Sparkles, soon: true },
     { label: 'Iframe', icon: Code, soon: true },

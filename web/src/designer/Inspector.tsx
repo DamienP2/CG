@@ -957,8 +957,7 @@ function SpecInspector({ layer }: { layer: Layer }) {
       <Warnings list={warnings} />
       <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
       {Op && (
-        <SpecSection id={`try-${def.id}`} title="Operator · try it">
-          <p className="hint wk-note">The Operator's controls, on the Designer's preview. On air they act on the graphic taken.</p>
+        <SpecSection id={`try-${def.id}`} title="Operator · try it" closed>
           <div className="wk-op">
             <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
           </div>
