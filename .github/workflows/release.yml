@@ -230,7 +230,7 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           export PATH="$PATH:$HOME/.dotnet/tools"
           wix extension add --global WixToolset.Util.wixext/5.0.2
-          wix build packaging/premiere/strata-premiere.wxs -ext WixToolset.Util.wixext -sval \
+          wix build packaging/premiere/strata-premiere.wxs -ext WixToolset.Util.wixext \
             -d Version="$VERSION" -d PanelDir=dist/premiere/io.pulsecg.premiere -d DocsDir=. \
             -o "dist/Strata-Premiere-$SUFFIX-windows.msi"
       - uses: actions/upload-artifact@v4
