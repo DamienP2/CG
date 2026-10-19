@@ -1,6 +1,6 @@
-/** The Strata logo: three layers, the top one carrying a lower third. `mono`: all white. */
-export function Logo({ size = 20, mono = false }: { size?: number; mono?: boolean }) {
-  const [a, b, c] = mono ? ['#fff', '#fff', '#fff'] : ['#7c5cff', '#ff3b5c', '#9d85ff'];
+/** The Strata logo: three layers, the top one carrying a lower third. White in the app; `mono={false}`: in colour. */
+export function Logo({ size = 20, mono = true }: { size?: number; mono?: boolean }) {
+  const [a, b, c] = mono ? ['#fff', '#fff', '#fff'] : ['#8fa3ff', '#ff3b5c', '#bfcaff'];
   return (
     <svg className="logo" width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
       <path d="m3.5 20.6 12.5 6.4 12.5-6.4" fill="none" stroke={c} strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" opacity={mono ? 0.6 : 1} />

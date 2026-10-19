@@ -40,9 +40,11 @@
   --text: #e6e8f2;
   --text-2: #a3a8bf;
   --text-3: #6b7090;
-  --accent: #7c5cff;
-  --accent-2: #9d85ff;
-  --accent-soft: rgba(124, 92, 255, 0.16);
+  --accent: #8fa3ff;
+  --accent-2: #bfcaff;
+  --accent-soft: rgba(143, 163, 255, 0.16);
+  /* Text and icons on the accent (periwinkle is light: dark ink). */
+  --on-accent: #0b1236;
   --live: #ff3b5c;
   --live-soft: rgba(255, 59, 92, 0.16);
   --pvw: #22c55e;
@@ -266,7 +268,7 @@ code {
   height: 30px;
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 .icon-btn.play:hover {
   background: var(--accent-2) !important;
@@ -341,7 +343,7 @@ code {
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 .tabs {
   display: flex;
@@ -611,7 +613,7 @@ code {
 }
 .layer-row.selected {
   background: var(--accent-soft);
-  border-color: rgba(124, 92, 255, 0.35);
+  border-color: rgba(143, 163, 255, 0.35);
 }
 .layer-row.drop-above {
   box-shadow: 0 -2px 0 var(--accent);
@@ -1136,7 +1138,7 @@ code {
   background: rgba(24, 27, 38, 0.6);
 }
 .tl-row.selected {
-  background: rgba(124, 92, 255, 0.07);
+  background: rgba(143, 163, 255, 0.07);
 }
 .tl-bar {
   position: absolute;
@@ -1144,8 +1146,8 @@ code {
   height: 14px;
   left: 0;
   border-radius: 4px;
-  background: linear-gradient(180deg, rgba(124, 92, 255, 0.28), rgba(124, 92, 255, 0.16));
-  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: linear-gradient(180deg, rgba(143, 163, 255, 0.28), rgba(143, 163, 255, 0.16));
+  border: 1px solid rgba(143, 163, 255, 0.35);
 }
 .kf {
   position: absolute;
@@ -1527,7 +1529,7 @@ code {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 .btn.primary:hover:not(:disabled) {
   background: var(--accent-2);
@@ -1753,8 +1755,8 @@ code {
   place-items: center;
   font-size: 11px;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), #ff3b8c);
-  color: white;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--on-accent);
 }
 .user-name {
   font-size: 12px;
@@ -2018,7 +2020,7 @@ code {
   border-radius: 13px 13px 0 0;
   overflow: hidden;
   background:
-    radial-gradient(ellipse at 30% 0%, rgba(124, 92, 255, 0.25), transparent 60%),
+    radial-gradient(ellipse at 30% 0%, rgba(143, 163, 255, 0.25), transparent 60%),
     repeating-conic-gradient(#171a25 0% 25%, #12141d 0% 50%) 0 0 / 16px 16px;
   border-bottom: 1px solid var(--line);
 }
@@ -2328,7 +2330,7 @@ code {
   inset: 12px;
   border: 2px dashed var(--accent);
   border-radius: 16px;
-  background: rgba(124, 92, 255, 0.12);
+  background: rgba(143, 163, 255, 0.12);
   backdrop-filter: blur(2px);
   display: flex;
   flex-direction: column;
@@ -3246,7 +3248,7 @@ select.small {
 }
 .format-bar button.on {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 .format-bar button:hover:not(.on) {
   background: var(--panel-3);
@@ -3259,7 +3261,7 @@ select.small {
   padding: 8px 10px;
   border-radius: 8px;
   background: var(--accent-soft);
-  border: 1px solid rgba(124, 92, 255, 0.35);
+  border: 1px solid rgba(143, 163, 255, 0.35);
   font-size: 11.5px;
   color: var(--text-2);
   display: flex;
@@ -3275,7 +3277,7 @@ select.small {
   border-radius: 50%;
   border: none;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
   flex: none;
   padding: 0;
@@ -3438,7 +3440,7 @@ select.small {
 .splitter:hover,
 body.resizing-x .splitter.x:active,
 body.resizing-y .splitter.y:active {
-  background: rgba(124, 92, 255, 0.45);
+  background: rgba(143, 163, 255, 0.45);
 }
 body.resizing-x,
 body.resizing-x * {
@@ -4429,7 +4431,7 @@ input.mono {
 .add-btn:hover {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .add-menu {
   width: 440px;
@@ -4635,7 +4637,7 @@ input.mono {
   position: absolute;
   top: 12px;
   height: 2px;
-  background: rgba(124, 92, 255, 0.7);
+  background: rgba(143, 163, 255, 0.7);
 }
 
 /* ---------- Edit lock and publishing ---------- */
@@ -4879,7 +4881,7 @@ a.btn {
 .oc-node.sel {
   border-color: var(--accent-2);
   box-shadow:
-    0 0 0 2px rgba(124, 92, 255, 0.35),
+    0 0 0 2px rgba(143, 163, 255, 0.35),
     0 10px 26px rgba(0, 0, 0, 0.35);
 }
 .oc-node-head {
@@ -5255,7 +5257,7 @@ a.btn {
   display: inline-block;
   border: 2px solid var(--accent-2);
   border-radius: 4px;
-  background: rgba(124, 92, 255, 0.12);
+  background: rgba(143, 163, 255, 0.12);
   vertical-align: middle;
 }
 .fmt-size {
@@ -5472,7 +5474,7 @@ a.btn {
   background: var(--panel-3);
 }
 .pp-expose.on {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
   opacity: 1;
 }
@@ -5671,7 +5673,7 @@ a.btn {
 }
 .widget-run button.on {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .widget-run.compact button {
   height: 24px;
@@ -6126,7 +6128,7 @@ a.btn {
 }
 .opx-btn.violet {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 /* Monitors */
 .opx-monitor {
@@ -6356,7 +6358,7 @@ a.btn {
 }
 .opx-seg button.on {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .opx-every {
   display: flex;
@@ -7150,7 +7152,7 @@ body.dragging-guide .guide span {
   cursor: pointer;
 }
 .overview .overview-tpl:hover [data-layer-id] {
-  outline: 1px dashed rgba(157, 133, 255, 0.6);
+  outline: 1px dashed rgba(191, 202, 255, 0.6);
 }
 .timeline.tl-empty {
   display: grid;
@@ -7402,7 +7404,7 @@ body.dragging-guide .guide span {
 }
 .tpl-publish:hover {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 /* Right panel while editing the safe areas. */
 .area-inspector {
@@ -7547,7 +7549,7 @@ body.cv-moving * {
   padding: 5px 10px;
   border-radius: 7px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 12px;
   font-weight: 600;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
@@ -7793,7 +7795,7 @@ body.cv-moving * {
 .dur-presets button.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 .zone-pick {
   flex: 1;
@@ -7907,7 +7909,7 @@ body.cv-moving * {
 }
 .pjp-rates button.on {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 .pjp-fps {
@@ -8040,7 +8042,7 @@ body.cv-moving * {
   border-radius: 6px;
   border: 0;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 10.5px;
   font-weight: 600;
   flex: none;
@@ -8488,7 +8490,7 @@ body.cv-moving * {
   height: 2px;
   border-radius: 2px;
   background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.25);
+  box-shadow: 0 0 0 3px rgba(143, 163, 255, 0.25);
   z-index: 2;
 }
 .opx-gr.drop-before::before {
@@ -9303,10 +9305,10 @@ body.cv-moving * {
   border-radius: 3px;
 }
 .kf-seg:hover {
-  background: rgba(124, 92, 255, 0.25);
+  background: rgba(143, 163, 255, 0.25);
 }
 .kf-seg.sel {
-  background: rgba(124, 92, 255, 0.45);
+  background: rgba(143, 163, 255, 0.45);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 .easing-picks {
@@ -9791,7 +9793,7 @@ body.cv-moving * {
 }
 .lib-card.on {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft, rgba(124, 92, 255, 0.16));
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(143, 163, 255, 0.16));
 }
 .lib-im {
   aspect-ratio: 16 / 10;
@@ -9830,11 +9832,11 @@ body.cv-moving * {
   inset: 8px;
   border: 2px dashed var(--accent);
   border-radius: 10px;
-  background: #7c5cff1f;
+  background: #8fa3ff1f;
   display: none;
   place-items: center;
   font-weight: 600;
-  color: var(--accent-2, #9d85ff);
+  color: var(--accent-2, #bfcaff);
   pointer-events: none;
 }
 .lib-b.dragging .lib-drop {
@@ -9907,7 +9909,7 @@ body.cv-moving * {
   border-left: 2px solid #fff;
 }
 .tl-marker.onair:hover::before {
-  border-left-color: var(--accent-2, #9d85ff);
+  border-left-color: var(--accent-2, #bfcaff);
 }
 .tl-marker.onair.moving,
 .tl-marker.onair.editing {

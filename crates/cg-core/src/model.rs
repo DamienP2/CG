@@ -1601,11 +1601,11 @@ impl Zone {
 }
 
 fn default_zone_color() -> String {
-    "#7c5cff".into()
+    "#8fa3ff".into()
 }
 
 const ZONE_COLORS: [&str; 8] = [
-    "#7c5cff", "#ff3b5c", "#22c55e", "#f5a524", "#38bdf8", "#e879f9", "#14b8a6", "#f97316",
+    "#8fa3ff", "#ff3b5c", "#22c55e", "#f5a524", "#38bdf8", "#e879f9", "#14b8a6", "#f97316",
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

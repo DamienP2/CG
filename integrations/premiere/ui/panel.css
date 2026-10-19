@@ -7,9 +7,10 @@
   --line: #3a3a3a;
   --text: #d6d6d6;
   --muted: #8a8a8a;
-  --accent: #7c5cff;
-  --accent-2: #9d85ff;
-  --accent-soft: rgba(124, 92, 255, 0.18);
+  --accent: #8fa3ff;
+  --accent-2: #bfcaff;
+  --on-accent: #0b1236;
+  --accent-soft: rgba(143, 163, 255, 0.18);
   --live: #ff3b5c;
   --ok: #22c55e;
   --warn: #f5a524;
@@ -158,7 +159,7 @@ textarea:focus {
 .n {
   font-size: 10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   border-radius: 8px;
   padding: 0 5px;
 }
@@ -168,7 +169,7 @@ textarea:focus {
   gap: 8px;
   padding: 7px 10px;
   background: var(--accent-soft);
-  border-bottom: 1px solid rgba(124, 92, 255, 0.4);
+  border-bottom: 1px solid rgba(143, 163, 255, 0.4);
   color: var(--accent-2);
   font-size: 11.5px;
 }
@@ -664,7 +665,7 @@ textarea:focus {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 700;
   flex: 1;
 }

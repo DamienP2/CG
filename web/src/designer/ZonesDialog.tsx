@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Zone } from '../engine/types';
 import { useApp } from '../store';
 
-const COLORS = ['#7c5cff', '#ff3b5c', '#22c55e', '#f5a524', '#38bdf8', '#e879f9', '#14b8a6', '#f97316'];
+const COLORS = ['#8fa3ff', '#ff3b5c', '#22c55e', '#f5a524', '#38bdf8', '#e879f9', '#14b8a6', '#f97316'];
 
 /**
  * Screen zones of the project: each shows one template at a time, zones are

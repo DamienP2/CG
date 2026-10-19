@@ -16,7 +16,7 @@ type Kind = 'program' | 'picture' | 'html5' | 'sdi' | 'st2110' | 'ndi';
 type DestKind = Exclude<Kind, 'program' | 'picture'>;
 
 const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = {
-  program: { label: 'Program', color: '#9d85ff', icon: Play },
+  program: { label: 'Program', color: '#bfcaff', icon: Play },
   picture: { label: 'Picture', color: '#38bdf8', icon: ImageIcon },
   html5: { label: 'HTML5', color: '#22c55e', icon: Globe },
   sdi: { label: 'SDI', color: '#f5a524', icon: Tv },

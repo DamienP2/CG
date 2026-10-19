@@ -1004,7 +1004,7 @@ fn zone(id: &str, name: &str, layer: u32, color: &str) -> Zone {
 pub fn demo_project() -> Project {
     let mut p = demo_project_layers();
     p.zones = vec![
-        zone("lower-third", "Lower third", 10, "#7c5cff"),
+        zone("lower-third", "Lower third", 10, "#8fa3ff"),
         zone("top-left", "Top left", 20, "#ff3b5c"),
         zone("top-right", "Top right", 30, "#22c55e"),
         zone("ticker", "Ticker", 40, "#f5a524"),
