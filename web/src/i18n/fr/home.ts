@@ -222,6 +222,8 @@ export const home: Record<string, string> = {
   'The page follows the server when the port changes.': 'La page suit le serveur quand le port change.',
   'The passwords do not match.': 'Les mots de passe ne correspondent pas.',
   'The server did not come back within 2 minutes: check its logs.': 'Le serveur n’est pas revenu en 2 minutes : consultez ses journaux.',
+  'Its template and its media are deleted.': 'Son modèle et ses médias sont supprimés.',
+  'Its {n} templates and its media are deleted.': 'Ses {n} modèles et ses médias sont supprimés.',
   'Their template and their media are deleted.': 'Leur modèle et leurs médias sont supprimés.',
   'Their {n} templates and their media are deleted.': 'Leurs {n} modèles et leurs médias sont supprimés.',
   'This cannot be undone.': 'C’est irréversible.',

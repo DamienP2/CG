@@ -2,7 +2,7 @@ import { LogIn, ShieldCheck } from 'lucide-react';
 import { Logo } from '../ui/Logo';
 import { useState } from 'react';
 import { ApiError, useApp } from '../store';
-import { LANGS, setLang, t, useLang } from '../i18n';
+import { LANGS, pickLang, t, useLang } from '../i18n';
 
 /** Login, or creation of the first admin account on a fresh install. */
 export function Login() {
@@ -41,7 +41,7 @@ export function Login() {
         <p className="muted">{auth?.serverName}</p>
         <div className="lang-switch login-lang" role="group" aria-label={t('Language')}>
           {LANGS.map((l) => (
-            <button type="button" key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => setLang(l.id)}>
+            <button type="button" key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => pickLang(l.id)}>
               {l.label}
             </button>
           ))}

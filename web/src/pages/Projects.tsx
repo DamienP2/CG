@@ -377,7 +377,10 @@ export function Projects() {
                 {list.length > 8 && <span className="muted">{t('and {n} more', { n: list.length - 8 })}</span>}
               </span>
             )}
-            {tn(templates, 'Their template and their media are deleted.', 'Their {n} templates and their media are deleted.')} {t('This cannot be undone.')}
+            {list.length === 1
+              ? tn(templates, 'Its template and its media are deleted.', 'Its {n} templates and its media are deleted.')
+              : tn(templates, 'Their template and their media are deleted.', 'Their {n} templates and their media are deleted.')}{' '}
+            {t('This cannot be undone.')}
             {warn}
           </>
         ),

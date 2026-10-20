@@ -49,6 +49,14 @@ export function setLang(l: string | null | undefined) {
 
 export const lang = () => current;
 
+let picked = false;
+/** A language picked by hand (login page): it wins over the one saved for the user. */
+export function pickLang(l: Lang) {
+  picked = true;
+  setLang(l);
+}
+export const pickedByHand = () => picked;
+
 /** Locale for dates and numbers. */
 export const locale = () => (current === 'fr' ? 'fr-FR' : undefined);
 
