@@ -22,6 +22,7 @@ import { formatById } from '../engine/formats';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
 import { projectPath, setLeaveGuard } from '../router';
+import { t, tn } from '../i18n';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -77,10 +78,10 @@ function useLeaveUnpublished(project: Project | null) {
       (path) => !path.startsWith(here),
       () =>
         confirmDialog({
-          title: 'Leave without publishing?',
-          message: `${changed} template${changed > 1 ? 's have' : ' has'} changes the Operator does not have yet. They stay saved here as drafts; publish them from the Project block to put them on air.`,
-          confirm: 'Leave',
-          cancel: 'Stay',
+          title: t('Leave without publishing?'),
+          message: tn(changed, '{n} template has changes the Operator does not have yet. They stay saved here as drafts; publish them from the Project block to put them on air.', '{n} templates have changes the Operator does not have yet. They stay saved here as drafts; publish them from the Project block to put them on air.'),
+          confirm: t('Leave'),
+          cancel: t('Stay'),
         }),
     );
   }, [changed, id]);
@@ -208,7 +209,7 @@ function duplicateSelection() {
 function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show: boolean; onShow: (v: boolean) => void; onManage: () => void }) {
   const current = useDesigner((s) => s.template?.zone);
   return (
-    <SplitButton icon={<LayoutGrid size={13} />} label="Zones" on={show} onToggle={() => onShow(!show)} title="screen zones" width={260}>
+    <SplitButton icon={<LayoutGrid size={13} />} label={t('Zones')} on={show} onToggle={() => onShow(!show)} title={t('screen zones')} width={260}>
       <div className="zm-list">
         {[...project.zones]
           .sort((a, b) => b.layer - a.layer)
@@ -216,13 +217,13 @@ function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show
             <div key={z.id} className={`zm-zone ${z.id === current ? 'mine' : ''}`} style={{ ['--zc' as string]: z.color }}>
               <span className="zm-dot" />
               <span>{z.name}</span>
-              <em>{z.id === current ? 'this template' : `layer ${z.layer}`}</em>
+              <em>{z.id === current ? t('this template') : t('layer {n}', { n: z.layer })}</em>
             </div>
           ))}
       </div>
-      <p className="zm-hint">On the stage, drag a zone by its name and resize it with its handles.</p>
+      <p className="zm-hint">{t('On the stage, drag a zone by its name and resize it with its handles.')}</p>
       <button className="btn small" data-close onClick={onManage}>
-        <Settings2 size={13} /> Manage zones…
+        <Settings2 size={13} /> {t('Manage zones…')}
       </button>
     </SplitButton>
   );
@@ -242,21 +243,21 @@ function TemplateList({ project }: { project: Project }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const create = async (base?: Template) => {
-    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${designTemplates(project).length + 1}`, (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den);
+    const tpl = base ? { ...structuredClone(base), id: newId(), name: t('{name} copy', { name: base.name }) } : newTemplate(t('Template {n}', { n: designTemplates(project).length + 1 }), (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den);
     // Open it at once; the save follows.
-    load(t);
-    await saveTemplate(t);
+    load(tpl);
+    await saveTemplate(tpl);
   };
   return (
     // A click beside the templates leaves the open one, like Esc.
     <div className="template-list" onClick={() => template && load(null)}>
       <header onClick={(e) => e.stopPropagation()}>
-        <span>Templates</span>
+        <span>{t('Templates')}</span>
         <div className="header-actions">
-          <button className="icon-btn ghost" title="Import an After Effects composition (Bodymovin / LottieFiles .json, .zip, .lottie)" onClick={() => fileRef.current?.click()} disabled={importing}>
+          <button className="icon-btn ghost" title={t('Import an After Effects composition (Bodymovin / LottieFiles .json, .zip, .lottie)')} onClick={() => fileRef.current?.click()} disabled={importing}>
             <FileUp size={14} />
           </button>
-          <button className="icon-btn ghost" title="New template" onClick={() => create()}>
+          <button className="icon-btn ghost" title={t('New template')} onClick={() => create()}>
             <Plus size={14} />
           </button>
         </div>
@@ -271,9 +272,9 @@ function TemplateList({ project }: { project: Project }) {
             if (!f) return;
             setImporting(true);
             try {
-              const { template: t, warnings } = await importAfterEffects(project.id, f);
-              load(t);
-              toast(warnings.length ? `Imported “${t.name}” — not converted: ${warnings.join('; ')}` : `Imported “${t.name}”`, 'info');
+              const { template: imp, warnings } = await importAfterEffects(project.id, f);
+              load(imp);
+              toast(warnings.length ? t('Imported “{name}” — not converted: {warnings}', { name: imp.name, warnings: warnings.join('; ') }) : t('Imported “{name}”', { name: imp.name }), 'info');
             } catch (err) {
               toast(String(err instanceof Error ? err.message : err), 'error');
             } finally {
@@ -282,14 +283,14 @@ function TemplateList({ project }: { project: Project }) {
           }}
         />
       </header>
-      {designTemplates(project).map((t) => {
-        const { published, draft } = publishState(project, t.id);
+      {designTemplates(project).map((tpl) => {
+        const { published, draft } = publishState(project, tpl.id);
         const unpublished = draft || !published;
         return (
-          <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== t.id && load(t))}>
-            <img src={thumbnailUrl(project.id, t, format, true)} alt="" loading="lazy" />
+          <div key={tpl.id} className={`template-item ${template?.id === tpl.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== tpl.id && load(tpl))}>
+            <img src={thumbnailUrl(project.id, tpl, format, true)} alt="" loading="lazy" />
             <span className="tpl-text">
-              {renaming === t.id && template?.id === t.id ? (
+              {renaming === tpl.id && template?.id === tpl.id ? (
                 <input
                   className="tpl-rename"
                   autoFocus
@@ -310,19 +311,19 @@ function TemplateList({ project }: { project: Project }) {
               ) : (
                 <span
                   className="tpl-name"
-                  title={template?.id === t.id ? 'Click to rename' : undefined}
+                  title={template?.id === tpl.id ? t('Click to rename') : undefined}
                   onClick={(e) => {
                     // The open template: rename it. Another one: open it first.
-                    if (template?.id !== t.id) return;
+                    if (template?.id !== tpl.id) return;
                     e.stopPropagation();
-                    setRenaming(t.id);
+                    setRenaming(tpl.id);
                   }}
                 >
-                  {t.name}
+                  {tpl.name}
                 </span>
               )}
               {(() => {
-                const z = project.zones.find((z) => z.id === t.zone);
+                const z = project.zones.find((z) => z.id === tpl.zone);
                 return z ? (
                   <em className="tpl-zone" style={{ ['--zc' as string]: z.color }}>
                     {z.name}
@@ -330,20 +331,20 @@ function TemplateList({ project }: { project: Project }) {
                 ) : null;
               })()}
             </span>
-            {unpublished && <span className="tpl-draft" title={published ? 'Changes not in the Operator yet (publish from the properties on the right)' : 'New: not in the Operator yet'} />}
+            {unpublished && <span className="tpl-draft" title={published ? t('Changes not in the Operator yet (publish from the properties on the right)') : t('New: not in the Operator yet')} />}
             <div className="item-actions">
-              <button className="icon-btn ghost" title="Duplicate" onClick={(e) => (e.stopPropagation(), create(t))}>
+              <button className="icon-btn ghost" title={t('Duplicate')} onClick={(e) => (e.stopPropagation(), create(tpl))}>
                 <Copy size={12} />
               </button>
               <button
                 className="icon-btn ghost"
-                title={designTemplates(project).length < 2 ? 'A project keeps at least one template' : 'Delete'}
+                title={designTemplates(project).length < 2 ? t('A project keeps at least one template') : t('Delete')}
                 disabled={designTemplates(project).length < 2}
                 onClick={async (e) => {
                   e.stopPropagation();
-                  if (!(await confirmDialog({ title: `Delete the template “${t.name}”?`, message: 'Rundown items using it are removed too.', confirm: 'Delete', danger: true }))) return;
-                  await deleteTemplate(t.id).catch((err) => toast(String(err), 'error'));
-                  if (template?.id === t.id) load(designTemplates(project).find((x) => x.id !== t.id) ?? null);
+                  if (!(await confirmDialog({ title: t('Delete the template “{name}”?', { name: tpl.name }), message: t('Rundown items using it are removed too.'), confirm: t('Delete'), danger: true }))) return;
+                  await deleteTemplate(tpl.id).catch((err) => toast(String(err), 'error'));
+                  if (template?.id === tpl.id) load(designTemplates(project).find((x) => x.id !== tpl.id) ?? null);
                 }}
               >
                 <Trash2 size={12} />
@@ -396,7 +397,7 @@ export function Designer() {
     }
   }, [project, template, load]);
 
-  if (!project) return <div className="loading">Connecting…</div>;
+  if (!project) return <div className="loading">{t('Connecting…')}</div>;
 
   const add = (type: LayerType, patch?: Record<string, unknown>, name?: string) => {
     const parent = selected.length === 1 && template && findLayer(template, selected[0])?.type === 'group' ? selected[0] : null;
@@ -433,10 +434,10 @@ export function Designer() {
           {topSlot &&
             createPortal(
               <>
-                <button className="top-tool" title="Undo (Ctrl+Z)" disabled={!past.length} onClick={undo}>
+                <button className="top-tool" title={t('Undo (Ctrl+Z)')} disabled={!past.length} onClick={undo}>
                   <Undo2 size={15} />
                 </button>
-                <button className="top-tool" title="Redo (Ctrl+Shift+Z)" disabled={!future.length} onClick={redo}>
+                <button className="top-tool" title={t('Redo (Ctrl+Shift+Z)')} disabled={!future.length} onClick={redo}>
                   <Redo2 size={15} />
                 </button>
                 <ProjectHistory project={project} readOnly={lock.state.status === 'held'} />
@@ -447,8 +448,9 @@ export function Designer() {
           <div className="spacer" />
           {template && (
             <>
-              <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title="Relations between values: a box that follows a text, conditions…">
-                <Link2 size={13} /> Logic{logicCount ? ` · ${logicCount}` : ''}
+              <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title={t('Relations between values: a box that follows a text, conditions…')}>
+                <Link2 size={13} /> {t('Logic')}
+                {logicCount ? ` · ${logicCount}` : ''}
               </button>
               <DataCanvasButton />
             </>
@@ -456,7 +458,7 @@ export function Designer() {
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <GuidesMenu />
           <SafeMenu project={project} />
-          <button className="btn small bg-toggle" title={`Stage background: ${BG_LABELS[background]} (click to change)`} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
+          <button className="btn small bg-toggle" title={t('Stage background: {bg} (click to change)', { bg: t(BG_LABELS[background]) })} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>
         </div>

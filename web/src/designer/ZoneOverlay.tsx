@@ -3,6 +3,7 @@ import { zoneArea } from '../engine/zones';
 import type { Area, Zone } from '../engine/types';
 import { useApp } from '../store';
 import { dragArea, useAreaSnap, type Handle } from './Guides';
+import { t } from '../i18n';
 
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const MIN = 0.02;
@@ -82,7 +83,7 @@ export function ZoneOverlay({ zones, format, width, height, scale, current, only
           return (
             <div key={z.id} className={`zone-box ${mine ? 'mine' : ''} ${active === z.id ? 'active' : ''}`} style={{ left: area.x * W, top: area.y * H, width: area.width * W, height: area.height * H, ['--zc' as string]: z.color }}>
               {mine && !whole && <span className="zone-veil" />}
-              <span className="zone-tab" title="Drag to move the zone (Shift: 1% steps)" onPointerDown={(e) => begin(e, z, 'move', area)}>
+              <span className="zone-tab" title={t('Drag to move the zone (Shift: 1% steps)')} onPointerDown={(e) => begin(e, z, 'move', area)}>
                 {z.name}
                 {draft?.id === z.id && <em>{`${Math.round(area.width * width)}×${Math.round(area.height * height)}`}</em>}
               </span>

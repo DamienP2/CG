@@ -14,6 +14,7 @@ import type { Data, FontStyle, Layer } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
 import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
+import { t } from '../i18n';
 
 export interface Config {
   min?: number | null;
@@ -623,16 +624,16 @@ function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unk
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <div style={{ ...box, border: `1px solid ${st.frozen ? '#38bdf8' : '#ff3b5c'}` }}>
-          <div className="hint">ON AIR{st.frozen && <b style={{ color: '#38bdf8' }}> · FROZEN</b>}</div>
+          <div className="hint">{t('ON AIR')}{st.frozen && <b style={{ color: '#38bdf8' }}> · {t('FROZEN')}</b>}</div>
           <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: 22, fontWeight: 700 }}>{format(p.fmt, v)}</div>
         </div>
         <div style={{ ...box, border: '1px solid #2e3448' }}>
           <div className="hint">
             <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: light, marginRight: 5 }} />
-            {wired ? 'SOURCE' : 'NO SOURCE'}
+            {wired ? t('SOURCE') : t('NO SOURCE')}
           </div>
           <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: 22, fontWeight: 700, color: wired && src == null ? '#f59e0b' : undefined, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wired ? raw || '“”' : '—'}</div>
-          <div className="hint">{wired ? (src == null ? 'Not a number: ignored' : 'Read from the data') : 'Values set by hand'}</div>
+          <div className="hint">{wired ? (src == null ? t('Not a number: ignored') : t('Read from the data')) : t('Values set by hand')}</div>
         </div>
       </div>
       <Btns
@@ -641,22 +642,22 @@ function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unk
           { label: `+ ${stepTxt}`, cls: 'huge green', keyHint: 'Up', onClick: () => act('inc') },
         ]}
       />
-      <Row label="Set">
+      <Row label={t('Set')}>
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-          <input style={{ flex: 1, height: 34, fontFamily: 'var(--mono, monospace)', fontSize: 15 }} placeholder="Value" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && input.trim() && act('set', { value: input }))} />
+          <input style={{ flex: 1, height: 34, fontFamily: 'var(--mono, monospace)', fontSize: 15 }} placeholder={t('Value')} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && input.trim() && act('set', { value: input }))} />
           <button className="opx-btn wk-btn violet" disabled={!input.trim()} onClick={() => act('set', { value: input })}>
-            Set value
+            {t('Set value')}
           </button>
         </div>
       </Row>
-      {input.trim() && parseNum(input) == null && <Msg level="warn">“{input}” is not a number: it would be ignored.</Msg>}
+      {input.trim() && parseNum(input) == null && <Msg level="warn">{t('“{value}” is not a number: it would be ignored.', { value: input })}</Msg>}
       <Btns
         list={[
-          { label: st.frozen ? '▶ Unfreeze display' : '❄ Freeze display', cls: st.frozen ? 'violet' : '', keyHint: 'F', onClick: () => act('freeze') },
-          { label: 'Reset', cls: 'ghost', confirm: 'Back to the initial value?', onClick: () => act('reset') },
+          { label: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), cls: st.frozen ? 'violet' : '', keyHint: 'F', onClick: () => act('freeze') },
+          { label: t('Reset'), cls: 'ghost', confirm: t('Back to the initial value?'), onClick: () => act('reset') },
         ]}
       />
-      {st.frozen && <Note>Frozen: the source is still read (right), the screen keeps its value until you unfreeze.</Note>}
+      {st.frozen && <Note>{t('Frozen: the source is still read (right), the screen keeps its value until you unfreeze.')}</Note>}
     </>
   );
 }
@@ -670,132 +671,132 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
   const affixed = !!(layer.prefix || layer.suffix);
   return (
     <>
-      <Section id="ct-value" title="Value">
-        <Content label="Value" path="to" value="" placeholder="Number or {{key}}" />
-        <Text label="Prefix" path="prefix" value="" />
-        <Text label="Suffix" path="suffix" value="" />
-        <Text label="Count from" path="from" value="0" />
-        <Num label="Intro" path="duration" value={2} min={0} step={0.1} precision={1} unit="s" />
-        <Num label="Step + / −" path="step" value={1} min={0} step={1} precision={3} />
-        <Toggle label="Limits" value={limits} onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
+      <Section id="ct-value" title={t('Value')}>
+        <Content label={t('Value')} path="to" value="" placeholder={t('Number or {{key}}')} />
+        <Text label={t('Prefix')} path="prefix" value="" />
+        <Text label={t('Suffix')} path="suffix" value="" />
+        <Text label={t('Count from')} path="from" value="0" />
+        <Num label={t('Intro')} path="duration" value={2} min={0} step={0.1} precision={1} unit="s" />
+        <Num label={t('Step + / −')} path="step" value={1} min={0} step={1} precision={3} />
+        <Toggle label={t('Limits')} value={limits} onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
         {limits && (
           <>
-            <Num expose="min" exposeValue={c.min ?? 0} label="Minimum" value={c.min ?? 0} step={1} precision={3} onChange={(v) => set('min', v)} />
-            <Num expose="max" exposeValue={c.max ?? 0} label="Maximum" value={c.max ?? 0} step={1} precision={3} onChange={(v) => set('max', v)} />
+            <Num expose="min" exposeValue={c.min ?? 0} label={t('Minimum')} value={c.min ?? 0} step={1} precision={3} onChange={(v) => set('min', v)} />
+            <Num expose="max" exposeValue={c.max ?? 0} label={t('Maximum')} value={c.max ?? 0} step={1} precision={3} onChange={(v) => set('max', v)} />
           </>
         )}
       </Section>
-      <Section id="ct-format" title="Format">
-        <Select label="Language" path="locale" value={c.locale} options={LOCALES} />
-        <Num expose="decimals" exposeValue={layer.decimals} label="Decimals" value={layer.decimals} min={0} max={3} onChange={(v) => set('decimals', v)} />
-        <Toggle expose="grouping" exposeValue={layer.grouping} label="Thousands" value={layer.grouping} onChange={(v) => set('grouping', v)} />
-        <Toggle label="Plus sign" path="plus" value={false} />
-        <Toggle label="Compact" path="compact" value={false} />
+      <Section id="ct-format" title={t('Format')}>
+        <Select label={t('Language')} path="locale" value={c.locale} options={LOCALES.map(([v, l]) => [v, t(l)] as [string, string])} />
+        <Num expose="decimals" exposeValue={layer.decimals} label={t('Decimals')} value={layer.decimals} min={0} max={3} onChange={(v) => set('decimals', v)} />
+        <Toggle expose="grouping" exposeValue={layer.grouping} label={t('Thousands')} value={layer.grouping} onChange={(v) => set('grouping', v)} />
+        <Toggle label={t('Plus sign')} path="plus" value={false} />
+        <Toggle label={t('Compact')} path="compact" value={false} />
       </Section>
-      <Section id="ct-figures" title="Style">
+      <Section id="ct-figures" title={t('Style')}>
         <div className="pp-typo">
           <FontControls layer={layer as Layer & FontStyle} set={set} />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <ColorGroupRow layer={layer as Layer} prop="fill" label="Color" />
+          <GroupRow layer={layer as Layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
+          <ColorGroupRow layer={layer as Layer} prop="fill" label={t('Color')} />
         </div>
-        <Toggle label="Tabular" path="tabular" value={false} />
+        <Toggle label={t('Tabular')} path="tabular" value={false} />
         <Seg
-          label="Reserve width"
+          label={t('Reserve width')}
           path="reserve"
           value={c.reserve}
           options={[
-            ['off', 'Off'],
-            ['max', 'Min / max'],
-            ['chars', 'Digits'],
+            ['off', t('Off')],
+            ['max', t('Min / max')],
+            ['chars', t('Digits')],
           ]}
         />
-        {c.reserve === 'chars' && <Num label="Digits" path="reserveChars" value={c.reserveChars} min={1} max={16} />}
+        {c.reserve === 'chars' && <Num label={t('Digits')} path="reserveChars" value={c.reserveChars} min={1} max={16} />}
         {affixed && (
           <>
-            <Num label="Affix size" path="affixSize" value={c.affixSize} min={20} max={100} unit="%" />
-            <ColorPick expose="affixColor" exposeValue={c.affixColor || '#ffffff'} label="Affix color" value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
+            <Num label={t('Affix size')} path="affixSize" value={c.affixSize} min={20} max={100} unit="%" />
+            <ColorPick expose="affixColor" exposeValue={c.affixColor || '#ffffff'} label={t('Affix color')} value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
             <Seg
-              label="Affix weight"
+              label={t('Affix weight')}
               path="affixWeight"
               value={c.affixWeight}
               options={[
-                [0, 'Same'],
-                [400, 'Regular'],
-                [700, 'Bold'],
-                [900, 'Black'],
+                [0, t('Same')],
+                [400, t('Regular')],
+                [700, t('Bold')],
+                [900, t('Black')],
               ]}
             />
             <Seg
-              label="Affix position"
+              label={t('Affix position')}
               path="affixRaise"
               value={c.affixRaise}
               options={[
-                ['baseline', 'Baseline'],
-                ['top', 'Raised'],
+                ['baseline', t('Baseline')],
+                ['top', t('Raised')],
               ]}
             />
-            <Num label="Affix gap" path="affixGap" value={c.affixGap} min={0} max={60} unit="px" />
+            <Num label={t('Affix gap')} path="affixGap" value={c.affixGap} min={0} max={60} unit="px" />
           </>
         )}
-        <Toggle label="Plate" path="plate" value={false} />
-        {c.plate && <ColorPick label="Plate color" path="plateColor" value={D.plateColor} />}
+        <Toggle label={t('Plate')} path="plate" value={false} />
+        {c.plate && <ColorPick label={t('Plate color')} path="plateColor" value={D.plateColor} />}
       </Section>
-      <Section id="ct-color" title="Color by value">
+      <Section id="ct-color" title={t('Color by value')}>
         <Seg
-          label="Mode"
+          label={t('Mode')}
           path="colorMode"
           value={c.colorMode}
           options={[
-            ['fixed', 'Fixed'],
-            ['thresholds', 'Thresholds'],
-            ['trend', 'Up / down'],
+            ['fixed', t('Fixed')],
+            ['thresholds', t('Thresholds')],
+            ['trend', t('Up / down')],
           ]}
         />
         {c.colorMode === 'thresholds' && (
           <ListEditor
-            label="From value"
+            label={t('From value')}
             path="thresholds"
             value={c.thresholds}
             fields={[
-              { key: 'from', placeholder: 'from' },
+              { key: 'from', placeholder: t('from') },
               { key: 'color', color: true, w: 44 },
             ]}
             add={() => ({ from: '0', color: '#38bdf8' })}
-            addLabel="Threshold"
+            addLabel={t('Threshold')}
           />
         )}
         {c.colorMode === 'trend' && (
           <>
-            <ColorPick label="Up" path="upColor" value={D.upColor} />
-            <ColorPick label="Down" path="downColor" value={D.downColor} />
-            <Num label="Hold" path="trendHold" value={c.trendHold} min={0} max={10} step={0.5} precision={1} unit="s" />
+            <ColorPick label={t('Up')} path="upColor" value={D.upColor} />
+            <ColorPick label={t('Down')} path="downColor" value={D.downColor} />
+            <Num label={t('Hold')} path="trendHold" value={c.trendHold} min={0} max={10} step={0.5} precision={1} unit="s" />
           </>
         )}
       </Section>
-      <Section id="ct-trans" title="Transition">
+      <Section id="ct-trans" title={t('Transition')}>
         <Seg
-          label="Type"
+          label={t('Type')}
           path="transition"
           value={c.transition}
           options={[
-            ['none', 'Cut'],
-            ['roll', 'Roll'],
-            ['odometer', 'Odometer'],
-            ['flip', 'Flip'],
+            ['none', t('Cut')],
+            ['roll', t('Roll')],
+            ['odometer', t('Odometer')],
+            ['flip', t('Flip')],
           ]}
         />
         {c.transition !== 'none' && (
           <>
-            <Num label="Duration" path="transMs" value={c.transMs} min={100} max={5000} step={50} unit="ms" />
+            <Num label={t('Duration')} path="transMs" value={c.transMs} min={100} max={5000} step={50} unit="ms" />
             <Select
-              label="Curve"
+              label={t('Curve')}
               path="easing"
               value={c.easing}
               options={[
-                ['linear', 'Linear'],
-                ['out', 'Ease out'],
-                ['inOut', 'Ease in-out'],
-                ['back', 'Overshoot'],
+                ['linear', t('Linear')],
+                ['out', t('Ease out')],
+                ['inOut', t('Ease in-out')],
+                ['back', t('Overshoot')],
               ]}
             />
           </>
@@ -803,6 +804,15 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
       </Section>
     </>
   );
+}
+
+/** An alert of the server (its wording is the Rust module's), in the interface's language. */
+function alertText(s: string): string {
+  let m = /^(.*) is out of range \((.*) – (.*)\): capped at (.*)\.$/.exec(s);
+  if (m) return t('{value} is out of range ({min} – {max}): capped at {capped}.', { value: m[1], min: m[2], max: m[3], capped: m[4] });
+  m = /^Value “(.*)”: not a number, ignored — (.*) kept\.$/.exec(s);
+  if (m) return t('Value “{value}”: not a number, ignored — {kept} kept.', { value: m[1], kept: m[2] });
+  return s;
 }
 
 export default defineWidget({
@@ -838,14 +848,14 @@ export default defineWidget({
     const st = (state ?? {}) as State;
     const p = partsOf(layer);
     const c = p.c;
-    if (st.alert && Date.now() - st.alert.at < 8000) out.push({ level: st.alert.level === 'error' ? 'error' : 'warn', text: st.alert.text, op: true });
-    if (c.min != null && c.max != null && c.min >= c.max) out.push({ level: 'error', text: 'Minimum must be lower than the maximum.', op: true });
+    if (st.alert && Date.now() - st.alert.at < 8000) out.push({ level: st.alert.level === 'error' ? 'error' : 'warn', text: alertText(st.alert.text), op: true });
+    if (c.min != null && c.max != null && c.min >= c.max) out.push({ level: 'error', text: t('Minimum must be lower than the maximum.'), op: true });
     const raw = interpolateText(layer.to, data);
     const v = parseNum(raw);
-    if (v == null) out.push({ level: 'warn', text: `${/\{\{\w+\}\}/.test(layer.to) ? 'Source sent' : 'Value'} “${raw}”: not a number, ignored — the last valid value stays on air.`, op: true });
-    else if (cap(c, v)[1]) out.push({ level: 'error', text: `${format(p.fmt, v)} is out of range (${c.min == null ? '−∞' : format(p.fmt, c.min)} – ${c.max == null ? '∞' : format(p.fmt, c.max)}): capped at ${format(p.fmt, cap(c, v)[0])}.`, op: true });
-    if (st.frozen && v != null && st.value != null && Math.abs(roundTo(cap(c, v)[0], p.fmt.decimals) - st.value) > 1e-9) out.push({ level: 'info', text: `Display frozen at ${format(p.fmt, st.value)} — source now at ${format(p.fmt, v)}.`, op: true });
-    if (!c.tabular && c.transition !== 'flip' && c.transition !== 'none') out.push({ level: 'info', text: 'Proportional figures: the number width changes while it rolls (turn Tabular on).' });
+    if (v == null) out.push({ level: 'warn', text: /\{\{\w+\}\}/.test(layer.to) ? t('Source sent “{value}”: not a number, ignored — the last valid value stays on air.', { value: raw }) : t('Value “{value}”: not a number, ignored — the last valid value stays on air.', { value: raw }), op: true });
+    else if (cap(c, v)[1]) out.push({ level: 'error', text: t('{value} is out of range ({min} – {max}): capped at {capped}.', { value: format(p.fmt, v), min: c.min == null ? '−∞' : format(p.fmt, c.min), max: c.max == null ? '∞' : format(p.fmt, c.max), capped: format(p.fmt, cap(c, v)[0]) }), op: true });
+    if (st.frozen && v != null && st.value != null && Math.abs(roundTo(cap(c, v)[0], p.fmt.decimals) - st.value) > 1e-9) out.push({ level: 'info', text: t('Display frozen at {frozen} — source now at {value}.', { frozen: format(p.fmt, st.value), value: format(p.fmt, v) }), op: true });
+    if (!c.tabular && c.transition !== 'flip' && c.transition !== 'none') out.push({ level: 'info', text: t('Proportional figures: the number width changes while it rolls (turn Tabular on).') });
     return out;
   },
 });

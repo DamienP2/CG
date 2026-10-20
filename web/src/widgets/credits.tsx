@@ -10,6 +10,7 @@ import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
 import { Area, Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
+import { t } from '../i18n';
 
 type Kind = 'section' | 'line' | 'logo' | 'space';
 export interface Entry {
@@ -495,6 +496,7 @@ Lighting | Manon Gauthier
 [logo PULSE TV]`;
 
 type CL = Config & { props: Record<string, unknown>; manualStart?: boolean };
+const STATUS_LABEL = { running: 'RUNNING', paused: 'PAUSED', done: 'DONE', idle: 'IDLE' } as const;
 const sizeOf = (l: CL, r?: Record<string, unknown>) => [num((r?.width as number) ?? (l.props.width as number) ?? 1100), num((r?.height as number) ?? (l.props.height as number) ?? 1000)];
 
 function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Warning[] {
@@ -506,14 +508,14 @@ function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Wa
   const live = !!st.started;
   if (k.mode !== 'pages') {
     const v = optim(k, (live && st.rate ? st.rate : nominal(k, g.x)) * g.x);
-    if (v > k.maxPxs) out.push({ level: 'error', text: `Speed ${v.toFixed(0)} px/s is above the readable threshold (${k.maxPxs} px/s): at least ${Math.ceil(g.x / k.maxPxs)} s needed.`, op: true });
-    if (k.optimised) out.push({ level: 'info', text: `Optimised speed: ${Math.round(v / k.fps)} px/frame at ${+k.fps.toFixed(2)} fps (${v.toFixed(0)} px/s), the duration follows: ${fmtDur(g.x / Math.max(1, v))}.` });
+    if (v > k.maxPxs) out.push({ level: 'error', text: t('Speed {speed} px/s is above the readable threshold ({max} px/s): at least {secs} s needed.', { speed: v.toFixed(0), max: k.maxPxs, secs: Math.ceil(g.x / k.maxPxs) }), op: true });
+    if (k.optimised) out.push({ level: 'info', text: t('Optimised speed: {perFrame} px/frame at {fps} fps ({speed} px/s), the duration follows: {duration}.', { perFrame: Math.round(v / k.fps), fps: +k.fps.toFixed(2), speed: v.toFixed(0), duration: fmtDur(g.x / Math.max(1, v)) }) });
   } else {
     const per = 1 / Math.max(1e-6, (live && st.rate ? st.rate : nominal(k, g.x)) * Math.max(1, g.x));
-    if (per < 1.5) out.push({ level: 'error', text: `${per.toFixed(1)} s per card is too short to read (min 1.5 s).`, op: true });
+    if (per < 1.5) out.push({ level: 'error', text: t('{secs} s per card is too short to read (min 1.5 s).', { secs: per.toFixed(1) }), op: true });
   }
-  if (g.short) out.push({ level: 'info', text: `Content shorter than the screen: ${k.shortMode === 'center' ? 'it stops centred' : 'it passes and exits'} — no empty scroll.` });
-  if (!es.length) out.push({ level: 'warn', text: 'No content.', op: true });
+  if (g.short) out.push({ level: 'info', text: k.shortMode === 'center' ? t('Content shorter than the screen: it stops centred — no empty scroll.') : t('Content shorter than the screen: it passes and exits — no empty scroll.') });
+  if (!es.length) out.push({ level: 'warn', text: t('No content.'), op: true });
   return out;
 }
 
@@ -535,12 +537,12 @@ function StyleRows({ label, path, s }: { label: string; path: string; s: St }) {
           value={String(s.weight)}
           onChange={(x) => b.set(`${path}.weight`, +x)}
           options={[
-            { value: '500', label: 'Med' },
-            { value: '700', label: 'Bold' },
-            { value: '900', label: 'Black' },
+            { value: '500', label: t('Med') },
+            { value: '700', label: t('Bold') },
+            { value: '900', label: t('Black') },
           ]}
         />
-        <Segmented value={s.upper ? 'u' : ''} onChange={() => b.set(`${path}.upper`, !s.upper)} options={[{ value: 'u', label: 'AA', title: 'Upper case' }]} />
+        <Segmented value={s.upper ? 'u' : ''} onChange={() => b.set(`${path}.upper`, !s.upper)} options={[{ value: 'u', label: 'AA', title: t('Upper case') }]} />
       </Row>
     </>
   );
@@ -563,8 +565,8 @@ export default defineWidget({
     const set = (fn: (x: Config) => void) => edit((x) => fn(x as never));
     return (
       <>
-        <Section id="credits-content" title="Content">
-          <Content label="Source" path="link" placeholder="{{key}}" />
+        <Section id="credits-content" title={t('Content')}>
+          <Content label={t('Source')} path="link" placeholder="{{key}}" />
           {!k.link.trim() && (
             <>
               <Row expose="entries" exposeValue={k.entries}>
@@ -574,34 +576,34 @@ export default defineWidget({
                     {
                       key: 'kind',
                       options: [
-                        ['section', 'Section'],
-                        ['line', 'Line'],
-                        ['logo', 'Logo'],
-                        ['space', 'Space'],
+                        ['section', t('Section')],
+                        ['line', t('Line')],
+                        ['logo', t('Logo')],
+                        ['space', t('Space')],
                       ],
                       w: 82,
                     },
-                    { key: 'a', placeholder: 'Role / title / logo' },
-                    { key: 'b', placeholder: 'Name' },
+                    { key: 'a', placeholder: t('Role / title / logo') },
+                    { key: 'b', placeholder: t('Name') },
                   ]}
                   add={() => ({ kind: 'line', a: 'Role', b: 'Name' })}
-                  addLabel="Entry"
+                  addLabel={t('Entry')}
                 />
               </Row>
-              <Area label="Import" path="importText" value={k.importText} placeholder="# Section" />
+              <Area label={t('Import')} path="importText" value={k.importText} placeholder="# Section" />
               <Btns
                 list={[
-                  { label: 'Replace', cls: 'violet', title: 'Replace the entries with the imported text', onClick: () => set((x) => void (x.entries = parse(k.importText))) },
-                  { label: 'Append', title: 'Append the imported text to the entries', onClick: () => set((x) => void (x.entries = [...k.entries, ...parse(k.importText)])) },
-                  { label: 'To text', cls: 'ghost', title: 'Entries to import text', onClick: () => set((x) => void (x.importText = toText(k.entries))) },
+                  { label: t('Replace'), cls: 'violet', title: t('Replace the entries with the imported text'), onClick: () => set((x) => void (x.entries = parse(k.importText))) },
+                  { label: t('Append'), title: t('Append the imported text to the entries'), onClick: () => set((x) => void (x.entries = [...k.entries, ...parse(k.importText)])) },
+                  { label: t('To text'), cls: 'ghost', title: t('Entries to import text'), onClick: () => set((x) => void (x.importText = toText(k.entries))) },
                 ]}
               />
             </>
           )}
         </Section>
-        <Section id="credits-layout" title="Layout" closed={k.mode === 'crawl'}>
+        <Section id="credits-layout" title={t('Layout')} closed={k.mode === 'crawl'}>
           <Seg
-            label="Columns"
+            label={t('Columns')}
             path="layout"
             value={k.layout}
             options={[
@@ -611,39 +613,39 @@ export default defineWidget({
             ]}
           />
           <Seg
-            label="Align"
+            label={t('Align')}
             path="align"
             value={k.align}
             options={[
-              ['left', 'Left'],
-              ['center', 'Centre'],
-              ['right', 'Right'],
+              ['left', t('Left')],
+              ['center', t('Centre')],
+              ['right', t('Right')],
             ]}
           />
-          <Num label="Gutter" path="gutter" value={k.gutter} min={0} max={1000} unit="px" />
-          <Num label="Section gap" path="sectionGap" value={k.sectionGap} min={0} max={1000} unit="px" />
-          <Num label="Line gap" path="lineGap" value={k.lineGap} min={0} max={1000} unit="px" />
-          <Num label="Space" path="spaceH" value={k.spaceH} min={0} max={1000} unit="px" />
-          <Num label="Logo height" path="logoH" value={k.logoH} min={10} max={1000} unit="px" />
+          <Num label={t('Gutter')} path="gutter" value={k.gutter} min={0} max={1000} unit="px" />
+          <Num label={t('Section gap')} path="sectionGap" value={k.sectionGap} min={0} max={1000} unit="px" />
+          <Num label={t('Line gap')} path="lineGap" value={k.lineGap} min={0} max={1000} unit="px" />
+          <Num label={t('Space')} path="spaceH" value={k.spaceH} min={0} max={1000} unit="px" />
+          <Num label={t('Logo height')} path="logoH" value={k.logoH} min={10} max={1000} unit="px" />
         </Section>
-        <Section id="credits-styles" title="Styles">
-          <StyleRows label="Section" path="st.section" s={k.st.section} />
-          <StyleRows label="Role" path="st.role" s={k.st.role} />
-          <StyleRows label="Name" path="st.name" s={k.st.name} />
-          <Toggle label="Panel" path="panel" value={k.panel} />
-          {k.panel && <ColorPick label="Color" path="panelColor" value={k.panelColor} />}
-          <Toggle label="Fade" path="fade" value={k.fade} />
-          {k.fade && <Num label="Size" path="fadeSize" value={k.fadeSize} min={1} max={1000} unit="px" />}
+        <Section id="credits-styles" title={t('Styles')}>
+          <StyleRows label={t('Section')} path="st.section" s={k.st.section} />
+          <StyleRows label={t('Role')} path="st.role" s={k.st.role} />
+          <StyleRows label={t('Name')} path="st.name" s={k.st.name} />
+          <Toggle label={t('Panel')} path="panel" value={k.panel} />
+          {k.panel && <ColorPick label={t('Color')} path="panelColor" value={k.panelColor} />}
+          <Toggle label={t('Fade')} path="fade" value={k.fade} />
+          {k.fade && <Num label={t('Size')} path="fadeSize" value={k.fadeSize} min={1} max={1000} unit="px" />}
         </Section>
-        <Section id="credits-motion" title="Motion">
+        <Section id="credits-motion" title={t('Motion')}>
           <Seg
-            label="Mode"
+            label={t('Mode')}
             path="mode"
             value={k.mode}
             options={[
-              ['roll', 'Roll', 'Vertical'],
-              ['crawl', 'Crawl', 'Horizontal'],
-              ['pages', 'Pages', 'Cards'],
+              ['roll', t('Roll'), t('Vertical')],
+              ['crawl', t('Crawl'), t('Horizontal')],
+              ['pages', t('Pages'), t('Cards')],
             ]}
           />
           {k.mode === 'pages' ? (
@@ -652,18 +654,18 @@ export default defineWidget({
                 expose="speedMode"
                 exposeValue={k.speedMode}
                 exposeOptions={[
-                  ['duration', 'Total'],
-                  ['card', 'Per card'],
+                  ['duration', t('Total')],
+                  ['card', t('Per card')],
                 ]}
-                label="Speed by"
+                label={t('Speed by')}
                 value={k.speedMode === 'pxs' ? 'card' : k.speedMode}
                 onChange={(x) => set((c) => void (c.speedMode = x))}
                 options={[
-                  ['duration', 'Total'],
-                  ['card', 'Per card'],
+                  ['duration', t('Total')],
+                  ['card', t('Per card')],
                 ]}
               />
-              {k.speedMode === 'duration' ? <Num label="Total" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label="Per card" path="cardDur" value={k.cardDur} min={0.5} max={600} step={0.5} precision={1} unit="s" />}
+              {k.speedMode === 'duration' ? <Num label={t('Total')} path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label={t('Per card')} path="cardDur" value={k.cardDur} min={0.5} max={600} step={0.5} precision={1} unit="s" />}
             </>
           ) : (
             <>
@@ -671,23 +673,23 @@ export default defineWidget({
                 expose="speedMode"
                 exposeValue={k.speedMode}
                 exposeOptions={[
-                  ['duration', 'Duration'],
+                  ['duration', t('Duration')],
                   ['pxs', 'px/s'],
                 ]}
-                label="Speed by"
+                label={t('Speed by')}
                 value={k.speedMode === 'card' ? 'pxs' : k.speedMode}
                 onChange={(x) => set((c) => void (c.speedMode = x))}
                 options={[
-                  ['duration', 'Duration'],
+                  ['duration', t('Duration')],
                   ['pxs', 'px/s'],
                 ]}
               />
-              {k.speedMode === 'duration' ? <Num label="Duration" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label="Speed" path="pxs" value={k.pxs} min={1} max={5000} unit="px/s" />}
-              <Num label="Max speed" path="maxPxs" value={k.maxPxs} min={10} max={5000} step={10} unit="px/s" />
+              {k.speedMode === 'duration' ? <Num label={t('Duration')} path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label={t('Speed')} path="pxs" value={k.pxs} min={1} max={5000} unit="px/s" />}
+              <Num label={t('Max speed')} path="maxPxs" value={k.maxPxs} min={10} max={5000} step={10} unit="px/s" />
               <Toggle
-                label="Whole px"
+                label={t('Whole px')}
                 value={k.optimised}
-                text="per frame"
+                text={t('per frame')}
                 onChange={(v) =>
                   edit((l) => {
                     (l as Config).optimised = v;
@@ -700,30 +702,30 @@ export default defineWidget({
             </>
           )}
           <Seg
-            label="Start"
+            label={t('Start')}
             path="start"
             value={k.start}
             options={[
-              ['off', 'Off screen'],
-              ['on', 'On screen'],
+              ['off', t('Off screen')],
+              ['on', t('On screen')],
             ]}
           />
           <Seg
-            label="End"
+            label={t('End')}
             path="end"
             value={k.end}
             options={[
-              ['exit', 'Exit'],
-              ['stop', 'Stop'],
+              ['exit', t('Exit')],
+              ['stop', t('Stop')],
             ]}
           />
           <Seg
-            label="If short"
+            label={t('If short')}
             path="shortMode"
             value={k.shortMode}
             options={[
-              ['center', 'Centre'],
-              ['exit', 'Exit'],
+              ['center', t('Centre')],
+              ['exit', t('Exit')],
             ]}
           />
         </Section>
@@ -744,14 +746,14 @@ export default defineWidget({
     const status = f >= 1 - 1e-9 ? 'done' : !st.started ? 'running' : st.running ? 'running' : f > 0 ? 'paused' : 'idle';
     const color = { running: 'var(--pvw, #22c55e)', paused: 'var(--warn, #f59e0b)', done: 'var(--text-3, #888)', idle: 'var(--text-2, #aaa)' }[status];
     const rr = realRate(k, st, g.x);
-    const speed = k.mode === 'pages' ? `card ${Math.min(g.x, Math.floor(f * g.x) + 1)}/${g.x} · ${(1 / Math.max(1e-6, rr * g.x)).toFixed(1)} s per card` : `${(rr * g.x).toFixed(0)} px/s · ${((rr * g.x) / 25).toFixed(k.optimised ? 0 : 2)} px/frame`;
+    const speed = k.mode === 'pages' ? t('card {n}/{total} · {secs} s per card', { n: Math.min(g.x, Math.floor(f * g.x) + 1), total: g.x, secs: (1 / Math.max(1e-6, rr * g.x)).toFixed(1) }) : t('{speed} px/s · {perFrame} px/frame', { speed: (rr * g.x).toFixed(0), perFrame: ((rr * g.x) / 25).toFixed(k.optimised ? 0 : 2) });
     const [endAt, setEndAt] = useState(() => fmtClock(Date.now() + rem * 1000));
     const travelArg = { travel: g.x };
     const toggle = () => act(status === 'running' ? 'pause' : status === 'paused' ? 'resume' : 'start');
     useKeys({ Space: toggle, ArrowRight: () => k.mode === 'pages' && act('next', travelArg) });
     return (
       <>
-        <Readout sub={`${status.toUpperCase()} · remaining · ${status === 'running' ? `ends at ${fmtClock(Date.now() + rem * 1000)}` : '—'} · ${speed}`}>
+        <Readout sub={t('{status} · remaining · {end} · {speed}', { status: t(STATUS_LABEL[status]), end: status === 'running' ? t('ends at {time}', { time: fmtClock(Date.now() + rem * 1000) }) : '—', speed })}>
           <i style={{ color, fontStyle: 'normal' }}>{fmtDur(rem)}</i>
         </Readout>
         <div style={{ height: 6, borderRadius: 3, background: 'var(--panel-3, #333)', overflow: 'hidden', margin: '4px 0 8px' }}>
@@ -760,18 +762,18 @@ export default defineWidget({
         <Btns
           list={[
             status === 'running'
-              ? { label: '❚❚ Pause', cls: 'big amber', keyHint: 'Space', onClick: () => act('pause', travelArg) }
+              ? { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'Space', onClick: () => act('pause', travelArg) }
               : status === 'paused'
-                ? { label: '▶ Resume', cls: 'big violet', keyHint: 'Space', onClick: () => act('resume', travelArg) }
-                : { label: '▶ Start', cls: 'big green', keyHint: 'Space', onClick: () => act('start', travelArg) },
-            { label: 'Next card ⏭', cls: 'big', keyHint: '→', disabled: k.mode !== 'pages', onClick: () => act('next', travelArg) },
-            { label: '↺ Reset', cls: 'big ghost', onClick: () => act('reset') },
+                ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'Space', onClick: () => act('resume', travelArg) }
+                : { label: t('▶ Start'), cls: 'big green', keyHint: 'Space', onClick: () => act('start', travelArg) },
+            { label: t('Next card ⏭'), cls: 'big', keyHint: '→', disabled: k.mode !== 'pages', onClick: () => act('next', travelArg) },
+            { label: t('↺ Reset'), cls: 'big ghost', onClick: () => act('reset') },
           ]}
         />
-        <Btns label="Remaining" list={[-10, -1, 1, 10].map((d) => ({ label: `${d > 0 ? '+' : '−'}${Math.abs(d)} s`, onClick: () => act('remaining', { seconds: rem + d, ...travelArg }) }))} />
-        <Text label="End at" value={endAt} placeholder="hh:mm:ss" onChange={setEndAt} />
-        <Btns list={[{ label: 'Set end time', cls: 'violet', title: 'Land exactly on the end of the show', onClick: () => act('endAt', { time: endAt, ...travelArg }) }]} />
-        <Note>Remaining-time changes recompute the speed from the current position: nothing jumps.</Note>
+        <Btns label={t('Remaining')} list={[-10, -1, 1, 10].map((d) => ({ label: `${d > 0 ? '+' : '−'}${Math.abs(d)} s`, onClick: () => act('remaining', { seconds: rem + d, ...travelArg }) }))} />
+        <Text label={t('End at')} value={endAt} placeholder="hh:mm:ss" onChange={setEndAt} />
+        <Btns list={[{ label: t('Set end time'), cls: 'violet', title: t('Land exactly on the end of the show'), onClick: () => act('endAt', { time: endAt, ...travelArg }) }]} />
+        <Note>{t('Remaining-time changes recompute the speed from the current position: nothing jumps.')}</Note>
       </>
     );
   },

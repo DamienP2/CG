@@ -23,7 +23,7 @@ import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { TableRowsInput } from '../widgets/table-rows';
 import { Splitter, useLayout } from '../ui/Splitter';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 
 /*
  * Operator page, four areas (each resizable):
@@ -1124,7 +1124,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           const running = c ? c.pausedAt == null : !l.manualStart;
           return (
             <div key={l.id} className="opx-widget">
-              <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? t('Pause') : t('Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
+              <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
                 {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
               </button>
               <span className="opx-widget-name">
@@ -1193,7 +1193,7 @@ function OutputSelect({ channelId }: { channelId: string | null }) {
         </optgroup>
       )}
       {free.length > 0 && (
-        <optgroup label={t('Free')}>
+        <optgroup label={tc('channels', 'Free')}>
           {free.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}

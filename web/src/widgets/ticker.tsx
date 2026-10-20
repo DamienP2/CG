@@ -10,6 +10,7 @@ import type { Data, FontStyle } from '../engine/types';
 import { FontControls, GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
+import { t } from '../i18n';
 
 export interface Item {
   cat?: string;
@@ -65,6 +66,7 @@ export interface State {
 
 type TL = Config & FontStyle & { text: string; separator: string; speed: number; props: Record<string, unknown>; manualStart?: boolean };
 const PAD = 30;
+const MODE_LABEL = { crawl: 'Crawl', roll: 'Roll', flip: 'Flip' } as const;
 
 export function cfg(c: Config) {
   return {
@@ -491,15 +493,15 @@ function QueueRow({ it, i, n, cats, act }: { it: Item; i: number; n: number; cat
   };
   return (
     <div className={`wk-item ${it.on === false ? 'off' : ''}`}>
-      <input type="checkbox" checked={it.on !== false} title="On / off" onChange={(e) => act('toggle', { index: i, on: e.target.checked })} />
+      <input type="checkbox" checked={it.on !== false} title={t('On / off')} onChange={(e) => act('toggle', { index: i, on: e.target.checked })} />
       <span className="dd-cell" style={{ flex: '0 0 92px', width: 92 }}>
         <Dropdown value={it.cat ?? ''} options={[{ value: '', label: '—' }, ...cats.map((c) => ({ value: c, label: c }))]} onChange={(v) => act('edit', { index: i, cat: v })} />
       </span>
       <input value={draft ?? it.text ?? ''} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && commit())} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
-      <button className="wk-x" title="Up" disabled={!i} onClick={() => act('move', { from: i, to: i - 1 })}>
+      <button className="wk-x" title={t('Up')} disabled={!i} onClick={() => act('move', { from: i, to: i - 1 })}>
         ↑
       </button>
-      <button className="wk-x" title="Remove" onClick={() => act('delete', { index: i })}>
+      <button className="wk-x" title={t('Remove')} onClick={() => act('delete', { index: i })}>
         ✕
       </button>
       {void n}
@@ -531,52 +533,52 @@ function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; 
   const paused = !!st.started && !st.running;
   return (
     <>
-      <Readout sub={`${k.mode.toUpperCase()} · ${Math.round(v)} px/s (${(v / 25).toFixed(1)} px/frame) · pass ${Math.max(1, sc.pass)}/${lim ?? '∞'} · ${sc.q.length} active item(s)`}>
-        <i style={{ color, fontStyle: 'normal' }}>{status}</i>
+      <Readout sub={t('{mode} · {speed} px/s ({perFrame} px/frame) · pass {pass}/{passes} · {n} active item(s)', { mode: t(MODE_LABEL[k.mode]).toUpperCase(), speed: Math.round(v), perFrame: (v / 25).toFixed(1), pass: Math.max(1, sc.pass), passes: lim ?? '∞', n: sc.q.length })}>
+        <i style={{ color, fontStyle: 'normal' }}>{t(status)}</i>
       </Readout>
       {onAir && (
         <Note>
-          On air: <b>{(onAir.text ?? '').slice(0, 70)}</b>
+          {t('On air:')} <b>{(onAir.text ?? '').slice(0, 70)}</b>
         </Note>
       )}
       <Btns
         list={[
-          { label: '▶ Start', cls: 'big green', title: 'Start from the top of the queue', onClick: () => act('start') },
-          paused ? { label: '▶ Resume', cls: 'big violet', keyHint: 'Space', onClick: () => act('resume') } : { label: '❚❚ Pause', cls: 'big amber', keyHint: 'Space', disabled: sc.ended, onClick: () => act('pause') },
-          { label: 'Next item ⏭', cls: 'big', keyHint: '→', disabled: k.mode === 'crawl', title: 'Flip / roll: go to the next item', onClick: () => act('next') },
+          { label: t('▶ Start'), cls: 'big green', title: t('Start from the top of the queue'), onClick: () => act('start') },
+          paused ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'Space', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'Space', disabled: sc.ended, onClick: () => act('pause') },
+          { label: t('Next item ⏭'), cls: 'big', keyHint: '→', disabled: k.mode === 'crawl', title: t('Flip / roll: go to the next item'), onClick: () => act('next') },
         ]}
       />
       <Btns
-        label="Speed live"
+        label={t('Speed live')}
         list={[
-          { label: '− Slower', keyHint: '-', onClick: () => act('speed', { delta: -20 }) },
-          { label: '+ Faster', keyHint: '+', onClick: () => act('speed', { delta: 20 }) },
+          { label: t('− Slower'), keyHint: '-', onClick: () => act('speed', { delta: -20 }) },
+          { label: t('+ Faster'), keyHint: '+', onClick: () => act('speed', { delta: 20 }) },
         ]}
       />
-      <Text label="Priority" value={prio.text} placeholder="Priority item" onChange={(t) => setPrio({ ...prio, text: t })} />
-      <Select label="Category" value={prio.cat} options={[['', '—'], ...cats.map((c) => [c, c] as [string, string])]} onChange={(c) => setPrio({ ...prio, cat: c })} />
-      <Toggle value={prio.keep} text="Also keep it in the queue" onChange={(b) => setPrio({ ...prio, keep: b })} />
+      <Text label={t('Priority')} value={prio.text} placeholder={t('Priority item')} onChange={(s) => setPrio({ ...prio, text: s })} />
+      <Select label={t('Category')} value={prio.cat} options={[['', '—'], ...cats.map((c) => [c, c] as [string, string])]} onChange={(c) => setPrio({ ...prio, cat: c })} />
+      <Toggle value={prio.keep} text={t('Also keep it in the queue')} onChange={(b) => setPrio({ ...prio, keep: b })} />
       <Btns
         list={[
-          { label: '⚡ Insert now', cls: 'red', disabled: !prio.text.trim(), onClick: () => act('insert', { ...prio, when: 'now' }) },
-          { label: 'After current', cls: 'violet', disabled: !prio.text.trim(), onClick: () => act('insert', { ...prio, when: 'after' }) },
+          { label: t('⚡ Insert now'), cls: 'red', disabled: !prio.text.trim(), onClick: () => act('insert', { ...prio, when: 'now' }) },
+          { label: t('After current'), cls: 'violet', disabled: !prio.text.trim(), onClick: () => act('insert', { ...prio, when: 'after' }) },
         ]}
       />
-      {k.mode === 'crawl' && <Note>Crawl: the priority item takes the next free slot, right after the item entering the zone (nothing on screen jumps).</Note>}
-      <Note>QUEUE · on/off · category · text · ↑ reorder · ✕ delete</Note>
+      {k.mode === 'crawl' && <Note>{t('Crawl: the priority item takes the next free slot, right after the item entering the zone (nothing on screen jumps).')}</Note>}
+      <Note>{t('QUEUE · on/off · category · text · ↑ reorder · ✕ delete')}</Note>
       <div className="wk-list">
         {q.map((it, i) => (
           <QueueRow key={`${i}-${it.text}`} it={it} i={i} n={q.length} cats={cats} act={act} />
         ))}
         <div className="wk-item">
-          <input placeholder="New item" value={add} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && add.trim() && (act('add', { text: add }), setAdd('')))} onChange={(e) => setAdd(e.target.value)} />
+          <input placeholder={t('New item')} value={add} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && add.trim() && (act('add', { text: add }), setAdd('')))} onChange={(e) => setAdd(e.target.value)} />
           <button className="opx-btn small" disabled={!add.trim()} onClick={() => (act('add', { text: add }), setAdd(''))}>
-            + Add item
+            + {t('Add item')}
           </button>
         </div>
       </div>
-      <Note>Edits, order and on/off apply at the next pass — no jump, no gap.</Note>
-      <Btns list={[{ label: 'Clear the queue', cls: 'ghost', confirm: 'Remove every item of the queue? What is on air finishes.', onClick: () => act('clear') }]} />
+      <Note>{t('Edits, order and on/off apply at the next pass — no jump, no gap.')}</Note>
+      <Btns list={[{ label: t('Clear the queue'), cls: 'ghost', confirm: t('Remove every item of the queue? What is on air finishes.'), onClick: () => act('clear') }]} />
     </>
   );
 }
@@ -587,15 +589,15 @@ function warningsOf(l: TL, data: Data, state: unknown, W: number, H: number): Wa
   const st = (state ?? {}) as State;
   const out: Warning[] = [];
   const q = expand(queueOf(l, st), data);
-  if (!q.length) out.push({ level: 'warn', text: `Queue empty: ${k.emptyMode === 'hide' ? 'the ticker is hidden' : 'the fallback message is shown'}.`, op: true });
+  if (!q.length) out.push({ level: 'warn', text: k.emptyMode === 'hide' ? t('Queue empty: the ticker is hidden.') : t('Queue empty: the fallback message is shown.'), op: true });
   const v = speedOf(l, st);
-  if (k.mode === 'crawl' && v > 400) out.push({ level: 'warn', text: `${Math.round(v)} px/s is hard to read (above 400 px/s).`, op: true });
+  if (k.mode === 'crawl' && v > 400) out.push({ level: 'warn', text: t('{speed} px/s is hard to read (above 400 px/s).', { speed: Math.round(v) }), op: true });
   const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: [1, 1, 1, 1] });
   const sc = scene(l, k, st, data, lk, W, H, Date.now(), 0);
-  if (st.started && sc.ended) out.push({ level: 'info', text: 'End of the list reached — Start to play it again.', op: true });
+  if (st.started && sc.ended) out.push({ level: 'info', text: t('End of the list reached — Start to play it again.'), op: true });
   if (k.mode !== 'crawl') {
     const long = q.filter((it) => sc.ms.itemW(it) + 2 * PAD > sc.zw);
-    if (long.length) out.push({ level: 'info', text: `${long.length} item(s) longer than the zone: they scroll within their slot.` });
+    if (long.length) out.push({ level: 'info', text: t('{n} item(s) longer than the zone: they scroll within their slot.', { n: long.length }) });
   }
   return out;
 }
@@ -628,7 +630,7 @@ export default defineWidget({
     const cats: [string, string][] = [['', '—'], ...k.cats.map((c) => [c.name, c.name] as [string, string])];
     return (
       <>
-        <Section id="ticker-items" title="Content">
+        <Section id="ticker-items" title={t('Content')}>
           {k.items.length ? (
             <Row expose="items" exposeValue={k.items}>
               <ListEditor
@@ -636,145 +638,145 @@ export default defineWidget({
                 toggle="on"
                 fields={[
                   { key: 'cat', options: cats, w: 92 },
-                  { key: 'text', placeholder: 'Text' },
+                  { key: 'text', placeholder: t('Text') },
                 ]}
                 add={() => ({ cat: '', text: 'New item', on: true })}
-                addLabel="Item"
+                addLabel={t('Item')}
               />
             </Row>
           ) : (
             <>
-              <Content path="text" multiline placeholder="One item per line" />
-              <Btns list={[{ label: 'Items', title: 'Convert to items (categories, on / off)', onClick: () => set('items', layerItems(l)) }]} />
+              <Content path="text" multiline placeholder={t('One item per line')} />
+              <Btns list={[{ label: t('Items'), title: t('Convert to items (categories, on / off)'), onClick: () => set('items', layerItems(l)) }]} />
             </>
           )}
-          <Toggle label="Title" path="title.on" value={k.title.on} />
+          <Toggle label={t('Title')} path="title.on" value={k.title.on} />
           {k.title.on && (
             <>
-              <Content label="Text" path="title.text" value={k.title.text} />
-              <ColorPick label="Background" path="title.bg" value={k.title.bg} />
-              <ColorPick label="Color" path="title.color" value={k.title.color} />
-              <Num label="Width" path="title.w" value={k.title.w} min={80} max={500} unit="px" />
+              <Content label={t('Text')} path="title.text" value={k.title.text} />
+              <ColorPick label={t('Background')} path="title.bg" value={k.title.bg} />
+              <ColorPick label={t('Color')} path="title.color" value={k.title.color} />
+              <Num label={t('Width')} path="title.w" value={k.title.w} min={80} max={500} unit="px" />
             </>
           )}
         </Section>
-        <Section id="ticker-cats" title="Categories" closed>
+        <Section id="ticker-cats" title={t('Categories')} closed>
           <Row expose="cats" exposeValue={k.cats}>
             <ListEditor
               path="cats"
               fields={[
-                { key: 'name', placeholder: 'Name' },
+                { key: 'name', placeholder: t('Name') },
                 { key: 'bg', color: true, w: 40 },
                 { key: 'color', color: true, w: 40 },
                 { key: 'text', color: true, w: 40 },
               ]}
               add={() => ({ name: 'NEW', bg: '#7c5cff', color: '#ffffff', text: '' })}
-              addLabel="Category"
+              addLabel={t('Category')}
             />
           </Row>
         </Section>
-        <Section id="ticker-look" title="Look">
+        <Section id="ticker-look" title={t('Look')}>
           <FontControls layer={layer as never} set={set} />
-          <GroupRow layer={layer as never} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <ColorGroupRow layer={layer as never} prop="fill" label="Color" />
-          <Num label="Spacing" path="spacing" value={k.spacing} min={0} max={300} unit="px" />
+          <GroupRow layer={layer as never} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
+          <ColorGroupRow layer={layer as never} prop="fill" label={t('Color')} />
+          <Num label={t('Spacing')} path="spacing" value={k.spacing} min={0} max={300} unit="px" />
           <Seg
-            label="Separator"
+            label={t('Separator')}
             path="sepType"
             value={k.sepType}
             options={[
-              ['text', 'Text'],
-              ['symbol', 'Symbol'],
-              ['image', 'Logo'],
-              ['none', 'None'],
+              ['text', t('Text')],
+              ['symbol', t('Symbol')],
+              ['image', t('Logo')],
+              ['none', t('None')],
             ]}
           />
-          {k.sepType === 'text' && <Text label="Text" path="separator" value={l.separator} />}
-          {k.sepType === 'symbol' && <Seg label="Symbol" path="sepSymbol" value={k.sepSymbol} options={['●', '◆', '▶', '■', '★', '|', '/']} />}
-          {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label="Sep. color" path="sepColor" value={k.sepColor || '#ffffff'} />}
+          {k.sepType === 'text' && <Text label={t('Text')} path="separator" value={l.separator} />}
+          {k.sepType === 'symbol' && <Seg label={t('Symbol')} path="sepSymbol" value={k.sepSymbol} options={['●', '◆', '▶', '■', '★', '|', '/']} />}
+          {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label={t('Sep. color')} path="sepColor" value={k.sepColor || '#ffffff'} />}
           {k.sepType === 'image' && (
-            <Row expose="sepImage" exposeValue={k.sepImage} label="Logo">
+            <Row expose="sepImage" exposeValue={k.sepImage} label={t('Logo')}>
               <AssetPicker value={k.sepImage} onChange={(v) => set('sepImage', v)} />
             </Row>
           )}
-          <Toggle label="Bar" value={!!k.barBg} onChange={(v) => set('barBg', v ? '#0f1222' : '')} />
-          {!!k.barBg && <ColorPick label="Color" path="barBg" value={k.barBg} />}
-          <Toggle label="Edge fade" path="fade" value={k.fade} />
-          {k.fade && <Num label="Width" path="fadeW" value={k.fadeW} min={10} max={300} unit="px" />}
+          <Toggle label={t('Bar')} value={!!k.barBg} onChange={(v) => set('barBg', v ? '#0f1222' : '')} />
+          {!!k.barBg && <ColorPick label={t('Color')} path="barBg" value={k.barBg} />}
+          <Toggle label={t('Edge fade')} path="fade" value={k.fade} />
+          {k.fade && <Num label={t('Width')} path="fadeW" value={k.fadeW} min={10} max={300} unit="px" />}
         </Section>
-        <Section id="ticker-mode" title="Motion">
+        <Section id="ticker-mode" title={t('Motion')}>
           <Seg
-            label="Mode"
+            label={t('Mode')}
             path="mode"
             value={k.mode}
             options={[
-              ['crawl', 'Crawl', 'Horizontal, continuous'],
-              ['roll', 'Roll', 'Vertical, line by line'],
-              ['flip', 'Flip', 'One item at a time'],
+              ['crawl', t('Crawl'), t('Horizontal, continuous')],
+              ['roll', t('Roll'), t('Vertical, line by line')],
+              ['flip', t('Flip'), t('One item at a time')],
             ]}
           />
           {k.mode === 'crawl' && (
             <Seg
-              label="Direction"
+              label={t('Direction')}
               path="dir"
               value={k.dir}
               options={[
-                ['left', '←', 'Right to left'],
-                ['right', '→', 'Left to right'],
+                ['left', '←', t('Right to left')],
+                ['right', '→', t('Left to right')],
               ]}
             />
           )}
           {k.mode === 'roll' && (
             <Seg
-              label="Direction"
+              label={t('Direction')}
               path="rollDir"
               value={k.rollDir}
               options={[
-                ['up', '↑', 'Up'],
-                ['down', '↓', 'Down'],
+                ['up', '↑', t('Up')],
+                ['down', '↓', t('Down')],
               ]}
             />
           )}
-          <Num label="Speed" path="speed" value={l.speed ?? 140} min={10} max={5000} step={5} unit="px/s" />
-          {k.mode !== 'crawl' && <Num label={k.mode === 'flip' ? 'Per item' : 'Hold'} path="itemDur" value={k.itemDur} min={k.mode === 'flip' ? 0.5 : 0} max={60} step={0.5} precision={1} unit="s" />}
+          <Num label={t('Speed')} path="speed" value={l.speed ?? 140} min={10} max={5000} step={5} unit="px/s" />
+          {k.mode !== 'crawl' && <Num label={k.mode === 'flip' ? t('Per item') : t('Hold')} path="itemDur" value={k.itemDur} min={k.mode === 'flip' ? 0.5 : 0} max={60} step={0.5} precision={1} unit="s" />}
           {k.mode === 'flip' && (
             <>
               <Seg
-                label="Transition"
+                label={t('Transition')}
                 path="trans"
                 value={k.trans}
                 options={[
-                  ['slide', 'Slide'],
-                  ['push', 'Push'],
-                  ['fade', 'Fade'],
-                  ['flip', 'Flip'],
+                  ['slide', t('Slide')],
+                  ['push', t('Push')],
+                  ['fade', t('Fade')],
+                  ['flip', t('Flip')],
                 ]}
               />
-              <Num label="Duration" path="transDur" value={k.transDur} min={0.1} max={2} step={0.05} precision={2} unit="s" />
+              <Num label={t('Duration')} path="transDur" value={k.transDur} min={0.1} max={2} step={0.05} precision={2} unit="s" />
             </>
           )}
-          {k.mode === 'crawl' && <Toggle label="Start full" path="startFull" value={k.startFull} />}
+          {k.mode === 'crawl' && <Toggle label={t('Start full')} path="startFull" value={k.startFull} />}
           <Seg
-            label="End"
+            label={t('End')}
             path="end"
             value={k.end}
             options={[
-              ['loop', 'Loop'],
-              ['passes', 'Passes'],
-              ['stop', 'Stop'],
+              ['loop', t('Loop')],
+              ['passes', t('Passes')],
+              ['stop', t('Stop')],
             ]}
           />
-          {k.end === 'passes' && <Num label="Passes" path="passes" value={k.passes} min={1} max={99} />}
+          {k.end === 'passes' && <Num label={t('Passes')} path="passes" value={k.passes} min={1} max={99} />}
           <Seg
-            label="If empty"
+            label={t('If empty')}
             path="emptyMode"
             value={k.emptyMode}
             options={[
-              ['message', 'Message'],
-              ['hide', 'Hide'],
+              ['message', t('Message')],
+              ['hide', t('Hide')],
             ]}
           />
-          {k.emptyMode === 'message' && <Text label="Message" path="emptyText" value={k.emptyText} />}
+          {k.emptyMode === 'message' && <Text label={t('Message')} path="emptyText" value={k.emptyText} />}
         </Section>
       </>
     );

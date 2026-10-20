@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
 import { fromFormatView, inFormat } from '../engine/formats';
 import { MAIN_FORMAT, MARKER_MODEL, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template, type Value } from '../engine/types';
+import { t } from '../i18n';
 
 export interface KeyRef {
   layerId: string;
@@ -273,6 +274,7 @@ export function descendants(t: Template, id: string): string[] {
   return out;
 }
 
+/** Layer type names, in English: translated where shown. */
 export const LABELS: Record<LayerType, string> = {
   group: 'Group',
   rect: 'Rectangle',
@@ -352,7 +354,8 @@ const font = (align: FontStyle['align'] = 'left', weight = 700): FontStyle => ({
 export function makeLayer(type: LayerType, width: number, height: number, parent?: string | null): Layer {
   const base = {
     id: newId(),
-    name: LABELS[type],
+    // A default name, in the interface's language (layers are found by id).
+    name: t(LABELS[type]),
     parent: parent ?? null,
     visible: true,
     locked: false,
@@ -481,15 +484,15 @@ export function duplicateLayers(ids: string[]) {
   const st = useDesigner.getState();
   if (!st.template || !ids.length) return;
   const newIds: string[] = [];
-  st.update((t) => {
+  st.update((tpl) => {
     for (const id of ids) {
-      if (!t.layers.some((l) => l.id === id)) continue;
-      const sub = [id, ...descendants(t, id)];
+      if (!tpl.layers.some((l) => l.id === id)) continue;
+      const sub = [id, ...descendants(tpl, id)];
       const map = new Map(sub.map((x) => [x, newId()]));
-      const clones = t.layers.filter((l) => sub.includes(l.id)).map((l) => ({ ...structuredClone(l), id: map.get(l.id)!, parent: l.id === id ? l.parent : (map.get(l.parent!) ?? l.parent), name: l.id === id ? `${l.name} copy` : l.name }));
+      const clones = tpl.layers.filter((l) => sub.includes(l.id)).map((l) => ({ ...structuredClone(l), id: map.get(l.id)!, parent: l.id === id ? l.parent : (map.get(l.parent!) ?? l.parent), name: l.id === id ? t('{name} copy', { name: l.name }) : l.name }));
       // Paint order: right above the original.
-      const last = Math.max(...sub.map((x) => t.layers.findIndex((l) => l.id === x)));
-      t.layers.splice(last + 1, 0, ...clones);
+      const last = Math.max(...sub.map((x) => tpl.layers.findIndex((l) => l.id === x)));
+      tpl.layers.splice(last + 1, 0, ...clones);
       newIds.push(map.get(id)!);
     }
   });

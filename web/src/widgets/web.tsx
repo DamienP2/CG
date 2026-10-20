@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Globe } from 'lucide-react';
 import { interpolateText } from '../engine/evaluate';
 import { Btns, Content, defineWidget, Note, Num, Section, Seg, Toggle, type Warning } from './kit';
+import { t } from '../i18n';
 
 export interface Config {
   source?: 'url' | 'html';
@@ -49,7 +50,7 @@ function View({ layer, w, h, data, state, nowMs, designer }: { layer: WebLayer; 
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
       {frame}
-      {designer && !frame && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', border: '4px dashed rgba(255,255,255,.35)', color: 'rgba(255,255,255,.6)', font: '600 26px Inter, sans-serif' }}>Web page: an http(s) address</div>}
+      {designer && !frame && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', border: '4px dashed rgba(255,255,255,.35)', color: 'rgba(255,255,255,.6)', font: '600 26px Inter, sans-serif' }}>{t('Web page: an http(s) address')}</div>}
     </div>
   );
 }
@@ -72,35 +73,35 @@ export default defineWidget({
     const k = cfg(layer as unknown as WebLayer);
     return (
       <>
-        <Section id="web-source" title="Page">
+        <Section id="web-source" title={t('Page')}>
           <Seg
-            label="Source"
+            label={t('Source')}
             path="source"
             value={k.source}
             options={[
-              ['url', 'Web address'],
-              ['html', 'HTML code'],
+              ['url', t('Web address')],
+              ['html', t('HTML code')],
             ]}
           />
-          {k.source === 'url' ? <Content label="Address" path="url" value="" placeholder="https://…" expose /> : <Content label="HTML" path="html" value="" multiline placeholder="<div>…</div>" />}
-          <Num label="Zoom" path="zoom" value={k.zoom} min={10} max={400} unit="%" />
-          <Num label="Reload every" path="refresh" value={k.refresh} min={0} max={86400} unit="s" />
-          <Toggle label="Background" path="opaque" value={k.opaque} text="The page's own background (else transparent)" />
-          <Note>Shown by browsers only: the HTML5 outputs and the previews. The SDI, NDI and ST 2110 outputs leave its box empty.</Note>
+          {k.source === 'url' ? <Content label={t('Address')} path="url" value="" placeholder="https://…" expose /> : <Content label="HTML" path="html" value="" multiline placeholder="<div>…</div>" />}
+          <Num label={t('Zoom')} path="zoom" value={k.zoom} min={10} max={400} unit="%" />
+          <Num label={t('Reload every')} path="refresh" value={k.refresh} min={0} max={86400} unit="s" />
+          <Toggle label={t('Background')} path="opaque" value={k.opaque} text={t("The page's own background (else transparent)")} />
+          <Note>{t('Shown by browsers only: the HTML5 outputs and the previews. The SDI, NDI and ST 2110 outputs leave its box empty.')}</Note>
         </Section>
       </>
     );
   },
   Operator: ({ act }) => (
     <>
-      <Btns list={[{ label: 'Reload the page', cls: 'violet', onClick: () => act('reload') }]} />
-      <Note>On the HTML5 outputs only.</Note>
+      <Btns list={[{ label: t('Reload the page'), cls: 'violet', onClick: () => act('reload') }]} />
+      <Note>{t('On the HTML5 outputs only.')}</Note>
     </>
   ),
   warnings: (l) => {
     const k = cfg(l as unknown as WebLayer);
-    const out: Warning[] = [{ level: 'info', text: 'Web page: HTML5 outputs and previews only (not SDI, NDI, ST 2110).' }];
-    if (k.source === 'url' && k.url.trim() && !k.url.includes('{{') && !safeUrl(k.url)) out.push({ level: 'error', text: 'The address must start with http:// or https://.' });
+    const out: Warning[] = [{ level: 'info', text: t('Web page: HTML5 outputs and previews only (not SDI, NDI, ST 2110).') }];
+    if (k.source === 'url' && k.url.trim() && !k.url.includes('{{') && !safeUrl(k.url)) out.push({ level: 'error', text: t('The address must start with http:// or https://.') });
     return out;
   },
 });

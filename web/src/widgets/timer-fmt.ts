@@ -4,6 +4,7 @@
 // values. Everything is a pure function of (settings, state, time).
 import { interpolateText } from '../engine/evaluate';
 import type { Data, Layer } from '../engine/types';
+import { t } from '../i18n';
 
 export type TimerMode = 'clock' | 'date' | 'stopwatch' | 'countdown';
 export type StartMode = 'manual' | 'auto' | 'at' | 'ext';
@@ -522,9 +523,9 @@ export function parseHms(s: string): [number, number, number] | null {
 
 export function parseDur(s: string): { ms: number } | { err: string } {
   const x = String(s ?? '').trim();
-  if (!x) return { err: 'Empty value' };
-  if (x.startsWith('-')) return { err: 'Negative values are refused' };
-  const bad = { err: `“${x}” is not a time: use ss, mm:ss or h:mm:ss` };
+  if (!x) return { err: t('Empty value') };
+  if (x.startsWith('-')) return { err: t('Negative values are refused') };
+  const bad = { err: t('“{value}” is not a time: use ss, mm:ss or h:mm:ss', { value: x }) };
   const i = x.search(/[.,]/);
   const main = i >= 0 ? x.slice(0, i) : x;
   const frac = i >= 0 ? x.slice(i + 1) : null;
@@ -534,7 +535,7 @@ export function parseDur(s: string): { ms: number } | { err: string } {
   for (let j = 0; j < parts.length; j++) {
     const n = j === 0 ? digits(parts[j], 1, 9) : digits(parts[j], 1, 2);
     if (n == null) return bad;
-    if (j > 0 && n > 59) return { err: `“${x}”: minutes and seconds go up to 59` };
+    if (j > 0 && n > 59) return { err: t('“{value}”: minutes and seconds go up to 59', { value: x }) };
     total = total * 60 + n;
   }
   let ms = 0;
@@ -549,8 +550,8 @@ export function parseDur(s: string): { ms: number } | { err: string } {
 export type Target = { date: [number, number, number] | null; time: [number, number, number] };
 export function parseTarget(s: string): Target | { err: string } {
   const x = String(s ?? '').trim();
-  if (!x) return { err: 'The target time is empty' };
-  const bad = { err: `“${x}” is not a target: use 20:00, 20:00:00 or 2026-10-18 20:00` };
+  if (!x) return { err: t('The target time is empty') };
+  const bad = { err: t('“{value}” is not a target: use 20:00, 20:00:00 or 2026-10-18 20:00', { value: x }) };
   const i = x.search(/[ T]/);
   const date = i >= 0 ? x.slice(0, i) : null;
   const time = parseHms(i >= 0 ? x.slice(i + 1).trim() : x);
@@ -560,8 +561,8 @@ export function parseTarget(s: string): Target | { err: string } {
   if (p.length !== 3) return bad;
   const [y, m, d] = [digits(p[0], 4, 4), digits(p[1], 1, 2), digits(p[2], 1, 2)];
   if (y == null || m == null || d == null) return bad;
-  const t = new Date(Date.UTC(y, m - 1, d));
-  if (m < 1 || m > 12 || t.getUTCDate() !== d) return { err: `“${date}” is not a date` };
+  const day = new Date(Date.UTC(y, m - 1, d));
+  if (m < 1 || m > 12 || day.getUTCDate() !== d) return { err: t('“{date}” is not a date', { date }) };
   return { date: [y, m, d], time };
 }
 

@@ -7,8 +7,10 @@
 // spacing: a no-break space (U+00A0) before ? ! : ; and inside « ».
 import { common } from './common';
 import { data } from './data';
+import { designer } from './designer';
 import { home } from './home';
 import { operator } from './operator';
+import { widgets } from './widgets';
 import { widgetsData } from './widgetsData';
 
-export const fr: Record<string, string> = { ...common, ...home, ...data, ...operator, ...widgetsData };
+export const fr: Record<string, string> = { ...common, ...home, ...designer, ...data, ...operator, ...widgets, ...widgetsData };

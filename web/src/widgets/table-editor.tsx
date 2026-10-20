@@ -6,7 +6,7 @@ import { Eye, EyeOff, GripVertical, Plus, Redo2, Table as TableIcon, Trash2, Tri
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoundData } from '../data/dataStore';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 import { findLayer, useDesigner } from '../designer/designerStore';
 import { holdFrame, num as vnum, resolveLayer } from '../engine/evaluate';
 import type { Data, Layer, Template } from '../engine/types';
@@ -583,7 +583,7 @@ function TypoRows({ path, t: tx }: { path: string; t: CellText }) {
         ]}
       />
       <Seg
-        label={t('Line')}
+        label={tc('stroke', 'Line')}
         path={`${path}.deco`}
         value={tx.deco}
         options={[

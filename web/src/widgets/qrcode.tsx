@@ -7,6 +7,7 @@ import { col, interpolateText, num, toHex, type Resolved } from '../engine/evalu
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
 import { Area, ColorPick, Content, defineWidget, Num, Row, Section, Seg, Toggle, type Warning } from './kit';
+import { t, tc, tn } from '../i18n';
 
 type Ecl = 'L' | 'M' | 'Q' | 'H';
 export interface Config {
@@ -389,9 +390,9 @@ function check(layer: QrLayer, data: Data, r: Resolved | undefined, q: Matrix | 
   const c = cfg(layer);
   const text = payload(c, layer.data, data);
   const issues: Warning[] = [];
-  if (!text) return { ready: true, ok: false, issues: [{ level: 'error', text: 'Empty content: nothing to encode (nothing on air).', op: true }], payload: text };
+  if (!text) return { ready: true, ok: false, issues: [{ level: 'error', text: t('Empty content: nothing to encode (nothing on air).'), op: true }], payload: text };
   if (q === undefined) return { ready: false, ok: true, issues, payload: text };
-  if (q === null) return { ready: true, ok: false, issues: [{ level: 'error', text: `Too long: ${new TextEncoder().encode(text).length} bytes do not fit even in version 40 at level ${c.ecl}.`, op: true }], payload: text };
+  if (q === null) return { ready: true, ok: false, issues: [{ level: 'error', text: t('Too long: {n} bytes do not fit even in version 40 at level {level}.', { n: new TextEncoder().encode(text).length, level: c.ecl }), op: true }], payload: text };
   const w = num((r?.width ?? layer.props.width ?? 520) as number);
   const h = num((r?.height ?? layer.props.height ?? 640) as number);
   const sc = Math.min(Math.abs(num((r?.scaleX ?? layer.props.scaleX ?? 1) as number)), Math.abs(num((r?.scaleY ?? layer.props.scaleY ?? 1) as number)));
@@ -406,18 +407,18 @@ function check(layer: QrLayer, data: Data, r: Resolved | undefined, q: Matrix | 
   const lb = lum(back);
   const dec = selfDecode(q, s);
   const screenPx = Math.floor(g.m * sc * 10) / 10;
-  if (!dec.ok) issues.push({ level: 'error', text: `Self-decode failed (${dec.why}).`, op: true });
-  else if (dec.ecl !== c.ecl) issues.push({ level: 'warn', text: `The server encoded level ${dec.ecl} instead of ${c.ecl}: /api/qr does not take the correction level yet (the logo budget assumes ${c.ecl}).` });
-  if (screenPx < c.minPx) issues.push({ level: 'error', text: `Module ${screenPx} px on screen, under the ${c.minPx} px minimum: shorten the content, lower the correction or enlarge the box.`, op: true });
-  if (cr == null) issues.push({ level: 'warn', text: 'A colour is not a #rrggbb value: contrast not checked.' });
-  else if (cr < 3) issues.push({ level: 'error', text: `Contrast ${cr.toFixed(1)}:1 is too low (needs 3:1, 7:1 recommended).`, op: true });
-  else if (cr < 7) issues.push({ level: 'warn', text: `Contrast ${cr.toFixed(1)}:1 is weak: 7:1 or more is safer on a TV picture.` });
-  if (lm != null && lb != null && lm > lb) issues.push({ level: 'warn', text: 'Light code on a dark background (inverted): many phone readers do not decode it.', op: true });
-  if (c.quiet < 2) issues.push({ level: 'error', text: `Quiet zone ${c.quiet} module${c.quiet === 1 ? '' : 's'}: readers cannot find the code edge (4 recommended, 2 minimum).`, op: true });
-  else if (c.quiet < 4) issues.push({ level: 'warn', text: `Quiet zone reduced to ${c.quiet} modules (4 is the standard): keep the area around the code plain.` });
-  if (c.transparent && c.quiet > 0) issues.push({ level: 'info', text: `Transparent background: the check assumes the backdrop colour ${c.backdrop} behind the code.` });
-  if (c.logo.on && logo[0] < c.logo.size) issues.push({ level: 'info', text: `Logo capped at ${logo[0]} % (asked ${c.logo.size} %): ${logo[1] === 'level' ? `level ${c.ecl} allows ${LOGO_MAX[c.ecl]} % at most` : 'more would hide more codewords than the correction can repair'}.` });
-  if (c.logo.on && c.ecl !== 'H') issues.push({ level: 'info', text: `A logo hides modules: correction H is recommended (now ${c.ecl}).` });
+  if (!dec.ok) issues.push({ level: 'error', text: t('Self-decode failed ({why}).', { why: t(dec.why ?? '') }), op: true });
+  else if (dec.ecl !== c.ecl) issues.push({ level: 'warn', text: t('The server encoded level {got} instead of {level}: /api/qr does not take the correction level yet (the logo budget assumes {level}).', { got: dec.ecl ?? '', level: c.ecl }) });
+  if (screenPx < c.minPx) issues.push({ level: 'error', text: t('Module {px} px on screen, under the {min} px minimum: shorten the content, lower the correction or enlarge the box.', { px: screenPx, min: c.minPx }), op: true });
+  if (cr == null) issues.push({ level: 'warn', text: t('A colour is not a #rrggbb value: contrast not checked.') });
+  else if (cr < 3) issues.push({ level: 'error', text: t('Contrast {ratio}:1 is too low (needs 3:1, 7:1 recommended).', { ratio: cr.toFixed(1) }), op: true });
+  else if (cr < 7) issues.push({ level: 'warn', text: t('Contrast {ratio}:1 is weak: 7:1 or more is safer on a TV picture.', { ratio: cr.toFixed(1) }) });
+  if (lm != null && lb != null && lm > lb) issues.push({ level: 'warn', text: t('Light code on a dark background (inverted): many phone readers do not decode it.'), op: true });
+  if (c.quiet < 2) issues.push({ level: 'error', text: tn(c.quiet, 'Quiet zone {n} module: readers cannot find the code edge (4 recommended, 2 minimum).', 'Quiet zone {n} modules: readers cannot find the code edge (4 recommended, 2 minimum).'), op: true });
+  else if (c.quiet < 4) issues.push({ level: 'warn', text: t('Quiet zone reduced to {n} modules (4 is the standard): keep the area around the code plain.', { n: c.quiet }) });
+  if (c.transparent && c.quiet > 0) issues.push({ level: 'info', text: t('Transparent background: the check assumes the backdrop colour {color} behind the code.', { color: c.backdrop }) });
+  if (c.logo.on && logo[0] < c.logo.size) issues.push({ level: 'info', text: logo[1] === 'level' ? t('Logo capped at {pct} % (asked {asked} %): level {level} allows {max} % at most.', { pct: logo[0], asked: c.logo.size, level: c.ecl, max: LOGO_MAX[c.ecl] }) : t('Logo capped at {pct} % (asked {asked} %): more would hide more codewords than the correction can repair.', { pct: logo[0], asked: c.logo.size }) });
+  if (c.logo.on && c.ecl !== 'H') issues.push({ level: 'info', text: t('A logo hides modules: correction H is recommended (now {level}).', { level: c.ecl }) });
   return { ready: true, ok: !issues.some((i) => i.level === 'error'), issues, payload: text, q, m: g.m, screenPx, px: g.px, logo, dmg, cr, decode: dec };
 }
 
@@ -552,151 +553,151 @@ export default defineWidget({
     const c = cfg(L);
     return (
       <>
-        <Section id="qr-content" title="Content">
+        <Section id="qr-content" title={t('Content')}>
           <Seg
-            label="Type"
+            label={t('Type')}
             path="kind"
             value={c.kind}
             options={[
               ['url', 'URL'],
-              ['text', 'Text'],
+              ['text', t('Text')],
               ['vcard', 'vCard'],
               ['wifi', 'Wi-Fi'],
               ['email', 'E-mail'],
               ['sms', 'SMS'],
             ]}
           />
-          {c.kind === 'url' && <Content label="Address" path="data" value="" placeholder="https://…" />}
-          {c.kind === 'text' && <Content label="Text" path="data" value="" multiline />}
+          {c.kind === 'url' && <Content label={t('Address')} path="data" value="" placeholder="https://…" />}
+          {c.kind === 'text' && <Content label={t('Text')} path="data" value="" multiline />}
           {c.kind === 'vcard' && (
             <>
-              <Content label="First name" path="vcard.first" value="" />
-              <Content label="Last name" path="vcard.last" value="" />
-              <Content label="Company" path="vcard.org" value="" />
-              <Content label="Job title" path="vcard.title" value="" />
-              <Content label="Phone" path="vcard.phone" value="" />
-              <Content label="E-mail" path="vcard.email" value="" />
-              <Content label="Website" path="vcard.url" value="" />
+              <Content label={t('First name')} path="vcard.first" value="" />
+              <Content label={t('Last name')} path="vcard.last" value="" />
+              <Content label={t('Company')} path="vcard.org" value="" />
+              <Content label={t('Job title')} path="vcard.title" value="" />
+              <Content label={t('Phone')} path="vcard.phone" value="" />
+              <Content label={t('E-mail')} path="vcard.email" value="" />
+              <Content label={t('Website')} path="vcard.url" value="" />
             </>
           )}
           {c.kind === 'wifi' && (
             <>
-              <Content label="Network" path="wifi.ssid" value="" />
+              <Content label={t('Network')} path="wifi.ssid" value="" />
               <Seg
-                label="Security"
+                label={t('Security')}
                 path="wifi.security"
                 value={c.wifi.security}
                 options={[
                   ['WPA', 'WPA/WPA2'],
                   ['WEP', 'WEP'],
-                  ['nopass', 'None'],
+                  ['nopass', t('None')],
                 ]}
               />
-              {c.wifi.security !== 'nopass' && <Content label="Password" path="wifi.password" value="" />}
-              <Toggle label="Hidden" path="wifi.hidden" value={c.wifi.hidden} />
+              {c.wifi.security !== 'nopass' && <Content label={t('Password')} path="wifi.password" value="" />}
+              <Toggle label={t('Hidden')} path="wifi.hidden" value={c.wifi.hidden} />
             </>
           )}
           {c.kind === 'email' && (
             <>
-              <Content label="To" path="email.to" value="" placeholder="name@domain" />
-              <Content label="Subject" path="email.subject" value="" />
-              <Area label="Body" path="email.body" value="" />
+              <Content label={t('To')} path="email.to" value="" placeholder={t('name@domain')} />
+              <Content label={t('Subject')} path="email.subject" value="" />
+              <Area label={t('Body')} path="email.body" value="" />
             </>
           )}
           {c.kind === 'sms' && (
             <>
-              <Content label="Number" path="sms.number" value="" />
-              <Content label="Message" path="sms.message" value="" />
+              <Content label={tc('phone', 'Number')} path="sms.number" value="" />
+              <Content label={t('Message')} path="sms.message" value="" />
             </>
           )}
         </Section>
-        <Section id="qr-colours" title="Colour">
-          <ColorGroupRow layer={layer} prop="fill" label="Modules" />
+        <Section id="qr-colours" title={t('Colour')}>
+          <ColorGroupRow layer={layer} prop="fill" label={t('Modules')} />
           <Seg
-            label="Background"
+            label={t('Background')}
             path="transparent"
             value={c.transparent}
             options={[
-              [false, 'Solid'],
-              [true, 'None'],
+              [false, t('Solid')],
+              [true, t('None')],
             ]}
           />
           {!c.transparent ? (
             <>
-              <ColorPick label="Color" path="background" value="#ffffff" />
-              <Num label="Corners" path="radius" value={c.radius} min={0} max={60} unit="px" />
+              <ColorPick label={t('Color')} path="background" value="#ffffff" />
+              <Num label={t('Corners')} path="radius" value={c.radius} min={0} max={60} unit="px" />
             </>
           ) : (
-            <ColorPick label="Backdrop" path="backdrop" value={c.backdrop} />
+            <ColorPick label={t('Backdrop')} path="backdrop" value={c.backdrop} />
           )}
         </Section>
-        <Section id="qr-style" title="Style">
+        <Section id="qr-style" title={t('Style')}>
           <Seg
-            label="Modules"
+            label={t('Modules')}
             path="modStyle"
             value={c.modStyle}
             options={[
-              ['square', 'Squares'],
-              ['rounded', 'Rounded'],
-              ['dots', 'Dots'],
+              ['square', t('Squares')],
+              ['rounded', t('Rounded')],
+              ['dots', t('Dots')],
             ]}
           />
           <Seg
-            label="Finders"
+            label={t('Finders')}
             path="finderStyle"
             value={c.finderStyle}
             options={[
-              ['square', 'Square'],
-              ['rounded', 'Rounded'],
-              ['circle', 'Circle'],
+              ['square', t('Square')],
+              ['rounded', t('Rounded')],
+              ['circle', t('Circle')],
             ]}
           />
           <Seg
-            label="Finder color"
+            label={t('Finder color')}
             path="finderSame"
             value={c.finderSame}
             options={[
-              [true, 'Same'],
-              [false, 'Own'],
+              [true, t('Same')],
+              [false, t('Own')],
             ]}
           />
-          {!c.finderSame && <ColorPick label="Color" path="finderColor" value={c.finderColor} />}
+          {!c.finderSame && <ColorPick label={t('Color')} path="finderColor" value={c.finderColor} />}
         </Section>
-        <Section id="qr-extras" title="Extras">
-          <Toggle label="Logo" path="logo.on" value={c.logo.on} />
+        <Section id="qr-extras" title={t('Extras')}>
+          <Toggle label={t('Logo')} path="logo.on" value={c.logo.on} />
           {c.logo.on && (
             <>
-              <Row expose="logo.src" exposeValue={c.logo.src} label="Picture">
+              <Row expose="logo.src" exposeValue={c.logo.src} label={t('Picture')}>
                 <AssetPicker value={c.logo.src} onChange={(v) => set('logo.src', v)} />
               </Row>
-              {!c.logo.src && <ColorPick label="Color" path="logo.color" value={c.logo.color} />}
-              <Num label="Max size" path="logo.size" value={c.logo.size} min={5} max={40} unit="%" />
+              {!c.logo.src && <ColorPick label={t('Color')} path="logo.color" value={c.logo.color} />}
+              <Num label={t('Max size')} path="logo.size" value={c.logo.size} min={5} max={40} unit="%" />
             </>
           )}
-          <Toggle label="Caption" path="label.on" value={c.label.on} />
+          <Toggle label={t('Caption')} path="label.on" value={c.label.on} />
           {c.label.on && (
             <>
-              <Content label="Text" path="label.text" value={c.label.text} placeholder="Scan to vote" />
-              <Num label="Size" path="label.size" value={c.label.size} min={16} max={72} unit="px" />
-              <ColorPick label="Color" path="label.color" value={c.label.color} />
-              <ColorPick label="Pill" path="label.bg" value={c.label.bg} />
+              <Content label={t('Text')} path="label.text" value={c.label.text} placeholder={t('Scan to vote')} />
+              <Num label={t('Size')} path="label.size" value={c.label.size} min={16} max={72} unit="px" />
+              <ColorPick label={t('Color')} path="label.color" value={c.label.color} />
+              <ColorPick label={t('Pill')} path="label.bg" value={c.label.bg} />
             </>
           )}
         </Section>
-        <Section id="qr-code" title="Code">
+        <Section id="qr-code" title={t('Code')}>
           <Seg
-            label="Correction"
+            label={t('Correction')}
             path="ecl"
             value={c.ecl}
             options={[
-              ['L', 'L · 7 %', 'Recovers ~7 % damage'],
-              ['M', 'M · 15 %', 'Recovers ~15 % damage'],
-              ['Q', 'Q · 25 %', 'Recovers ~25 % damage'],
-              ['H', 'H · 30 %', 'Recovers ~30 % damage (logo)'],
+              ['L', 'L · 7 %', t('Recovers ~7 % damage')],
+              ['M', 'M · 15 %', t('Recovers ~15 % damage')],
+              ['Q', 'Q · 25 %', t('Recovers ~25 % damage')],
+              ['H', 'H · 30 %', t('Recovers ~30 % damage (logo)')],
             ]}
           />
-          <Num label="Quiet zone" path="quiet" value={c.quiet} min={0} max={10} unit="mod" />
-          <Num label="Min module" path="minPx" value={c.minPx} min={2} max={20} unit="px" />
+          <Num label={t('Quiet zone')} path="quiet" value={c.quiet} min={0} max={10} unit="mod" />
+          <Num label={t('Min module')} path="minPx" value={c.minPx} min={2} max={20} unit="px" />
         </Section>
       </>
     );
@@ -708,8 +709,8 @@ export default defineWidget({
     const ck = check(L, data, r, text ? matrix(text, c.ecl) : null);
     if (!ck.ready) return [];
     const out = ck.issues.slice();
-    if (c.kind === 'url' && L.data && !/\{\{/.test(L.data) && !/^[a-z][a-z0-9+.-]*:/i.test(L.data)) out.push({ level: 'warn', text: 'No https:// — phones may read it as plain text.' });
-    if (ck.ok && !out.some((i) => i.level === 'warn')) out.unshift({ level: 'ok', text: 'Readable ✓' });
+    if (c.kind === 'url' && L.data && !/\{\{/.test(L.data) && !/^[a-z][a-z0-9+.-]*:/i.test(L.data)) out.push({ level: 'warn', text: t('No https:// — phones may read it as plain text.') });
+    if (ck.ok && !out.some((i) => i.level === 'warn')) out.unshift({ level: 'ok', text: t('Readable ✓') });
     return out;
   },
 });

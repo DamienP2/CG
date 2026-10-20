@@ -12,6 +12,7 @@ import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import * as T from './timer-fmt';
+import { t } from '../i18n';
 
 export type Config = T.Config;
 export type State = T.State;
@@ -186,7 +187,7 @@ function TimerView({ layer, r, w, h, data, time, state, fps, designer }: { layer
       const wi = pl.wi * k;
       const off = layer.align === 'left' ? 0 : layer.align === 'right' ? wi - wv : (wi - wv) / 2;
       if (designer && c.reserve && c.guide)
-        els.push(<i key={`g${i}`} title="Reserved width" style={{ position: 'absolute', left: ix - 6, top: cy - (sz * LH) / 2 - 4, width: wi + 12, height: sz * LH + 8, border: '2px dashed rgba(255,255,255,.22)', borderRadius: 8, boxSizing: 'border-box', pointerEvents: 'none' }} />);
+        els.push(<i key={`g${i}`} title={t('Reserved width')} style={{ position: 'absolute', left: ix - 6, top: cy - (sz * LH) / 2 - 4, width: wi + 12, height: sz * LH + 8, border: '2px dashed rgba(255,255,255,.22)', borderRadius: 8, boxSizing: 'border-box', pointerEvents: 'none' }} />);
       let vx = ix + off;
       ps.forEach((p, j) => {
         const st: CSSProperties = { color: textCol, opacity: p.alpha * valAlpha, fontFamily: fontCss(fam), fontWeight: wt, letterSpacing: p.cell ? 0 : ls * k, WebkitTextStroke: strokeCss };
@@ -251,7 +252,7 @@ function DurField({ label, value, onChange, min = 0, expose }: { label: string; 
   const commit = () => {
     if (txt == null) return;
     const p = T.parseDur(txt);
-    if ('err' in p || p.ms < min) toast(`Refused: ${'err' in p ? p.err : 'value too small'}`, 'error');
+    if ('err' in p || p.ms < min) toast(t('Refused: {error}', { error: 'err' in p ? p.err : t('value too small') }), 'error');
     else onChange(p.ms);
     setTxt(null);
   };
@@ -281,13 +282,13 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
   const affixed = !!(c.prefix || c.suffix || (mode === 'clock' && c.cities));
   return (
     <>
-      <Section id="timer-main" title="Timer">
+      <Section id="timer-main" title={t('Timer')}>
         <Seg
           expose="timerMode"
           exposeValue={mode}
-          label="Mode"
+          label={t('Mode')}
           value={mode}
-          options={MODES}
+          options={MODES.map(([v, l]) => [v, t(l)] as [T.TimerMode, string])}
           onChange={(v) =>
             edit((l) => {
               const x = l as L & Config;
@@ -301,10 +302,10 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             })
           }
         />
-        <Row expose="format" exposeValue={layer.format} label="Preset">
+        <Row expose="format" exposeValue={layer.format} label={t('Preset')}>
           <Dropdown
             value={list.some((p) => p[0] === layer.format) ? layer.format : '__custom'}
-            options={[...list.map(([f]) => ({ value: f, label: `${f} → ${sampleText(layer, data, f)}` })), { value: '__custom', label: 'Custom' }]}
+            options={[...list.map(([f]) => ({ value: f, label: `${f} → ${sampleText(layer, data, f)}` })), { value: '__custom', label: t('Custom') }]}
             onChange={(v) => {
               const p = list.find((x) => x[0] === v);
               if (!p) return;
@@ -317,15 +318,15 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             }}
           />
         </Row>
-        <Text label="Format" path="format" placeholder="HH:mm:ss" />
-        <Content label="Prefix" path="prefix" value="" />
-        <Content label="Suffix" path="suffix" value="" />
+        <Text label={t('Format')} path="format" placeholder="HH:mm:ss" />
+        <Content label={t('Prefix')} path="prefix" value="" />
+        <Content label={t('Suffix')} path="suffix" value="" />
         {mode === 'clock' && (
           <>
             <Toggle
               expose="cities"
               exposeValue={c.cities}
-              label="Cities"
+              label={t('Cities')}
               value={c.cities}
               onChange={(v) =>
                 edit((l) => {
@@ -346,11 +347,11 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
                 path="cityList"
                 value={[]}
                 fields={[
-                  { key: 'label', placeholder: 'City' },
-                  { key: 'zone', w: 150, options: [['', 'Server'], ...ZONES.map((z) => [z, z] as [string, string])] },
+                  { key: 'label', placeholder: t('City') },
+                  { key: 'zone', w: 150, options: [['', t('Server')], ...ZONES.map((z) => [z, z] as [string, string])] },
                 ]}
                 add={() => ({ label: 'London', zone: 'Europe/London' })}
-                addLabel="City"
+                addLabel={t('City')}
                 min={1}
               />
             )}
@@ -358,10 +359,10 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
         )}
       </Section>
 
-      <Section id="timer-digits" title="Digits">
-        <Toggle label="Tabular" path="tabular" value={false} />
+      <Section id="timer-digits" title={t('Digits')}>
+        <Toggle label={t('Tabular')} path="tabular" value={false} />
         <Seg
-          label="Zeros"
+          label={t('Zeros')}
           path="zeros"
           value="pad"
           options={[
@@ -369,24 +370,24 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             ['trim', '1:05'],
           ]}
         />
-        {T.timed(e) && <Toggle label="Auto hours" path="hoursAuto" value={false} />}
+        {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
         <Seg
-          label="Separator"
+          label={t('Separator')}
           path="sep"
           value=":"
           options={[
             [':', ':'],
             ['h', 'h'],
             ["'", "'"],
-            [' ', 'space'],
+            [' ', t('space')],
             ['.', '.'],
           ]}
         />
-        <Toggle label="Blink" path="sepBlink" value={false} />
+        <Toggle label={t('Blink')} path="sepBlink" value={false} />
         {mode === 'clock' && (
           <>
             <Seg
-              label="Hours"
+              label={t('Hours')}
               path="h12"
               value={false}
               options={[
@@ -404,74 +405,74 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
         )}
         {mode === 'date' && (
           <>
-            <Select label="Language" path="lang" value="en-GB" options={T.LANGS} />
+            <Select label={t('Language')} path="lang" value="en-GB" options={T.LANGS} />
             <Seg
-              label="Case"
+              label={t('Case')}
               path="case"
               value="none"
               options={[
-                ['none', 'As is'],
-                ['first', 'First'],
-                ['words', 'Words'],
-                ['upper', 'UPPER'],
-                ['lower', 'lower'],
+                ['none', t('As is')],
+                ['first', t('First')],
+                ['words', t('Words')],
+                ['upper', t('UPPER')],
+                ['lower', t('lower')],
               ]}
             />
           </>
         )}
       </Section>
 
-      <Section id="timer-style" title="Style">
+      <Section id="timer-style" title={t('Style')}>
         <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
-        <GroupRow layer={layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-        <ColorGroupRow layer={layer} prop="fill" label="Colour" />
+        <GroupRow layer={layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
+        <ColorGroupRow layer={layer} prop="fill" label={t('Colour')} />
         {affixed && (
           <>
-            <Num label="Affix size" path="affix.size" value={30} min={15} max={100} unit="%" />
-            <ColorPick label="Affix colour" path="affix.color" value="#a594ff" />
+            <Num label={t('Affix size')} path="affix.size" value={30} min={15} max={100} unit="%" />
+            <ColorPick label={t('Affix colour')} path="affix.color" value="#a594ff" />
             <Seg
-              label="Affix weight"
+              label={t('Affix weight')}
               path="affix.weight"
               value={800}
               options={[
-                [500, 'Medium'],
-                [700, 'Bold'],
-                [800, 'Extra'],
-                [900, 'Black'],
+                [500, t('Medium')],
+                [700, t('Bold')],
+                [800, t('Extra')],
+                [900, t('Black')],
               ]}
             />
-            <Toggle label="Affix caps" path="affix.upper" value={true} />
+            <Toggle label={t('Affix caps')} path="affix.upper" value={true} />
           </>
         )}
-        <Toggle label="Plate" path="plate.on" value={false} />
+        <Toggle label={t('Plate')} path="plate.on" value={false} />
         {c.plate.on && (
           <>
-            <ColorPick label="Colour" path="plate.color" value={T.DEF.plate.color} />
-            <Num label="Radius" path="plate.radius" value={22} min={0} max={80} unit="px" />
-            <Num label="Padding" path="plate.padX" value={46} min={0} max={120} unit="px" />
-            <Num label="Padding V" path="plate.padY" value={14} min={0} max={80} unit="px" />
-            <Toggle label="Accent" path="plate.accent" value={true} />
-            {c.plate.accent && <ColorPick label="Accent colour" path="plate.accentColor" value="#ff3b5c" />}
-            <Toggle label="Shadow" path="plate.shadow" value={true} />
+            <ColorPick label={t('Colour')} path="plate.color" value={T.DEF.plate.color} />
+            <Num label={t('Radius')} path="plate.radius" value={22} min={0} max={80} unit="px" />
+            <Num label={t('Padding')} path="plate.padX" value={46} min={0} max={120} unit="px" />
+            <Num label={t('Padding V')} path="plate.padY" value={14} min={0} max={80} unit="px" />
+            <Toggle label={t('Accent')} path="plate.accent" value={true} />
+            {c.plate.accent && <ColorPick label={t('Accent colour')} path="plate.accentColor" value="#ff3b5c" />}
+            <Toggle label={t('Shadow')} path="plate.shadow" value={true} />
           </>
         )}
-        <Toggle label="Reserve width" path="reserve" value={false} />
-        {c.reserve && <Toggle label="Guide" path="guide" value={true} />}
-        <Toggle label="Shrink to fit" path="fit" value={false} />
+        <Toggle label={t('Reserve width')} path="reserve" value={false} />
+        {c.reserve && <Toggle label={t('Guide')} path="guide" value={true} />}
+        <Toggle label={t('Shrink to fit')} path="fit" value={false} />
       </Section>
 
       {!T.timed(e) && (
-        <Section id="timer-zone" title="Time zone">
+        <Section id="timer-zone" title={t('Time zone')}>
           <Seg
             expose="timezone"
             exposeValue={(layer as L & Config).timezone ?? ''}
             exposeOptions={[]}
-            label="Zone"
+            label={t('Zone')}
             value={zoneMode}
             options={[
-              ['machine', 'Server'],
-              ['named', 'Named'],
-              ['offset', 'Offset'],
+              ['machine', t('Server')],
+              ['named', t('Named')],
+              ['offset', t('Offset')],
             ]}
             onChange={(v) =>
               edit((l) => {
@@ -484,39 +485,39 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
               })
             }
           />
-          {zoneMode === 'named' && <Select label="Zone name" path="timezone" value="Europe/Paris" options={ZONES.includes(layer.timezone) ? ZONES : [layer.timezone, ...ZONES]} />}
-          {zoneMode === 'offset' && <Num label="UTC offset" path="tzOffset" value={0} min={-12} max={14} step={0.25} precision={2} unit="h" />}
+          {zoneMode === 'named' && <Select label={t('Zone name')} path="timezone" value="Europe/Paris" options={ZONES.includes(layer.timezone) ? ZONES : [layer.timezone, ...ZONES]} />}
+          {zoneMode === 'offset' && <Num label={t('UTC offset')} path="tzOffset" value={0} min={-12} max={14} step={0.25} precision={2} unit="h" />}
           {mode === 'clock' && (
             <>
               <Seg
-                label="Fine in"
+                label={t('Fine in')}
                 path="fineUnit"
                 value="s"
                 options={[
-                  ['s', 'Seconds'],
-                  ['f', 'Frames'],
+                  ['s', t('Seconds')],
+                  ['f', t('Frames')],
                 ]}
               />
-              {c.fineUnit === 's' ? <Num label="Fine offset" path="fine" value={0} min={-10} max={10} step={0.1} precision={1} unit="s" /> : <Num label="Fine offset" path="fine" value={0} min={-50} max={50} step={1} unit="fr" />}
+              {c.fineUnit === 's' ? <Num label={t('Fine offset')} path="fine" value={0} min={-10} max={10} step={0.1} precision={1} unit="s" /> : <Num label={t('Fine offset')} path="fine" value={0} min={-50} max={50} step={1} unit="fr" />}
             </>
           )}
         </Section>
       )}
       {mode === 'stopwatch' && (
-        <Section id="timer-sw" title="Stopwatch">
-          <DurField label="Start value" value={c.swStart} onChange={(v) => set('swStart', v)} expose="swStart" />
-          <Toggle label="Limit" path="swLimitOn" value={false} />
+        <Section id="timer-sw" title={t('Stopwatch')}>
+          <DurField label={t('Start value')} value={c.swStart} onChange={(v) => set('swStart', v)} expose="swStart" />
+          <Toggle label={t('Limit')} path="swLimitOn" value={false} />
           {c.swLimitOn && (
             <>
-              <DurField label="Limit at" value={c.swLimit} min={1000} onChange={(v) => set('swLimit', v)} expose="swLimit" />
+              <DurField label={t('Limit at')} value={c.swLimit} min={1000} onChange={(v) => set('swLimit', v)} expose="swLimit" />
               <Seg
-                label="At the limit"
+                label={t('At the limit')}
                 path="swLimitMode"
                 value="stop"
                 options={[
-                  ['stop', 'Stop'],
-                  ['continue', 'Continue'],
-                  ['restart', 'Restart'],
+                  ['stop', t('Stop')],
+                  ['continue', t('Continue')],
+                  ['restart', t('Restart')],
                 ]}
               />
             </>
@@ -525,115 +526,115 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             expose="format"
             exposeValue={e.format}
             exposeOptions={[]}
-            label="Precision"
+            label={t('Precision')}
             value={/FF$/.test(e.format) ? 'f' : /SS$/.test(e.format) ? 'h' : /S$/.test(e.format) ? 't' : 's'}
             options={[
-              ['s', 'Seconds'],
-              ['t', 'Tenths'],
-              ['h', 'Hundredths'],
-              ['f', 'Frames'],
+              ['s', t('Seconds')],
+              ['t', t('Tenths')],
+              ['h', t('Hundredths')],
+              ['f', t('Frames')],
             ]}
             onChange={(v) => set('format', setPrecision(e.format, v))}
           />
           <Seg
-            label="Rounding"
+            label={t('Rounding')}
             path="swRound"
             value="trunc"
             options={[
-              ['trunc', 'Truncate'],
-              ['near', 'Nearest'],
+              ['trunc', t('Truncate')],
+              ['near', t('Nearest')],
             ]}
           />
-          <Num label="Split hold" path="splitHold" value={5} min={1} max={15} unit="s" />
+          <Num label={t('Split hold')} path="splitHold" value={5} min={1} max={15} unit="s" />
         </Section>
       )}
       {mode === 'countdown' && (
-        <Section id="timer-cd" title="Countdown">
+        <Section id="timer-cd" title={t('Countdown')}>
           <Seg
-            label="Target"
+            label={t('Target')}
             path="cdTarget"
             value="duration"
             options={[
-              ['duration', 'Duration'],
-              ['time', 'Time'],
+              ['duration', t('Duration')],
+              ['time', t('Time')],
             ]}
           />
           {c.cdTarget === 'duration' ? (
-            <DurField label="Duration" value={c.cdDuration} min={1000} onChange={(v) => set('cdDuration', v)} expose="cdDuration" />
+            <DurField label={t('Duration')} value={c.cdDuration} min={1000} onChange={(v) => set('cdDuration', v)} expose="cdDuration" />
           ) : (
             <>
-              <Text label="Date" path="tDate" value="" placeholder="YYYY-MM-DD" />
-              <Text label="Time" path="tTime" value="20:00:00" placeholder="20:00:00" />
-              <Select label="Zone" path="tZone" value="" options={[['', 'Server'] as [string, string], ...ZONES.map((z) => [z, z] as [string, string])]} />
+              <Text label={t('Date')} path="tDate" value="" placeholder="YYYY-MM-DD" />
+              <Text label={t('Time')} path="tTime" value="20:00:00" placeholder="20:00:00" />
+              <Select label={t('Zone')} path="tZone" value="" options={[['', t('Server')] as [string, string], ...ZONES.map((z) => [z, z] as [string, string])]} />
             </>
           )}
-          <Toggle label="Round up" path="roundUp" value={true} />
+          <Toggle label={t('Round up')} path="roundUp" value={true} />
           <Seg
-            label="At zero"
+            label={t('At zero')}
             path="atZero"
             value="freeze"
             options={[
-              ['freeze', 'Freeze'],
-              ['overrun', 'Overrun +'],
-              ['restart', 'Restart'],
-              ['out', 'Hide'],
+              ['freeze', t('Freeze')],
+              ['overrun', t('Overrun +')],
+              ['restart', t('Restart')],
+              ['out', t('Hide')],
             ]}
           />
-          <Text label="Then trigger" path="zeroTrigger" value="" placeholder="e.g. next (none)" />
-          {!!c.zeroTrigger?.trim() && <Note>At zero, every graphic on air paused on the trigger “{c.zeroTrigger.trim()}” plays on.</Note>}
+          <Text label={t('Then trigger')} path="zeroTrigger" value="" placeholder={t('e.g. next (none)')} />
+          {!!c.zeroTrigger?.trim() && <Note>{t('At zero, every graphic on air paused on the trigger “{trigger}” plays on.', { trigger: c.zeroTrigger.trim() })}</Note>}
           {c.atZero === 'overrun' && (
             <>
-              <ColorPick label="Overrun text" path="overColor" value="#ff3b5c" />
-              <Text label="Overrun bg" path="overBg" value="" placeholder="#hex" />
+              <ColorPick label={t('Overrun text')} path="overColor" value="#ff3b5c" />
+              <Text label={t('Overrun bg')} path="overBg" value="" placeholder="#hex" />
             </>
           )}
-          <Toggle label="Banner" path="banner" value={false} />
+          <Toggle label={t('Banner')} path="banner" value={false} />
           {c.banner && (
             <>
-              <Content label="Banner text" path="bannerText" value="" />
-              <ColorPick label="Banner colour" path="bannerColor" value="#ff3b5c" />
+              <Content label={t('Banner text')} path="bannerText" value="" />
+              <ColorPick label={t('Banner colour')} path="bannerColor" value="#ff3b5c" />
             </>
           )}
         </Section>
       )}
       {T.timed(e) && (
         <>
-          <Section id="timer-start" title="Start">
+          <Section id="timer-start" title={t('Start')}>
             <Seg
-              label="Start"
+              label={t('Start')}
               path="startMode"
               value="manual"
               options={[
-                ['manual', 'Manual'],
-                ['auto', 'At In'],
-                ['at', 'At a time'],
-                ['ext', 'External'],
+                ['manual', t('Manual')],
+                ['auto', t('At In')],
+                ['at', t('At a time')],
+                ['ext', t('External')],
               ]}
             />
-            {c.startMode === 'at' && <Text label="Start at" path="startAt" value="20:00:00" placeholder="20:00:00" />}
-            <Toggle label="Run off air" path="offAir" value={true} />
+            {c.startMode === 'at' && <Text label={t('Start at')} path="startAt" value="20:00:00" placeholder="20:00:00" />}
+            <Toggle label={t('Run off air')} path="offAir" value={true} />
           </Section>
-          <Section id="timer-steps" title="Steps">
+          <Section id="timer-steps" title={t('Steps')}>
             <ListEditor
-              label="Steps"
+              label={t('Steps')}
               path="steps"
               value={[]}
               toggle="on"
               fields={[
                 { key: 'at', num: true, w: 56, placeholder: 's' },
                 { key: 'color', color: true, w: 36 },
-                { key: 'bg', placeholder: 'bg #hex' },
+                { key: 'bg', placeholder: t('bg #hex') },
                 {
                   key: 'blink',
                   w: 76,
                   options: [
-                    ['', 'Steady'],
-                    ['true', 'Blink'],
+                    ['', t('Steady')],
+                    ['true', t('Blink')],
                   ],
                 },
               ]}
               add={() => ({ on: true, at: 30, color: '#facc15', bg: '', blink: false })}
-              addLabel="Step"
+              addLabel={t('Step')}
             />
           </Section>
         </>
@@ -688,13 +689,13 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   const paused = r.pausedAt != null;
   const st0 = T.started(e, r);
   const confirmReset = async () => {
-    if (onAir && !(await confirmDialog({ title: `${layer.name} is on air: reset it to its start value?`, confirm: 'Reset' }))) return;
+    if (onAir && !(await confirmDialog({ title: t('{name} is on air: reset it to its start value?', { name: layer.name }), confirm: t('Reset') }))) return;
     act('reset');
   };
   const set = () => {
     const p = tgt ? T.parseTarget(input) : T.parseDur(input);
     if ('err' in p) return setErr(p.err);
-    if (!tgt && e.mode === 'stopwatch' && e.c.swLimitOn && 'ms' in p && p.ms > e.c.swLimit) return setErr(`${T.plainDur(p.ms)} is above the limit ${T.plainDur(e.c.swLimit)}`);
+    if (!tgt && e.mode === 'stopwatch' && e.c.swLimitOn && 'ms' in p && p.ms > e.c.swLimit) return setErr(t('{value} is above the limit {limit}', { value: T.plainDur(p.ms), limit: T.plainDur(e.c.swLimit) }));
     act('set', { value: input.trim() });
     setErr('');
     setInput('');
@@ -724,17 +725,17 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   const [prefix, suffix] = T.affixes(e.c, data);
   if (!isTimed) {
     const txt =
-      e.c.cities && e.c.cityList.length ? e.c.cityList.map((ct) => `${ct.label || ct.zone || 'Server'} ${T.segText(T.display(e, st, { now, ageMs, fps, defaultTz: tz }, T.zoneNamed(ct.zone)).segs, e.c.sep)}`).join(' · ') : T.segText(T.display(e, st, { now, ageMs, fps, defaultTz: tz }).segs, e.c.sep);
+      e.c.cities && e.c.cityList.length ? e.c.cityList.map((ct) => `${ct.label || ct.zone || t('Server')} ${T.segText(T.display(e, st, { now, ageMs, fps, defaultTz: tz }, T.zoneNamed(ct.zone)).segs, e.c.sep)}`).join(' · ') : T.segText(T.display(e, st, { now, ageMs, fps, defaultTz: tz }).segs, e.c.sep);
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={box}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontWeight: 600, fontSize: 12 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: LIGHT.ok, boxShadow: `0 0 0 4px ${LIGHT.ok}33, 0 0 10px ${LIGHT.ok}` }} />
-            <span>Server clock (the engine's system time){e.c.fine ? ` · fine offset ${e.c.fine > 0 ? '+' : ''}${e.c.fine} ${e.c.fineUnit === 'f' ? 'fr' : 's'}` : ''}</span>
+            <span>{e.c.fine ? t("Server clock (the engine's system time) · fine offset {offset}", { offset: `${e.c.fine > 0 ? '+' : ''}${e.c.fine} ${e.c.fineUnit === 'f' ? 'fr' : 's'}` }) : t("Server clock (the engine's system time)")}</span>
           </div>
           <div style={{ ...big, fontSize: 30 }}>{txt}</div>
         </div>
-        <Note>{e.mode === 'clock' ? 'The clock' : 'The date'} runs by itself: no transport control, only the time source status.</Note>
+        <Note>{e.mode === 'clock' ? t('The clock runs by itself: no transport control, only the time source status.') : t('The date runs by itself: no transport control, only the time source status.')}</Note>
       </div>
     );
   }
@@ -743,22 +744,25 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   const lines: string[] = [];
   if (d.split) {
     const v = T.value(e, r, now, tz);
-    if (v) lines.push(`Split frozen on air · running behind: ${T.segText(T.dur(e, v.v, fps, e.c.swRound === 'near' ? 'near' : 'trunc'), e.c.sep)}`);
+    if (v) lines.push(t('Split frozen on air · running behind: {value}', { value: T.segText(T.dur(e, v.v, fps, e.c.swRound === 'near' ? 'near' : 'trunc'), e.c.sep) }));
   }
-  if (r.startedAt != null && !tgt) lines.push(`Started ${fmtClock(r.startedAt, tz)} · pauses ${T.plainDur(Math.round(r.pausedTotal / 100) * 100)}${r.adj ? ` · adjusted ${r.adj > 0 ? '+' : '−'}${T.plainDur(Math.abs(r.adj))}` : ''} · server time − start − pauses: no drift`);
+  if (r.startedAt != null && !tgt) {
+    const v = { start: fmtClock(r.startedAt, tz), pauses: T.plainDur(Math.round(r.pausedTotal / 100) * 100), adjusted: `${r.adj > 0 ? '+' : '−'}${T.plainDur(Math.abs(r.adj))}` };
+    lines.push(r.adj ? t('Started {start} · pauses {pauses} · adjusted {adjusted} · server time − start − pauses: no drift', v) : t('Started {start} · pauses {pauses} · server time − start − pauses: no drift', v));
+  }
   if (tgt) {
-    const t = T.targetOf(e, r, now, tz);
-    if (t != null) lines.push(`Target ${new Date(t).toISOString().slice(0, 19).replace('T', ' ')} UTC (absolute)`);
+    const tg = T.targetOf(e, r, now, tz);
+    if (tg != null) lines.push(t('Target {time} UTC (absolute)', { time: new Date(tg).toISOString().slice(0, 19).replace('T', ' ') }));
   }
-  if (e.legacy) lines.push('Older timer layer: follows its time on air.');
+  if (e.legacy) lines.push(t('Older timer layer: follows its time on air.'));
   const color = d.color ? hex(d.color) : 'var(--text)';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={box}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {chip(stTxt, stCol)}
-          {onAir ? chip('ON AIR', '#ff3b5c') : chip('TRY-OUT', '#a3a9bd')}
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{MODES.find((m) => m[0] === e.mode)![1]}</span>
+          {chip(t(stTxt), stCol)}
+          {onAir ? chip(t('ON AIR'), '#ff3b5c') : chip(t('TRY-OUT'), '#a3a9bd')}
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{t(MODES.find((m) => m[0] === e.mode)![1])}</span>
         </div>
         <div style={{ ...big, color, opacity: d.hidden ? 0.4 : 1 }}>{`${prefix ? prefix + ' ' : ''}${T.segText(d.segs, e.c.sep)}${suffix ? ' ' + suffix : ''}`}</div>
         {lines.length > 0 && (
@@ -771,15 +775,15 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
       </div>
       <Btns
         list={[
-          { label: '▶ Start', cls: 'green big', keyHint: 'S', disabled: st0 && !paused, title: tgt ? 'A countdown to a time always runs' : undefined, onClick: () => act('start') },
-          { label: paused ? '⏯ Resume' : '⏸ Pause', cls: 'amber big', keyHint: 'P', disabled: !st0, onClick: () => act(paused ? 'resume' : 'pause') },
-          { label: '↺ Reset', cls: 'big', keyHint: 'X', confirm: onAir ? `${layer.name} is on air: reset it to its start value?` : undefined, onClick: () => act('reset') },
-          { label: '⟲ Restart', cls: 'violet big', keyHint: 'T', onClick: () => act('restart') },
-          e.mode === 'stopwatch' && { label: '⏱ Split', cls: 'big', keyHint: 'L', disabled: !st0 || paused, onClick: () => act('split') },
+          { label: t('▶ Start'), cls: 'green big', keyHint: 'S', disabled: st0 && !paused, title: tgt ? t('A countdown to a time always runs') : undefined, onClick: () => act('start') },
+          { label: paused ? t('⏯ Resume') : t('⏸ Pause'), cls: 'amber big', keyHint: 'P', disabled: !st0, onClick: () => act(paused ? 'resume' : 'pause') },
+          { label: t('↺ Reset'), cls: 'big', keyHint: 'X', confirm: onAir ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+          { label: t('⟲ Restart'), cls: 'violet big', keyHint: 'T', onClick: () => act('restart') },
+          e.mode === 'stopwatch' && { label: t('⏱ Split'), cls: 'big', keyHint: 'L', disabled: !st0 || paused, onClick: () => act('split') },
         ]}
       />
       <Btns
-        label="Adjust"
+        label={t('Adjust')}
         list={(
           [
             ['−10 s', -10, '1'],
@@ -790,13 +794,13 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
           ] as [string, number, string][]
         ).map(([label, s, k]) => ({ label, keyHint: k, cls: 'ghost', onClick: () => adj(s) }))}
       />
-      <Row label={tgt ? 'New target' : 'Set value'}>
+      <Row label={tgt ? t('New target') : t('Set value')}>
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
           <input
             ref={inp}
             style={{ flex: 1, minWidth: 0, fontFamily: 'var(--mono, monospace)' }}
             value={input}
-            placeholder={tgt ? '20:00:00 or 2026-10-18 20:00' : 'mm:ss or h:mm:ss'}
+            placeholder={tgt ? t('20:00:00 or 2026-10-18 20:00') : t('mm:ss or h:mm:ss')}
             onChange={(ev) => setInput(ev.target.value)}
             onKeyDown={(ev) => {
               ev.stopPropagation();
@@ -804,19 +808,19 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
             }}
           />
           <button className="opx-btn violet" onClick={set}>
-            Set <kbd>V</kbd>
+            {t('Set')} <kbd>V</kbd>
           </button>
         </div>
       </Row>
-      {err && <Msg level="error">⛔ {err} — nothing changed on air.</Msg>}
-      {e.start === 'ext' && !tgt && !st0 && <Msg level="info">Waiting for the external trigger (API, Stream Deck, GPI box).</Msg>}
+      {err && <Msg level="error">⛔ {t('{error} — nothing changed on air.', { error: err })}</Msg>}
+      {e.start === 'ext' && !tgt && !st0 && <Msg level="info">{t('Waiting for the external trigger (API, Stream Deck, GPI box).')}</Msg>}
       <Note>
         <span style={{ fontFamily: 'var(--mono, monospace)', fontSize: 10.5 }}>
           {api('start')} · ops: start, pause, resume, toggle, reset, restart, adjust {'{seconds:10}'}, set {"{value:'05:00'}"}
           {e.mode === 'stopwatch' ? ', split' : ''}
         </span>
         <br />
-        Keys: Space start / pause · S P X T{e.mode === 'stopwatch' ? ' L' : ''} · 1–5 adjust · V set value
+        {t('Keys: Space start / pause · {keys} · 1–5 adjust · V set value', { keys: `S P X T${e.mode === 'stopwatch' ? ' L' : ''}` })}
       </Note>
     </div>
   );
@@ -829,36 +833,36 @@ function warnings(layer: L, data: Data, state: unknown): Warning[] {
   const e = T.eff(layer, data);
   const now = Date.now();
   const tz = useApp.getState().timezone ?? '';
-  if (!T.hasToken(e.format)) out.push({ level: 'error', text: 'The format has no time token: nothing would move on screen.' });
+  if (!T.hasToken(e.format)) out.push({ level: 'error', text: t('The format has no time token: nothing would move on screen.') });
   if (!T.timed(e)) {
-    if ('name' in e.zone && e.zone.name && !T.validZone(e.zone.name)) out.push({ level: 'error', text: `Unknown time zone “${e.zone.name}”: the server zone is used.` });
-    if (e.c.cities) for (const ct of e.c.cityList) if (ct.zone && !T.validZone(ct.zone)) out.push({ level: 'error', text: `Unknown time zone “${ct.zone}” (${ct.label}).` });
+    if ('name' in e.zone && e.zone.name && !T.validZone(e.zone.name)) out.push({ level: 'error', text: t('Unknown time zone “{zone}”: the server zone is used.', { zone: e.zone.name }) });
+    if (e.c.cities) for (const ct of e.c.cityList) if (ct.zone && !T.validZone(ct.zone)) out.push({ level: 'error', text: t('Unknown time zone “{zone}” ({city}).', { zone: ct.zone, city: ct.label ?? '' }) });
     return out;
   }
   const st = state as State | undefined;
   const r = T.run(e, st, now, 0, tz);
   if (T.isTarget(e)) {
-    const t = T.targetOf(e, r, now, tz);
-    if (t == null) out.push({ level: 'error', op: true, text: 'The target time is empty or invalid: the countdown shows --:--.' });
-    else if (t <= now && now - t > 3000) {
+    const tg = T.targetOf(e, r, now, tz);
+    if (tg == null) out.push({ level: 'error', op: true, text: t('The target time is empty or invalid: the countdown shows --:--.') });
+    else if (tg <= now && now - tg > 3000) {
       const z = { freeze: 'frozen at 0', overrun: 'overrun', restart: 'frozen at 0', out: 'widget hidden' }[e.atZero];
-      out.push({ level: 'warn', op: true, text: `Target already passed (${T.plainDur(Math.floor((now - t) / 1000) * 1000)} ago): zero behaviour applied — ${z}.` });
+      out.push({ level: 'warn', op: true, text: t('Target already passed ({ago} ago): zero behaviour applied — {behaviour}.', { ago: T.plainDur(Math.floor((now - tg) / 1000) * 1000), behaviour: t(z) }) });
     }
   }
-  if (!e.c.reserve) out.push({ level: 'info', text: 'Width reservation off: the plate moves when the number of digits changes.' });
+  if (!e.c.reserve) out.push({ level: 'info', text: t('Width reservation off: the plate moves when the number of digits changes.') });
   if (!e.legacy && !T.isTarget(e) && !st?.ctl) {
     if (e.start === 'at') {
       const ts = T.startAtMs(e, now, tz);
       out.push(
         ts == null
-          ? { level: 'error', op: true, text: 'Start time invalid: use HH:mm:ss.' }
-          : { level: 'info', op: true, text: `Starts by itself at ${e.c.startAt}${ts > now ? ` (in ${T.plainDur(Math.ceil((ts - now) / 1000) * 1000)})` : now - ts < 6 * 3600000 ? ' — started' : ' — already passed today, start it by hand'}.` },
+          ? { level: 'error', op: true, text: t('Start time invalid: use HH:mm:ss.') }
+          : { level: 'info', op: true, text: ts > now ? t('Starts by itself at {time} (in {left}).', { time: e.c.startAt, left: T.plainDur(Math.ceil((ts - now) / 1000) * 1000) }) : now - ts < 6 * 3600000 ? t('Starts by itself at {time} — started.', { time: e.c.startAt }) : t('Starts by itself at {time} — already passed today, start it by hand.', { time: e.c.startAt }) },
       );
     }
-    if (e.start === 'ext') out.push({ level: 'info', op: true, text: 'Waiting for the external trigger (API).' });
-    if (e.start === 'auto') out.push({ level: 'info', op: 'only', text: 'Starts by itself at the In.' });
+    if (e.start === 'ext') out.push({ level: 'info', op: true, text: t('Waiting for the external trigger (API).') });
+    if (e.start === 'auto') out.push({ level: 'info', op: 'only', text: t('Starts by itself at the In.') });
   }
-  if (e.mode === 'stopwatch' && e.c.swLimitOn && e.c.swLimit <= e.c.swStart) out.push({ level: 'warn', text: 'The limit is not above the start value: it is ignored.' });
+  if (e.mode === 'stopwatch' && e.c.swLimitOn && e.c.swLimit <= e.c.swStart) out.push({ level: 'warn', text: t('The limit is not above the start value: it is ignored.') });
   return out;
 }
 

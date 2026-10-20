@@ -15,6 +15,7 @@ import type { Data, FieldKind, Layer, LayerType, PlayoutItem, Prop, Template, Va
 import type { TimeCtx } from '../engine/widgets';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { alertDialog, confirmDialog, promptDialog } from '../ui/dialogs';
+import { t } from '../i18n';
 
 export type WidgetGroup = 'Shapes & tools' | 'Time' | 'Data' | 'Sport & interaction';
 export type LayerOf<T extends LayerType> = Extract<Layer, { type: T }>;
@@ -263,7 +264,7 @@ export function ExposeSetting({ paths, label, value, options }: { paths: readonl
     });
   const names = fields.filter(Boolean).map((f) => f!.label);
   return (
-    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? `Exposed to the Operator (${names.join(', ')}) · click to stop` : 'Expose to the Operator'} onClick={toggle}>
+    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? t('Exposed to the Operator ({fields}) · click to stop', { fields: names.join(', ') }) : t('Expose to the Operator')} onClick={toggle}>
       <Radio size={13} />
     </button>
   );
@@ -424,7 +425,7 @@ export function useExposable(path: string | undefined, value: string | undefined
 /** The radio button of a row: exposes the content to the Operator. */
 export function ExposeToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
-    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? 'Exposed to the Operator · click to stop' : 'Expose to the Operator'} onClick={onClick}>
+    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? t('Exposed to the Operator · click to stop') : t('Expose to the Operator')} onClick={onClick}>
       <Radio size={13} />
     </button>
   );
@@ -441,18 +442,18 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
         {(p.lorem || (canExpose && inline) || exposed) && (
           <div className="wk-content-tools">
             {p.lorem && (
-              <button className="wk-chip" title="Fill with Lorem ipsum (click again for a longer one)" onClick={() => change(nextLorem(value))}>
+              <button className="wk-chip" title={t('Fill with Lorem ipsum (click again for a longer one)')} onClick={() => change(nextLorem(value))}>
                 <WandSparkles size={12} /> Lorem
               </button>
             )}
             {canExpose && inline ? (
-              <button className={`wk-chip op ${exposed ? 'on' : ''}`} title={exposed ? `Exposed to the Operator as “${field!.label}” · click to stop` : 'Expose to the Operator'} onClick={toggleExpose}>
-                <Radio size={12} /> {exposed ? 'Exposed to the Operator' : 'Expose to the Operator'}
+              <button className={`wk-chip op ${exposed ? 'on' : ''}`} title={exposed ? t('Exposed to the Operator as “{name}” · click to stop', { name: field!.label }) : t('Expose to the Operator')} onClick={toggleExpose}>
+                <Radio size={12} /> {exposed ? t('Exposed to the Operator') : t('Expose to the Operator')}
               </button>
             ) : (
               exposed && (
                 <span className="wk-exposed">
-                  <Radio size={12} /> Exposed to the Operator
+                  <Radio size={12} /> {t('Exposed to the Operator')}
                 </span>
               )
             )}
@@ -476,9 +477,9 @@ export function DataValue({ label, value, multiline }: { label?: ReactNode; valu
   return (
     <Row
       label={label}
-      title="Comes from data: change it in the Data canvas"
+      title={t('Comes from data: change it in the Data canvas')}
       tail={
-        <span className="wk-from" title="From data: set in the Data canvas">
+        <span className="wk-from" title={t('From data: set in the Data canvas')}>
           <Database size={13} />
         </span>
       }
@@ -536,11 +537,11 @@ export function Btns({ list, label }: { list: (BtnSpec | false | null | undefine
           <button
             key={i}
             className={`opx-btn wk-btn ${b.cls ?? ''}`}
-            title={b.keyHint ? `${b.title ?? (typeof b.label === 'string' ? b.label : '')} · key ${keyName(b.keyHint)}`.replace(/^ · /, '') : b.title}
+            title={b.keyHint ? t('{text} · key {key}', { text: b.title ?? (typeof b.label === 'string' ? b.label : ''), key: keyName(b.keyHint) }).replace(/^ · /, '') : b.title}
             disabled={b.disabled}
             onClick={async () => {
               if (b.confirm) {
-                if (!(await confirmDialog({ title: b.confirm, confirm: 'Yes' }))) return;
+                if (!(await confirmDialog({ title: b.confirm, confirm: t('Yes') }))) return;
               }
               b.onClick();
             }}
@@ -574,7 +575,7 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
     <div className="wk-list">
       {items.map((it, i) => (
         <div key={i} className={`wk-item ${p.toggle && it[p.toggle] === false ? 'off' : ''}`}>
-          {p.toggle && <input type="checkbox" checked={it[p.toggle] !== false} title="On / off" onChange={(e) => put(items.map((x, j) => (j === i ? { ...x, [p.toggle!]: e.target.checked } : x)))} />}
+          {p.toggle && <input type="checkbox" checked={it[p.toggle] !== false} title={t('On / off')} onChange={(e) => put(items.map((x, j) => (j === i ? { ...x, [p.toggle!]: e.target.checked } : x)))} />}
           {p.fields.map((f) => {
             const val = it[f.key];
             const change = (nv: unknown, coalesce?: boolean) =>
@@ -592,15 +593,15 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
             if (f.color) return <input key={f.key} type="color" style={style} value={String(val ?? '#ffffff').slice(0, 7)} onChange={(e) => change(e.target.value, true)} />;
             return <input key={f.key} style={style} placeholder={f.placeholder ?? f.key} value={String(val ?? '')} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => change(f.num ? +e.target.value : e.target.value, true)} />;
           })}
-          <button className="wk-x" title="Up" disabled={!i} onClick={() => put(items.map((x, j) => (j === i - 1 ? items[i] : j === i ? items[i - 1] : x)))}>
+          <button className="wk-x" title={t('Up')} disabled={!i} onClick={() => put(items.map((x, j) => (j === i - 1 ? items[i] : j === i ? items[i - 1] : x)))}>
             ↑
           </button>
           <button
             className="wk-x"
-            title="Remove"
+            title={t('Remove')}
             onClick={async () => {
               if (p.min && items.length <= p.min) {
-                return alertDialog({ title: p.minMsg ?? `At least ${p.min}` });
+                return alertDialog({ title: p.minMsg ?? t('At least {n}', { n: p.min }) });
               }
               put(items.filter((_, j) => j !== i));
             }}
@@ -611,7 +612,7 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
       ))}
       {p.add && (
         <button className="opx-btn small wk-add" onClick={() => put([...items, p.add!()])}>
-          + {p.addLabel ?? 'Add'}
+          + {p.addLabel ?? t('Add')}
         </button>
       )}
     </div>
@@ -654,26 +655,26 @@ export function GridEditor(p: { path?: string; value?: string[][]; onChange?: (v
       </div>
       <div className="wk-btns">
         <button className="opx-btn small" onClick={() => put([...rows, rows[0].map(() => '')])}>
-          + Row
+          {t('+ Row')}
         </button>
         <button className="opx-btn small" onClick={() => rows.length > (p.header ? 2 : 1) && put(rows.slice(0, -1))}>
-          − Row
+          {t('− Row')}
         </button>
         <button className="opx-btn small" onClick={() => put(rows.map((r, i) => [...r, i === 0 && p.header ? `Col ${r.length + 1}` : '']))}>
-          + Column
+          {t('+ Column')}
         </button>
         <button className="opx-btn small" onClick={() => rows[0].length > 1 && put(rows.map((r) => r.slice(0, -1)))}>
-          − Column
+          {t('− Column')}
         </button>
         {p.csv && (
           <button
             className="opx-btn small"
             onClick={async () => {
-              const csv = await promptDialog({ title: 'Paste CSV', message: 'Comma, semicolon or tab separated; one row per line.', value: rows.map((r) => r.join(';')).join('\n') });
+              const csv = await promptDialog({ title: t('Paste CSV'), message: t('Comma, semicolon or tab separated; one row per line.'), value: rows.map((r) => r.join(';')).join('\n') });
               if (csv) put(parseCsv(csv));
             }}
           >
-            Import CSV…
+            {t('Import CSV…')}
           </button>
         )}
       </div>

@@ -1,6 +1,9 @@
 // Tables, charts, maps and scoreboards (widgets): Designer settings and Operator controls.
 // What these widgets draw on air (chart labels, map names, scoreboard periods…) stays as typed.
 export const widgetsData: Record<string, string> = {
+  // Words with another meaning elsewhere (see tc()).
+  'stroke|Line': 'Trait',
+  'scale|Stop': 'Palier',
   // A light look (map attribution), not the font weight.
   'theme|Light': 'Clair',
   '#10 Name': '#10 Nom',
@@ -87,7 +90,7 @@ export const widgetsData: Record<string, string> = {
   'Contain': 'Contenir',
   'Content': 'Contenu',
   'Control': 'Contrôle',
-  'Corners': 'Arrondi',
+  'Corners': 'Coins',
   'counted as zero': 'comptage à zéro',
   'Countries': 'Pays',
   'Cover': 'Couvrir',
@@ -209,7 +212,6 @@ export const widgetsData: Record<string, string> = {
   'Left': 'Gauche',
   'Legend': 'Légende',
   'Like the rows': 'Comme les lignes',
-  'Line': 'Trait',
   'Line break': 'Retour à la ligne',
   'Line height': 'Interligne',
   'Line width': 'Épaisseur du trait',
@@ -290,7 +292,6 @@ export const widgetsData: Record<string, string> = {
   'PAGE {page}/{pages}': 'PAGE {page}/{pages}',
   'Pages': 'Pages',
   'Panel': 'Panneau',
-  'Path': 'Trajet',
   'Percentage': 'Pourcentage',
   'Period': 'Période',
   'Period over: clock at 0. Next period to continue.': 'Période terminée : horloge à 0. Période suivante pour continuer.',
@@ -406,7 +407,6 @@ export const widgetsData: Record<string, string> = {
   'Star': 'Étoile',
   'Start angle': 'Angle de départ',
   'Step': 'Étape',
-  'Stop': 'Palier',
   'Straight': 'Droit',
   'Stretch': 'Étirer',
   'Strikethrough': 'Barré',

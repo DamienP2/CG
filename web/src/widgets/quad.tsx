@@ -5,6 +5,7 @@ import { num } from '../engine/evaluate';
 import { GroupRow } from '../designer/Inspector';
 import { clamp, defineWidget, Handle, Num, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillStyle, type Pt, type StrokeStyle } from './shape';
+import { t } from '../i18n';
 
 export interface Config {
   shape?: 'rect' | 'diamond' | 'parallelogram' | 'trapezoid';
@@ -123,22 +124,22 @@ export default defineWidget({
     const k = cfg(layer);
     return (
       <>
-        <Section id="quad-shape" title="Shape">
+        <Section id="quad-shape" title={t('Shape')}>
           <Seg
-            label="Type"
+            label={t('Type')}
             path="shape"
             value={k.shape}
             options={[
-              ['rect', 'Rectangle'],
-              ['diamond', 'Diamond'],
-              ['parallelogram', 'Parallelogram'],
-              ['trapezoid', 'Trapezoid'],
+              ['rect', t('Rectangle')],
+              ['diamond', t('Diamond')],
+              ['parallelogram', t('Parallelogram')],
+              ['trapezoid', t('Trapezoid')],
             ]}
           />
           <Toggle
             expose="lockRatio"
             exposeValue={!!k.lockRatio}
-            label="Square"
+            label={t('Square')}
             value={k.lockRatio}
             onChange={(v) =>
               edit((l) => {
@@ -149,18 +150,18 @@ export default defineWidget({
           />
           {k.shape === 'rect' && (
             <>
-              <Toggle label="Per corner" path="perCorner" value={false} />
+              <Toggle label={t('Per corner')} path="perCorner" value={false} />
               {!k.perCorner ? (
-                <GroupRow layer={layer} spec={{ label: 'Radius', props: ['cornerRadius'], min: 0, suffix: 'px' }} />
+                <GroupRow layer={layer} spec={{ label: t('Radius'), props: ['cornerRadius'], min: 0, suffix: 'px' }} />
               ) : (
-                ['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((label, i) => <Num key={label} label={label} path={`corners.${i}`} value={k.corners[i]} min={0} max={600} unit="px" />)
+                ['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((label, i) => <Num key={label} label={t(label)} path={`corners.${i}`} value={k.corners[i]} min={0} max={600} unit="px" />)
               )}
             </>
           )}
           {k.shape === 'parallelogram' && (
             <>
               <Seg
-                label="Slant"
+                label={t('Slant')}
                 path="skewUnit"
                 value={k.skewUnit}
                 options={[
@@ -168,31 +169,31 @@ export default defineWidget({
                   ['deg', '°'],
                 ]}
               />
-              {k.skewUnit === 'px' ? <Num label="Offset" path="skewPx" value={k.skewPx} min={-1000} max={1000} unit="px" /> : <Num label="Angle" path="skewDeg" value={k.skewDeg} min={-80} max={80} unit="°" />}
+              {k.skewUnit === 'px' ? <Num label={t('Offset')} path="skewPx" value={k.skewPx} min={-1000} max={1000} unit="px" /> : <Num label={t('Angle')} path="skewDeg" value={k.skewDeg} min={-80} max={80} unit="°" />}
             </>
           )}
           {k.shape === 'trapezoid' && (
             <>
               <Seg
-                label="Top side"
+                label={t('Top side')}
                 path="trapMode"
                 value={k.trapMode}
                 options={[
-                  ['percent', 'Width %'],
-                  ['offsets', 'Offsets'],
+                  ['percent', t('Width %')],
+                  ['offsets', t('Offsets')],
                 ]}
               />
               {k.trapMode === 'percent' ? (
-                <Num label="Top width" path="trapTop" value={k.trapTop} min={0} max={100} unit="%" />
+                <Num label={t('Top width')} path="trapTop" value={k.trapTop} min={0} max={100} unit="%" />
               ) : (
                 <>
-                  <Num label="Left offset" path="trapLeft" value={k.trapLeft} min={0} max={2000} unit="px" />
-                  <Num label="Right offset" path="trapRight" value={k.trapRight} min={0} max={2000} unit="px" />
+                  <Num label={t('Left offset')} path="trapLeft" value={k.trapLeft} min={0} max={2000} unit="px" />
+                  <Num label={t('Right offset')} path="trapRight" value={k.trapRight} min={0} max={2000} unit="px" />
                 </>
               )}
             </>
           )}
-          {k.shape !== 'rect' && <Num label="Radius" path="vertexRound" value={k.vertexRound} min={0} max={300} unit="px" />}
+          {k.shape !== 'rect' && <Num label={t('Radius')} path="vertexRound" value={k.vertexRound} min={0} max={300} unit="px" />}
         </Section>
         <FillStrokeSections layer={layer} id="quad" edit={edit} />
       </>
@@ -202,7 +203,7 @@ export default defineWidget({
     const k = cfg(layer);
     if (k.shape === 'rect' && !k.perCorner) {
       const r = Math.min(num(layer.props.cornerRadius ?? 0), w / 2, h / 2);
-      return <Handle x={r} y={0} scale={scale} label="Radius" onDrag={(x) => edit((l) => void (l.props.cornerRadius = Math.max(0, Math.round(x))), `radius-${layer.id}`)} />;
+      return <Handle x={r} y={0} scale={scale} label={t('Radius')} onDrag={(x) => edit((l) => void (l.props.cornerRadius = Math.max(0, Math.round(x))), `radius-${layer.id}`)} />;
     }
     if (k.shape === 'parallelogram') {
       const off = skew(layer, w, h);
@@ -211,7 +212,7 @@ export default defineWidget({
           x={clamp(off, 0, w)}
           y={0}
           scale={scale}
-          label="Slant"
+          label={t('Slant')}
           onDrag={(x) =>
             edit((l) => {
               const v = clamp(Math.round(x), -maxSkew(w), maxSkew(w));
@@ -234,8 +235,8 @@ export default defineWidget({
         }, `trap-${layer.id}`);
       return (
         <>
-          <Handle x={p[0][0]} y={0} scale={scale} label="Left offset" onDrag={(x) => set('l', x)} />
-          <Handle x={p[1][0]} y={0} scale={scale} label="Right offset" onDrag={(x) => set('r', w - x)} />
+          <Handle x={p[0][0]} y={0} scale={scale} label={t('Left offset')} onDrag={(x) => set('l', x)} />
+          <Handle x={p[1][0]} y={0} scale={scale} label={t('Right offset')} onDrag={(x) => set('r', w - x)} />
         </>
       );
     }
@@ -248,12 +249,12 @@ export default defineWidget({
     const out: Warning[] = [];
     const radius = num(r?.cornerRadius ?? layer.props.cornerRadius ?? 0);
     const maxR = Math.min(w, h) / 2;
-    if (k.shape === 'rect' && !k.perCorner && radius > maxR) out.push({ level: 'info', text: `Radius ${Math.round(radius)} px capped at ${Math.round(maxR)} px (half the smallest side): the shape is a pill.` });
+    if (k.shape === 'rect' && !k.perCorner && radius > maxR) out.push({ level: 'info', text: t('Radius {radius} px capped at {max} px (half the smallest side): the shape is a pill.', { radius: Math.round(radius), max: Math.round(maxR) }) });
     if (k.shape === 'parallelogram') {
       const off = k.skewUnit === 'deg' ? Math.tan((k.skewDeg * Math.PI) / 180) * h : k.skewPx;
-      if (Math.abs(off) > maxSkew(w)) out.push({ level: 'info', text: `Slant capped at ${maxSkew(w)} px: more would make the sides cross.` });
+      if (Math.abs(off) > maxSkew(w)) out.push({ level: 'info', text: t('Slant capped at {max} px: more would make the sides cross.', { max: maxSkew(w) }) });
     }
-    if (k.shape === 'trapezoid' && k.trapMode === 'offsets' && k.trapLeft + k.trapRight > w) out.push({ level: 'info', text: 'Offsets capped: the top side cannot be shorter than 0.' });
+    if (k.shape === 'trapezoid' && k.trapMode === 'offsets' && k.trapLeft + k.trapRight > w) out.push({ level: 'info', text: t('Offsets capped: the top side cannot be shorter than 0.') });
     return out;
   },
 });

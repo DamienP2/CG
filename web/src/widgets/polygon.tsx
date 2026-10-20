@@ -7,6 +7,7 @@ import { useApp } from '../store';
 import { num } from '../engine/evaluate';
 import { Btns, clamp, defineWidget, Handle, Num, Row, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillRule, type FillStyle, type Pt, type StrokeStyle } from './shape';
+import { t, tn } from '../i18n';
 
 export interface Config {
   mode?: 'regular' | 'triangle' | 'free';
@@ -160,7 +161,7 @@ function removeVertex(layer: L, edit: Edit, i: number) {
   if (v.length <= 3) {
     ui.refusedAt.set(layer.id, Date.now());
     bump();
-    useApp.getState().toast('Refused: a polygon keeps at least 3 vertices', 'error');
+    useApp.getState().toast(t('Refused: a polygon keeps at least 3 vertices'), 'error');
     return;
   }
   edit((l) => {
@@ -250,11 +251,11 @@ function VertexList({ layer, edit }: { layer: L; edit: Edit }) {
       l.verts = vs;
     }, `vert-${layer.id}-${i}-${ax}`);
   return (
-    <Row expose="verts" exposeValue={k.verts} label="Vertices">
+    <Row expose="verts" exposeValue={k.verts} label={t('Vertices')}>
       <div className="wk-list">
         {k.verts.map((v, i) => (
           <div key={i} className="wk-item" style={i === sel ? { background: 'rgba(124,92,255,.18)', borderRadius: 6 } : undefined}>
-            <button className="wk-x" title="Select" style={{ flex: '0 0 30px', fontWeight: 700 }} onClick={() => setSel(layer.id, i)}>
+            <button className="wk-x" title={t('Select')} style={{ flex: '0 0 30px', fontWeight: 700 }} onClick={() => setSel(layer.id, i)}>
               {i + 1}
             </button>
             {([0, 1] as const).map((ax) => (
@@ -266,14 +267,14 @@ function VertexList({ layer, edit }: { layer: L; edit: Edit }) {
                   type="number"
                   step={1}
                   style={{ width: '100%', minWidth: 0 }}
-                  title={`${ax ? 'Y' : 'X'} in px from the box ${ax ? 'top' : 'left'}`}
+                  title={ax ? t('Y in px from the box top') : t('X in px from the box left')}
                   value={Math.round(v[ax] * (ax ? h : w))}
                   onKeyDown={(e) => e.stopPropagation()}
                   onChange={(e) => e.target.value !== '' && setV(i, ax, +e.target.value)}
                 />
               </span>
             ))}
-            <button className="wk-x" title="Remove this vertex" onClick={() => removeVertex(layer, edit, i)}>
+            <button className="wk-x" title={t('Remove this vertex')} onClick={() => removeVertex(layer, edit, i)}>
               ✕
             </button>
           </div>
@@ -292,7 +293,7 @@ function VertexList({ layer, edit }: { layer: L; edit: Edit }) {
             setSel(layer.id, sel + 1);
           }}
         >
-          + Vertex after {sel + 1}
+          {t('+ Vertex after {n}', { n: sel + 1 })}
         </button>
       </div>
     </Row>
@@ -324,58 +325,58 @@ export default defineWidget({
       });
     return (
       <>
-        <Section id="polygon-shape" title="Shape">
+        <Section id="polygon-shape" title={t('Shape')}>
           <Seg
-            label="Mode"
+            label={t('Mode')}
             path="mode"
             value={k.mode}
             options={[
-              ['regular', 'Regular'],
-              ['triangle', 'Triangle'],
-              ['free', 'Free'],
+              ['regular', t('Regular')],
+              ['triangle', t('Triangle')],
+              ['free', t('Free')],
             ]}
           />
           {k.mode === 'regular' && (
             <>
-              <Num label="Sides" path="sides" value={k.sides} min={5} max={64} />
-              <Num label="Rotation" path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
-              <Toggle label="Star" path="star" value={k.star} />
-              {k.star && <Num label="Inner radius" path="inner" value={k.inner} min={1} max={100} unit="%" />}
+              <Num label={t('Sides')} path="sides" value={k.sides} min={5} max={64} />
+              <Num label={t('Rotation')} path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
+              <Toggle label={t('Star')} path="star" value={k.star} />
+              {k.star && <Num label={t('Inner radius')} path="inner" value={k.inner} min={1} max={100} unit="%" />}
             </>
           )}
           {k.mode === 'triangle' && (
             <>
               <Seg
-                label="Preset"
+                label={t('Preset')}
                 path="tri"
                 value={k.tri}
                 options={[
-                  ['equilateral', 'Equilateral'],
-                  ['isosceles', 'Isosceles'],
-                  ['right', 'Right'],
+                  ['equilateral', t('Equilateral')],
+                  ['isosceles', t('Isosceles')],
+                  ['right', t('Right-angled')],
                 ]}
               />
               <Seg
-                label="Direction"
+                label={t('Direction')}
                 path="triDir"
                 value={k.triDir}
                 options={[
-                  ['up', '▲', 'Up'],
-                  ['down', '▼', 'Down'],
-                  ['left', '◀', 'Left'],
-                  ['right', '▶', 'Right'],
+                  ['up', '▲', t('Up')],
+                  ['down', '▼', t('Down')],
+                  ['left', '◀', t('Left')],
+                  ['right', '▶', t('Right')],
                 ]}
               />
             </>
           )}
-          {k.mode !== 'free' && <Btns list={[{ label: 'Edit as free', cls: 'ghost', title: 'Copy these vertices into a free polygon', onClick: toFree }]} />}
+          {k.mode !== 'free' && <Btns list={[{ label: t('Edit as free'), cls: 'ghost', title: t('Copy these vertices into a free polygon'), onClick: toFree }]} />}
           {k.mode === 'free' && (
             <>
               <VertexList layer={layer as L} edit={edit as unknown as Edit} />
-              <Toggle label="Click to add" path="clickAdd" value={k.clickAdd} expose={false} />
+              <Toggle label={t('Click to add')} path="clickAdd" value={k.clickAdd} expose={false} />
             </>
           )}
-          <Num label="Rounding" path="round" value={k.round} min={0} max={400} unit="px" />
+          <Num label={t('Rounding')} path="round" value={k.round} min={0} max={400} unit="px" />
         </Section>
         <FillStrokeSections layer={layer} id="polygon" edit={edit} rule={k.mode === 'free'} />
       </>
@@ -396,7 +397,7 @@ export default defineWidget({
             <div
               className="wk-catch"
               style={{ cursor: 'copy' }}
-              title="Click: add a vertex on the nearest side"
+              title={t('Click: add a vertex on the nearest side')}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 const r = e.currentTarget.getBoundingClientRect();
@@ -410,7 +411,7 @@ export default defineWidget({
               x={fx * w}
               y={fy * h}
               scale={scale}
-              label={`Vertex ${i + 1}${i === sel ? ' (selected)' : ''} · ${Math.round(fx * w)}, ${Math.round(fy * h)}`}
+              label={i === sel ? t('Vertex {n} (selected) · {x}, {y}', { n: i + 1, x: Math.round(fx * w), y: Math.round(fy * h) }) : t('Vertex {n} · {x}, {y}', { n: i + 1, x: Math.round(fx * w), y: Math.round(fy * h) })}
               onDrag={(x, y) => {
                 if (selOf(layer.id, k.verts.length) !== i) setSel(layer.id, i);
                 ed((l) => {
@@ -432,7 +433,7 @@ export default defineWidget({
             x={pts[0][0]}
             y={pts[0][1]}
             scale={scale}
-            label={`Start angle ${Math.round(k.startAngle)}°`}
+            label={t('Start angle {angle}°', { angle: Math.round(k.startAngle) })}
             onDrag={(x, y) => {
               const a = Math.atan2((x - w / 2) / w, -(y - h / 2) / h) / DEG;
               ed((l) => void (l.startAngle = Math.round((a + 360) % 360)), `pangle-${layer.id}`);
@@ -443,7 +444,7 @@ export default defineWidget({
               x={pts[1][0]}
               y={pts[1][1]}
               scale={scale}
-              label={`Inner radius ${Math.round(k.inner)} %`}
+              label={t('Inner radius {pct} %', { pct: Math.round(k.inner) })}
               onDrag={(x, y) => {
                 const dx = (x - w / 2) / (w / 2);
                 const dy = (y - h / 2) / (h / 2);
@@ -462,14 +463,14 @@ export default defineWidget({
     const h = num(r?.height ?? layer.props.height ?? 0);
     const out: Warning[] = [];
     const pts = points(layer, w, h);
-    if (Date.now() - (ui.refusedAt.get(layer.id) ?? 0) < 5000) out.push({ level: 'warn', text: 'Removing that vertex was refused: a polygon keeps at least 3 vertices.' });
-    if (pts.length < 3) out.push({ level: 'warn', text: 'Fewer than 3 vertices: nothing is drawn.' });
+    if (Date.now() - (ui.refusedAt.get(layer.id) ?? 0) < 5000) out.push({ level: 'warn', text: t('Removing that vertex was refused: a polygon keeps at least 3 vertices.') });
+    if (pts.length < 3) out.push({ level: 'warn', text: t('Fewer than 3 vertices: nothing is drawn.') });
     const c = cappedCount(pts, k.round);
-    if (c) out.push({ level: 'info', text: `Rounding ${k.round} px capped on ${c} vertex${c > 1 ? 'es' : ''} (too sharp an angle or too short a side): each vertex takes the largest radius that fits.` });
+    if (c) out.push({ level: 'info', text: tn(c, 'Rounding {round} px capped on {n} vertex (too sharp an angle or too short a side): each vertex takes the largest radius that fits.', 'Rounding {round} px capped on {n} vertexes (too sharp an angle or too short a side): each vertex takes the largest radius that fits.', { round: k.round }) });
     if (k.mode === 'free') {
-      if (selfCrossing(pts)) out.push({ level: 'info', text: `The polygon crosses itself: fill rule ${k.fillRule === 'evenodd' ? 'Even-odd' : 'Non-zero'} applies.` });
+      if (selfCrossing(pts)) out.push({ level: 'info', text: t('The polygon crosses itself: fill rule {rule} applies.', { rule: t(k.fillRule === 'evenodd' ? 'Even-odd' : 'Non-zero') }) });
       const o = overlapping(pts);
-      if (o) out.push({ level: 'info', text: `${o} vertex${o > 1 ? 'es' : ''} on top of the next one: kept, drawn without artefact.` });
+      if (o) out.push({ level: 'info', text: tn(o, '{n} vertex on top of the next one: kept, drawn without artefact.', '{n} vertexes on top of the next one: kept, drawn without artefact.') });
     }
     return out;
   },

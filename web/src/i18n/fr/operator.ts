@@ -1,11 +1,13 @@
 // The Operator, outputs, the MOS plugin, project pages.
 export const operator: Record<string, string> = {
+  // Channels nobody uses (see tc()).
+  'channels|Free': 'Libres',
   // Operator: playlists and graphics
   'Playlists': 'Playlists',
   'New playlist': 'Nouvelle playlist',
   'Playlist {n}': 'Playlist {n}',
   'Rundown · {name}': 'Conducteur · {name}',
-  'Auto next': 'Enchaînement auto',
+  'Auto next': 'Auto',
   'Auto next: each graphic takes the next one after its time (set on each graphic)': 'Enchaînement auto : chaque habillage envoie le suivant après sa durée (réglée sur chaque habillage)',
   'Loop: after the last graphic, the first again': 'Boucle : après le dernier habillage, de nouveau le premier',
   'Add a graphic from a template': 'Ajouter un habillage depuis un modèle',
@@ -121,7 +123,9 @@ export const operator: Record<string, string> = {
   'This graphic is no longer in the project: take it out.': 'Cet habillage n’est plus dans le projet : retirez-le de l’antenne.',
   'F2 / Space': 'F2 / Espace',
   'Pause': 'Pause',
-  'Start': 'Démarrage',
+  'Start': 'Début',
+  // The button that starts a widget.
+  'action|Start': 'Démarrer',
   'running': 'en marche',
   'stopped': 'arrêté',
   'Back to the start': 'Revenir au début',
@@ -137,7 +141,6 @@ export const operator: Record<string, string> = {
   'Load here': 'Charger ici',
   'Output': 'Sortie',
   'No output (preview only)': 'Aucune sortie (aperçu seul)',
-  'Free': 'Libres',
   'Used by another project': 'Utilisés par un autre projet',
   '{channel} — used by “{project}”': '{channel} — utilisé par « {project} »',
   // Data sets

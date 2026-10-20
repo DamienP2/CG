@@ -4,7 +4,7 @@ import { FontPick } from '../ui/FontPick';
 import { AssetPicker } from './AssetPicker';
 import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
@@ -24,6 +24,7 @@ import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
 import { widgetOf } from '../widgets';
 import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
+import { t, tc, tn } from '../i18n';
 
 interface PropSpec {
   prop: Prop;
@@ -198,7 +199,7 @@ export function TimelineButton({ layer, props }: { layer: Layer; props: Prop[] }
   return (
     <button
       className={`pp-tl ${on ? 'on' : ''} ${here ? 'key' : ''}`}
-      title={!on ? 'Not on the timeline: click to animate it' : here ? 'Remove the keyframe at the playhead' : 'On the timeline: click to add a keyframe at the playhead'}
+      title={!on ? t('Not on the timeline: click to animate it') : here ? t('Remove the keyframe at the playhead') : t('On the timeline: click to add a keyframe at the playhead')}
       onClick={() => {
         update((t) => {
           const l = findLayer(t, layer.id)!;
@@ -218,7 +219,7 @@ function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
   const driven = useDesigner((s) => s.template?.logic?.nodes.some((n) => n.type === 'target' && n.layer === layer.id && props.includes(n.prop as Prop)));
   if (!driven) return null;
   return (
-    <span className="logic-badge" title="Driven by a Logic relation (Logic button in the toolbar)">
+    <span className="logic-badge" title={t('Driven by a Logic relation (Logic button in the toolbar)')}>
       <Link2 size={11} />
     </span>
   );
@@ -232,15 +233,16 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
   const on = bound.length > 0;
   const fields = template.fields.filter((f) => bound.includes(f.key));
   const expose = () =>
-    update((t) => {
-      const l = findLayer(t, layer.id)!;
+    update((tpl) => {
+      const l = findLayer(tpl, layer.id)!;
       for (const prop of props) {
         const isColor = prop === 'fill' || prop === 'stroke';
         const name = PROP_LABELS[prop] ?? prop;
-        const key = fieldKey(`${l.name} ${name}`, new Set(t.fields.map((f) => f.key)));
+        // The key from the English name (an identifier), the label in the interface's language.
+        const key = fieldKey(`${l.name} ${name}`, new Set(tpl.fields.map((f) => f.key)));
         // Default: what is seen on air.
-        const v = propValue(l, prop, holdFrame(t));
-        t.fields.push({ key, label: `${l.name} · ${name}`, kind: isColor ? 'color' : 'number', default: isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3)) });
+        const v = propValue(l, prop, holdFrame(tpl));
+        tpl.fields.push({ key, label: `${l.name} · ${t(name)}`, kind: isColor ? 'color' : 'number', default: isColor ? toHex(col(v), col(v)[3] < 1) : String(+num(v).toFixed(3)) });
         l.bindings[prop] = key;
       }
     });
@@ -256,7 +258,11 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
     });
   const fromSource = fields.some((f) => f.binding?.source);
   return (
-    <button className={`pp-op ${on ? 'on' : ''}`} title={on ? `Exposed to the Operator (${fields.map((f) => f.label).join(', ') || bound.join(', ')})${fromSource ? ' · fed by a data source' : ''} · click to stop` : 'Expose to the Operator'} onClick={() => (on ? unbind() : expose())}>
+    <button
+      className={`pp-op ${on ? 'on' : ''}`}
+      title={on ? (fromSource ? t('Exposed to the Operator ({fields}) · fed by a data source · click to stop', { fields: fields.map((f) => f.label).join(', ') || bound.join(', ') }) : t('Exposed to the Operator ({fields}) · click to stop', { fields: fields.map((f) => f.label).join(', ') || bound.join(', ') })) : t('Expose to the Operator')}
+      onClick={() => (on ? unbind() : expose())}
+    >
       <Radio size={13} />
     </button>
   );
@@ -287,8 +293,8 @@ function useDrivenValues(layer: Layer): Map<string, Value> {
 /** A value set by data: shown, not edited (change it in the Data canvas or the Operator). */
 function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { value: Value; display?: number; suffix?: string; precision?: number; label?: string }) {
   return (
-    <span className="pp-driven" title="Set by data (Data canvas): read only">
-      {label && <span className="scrub">{label}</span>}
+    <span className="pp-driven" title={t('Set by data (Data canvas): read only')}>
+      {label && <span className="scrub">{t(label)}</span>}
       <span className="pp-driven-v">{+(num(value) * display).toFixed(precision)}</span>
       {suffix && <span className="suffix">{suffix}</span>}
     </span>
@@ -318,7 +324,7 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
     <div className={`pp-row ${spec.props.some((p) => isAnimated(layer, p)) ? 'animated' : ''}`}>
       <TimelineButton layer={layer} props={spec.props} />
       <span className="pp-label">
-        {spec.label}
+        {t(spec.label)}
         <LogicBadge layer={layer} props={spec.props} />
       </span>
       <div className="pp-fields">
@@ -327,17 +333,17 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
             {driven.has(p) ? (
               <DrivenValue value={driven.get(p)!} label={spec.fields?.[i]} display={spec.display} suffix={spec.suffix} precision={spec.precision ?? (spec.display ? 0 : 1)} />
             ) : (
-              <NumberField label={spec.fields?.[i]} value={num(propValue(layer, p, frame))} display={spec.display} suffix={spec.suffix} precision={spec.precision} min={spec.min} max={spec.max} onChange={(nv) => setValue(p, nv)} />
+              <NumberField label={spec.fields?.[i] && t(spec.fields[i])} value={num(propValue(layer, p, frame))} display={spec.display} suffix={spec.suffix} precision={spec.precision} min={spec.min} max={spec.max} onChange={(nv) => setValue(p, nv)} />
             )}
           </span>
         ))}
         {spec.lock && (
-          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => update((t) => void (findLayer(t, layer.id)!.scaleLock = !locked || undefined))}>
+          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => update((t) => void (findLayer(t, layer.id)!.scaleLock = !locked || undefined))}>
             {locked ? <LinkIcon size={12} /> : <Unlink size={12} />}
           </button>
         )}
         {overridden && (
-          <button className="override-mark" title="Changed in this format — click to use the main layout again" onClick={() => updateBase((t) => spec.props.forEach((p) => resetOverride(findLayer(t, layer.id)!, format, p)))}>
+          <button className="override-mark" title={t('Changed in this format — click to use the main layout again')} onClick={() => updateBase((tpl) => spec.props.forEach((p) => resetOverride(findLayer(tpl, layer.id)!, format, p)))}>
             <RotateCcw size={10} />
           </button>
         )}
@@ -355,13 +361,13 @@ export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fil
     <div className={`pp-row ${isAnimated(layer, prop) ? 'animated' : ''}`}>
       <TimelineButton layer={layer} props={[prop]} />
       <span className="pp-label">
-        {label}
+        {t(label)}
         <LogicBadge layer={layer} props={[prop]} />
       </span>
       <div className="pp-fields">
         <span className="pp-field color">
           {driven ? (
-            <span className="pp-driven" title="Set by data (Data canvas): read only">
+            <span className="pp-driven" title={t('Set by data (Data canvas): read only')}>
               <span className="dc-swatch" style={{ background: toHex(col(driven), true) }} />
               <span className="pp-driven-v">{toHex(col(driven), true)}</span>
             </span>
@@ -396,7 +402,7 @@ function OverrideMark({ layer, prop }: { layer: Layer; prop: Prop }) {
   const { format, updateBase } = useDesigner();
   if (format === MAIN_FORMAT || !isOverridden(layer, format, prop)) return null;
   return (
-    <button className="override-mark" title="Changed in this format — click to use the main layout again" onClick={() => updateBase((t) => resetOverride(findLayer(t, layer.id)!, format, prop))}>
+    <button className="override-mark" title={t('Changed in this format — click to use the main layout again')} onClick={() => updateBase((tpl) => resetOverride(findLayer(tpl, layer.id)!, format, prop))}>
       <RotateCcw size={10} />
     </button>
   );
@@ -431,7 +437,7 @@ const ZONES: string[] = (() => {
 function ZoneInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <>
-      <input list="insp-zones" value={value} placeholder="Server zone" onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+      <input list="insp-zones" value={value} placeholder={t('Server zone')} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
       <datalist id="insp-zones">
         {ZONES.map((z) => (
           <option key={z} value={z} />
@@ -462,19 +468,19 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
     case 'clock':
       return (
         <>
-          <Row label="Mode">
+          <Row label={t('Mode')}>
             <Dropdown
               value={layer.mode}
               onChange={(v) => set('mode', v)}
               options={[
-                { value: 'time', label: 'Time of day' },
-                { value: 'countdown', label: 'Countdown to…' },
-                { value: 'timer', label: 'Timer (from take)' },
-                { value: 'elapsed', label: 'Stopwatch (since take)' },
+                { value: 'time', label: t('Time of day') },
+                { value: 'countdown', label: t('Countdown to…') },
+                { value: 'timer', label: t('Timer (from take)') },
+                { value: 'elapsed', label: t('Stopwatch (since take)') },
               ]}
             />
           </Row>
-          <Row label="Format">
+          <Row label={t('Format')}>
             <input list="clock-formats" value={layer.format} onChange={(e) => set('format', e.target.value, true)} onKeyDown={(e) => e.stopPropagation()} />
             <datalist id="clock-formats">
               {CLOCK_FORMATS.map((f) => (
@@ -483,34 +489,34 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
             </datalist>
           </Row>
           {(layer.mode === 'time' || layer.mode === 'countdown') && (
-            <Row label="Time zone">
+            <Row label={t('Time zone')}>
               <ZoneInput value={layer.timezone} onChange={(v) => set('timezone', v, true)} />
             </Row>
           )}
           {layer.mode === 'countdown' && (
             <>
-              <span className="prop-label">Target — “20:00” today or “2026-12-31T23:59:59”</span>
+              <span className="prop-label">{t('Target — “20:00” today or “2026-12-31T23:59:59”')}</span>
               {text('target', false, '20:00')}
             </>
           )}
           {layer.mode === 'timer' && (
             <>
-              <span className="prop-label">Duration — “5:00” or “1:30:00”</span>
+              <span className="prop-label">{t('Duration — “5:00” or “1:30:00”')}</span>
               {text('target', false, '5:00')}
             </>
           )}
-          <p className="hint">Tokens: yyyy yy MM M dd d HH H hh h mm m ss s f (tenths) A (AM/PM).</p>
+          <p className="hint">{t('Tokens: yyyy yy MM M dd d HH H hh h mm m ss s f (tenths) A (AM/PM).')}</p>
         </>
       );
     case 'ticker':
       return (
         <>
-          <span className="prop-label">Items (one per line)</span>
+          <span className="prop-label">{t('Items (one per line)')}</span>
           {text('text', true)}
-          <Row label="Separator">
+          <Row label={t('Separator')}>
             <input value={layer.separator} onChange={(e) => set('separator', e.target.value, true)} onKeyDown={(e) => e.stopPropagation()} />
           </Row>
-          <Row label="Speed">
+          <Row label={t('Speed')}>
             <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" px/s" />
           </Row>
         </>
@@ -518,62 +524,62 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
     case 'roll':
       return (
         <>
-          <span className="prop-label">Text (scrolls upwards)</span>
+          <span className="prop-label">{t('Text (scrolls upwards)')}</span>
           {text('text', true)}
-          <Row label="Speed">
+          <Row label={t('Speed')}>
             <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" px/s" />
           </Row>
-          {check('loop', 'Loop')}
+          {check('loop', t('Loop'))}
         </>
       );
     case 'analogClock':
       return (
         <>
-          <Row label="Time zone">
+          <Row label={t('Time zone')}>
             <ZoneInput value={layer.timezone} onChange={(v) => set('timezone', v, true)} />
           </Row>
-          {check('seconds', 'Second hand')}
-          <Row label="Accent">
+          {check('seconds', t('Second hand'))}
+          <Row label={t('Accent')}>
             <HexInput value={layer.accent} onChange={(v) => set('accent', v, true)} />
           </Row>
-          <p className="hint">Face = fill colour, hands and ticks = stroke colour.</p>
+          <p className="hint">{t('Face = fill colour, hands and ticks = stroke colour.')}</p>
         </>
       );
     case 'counter':
       return (
         <>
-          <Row label="From">
+          <Row label={t('From')}>
             <TextInput value={layer.from} onChange={(v) => set('from', v, true)} />
           </Row>
-          <span className="prop-label">To</span>
+          <span className="prop-label">{t('To')}</span>
           {text('to')}
-          <Row label="Duration">
+          <Row label={t('Duration')}>
             <Num value={layer.duration} onChange={(v) => set('duration', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
           </Row>
-          <Row label="Decimals">
+          <Row label={t('Decimals')}>
             <Num value={layer.decimals} onChange={(v) => set('decimals', Math.round(v), true)} min={0} max={6} />
           </Row>
-          <Row label="Prefix">
+          <Row label={t('Prefix')}>
             <TextInput value={layer.prefix} onChange={(v) => set('prefix', v, true)} />
           </Row>
-          <Row label="Suffix">
+          <Row label={t('Suffix')}>
             <TextInput value={layer.suffix} onChange={(v) => set('suffix', v, true)} />
           </Row>
-          {check('grouping', 'Thousands separator')}
+          {check('grouping', t('Thousands separator'))}
         </>
       );
     case 'progress':
       return (
         <>
-          <span className="prop-label">Value</span>
+          <span className="prop-label">{t('Value')}</span>
           {text('value')}
-          <Row label="Max">
+          <Row label={t('Max')}>
             <TextInput value={layer.max} onChange={(v) => set('max', v, true)} />
           </Row>
-          <Row label="Animation">
+          <Row label={t('Animation')}>
             <Num value={layer.duration} onChange={(v) => set('duration', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
           </Row>
-          <Row label="Track">
+          <Row label={t('Track')}>
             <HexInput value={layer.track} onChange={(v) => set('track', v, true)} />
           </Row>
         </>
@@ -581,12 +587,12 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
     case 'rotator':
       return (
         <>
-          <span className="prop-label">Lines (shown one after another)</span>
+          <span className="prop-label">{t('Lines (shown one after another)')}</span>
           {text('text', true)}
-          <Row label="Each">
+          <Row label={t('Each')}>
             <Num value={layer.interval} onChange={(v) => set('interval', v, true)} min={0.5} step={0.1} precision={1} suffix=" s" />
           </Row>
-          <Row label="Fade">
+          <Row label={t('Fade')}>
             <Num value={layer.fade} onChange={(v) => set('fade', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
           </Row>
         </>
@@ -595,32 +601,32 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
       return (
         <>
           {text('text', true)}
-          <Row label="Speed">
-            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix=" char/s" />
+          <Row label={t('Speed')}>
+            <Num value={layer.speed} onChange={(v) => set('speed', v, true)} min={1} suffix={` ${t('char/s')}`} />
           </Row>
-          {check('cursor', 'Blinking cursor')}
+          {check('cursor', t('Blinking cursor'))}
         </>
       );
     case 'slideshow':
       return (
         <>
-          <span className="prop-label">Images (one asset per line)</span>
+          <span className="prop-label">{t('Images (one asset per line)')}</span>
           {text('images', true, '/assets/photo1.jpg')}
           <AssetPicker value="" onChange={(v) => v && set('images', `${layer.images.trim() ? layer.images.trim() + '\n' : ''}${v}`)} />
-          <Row label="Each">
+          <Row label={t('Each')}>
             <Num value={layer.interval} onChange={(v) => set('interval', v, true)} min={0.5} step={0.1} precision={1} suffix=" s" />
           </Row>
-          <Row label="Fade">
+          <Row label={t('Fade')}>
             <Num value={layer.fade} onChange={(v) => set('fade', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
           </Row>
-          <Row label="Fit">
+          <Row label={t('Fit')}>
             <Segmented
               value={layer.fit}
               onChange={(v) => set('fit', v)}
               options={[
-                { value: 'contain', label: 'Contain' },
-                { value: 'cover', label: 'Cover' },
-                { value: 'stretch', label: 'Stretch' },
+                { value: 'contain', label: t('Contain') },
+                { value: 'cover', label: t('Cover') },
+                { value: 'stretch', label: t('Stretch') },
               ]}
             />
           </Row>
@@ -629,9 +635,9 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
     case 'qrCode':
       return (
         <>
-          <span className="prop-label">Content (URL, text…)</span>
+          <span className="prop-label">{t('Content (URL, text…)')}</span>
           {text('data')}
-          <Row label="Background">
+          <Row label={t('Background')}>
             <HexInput value={layer.background} onChange={(v) => set('background', v, true)} />
           </Row>
         </>
@@ -639,16 +645,16 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
     case 'barChart':
       return (
         <>
-          <span className="prop-label">Rows — “Label: value”, one per line</span>
+          <span className="prop-label">{t('Rows — “Label: value”, one per line')}</span>
           {text('text', true)}
-          {check('percent', 'Show as % of total')}
-          <Row label="Animation">
+          {check('percent', t('Show as % of total'))}
+          <Row label={t('Animation')}>
             <Num value={layer.duration} onChange={(v) => set('duration', v, true)} min={0} step={0.1} precision={1} suffix=" s" />
           </Row>
-          <Row label="Track">
+          <Row label={t('Track')}>
             <HexInput value={layer.track} onChange={(v) => set('track', v, true)} />
           </Row>
-          <Row label="Labels">
+          <Row label={t('Labels')}>
             <HexInput value={layer.textColor} onChange={(v) => set('textColor', v, true)} />
           </Row>
         </>
@@ -674,10 +680,10 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
 
   return (
     <>
-      <KitRow label="Font" expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }}>
+      <KitRow label={t('Font')} expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }}>
         <FontPick family={layer.fontFamily} weight={layer.fontWeight} onChange={(f, w) => (set('fontFamily', f), w !== layer.fontWeight && set('fontWeight', w))} />
       </KitRow>
-      <KitRow label="Align" expose={['align', 'verticalAlign', 'uppercase']} exposeValue={{ align: layer.align, verticalAlign: layer.verticalAlign, uppercase: !!layer.uppercase }}>
+      <KitRow label={t('Align')} expose={['align', 'verticalAlign', 'uppercase']} exposeValue={{ align: layer.align, verticalAlign: layer.verticalAlign, uppercase: !!layer.uppercase }}>
         <Segmented
           value={layer.align}
           onChange={(v) => set('align', v)}
@@ -691,19 +697,19 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
           value={layer.verticalAlign}
           onChange={(v) => set('verticalAlign', v)}
           options={[
-            { value: 'top', label: 'Top' },
-            { value: 'middle', label: 'Mid' },
-            { value: 'bottom', label: 'Bot' },
+            { value: 'top', label: t('Top') },
+            { value: 'middle', label: t('Mid') },
+            { value: 'bottom', label: t('Bot') },
           ]}
         />
         {layer.type !== 'text' && (
-          <button className={`btn small ${layer.uppercase ? 'on' : ''}`} onClick={() => set('uppercase', !layer.uppercase)} title="Upper case">
+          <button className={`btn small ${layer.uppercase ? 'on' : ''}`} onClick={() => set('uppercase', !layer.uppercase)} title={t('Upper case')}>
             AA
           </button>
         )}
       </KitRow>
       {layer.type === 'text' && (
-        <KitRow label="Case" expose={['transform', 'decoration']} exposeValue={{ transform: layer.transform ?? 'none', decoration: layer.decoration ?? 'none' }}>
+        <KitRow label={t('Case')} expose={['transform', 'decoration']} exposeValue={{ transform: layer.transform ?? 'none', decoration: layer.decoration ?? 'none' }}>
           <Segmented
             value={layer.uppercase ? 'upper' : (layer.transform ?? 'none')}
             onChange={(v) => {
@@ -711,21 +717,21 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
               set('transform', v === 'none' ? undefined : v);
             }}
             options={[
-              { value: 'none', label: <span title="As typed">—</span> },
-              { value: 'upper', label: <span title="UPPER CASE">AA</span> },
-              { value: 'lower', label: <span title="lower case">aa</span> },
-              { value: 'capitalize', label: <span title="Each Word">Aa</span> },
+              { value: 'none', label: <span title={t('As typed')}>—</span> },
+              { value: 'upper', label: <span title={t('UPPER CASE')}>AA</span> },
+              { value: 'lower', label: <span title={t('lower case')}>aa</span> },
+              { value: 'capitalize', label: <span title={t('Each Word')}>Aa</span> },
             ]}
           />
           <Segmented
             value={layer.decoration ?? 'none'}
             onChange={(v) => set('decoration', v === 'none' ? undefined : v)}
             options={[
-              { value: 'none', label: <span title="No decoration">—</span> },
+              { value: 'none', label: <span title={t('No decoration')}>—</span> },
               {
                 value: 'underline',
                 label: (
-                  <span title="Underline" style={{ textDecoration: 'underline' }}>
+                  <span title={t('Underline')} style={{ textDecoration: 'underline' }}>
                     U
                   </span>
                 ),
@@ -733,7 +739,7 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
               {
                 value: 'lineThrough',
                 label: (
-                  <span title="Strike through" style={{ textDecoration: 'line-through' }}>
+                  <span title={t('Strike through')} style={{ textDecoration: 'line-through' }}>
                     S
                   </span>
                 ),
@@ -763,25 +769,28 @@ function FormatNote({ layer }: { layer: Layer }) {
   const n = Object.keys(o?.props ?? {}).length + Object.keys(o?.tracks ?? {}).length + (o?.visible !== undefined ? 1 : 0);
   return (
     <div className="format-note">
-      <span>
-        Editing the <strong>{name}</strong> layout: changes apply to {name} only. Texts, data and new layers are shared.
-      </span>
+      <span>{rich(t('Editing the {format} layout: changes apply to {name} only. Texts, data and new layers are shared.', { name }), { format: <strong>{name}</strong> })}</span>
       {n > 0 && (
-        <button className="btn small" onClick={() => updateBase((t) => resetOverride(findLayer(t, layer.id)!, format))}>
-          <RotateCcw size={12} /> Reset {n} change{n > 1 ? 's' : ''}
+        <button className="btn small" onClick={() => updateBase((tpl) => resetOverride(findLayer(tpl, layer.id)!, format))}>
+          <RotateCcw size={12} /> {tn(n, 'Reset {n} change', 'Reset {n} changes')}
         </button>
       )}
     </div>
   );
 }
 
+/** A translated sentence with elements in place of its {placeholders}. */
+function rich(text: string, parts: Record<string, React.ReactNode>): React.ReactNode[] {
+  return text.split(/\{(\w+)\}/).map((s, i) => (i % 2 ? <Fragment key={i}>{parts[s] ?? `{${s}}`}</Fragment> : s));
+}
+
 /** What a layer shows: its text, picture, widget settings (and ▶ ❚❚ ⟲ to try a widget). */
 /** A content value that comes from data (wired in the Data canvas): greyed, read only. */
 function WiredValue({ value, multiline }: { value: string; multiline?: boolean }) {
   return (
-    <div className="wired-value" title="Comes from data: change it in the Data canvas">
+    <div className="wired-value" title={t('Comes from data: change it in the Data canvas')}>
       {multiline ? <textarea className="wk-data" rows={3} readOnly value={value} /> : <input className="wk-data" readOnly value={value} />}
-      <span className="wk-from in" title="From data: set in the Data canvas">
+      <span className="wk-from in" title={t('From data: set in the Data canvas')}>
         <Database size={12} />
       </span>
     </div>
@@ -800,39 +809,39 @@ function LayerGeneral({ layer }: { layer: Layer }) {
         <>
           {wiredKeys(layer.text).length ? <WiredValue value={interpolateText(layer.text, data)} multiline /> : <TextInput multiline value={layer.text} onChange={(v) => set('text', v, true)} />}
           <div className="row">
-            <span className="prop-label">Lines</span>
+            <span className="prop-label">{t('Lines')}</span>
             <Segmented
               value={layer.wrap ? 'paragraph' : 'single'}
               onChange={(v) => edit((l) => void (l.type === 'text' && (l.wrap = v === 'paragraph' || undefined)))}
               options={[
                 {
                   value: 'single',
-                  label: <span title="Line breaks only where you type them">As typed</span>,
+                  label: <span title={t('Line breaks only where you type them')}>{t('As typed')}</span>,
                 },
                 {
                   value: 'paragraph',
-                  label: <span title="Lines wrap at the width of the box">Paragraph</span>,
+                  label: <span title={t('Lines wrap at the width of the box')}>{t('Paragraph')}</span>,
                 },
               ]}
             />
           </div>
           <div className="row">
-            <span className="prop-label">Scroll</span>
+            <span className="prop-label">{t('Scroll')}</span>
             <Segmented
               value={layer.scroll ?? 'none'}
               onChange={(v) => edit((l) => void (l.type === 'text' && (l.scroll = v === 'none' ? undefined : v)))}
               options={[
                 {
                   value: 'none',
-                  label: <span title="The text stays in place">Fixed</span>,
+                  label: <span title={t('The text stays in place')}>{t('Fixed')}</span>,
                 },
                 {
                   value: 'horizontal',
-                  label: <span title="The lines one after the other, right to left (ticker)">Horizontal</span>,
+                  label: <span title={t('The lines one after the other, right to left (ticker)')}>{t('Horizontal')}</span>,
                 },
                 {
                   value: 'vertical',
-                  label: <span title="Bottom to top (credit roll)">Vertical</span>,
+                  label: <span title={t('Bottom to top (credit roll)')}>{t('Vertical')}</span>,
                 },
               ]}
             />
@@ -840,18 +849,18 @@ function LayerGeneral({ layer }: { layer: Layer }) {
           {layer.scroll && layer.scroll !== 'none' && (
             <>
               <div className="row">
-                <span className="prop-label">Speed</span>
+                <span className="prop-label">{t('Speed')}</span>
                 <NumberField value={layer.speed ?? 120} min={1} max={2000} suffix="px/s" onChange={(v) => edit((l) => void (l.type === 'text' && (l.speed = v)), `speed-${layer.id}`)} />
               </div>
               {layer.scroll === 'horizontal' ? (
                 <div className="row">
-                  <span className="prop-label">Separator</span>
+                  <span className="prop-label">{t('Separator')}</span>
                   <TextInput value={layer.separator ?? '   •   '} onChange={(v) => set('separator', v, true)} />
                 </div>
               ) : (
                 <label className="check">
                   <input type="checkbox" checked={!!layer.looping} onChange={(e) => edit((l) => void (l.type === 'text' && (l.looping = e.target.checked || undefined)))} />
-                  Loop (comes round again)
+                  {t('Loop (comes round again)')}
                 </label>
               )}
             </>
@@ -874,7 +883,7 @@ function LayerGeneral({ layer }: { layer: Layer }) {
           />
           {layer.type === 'text' && (
             <div className="row">
-              <span className="prop-label">Line height</span>
+              <span className="prop-label">{t('Line height')}</span>
               <NumberField value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} suffix="×" onChange={(v) => edit((l) => void (l.type === 'text' && (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v)), `lh-${layer.id}`)} />
             </div>
           )}
@@ -884,18 +893,18 @@ function LayerGeneral({ layer }: { layer: Layer }) {
       <WidgetSettings layer={layer} set={set} data={data} />
       {isTimed(layer) && (
         <div className="dp-run">
-          <span className="prop-label">Try it</span>
+          <span className="prop-label">{t('Try it')}</span>
           <WidgetRunButtons layer={layer} />
         </div>
       )}
       {isTimed(layer) && (
-        <label className="check" title="The operator starts it with ▶ in the controls of the graphic on air (or API action widget)">
+        <label className="check" title={t('The operator starts it with ▶ in the controls of the graphic on air (or API action widget)')}>
           <input type="checkbox" checked={!!layer.manualStart} onChange={(e) => edit((l) => void (l.manualStart = e.target.checked || undefined))} />
-          Start manually (the operator presses ▶)
+          {t('Start manually (the operator presses ▶)')}
         </label>
       )}
-      {layer.type === 'group' && <p className="hint">A group holds layers; its properties apply to all of them.</p>}
-      {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{LABELS[layer.type]}</p>}
+      {layer.type === 'group' && <p className="hint">{t('A group holds layers; its properties apply to all of them.')}</p>}
+      {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{t(LABELS[layer.type])}</p>}
     </div>
   );
 }
@@ -928,7 +937,7 @@ function SpecInspector({ layer }: { layer: Layer }) {
         <Warnings list={warnings} />
         <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
         {Op && (
-          <SpecSection id={`try-${def.id}`} title="Operator" closed>
+          <SpecSection id={`try-${def.id}`} title={t('Operator')} closed>
             <div className="wk-op">
               <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
             </div>
@@ -958,22 +967,22 @@ function LayerInspector({ layer }: { layer: Layer }) {
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
       {spec?.Inspector ? (
-        <Boundary resetKey={layer} fallback={<div className="hint wk-note">This widget's settings cannot be shown.</div>}>
+        <Boundary resetKey={layer} fallback={<div className="hint wk-note">{t("This widget's settings cannot be shown.")}</div>}>
           <SpecInspector layer={layer} />
         </Boundary>
       ) : (
-        <Group id="general" title="General">
+        <Group id="general" title={t('General')}>
           <LayerGeneral layer={layer} />
         </Group>
       )}
-      <Group id="properties" title="Properties">
-        <Group id="transform" title="Transform" level={2}>
+      <Group id="properties" title={t('Properties')}>
+        <Group id="transform" title={tc('section', 'Transform')} level={2}>
           {TRANSFORM_ROWS.map((r) => (
             <GroupRow key={r.label} layer={layer} spec={r} />
           ))}
         </Group>
         {(hasLook || layer.type === 'group' || (layer.type === 'image' && !spec?.Inspector)) && (
-          <Group id="contents" title="Contents" level={2}>
+          <Group id="contents" title={t('Contents')} level={2}>
             {hasLook && <ColorGroupRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} />}
             {hasLook && layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorGroupRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} />}
             {hasLook &&
@@ -992,14 +1001,14 @@ function LayerInspector({ layer }: { layer: Layer }) {
               ))}
             {layer.type === 'image' && !spec?.Inspector && (
               <div className="row">
-                <span className="prop-label">Fit</span>
+                <span className="prop-label">{t('Fit')}</span>
                 <Segmented
                   value={layer.fit}
                   onChange={(v) => edit((l) => void (l.type === 'image' && (l.fit = v)))}
                   options={[
-                    { value: 'contain', label: 'Contain' },
-                    { value: 'cover', label: 'Cover' },
-                    { value: 'stretch', label: 'Stretch' },
+                    { value: 'contain', label: t('Contain') },
+                    { value: 'cover', label: t('Cover') },
+                    { value: 'stretch', label: t('Stretch') },
                   ]}
                 />
               </div>
@@ -1007,12 +1016,12 @@ function LayerInspector({ layer }: { layer: Layer }) {
             {layer.type === 'group' && (
               <label className="check">
                 <input type="checkbox" checked={!!layer.clip} onChange={(e) => edit((l) => void (l.type === 'group' && (l.clip = e.target.checked)))} />
-                Clip children to group bounds
+                {t('Clip children to group bounds')}
               </label>
             )}
           </Group>
         )}
-        <Group id="reveal" title="Reveal mask" level={2}>
+        <Group id="reveal" title={t('Reveal mask')} level={2}>
           {[
             { label: 'Left', props: ['cropLeft'] as Prop[] },
             { label: 'Right', props: ['cropRight'] as Prop[] },
@@ -1072,15 +1081,13 @@ function SegmentInspector() {
     });
   const bez = k.easing.type === 'bezier' ? k.easing : { x1: 0.42, y1: 0, x2: 0.58, y2: 1 };
   return (
-    <Section title={`Easing · ${layer.name} · ${seg.props.map((p) => PROP_LABELS[p]).join(', ')}`}>
-      <p className="hint">
-        From frame {seg.frame} to {Number.isFinite(next) ? next : '…'}
-      </p>
+    <Section title={t('Easing · {layer} · {props}', { layer: layer.name, props: seg.props.map((p) => t(PROP_LABELS[p])).join(', ') })}>
+      <p className="hint">{t('From frame {from} to {to}', { from: seg.frame, to: Number.isFinite(next) ? next : '…' })}</p>
       <div className="easing-picks">
         {EASINGS.map((e) => (
-          <button key={e.value} className={k.easing.type === e.value ? 'on' : ''} title={e.label} onClick={() => setEasing(e.value === 'bezier' ? { type: 'bezier', ...bez } : ({ type: e.value } as Easing))}>
+          <button key={e.value} className={k.easing.type === e.value ? 'on' : ''} title={t(e.label)} onClick={() => setEasing(e.value === 'bezier' ? { type: 'bezier', ...bez } : ({ type: e.value } as Easing))}>
             <EasingCurve easing={e.value === 'bezier' ? { type: 'bezier', ...bez } : ({ type: e.value } as Easing)} size={44} />
-            <span>{e.label}</span>
+            <span>{t(e.label)}</span>
           </button>
         ))}
       </div>
@@ -1130,13 +1137,13 @@ function DurationField({ frames, rate, onChange }: { frames: number; rate: numbe
   return (
     <div className="dur-field">
       <div className="dur-main">
-        <button className="dur-step" title="− 1 second (Shift: − 1 frame)" onClick={(e) => step(e.shiftKey ? -1 : -r)}>
+        <button className="dur-step" title={t('− 1 second (Shift: − 1 frame)')} onClick={(e) => step(e.shiftKey ? -1 : -r)}>
           <ChevronLeft size={14} />
         </button>
         <input
           className="dur-tc"
           value={text ?? timecode(frames, rate)}
-          title="Minutes:seconds:frames — or type 5, 5s, 2:10"
+          title={t('Minutes:seconds:frames — or type 5, 5s, 2:10')}
           onFocus={(e) => (setText(timecode(frames, rate)), e.currentTarget.select())}
           onChange={(e) => setText(e.target.value)}
           onBlur={commit}
@@ -1151,14 +1158,14 @@ function DurationField({ frames, rate, onChange }: { frames: number; rate: numbe
             e.stopPropagation();
           }}
         />
-        <button className="dur-step" title="+ 1 second (Shift: + 1 frame)" onClick={(e) => step(e.shiftKey ? 1 : r)}>
+        <button className="dur-step" title={t('+ 1 second (Shift: + 1 frame)')} onClick={(e) => step(e.shiftKey ? 1 : r)}>
           <ChevronRight size={14} />
         </button>
       </div>
       <div className="dur-units">
-        <span>min</span>
-        <span>sec</span>
-        <span>frames</span>
+        <span>{t('min')}</span>
+        <span>{t('sec')}</span>
+        <span>{t('frames')}</span>
       </div>
       <div className="dur-presets">
         {[3, 5, 8, 10, 15, 30].map((sec) => (
@@ -1189,30 +1196,30 @@ function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edi
   return (
     <div className="fit-controls">
       <div className="row">
-        <span className="prop-label" title="When the text is too long for its box">
-          Too long
+        <span className="prop-label" title={t('When the text is too long for its box')}>
+          {t('Too long')}
         </span>
-        <Segmented value={mode} onChange={(v) => setT((l) => (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS.map((o) => ({ value: o.value, label: <span title={o.hint}>{o.label}</span> }))} />
+        <Segmented value={mode} onChange={(v) => setT((l) => (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS.map((o) => ({ value: o.value, label: <span title={t(o.hint)}>{t(o.label)}</span> }))} />
       </div>
       {mode === 'fit' && (
         <>
           <div className="row">
-            <span className="prop-label" title="Narrowest the text gets, before getting smaller">
-              Narrower to
+            <span className="prop-label" title={t('Narrowest the text gets, before getting smaller')}>
+              {t('Narrower to')}
             </span>
             <input type="range" min={50} max={100} value={Math.round((layer.squeeze ?? 0.8) * 100)} onChange={(e) => setT((l) => (l.squeeze = +e.target.value / 100), `squeeze-${layer.id}`)} />
             <span className="fit-val">{pct(layer.squeeze ?? 0.8)}</span>
           </div>
           <div className="row">
-            <span className="prop-label" title="Smallest font size, as a part of the size set">
-              Smaller to
+            <span className="prop-label" title={t('Smallest font size, as a part of the size set')}>
+              {t('Smaller to')}
             </span>
             <input type="range" min={20} max={100} value={Math.round((layer.minSize ?? 0.6) * 100)} onChange={(e) => setT((l) => (l.minSize = +e.target.value / 100), `minsize-${layer.id}`)} />
             <span className="fit-val">{pct(layer.minSize ?? 0.6)}</span>
           </div>
           <div className="row">
-            <span className="prop-label" title="The Operator warns when the text gets smaller than this">
-              Warn under
+            <span className="prop-label" title={t('The Operator warns when the text gets smaller than this')}>
+              {t('Warn under')}
             </span>
             <input type="range" min={20} max={100} value={Math.round((layer.warnBelow ?? 0.8) * 100)} onChange={(e) => setT((l) => (l.warnBelow = +e.target.value / 100), `warn-${layer.id}`)} />
             <span className="fit-val">{pct(layer.warnBelow ?? 0.8)}</span>
@@ -1221,7 +1228,7 @@ function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edi
       )}
       {(fit.ratio < 0.999 || fit.overflows) && (
         <div className={`fit-state ${fit.overflows ? 'bad' : fit.ratio < (layer.warnBelow ?? 0.8) ? 'warn' : ''}`}>
-          {fit.overflows ? (mode === 'fit' ? `Too long even at the minimums: cut` : mode === 'ellipsis' ? 'Too long: shortened with “…”' : mode === 'clip' ? 'Too long: cut at the box' : 'Too long: goes out of its box') : `With the preview values: ${pct(fit.ratio)}`}
+          {fit.overflows ? (mode === 'fit' ? t('Too long even at the minimums: cut') : mode === 'ellipsis' ? t('Too long: shortened with “…”') : mode === 'clip' ? t('Too long: cut at the box') : t('Too long: goes out of its box')) : t('With the preview values: {pct}', { pct: pct(fit.ratio) })}
         </div>
       )}
     </div>
@@ -1251,13 +1258,13 @@ function TemplateInspector({ template }: { template: Template }) {
       )}
       <div className="tpl-props">
         <div className="tpl-field">
-          <span className="tpl-label">Duration</span>
+          <span className="tpl-label">{t('Duration')}</span>
           <DurationField frames={template.duration} rate={rate} onChange={(v) => (update((t) => setDuration(t, v), 'duration'), useDesigner.getState().setFrame(useDesigner.getState().frame))} />
         </div>
         <div className="tpl-field">
           <span className="tpl-label">
-            Zone
-            <button className="icon-btn ghost tpl-zones-edit" title="Edit the zones" onClick={() => setZonesOpen(true)}>
+            {t('Zone')}
+            <button className="icon-btn ghost tpl-zones-edit" title={t('Edit the zones')} onClick={() => setZonesOpen(true)}>
               <Settings2 size={13} />
             </button>
           </span>
@@ -1270,7 +1277,7 @@ function TemplateInspector({ template }: { template: Template }) {
                 {template.zone === z.id && <Check size={13} />}
               </button>
             ))}
-            {!zones.length && <span className="muted small">No zone yet</span>}
+            {!zones.length && <span className="muted small">{t('No zone yet')}</span>}
           </div>
         </div>
       </div>
@@ -1292,8 +1299,8 @@ export function Inspector() {
   if (!template)
     return (
       <div className="inspector">
-        <Section title="All templates">
-          <p className="hint">The stage shows every template at its on-air point, each in its zone. Click a graphic, or a template on the left, to open it; Esc in a template comes back here.</p>
+        <Section title={t('All templates')}>
+          <p className="hint">{t('The stage shows every template at its on-air point, each in its zone. Click a graphic, or a template on the left, to open it; Esc in a template comes back here.')}</p>
         </Section>
       </div>
     );
@@ -1305,8 +1312,8 @@ export function Inspector() {
       ) : layer ? (
         <LayerInspector key={layer.id} layer={layer} />
       ) : selected.length > 1 ? (
-        <Section title="Selection">
-          <p className="hint">{selected.length} layers selected. Drag on the stage to move them together.</p>
+        <Section title={t('Selection')}>
+          <p className="hint">{t('{n} layers selected. Drag on the stage to move them together.', { n: selected.length })}</p>
         </Section>
       ) : (
         <TemplateInspector template={template} />

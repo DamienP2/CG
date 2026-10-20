@@ -8612,7 +8612,8 @@ body.cv-moving * {
 }
 .opx-foot .opx-btn.big:last-child {
   flex: none;
-  width: 110px;
+  min-width: 110px;
+  padding: 0 12px;
 }
 .opx-btn.green {
   background: var(--pvw);

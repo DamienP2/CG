@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { newId } from '../engine/evaluate';
 import type { Area, Guides, Project } from '../engine/types';
 import { api, useApp } from '../store';
+import { t } from '../i18n';
 
 /*
  * Designer aids: rulers, guides (dragged out of the rulers, back onto them
@@ -179,7 +180,7 @@ function RulerBar({ axis, length, scale, onGuide }: { axis: 'x' | 'y'; length: n
   const ticks = [];
   for (let v = 0; v <= length; v += step) ticks.push(v);
   return (
-    <div className={`ruler ruler-${axis}`} style={axis === 'x' ? { width: length * scale } : { height: length * scale }} onPointerDown={onGuide} title="Drag out a guide">
+    <div className={`ruler ruler-${axis}`} style={axis === 'x' ? { width: length * scale } : { height: length * scale }} onPointerDown={onGuide} title={t('Drag out a guide')}>
       {ticks.map((v) => (
         <span key={v} className="ruler-tick" style={axis === 'x' ? { left: v * scale } : { top: v * scale }}>
           {v}
@@ -242,7 +243,7 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
       {view.safe && !view.editSafe && (
         <>
           {safeRects(g).map((a, i) => (
-            <div key={i} className={`safe-area ${i ? 'title' : ''}`} style={pct(a)} title={i ? 'Title safe' : 'Action safe'} />
+            <div key={i} className={`safe-area ${i ? 'title' : ''}`} style={pct(a)} title={i ? t('Title safe') : t('Action safe')} />
           ))}
           {g.exclusions.map((x) => (
             <div key={x.id} className="exclusion" style={pct(x)}>
@@ -257,8 +258,8 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
           height={height * scale}
           px={{ width, height }}
           rects={[
-            { id: 'action', label: 'Action safe', kind: 'safe', area: safeRects(g)[0] },
-            { id: 'title', label: 'Title safe', kind: 'title', area: safeRects(g)[1] },
+            { id: 'action', label: t('Action safe'), kind: 'safe', area: safeRects(g)[0] },
+            { id: 'title', label: t('Title safe'), kind: 'title', area: safeRects(g)[1] },
             ...g.exclusions.map((x) => ({ id: x.id, label: x.name, kind: 'exclusion' as const, area: { x: x.x, y: x.y, width: x.width, height: x.height } })),
           ]}
           onChange={(id, a) => setG(id === 'action' ? { ...g, actionArea: a } : id === 'title' ? { ...g, titleArea: a } : { ...g, exclusions: g.exclusions.map((x) => (x.id === id ? { ...x, ...a } : x)) })}
@@ -272,14 +273,14 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
           <RulerBar axis="y" length={height} scale={scale} onGuide={(e) => dragGuide(e, 'vertical', -1)} />
           {g.vertical.map((v, i) =>
             v >= 0 && v <= 1 ? (
-              <div key={`v${i}`} className="guide v" style={{ left: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'vertical', i)} onDoubleClick={() => setG({ ...g, vertical: g.vertical.filter((_, k) => k !== i) })} title="Drag to move · double-click to remove">
+              <div key={`v${i}`} className="guide v" style={{ left: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'vertical', i)} onDoubleClick={() => setG({ ...g, vertical: g.vertical.filter((_, k) => k !== i) })} title={t('Drag to move · double-click to remove')}>
                 <span>{Math.round(v * width)}</span>
               </div>
             ) : null,
           )}
           {g.horizontal.map((v, i) =>
             v >= 0 && v <= 1 ? (
-              <div key={`h${i}`} className="guide h" style={{ top: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'horizontal', i)} onDoubleClick={() => setG({ ...g, horizontal: g.horizontal.filter((_, k) => k !== i) })} title="Drag to move · double-click to remove">
+              <div key={`h${i}`} className="guide h" style={{ top: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'horizontal', i)} onDoubleClick={() => setG({ ...g, horizontal: g.horizontal.filter((_, k) => k !== i) })} title={t('Drag to move · double-click to remove')}>
                 <span>{Math.round(v * height)}</span>
               </div>
             ) : null,
@@ -344,7 +345,7 @@ function RectEditor({ width, height, px, rects, onChange, onDone }: { width: num
         const a = draft?.id === r.id ? draft.area : r.area;
         return (
           <div key={r.id} className={`re-box ${r.kind} ${selected === r.id ? 'sel' : ''}`} style={pct(a)}>
-            <span className="re-tab" title="Drag to move (Shift: 1 % steps)" onPointerDown={(e) => begin(e, r.id, 'move', a)}>
+            <span className="re-tab" title={t('Drag to move (Shift: 1 % steps)')} onPointerDown={(e) => begin(e, r.id, 'move', a)}>
               <Move size={10} /> {r.label}
               {draft?.id === r.id && <em>{`${Math.round(a.x * px.width)}, ${Math.round(a.y * px.height)} · ${Math.round(a.width * px.width)}×${Math.round(a.height * px.height)}`}</em>}
             </span>
@@ -355,7 +356,7 @@ function RectEditor({ width, height, px, rects, onChange, onDone }: { width: num
         );
       })}
       <button className="btn small primary re-done" onClick={onDone}>
-        Done (Esc)
+        {t('Done (Esc)')}
       </button>
     </div>
   );
@@ -372,12 +373,12 @@ export function SplitButton({ icon, label, on, onToggle, title, children, width 
   }, [open]);
   return (
     <div className="menu-wrap split-btn" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={`btn small ${on ? 'on' : 'off'}`} title={`${on ? 'Hide' : 'Show'} ${title}`} onClick={onToggle}>
+      <button className={`btn small ${on ? 'on' : 'off'}`} title={on ? t('Hide {what}', { what: title }) : t('Show {what}', { what: title })} onClick={onToggle}>
         {on ? icon : <EyeOff size={13} />} {label}
       </button>
       <button
         className={`btn small split-arrow ${on ? 'on' : 'off'}`}
-        title={`${title}: settings`}
+        title={t('{what}: settings', { what: title })}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setOpen(open ? null : { left: Math.min(r.left - 80, window.innerWidth - width - 10), top: r.bottom + 6 });
@@ -398,10 +399,10 @@ export function SplitButton({ icon, label, on, onToggle, title, children, width 
 export function GuidesMenu() {
   const view = useGuidesView();
   return (
-    <SplitButton icon={<Ruler size={13} />} label="Guides" on={view.guides} onToggle={() => view.set({ guides: !view.guides })} title="rulers and guides" width={200}>
+    <SplitButton icon={<Ruler size={13} />} label={t('Guides')} on={view.guides} onToggle={() => view.set({ guides: !view.guides })} title={t('rulers and guides')} width={200}>
       <label className="switch gm-switch">
         <input type="checkbox" checked={view.snap} onChange={(e) => view.set({ snap: e.target.checked })} />
-        Snap to guides
+        {t('Snap to guides')}
       </label>
     </SplitButton>
   );
@@ -415,33 +416,33 @@ export function SafeMenu({ project }: { project: Project }) {
   const H = project.height;
   const pctv = (v: number) => Math.round(v * 1000) / 10;
   return (
-    <SplitButton icon={<ShieldCheck size={13} />} label="Safe area" on={view.safe} onToggle={() => view.set({ safe: !view.safe, editSafe: false })} title="safe areas and areas to keep clear" width={330}>
+    <SplitButton icon={<ShieldCheck size={13} />} label={t('Safe area')} on={view.safe} onToggle={() => view.set({ safe: !view.safe, editSafe: false })} title={t('safe areas and areas to keep clear')} width={330}>
       <button className={`btn small ${view.editSafe ? 'primary' : ''}`} data-close onClick={() => view.set({ editSafe: !view.editSafe })}>
-        <Move size={13} /> {view.editSafe ? 'Done editing' : 'Edit on the stage'}
+        <Move size={13} /> {view.editSafe ? t('Done editing') : t('Edit on the stage')}
       </button>
       <div className="gm-row">
-        <label title="Margin on every side; resets a safe area placed by hand">
-          Action safe
+        <label title={t('Margin on every side; resets a safe area placed by hand')}>
+          {t('Action safe')}
           <input type="number" min={0} max={40} step={0.5} value={pctv(g.actionSafe)} onChange={(e) => setG({ ...g, actionSafe: Math.max(0, Math.min(40, +e.target.value)) / 100, actionArea: undefined })} />%
         </label>
-        <label title="Margin on every side; resets a safe area placed by hand">
-          Title safe
+        <label title={t('Margin on every side; resets a safe area placed by hand')}>
+          {t('Title safe')}
           <input type="number" min={0} max={40} step={0.5} value={pctv(g.titleSafe)} onChange={(e) => setG({ ...g, titleSafe: Math.max(0, Math.min(40, +e.target.value)) / 100, titleArea: undefined })} />%
         </label>
       </div>
-      {(g.actionArea || g.titleArea) && <p className="hint">Placed by hand on the stage; a margin above puts it back in the centre.</p>}
+      {(g.actionArea || g.titleArea) && <p className="hint">{t('Placed by hand on the stage; a margin above puts it back in the centre.')}</p>}
       <div className="gm-title">
-        Areas to keep clear
-        <button className="icon-btn ghost" title="Add an area (a channel bug top right)" onClick={() => setG({ ...g, exclusions: [...g.exclusions, { id: newId(), name: 'Channel bug', x: 0.85, y: 0.05, width: 0.1, height: 0.09 }] })}>
+        {t('Areas to keep clear')}
+        <button className="icon-btn ghost" title={t('Add an area (a channel bug top right)')} onClick={() => setG({ ...g, exclusions: [...g.exclusions, { id: newId(), name: t('Channel bug'), x: 0.85, y: 0.05, width: 0.1, height: 0.09 }] })}>
           <Plus size={13} />
         </button>
       </div>
-      {!g.exclusions.length && <p className="hint">None. Add the channel bug, a clock or a sign language box: graphics snap around them.</p>}
+      {!g.exclusions.length && <p className="hint">{t('None. Add the channel bug, a clock or a sign language box: graphics snap around them.')}</p>}
       {g.exclusions.map((x) => (
         <div key={x.id} className="gm-excl">
           <div className="row">
             <input value={x.name} onChange={(e) => setG({ ...g, exclusions: g.exclusions.map((y) => (y.id === x.id ? { ...y, name: e.target.value } : y)) })} />
-            <button className="icon-btn ghost" title="Remove" onClick={() => setG({ ...g, exclusions: g.exclusions.filter((y) => y.id !== x.id) })}>
+            <button className="icon-btn ghost" title={t('Remove')} onClick={() => setG({ ...g, exclusions: g.exclusions.filter((y) => y.id !== x.id) })}>
               <Trash2 size={12} />
             </button>
           </div>
@@ -451,7 +452,7 @@ export function SafeMenu({ project }: { project: Project }) {
         </div>
       ))}
       <p className="hint">
-        <Eye size={11} /> In px of the main format ({W}×{H}). Edit on the stage to move and resize them.
+        <Eye size={11} /> {t('In px of the main format ({w}×{h}). Edit on the stage to move and resize them.', { w: W, h: H })}
       </p>
     </SplitButton>
   );
@@ -475,8 +476,8 @@ export function AreaInspector({ project }: { project: Project }) {
   if (!area)
     return (
       <div className="area-inspector">
-        <div className="ai-title">Safe areas</div>
-        <p className="hint">Click an area on the stage (its label) to see and type its position and size. Esc or Done to leave.</p>
+        <div className="ai-title">{t('Safe areas')}</div>
+        <p className="hint">{t('Click an area on the stage (its label) to see and type its position and size. Esc or Done to leave.')}</p>
       </div>
     );
   const box = { x: area.x, y: area.y, width: area.width, height: area.height };
@@ -489,21 +490,21 @@ export function AreaInspector({ project }: { project: Project }) {
   );
   return (
     <div className="area-inspector">
-      <div className="ai-title">{id === 'action' ? 'Action safe' : id === 'title' ? 'Title safe' : 'Area to keep clear'}</div>
+      <div className="ai-title">{id === 'action' ? t('Action safe') : id === 'title' ? t('Title safe') : t('Area to keep clear')}</div>
       {x && (
         <label className="ai-field wide">
-          <span>Name</span>
+          <span>{t('Name')}</span>
           <input value={x.name} onChange={(e) => setG({ ...g, exclusions: g.exclusions.map((y) => (y.id === x.id ? { ...y, name: e.target.value } : y)) })} />
         </label>
       )}
       <div className="ai-grid">
         {field('X', 'x', W)}
         {field('Y', 'y', H)}
-        {field('W', 'width', W)}
+        {field(t('W'), 'width', W)}
         {field('H', 'height', H)}
       </div>
       <p className="hint">
-        In px of the main format ({W}×{H}). {Math.round(box.width * 100)} % × {Math.round(box.height * 100)} % of the picture.
+        {t('In px of the main format ({w}×{h}). {pw} % × {ph} % of the picture.', { w: W, h: H, pw: Math.round(box.width * 100), ph: Math.round(box.height * 100) })}
       </p>
       {x ? (
         <button
@@ -513,11 +514,11 @@ export function AreaInspector({ project }: { project: Project }) {
             view.set({ area: null });
           }}
         >
-          <Trash2 size={13} /> Remove the area
+          <Trash2 size={13} /> {t('Remove the area')}
         </button>
       ) : (
         <button className="btn small" onClick={() => setG(id === 'action' ? { ...g, actionArea: undefined } : { ...g, titleArea: undefined })}>
-          Back to a {pctv(id === 'action' ? g.actionSafe : g.titleSafe)} % margin
+          {t('Back to a {n} % margin', { n: pctv(id === 'action' ? g.actionSafe : g.titleSafe) })}
         </button>
       )}
     </div>

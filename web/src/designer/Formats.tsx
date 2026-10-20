@@ -6,6 +6,7 @@ import { MAIN_FORMAT, type Format, type Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { useDesigner } from './designerStore';
 import { confirmDialog } from '../ui/dialogs';
+import { t, tn } from '../i18n';
 
 const PRESETS = [
   { id: 'vertical', name: '9:16', width: 1080, height: 1920, hint: 'Stories, Reels, TikTok, Shorts' },
@@ -56,7 +57,7 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
     setBusy(true);
     let id = pick.id;
     for (let n = 2; existing.some((f) => f.id === id); n++) id = `${pick.id}-${n}`;
-    const format: Format = { id, name: name.trim() || pick.name, width: w, height: h };
+    const format: Format = { id, name: name.trim() || (pick.id === 'custom' ? t('Custom') : pick.name), width: w, height: h };
     try {
       // Save the designer's pending edits first, so the adaptation sees them.
       const st = useDesigner.getState();
@@ -68,7 +69,7 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
       const cur = designTemplates(reloaded).find((t) => t.id === st.base?.id);
       st.setFormat(format.id);
       if (cur) st.load(cur);
-      toast(skipped.length ? `${format.name} added. Not adapted (being edited by someone else): ${skipped.join(', ')}` : `${format.name} added: every template has a first layout to refine`, skipped.length ? 'error' : 'info');
+      toast(skipped.length ? t('{name} added. Not adapted (being edited by someone else): {list}', { name: format.name, list: skipped.join(', ') }) : t('{name} added: every template has a first layout to refine', { name: format.name }), skipped.length ? 'error' : 'info');
       onClose();
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -81,12 +82,12 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
     <div className="modal-back" onPointerDown={onClose}>
       <div className="modal wide add-format" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <header>
-          <h2>Add a format to “{project.name}”</h2>
-          <button className="icon-btn ghost" title="Close" onClick={onClose}>
+          <h2>{t('Add a format to “{name}”', { name: project.name })}</h2>
+          <button className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
-        <p className="hint">Each template gets a first layout in the new format, made from the main one. Refine it afterwards: changes made in a format stay in that format.</p>
+        <p className="hint">{t('Each template gets a first layout in the new format, made from the main one. Refine it afterwards: changes made in a format stay in that format.')}</p>
 
         <div className="fmt-grid">
           {PRESETS.map((p) => {
@@ -94,9 +95,9 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
             return (
               <button type="button" key={p.id} className={`fmt-card ${pick.id === p.id ? 'on' : ''}`} disabled={!!already} onClick={() => setPick(p)}>
                 <span className="fmt-preview">{p.id === 'custom' ? <Shape width={w} height={h} /> : <Shape width={p.width} height={p.height} />}</span>
-                <strong>{p.name}</strong>
+                <strong>{p.id === 'custom' ? t('Custom') : p.name}</strong>
                 <span className="fmt-size">{p.id === 'custom' ? `${w}×${h}` : `${p.width}×${p.height}`}</span>
-                {already && <span className="fmt-hint">Already in the project ({already.name})</span>}
+                {already && <span className="fmt-hint">{t('Already in the project ({name})', { name: already.name })}</span>}
               </button>
             );
           })}
@@ -104,37 +105,37 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
 
         <div className="fmt-fields">
           <label className="set-field">
-            <span className="set-label">Name</span>
+            <span className="set-label">{t('Name')}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="set-field">
-            <span className="set-label">Width</span>
+            <span className="set-label">{t('Width')}</span>
             <input type="number" min={16} max={7680} value={w} onChange={(e) => (setW(+e.target.value), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
           </label>
           <span className="fmt-x">×</span>
           <label className="set-field">
-            <span className="set-label">Height</span>
+            <span className="set-label">{t('Height')}</span>
             <input type="number" min={16} max={7680} value={h} onChange={(e) => (setH(+e.target.value), pick.id !== 'custom' && setPick(PRESETS[PRESETS.length - 1]))} />
           </label>
         </div>
 
         <div className="fmt-compare">
           <span>
-            <Shape width={project.width} height={project.height} size={34} /> Main {project.width}×{project.height}
+            <Shape width={project.width} height={project.height} size={34} /> {t('Main {format}', { format: `${project.width}×${project.height}` })}
           </span>
           <span className="arrow">→</span>
           <span>
-            <Shape width={w || 1} height={h || 1} size={34} /> {name.trim() || pick.name} {w}×{h}
+            <Shape width={w || 1} height={h || 1} size={34} /> {name.trim() || (pick.id === 'custom' ? t('Custom') : pick.name)} {w}×{h}
           </span>
-          <span className="muted small">{designTemplates(project).length} templates to adapt</span>
+          <span className="muted small">{tn(designTemplates(project).length, '{n} template to adapt', '{n} templates to adapt')}</span>
         </div>
 
         <footer>
           <button className="btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="btn primary" disabled={busy || w < 16 || h < 16} onClick={create}>
-            <Wand2 size={14} /> {busy ? 'Adapting the templates…' : 'Add and adapt'}
+            <Wand2 size={14} /> {busy ? t('Adapting the templates…') : t('Add and adapt')}
           </button>
         </footer>
       </div>
@@ -163,11 +164,11 @@ export function FormatBar({ project }: { project: Project }) {
         const Icon = shapeIcon(f);
         return (
           <button key={f.id} className={f.id === current.id ? 'on' : ''} onClick={() => setFormat(f.id)} title={`${f.width}×${f.height}`}>
-            <Icon size={13} /> {f.id === MAIN_FORMAT ? `Main ${ratio(f)}` : f.name}
+            <Icon size={13} /> {f.id === MAIN_FORMAT ? t('Main {format}', { format: ratio(f) }) : f.name}
           </button>
         );
       })}
-      <button className="add" title="Add a format (9:16, 1:1…)" onClick={() => setAdding(true)}>
+      <button className="add" title={t('Add a format (9:16, 1:1…)')} onClick={() => setAdding(true)}>
         <Plus size={13} />
       </button>
       {current.id !== MAIN_FORMAT && base && (
@@ -175,9 +176,9 @@ export function FormatBar({ project }: { project: Project }) {
           <button
             className="tool-link"
             disabled={readOnly}
-            title="Generate this template's layout again from the main format (replaces its changes in this format)"
+            title={t("Generate this template's layout again from the main format (replaces its changes in this format)")}
             onClick={async () => {
-              if (!(await confirmDialog({ title: `Re-adapt “${base.name}” to ${current.name}?`, message: `Its changes in ${current.name} are replaced by a new layout made from the main format.`, confirm: 'Re-adapt', danger: true }))) return;
+              if (!(await confirmDialog({ title: t('Re-adapt “{name}” to {format}?', { name: base.name, format: current.name }), message: t('Its changes in {format} are replaced by a new layout made from the main format.', { format: current.name }), confirm: t('Re-adapt'), danger: true }))) return;
               const adapted = adaptTemplate(base, project, current);
               // An edit like the others: undoable, saved by the autosave (with the edit lock).
               useDesigner.getState().updateBase((t) => {
@@ -186,13 +187,13 @@ export function FormatBar({ project }: { project: Project }) {
               });
             }}
           >
-            <Wand2 size={13} /> Re-adapt
+            <Wand2 size={13} /> {t('Re-adapt')}
           </button>
           <button
             className="tool-link danger"
-            title={`Remove the ${current.name} format from the project`}
+            title={t('Remove the {format} format from the project', { format: current.name })}
             onClick={async () => {
-              if (!(await confirmDialog({ title: `Remove the ${current.name} format?`, message: 'Its layouts in every template of the project are deleted.', confirm: 'Remove', danger: true }))) return;
+              if (!(await confirmDialog({ title: t('Remove the {format} format?', { format: current.name }), message: t('Its layouts in every template of the project are deleted.'), confirm: t('Remove'), danger: true }))) return;
               await api(
                 'PUT',
                 `/api/projects/${encodeURIComponent(project.id)}/formats`,

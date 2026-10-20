@@ -6,6 +6,7 @@ import { Circle } from 'lucide-react';
 import { col, cssColor, num } from '../engine/evaluate';
 import { Bound, Btns, clamp, defineWidget, Handle, Num, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, ShapeSvg, StrokeRows, type FillStyle, type ShapeEdit, type StrokeStyle } from './shape';
+import { t } from '../i18n';
 
 export interface Config {
   circle?: boolean;
@@ -88,7 +89,7 @@ export function outline(c: Config, w: number, h: number): { d: string; closed: b
 /** Stroke group of an arc: colour, width, style and ends (the stroke is centred, always on). */
 function ArcStroke({ layer }: { layer: Parameters<typeof FillStrokeSections>[0]['layer'] }) {
   return (
-    <Section id="ellipse-arc-stroke" title="Stroke">
+    <Section id="ellipse-arc-stroke" title={t('Stroke')}>
       <StrokeRows layer={layer} caps joins={false} />
     </Section>
   );
@@ -131,11 +132,11 @@ export default defineWidget({
     const k = cfg(layer);
     return (
       <>
-        <Section id="ellipse-shape" title="Shape">
+        <Section id="ellipse-shape" title={t('Shape')}>
           <Toggle
             expose="circle"
             exposeValue={k.circle}
-            label="Circle"
+            label={t('Circle')}
             value={k.circle}
             onChange={(v) =>
               edit((l) => {
@@ -144,20 +145,20 @@ export default defineWidget({
               })
             }
           />
-          <Num label="Start" path="start" value={k.start} min={0} max={360} unit="°" />
-          <Num label="End" path="end" value={k.end} min={0} max={720} unit="°" />
+          <Num label={t('Start')} path="start" value={k.start} min={0} max={360} unit="°" />
+          <Num label={t('End')} path="end" value={k.end} min={0} max={720} unit="°" />
           <Btns
-            label="Quick"
+            label={t('Quick')}
             list={[
-              { label: 'Full', cls: 'ghost', onClick: () => edit((l) => void ((l.start = 0), (l.end = 360))) },
-              { label: 'Half', cls: 'ghost', onClick: () => edit((l) => void ((l.start = 270), (l.end = 450))) },
-              { label: 'Quarter', cls: 'ghost', onClick: () => edit((l) => void ((l.start = 0), (l.end = 90))) },
+              { label: t('Full'), cls: 'ghost', onClick: () => edit((l) => void ((l.start = 0), (l.end = 360))) },
+              { label: t('Half'), cls: 'ghost', onClick: () => edit((l) => void ((l.start = 270), (l.end = 450))) },
+              { label: t('Quarter'), cls: 'ghost', onClick: () => edit((l) => void ((l.start = 0), (l.end = 90))) },
             ]}
           />
           <Seg
             expose="portion"
             exposeValue={k.portion}
-            label="Portion"
+            label={t('Portion')}
             value={k.portion}
             onChange={(v) =>
               edit((l) => {
@@ -169,12 +170,12 @@ export default defineWidget({
               })
             }
             options={[
-              ['sector', 'Sector'],
-              ['arc', 'Arc'],
-              ['chord', 'Chord'],
+              ['sector', t('Sector')],
+              ['arc', t('Arc')],
+              ['chord', t('Chord')],
             ]}
           />
-          {k.portion === 'sector' && <Num label="Inner radius" path="inner" value={k.inner} min={0} max={100} unit="%" />}
+          {k.portion === 'sector' && <Num label={t('Inner radius')} path="inner" value={k.inner} min={0} max={100} unit="%" />}
         </Section>
         {k.portion === 'arc' ? <ArcStroke layer={layer} /> : <Look layer={layer} edit={edit} />}
       </>
@@ -195,12 +196,12 @@ export default defineWidget({
     const apart = sw >= 360 || sw <= 0.01 ? 22 / scale : 0;
     return (
       <>
-        <Handle x={a[0]} y={a[1]} scale={scale} label={`Start ${Math.round(k.start)}°`} onDrag={(x, y) => edit((l) => void (l.start = ang(x, y)), `estart-${layer.id}`)} />
+        <Handle x={a[0]} y={a[1]} scale={scale} label={t('Start {angle}°', { angle: Math.round(k.start) })} onDrag={(x, y) => edit((l) => void (l.start = ang(x, y)), `estart-${layer.id}`)} />
         <Handle
           x={b[0] + apart}
           y={b[1]}
           scale={scale}
-          label={`End ${Math.round(k.end)}° · sweep ${Math.round(sw)}°`}
+          label={t('End {angle}° · sweep {sweep}°', { angle: Math.round(k.end), sweep: Math.round(sw) })}
           onDrag={(x, y) =>
             edit((l) => {
               let e = ang(x, y);
@@ -215,7 +216,7 @@ export default defineWidget({
             x={m[0]}
             y={m[1]}
             scale={scale}
-            label={`Inner radius ${Math.round(k.inner)} %`}
+            label={t('Inner radius {pct} %', { pct: Math.round(k.inner) })}
             onDrag={(x, y) => {
               const dx = (x - w / 2) / (w / 2);
               const dy = (y - h / 2) / (h / 2);
@@ -233,11 +234,11 @@ export default defineWidget({
     const w = num(r?.width ?? layer.props.width ?? 0);
     const h = num(r?.height ?? layer.props.height ?? 0);
     const width = num(r?.strokeWidth ?? layer.props.strokeWidth ?? 0);
-    if (sw <= 0.01) out.push({ level: 'info', text: 'Start and end are equal (0° of sweep): nothing is drawn.' });
-    if (k.portion === 'sector' && k.inner >= 100 && sw > 0.01) out.push({ level: 'warn', text: 'Inner radius at 100 %: the ring has no thickness, the shape is invisible.' });
-    if (k.portion !== 'arc' && layer.fillStyle?.kind === 'none' && !width) out.push({ level: 'warn', text: 'No fill and no stroke: the shape is invisible.' });
+    if (sw <= 0.01) out.push({ level: 'info', text: t('Start and end are equal (0° of sweep): nothing is drawn.') });
+    if (k.portion === 'sector' && k.inner >= 100 && sw > 0.01) out.push({ level: 'warn', text: t('Inner radius at 100 %: the ring has no thickness, the shape is invisible.') });
+    if (k.portion !== 'arc' && layer.fillStyle?.kind === 'none' && !width) out.push({ level: 'warn', text: t('No fill and no stroke: the shape is invisible.') });
     const flat = Math.min(w, h) / Math.max(w, h, 1);
-    if (flat < 0.12 && (width || k.portion === 'arc')) out.push({ level: 'ok', text: 'Very flat ellipse: the outline is computed in stage pixels, the stroke keeps the same thickness all round.' });
+    if (flat < 0.12 && (width || k.portion === 'arc')) out.push({ level: 'ok', text: t('Very flat ellipse: the outline is computed in stage pixels, the stroke keeps the same thickness all round.') });
     return out;
   },
 });

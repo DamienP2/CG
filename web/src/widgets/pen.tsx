@@ -8,6 +8,7 @@ import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { Btns, Catcher, clamp, ColorPick, defineWidget, getPath, Handle, Num, Row, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
 import { FILL, ShapeSvg, STROKE, StrokeRows, type FillRule, type FillStyle, type StrokeStyle } from './shape';
+import { t } from '../i18n';
 
 export interface PenPoint {
   x: number;
@@ -228,7 +229,7 @@ function dragHandle(l: L, i: number, which: 'i' | 'o', hx: number, hy: number, w
 
 function deletePoint(layer: L, edit: Edit, i: number) {
   const n = cfg(layer).points.length;
-  if (n <= 1) return useApp.getState().toast('This is the last point: use “New path” to start again', 'info');
+  if (n <= 1) return useApp.getState().toast(t('This is the last point: use “New path” to start again'), 'info');
   edit((l) => {
     const ps = cfg(l).points;
     ps.splice(i, 1);
@@ -277,21 +278,21 @@ function PointList({ layer, edit }: { layer: L; edit: Edit }) {
       l.points = ps;
     }, `pt-${layer.id}-${i}-${ax}`);
   return (
-    <Row expose="points" exposeValue={k.points} label={`Points · ${k.points.length}`}>
+    <Row expose="points" exposeValue={k.points} label={t('Points · {n}', { n: k.points.length })}>
       <div className="wk-list">
         {k.points.map((p, i) => (
           <div key={i} className="wk-item" style={i === sel ? { background: 'rgba(124,92,255,.18)', borderRadius: 6 } : undefined}>
-            <button className="wk-x" title="Select" style={{ flex: '0 0 30px', fontWeight: 700 }} onClick={() => setSel(layer.id, i)}>
+            <button className="wk-x" title={t('Select')} style={{ flex: '0 0 30px', fontWeight: 700 }} onClick={() => setSel(layer.id, i)}>
               {i + 1}
             </button>
             {(['x', 'y'] as const).map((ax) => (
               <span key={ax} style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '1 1 0', minWidth: 0 }}>
                 <span className="hint">{ax}</span>
-                <input type="number" step={1} style={{ width: '100%', minWidth: 0 }} title={`${ax.toUpperCase()} in px from the box`} value={Math.round(p[ax] * (ax === 'x' ? w : h))} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => e.target.value !== '' && setV(i, ax, +e.target.value)} />
+                <input type="number" step={1} style={{ width: '100%', minWidth: 0 }} title={t('{axis} in px from the box', { axis: ax.toUpperCase() })} value={Math.round(p[ax] * (ax === 'x' ? w : h))} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => e.target.value !== '' && setV(i, ax, +e.target.value)} />
               </span>
             ))}
             <span className="hint" style={{ flex: '0 0 58px', textAlign: 'right' }}>
-              {p.type === 'curve' ? '◠ curve' : '◇ corner'}
+              {p.type === 'curve' ? t('◠ curve') : t('◇ corner')}
             </span>
           </div>
         ))}
@@ -307,54 +308,54 @@ function FillSection({ layer }: { layer: L }) {
   const b = useBound();
   if (!k.closed)
     return (
-      <Section id="pen-fill" title="Fill">
-        <Toggle label="Fill" value={false} disabled="Close the path to fill it" />
+      <Section id="pen-fill" title={t('Fill')}>
+        <Toggle label={t('Fill')} value={false} disabled={t('Close the path to fill it')} />
       </Section>
     );
   return (
-    <Section id="pen-fill" title="Fill">
-      <Toggle label="Fill" path="fillOn" value={false} />
+    <Section id="pen-fill" title={t('Fill')}>
+      <Toggle label={t('Fill')} path="fillOn" value={false} />
       {k.fillOn && (
         <>
           <Seg
-            label="Type"
+            label={t('Type')}
             path="fillStyle.kind"
             value={f.kind}
             options={[
-              ['solid', 'Solid'],
-              ['linear', 'Linear'],
-              ['radial', 'Radial'],
-              ['image', 'Image'],
+              ['solid', t('Solid')],
+              ['linear', t('Linear')],
+              ['radial', t('Radial')],
+              ['image', t('Image')],
             ]}
           />
-          {f.kind !== 'image' && f.kind !== 'none' && <ColorGroupRow layer={layer as never} prop="fill" label={f.kind === 'solid' ? 'Color' : 'From'} />}
-          {(f.kind === 'linear' || f.kind === 'radial') && <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />}
-          {f.kind === 'linear' && <Num label="Angle" path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
+          {f.kind !== 'image' && f.kind !== 'none' && <ColorGroupRow layer={layer as never} prop="fill" label={f.kind === 'solid' ? t('Color') : t('From')} />}
+          {(f.kind === 'linear' || f.kind === 'radial') && <ColorPick label={t('To')} path="fillStyle.color2" value={FILL.color2} />}
+          {f.kind === 'linear' && <Num label={t('Angle')} path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
           {f.kind === 'image' && (
             <>
-              <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label="Picture">
+              <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label={t('Picture')}>
                 <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
               </Row>
               <Seg
-                label="Fit"
+                label={t('Fit')}
                 path="fillStyle.fit"
                 value={FILL.fit}
                 options={[
-                  ['contain', 'Contain'],
-                  ['cover', 'Cover'],
-                  ['stretch', 'Stretch'],
-                  ['tile', 'Tile'],
+                  ['contain', t('Contain')],
+                  ['cover', t('Cover')],
+                  ['stretch', t('Stretch')],
+                  ['tile', t('Tile')],
                 ]}
               />
             </>
           )}
           <Seg
-            label="Fill rule"
+            label={t('Fill rule')}
             path="fillRule"
             value={k.fillRule}
             options={[
-              ['nonzero', 'Non-zero'],
-              ['evenodd', 'Even-odd'],
+              ['nonzero', t('Non-zero')],
+              ['evenodd', t('Even-odd')],
             ]}
           />
         </>
@@ -446,36 +447,36 @@ export default defineWidget({
     const p = k.points[sel];
     return (
       <>
-        <Section id="pen-path" title="Path">
+        <Section id="pen-path" title={t('Path')}>
           <Seg
-            label="Tool"
+            label={t('Tool')}
             value={tool}
             onChange={(v) => setTool(layer.id, v)}
             options={[
-              ['edit', '✥ Edit', 'Move points and handles (Esc)'],
-              ['add', '✚ Add', 'Click on the stage to add a point'],
+              ['edit', t('✥ Edit'), t('Move points and handles (Esc)')],
+              ['add', t('✚ Add'), t('Click on the stage to add a point')],
             ]}
           />
-          <Toggle label="Closed" path="closed" value={k.closed} />
+          <Toggle label={t('Closed')} path="closed" value={k.closed} />
           <PointList layer={lay} edit={ed} />
           {p && (
             <>
               <Seg
                 expose={`points.${sel}.type`}
                 exposeValue={p.type}
-                label={`Point ${sel + 1}`}
+                label={t('Point {n}', { n: sel + 1 })}
                 value={p.type}
                 onChange={(v) => ed((l) => setType(l, sel, v, w, h))}
                 options={[
-                  ['corner', 'Corner'],
-                  ['curve', 'Curve'],
+                  ['corner', t('Corner')],
+                  ['curve', t('Curve')],
                 ]}
               />
               {p.type === 'curve' && (
                 <Seg
                   expose={`points.${sel}.mode`}
                   exposeValue={p.mode}
-                  label="Handles"
+                  label={t('Handles')}
                   value={p.mode}
                   onChange={(v) =>
                     ed((l) => {
@@ -486,9 +487,9 @@ export default defineWidget({
                     })
                   }
                   options={[
-                    ['symmetric', 'Symmetric'],
-                    ['asymmetric', 'Asymmetric'],
-                    ['broken', 'Broken'],
+                    ['symmetric', t('Symmetric')],
+                    ['asymmetric', t('Asymmetric')],
+                    ['broken', t('Broken')],
                   ]}
                 />
               )}
@@ -496,11 +497,11 @@ export default defineWidget({
           )}
           <Btns
             list={[
-              p && { label: '✕ Delete point', cls: 'ghost', keyHint: 'Del', onClick: () => deletePoint(lay, ed, sel) },
+              p && { label: t('✕ Delete point'), cls: 'ghost', keyHint: 'Del', onClick: () => deletePoint(lay, ed, sel) },
               p && {
-                label: '⇄ Reverse',
+                label: t('⇄ Reverse'),
                 cls: 'ghost',
-                title: 'Swap start and end',
+                title: t('Swap start and end'),
                 onClick: () =>
                   ed(
                     (l) =>
@@ -510,9 +511,9 @@ export default defineWidget({
                   ),
               },
               {
-                label: 'New path',
+                label: t('New path'),
                 cls: 'ghost',
-                confirm: 'Start a new empty path?',
+                confirm: t('Start a new empty path?'),
                 onClick: () => {
                   ed((l) => void (l.points = []));
                   setSel(layer.id, 0);
@@ -522,27 +523,27 @@ export default defineWidget({
             ]}
           />
         </Section>
-        <Section id="pen-stroke" title="Stroke">
+        <Section id="pen-stroke" title={t('Stroke')}>
           <StrokeRows layer={layer} caps capDefault="round" joinDefault="round" />
-          <Toggle label="Fixed width" path="fixedWidth" value={k.fixedWidth} />
+          <Toggle label={t('Fixed width')} path="fixedWidth" value={k.fixedWidth} />
           {!k.fixedWidth && (
             <>
-              <Num label="Ref. width" path="refW" value={k.refW} min={1} max={10000} unit="px" />
-              <Num label="Ref. height" path="refH" value={k.refH} min={1} max={10000} unit="px" />
-              <Btns list={[{ label: 'Use current size', cls: 'ghost', title: 'Reference size = the box now', onClick: () => ed((l) => void ((l.refW = Math.round(w)), (l.refH = Math.round(h)))) }]} />
+              <Num label={t('Ref. width')} path="refW" value={k.refW} min={1} max={10000} unit="px" />
+              <Num label={t('Ref. height')} path="refH" value={k.refH} min={1} max={10000} unit="px" />
+              <Btns list={[{ label: t('Use current size'), cls: 'ghost', title: t('Reference size = the box now'), onClick: () => ed((l) => void ((l.refW = Math.round(w)), (l.refH = Math.round(h)))) }]} />
             </>
           )}
         </Section>
-        <Section id="pen-arrows" title="Arrows">
-          <Seg label="Start" path="arrowStart" value={k.arrowStart} options={ARROWS} />
-          <Seg label="End" path="arrowEnd" value={k.arrowEnd} options={ARROWS} />
-          {(k.arrowStart !== 'none' || k.arrowEnd !== 'none') && <Num label="Size" path="arrowSize" value={k.arrowSize} min={1.5} max={8} step={0.5} precision={1} unit="×" />}
+        <Section id="pen-arrows" title={t('Arrows')}>
+          <Seg label={t('Start')} path="arrowStart" value={k.arrowStart} options={ARROWS.map(([v, l]) => [v, t(l)] as [Arrow, string])} />
+          <Seg label={t('End')} path="arrowEnd" value={k.arrowEnd} options={ARROWS.map(([v, l]) => [v, t(l)] as [Arrow, string])} />
+          {(k.arrowStart !== 'none' || k.arrowEnd !== 'none') && <Num label={t('Size')} path="arrowSize" value={k.arrowSize} min={1.5} max={8} step={0.5} precision={1} unit="×" />}
         </Section>
         <FillSection layer={lay} />
-        <Section id="pen-portion" title="Drawing">
-          <Num label="Start" path="vStart" value={k.vStart} min={0} max={100} unit="%" />
-          <Num label="End" path="vEnd" value={k.vEnd} min={0} max={100} unit="%" />
-          <Toggle label="Draw at In" path="drawIn" value={k.drawIn} />
+        <Section id="pen-portion" title={t('Drawing')}>
+          <Num label={t('Start')} path="vStart" value={k.vStart} min={0} max={100} unit="%" />
+          <Num label={t('End')} path="vEnd" value={k.vEnd} min={0} max={100} unit="%" />
+          <Toggle label={t('Draw at In')} path="drawIn" value={k.drawIn} />
         </Section>
       </>
     );
@@ -608,7 +609,7 @@ export default defineWidget({
             x={p.x * w}
             y={p.y * h}
             scale={scale}
-            label={`Point ${i + 1} · ${p.type}${i === sel ? ' (selected)' : ''}`}
+            label={i === sel ? t('Point {n} · {type} (selected)', { n: i + 1, type: t(p.type) }) : t('Point {n} · {type}', { n: i + 1, type: t(p.type) })}
             onDrag={(x, y) => {
               if (selOf(layer.id, n) !== i) setSel(layer.id, i);
               ed((l) => {
@@ -620,8 +621,8 @@ export default defineWidget({
             }}
           />
         ))}
-        {hi && <Handle x={hi[0]} y={hi[1]} scale={scale} label={`In handle · ${sp.mode}`} onDrag={(x, y) => ed((l) => dragHandle(l, sel, 'i', x, y, w, h), `penh-${layer.id}`)} />}
-        {ho && <Handle x={ho[0]} y={ho[1]} scale={scale} label={`Out handle · ${sp.mode}`} onDrag={(x, y) => ed((l) => dragHandle(l, sel, 'o', x, y, w, h), `penh-${layer.id}`)} />}
+        {hi && <Handle x={hi[0]} y={hi[1]} scale={scale} label={t('In handle · {mode}', { mode: t(sp.mode) })} onDrag={(x, y) => ed((l) => dragHandle(l, sel, 'i', x, y, w, h), `penh-${layer.id}`)} />}
+        {ho && <Handle x={ho[0]} y={ho[1]} scale={scale} label={t('Out handle · {mode}', { mode: t(sp.mode) })} onDrag={(x, y) => ed((l) => dragHandle(l, sel, 'o', x, y, w, h), `penh-${layer.id}`)} />}
       </>
     );
   },
@@ -630,11 +631,11 @@ export default defineWidget({
     const out: Warning[] = [];
     const n = k.points.length;
     const width = num(r?.strokeWidth ?? layer.props.strokeWidth ?? 0);
-    if (n === 0) out.push({ level: 'info', text: 'Empty path: choose Add points and click on the stage.' });
-    if (n === 1) out.push({ level: 'warn', text: 'Path with a single point: nothing is drawn. Add at least one more point.' });
-    if (!k.closed && k.fillOn) out.push({ level: 'info', text: 'Fill is ignored while the path is open.' });
-    if (k.vEnd <= k.vStart && n > 1) out.push({ level: 'warn', text: 'Visible portion: End ≤ Start, the stroke is hidden.' });
-    if (!width && !(k.closed && k.fillOn) && n > 1) out.push({ level: 'warn', text: 'Width 0 and no fill: the path is invisible.' });
+    if (n === 0) out.push({ level: 'info', text: t('Empty path: choose Add points and click on the stage.') });
+    if (n === 1) out.push({ level: 'warn', text: t('Path with a single point: nothing is drawn. Add at least one more point.') });
+    if (!k.closed && k.fillOn) out.push({ level: 'info', text: t('Fill is ignored while the path is open.') });
+    if (k.vEnd <= k.vStart && n > 1) out.push({ level: 'warn', text: t('Visible portion: End ≤ Start, the stroke is hidden.') });
+    if (!width && !(k.closed && k.fillOn) && n > 1) out.push({ level: 'warn', text: t('Width 0 and no fill: the path is invisible.') });
     return out;
   },
 });

@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Upload, X } from 'lucide-react';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
+import { t } from '../i18n';
 
 const fileName = (src: string) => decodeURIComponent(src.split('?')[0].split('/').pop() || src);
 
-export function AssetPicker({ value, onChange, placeholder = 'Choose a picture…', title, clearable = true }: { value: string; onChange: (v: string) => void; placeholder?: string; title?: string; clearable?: boolean }) {
+export function AssetPicker({ value, onChange, placeholder = t('Choose a picture…'), title, clearable = true }: { value: string; onChange: (v: string) => void; placeholder?: string; title?: string; clearable?: boolean }) {
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
   useEffect(() => setBroken(false), [value]);
@@ -19,7 +20,7 @@ export function AssetPicker({ value, onChange, placeholder = 'Choose a picture�
         {clearable && value && (
           <button
             className="pick-x"
-            title="Remove"
+            title={t('Remove')}
             onClick={(e) => {
               e.stopPropagation();
               onChange('');
@@ -31,7 +32,7 @@ export function AssetPicker({ value, onChange, placeholder = 'Choose a picture�
       </div>
       {open && (
         <AssetLibrary
-          title={title ?? 'Choose a picture'}
+          title={title ?? t('Choose a picture')}
           value={value}
           onClose={() => setOpen(false)}
           onChoose={(src) => {
@@ -94,7 +95,7 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
       try {
         last = await uploadAsset(f, projectId);
       } catch (err) {
-        toast(`Upload failed: ${(err as Error).message}`, 'error');
+        toast(t('Upload failed: {error}', { error: (err as Error).message }), 'error');
       }
       setBusy((n) => n - 1);
     }
@@ -117,20 +118,22 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
           <div className="lib-tabs">
             {projectId && (
               <button className={tab === 'project' ? 'on' : ''} onClick={() => setTab('project')}>
-                Project<b>{lists.project.length}</b>
+                {t('Project')}
+                <b>{lists.project.length}</b>
               </button>
             )}
             <button className={tab === 'shared' ? 'on' : ''} onClick={() => setTab('shared')}>
-              Shared<b>{lists.shared.length}</b>
+              {t('Shared')}
+              <b>{lists.shared.length}</b>
             </button>
           </div>
           <span className="grow" />
           <label className="lib-search">
             <Search size={13} />
-            <input autoFocus value={q} placeholder="Search" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+            <input autoFocus value={q} placeholder={t('Search')} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
           </label>
           <label className="btn">
-            <Upload size={13} /> {busy ? 'Uploading…' : 'Upload'}
+            <Upload size={13} /> {busy ? t('Uploading…') : t('Upload')}
             <input
               type="file"
               accept="image/*"
@@ -142,7 +145,7 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
               }}
             />
           </label>
-          <button className="btn ghost icon" title="Close" onClick={onClose}>
+          <button className="btn ghost icon" title={t('Close')} onClick={onClose}>
             <X size={14} />
           </button>
         </div>
@@ -185,17 +188,17 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
               ))}
             </div>
           ) : (
-            <div className="lib-empty">{q ? 'No picture matches.' : tab === 'project' ? 'No pictures in this project yet: upload or drop some here.' : 'No shared pictures yet.'}</div>
+            <div className="lib-empty">{q ? t('No picture matches.') : tab === 'project' ? t('No pictures in this project yet: upload or drop some here.') : t('No shared pictures yet.')}</div>
           )}
-          <div className="lib-drop">Drop pictures here: they go to the {projectId ? 'project' : 'shared library'}</div>
+          <div className="lib-drop">{projectId ? t('Drop pictures here: they go to the project') : t('Drop pictures here: they go to the shared library')}</div>
         </div>
         <div className="lib-f">
-          <span className="lib-sel">{selected ? `${selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : 'Double-click a picture to choose it'}</span>
+          <span className="lib-sel">{selected ? `${selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : t('Double-click a picture to choose it')}</span>
           <button className="btn ghost" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="btn violet" disabled={!sel} onClick={() => onChoose(sel)}>
-            Choose
+            {t('Choose')}
           </button>
         </div>
       </div>

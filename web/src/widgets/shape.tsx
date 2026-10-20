@@ -6,6 +6,7 @@ import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow, AssetPicker } from '../designer/Inspector';
 import { useEffect, useState } from 'react';
 import { ColorPick, getPath, hex, Num, Row, Section, Seg, Toggle, useBound, ListEditor } from './kit';
+import { t } from '../i18n';
 
 export type FillKind = 'none' | 'solid' | 'linear' | 'radial' | 'image';
 export type ImageFill = 'contain' | 'cover' | 'stretch' | 'tile';
@@ -184,7 +185,7 @@ export function StrokeToggle({ layer, edit, width = 4 }: { layer: Layer; edit: S
     <Toggle
       expose="props.strokeWidth"
       exposeValue={num(propValue(layer, 'strokeWidth', 0))}
-      label="Stroke"
+      label={t('Stroke')}
       value={num(propValue(layer, 'strokeWidth', 0)) > 0}
       onChange={(v) =>
         edit((l) => {
@@ -208,49 +209,49 @@ export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition }: 
   const stroke = num(propValue(layer, 'strokeWidth', 0)) > 0;
   return (
     <>
-      <Section id={`${id}-fill`} title="Fill">
+      <Section id={`${id}-fill`} title={t('Fill')}>
         <Seg
-          label="Type"
+          label={t('Type')}
           path="fillStyle.kind"
           value={f.kind}
           options={[
-            ['none', 'None'],
-            ['solid', 'Solid'],
-            ['linear', 'Linear'],
-            ['radial', 'Radial'],
-            ['image', 'Image'],
+            ['none', t('None')],
+            ['solid', t('Solid')],
+            ['linear', t('Linear')],
+            ['radial', t('Radial')],
+            ['image', t('Image')],
           ]}
         />
-        {f.kind !== 'none' && f.kind !== 'image' && <ColorGroupRow layer={layer} prop="fill" label={f.kind === 'solid' ? 'Color' : 'From'} />}
+        {f.kind !== 'none' && f.kind !== 'image' && <ColorGroupRow layer={layer} prop="fill" label={f.kind === 'solid' ? t('Color') : t('From')} />}
         {(f.kind === 'linear' || f.kind === 'radial') && <GradientTo />}
-        {f.kind === 'linear' && <Num label="Angle" path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
+        {f.kind === 'linear' && <Num label={t('Angle')} path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
         {f.kind === 'image' && <ImageSource />}
         {f.kind === 'image' && (
           <Seg
-            label="Fit"
+            label={t('Fit')}
             path="fillStyle.fit"
             value={FILL.fit}
             options={[
-              ['contain', 'Contain'],
-              ['cover', 'Cover'],
-              ['stretch', 'Stretch'],
-              ['tile', 'Tile'],
+              ['contain', t('Contain')],
+              ['cover', t('Cover')],
+              ['stretch', t('Stretch')],
+              ['tile', t('Tile')],
             ]}
           />
         )}
         {rule && (
           <Seg
-            label="Fill rule"
+            label={t('Fill rule')}
             path="fillRule"
             value="nonzero"
             options={[
-              ['nonzero', 'Non-zero'],
-              ['evenodd', 'Even-odd'],
+              ['nonzero', t('Non-zero')],
+              ['evenodd', t('Even-odd')],
             ]}
           />
         )}
       </Section>
-      <Section id={`${id}-stroke`} title="Stroke">
+      <Section id={`${id}-stroke`} title={t('Stroke')}>
         <StrokeToggle layer={layer} edit={edit} />
         {stroke && <StrokeRows layer={layer} caps={caps} position={!noPosition} />}
       </Section>
@@ -262,51 +263,51 @@ export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition }: 
 export function StrokeRows({ layer, caps, joins = true, position, capDefault = STROKE.cap, joinDefault = STROKE.join }: { layer: Layer; caps?: boolean; joins?: boolean; position?: boolean; capDefault?: StrokeStyle['cap']; joinDefault?: StrokeStyle['join'] }) {
   return (
     <>
-      <ColorGroupRow layer={layer} prop="stroke" label="Color" />
-      <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+      <ColorGroupRow layer={layer} prop="stroke" label={t('Color')} />
+      <GroupRow layer={layer} spec={{ label: t('Width'), props: ['strokeWidth'], min: 0, suffix: 'px' }} />
       {position && (
         <Seg
-          label="Position"
+          label={t('Position')}
           path="strokeStyle.position"
           value={STROKE.position}
           options={[
-            ['inside', 'Inside'],
-            ['center', 'Centre'],
-            ['outside', 'Outside'],
+            ['inside', t('Inside')],
+            ['center', t('Centre')],
+            ['outside', t('Outside')],
           ]}
         />
       )}
       <Seg
-        label="Style"
+        label={t('Style')}
         path="strokeStyle.dash"
         value={STROKE.dash}
         options={[
-          ['solid', 'Solid'],
-          ['dashed', 'Dashes'],
-          ['dotted', 'Dots'],
+          ['solid', t('Solid')],
+          ['dashed', t('Dashes')],
+          ['dotted', t('Dots')],
         ]}
       />
       {joins && (
         <Seg
-          label="Joins"
+          label={t('Joins')}
           path="strokeStyle.join"
           value={joinDefault}
           options={[
-            ['miter', 'Miter'],
-            ['round', 'Round'],
-            ['bevel', 'Bevel'],
+            ['miter', t('Miter')],
+            ['round', t('Round')],
+            ['bevel', t('Bevel')],
           ]}
         />
       )}
       {caps && (
         <Seg
-          label="Ends"
+          label={t('Ends')}
           path="strokeStyle.cap"
           value={capDefault}
           options={[
-            ['butt', 'Flat'],
-            ['round', 'Round'],
-            ['square', 'Square'],
+            ['butt', t('Flat')],
+            ['round', t('Round')],
+            ['square', t('Square')],
           ]}
         />
       )}
@@ -317,9 +318,9 @@ export function StrokeRows({ layer, caps, joins = true, position, capDefault = S
 function GradientTo() {
   return (
     <>
-      <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />
+      <ColorPick label={t('To')} path="fillStyle.color2" value={FILL.color2} />
       <ListEditor
-        label="Between"
+        label={t('Between')}
         path="fillStyle.stops"
         value={[]}
         fields={[
@@ -327,7 +328,7 @@ function GradientTo() {
           { key: 'at', num: true, placeholder: '%', w: 60 },
         ]}
         add={() => ({ at: 50, color: '#ffffff' })}
-        addLabel="Colour"
+        addLabel={t('Colour')}
       />
     </>
   );
@@ -337,7 +338,7 @@ function GradientTo() {
 function ImageSource() {
   const b = useBound();
   return (
-    <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label="Picture">
+    <Row expose="fillStyle.image" exposeValue={String(getPath(b.obj, 'fillStyle.image') ?? '')} label={t('Picture')}>
       <AssetPicker value={String(getPath(b.obj, 'fillStyle.image') ?? '')} onChange={(v) => b.set('fillStyle.image', v)} />
     </Row>
   );

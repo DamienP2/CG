@@ -13,6 +13,7 @@ import { ZoneOverlay } from './ZoneOverlay';
 import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
 import { snapShift, snapTargets, StageGuides, useGuidesView, useProjectGuides } from './Guides';
+import { t } from '../i18n';
 
 interface Box {
   id: string;
@@ -315,13 +316,13 @@ function Overview({
           }}
         >
           <Viewport width={size.width} height={size.height} scale={scale}>
-            {templates.map((t) => {
-              const z = zones.get(t.zone);
-              const hold = holdFrame(t);
+            {templates.map((tpl) => {
+              const z = zones.get(tpl.zone);
+              const hold = holdFrame(tpl);
               return (
-                <div key={t.id} className="overview-tpl" data-template-id={t.id} title={`${t.name} — click to open`} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
+                <div key={tpl.id} className="overview-tpl" data-template-id={tpl.id} title={t('{name} — click to open', { name: tpl.name })} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
                   <LiveTime ageSecs={hold / fps} clientNow={now}>
-                    <Scene template={inFormat(t, format)} frame={hold} data={defaultData(t)} interactive />
+                    <Scene template={inFormat(tpl, format)} frame={hold} data={defaultData(tpl)} interactive />
                   </LiveTime>
                 </div>
               );
@@ -332,7 +333,7 @@ function Overview({
         </div>
       </div>
       <div className="stage-info">
-        All templates · {templates.length} · click a graphic to open its template · {size.width}×{size.height} · {Math.round(scale * 100)}%
+        {t('All templates · {n} · click a graphic to open its template', { n: templates.length })} · {size.width}×{size.height} · {Math.round(scale * 100)}%
       </div>
     </div>
   );

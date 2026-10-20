@@ -14,6 +14,7 @@ import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { t } from '../i18n';
 
 export interface Config {
   shape?: 'linear' | 'ring' | 'segments';
@@ -394,46 +395,46 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
   const stroke = num(layer.props.strokeWidth ?? 0) > 0;
   return (
     <>
-      <Section id="progress-value" title="Value">
+      <Section id="progress-value" title={t('Value')}>
         <Seg
-          label="Input"
+          label={t('Input')}
           path="input"
           value="value"
           options={[
-            ['value', 'Min / max'],
+            ['value', t('Min / max')],
             ['percent', '%'],
-            ['follow', 'Follow', 'The value of a timer or a counter of the graphic'],
+            ['follow', t('Follow'), t('The value of a timer or a counter of the graphic')],
           ]}
         />
         {c.input === 'follow' ? (
           <FollowPick value={c.follow} onChange={(v) => edit((l) => void ((l as never as { follow: string }).follow = v))} />
         ) : (
-          <Content label="Value" path="value" value="" placeholder="64" />
+          <Content label={t('Value')} path="value" value="" placeholder="64" />
         )}
         {c.input === 'follow' && (
           <>
-            <Content label="Min" path="min" value="" placeholder="0" />
-            <Content label="Max" path="max" value="" placeholder="Its duration / limit" />
+            <Content label={t('Min')} path="min" value="" placeholder="0" />
+            <Content label={t('Max')} path="max" value="" placeholder={t('Its duration / limit')} />
           </>
         )}
         {c.input === 'value' && (
           <>
-            <Content label="Min" path="min" value="" placeholder="0" />
-            <Content label="Max" path="max" value="100" placeholder="100" />
+            <Content label={t('Min')} path="min" value="" placeholder="0" />
+            <Content label={t('Max')} path="max" value="100" placeholder="100" />
           </>
         )}
-        <Num label="Step" path="step" value={5} min={0} step={1} precision={2} />
+        <Num label={t('Step + / −')} path="step" value={5} min={0} step={1} precision={2} />
       </Section>
-      <Section id="progress-shape" title="Shape">
+      <Section id="progress-shape" title={t('Shape')}>
         <Seg
           expose="shape"
           exposeValue={c.shape}
-          label="Shape"
+          label={t('Shape')}
           value={c.shape}
           options={[
-            ['linear', 'Linear'],
-            ['ring', 'Ring'],
-            ['segments', 'Segmented'],
+            ['linear', t('Linear')],
+            ['ring', t('Ring')],
+            ['segments', t('Segmented')],
           ]}
           onChange={(v) =>
             edit((l) => {
@@ -446,11 +447,11 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
           <Seg
             expose="orient"
             exposeValue={c.orient}
-            label="Orientation"
+            label={t('Orientation')}
             value={c.orient}
             options={[
-              ['h', 'Horizontal'],
-              ['v', 'Vertical'],
+              ['h', t('Horizontal')],
+              ['v', t('Vertical')],
             ]}
             onChange={(v) =>
               edit((l) => {
@@ -462,63 +463,63 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
         )}
         {c.shape === 'segments' && (
           <>
-            <Num label="Segments" path="segments" value={10} min={2} max={40} />
-            <Num label="Gap" path="segGap" value={10} min={0} max={40} unit="px" />
+            <Num label={t('Segments')} path="segments" value={10} min={2} max={40} />
+            <Num label={t('Gap')} path="segGap" value={10} min={0} max={40} unit="px" />
             <Seg
-              label="Partial"
+              label={t('Partial')}
               path="segPartial"
               value="partial"
               options={[
-                ['partial', 'Partial'],
-                ['round', 'Whole'],
+                ['partial', t('Partial')],
+                ['round', t('Whole')],
               ]}
             />
           </>
         )}
         {c.shape === 'ring' ? (
           <>
-            <Num label="Start angle" path="angle" value={0} min={0} max={359} unit="°" />
+            <Num label={t('Start angle')} path="angle" value={0} min={0} max={359} unit="°" />
             <Seg
-              label="Turn"
+              label={t('Turn')}
               path="circleDir"
               value="cw"
               options={[
-                ['cw', 'Clockwise'],
-                ['ccw', 'Anticlockwise'],
-                ['center', 'Both ways'],
+                ['cw', t('Clockwise')],
+                ['ccw', t('Anticlockwise')],
+                ['center', t('Both ways')],
               ]}
             />
           </>
         ) : (
           <Seg
-            label="Fill"
+            label={t('Fill')}
             path="dir"
             value="start"
             options={
               c.orient === 'h'
                 ? [
-                    ['start', 'Left → right'],
-                    ['end', 'Right → left'],
-                    ['center', 'Centre'],
+                    ['start', t('Left → right')],
+                    ['end', t('Right → left')],
+                    ['center', t('Centre')],
                   ]
                 : [
-                    ['start', 'Bottom → top'],
-                    ['end', 'Top → bottom'],
-                    ['center', 'Centre'],
+                    ['start', t('Bottom → top')],
+                    ['end', t('Top → bottom')],
+                    ['center', t('Centre')],
                   ]
             }
           />
         )}
       </Section>
-      <Section id="progress-style" title="Style">
-        <ColorPick label="Track" path="track" value="#ffffff33" />
-        <ColorGroupRow layer={layer} prop="fill" label={c.gradient ? 'From' : 'Bar'} />
-        <Toggle label="Gradient" path="gradient" value={false} />
-        {c.gradient && <ColorPick label="To" path="color2" value="#22c55e" />}
+      <Section id="progress-style" title={t('Style')}>
+        <ColorPick label={t('Track')} path="track" value="#ffffff33" />
+        <ColorGroupRow layer={layer} prop="fill" label={c.gradient ? t('From') : t('Bar')} />
+        <Toggle label={t('Gradient')} path="gradient" value={false} />
+        {c.gradient && <ColorPick label={t('To')} path="color2" value="#22c55e" />}
         <Toggle
           expose="thickness"
           exposeValue={c.thickness ?? 56}
-          label="Thickness"
+          label={t('Thickness')}
           value={c.thickness != null}
           onChange={(v) =>
             edit((l) => {
@@ -527,13 +528,13 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
             })
           }
         />
-        {c.thickness != null && <Num label="Width" path="thickness" value={56} min={2} max={2000} unit="px" />}
-        <Toggle label="Rounded" path="rounded" value={false} />
-        {!c.rounded && <GroupRow layer={layer} spec={{ label: 'Corners', props: ['cornerRadius'], min: 0, suffix: 'px' }} />}
+        {c.thickness != null && <Num label={t('Width')} path="thickness" value={56} min={2} max={2000} unit="px" />}
+        <Toggle label={t('Rounded')} path="rounded" value={false} />
+        {!c.rounded && <GroupRow layer={layer} spec={{ label: t('Corners'), props: ['cornerRadius'], min: 0, suffix: 'px' }} />}
         <Toggle
           expose="props.strokeWidth"
           exposeValue={num(layer.props.strokeWidth ?? 0)}
-          label="Stroke"
+          label={t('Stroke')}
           value={stroke}
           onChange={(v) =>
             edit((l) => {
@@ -545,14 +546,14 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
         />
         {stroke && (
           <>
-            <ColorGroupRow layer={layer} prop="stroke" label="Color" />
-            <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+            <ColorGroupRow layer={layer} prop="stroke" label={t('Color')} />
+            <GroupRow layer={layer} spec={{ label: t('Width'), props: ['strokeWidth'], min: 0, suffix: 'px' }} />
           </>
         )}
         <Toggle
           expose="steps"
           exposeValue={c.steps}
-          label="Steps"
+          label={t('Steps')}
           value={c.steps.length > 0}
           onChange={(v) =>
             edit((l) => {
@@ -571,20 +572,20 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
               { key: 'color', color: true, w: 40 },
             ]}
             add={() => ({ on: true, below: 20, color: '#ff3b5c' })}
-            addLabel="Step"
+            addLabel={t('Step')}
           />
         )}
       </Section>
-      <Section id="progress-label" title="Label">
+      <Section id="progress-label" title={t('Label')}>
         <Toggle
           expose="label"
           exposeValue={c.label}
           exposeOptions={[
-            ['none', 'None'],
+            ['none', t('None')],
             ['pct', '%'],
-            ['value', 'Value'],
+            ['value', t('Value')],
           ]}
-          label="Label"
+          label={t('Label')}
           value={c.label !== 'none'}
           onChange={(v) => edit((l) => void ((l as L & Config).label = v ? 'pct' : 'none'))}
         />
@@ -592,42 +593,42 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
           <>
             <Seg
               expose={false}
-              label="Show"
+              label={t('Show')}
               path="label"
               value="none"
               options={[
                 ['pct', '%'],
-                ['value', 'Value / max'],
+                ['value', t('Value / max')],
               ]}
             />
             <Seg
-              label="Where"
+              label={t('Where')}
               path="labelPos"
               value="inside"
               options={[
-                ['inside', 'Inside'],
-                ['end', 'End'],
-                ['beside', 'Beside'],
+                ['inside', t('Inside')],
+                ['end', t('End')],
+                ['beside', t('Beside')],
               ]}
             />
-            <Num label="Size" path="labelSize" value={30} min={1} max={400} unit="px" />
-            <ColorPick label="Color" path="labelColor" value="#ffffff" />
-            <Num label="Decimals" path="decimals" value={0} min={0} max={3} />
-            {c.label === 'value' && <Text label="Unit" path="unit" value="" placeholder="€, pts…" />}
+            <Num label={t('Size')} path="labelSize" value={30} min={1} max={400} unit="px" />
+            <ColorPick label={t('Color')} path="labelColor" value="#ffffff" />
+            <Num label={t('Decimals')} path="decimals" value={0} min={0} max={3} />
+            {c.label === 'value' && <Text label={t('Unit')} path="unit" value="" placeholder="€, pts…" />}
           </>
         )}
       </Section>
-      <Section id="progress-anim" title="Transition">
-        <Num label="Duration" path="duration" value={0} min={0} max={60} step={0.05} precision={2} unit="s" />
+      <Section id="progress-anim" title={t('Transition')}>
+        <Num label={t('Duration')} path="duration" value={0} min={0} max={60} step={0.05} precision={2} unit="s" />
         <Seg
-          label="Curve"
+          label={t('Curve')}
           path="easing"
           value="out"
           options={[
-            ['linear', 'Linear'],
-            ['out', 'Ease out'],
-            ['inout', 'Ease in-out'],
-            ['back', 'Overshoot'],
+            ['linear', t('Linear')],
+            ['out', t('Ease out')],
+            ['inout', t('Ease in-out')],
+            ['back', t('Overshoot')],
           ]}
         />
       </Section>
@@ -655,8 +656,8 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
   const set = () => {
     const x = parseNum(input);
-    if (!input.trim()) return setErr('Empty value');
-    if (x == null) return setErr(`“${input.trim()}” is not a number`);
+    if (!input.trim()) return setErr(t('Empty value'));
+    if (x == null) return setErr(t('“{value}” is not a number', { value: input.trim() }));
     act('set', { value: x });
     setErr('');
     setInput('');
@@ -679,13 +680,13 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
             {fmtNum(v, c.decimals)} / {fmtNum(e.hi, 0)}
             {c.unit ? ` ${c.unit}` : ''}
           </span>
-          {st?.value != null && <span style={{ marginLeft: 'auto', font: '800 10.5px Inter, system-ui, sans-serif', color: '#38bdf8' }}>SET BY HAND</span>}
+          {st?.value != null && <span style={{ marginLeft: 'auto', font: '800 10.5px Inter, system-ui, sans-serif', color: '#38bdf8' }}>{t('SET BY HAND')}</span>}
         </div>
         <div style={{ height: 10, borderRadius: 5, background: 'var(--panel-3, #2a2346)', overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${(f * 100).toFixed(2)}%`, background: col.startsWith('#') ? hex(col) : col }} />
         </div>
       </div>
-      <Row label="Set value">
+      <Row label={t('Set value')}>
         <div style={{ display: 'flex', gap: 6, width: '100%' }}>
           <input
             ref={inp}
@@ -699,16 +700,16 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
             }}
           />
           <button className="opx-btn violet" onClick={set}>
-            Set <kbd>V</kbd>
+            {t('Set')} <kbd>V</kbd>
           </button>
         </div>
       </Row>
-      {err && <Msg level="error">⛔ {err} — nothing changed on air.</Msg>}
+      {err && <Msg level="error">⛔ {t('{error} — nothing changed on air.', { error: err })}</Msg>}
       <Btns
         list={[
           { label: `− ${stepTxt}`, cls: 'big', keyHint: '↓', onClick: () => act('dec') },
           { label: `+ ${stepTxt}`, cls: 'green big', keyHint: '↑', onClick: () => act('inc') },
-          { label: '↺ Reset', cls: 'big', keyHint: 'R', confirm: item ? `${layer.name} is on air: back to the min?` : undefined, onClick: () => act('reset') },
+          { label: t('↺ Reset'), cls: 'big', keyHint: 'R', confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
         ]}
       />
     </div>
@@ -721,21 +722,21 @@ function warnings(l: L, data: Data, state: unknown): Warning[] {
   const c = e.c;
   const v = e.target(state as State | undefined);
   const [f, bad, raw] = e.frac(v);
-  if (bad) out.push({ level: 'error', op: true, text: `Min = max (${fmtNum(e.lo, 2)}): the bar stays empty — no division by zero. Set a max above the min.` });
-  else if (e.hi < e.lo) out.push({ level: 'warn', text: 'Min is above max: the bar fills backwards.' });
-  if (!bad && raw > 1 + 1e-9) out.push({ level: 'info', op: true, text: `Value ${fmtNum(v, c.decimals)} is above the max ${fmtNum(e.hi, 0)}: capped at 100 %.` });
-  if (!bad && raw < -1e-9) out.push({ level: 'info', op: true, text: `Value ${fmtNum(v, c.decimals)} is below the min ${fmtNum(e.lo, 0)}: capped at 0 %.` });
-  if (parseNum(interpolateText(l.value ?? '', data)) == null) out.push({ level: 'warn', text: `The value “${interpolateText(l.value ?? '', data)}” is not a number: 0 is used.` });
+  if (bad) out.push({ level: 'error', op: true, text: t('Min = max ({value}): the bar stays empty — no division by zero. Set a max above the min.', { value: fmtNum(e.lo, 2) }) });
+  else if (e.hi < e.lo) out.push({ level: 'warn', text: t('Min is above max: the bar fills backwards.') });
+  if (!bad && raw > 1 + 1e-9) out.push({ level: 'info', op: true, text: t('Value {value} is above the max {max}: capped at 100 %.', { value: fmtNum(v, c.decimals), max: fmtNum(e.hi, 0) }) });
+  if (!bad && raw < -1e-9) out.push({ level: 'info', op: true, text: t('Value {value} is below the min {min}: capped at 0 %.', { value: fmtNum(v, c.decimals), min: fmtNum(e.lo, 0) }) });
+  if (parseNum(interpolateText(l.value ?? '', data)) == null) out.push({ level: 'warn', text: t('The value “{value}” is not a number: 0 is used.', { value: interpolateText(l.value ?? '', data) }) });
   const w = num(l.props.width ?? 0);
   const h = num(l.props.height ?? 0);
   if (c.shape === 'linear' && c.rounded && f > 0) {
     const Lg = c.orient === 'h' ? w : h;
     const C = c.orient === 'h' ? h : w;
-    if (f * Lg < Math.min(c.thickness ?? C, C - 4)) out.push({ level: 'info', text: 'Very small value: drawn as a round dot (the bar thickness), never a deformed shape.' });
+    if (f * Lg < Math.min(c.thickness ?? C, C - 4)) out.push({ level: 'info', text: t('Very small value: drawn as a round dot (the bar thickness), never a deformed shape.') });
   }
   if (c.shape === 'segments') {
     const Lg = c.orient === 'h' ? w : h;
-    if ((Lg - c.segGap * (c.segments - 1)) / c.segments < 3) out.push({ level: 'warn', text: 'Too many segments for this length: fewer are drawn.' });
+    if ((Lg - c.segGap * (c.segments - 1)) / c.segments < 3) out.push({ level: 'warn', text: t('Too many segments for this length: fewer are drawn.') });
   }
   return out;
 }
@@ -767,10 +768,10 @@ function FollowPick({ value, onChange }: { value: string; onChange: (v: string) 
   const layers = useDesigner((s) => s.template?.layers ?? []);
   const opts = layers
     .filter((l) => l.type === 'counter' || (l.type === 'clock' && ['countdown', 'stopwatch'].includes(T.eff(l as never, {}).mode)))
-    .map((l) => ({ value: l.id, label: `${l.name} · ${l.type === 'counter' ? 'counter' : T.eff(l as never, {}).mode}` }));
+    .map((l) => ({ value: l.id, label: `${l.name} · ${t(l.type === 'counter' ? 'counter' : T.eff(l as never, {}).mode)}` }));
   return (
-    <Row label="Follows">
-      <Dropdown value={value} options={[{ value: '', label: opts.length ? 'Choose…' : 'No timer or counter in this graphic' }, ...opts]} onChange={onChange} />
+    <Row label={t('Follows')}>
+      <Dropdown value={value} options={[{ value: '', label: opts.length ? t('Choose…') : t('No timer or counter in this graphic') }, ...opts]} onChange={onChange} />
     </Row>
   );
 }

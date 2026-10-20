@@ -8,6 +8,7 @@ import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { ProjectPublish } from './Collab';
 import { useDesigner } from './designerStore';
 import { draftOf } from '../engine/drafts';
+import { locale, t, tn } from '../i18n';
 
 /*
  * Left panel, above the templates: the project — its name, format,
@@ -54,7 +55,7 @@ export function FormatButtons({ width, height, rate, disabled, onSize, onRate }:
     <div className="pjp-format">
       <div className="pjp-sizes">
         {SIZES.map((f) => (
-          <button key={f.label} className={f.width === width && f.height === height ? 'on' : ''} title={f.title} disabled={disabled} type="button" onClick={() => onSize(f.width, f.height)}>
+          <button key={f.label} className={f.width === width && f.height === height ? 'on' : ''} title={t(f.title)} disabled={disabled} type="button" onClick={() => onSize(f.width, f.height)}>
             <span className="pjp-shape-box">
               <Shape width={f.width} height={f.height} />
             </span>
@@ -67,7 +68,7 @@ export function FormatButtons({ width, height, rate, disabled, onSize, onRate }:
           {width}×{height}
         </span>
       )}
-      <div className="pjp-rates" title="Frames per second">
+      <div className="pjp-rates" title={t('Frames per second')}>
         {RATES.map((r) => (
           <button key={r.label} className={sameRate(r.rate, rate) ? 'on' : ''} disabled={disabled} type="button" onClick={() => onRate(r.rate)}>
             {r.label}
@@ -83,9 +84,9 @@ export function FormatButtons({ width, height, rate, disabled, onSize, onRate }:
 /** "3 min ago", "yesterday 18:02"… */
 const ago = (ms: number) => {
   const s = (Date.now() - ms) / 1000;
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 6 * 3600) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 60) return t('just now');
+  if (s < 3600) return t('{n} min ago', { n: Math.floor(s / 60) });
+  if (s < 6 * 3600) return t('{n} h ago', { n: Math.floor(s / 3600) });
   return when(ms);
 };
 
@@ -93,8 +94,8 @@ const when = (ms: number) => {
   const d = new Date(ms);
   const today = new Date().toDateString() === d.toDateString();
   return today
-    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : d.toLocaleString([], {
+    ? d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleString(locale(), {
         day: '2-digit',
         month: 'short',
         hour: '2-digit',
@@ -117,19 +118,20 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
     api('PUT', url, { name: project.name, description: project.description ?? '', width: project.width, height: project.height, frameRate: project.frameRate, ...patch }).catch((e) => toast((e as Error).message, 'error'));
 
   const rename = async () => {
-    const name = await promptDialog({ title: 'Rename the project', label: 'Name', value: project.name, confirm: 'Rename' });
+    const name = await promptDialog({ title: t('Rename the project'), label: t('Name'), value: project.name, confirm: t('Rename') });
     if (name?.trim()) await meta({ name: name.trim() });
   };
   const setSize = async (w: number, h: number) => {
     if (w === project.width && h === project.height) return;
     if (
       !(await confirmDialog({
-        title: `Change the main format to ${w}×${h}?`,
-        message: 'The templates keep their positions in pixels: check them afterwards. A version of the project is kept first.',
-        confirm: 'Change',
+        title: t('Change the main format to {size}?', { size: `${w}×${h}` }),
+        message: t('The templates keep their positions in pixels: check them afterwards. A version of the project is kept first.'),
+        confirm: t('Change'),
       }))
     )
       return;
+    // Kept in English (like the server's notes): shown translated by noteText.
     await api('POST', `${url}/versions`, { note: `Before the change to ${w}×${h}` }).catch(() => {});
     await meta({ width: w, height: h });
   };
@@ -138,18 +140,18 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
   return (
     <section className="project-panel">
       <header>
-        <span>Project</span>
-        <span className={`pp-save ${readOnly ? 'ro' : saveState}`} title="Changes are saved automatically">
-          {readOnly ? 'Read only' : saveState === 'saved' ? `Saved · ${when(savedAt)}` : 'Saving…'}
+        <span>{t('Project')}</span>
+        <span className={`pp-save ${readOnly ? 'ro' : saveState}`} title={t('Changes are saved automatically')}>
+          {readOnly ? t('Read only') : saveState === 'saved' ? t('Saved · {when}', { when: when(savedAt) }) : t('Saving…')}
         </span>
       </header>
       <div className="pjp-body">
         <div className="pjp-title">
-          <button className="pjp-name" onClick={rename} disabled={readOnly} title="Rename">
+          <button className="pjp-name" onClick={rename} disabled={readOnly} title={t('Rename')}>
             <span>{project.name}</span>
             <Pencil size={12} />
           </button>
-          <button className={`pjp-format-sum ${formatOpen ? 'open' : ''}`} onClick={() => setFormatOpen(!formatOpen)} title="Format of the project">
+          <button className={`pjp-format-sum ${formatOpen ? 'open' : ''}`} onClick={() => setFormatOpen(!formatOpen)} title={t('Format of the project')}>
             <span className="pjp-shape-box">
               <Shape width={project.width} height={project.height} />
             </span>
@@ -160,9 +162,9 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
         {formatOpen && (
           <>
             <FormatButtons width={project.width} height={project.height} rate={project.frameRate} disabled={readOnly} onSize={(w, h) => void setSize(w, h)} onRate={(r) => void setRate(r)} />
-            <label className="pjp-lang" title="Hyphenation rules and French spaces of every text of the project">
-              <span>Language of the texts</span>
-              <Dropdown value={project.language ?? 'fr'} options={HYPHEN_LANGS.map(([v, l]) => ({ value: v, label: l }))} onChange={(v) => !readOnly && void meta({ language: v })} />
+            <label className="pjp-lang" title={t('Hyphenation rules and French spaces of every text of the project')}>
+              <span>{t('Language of the texts')}</span>
+              <Dropdown value={project.language ?? 'fr'} options={HYPHEN_LANGS.map(([v, l]) => ({ value: v, label: t(l) }))} onChange={(v) => !readOnly && void meta({ language: v })} />
             </label>
           </>
         )}
@@ -172,6 +174,18 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
       </div>
     </section>
   );
+}
+
+/** A version's note in the interface's language: the server and the format change write theirs in English. */
+function noteText(note: string): string {
+  let m = /^Published “(.*)” \(revision (\d+)\)$/s.exec(note);
+  if (m) return t('Published “{name}” (revision {rev})', { name: m[1], rev: m[2] });
+  m = /^Published (\d+) templates?: (.*)$/s.exec(note);
+  if (m) return tn(+m[1], 'Published {n} template: {names}', 'Published {n} templates: {names}', { names: m[2] });
+  m = /^Before the change to (\S+)$/.exec(note);
+  if (m) return t('Before the change to {size}', { size: m[1] });
+  if (note === 'Before restoring an older version') return t('Before restoring an older version');
+  return note;
 }
 
 /** History of the project's versions, in the top bar: a button and its list. */
@@ -198,13 +212,13 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
   }, [open]);
 
   const keep = async () => {
-    const note = await promptDialog({ title: 'Keep a version', label: 'Note', value: '', placeholder: 'What changed', confirm: 'Keep' });
+    const note = await promptDialog({ title: t('Keep a version'), label: t('Note'), value: '', placeholder: t('What changed'), confirm: t('Keep') });
     if (note === null) return;
     await api('POST', `${url}/versions`, { note }).catch((e) => toast((e as Error).message, 'error'));
     void loadVersions();
   };
   const restore = async (v: Version) => {
-    if (!(await confirmDialog({ title: `Restore the version of ${when(v.at)}?`, message: `“${v.note}”. The project as it is now is kept as a version first, so you can come back to it.`, confirm: 'Restore', danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Restore the version of {when}?', { when: when(v.at) }), message: t('“{note}”. The project as it is now is kept as a version first, so you can come back to it.', { note: noteText(v.note) }), confirm: t('Restore'), danger: true }))) return;
     try {
       await api('POST', `${url}/versions/${encodeURIComponent(v.id)}/restore`);
     } catch (e) {
@@ -217,23 +231,23 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
       const p = await api<Project>('GET', url).catch(() => null);
       d.load((p && draftOf(p, d.base.id)) ?? null);
     }
-    toast('Version restored', 'info');
+    toast(t('Version restored'), 'info');
     void loadVersions();
   };
 
   return (
     <div className="history-menu" ref={ref}>
-      <button className={`top-tool ${open ? 'on' : ''}`} title="History of the versions" onClick={() => setOpen(!open)}>
+      <button className={`top-tool ${open ? 'on' : ''}`} title={t('History of the versions')} onClick={() => setOpen(!open)}>
         <History size={15} />
         {versions && versions.length > 0 && <span className="pjp-count">{versions.length}</span>}
       </button>
       {open && (
         <div className="history-pop">
           <header>
-            <strong>History</strong>
+            <strong>{t('History')}</strong>
             {!readOnly && (
-              <button className="pjp-keep" title="Keep a version of the project now, with a note" onClick={keep}>
-                <Plus size={12} /> Keep a version
+              <button className="pjp-keep" title={t('Keep a version of the project now, with a note')} onClick={keep}>
+                <Plus size={12} /> {t('Keep a version')}
               </button>
             )}
           </header>
@@ -241,25 +255,25 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
             <li className="now">
               <span className="pjp-dot" />
               <span className="pjp-v-main">
-                <strong>Now</strong>
-                <span className="pjp-v-sub">Saved automatically</span>
+                <strong>{t('Now')}</strong>
+                <span className="pjp-v-sub">{t('Saved automatically')}</span>
               </span>
             </li>
-            {versions === null && <li className="pjp-v-empty">Loading…</li>}
-            {versions?.length === 0 && <li className="pjp-v-empty">Each publish keeps a version here; Keep makes one now.</li>}
+            {versions === null && <li className="pjp-v-empty">{t('Loading…')}</li>}
+            {versions?.length === 0 && <li className="pjp-v-empty">{t('Each publish keeps a version here; Keep makes one now.')}</li>}
             {versions?.map((v) => (
               <li key={v.id} className={/^Publish/i.test(v.note) ? 'publish' : ''}>
                 <span className="pjp-dot" />
                 <span className="pjp-v-main">
-                  <strong title={v.note}>{v.note || 'Version'}</strong>
-                  <span className="pjp-v-sub" title={new Date(v.at).toLocaleString()}>
+                  <strong title={noteText(v.note)}>{noteText(v.note) || t('Version')}</strong>
+                  <span className="pjp-v-sub" title={new Date(v.at).toLocaleString(locale())}>
                     <span className="pjp-avatar">{(v.by || '?').slice(0, 1).toUpperCase()}</span>
                     {v.by} · {ago(v.at)}
                   </span>
                 </span>
                 {!readOnly && (
-                  <button className="pjp-restore" title="Restore this version (the current state is kept first)" onClick={() => restore(v)}>
-                    <RotateCcw size={12} /> Restore
+                  <button className="pjp-restore" title={t('Restore this version (the current state is kept first)')} onClick={() => restore(v)}>
+                    <RotateCcw size={12} /> {t('Restore')}
                   </button>
                 )}
               </li>

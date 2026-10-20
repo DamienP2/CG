@@ -5,6 +5,7 @@ import type { ChannelState, Project } from '../engine/types';
 import { api, clientId, lockEvents, useApp, type EditLock } from '../store';
 import { useDesigner } from './designerStore';
 import { confirmDialog } from '../ui/dialogs';
+import { t, tn } from '../i18n';
 
 /*
  * One designer at a time per template (edit lock, renewed while the template
@@ -50,7 +51,7 @@ export function useEditLock(project: Project | null, templateId: string | undefi
       const ev = (e as CustomEvent).detail as { projectId: string; templateId: string; lock: EditLock | null; takenFrom: string | null };
       if (ev.projectId !== pid || ev.templateId !== templateId) return;
       if (ev.lock && ev.lock.client !== clientId) {
-        if (ev.takenFrom === clientId) toast(`${ev.lock.userName} took over this template — it is read only for you now`, 'info');
+        if (ev.takenFrom === clientId) toast(t('{user} took over this template — it is read only for you now', { user: ev.lock.userName }), 'info');
         setState({ status: 'held', holder: ev.lock });
       } else if (!ev.lock && live.current.status === 'held') {
         // Released: take it.
@@ -96,26 +97,26 @@ export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock
           <Lock size={20} />
         </span>
         <h2 id="lock-title">
-          {holder.userName} is editing {template ? `“${template}”` : 'this template'}
+          {template ? t('{user} is editing “{template}”', { user: holder.userName, template }) : t('{user} is editing this template', { user: holder.userName })}
         </h2>
         {confirm ? (
           <>
-            <p>{holder.userName} switches to read only and is told that you took over. A change they made in the last second may be lost.</p>
+            <p>{t('{user} switches to read only and is told that you took over. A change they made in the last second may be lost.', { user: holder.userName })}</p>
             <div className="row end">
               <button className="btn" onClick={() => setConfirm(false)}>
-                Cancel
+                {t('Cancel')}
               </button>
               <button className="btn warn" onClick={onTakeOver}>
-                Take over
+                {t('Take over')}
               </button>
             </div>
           </>
         ) : (
           <>
-            <p>You see their changes live. Take over to edit it yourself, or open another template.</p>
+            <p>{t('You see their changes live. Take over to edit it yourself, or open another template.')}</p>
             <div className="row end">
               <button className="btn warn" onClick={() => setConfirm(true)}>
-                Take over…
+                {t('Take over…')}
               </button>
             </div>
           </>
@@ -148,10 +149,10 @@ async function confirmPublish(project: Project, ids: string[]): Promise<boolean>
   const live = await onAir(project, ids);
   const names = ids.map((id) => project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id);
   return confirmDialog({
-    title: ids.length > 1 ? `Publish ${ids.length} templates?` : `Publish “${names[0]}”?`,
+    title: ids.length > 1 ? t('Publish {n} templates?', { n: ids.length }) : t('Publish “{name}”?', { name: names[0] }),
     message: (
       <div className="publish-confirm">
-        <p>The Operator uses the new version immediately.</p>
+        <p>{t('The Operator uses the new version immediately.')}</p>
         {ids.length > 1 && (
           <ul className="publish-list">
             {names.map((n) => (
@@ -161,7 +162,7 @@ async function confirmPublish(project: Project, ids: string[]): Promise<boolean>
         )}
         {live.length ? (
           <div className="publish-onair">
-            <b>On air now: {live.length > 1 ? 'they change' : 'it changes'} on screen at once</b>
+            <b>{live.length > 1 ? t('On air now: they change on screen at once') : t('On air now: it changes on screen at once')}</b>
             <ul>
               {live.map((n) => (
                 <li key={n}>
@@ -171,11 +172,11 @@ async function confirmPublish(project: Project, ids: string[]): Promise<boolean>
             </ul>
           </div>
         ) : (
-          <p className="muted">{ids.length > 1 ? 'None of them is on air.' : 'It is not on air.'}</p>
+          <p className="muted">{ids.length > 1 ? t('None of them is on air.') : t('It is not on air.')}</p>
         )}
       </div>
     ),
-    confirm: 'Publish',
+    confirm: t('Publish'),
     danger: live.length > 0,
   });
 }
@@ -190,7 +191,7 @@ export async function publishTemplate(project: Project, id: string) {
     if (st.base?.id === id && !(await saveTemplate(st.base))) return;
     const r = await api<{ revision: number }>('POST', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(id)}/publish`);
     const name = project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id;
-    toast(`“${name}” v${r.revision} is live in the Operator`, 'info');
+    toast(t('“{name}” v{rev} is live in the Operator', { name, rev: r.revision }), 'info');
   } catch (e) {
     toast((e as Error).message, 'error');
   }
@@ -202,24 +203,24 @@ export function TemplatePublish({ project, id, readOnly }: { project: Project; i
   const { published, draft } = publishState(project, id);
   if (published && !draft)
     return (
-      <span className="publish-state" title="The Operator uses this template as it is here">
-        <Check size={12} /> In the Operator · v{published.revision || 1}
+      <span className="publish-state" title={t('The Operator uses this template as it is here')}>
+        <Check size={12} /> {t('In the Operator · v{rev}', { rev: published.revision || 1 })}
       </span>
     );
   return (
     <div className="publish publish-line">
-      <span className="publish-draft">{published ? 'Changes not in the Operator' : 'New · not in the Operator'}</span>
+      <span className="publish-draft">{published ? t('Changes not in the Operator') : t('New · not in the Operator')}</span>
       <button
         className="btn small publish-btn"
         disabled={busy || readOnly}
-        title={published ? `The Operator uses v${published.revision || 1}` : 'The Operator does not see it yet'}
+        title={published ? t('The Operator uses v{rev}', { rev: published.revision || 1 }) : t('The Operator does not see it yet')}
         onClick={async () => {
           setBusy(true);
           await publishTemplate(project, id);
           setBusy(false);
         }}
       >
-        <Upload size={12} /> {busy ? 'Publishing…' : 'Publish'}
+        <Upload size={12} /> {busy ? t('Publishing…') : t('Publish')}
       </button>
     </div>
   );
@@ -233,8 +234,8 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
   const isNew = (id: string) => !project.templates.some((t) => t.id === id);
   if (!changed.length)
     return (
-      <span className="publish-state" title="The Operator uses the templates as they are here">
-        <Check size={12} /> All in the Operator
+      <span className="publish-state" title={t('The Operator uses the templates as they are here')}>
+        <Check size={12} /> {t('All in the Operator')}
       </span>
     );
   const publish = async () => {
@@ -244,7 +245,7 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
       const st = useDesigner.getState();
       if (st.base && !(await saveTemplate(st.base))) return;
       const r = await api<{ name: string; revision: number }[]>('POST', `/api/projects/${encodeURIComponent(project.id)}/publish`);
-      toast(`${r.length} template${r.length > 1 ? 's' : ''} live in the Operator`, 'info');
+      toast(tn(r.length, '{n} template live in the Operator', '{n} templates live in the Operator'), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -253,11 +254,9 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
   };
   return (
     <div className="publish publish-line">
-      <span className="publish-draft">
-        {changed.length} change{changed.length > 1 ? 's' : ''} not in the Operator
-      </span>
-      <button className="btn small publish-btn" disabled={busy || readOnly} title={`Not yet in the Operator: ${changed.map((t) => `${t.name}${isNew(t.id) ? ' (new)' : ''}`).join(', ')}`} onClick={publish}>
-        <Upload size={12} /> {busy ? 'Publishing…' : 'Publish all'}
+      <span className="publish-draft">{tn(changed.length, '{n} change not in the Operator', '{n} changes not in the Operator')}</span>
+      <button className="btn small publish-btn" disabled={busy || readOnly} title={t('Not yet in the Operator: {list}', { list: changed.map((d) => (isNew(d.id) ? t('{name} (new)', { name: d.name }) : d.name)).join(', ') })} onClick={publish}>
+        <Upload size={12} /> {busy ? t('Publishing…') : t('Publish all')}
       </button>
     </div>
   );
@@ -278,7 +277,7 @@ export function PublishButton({ project, readOnly }: { project: Project; readOnl
       // The latest edits first (autosave may still be pending).
       if (!(await saveTemplate(useDesigner.getState().base!))) return;
       const r = await api<{ revision: number }>('POST', `${url}/publish`);
-      toast(`“${base.name}” v${r.revision} is live in the Operator`, 'info');
+      toast(t('“{name}” v{rev} is live in the Operator', { name: base.name, rev: r.revision }), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -286,25 +285,26 @@ export function PublishButton({ project, readOnly }: { project: Project; readOnl
     }
   };
   const discard = async () => {
-    if (!published || !(await confirmDialog({ title: 'Discard the unpublished changes?', message: `“${base.name}” goes back to v${published.revision ?? 1}, the version the Operator uses.`, confirm: 'Discard', danger: true }))) return;
+    if (!published || !(await confirmDialog({ title: t('Discard the unpublished changes?'), message: t('“{name}” goes back to v{rev}, the version the Operator uses.', { name: base.name, rev: published.revision ?? 1 }), confirm: t('Discard'), danger: true }))) return;
     await api('DELETE', `${url}/draft`).catch((e) => toast((e as Error).message, 'error'));
     useDesigner.getState().load(published);
   };
   if (!changed)
     return (
-      <span className="publish-state" title="The Operator uses this version">
-        <Check size={13} /> Live in Operator{published?.revision ? ` · v${published.revision}` : ''}
+      <span className="publish-state" title={t('The Operator uses this version')}>
+        <Check size={13} /> {t('Live in Operator')}
+        {published?.revision ? ` · v${published.revision}` : ''}
       </span>
     );
   return (
     <div className="publish">
       {published && draft && !readOnly && (
-        <button className="icon-btn ghost" title={`Discard unpublished changes (back to v${published.revision || 1})`} onClick={discard}>
+        <button className="icon-btn ghost" title={t('Discard unpublished changes (back to v{rev})', { rev: published.revision || 1 })} onClick={discard}>
           <RotateCcw size={13} />
         </button>
       )}
-      <button className="btn small primary" disabled={busy || readOnly} title={published ? `The Operator uses v${published.revision || 1} until you publish` : 'New template: the Operator does not see it until you publish'} onClick={publish}>
-        <Upload size={13} /> {published ? 'Publish to Operator' : 'Publish (new)'}
+      <button className="btn small primary" disabled={busy || readOnly} title={published ? t('The Operator uses v{rev} until you publish', { rev: published.revision || 1 }) : t('New template: the Operator does not see it until you publish')} onClick={publish}>
+        <Upload size={13} /> {published ? t('Publish to Operator') : t('Publish (new)')}
       </button>
     </div>
   );

@@ -13,6 +13,7 @@ import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
 import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
+import { t } from '../i18n';
 
 export interface Config {
   /** Texts typed after the first one (`text`). */
@@ -458,21 +459,21 @@ function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: un
     <>
       <Btns
         list={[
-          { label: '▶ Start', cls: 'green big', keyHint: 'Enter', onClick: () => act('start', cur) },
-          mode === 'paused' ? { label: '▶ Resume', cls: 'violet big', keyHint: 'Space', onClick: () => act('resume', cur) } : { label: '❚❚ Pause', cls: 'big', keyHint: 'Space', disabled: !running, onClick: () => act('pause', cur) },
-          { label: 'Show all', cls: 'big', onClick: () => act('showAll', cur) },
-          { label: 'Next text', cls: 'big', keyHint: 'Right', disabled: R.list.length < 2, onClick: () => act('next', cur) },
-          { label: 'Clear', cls: 'big', onClick: () => act('clear', cur) },
-          { label: 'Reset', cls: 'ghost big', onClick: () => act('reset', cur) },
+          { label: t('▶ Start'), cls: 'green big', keyHint: 'Enter', onClick: () => act('start', cur) },
+          mode === 'paused' ? { label: t('▶ Resume'), cls: 'violet big', keyHint: 'Space', onClick: () => act('resume', cur) } : { label: t('❚❚ Pause'), cls: 'big', keyHint: 'Space', disabled: !running, onClick: () => act('pause', cur) },
+          { label: t('Show all'), cls: 'big', onClick: () => act('showAll', cur) },
+          { label: t('Next text'), cls: 'big', keyHint: 'Right', disabled: R.list.length < 2, onClick: () => act('next', cur) },
+          { label: t('Clear'), cls: 'big', onClick: () => act('clear', cur) },
+          { label: t('Reset'), cls: 'ghost big', onClick: () => act('reset', cur) },
         ]}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline', marginTop: 6 }}>
         <b style={{ fontSize: 18 }}>
-          Text {R.idx + 1}/{R.list.length}
+          {t('Text {n}/{total}', { n: R.idx + 1, total: R.list.length })}
         </b>
-        <span style={{ color: colr, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em' }}>{ph}</span>
+        <span style={{ color: colr, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em' }}>{t(ph)}</span>
         <span style={{ fontFamily: 'var(--mono, monospace)' }}>
-          {shown} / {n} characters · {pct} %
+          {t('{shown} / {n} characters · {pct} %', { shown, n, pct })}
         </span>
       </div>
       <div style={{ height: 8, borderRadius: 4, background: '#232838', marginTop: 6, overflow: 'hidden' }}>
@@ -487,34 +488,34 @@ function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: un
 function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) => void, key?: string) => void }) {
   const c = cfg(layer);
   const set = (key: string, v: unknown) => edit((l) => void ((l as unknown as Record<string, unknown>)[key] = v));
-  const unitName = c.unit === 'char' ? 'char/s' : c.unit === 'word' ? 'words/s' : 'lines/s';
+  const unitName = c.unit === 'char' ? t('char/s') : c.unit === 'word' ? t('words/s') : t('lines/s');
   return (
     <>
-      <Section id="tw-texts" title="Texts">
-        <Content path="text" value="" multiline placeholder="Text" />
-        <ListEditor label="Then" path="more" value={c.more} fields={[{ key: 'text', placeholder: 'Next text' }]} add={() => ({ text: 'New text' })} addLabel="Text" />
+      <Section id="tw-texts" title={t('Texts')}>
+        <Content path="text" value="" multiline placeholder={t('Text')} />
+        <ListEditor label={t('Then')} path="more" value={c.more} fields={[{ key: 'text', placeholder: t('Next text') }]} add={() => ({ text: 'New text' })} addLabel={t('Text')} />
       </Section>
-      <Section id="tw-style" title="Style">
+      <Section id="tw-style" title={t('Style')}>
         <div className="pp-typo">
           <FontControls layer={layer as Layer & FontStyle} set={set} />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
-          <ColorGroupRow layer={layer as Layer} prop="fill" label="Color" />
+          <GroupRow layer={layer as Layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
+          <GroupRow layer={layer as Layer} spec={{ label: t('Spacing'), props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
+          <ColorGroupRow layer={layer as Layer} prop="fill" label={t('Color')} />
         </div>
-        <Num label="Line height" path="lineHeight" value={c.lineHeight} min={0.9} max={2} step={0.05} precision={2} unit="×" />
-        <Toggle label="Frozen layout" path="frozen" value={true} />
-        <Toggle label="Auto-shrink" path="autoShrink" value={false} />
-        {c.autoShrink && <Num label="Min size" path="minSize" value={c.minSize} min={8} max={Math.max(8, num(layer.props.fontSize ?? 64))} unit="px" />}
-        <Toggle label="Plate" path="plate" value={false} />
-        {c.plate && <ColorPick label="Plate color" path="plateColor" value={D.plateColor} />}
-        <Toggle label="Shadow" path="shadow" value={false} />
+        <Num label={t('Line height')} path="lineHeight" value={c.lineHeight} min={0.9} max={2} step={0.05} precision={2} unit="×" />
+        <Toggle label={t('Frozen layout')} path="frozen" value={true} />
+        <Toggle label={t('Auto-shrink')} path="autoShrink" value={false} />
+        {c.autoShrink && <Num label={t('Min size')} path="minSize" value={c.minSize} min={8} max={Math.max(8, num(layer.props.fontSize ?? 64))} unit="px" />}
+        <Toggle label={t('Plate')} path="plate" value={false} />
+        {c.plate && <ColorPick label={t('Plate color')} path="plateColor" value={D.plateColor} />}
+        <Toggle label={t('Shadow')} path="shadow" value={false} />
       </Section>
-      <Section id="tw-cursor" title="Cursor">
-        <Toggle label="Cursor" path="cursor" value={true} />
+      <Section id="tw-cursor" title={t('Cursor')}>
+        <Toggle label={t('Cursor')} path="cursor" value={true} />
         {layer.cursor && (
           <>
             <Seg
-              label="Shape"
+              label={t('Shape')}
               path="cursorCh"
               value={c.cursorCh}
               options={[
@@ -523,70 +524,70 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
                 ['█', '█'],
               ]}
             />
-            <ColorPick expose="cursorColor" exposeValue={c.cursorColor || '#ffffff'} label="Color" value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
-            <Toggle label="Blink" path="cursorBlink" value={true} />
-            <Toggle label="Hide at end" path="cursorHide" value={false} />
+            <ColorPick expose="cursorColor" exposeValue={c.cursorColor || '#ffffff'} label={t('Color')} value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
+            <Toggle label={t('Blink')} path="cursorBlink" value={true} />
+            <Toggle label={t('Hide at end')} path="cursorHide" value={false} />
           </>
         )}
       </Section>
-      <Section id="tw-typing" title="Typing">
+      <Section id="tw-typing" title={t('Typing')}>
         <Seg
-          label="Unit"
+          label={t('Unit')}
           path="unit"
           value={c.unit}
           options={[
-            ['char', 'Character'],
-            ['word', 'Word'],
-            ['line', 'Line'],
+            ['char', t('Character')],
+            ['word', t('Word')],
+            ['line', t('Line')],
           ]}
         />
         <Seg
-          label="Speed in"
+          label={t('Speed in')}
           path="speedMode"
           value={c.speedMode}
           options={[
-            ['rate', 'Units / s'],
-            ['duration', 'Duration'],
+            ['rate', t('Units / s')],
+            ['duration', t('Duration')],
           ]}
         />
-        {c.speedMode === 'rate' ? <Num label="Speed" path="speed" value={layer.speed} min={1} max={80} unit={unitName} /> : <Num label="Duration" path="duration" value={c.duration} min={0.5} max={20} step={0.5} precision={1} unit="s" />}
-        <Num label="Variation" path="jitter" value={c.jitter} min={0} max={80} unit="%" />
-        <Num label="Punctuation" path="punctPause" value={c.punctPause} min={0} max={1200} step={20} unit="ms" />
+        {c.speedMode === 'rate' ? <Num label={t('Speed')} path="speed" value={layer.speed} min={1} max={80} unit={unitName} /> : <Num label={t('Duration')} path="duration" value={c.duration} min={0.5} max={20} step={0.5} precision={1} unit="s" />}
+        <Num label={t('Variation')} path="jitter" value={c.jitter} min={0} max={80} unit="%" />
+        <Num label={t('Punctuation')} path="punctPause" value={c.punctPause} min={0} max={1200} step={20} unit="ms" />
         <Seg
-          label="Each unit"
+          label={t('Each unit')}
           path="appear"
           value={c.appear}
           options={[
-            ['instant', 'Instant'],
-            ['fade', 'Fade'],
-            ['slide', 'Slide up'],
+            ['instant', t('Instant')],
+            ['fade', t('Fade')],
+            ['slide', t('Slide up')],
           ]}
         />
-        {c.appear !== 'instant' && <Num label="Fade time" path="appearMs" value={c.appearMs} min={40} max={800} step={10} unit="ms" />}
+        {c.appear !== 'instant' && <Num label={t('Fade time')} path="appearMs" value={c.appearMs} min={40} max={800} step={10} unit="ms" />}
         <Seg
-          label="If edited"
+          label={t('If edited')}
           path="onEdit"
           value={c.onEdit}
           options={[
-            ['restart', 'Restart'],
-            ['continue', 'Continue'],
+            ['restart', t('Restart')],
+            ['continue', t('Continue')],
           ]}
         />
       </Section>
       {c.more.length > 0 && (
-        <Section id="tw-chain" title="Chaining">
-          <Num label="Hold" path="hold" value={c.hold} min={0} max={10} step={0.1} precision={1} unit="s" />
+        <Section id="tw-chain" title={t('Chaining')}>
+          <Num label={t('Hold')} path="hold" value={c.hold} min={0} max={10} step={0.1} precision={1} unit="s" />
           <Seg
-            label="Erase"
+            label={t('Erase')}
             path="erase"
             value={c.erase}
             options={[
-              ['backspace', 'Backspace'],
-              ['block', 'All at once'],
+              ['backspace', t('Backspace')],
+              ['block', t('All at once')],
             ]}
           />
-          {c.erase === 'backspace' && <Num label="Erase speed" path="eraseRate" value={c.eraseRate} min={5} max={200} unit="char/s" />}
-          <Toggle label="Loop" path="chainLoop" value={false} />
+          {c.erase === 'backspace' && <Num label={t('Erase speed')} path="eraseRate" value={c.eraseRate} min={5} max={200} unit={t('char/s')} />}
+          <Toggle label={t('Loop')} path="chainLoop" value={false} />
         </Section>
       )}
     </>
@@ -620,12 +621,12 @@ export default defineWidget({
     const out: Warning[] = [];
     const c = cfg(layer);
     const list = textsOf(layer, data);
-    if (!list.some((t) => t.trim())) out.push({ level: 'info', text: 'Empty text: only the cursor is shown.', op: true });
+    if (!list.some((s) => s.trim())) out.push({ level: 'info', text: t('Empty text: only the cursor is shown.'), op: true });
     const size0 = num(r?.fontSize ?? layer.props.fontSize ?? 64);
     const R = runOf(layer, (state ?? {}) as State, data, size0, num(r?.letterSpacing ?? layer.props.letterSpacing ?? 0), num(r?.width ?? layer.props.width ?? 800), num(r?.height ?? layer.props.height ?? 200), Date.now(), 0);
-    if (R.lay.size < size0 - 0.5) out.push({ level: 'info', text: `Auto-shrink: ${Math.round(R.lay.size)} px, computed on the complete text before typing (the size never changes while typing).` });
-    if (R.lay.over) out.push({ level: 'warn', text: `The complete text does not fit the box even at ${Math.round(R.lay.size)} px.`, op: true });
-    if (!c.frozen) out.push({ level: 'warn', text: 'Frozen layout is off: words may jump to the next line while typing.' });
+    if (R.lay.size < size0 - 0.5) out.push({ level: 'info', text: t('Auto-shrink: {size} px, computed on the complete text before typing (the size never changes while typing).', { size: Math.round(R.lay.size) }) });
+    if (R.lay.over) out.push({ level: 'warn', text: t('The complete text does not fit the box even at {size} px.', { size: Math.round(R.lay.size) }), op: true });
+    if (!c.frozen) out.push({ level: 'warn', text: t('Frozen layout is off: words may jump to the next line while typing.') });
     return out;
   },
 });

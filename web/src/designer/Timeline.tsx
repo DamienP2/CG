@@ -47,6 +47,7 @@ import { api, importAfterEffects, useApp } from '../store';
 import { PROP_LABELS } from './Inspector';
 import { ICONS, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
+import { t, tc, tn } from '../i18n';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -146,7 +147,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   if (!template)
     return (
       <div className="timeline tl-empty">
-        <p>Open a template (on the left, or click its graphic) to see its layers and animate them.</p>
+        <p>{t('Open a template (on the left, or click its graphic) to see its layers and animate them.')}</p>
       </div>
     );
   const width = template.duration * zoom + TAIL;
@@ -270,13 +271,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const here = frames.some((f) => Math.abs(f - frame) < 0.5);
     return (
       <span className="tl-keynav" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-        <button title="Previous keyframe" disabled={prev === undefined} onClick={() => prev !== undefined && st.setFrame(prev)}>
+        <button title={t('Previous keyframe')} disabled={prev === undefined} onClick={() => prev !== undefined && st.setFrame(prev)}>
           <ChevronLeft size={12} />
         </button>
         {canToggle && (
           <button
             className={here ? 'on' : ''}
-            title={here ? 'Remove the keyframe at the playhead' : 'Add a keyframe at the playhead'}
+            title={here ? t('Remove the keyframe at the playhead') : t('Add a keyframe at the playhead')}
             onClick={() =>
               st.update((t) => {
                 const l = findLayer(t, layer.id)!;
@@ -288,7 +289,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <Diamond size={11} fill={here ? 'currentColor' : 'none'} />
           </button>
         )}
-        <button title="Next keyframe" disabled={next === undefined} onClick={() => next !== undefined && st.setFrame(next)}>
+        <button title={t('Next keyframe')} disabled={next === undefined} onClick={() => next !== undefined && st.setFrame(next)}>
           <ChevronRight size={12} />
         </button>
       </span>
@@ -309,7 +310,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         key={`${ref.prop}-${k.frame}`}
         className={`kf ${isSel ? 'sel' : ''} ${summary ? 'summary' : ''} e-${k.easing.type}`}
         style={{ left: k.frame * zoom }}
-        title={`${PROP_LABELS[ref.prop]} @ ${k.frame} · ${k.easing.type}`}
+        title={`${t(PROP_LABELS[ref.prop])} @ ${k.frame} · ${k.easing.type}`}
         onPointerDown={summary ? undefined : (e) => dragKeys(e, ref)}
         onDoubleClick={() => st.setFrame(k.frame)}
       />
@@ -331,7 +332,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           key={`seg-${from}`}
           className={`kf-seg ${on ? 'sel' : ''}`}
           style={{ left: from * zoom + 6, width: Math.max(0, (to - from) * zoom - 12) }}
-          title="Click: easing of this stretch"
+          title={t('Click: easing of this stretch')}
           onPointerDown={(e) => {
             e.stopPropagation();
             st.selectSegment({ layerId: layer.id, props: props.filter((p) => layer.tracks[p]?.some((k) => k.frame === from)), frame: from });
@@ -394,7 +395,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       >
         <span
           className="twirl"
-          title="Show the properties"
+          title={t('Show the properties')}
           onClick={(e) => {
             e.stopPropagation();
             st.toggleExpanded(layer.id);
@@ -425,15 +426,15 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         )}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
         <span className="row-actions">
-          <button title="Duplicate (Ctrl+D)" onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
+          <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
             <Copy size={12} />
           </button>
           <button
-            title="Delete (Del)"
+            title={t('Delete (Del)')}
             onClick={async (e) => {
               e.stopPropagation();
               const kids = descendants(template, layer.id).length;
-              if (kids && !(await confirmDialog({ title: `Delete “${layer.name}”?`, message: `The ${kids} layer(s) inside it are deleted too.`, confirm: 'Delete', danger: true }))) return;
+              if (kids && !(await confirmDialog({ title: t('Delete “{name}”?', { name: layer.name }), message: tn(kids, 'The {n} layer inside it is deleted too.', 'The {n} layers inside it are deleted too.'), confirm: t('Delete'), danger: true }))) return;
               st.update((t) => {
                 const ids = new Set([layer.id, ...descendants(t, layer.id)]);
                 t.layers = t.layers.filter((x) => !ids.has(x.id));
@@ -444,10 +445,10 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <Trash2 size={12} />
           </button>
         </span>
-        <button className={`row-btn ${layer.visible ? '' : 'off'}`} title={layer.visible ? 'Hide' : 'Show'} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.visible = !layer.visible)))}>
+        <button className={`row-btn ${layer.visible ? '' : 'off'}`} title={layer.visible ? t('Hide') : t('Show')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.visible = !layer.visible)))}>
           {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
         </button>
-        <button className={`row-btn ${layer.locked ? 'on' : ''}`} title={layer.locked ? 'Unlock' : 'Lock'} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.locked = !layer.locked)))}>
+        <button className={`row-btn ${layer.locked ? 'on' : ''}`} title={layer.locked ? t('Unlock') : t('Lock')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.locked = !layer.locked)))}>
           {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
         </button>
       </div>,
@@ -476,7 +477,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     ];
     labels.push(
       <div key={`${layer.id}-tr`} className="tl-label group" style={{ paddingLeft: 22 + depth * 14 }}>
-        Transform
+        {tc('section', 'Transform')}
       </div>,
     );
     body.push(<div key={`${layer.id}-tr`} className="tl-row prop" />);
@@ -485,13 +486,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       labels.push(
         <div key={`${layer.id}-${g.label}`} className={`tl-label prop ${isAnim ? 'animated' : ''}`} style={{ paddingLeft: 14 + depth * 14 }}>
           {keyNav(layer, g.props, true)}
-          <span className="prop-name">{g.label}</span>
+          <span className="prop-name">{t(g.label)}</span>
           <button
             className="tl-off"
-            title="Remove from the timeline"
+            title={t('Remove from the timeline')}
             onClick={async () => {
               const keyed = g.props.some((p) => layer.tracks[p]?.length);
-              if (keyed && !(await confirmDialog({ title: `Remove ${g.label} from the timeline?`, message: 'Its keyframes are deleted; the value at the playhead stays.', confirm: 'Remove', danger: true }))) return;
+              if (keyed && !(await confirmDialog({ title: t('Remove {prop} from the timeline?', { prop: t(g.label) }), message: t('Its keyframes are deleted; the value at the playhead stays.'), confirm: t('Remove'), danger: true }))) return;
               st.update((t) => {
                 const l = findLayer(t, layer.id)!;
                 for (const p of g.props) if (l.tracks[p]?.length) l.props[p] = propValue(l, p, frame);
@@ -502,7 +503,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <X size={10} />
           </button>
           {g.label === 'Scale' && (
-            <button className={`tl-lock ${layer.scaleLock ? 'on' : ''}`} title={layer.scaleLock ? 'Proportions locked (click to unlock)' : 'Lock the proportions'} onClick={() => st.update((t) => void (findLayer(t, layer.id)!.scaleLock = !layer.scaleLock || undefined))}>
+            <button className={`tl-lock ${layer.scaleLock ? 'on' : ''}`} title={layer.scaleLock ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => st.update((t) => void (findLayer(t, layer.id)!.scaleLock = !layer.scaleLock || undefined))}>
               {layer.scaleLock ? <LinkIcon size={11} /> : <Unlink size={11} />}
             </button>
           )}
@@ -522,7 +523,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
               ) : (
                 <NumberField
                   key={p}
-                  label={g.labels?.[i]}
+                  label={g.labels?.[i] && t(g.labels[i])}
                   value={num(propValue(layer, p, frame))}
                   display={g.display}
                   suffix={g.suffix}
@@ -557,19 +558,19 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       <div className="tl-toolbar">
         <InsertBar width={LEFT_W} onAdd={onAdd} />
         <div className="transport">
-          <button className="icon-btn" title="Go to start (Home)" onClick={() => st.setFrame(0)}>
+          <button className="icon-btn" title={t('Go to start (Home)')} onClick={() => st.setFrame(0)}>
             <SkipBack size={15} />
           </button>
-          <button className="icon-btn" title="Previous marker" onClick={() => jumpMarker(-1)}>
+          <button className="icon-btn" title={t('Previous marker')} onClick={() => jumpMarker(-1)}>
             <StepBack size={15} />
           </button>
-          <button className="icon-btn play" title="Play / pause (Space)" onClick={() => st.setPlaying(!playing)}>
+          <button className="icon-btn play" title={t('Play / pause (Space)')} onClick={() => st.setPlaying(!playing)}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
           </button>
-          <button className="icon-btn" title="Next marker" onClick={() => jumpMarker(1)}>
+          <button className="icon-btn" title={t('Next marker')} onClick={() => jumpMarker(1)}>
             <StepForward size={15} />
           </button>
-          <button className="icon-btn" title="Go to end (End)" onClick={() => st.setFrame(template.duration)}>
+          <button className="icon-btn" title={t('Go to end (End)')} onClick={() => st.setFrame(template.duration)}>
             <SkipForward size={15} />
           </button>
         </div>
@@ -579,15 +580,15 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             {Math.round(frame)} / {template.duration}
           </span>
         </div>
-        <button className={`btn small ${loop ? 'on' : ''}`} title="Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (Space resumes)." onClick={() => st.set({ loop: !loop })}>
-          <Repeat size={13} /> Loop
+        <button className={`btn small ${loop ? 'on' : ''}`} title={t('Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (Space resumes).')} onClick={() => st.set({ loop: !loop })}>
+          <Repeat size={13} /> {t('Loop')}
         </button>
         <div className="spacer" />
-        <button className="btn small mk-pause" title="Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)" onClick={addPause}>
-          <Flag size={13} /> Pause
+        <button className="btn small mk-pause" title={t('Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)')} onClick={addPause}>
+          <Flag size={13} /> {t('Pause')}
         </button>
         <label className="zoom">
-          Zoom
+          {t('Zoom')}
           <input
             type="range"
             min={0.2}
@@ -602,7 +603,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         </label>
         <button
           className="btn small"
-          title="Fit the whole template in the timeline"
+          title={t('Fit the whole template in the timeline')}
           onClick={() => {
             const el = scrollRef.current;
             fitted.current = true;
@@ -612,13 +613,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
               });
           }}
         >
-          Fit
+          {t('Fit')}
         </button>
       </div>
       <div className="tl-scroll" ref={scrollRef}>
         <div className="tl-grid" style={{ width: LEFT_W + width }}>
           <div className="tl-left" style={{ width: LEFT_W }}>
-            <div className="tl-corner">Layers</div>
+            <div className="tl-corner">{t('Layers')}</div>
             {labels}
           </div>
           <div className="tl-right" style={{ width }}>
@@ -645,14 +646,14 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     key={m.id}
                     className={`tl-marker ${role} ${moving ? 'moving' : ''} ${editing?.id === m.id ? 'editing' : ''}`}
                     style={{ left: Math.min(m.frame, template.duration) * zoom }}
-                    title={`${role === 'onair' ? 'End of IN, start of OUT: the take holds here on air' : m.name} · ${formatTime(m.frame, fps)} — drag to move, click to edit, double-click to go there`}
+                    title={t('{name} · {time} — drag to move, click to edit, double-click to go there', { name: role === 'onair' ? t('End of IN, start of OUT: the take holds here on air') : m.name, time: formatTime(m.frame, fps) })}
                     onPointerDown={(e) => dragMarker(e, m.id)}
                     onDoubleClick={() => st.setFrame(m.frame)}
                   >
                     {moving ? (
                       <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
                     ) : role === 'onair' ? (
-                      <span className="mk-hold" title={m.resume?.type === 'after' ? `Goes out by itself after ${m.resume.seconds} s` : 'Holds until Take out'}>
+                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : t('Holds until Take out')}>
                         {m.resume?.type === 'after' ? `${m.resume.seconds} s` : '∞'}
                       </span>
                     ) : (
@@ -693,8 +694,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
 /** Popover of a marker: its time, and for a pause its name, how it resumes and delete. */
 function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos: { left: number; bottom: number }; onClose: () => void }) {
   const st = useDesigner();
-  const t = st.template!;
-  const m = t.markers.find((x) => x.id === id)!;
+  const tpl = st.template!;
+  const m = tpl.markers.find((x) => x.id === id)!;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
@@ -717,28 +718,28 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
     <div ref={ref} className="menu marker-editor" style={{ position: 'fixed', left: Math.max(8, pos.left), bottom: pos.bottom, top: 'auto' }} onKeyDown={(e) => e.stopPropagation()}>
       <header>
         <span className={`marker-dot ${onAir ? 'onair' : 'pause'}`} />
-        <strong>{onAir ? 'IN → OUT' : 'Pause'}</strong>
+        <strong>{onAir ? 'IN → OUT' : t('Pause')}</strong>
         <div className="spacer" />
-        <button className="icon-btn ghost" title="Close" onClick={onClose}>
+        <button className="icon-btn ghost" title={t('Close')} onClick={onClose}>
           <X size={14} />
         </button>
       </header>
       {onAir && (
         <>
           <div className="me-field">
-            <span>Hold</span>
+            <span>{t('Hold')}</span>
             <div className="seg">
-              <button className={resume.type !== 'after' ? 'on' : ''} title="Stays on air until Take out" onClick={() => edit((x) => void delete x.resume)}>
-                Until Take out
+              <button className={resume.type !== 'after' ? 'on' : ''} title={t('Stays on air until Take out')} onClick={() => edit((x) => void delete x.resume)}>
+                {t('Until Take out')}
               </button>
-              <button className={resume.type === 'after' ? 'on' : ''} title="Goes out by itself after the delay" onClick={() => edit((x) => void (x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : 5 }))}>
-                Auto out
+              <button className={resume.type === 'after' ? 'on' : ''} title={t('Goes out by itself after the delay')} onClick={() => edit((x) => void (x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : 5 }))}>
+                {t('Auto out')}
               </button>
             </div>
           </div>
           {resume.type === 'after' && (
             <label className="me-field">
-              <span>After</span>
+              <span>{t('After')}</span>
               <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
             </label>
           )}
@@ -746,19 +747,19 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
       )}
       {!onAir && (
         <label className="me-field">
-          <span>Name</span>
+          <span>{t('Name')}</span>
           <input value={m.name} onChange={(e) => edit((x) => void (x.name = e.target.value), `marker-name-${id}`)} />
         </label>
       )}
       <label className="me-field">
-        <span>Time</span>
-        <NumberField value={m.frame} min={0} max={t.duration} suffix="fr" onChange={(v) => edit((x) => void (x.frame = Math.round(v)), `marker-${id}`)} />
+        <span>{tc('position', 'Time')}</span>
+        <NumberField value={m.frame} min={0} max={tpl.duration} suffix="fr" onChange={(v) => edit((x) => void (x.frame = Math.round(v)), `marker-${id}`)} />
         <em>{formatTime(m.frame, fps)}</em>
       </label>
       {!onAir && (
         <>
           <div className="me-field">
-            <span>Resume</span>
+            <span>{t('Resume')}</span>
             <div className="seg">
               {(
                 [
@@ -778,29 +779,29 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
                     })
                   }
                 >
-                  {label}
+                  {t(label)}
                 </button>
               ))}
             </div>
           </div>
           {resume.type === 'after' && (
             <label className="me-field">
-              <span>Delay</span>
+              <span>{t('Delay')}</span>
               <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
             </label>
           )}
           {resume.type === 'trigger' && (
             <label className="me-field">
-              <span>Trigger</span>
-              <input value={resume.name} placeholder="goal, next, line2…" onChange={(e) => edit((x) => void (x.resume = { type: 'trigger', name: e.target.value }), `marker-trigger-${id}`)} />
+              <span>{t('Trigger')}</span>
+              <input value={resume.name} placeholder={t('goal, next, line2…')} onChange={(e) => edit((x) => void (x.resume = { type: 'trigger', name: e.target.value }), `marker-trigger-${id}`)} />
             </label>
           )}
           <p className="hint">
             {resume.type === 'manual'
-              ? 'Holds until the operator presses Continue.'
+              ? t('Holds until the operator presses Continue.')
               : resume.type === 'after'
-                ? 'Holds, then plays on by itself after the delay.'
-                : 'Holds until this trigger is fired: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.'}
+                ? t('Holds, then plays on by itself after the delay.')
+                : t('Holds until this trigger is fired: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.')}
           </p>
           <div className="row end">
             <button
@@ -810,7 +811,7 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
                 onClose();
               }}
             >
-              <Trash2 size={13} /> Delete pause
+              <Trash2 size={13} /> {t('Delete pause')}
             </button>
           </div>
         </>
@@ -824,18 +825,18 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
 function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
   return (
     <div className="tl-insert" style={{ width }}>
-      <button className="tool" title="Rectangle" onClick={() => onAdd('rect')}>
+      <button className="tool" title={t('Rectangle')} onClick={() => onAdd('rect')}>
         <Square size={15} />
       </button>
-      <button className="tool" title="Ellipse" onClick={() => onAdd('ellipse')}>
+      <button className="tool" title={t('Ellipse')} onClick={() => onAdd('ellipse')}>
         <Circle size={15} />
       </button>
-      <button className="tool" title="Polygon" onClick={() => onAdd('polygon', { sides: 5 })}>
+      <button className="tool" title={t('Polygon')} onClick={() => onAdd('polygon', { sides: 5 })}>
         <Pentagon size={15} />
       </button>
       <button
         className="tool"
-        title="Line"
+        title={tc('stroke', 'Line')}
         onClick={() =>
           onAdd(
             'rect',
@@ -848,24 +849,24 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
                 fill: [1, 1, 1, 1],
               },
             },
-            'Line',
+            tc('stroke', 'Line'),
           )
         }
       >
         <Minus size={15} />
       </button>
-      <button className="tool" title="Text" onClick={() => onAdd('text')}>
+      <button className="tool" title={t('Text')} onClick={() => onAdd('text')}>
         <Type size={15} />
       </button>
-      <button className="tool" title="Image" onClick={() => onAdd('image')}>
+      <button className="tool" title={t('Image')} onClick={() => onAdd('image')}>
         <Image size={15} />
       </button>
-      <button className="tool" title="Pen" onClick={() => onAdd('pen')}>
+      <button className="tool" title={t('Pen')} onClick={() => onAdd('pen')}>
         <PenTool size={15} />
       </button>
       <div className="spacer" />
       <AddMenu onAdd={onAdd} />
-      <button className="add-btn folder" title="New folder (group)" onClick={() => onAdd('group')}>
+      <button className="add-btn folder" title={t('New folder (group)')} onClick={() => onAdd('group')}>
         <FolderPlus size={14} />
       </button>
     </div>
@@ -935,19 +936,19 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
     }
     if (it.type) {
       setOpen(null);
-      onAdd(it.type, it.patch, it.label);
+      onAdd(it.type, it.patch, t(it.label));
       return;
     }
     const w = WIDGET_PRESETS.find((x) => x.key === it.preset);
     if (!w) return;
     setOpen(null);
-    onAdd(w.type, w.patch as Record<string, unknown> | undefined, w.label);
+    onAdd(w.type, w.patch as Record<string, unknown> | undefined, t(w.label));
   };
   return (
     <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
       <button
         className={`add-btn ${open ? 'on' : ''}`}
-        title="Widgets"
+        title={t('Widgets')}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setOpen(
@@ -974,12 +975,12 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
         >
           <div className="add-grid">
             {menu().map((it) => (
-              <button key={it.label} disabled={it.soon} title={it.soon ? 'Coming soon' : it.hint} onClick={() => pick(it)}>
+              <button key={it.label} disabled={it.soon} title={it.soon ? t('Coming soon') : it.hint && t(it.hint)} onClick={() => pick(it)}>
                 <span className="add-icon">
                   <it.icon size={15} />
                 </span>
-                {it.label}
-                {it.soon && <em>soon</em>}
+                {t(it.label)}
+                {it.soon && <em>{t('soon')}</em>}
               </button>
             ))}
           </div>
@@ -1006,7 +1007,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
           }
         }}
       />
-      {busy && <span className="add-busy">{want === 'video' ? 'Reading the video…' : 'Converting…'}</span>}
+      {busy && <span className="add-busy">{want === 'video' ? t('Reading the video…') : t('Converting…')}</span>}
     </div>
   );
 }
@@ -1022,7 +1023,7 @@ async function addVideo(f: File, onAdd: AddLayer) {
   const w = Math.round((r.width || 640) * k);
   const h = Math.round((r.height || 360) * k);
   onAdd('image', { src: r.frames[0], fit: 'contain', frames: r.frames, fps: r.fps, playMode: 'once', start: 'in', props: { x: Math.round((p.width - w) / 2), y: Math.round((p.height - h) / 2), width: w, height: h } }, f.name.replace(/\.[^.]+$/, ''));
-  useApp.getState().toast(`${r.frames.length} frames (${(r.frames.length / r.fps).toFixed(1)} s): play once, from the In (Image > Animation)`, 'info');
+  useApp.getState().toast(t('{n} frames ({secs} s): play once, from the In (Image > Animation)', { n: r.frames.length, secs: (r.frames.length / r.fps).toFixed(1) }), 'info');
 }
 
 /** A Lottie animation: converted, its layers put into the open template in a group. */
@@ -1040,5 +1041,5 @@ async function addLottie(f: File) {
     for (const fl of imp.fields) if (!t.fields.some((x) => x.key === fl.key)) t.fields.push(fl);
   });
   useDesigner.getState().select([group.id]);
-  useApp.getState().toast(warnings.length ? `“${imp.name}” added — not converted: ${warnings.join('; ')}` : `“${imp.name}” added (${imp.layers.length} layers)`, 'info');
+  useApp.getState().toast(warnings.length ? t('“{name}” added — not converted: {warnings}', { name: imp.name, warnings: warnings.join('; ') }) : tn(imp.layers.length, '“{name}” added ({n} layer)', '“{name}” added ({n} layers)', { name: imp.name }), 'info');
 }

@@ -3,9 +3,11 @@
 // edit-in-format helpers and the smart adaptation.
 import { holdFrame, num, propValue, sortKeys } from './evaluate';
 import { MAIN_FORMAT, PROPS, type Format, type Keyframe, type Layer, type LayerOverride, type Project, type Prop, type Template, type Value } from './types';
+import { t } from '../i18n';
 
 export function projectFormats(p: Project): Format[] {
-  return [{ id: MAIN_FORMAT, name: 'Main', width: p.width, height: p.height }, ...(p.formats ?? [])];
+  // The main format's name is only shown (formats are found by id).
+  return [{ id: MAIN_FORMAT, name: t('Main'), width: p.width, height: p.height }, ...(p.formats ?? [])];
 }
 
 /** Format closest in aspect ratio to a width × height output. */

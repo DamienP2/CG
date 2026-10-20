@@ -15,6 +15,7 @@ import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/text
 import { scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
+import { t } from '../i18n';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -191,7 +192,7 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0 }: { layer: 
     return designer ? (
       <>
         <div style={{ position: 'absolute', inset: 0, border: '4px dashed rgba(255,255,255,.35)', borderRadius: 6, pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', left: 14, top: 10, font: '600 22px Inter, sans-serif', color: 'rgba(255,255,255,.45)', whiteSpace: 'nowrap' }}>Empty text · nothing on air</div>
+        <div style={{ position: 'absolute', left: 14, top: 10, font: '600 22px Inter, sans-serif', color: 'rgba(255,255,255,.45)', whiteSpace: 'nowrap' }}>{t('Empty text · nothing on air')}</div>
       </>
     ) : null;
   const L = layoutText(layer, r, data, lang, rich);
@@ -341,15 +342,15 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
   const stroke = num(propValue(layer as Layer, 'strokeWidth', 0)) > 0;
   return (
     <>
-      <Section id="text-content" title="Content">
-        <Content path="text" rich value="" multiline lorem expose placeholder="Text" />
+      <Section id="text-content" title={t('Content')}>
+        <Content path="text" rich value="" multiline lorem expose placeholder={t('Text')} />
       </Section>
-      <Section id="text-font" title="Typography">
+      <Section id="text-font" title={t('Typography')}>
         <FontRow layer={layer} set={set} />
-        <GroupRow layer={layer as Layer} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-        <Num expose="lineHeight" exposeValue={layer.lineHeight ?? 1.2} label="Line height" value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
-        <GroupRow layer={layer as Layer} spec={{ label: 'Spacing', props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
-        <Row expose={['align', 'justify', 'italic']} exposeValue={{ align: layer.align, justify: k.justify, italic: k.italic }} label="Align">
+        <GroupRow layer={layer as Layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
+        <Num expose="lineHeight" exposeValue={layer.lineHeight ?? 1.2} label={t('Line height')} value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
+        <GroupRow layer={layer as Layer} spec={{ label: t('Spacing'), props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
+        <Row expose={['align', 'justify', 'italic']} exposeValue={{ align: layer.align, justify: k.justify, italic: k.italic }} label={t('Align')}>
           <Segmented
             value={k.justify ? 'justify' : layer.align}
             onChange={(v) =>
@@ -362,35 +363,35 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
               })
             }
             options={[
-              { value: 'left', label: <AlignLeft size={13} />, title: 'Left' },
-              { value: 'center', label: <AlignCenter size={13} />, title: 'Centre' },
-              { value: 'right', label: <AlignRight size={13} />, title: 'Right' },
-              { value: 'justify', label: <AlignJustify size={13} />, title: 'Justify (not the last line)' },
+              { value: 'left', label: <AlignLeft size={13} />, title: t('Left') },
+              { value: 'center', label: <AlignCenter size={13} />, title: t('Centre') },
+              { value: 'right', label: <AlignRight size={13} />, title: t('Right') },
+              { value: 'justify', label: <AlignJustify size={13} />, title: t('Justify (not the last line)') },
             ]}
           />
-          <Segmented value={k.italic ? 'i' : ''} onChange={() => set('italic', !k.italic || undefined)} options={[{ value: 'i', label: <Italic size={13} />, title: 'Italic' }]} />
+          <Segmented value={k.italic ? 'i' : ''} onChange={() => set('italic', !k.italic || undefined)} options={[{ value: 'i', label: <Italic size={13} />, title: t('Italic') }]} />
         </Row>
         <Row
           expose="verticalAlign"
           exposeValue={layer.verticalAlign}
           exposeOptions={[
-            ['top', 'Top'],
-            ['middle', 'Middle'],
-            ['bottom', 'Bottom'],
+            ['top', t('Top')],
+            ['middle', t('Middle')],
+            ['bottom', t('Bottom')],
           ]}
-          label="Vertical"
+          label={t('Vertical')}
         >
           <Segmented
             value={layer.verticalAlign}
             onChange={(v) => set('verticalAlign', v)}
             options={[
-              { value: 'top', label: <AlignVerticalJustifyStart size={13} />, title: 'Top' },
-              { value: 'middle', label: <AlignVerticalJustifyCenter size={13} />, title: 'Middle' },
-              { value: 'bottom', label: <AlignVerticalJustifyEnd size={13} />, title: 'Bottom' },
+              { value: 'top', label: <AlignVerticalJustifyStart size={13} />, title: t('Top') },
+              { value: 'middle', label: <AlignVerticalJustifyCenter size={13} />, title: t('Middle') },
+              { value: 'bottom', label: <AlignVerticalJustifyEnd size={13} />, title: t('Bottom') },
             ]}
           />
         </Row>
-        <Row expose={['transform', 'decoration']} exposeValue={{ transform: layer.transform ?? 'none', decoration: layer.decoration ?? 'none' }} label="Case">
+        <Row expose={['transform', 'decoration']} exposeValue={{ transform: layer.transform ?? 'none', decoration: layer.decoration ?? 'none' }} label={t('Case')}>
           <Segmented
             value={layer.uppercase ? 'upper' : (layer.transform ?? 'none')}
             onChange={(v) =>
@@ -400,46 +401,46 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
               })
             }
             options={[
-              { value: 'none', label: '—', title: 'As typed' },
-              { value: 'upper', label: 'AA', title: 'UPPER CASE' },
-              { value: 'lower', label: 'aa', title: 'lower case' },
-              { value: 'capitalize', label: 'Aa', title: 'Each Word' },
+              { value: 'none', label: '—', title: t('As typed') },
+              { value: 'upper', label: 'AA', title: t('UPPER CASE') },
+              { value: 'lower', label: 'aa', title: t('lower case') },
+              { value: 'capitalize', label: 'Aa', title: t('Each Word') },
             ]}
           />
           <Segmented
             value={layer.decoration ?? 'none'}
             onChange={(v) => set('decoration', v === 'none' ? undefined : v)}
             options={[
-              { value: 'none', label: '—', title: 'No decoration' },
-              { value: 'underline', label: <Underline size={13} />, title: 'Underline' },
-              { value: 'lineThrough', label: <Strikethrough size={13} />, title: 'Strike through' },
+              { value: 'none', label: '—', title: t('No decoration') },
+              { value: 'underline', label: <Underline size={13} />, title: t('Underline') },
+              { value: 'lineThrough', label: <Strikethrough size={13} />, title: t('Strike through') },
             ]}
           />
         </Row>
       </Section>
-      <Section id="text-colour" title="Colour">
+      <Section id="text-colour" title={t('Colour')}>
         <Seg
-          label="Fill"
+          label={t('Fill')}
           path="fillType"
           value={k.fillType}
           options={[
-            ['solid', 'Solid'],
-            ['gradient', 'Gradient'],
+            ['solid', t('Solid')],
+            ['gradient', t('Gradient')],
           ]}
         />
-        <ColorGroupRow layer={layer as Layer} prop="fill" label={k.fillType === 'gradient' ? 'From' : 'Color'} />
+        <ColorGroupRow layer={layer as Layer} prop="fill" label={k.fillType === 'gradient' ? t('From') : t('Color')} />
         {k.fillType === 'gradient' && (
           <>
-            <ColorPick label="To" path="color2" value={D.color2} />
-            <Num label="Angle" path="gradAngle" value={k.gradAngle} min={0} max={360} unit="°" />
+            <ColorPick label={t('To')} path="color2" value={D.color2} />
+            <Num label={t('Angle')} path="gradAngle" value={k.gradAngle} min={0} max={360} unit="°" />
           </>
         )}
       </Section>
-      <Section id="text-effects" title="Effects">
+      <Section id="text-effects" title={t('Effects')}>
         <Toggle
           expose="props.strokeWidth"
           exposeValue={num(propValue(layer as Layer, 'strokeWidth', 0))}
-          label="Stroke"
+          label={t('Stroke')}
           value={stroke}
           onChange={(v) =>
             edit((l) => {
@@ -452,91 +453,91 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
         />
         {stroke && (
           <>
-            <ColorGroupRow layer={layer as Layer} prop="stroke" label="Color" />
-            <GroupRow layer={layer as Layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, precision: 1, suffix: 'px' }} />
+            <ColorGroupRow layer={layer as Layer} prop="stroke" label={t('Color')} />
+            <GroupRow layer={layer as Layer} spec={{ label: t('Width'), props: ['strokeWidth'], min: 0, precision: 1, suffix: 'px' }} />
             <Seg
-              label="Placement"
+              label={t('Placement')}
               path="strokeOutside"
               value={false}
               options={[
-                [false, 'Centred'],
-                [true, 'Outside'],
+                [false, t('Centred')],
+                [true, t('Outside')],
               ]}
             />
           </>
         )}
-        <Toggle label="Shadow" path="shadow" value={false} />
+        <Toggle label={t('Shadow')} path="shadow" value={false} />
         {k.shadow && (
           <>
-            <ColorPick label="Color" path="shadowColor" value={D.shadowColor} />
-            <Num label="Offset X" path="shadowX" value={k.shadowX} min={-200} max={200} unit="px" />
-            <Num label="Offset Y" path="shadowY" value={k.shadowY} min={-200} max={200} unit="px" />
-            <Num label="Blur" path="shadowBlur" value={k.shadowBlur} min={0} max={200} unit="px" />
+            <ColorPick label={t('Color')} path="shadowColor" value={D.shadowColor} />
+            <Num label={t('Offset X')} path="shadowX" value={k.shadowX} min={-200} max={200} unit="px" />
+            <Num label={t('Offset Y')} path="shadowY" value={k.shadowY} min={-200} max={200} unit="px" />
+            <Num label={t('Blur')} path="shadowBlur" value={k.shadowBlur} min={0} max={200} unit="px" />
           </>
         )}
-        <Toggle label="Band" path="band" value={false} />
+        <Toggle label={t('Band')} path="band" value={false} />
         {k.band && (
           <>
-            <ColorPick label="Color" path="bandColor" value={D.bandColor} />
-            <Num label="Padding" path="bandPadX" value={k.bandPadX} min={0} max={200} unit="px" />
-            <Num label="Gap" path="bandGap" value={k.bandGap} min={0} max={200} unit="px" />
-            <Num label="Corners" path="bandRadius" value={k.bandRadius} min={0} max={200} unit="px" />
-            <Toggle label="Accent" path="bandAccent" value={true} />
-            {k.bandAccent && <ColorPick label="Accent color" path="bandAccentColor" value={D.bandAccentColor} />}
+            <ColorPick label={t('Color')} path="bandColor" value={D.bandColor} />
+            <Num label={t('Padding')} path="bandPadX" value={k.bandPadX} min={0} max={200} unit="px" />
+            <Num label={t('Gap')} path="bandGap" value={k.bandGap} min={0} max={200} unit="px" />
+            <Num label={t('Corners')} path="bandRadius" value={k.bandRadius} min={0} max={200} unit="px" />
+            <Toggle label={t('Accent')} path="bandAccent" value={true} />
+            {k.bandAccent && <ColorPick label={t('Accent color')} path="bandAccentColor" value={D.bandAccentColor} />}
           </>
         )}
       </Section>
-      <Section id="text-fit" title="When the text is too long">
+      <Section id="text-fit" title={t('When the text is too long')}>
         <Seg
           expose="wrap"
           exposeValue={!!layer.wrap}
           exposeOptions={[
-            ['false', 'As typed'],
-            ['true', 'Paragraph'],
+            ['false', t('As typed')],
+            ['true', t('Paragraph')],
           ]}
-          label="Lines"
+          label={t('Lines')}
           value={layer.wrap ? 'paragraph' : 'single'}
           onChange={(v) => edit((l) => void (l.wrap = v === 'paragraph' || undefined))}
           options={[
-            ['single', 'As typed', 'Line breaks only where you type them'],
-            ['paragraph', 'Paragraph', 'Lines wrap at the width of the box'],
+            ['single', t('As typed'), t('Line breaks only where you type them')],
+            ['paragraph', t('Paragraph'), t('Lines wrap at the width of the box')],
           ]}
         />
         {layer.wrap && (
           <>
-            <Num label="Max lines" path="maxLines" value={k.maxLines} min={0} max={99} />
+            <Num label={t('Max lines')} path="maxLines" value={k.maxLines} min={0} max={99} />
             <Seg
-              label="Line break"
+              label={t('Line break')}
               path="breakMode"
               value={k.breakMode}
               options={[
-                ['word', 'Whole word'],
-                ['hyphen', 'Hyphenation'],
+                ['word', t('Whole word')],
+                ['hyphen', t('Hyphenation')],
               ]}
             />
-            {k.breakMode === 'hyphen' && <Select label="Language" path="lang" value={k.lang} options={[['', 'Project language'], ...HYPHEN_LANGS]} />}
+            {k.breakMode === 'hyphen' && <Select label={t('Language')} path="lang" value={k.lang} options={[['', t('Project language')], ...HYPHEN_LANGS.map(([v, l]) => [v, t(l)] as [string, string])]} />}
           </>
         )}
         <Seg
-          label="Direction"
+          label={t('Direction')}
           path="dir"
           value={k.dir}
           options={[
-            ['ltr', 'Left to right'],
-            ['rtl', 'Right to left', 'Arabic, Hebrew…'],
+            ['ltr', t('Left to right')],
+            ['rtl', t('Right to left'), t('Arabic, Hebrew…')],
           ]}
         />
-        <Seg expose="overflow" exposeValue={mode} label="Behaviour" value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS} />
+        <Seg expose="overflow" exposeValue={mode} label={t('Behaviour')} value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS.map(([v, l, tip]) => [v, t(l), t(tip)] as [TextOverflow, string, string])} />
         {mode === 'fit' && (
           <>
-            <Num expose="squeeze" exposeValue={layer.squeeze ?? 0.8} label="Narrower to" value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit="%" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
-            <Num expose="minSize" exposeValue={layer.minSize ?? 0.6} label="Smaller to" value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
+            <Num expose="squeeze" exposeValue={layer.squeeze ?? 0.8} label={t('Narrower to')} value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit="%" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
+            <Num expose="minSize" exposeValue={layer.minSize ?? 0.6} label={t('Smaller to')} value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
             <Seg
-              label="Then"
+              label={t('Then')}
               path="fitEnd"
               value={k.fitEnd}
               options={[
-                ['clip', 'Cut'],
+                ['clip', t('Cut')],
                 ['ellipsis', '…'],
               ]}
             />
@@ -550,7 +551,7 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
 /** Font and weight, from the fonts of Assets. */
 function FontRow({ layer, set }: { layer: TextLayer; set: (key: string, v: unknown) => void }) {
   return (
-    <Row expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }} label="Font">
+    <Row expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }} label={t('Font')}>
       <FontPick family={layer.fontFamily} weight={layer.fontWeight} onChange={(f, w) => (set('fontFamily', f), w !== layer.fontWeight && set('fontWeight', w))} />
     </Row>
   );
@@ -598,11 +599,11 @@ export default defineWidget({
   warnings: (layer, { data }) => {
     const out: Warning[] = [];
     const text = shownText(layer, data);
-    if (!text.trim()) return [{ level: 'info', text: 'Empty text: nothing goes on air; the box keeps its size.' }];
-    if (missingFont(layer)) out.push({ level: 'warn', text: `Font “${layer.fontFamily}” is missing on the server: replaced by Inter.`, op: true });
+    if (!text.trim()) return [{ level: 'info', text: t('Empty text: nothing goes on air; the box keeps its size.') }];
+    if (missingFont(layer)) out.push({ level: 'warn', text: t('Font “{font}” is missing on the server: replaced by Inter.', { font: layer.fontFamily }), op: true });
     const fb = fallbackChars(text, layer.fontFamily);
-    if (fb.length) out.push({ level: 'info', text: `${fb.join(' ')} not in ${layer.fontFamily}: drawn with a fallback font (colour emoji / symbols), never an empty box.` });
-    if (/[؀-ۿݐ-ݿ]/.test(text)) out.push({ level: 'info', text: 'Arabic: the on-air renderer has no text shaping, the letters are drawn unjoined there.', op: true });
+    if (fb.length) out.push({ level: 'info', text: t('{chars} not in {font}: drawn with a fallback font (colour emoji / symbols), never an empty box.', { chars: fb.join(' '), font: layer.fontFamily }) });
+    if (/[؀-ۿݐ-ݿ]/.test(text)) out.push({ level: 'info', text: t('Arabic: the on-air renderer has no text shaping, the letters are drawn unjoined there.'), op: true });
     return out;
   },
 });

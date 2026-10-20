@@ -8,6 +8,7 @@ import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
+import { t, tn } from '../i18n';
 
 export interface Crop {
   l: number;
@@ -307,9 +308,9 @@ function Thumb({ src, size, layer, edit }: { src: string; size: [number, number]
 function PictureRow() {
   const x = useExposable('src', '', undefined, 'image');
   const b = useBound();
-  if (x.wired) return <DataValue label="Picture" value={interpolateText(x.raw, x.data)} />;
+  if (x.wired) return <DataValue label={t('Picture')} value={interpolateText(x.raw, x.data)} />;
   return (
-    <Row label="Picture" tail={x.canExpose ? <ExposeToggle on={x.exposed} onClick={x.toggleExpose} /> : undefined}>
+    <Row label={t('Picture')} tail={x.canExpose ? <ExposeToggle on={x.exposed} onClick={x.toggleExpose} /> : undefined}>
       <AssetPicker
         value={x.shown}
         clearable={false}
@@ -346,23 +347,23 @@ export default defineWidget({
     const stroke = num(l.props.strokeWidth as never) > 0;
     return (
       <>
-        <Section id="image-source" title="Picture">
+        <Section id="image-source" title={t('Picture')}>
           <PictureRow />
-          <Row expose="fallback" exposeValue={k.fallback} label="Fallback">
-            <AssetPicker value={k.fallback} title="Choose the fallback picture" placeholder="None" onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
+          <Row expose="fallback" exposeValue={k.fallback} label={t('Fallback')}>
+            <AssetPicker value={k.fallback} title={t('Choose the fallback picture')} placeholder={t('None')} onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
           </Row>
         </Section>
         <Sequence k={k} ed={ed} />
-        <Section id="image-fit" title="Fit & crop">
+        <Section id="image-fit" title={t('Fit & crop')}>
           <Seg
             expose="fit"
             exposeValue={l.fit}
             exposeOptions={[
-              ['contain', 'Contain'],
-              ['cover', 'Cover'],
-              ['stretch', 'Stretch'],
+              ['contain', t('Contain')],
+              ['cover', t('Cover')],
+              ['stretch', t('Stretch')],
             ]}
-            label="Fit"
+            label={t('Fit')}
             value={fit}
             onChange={(v) =>
               ed((x) => {
@@ -371,22 +372,22 @@ export default defineWidget({
               })
             }
             options={[
-              ['contain', 'Contain'],
-              ['cover', 'Cover'],
-              ['stretch', 'Stretch'],
-              ['original', 'Original'],
-              ['tile', 'Tile'],
+              ['contain', t('Contain')],
+              ['cover', t('Cover')],
+              ['stretch', t('Stretch')],
+              ['original', t('Original')],
+              ['tile', t('Tile')],
             ]}
           />
-          {fit === 'tile' && <Num label="Tile size" path="tileScale" value={k.tileScale} min={5} max={400} unit="%" />}
+          {fit === 'tile' && <Num label={t('Tile size')} path="tileScale" value={k.tileScale} min={5} max={400} unit="%" />}
           {fit === 'cover' && !missing && st.s === 'ok' && (
-            <Row expose={['focal.x', 'focal.y']} exposeValue={{ 'focal.x': k.focal.x, 'focal.y': k.focal.y }} label="Focal point">
+            <Row expose={['focal.x', 'focal.y']} exposeValue={{ 'focal.x': k.focal.x, 'focal.y': k.focal.y }} label={t('Focal point')}>
               <Thumb src={src} size={st.size} layer={l} edit={ed} />
             </Row>
           )}
           {fit !== 'tile' && (
             <>
-              <Toggle label="Crop" value={cropping} onChange={(v) => setUi(() => (v ? ui.crop.add(layer.id) : ui.crop.delete(layer.id)))} />
+              <Toggle label={t('Crop')} value={cropping} onChange={(v) => setUi(() => (v ? ui.crop.add(layer.id) : ui.crop.delete(layer.id)))} />
               {cropping && (
                 <>
                   {(['l', 'r', 't', 'b'] as const).map((s) => (
@@ -394,7 +395,7 @@ export default defineWidget({
                       expose={`crop.${s}`}
                       exposeValue={cropOf(l)[s]}
                       key={s}
-                      label={{ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s]}
+                      label={t({ l: 'Left', t: 'Top', r: 'Right', b: 'Bottom' }[s])}
                       value={Math.round(cropOf(l)[s] * 100)}
                       min={0}
                       max={95}
@@ -402,28 +403,28 @@ export default defineWidget({
                       onChange={(v) => ed((x) => void (x.crop = { ...cropOf(x), [s]: v / 100 }), `crop-${layer.id}`)}
                     />
                   ))}
-                  <Btns list={[{ label: 'Reset crop', cls: 'ghost', onClick: () => ed((x) => void delete x.crop) }]} />
+                  <Btns list={[{ label: t('Reset crop'), cls: 'ghost', onClick: () => ed((x) => void delete x.crop) }]} />
                 </>
               )}
             </>
           )}
         </Section>
-        <Section id="image-shape" title="Shape">
+        <Section id="image-shape" title={t('Shape')}>
           <Seg
-            label="Mask"
+            label={t('Mask')}
             path="mask"
             value={k.mask}
             options={[
-              ['none', 'Square'],
-              ['rounded', 'Rounded'],
-              ['circle', 'Circle'],
+              ['none', t('Square')],
+              ['rounded', t('Rounded')],
+              ['circle', t('Circle')],
             ]}
           />
-          {k.mask === 'rounded' && <Num label="Radius" path="radius" value={k.radius} min={0} max={2000} unit="px" />}
+          {k.mask === 'rounded' && <Num label={t('Radius')} path="radius" value={k.radius} min={0} max={2000} unit="px" />}
           <Toggle
             expose="props.strokeWidth"
             exposeValue={num(l.props.strokeWidth as never)}
-            label="Stroke"
+            label={t('Stroke')}
             value={stroke}
             onChange={(v) =>
               ed((x) => {
@@ -434,33 +435,33 @@ export default defineWidget({
           />
           {stroke && (
             <>
-              <ColorGroupRow layer={layer} prop="stroke" label="Color" />
-              <GroupRow layer={layer} spec={{ label: 'Width', props: ['strokeWidth'], min: 0, suffix: 'px' }} />
+              <ColorGroupRow layer={layer} prop="stroke" label={t('Color')} />
+              <GroupRow layer={layer} spec={{ label: t('Width'), props: ['strokeWidth'], min: 0, suffix: 'px' }} />
             </>
           )}
         </Section>
-        <Section id="image-colorize" title="Colorize">
+        <Section id="image-colorize" title={t('Colorize')}>
           <Seg
-            label="Mode"
+            label={t('Mode')}
             path="colorize"
             value={k.colorize}
             options={[
-              ['none', 'Off'],
-              ['replace', 'Replace', 'Every opaque pixel takes the colour (one-colour logos)'],
-              ['tint', 'Tint', 'Greys take the colour'],
+              ['none', t('Off')],
+              ['replace', t('Replace'), t('Every opaque pixel takes the colour (one-colour logos)')],
+              ['tint', t('Tint'), t('Greys take the colour')],
             ]}
           />
-          {k.colorize !== 'none' && <ColorPick label="Colour" path="tint" value={D.tint} />}
+          {k.colorize !== 'none' && <ColorPick label={t('Colour')} path="tint" value={D.tint} />}
         </Section>
-        <Section id="image-preview" title="Output preview" closed>
+        <Section id="image-preview" title={t('Output preview')} closed>
           <Seg
-            label="View"
+            label={t('View')}
             value={view}
             onChange={(v) => setUi(() => ui.view.set(layer.id, v))}
             options={[
-              ['program', 'Program'],
-              ['fill', 'Fill'],
-              ['key', 'Key'],
+              ['program', t('Program')],
+              ['fill', t('Fill')],
+              ['key', t('Key')],
             ]}
           />
         </Section>
@@ -477,13 +478,13 @@ export default defineWidget({
       <>
         <Btns
           list={[
-            { label: st.playing ? 'Pause' : 'Play', cls: st.playing ? '' : 'violet', onClick: () => act(st.playing ? 'pause' : 'play') },
-            { label: 'Restart', cls: 'ghost', onClick: () => act('restart') },
+            { label: st.playing ? t('Pause') : t('Play'), cls: st.playing ? '' : 'violet', onClick: () => act(st.playing ? 'pause' : 'play') },
+            { label: t('Restart'), cls: 'ghost', onClick: () => act('restart') },
           ]}
         />
         <Note>
-          {k.frames.length} frames at {k.fps} fps · {k.playMode === 'loop' ? 'loops' : k.playMode === 'once' ? 'plays once' : `plays ${k.loops} times`}
-          {k.start === 'in' ? ' · starts at the In' : ''}
+          {tn(k.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: k.fps })} · {k.playMode === 'loop' ? t('loops') : k.playMode === 'once' ? t('plays once') : tn(k.loops, 'plays {n} time', 'plays {n} times')}
+          {k.start === 'in' ? ` · ${t('starts at the In')}` : ''}
         </Note>
       </>
     );
@@ -504,8 +505,8 @@ export default defineWidget({
       const r3 = (v: number) => +v.toFixed(3);
       return (
         <>
-          <Handle x={R[0] + c.l * R[2]} y={R[1] + c.t * R[3]} scale={scale} label="Crop: top left" onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), l: r3(clamp(fx(x), 0, 0.95 - c.r)), t: r3(clamp(fy(y), 0, 0.95 - c.b)) }), `crop-${layer.id}`)} />
-          <Handle x={R[0] + (1 - c.r) * R[2]} y={R[1] + (1 - c.b) * R[3]} scale={scale} label="Crop: bottom right" onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), r: r3(clamp(1 - fx(x), 0, 0.95 - c.l)), b: r3(clamp(1 - fy(y), 0, 0.95 - c.t)) }), `crop-${layer.id}`)} />
+          <Handle x={R[0] + c.l * R[2]} y={R[1] + c.t * R[3]} scale={scale} label={t('Crop: top left')} onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), l: r3(clamp(fx(x), 0, 0.95 - c.r)), t: r3(clamp(fy(y), 0, 0.95 - c.b)) }), `crop-${layer.id}`)} />
+          <Handle x={R[0] + (1 - c.r) * R[2]} y={R[1] + (1 - c.b) * R[3]} scale={scale} label={t('Crop: bottom right')} onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), r: r3(clamp(1 - fx(x), 0, 0.95 - c.l)), b: r3(clamp(1 - fy(y), 0, 0.95 - c.t)) }), `crop-${layer.id}`)} />
         </>
       );
     }
@@ -519,7 +520,7 @@ export default defineWidget({
           x={F[0] + clamp(ux, 0, 1) * F[2]}
           y={F[1] + clamp(uy, 0, 1) * F[3]}
           scale={scale}
-          label="Focal point: kept in view when Cover crops"
+          label={t('Focal point: kept in view when Cover crops')}
           onDrag={(x, y) =>
             ed((q) => {
               const cc = cropOf(q);
@@ -539,16 +540,28 @@ export default defineWidget({
     const wanted = wantedSrc(l, data, 0);
     const r = resolve(l, data, 0);
     if (r.missing) {
-      const shown = r.st.s === 'missing' ? 'the channel slate' : `the fallback ${r.src}`;
-      const also = k.fallback && r.st.s === 'missing' ? ` (the fallback ${k.fallback} cannot be found either)` : '';
-      out.push({ level: 'error', text: wanted ? `File not found: ${wanted}. On air: ${shown} instead${also}.` : `No picture chosen: ${shown} is shown${also}.`, op: true });
+      const slate = r.st.s === 'missing';
+      const also = !!k.fallback && slate;
+      const v = { file: wanted, fallback: slate ? k.fallback : r.src };
+      const text = wanted
+        ? slate
+          ? also
+            ? t('File not found: {file}. On air: the channel slate instead (the fallback {fallback} cannot be found either).', v)
+            : t('File not found: {file}. On air: the channel slate instead.', v)
+          : t('File not found: {file}. On air: the fallback {fallback} instead.', v)
+        : slate
+          ? also
+            ? t('No picture chosen: the channel slate is shown (the fallback {fallback} cannot be found either).', v)
+            : t('No picture chosen: the channel slate is shown.', v)
+          : t('No picture chosen: the fallback {fallback} is shown.', v);
+      out.push({ level: 'error', text, op: true });
     }
     const missingFrames = k.frames.filter((f) => status(interpolateText(f, data)).s === 'missing').length;
-    if (k.frames.length && missingFrames) out.push({ level: 'warn', text: `${missingFrames} frame${missingFrames > 1 ? 's' : ''} of the sequence cannot be found: the fallback shows in their place.`, op: true });
-    if (k.colorize !== 'none' && r.missing) out.push({ level: 'info', text: 'Colorize does not apply to the fallback picture.' });
+    if (k.frames.length && missingFrames) out.push({ level: 'warn', text: tn(missingFrames, '{n} frame of the sequence cannot be found: the fallback shows in their place.', '{n} frames of the sequence cannot be found: the fallback shows in their place.'), op: true });
+    if (k.colorize !== 'none' && r.missing) out.push({ level: 'info', text: t('Colorize does not apply to the fallback picture.') });
     if (k.frames.length && !r.missing && k.start === 'manual') {
       const s = seqInfo(l, state as State, Date.now(), 0);
-      if (!(state as State | undefined)?.playing || s.ended) out.push({ level: 'info', text: `Sequence ${s.ended ? 'finished' : 'paused'} on frame ${s.idx + 1}/${s.n}.`, op: 'only' });
+      if (!(state as State | undefined)?.playing || s.ended) out.push({ level: 'info', text: s.ended ? t('Sequence finished on frame {n}/{total}.', { n: s.idx + 1, total: s.n }) : t('Sequence paused on frame {n}/{total}.', { n: s.idx + 1, total: s.n }), op: 'only' });
     }
     return out;
   },
@@ -568,7 +581,7 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
         x.frames = r.frames;
         x.fps = Math.round(r.fps * 100) / 100;
       });
-      toast(`${r.frames.length} frames at ${Math.round(r.fps * 10) / 10} fps`, 'info');
+      toast(tn(r.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: Math.round(r.fps * 10) / 10 }), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -577,10 +590,10 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
   };
   const n = k.frames.length;
   return (
-    <Section id="image-anim" title={n ? `Animation · ${n} frames` : 'Animation'} closed={!n}>
-      <Row label="Import">
-        <label className={`btn small ${busy ? 'disabled' : ''}`} title="An animated GIF or PNG (APNG): split into frames in the project's media">
-          {busy ? 'Splitting…' : 'Animated GIF / PNG…'}
+    <Section id="image-anim" title={n ? tn(n, 'Animation · {n} frame', 'Animation · {n} frames') : t('Animation')} closed={!n}>
+      <Row label={t('Import')}>
+        <label className={`btn small ${busy ? 'disabled' : ''}`} title={t("An animated GIF or PNG (APNG): split into frames in the project's media")}>
+          {busy ? t('Splitting…') : t('Animated GIF / PNG…')}
           <input type="file" accept="image/gif,image/png,image/apng" hidden disabled={busy} onChange={(e) => (e.target.files?.[0] && void importFile(e.target.files[0]), (e.target.value = ''))} />
         </label>
       </Row>
@@ -590,40 +603,40 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
             <span key={i} className="seq-frame" title={f}>
               <img src={f} alt="" loading="lazy" />
               <i>{i + 1}</i>
-              <button title="Remove this frame" onClick={() => ed((x) => void (x.frames = cfg(x).frames.filter((_, j) => j !== i)))}>
+              <button title={t('Remove this frame')} onClick={() => ed((x) => void (x.frames = cfg(x).frames.filter((_, j) => j !== i)))}>
                 ×
               </button>
             </span>
           ))}
         </div>
       )}
-      <Row label="Add a frame">
-        <AssetPicker value="" placeholder="Choose a picture…" title="Add a frame at the end" onChange={(v) => v && ed((x) => void (x.frames = [...cfg(x).frames, v]))} />
+      <Row label={t('Add a frame')}>
+        <AssetPicker value="" placeholder={t('Choose a picture…')} title={t('Add a frame at the end')} onChange={(v) => v && ed((x) => void (x.frames = [...cfg(x).frames, v]))} />
       </Row>
       {n > 0 && (
         <>
-          <Num label="Speed" path="fps" value={k.fps} min={0.1} max={120} step={1} unit="fps" />
+          <Num label={t('Speed')} path="fps" value={k.fps} min={0.1} max={120} step={1} unit="fps" />
           <Seg
-            label="Play"
+            label={t('Play')}
             path="playMode"
             value={k.playMode}
             options={[
-              ['loop', 'Loop'],
-              ['once', 'Once'],
-              ['count', 'Times'],
+              ['loop', t('Loop')],
+              ['once', t('Once')],
+              ['count', t('Times')],
             ]}
           />
-          {k.playMode === 'count' && <Num label="Times" path="loops" value={k.loops} min={1} max={999} />}
+          {k.playMode === 'count' && <Num label={t('Times')} path="loops" value={k.loops} min={1} max={999} />}
           <Seg
-            label="Start"
+            label={t('Start')}
             path="start"
             value={k.start}
             options={[
-              ['in', 'At the In'],
-              ['manual', 'By the operator'],
+              ['in', t('At the In')],
+              ['manual', t('By the operator')],
             ]}
           />
-          <Btns list={[{ label: 'Remove the animation', cls: 'ghost', onClick: () => ed((x) => void (x.frames = [])) }]} />
+          <Btns list={[{ label: t('Remove the animation'), cls: 'ghost', onClick: () => ed((x) => void (x.frames = [])) }]} />
         </>
       )}
     </Section>

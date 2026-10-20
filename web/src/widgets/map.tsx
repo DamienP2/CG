@@ -923,7 +923,7 @@ export default defineWidget({
                       { key: 'color', w: 34, color: true },
                     ]}
                     add={() => ({ v: 0, color: '#ffffff' })}
-                    addLabel={t('Stop')}
+                    addLabel={tc('scale', 'Stop')}
                   />
                   <Text label={t('Unit')} path="zones.unit" value={k.zones.unit} />
                 </>
