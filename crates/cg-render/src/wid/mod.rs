@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Drawing of the spec widgets (`cg_core::wid`), one module each. A module
 //! returns false while it does not draw its layer, so the generic code of
 //! `lib.rs` still does.

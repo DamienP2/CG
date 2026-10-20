@@ -934,7 +934,7 @@ impl Renderer {
                     self.draw_image(pm, &list[next], *fit, w, h, tf, opacity * mix as f32, mask);
                 }
             }
-            // Spec widgets not drawn yet by src/wid.
+            // Drawn by src/wid (wid::draw returns true for them).
             LayerKind::Polygon { .. }
             | LayerKind::Pen { .. }
             | LayerKind::Table { .. }

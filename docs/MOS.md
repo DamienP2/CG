@@ -8,14 +8,14 @@ Strata est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group), 
 
 ## 1. Côté Strata
 
-1. **Réglages → Rédaction (MOS)** :
+1. **Onglet MOS** de l'accueil (admins) :
    - cocher *Accept newsroom connections* ;
    - **MOS ID** : `pulsecg.mos` par défaut, c'est l'identifiant à déclarer dans la rédaction ;
    - **Ports** : 10540 (bas : objets, profils 0-1) et 10541 (haut : conducteurs, profil 2) ;
    - **Projet** : celui qui reçoit les conducteurs. En mode *Automatique*, c'est le projet des habillages.
 
-   Enregistrer : le moteur redémarre et les ports s'ouvrent. Le badge indique *listening* et le nombre de connexions.
-2. **Utilisateurs** : créer un compte `saga-plugin` de rôle **Operator**, limité aux projets des émissions concernées, puis une **clé d'API** pour ce compte (Utilisateurs → API keys).
+   Enregistrer : le moteur redémarre et les ports s'ouvrent. L'état (*Listening* ou *Connected*) et le nombre de connexions s'affichent en haut de la page ; *Running orders* liste les conducteurs reçus.
+2. **Utilisateurs** : créer un compte `saga-plugin` de rôle **Operator**, limité aux projets des émissions concernées, puis une **clé d'API** pour ce compte (onglet **API** → *API keys*, en la faisant agir en tant que ce compte).
 3. Le pare-feu du serveur doit autoriser les ports 10540-10541 et 8080 depuis le réseau de la rédaction.
 
 ## 2. Côté Saga (Fonn Group)

@@ -1001,49 +1001,6 @@ fn cell_picture(
     d.opacity = op0;
 }
 
-/// A picture cell: an asset path is drawn at height `h`, a code as a grey chip.
-pub(crate) fn draw_picture(d: &mut Draw, v: &str, cx: f32, cy: f32, h: f32, m: Option<&Mask>) {
-    let v = v.trim();
-    if v.is_empty() {
-        return;
-    }
-    if v.starts_with('/') || v.contains('.') {
-        if let Some((iw, ih)) = d.image_size(v) {
-            let s = h / ih.max(1) as f32;
-            let w = iw as f32 * s;
-            let tf = Transform::from_row(s, 0.0, 0.0, s, cx - w / 2.0, cy - h / 2.0);
-            d.image(v, tf, 1.0, m);
-            return;
-        }
-    }
-    let w = h * 1.5;
-    rect(
-        d,
-        cx - w / 2.0,
-        cy - h / 2.0,
-        w,
-        h,
-        h * 0.1,
-        Draw::hex("#334155"),
-        m,
-    );
-    let code: String = v.chars().take(3).collect::<String>().to_uppercase();
-    if let Some(f) = d.font(FAMILY, 700) {
-        if let Some(p) = Draw::text_path(
-            &f,
-            &code,
-            h * 0.35,
-            0.0,
-            TextAlign::Center,
-            VerticalAlign::Middle,
-            (cx - w / 2.0, cy - h / 2.0, w, h),
-            tx::LINE_HEIGHT,
-        ) {
-            d.fill(&p, Draw::hex("#cbd5e1"), FillRule::Winding, m);
-        }
-    }
-}
-
 #[cfg(test)]
 mod fit_tests {
     use super::fit_cell;

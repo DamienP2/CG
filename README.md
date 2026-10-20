@@ -67,7 +67,7 @@ Ces commandes agissent sur le dossier de données du service s'il existe (sinon 
 
 ### Réglages, chaînes et sorties vidéo
 
-Le serveur se règle dans la page **Settings**, les chaînes et leurs sorties dans la page **Outputs** (`/outputs`, réservées aux admins). Tout est enregistré dans `config.json`, dans le dossier de données ; *Apply* redémarre les sorties sans redémarrer le service :
+Le serveur se règle dans la page **Settings** (Général, Réseau, Mises à jour, Système), les chaînes et leurs sorties dans la page **Outputs** (`/outputs`, réservées aux admins). Tout est enregistré dans `config.json`, dans le dossier de données ; *Apply* redémarre les sorties sans redémarrer le service :
 
 ```json
 {
@@ -98,14 +98,19 @@ Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/<id de la sorti
 ## Utilisation
 
 ### Projets
-Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. Après connexion, l'application montre seulement **Projects**, **Media**, **Users** et **Settings** (ces deux derniers pour les admins). La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
+Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. La page d'accueil a les onglets **Projects**, **Assets**, **Data**, **Outputs**, **MOS**, **Users**, **API** et **Settings** (*Outputs*, *MOS*, *Users* et *Settings* pour les admins ; *Data* pour les designers). Chacun suit la même mise en page : une liste à gauche, la page à droite. La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
 
 Les projets se rangent dans des **dossiers** (colonne de gauche : créer, renommer, supprimer un dossier ; glisser une carte sur un dossier, ou *… > Move to*). Supprimer un dossier ne supprime pas ses projets. Recherche et tri par nom ou nombre de templates.
 
+**Actions groupées** : la case en haut à droite d'une carte (ou *Select*) sélectionne des projets ; `Maj`+clic prend tous ceux entre deux, `Ctrl+A` tous ceux affichés, `Échap` vide la sélection. La barre de sélection permet de les **supprimer** (une seule confirmation, qui liste les chaînes où ils sont chargés), de les **déplacer** dans un dossier ou à la racine, ou de **créer un dossier** et les y mettre. Glisser un projet sélectionné sur un dossier y emmène toute la sélection.
+
 Chaque carte de projet montre son nom, sa description, son format d'origine, ses templates et les chaînes qui le jouent, un aperçu de son premier template, et cinq accès : **Designer**, **Operator**, **Data**, **Media** et **Settings**. Un projet s'ouvre dans son propre onglet du navigateur (le rouvrir réutilise le même onglet), sous `/project/<id>/designer|operator|data|media|settings`. *Settings* y règle le nom, la description et le format d'origine. L'*Operator* d'un projet s'ouvre même sans sortie (préparation du rundown et preview ; Take désactivé). Le menu de sortie range les chaînes en *This project*, *Free* et *Used by another project* (avec le nom du projet) ; en choisir une libre ou d'un autre projet y charge ce projet (avec confirmation dans le second cas). Toutes les pages d'un projet se mettent à jour en temps réel pour tous les utilisateurs (templates, rundown, données, médias, sorties). L'indicateur *On air* n'apparaît que dans l'Operator.
 
-### Médias
-Deux bibliothèques : les **médias partagés** (page *Media* de l'accueil, `/assets/<fichier>`), utilisables par tous les projets, et les **médias du projet** (onglet *Media* du projet, `/assets/projects/<id>/<fichier>`). On y téléverse images, vidéos, sons et polices (bouton *Upload* ou glisser-déposer, jusqu'à 2 Go par fichier, avec progression), on filtre par type, on cherche, on copie l'URL, on télécharge ou on supprime. Le sélecteur d'image du Designer propose les deux bibliothèques et téléverse dans celle du projet ; les images d'un import After Effects y vont aussi. Dupliquer un projet copie ses médias, le supprimer les supprime.
+### Médias (Assets)
+Deux bibliothèques : les **ressources partagées** (onglet *Assets* de l'accueil, `/assets/<fichier>`), utilisables par tous les projets, et les **ressources du projet** (onglet *Assets* du projet, `/assets/projects/<id>/<fichier>`). La colonne de gauche filtre par type (images, vidéos, audio, autres) avec leur nombre et montre l'espace occupé ; les **polices**, communes à tous les projets, ont leur propre entrée dans la bibliothèque partagée. On y importe images, vidéos, sons et polices (bouton *Upload* ou glisser-déposer, jusqu'à 2 Go par fichier, avec progression), on cherche, on trie (nom, date, taille), on copie l'URL, on télécharge ou on supprime. Le sélecteur d'image du Designer propose les deux bibliothèques et importe dans celle du projet ; les images d'un import After Effects y vont aussi. Dupliquer un projet copie ses médias, le supprimer les supprime.
+
+### Langue de l'interface
+Le sélecteur **FR | EN** à côté du nom de l'utilisateur (en haut à droite, et sur la page de connexion) change la langue de toute l'interface. Chaque utilisateur garde sa langue sur le serveur (`PUT /api/me/lang`) ; tant qu'il n'en a pas choisi, c'est celle du navigateur. Ce qui passe à l'antenne (textes des templates, formats d'heure…) ne dépend pas de la langue de l'interface. Les textes français sont dans `web/src/i18n/fr/`, et `node web/scripts/i18n-check.mjs` liste ceux qui manquent.
 
 ### Sorties vidéo (page Outputs)
 Une **chaîne** est un programme indépendant : son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne. Les chaînes se rangent par **lieu** (un studio, un car, la cellule web…) dans la colonne de gauche. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
@@ -133,7 +138,7 @@ Strata est un **MOS device 2.8** pour Saga (Fonn Group), iNews, ENPS, Octopus…
 - Les journalistes placent les habillages dans leurs sujets avec le plugin HTML5 `/mos/plugin`.
 - Chaque conducteur envoyé par la rédaction devient une playlist du projet.
 
-Mise en service : [`docs/MOS.md`](docs/MOS.md).
+L'onglet **MOS** de l'accueil (admins) règle la connexion (identifiants MOS / NCS, ports, projet qui reçoit les conducteurs) et montre son état, les conducteurs reçus et l'adresse du plugin des journalistes. Mise en service : [`docs/MOS.md`](docs/MOS.md).
 
 ### Post-production (Adobe Premiere Pro)
 Le panneau Premiere Pro rend un habillage au format et à la cadence de la séquence, en QuickTime avec alpha, puis le pose à la tête de lecture. Voir [`integrations/premiere/README.md`](integrations/premiere/README.md). La même fonction est disponible pour tout outil via `POST /api/render`.
@@ -153,24 +158,20 @@ Onglet **Data** : les sources de données du serveur, relues à intervalle régu
 | **Operator** | charger un projet sur une chaîne, jouer les graphiques, modifier le rundown et ses données |
 | **Viewer** | consulter les projets et les monitors program |
 
-Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains projets** et à **certaines chaînes**. Les mots de passe sont hachés avec Argon2 (`users.json`). Le navigateur garde la session dans un cookie HttpOnly. L'automation peut utiliser `Authorization: Bearer <token>` (jeton renvoyé par `POST /api/auth/login`). Les pages `/output/<chaîne>` restent accessibles sans connexion pour les browser sources ; l'option se désactive dans les Réglages.
+L'onglet **Users** liste les comptes en cartes, filtrées par rôle à gauche. Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains projets** et à **certaines chaînes**. Les mots de passe sont hachés avec Argon2 (`users.json`). Le navigateur garde la session dans un cookie HttpOnly. L'automation peut utiliser `Authorization: Bearer <token>` (jeton renvoyé par `POST /api/auth/login`). Les pages `/output/<chaîne>` restent accessibles sans connexion pour les browser sources ; l'option se désactive dans les Réglages.
 
 ### Designer
 - **Insertion** (au-dessus de la colonne *Layers* de la timeline) : rectangle, ellipse, trait, texte, image, groupe (avec masque *clip*), et le bouton **+** qui ouvre les *Basics* et les *Strata widgets*.
-- **Widgets préfabriqués** : ils sont rendus à l'identique en HTML5 et par le moteur Rust, animables (position, opacité, crop…) et reliables aux champs de données `{{clé}}` :
-  - **Horloge** (heure dans n'importe quel fuseau, date) ;
-  - **Compte à rebours** vers une heure ou une date ;
-  - **Minuteur** et **chronomètre** qui démarrent au take ;
-  - **Horloge analogique** ;
-  - **Ticker / crawl** horizontal ;
-  - **Générique** défilant verticalement ;
-  - **Rotator** (messages en fondu enchaîné) ;
-  - **Machine à écrire** ;
-  - **Compteur animé** (scores, résultats, montants) ;
-  - **Barre de progression** ;
-  - **Graphique en barres / sondage** ;
-  - **Diaporama** d'images ;
-  - **QR code**.
+- **Widgets** (bouton **+** de la timeline) : ils sont rendus à l'identique en HTML5 et par le moteur Rust, animables (position, opacité, crop…), et leurs réglages peuvent être reliés aux données (canevas *Data*) :
+  - **Formes** : rectangle (*quad*), polygone, ellipse, plume (tracé libre), avec dégradés ;
+  - **Texte** : une ligne, multiligne, défilement horizontal (ticker) ou vertical (générique), styles par mot (gras, couleur…) ;
+  - **Image** (et séquences GIF / APNG / vidéo image par image) ;
+  - **Chrono** (minuteur, chronomètre, compte à rebours, horloge, avec déclencheur à zéro) ;
+  - **Tableau** (classements, résultats, couleurs par ligne venant des données) ;
+  - **Bandeau défilant**, **Générique**, **Machine à écrire** ;
+  - **Compteur animé**, **Barre de progression** (qui peut suivre un autre widget) ;
+  - **Graphique** (barres, lignes, camembert…), **Carte**, **QR code**, **Tableau des scores** ;
+  - **Page web** (URL ou HTML ; seule la sortie HTML5 l'affiche).
 - **Scène** : sélection, déplacement, poignées de redimensionnement, zones de sécurité, fond studio, transparent ou noir.
 - **Panneau de droite, Properties** (à la manière d'After Effects) : groupes repliables *Transform* (Position, Scale, Dimensions, Anchor, Rotation, Opacity), *Contents* (couleurs, contour, rayon, typographie, cadrage d'image) et *Reveal mask*. Chaque ligne a ◀ ◆ ▶ (keyframe précédente / à la tête de lecture / suivante), le bouton d'animation (allumé quand la propriété est animée) et ses champs X / Y avec leur unité. Le cadenas de *Scale* garde les proportions (aussi dans la timeline).
 - **Panneau de gauche, sous les templates** : l'onglet du calque sélectionné montre ce qu'il affiche (texte et variables `{{clé}}`, réglages du widget, image) et les propriétés pilotées par une variable (*Expose a property…*) ; l'onglet *Variables* liste les variables du template (ce que l'opérateur remplit, ou ce qu'une source de données alimente).
@@ -203,6 +204,7 @@ Pour chaque utilisateur (hors admin), on peut limiter l'accès à **certains pro
 | --- | --- | --- |
 | `POST` | `/api/auth/login` · `/api/auth/logout` | session (cookie et jeton Bearer) |
 | `GET` / `POST` / `PUT` / `DELETE` | `/api/users[/{id}]` | utilisateurs (admin) |
+| `PUT` | `/api/me/lang` | langue de l'interface de l'utilisateur connecté (`{"lang":"fr"}`) |
 | `GET` / `POST` | `/api/projects` · `/api/projects/import` | liste, création (ou duplication avec `from`), import |
 | `GET` / `PUT` / `DELETE` | `/api/projects/{id}` · `/export` | projet complet, réglages, suppression, export |
 | `PUT` / `DELETE` | `/api/projects/{id}/templates/{tid}[?publish=true]` | enregistrer le brouillon d'un template (publié aussitôt avec `?publish=true`), ou le supprimer |
@@ -241,7 +243,7 @@ crates/
   cg-server   axum : REST, WebSocket, chaînes, projets, utilisateurs, UI embarquée, services OS
 assets/fonts  polices Inter (OFL) embarquées : rendu identique sur tous les OS
 packaging/   scripts d'installation Linux / macOS / Windows
-web/          React + TypeScript : Projets, Designer, Opérateur, Réglages, Utilisateurs, sortie HTML5
+web/          React + TypeScript : Projets, Designer, Opérateur, Réglages, Utilisateurs, sortie HTML5 ; i18n/ (FR / EN)
 docs/         architecture, exemples de configuration
 ```
 
