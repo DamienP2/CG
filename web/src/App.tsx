@@ -227,8 +227,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
       <nav className="topbar">
         <Brand />
         <span className="topbar-sep" aria-hidden />
-        <span className="project-title" title={summary?.description || 'Project'}>
-          <FolderOpen size={13} />
+        <span className="project-title" title={summary?.description || undefined}>
+          <small>Project</small>
           <span>{summary?.name ?? project?.name ?? '…'}</span>
         </span>
         <div className="tabs">
