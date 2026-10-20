@@ -12427,6 +12427,9 @@ a.lib-nav-item {
 }
 
 /* ---------- top bars on narrower screens: the tabs other than the open one show their icon only ---------- */
+.topbar .tabs button {
+  white-space: nowrap;
+}
 @media (max-width: 1500px) {
   .topbar {
     gap: 14px;
@@ -12435,7 +12438,7 @@ a.lib-nav-item {
     padding: 5px 10px;
   }
 }
-@media (max-width: 1400px) {
+@media (max-width: 1420px) {
   .home-tabs button:not(.on) .tab-label {
     display: none;
   }

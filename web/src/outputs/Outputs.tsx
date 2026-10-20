@@ -4,7 +4,7 @@ import { api, can, useApp, useChanged } from '../store';
 import { joinAddr, splitAddr, VIDEO_FORMATS, type ChannelConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 import { InputsMode } from './Inputs';
 import { useMetrics, type OutputMetrics } from '../engine/metrics';
 import { coresLabel, fps as fpsText, fpsTone, num, outputTone, pct, pictureTone } from '../perf/format';
@@ -42,6 +42,13 @@ const PROTOCOLS: { value: StreamProtocol; label: string; placeholder: string }[]
   { value: 'hls', label: 'HLS', placeholder: '' },
 ];
 const protocolLabel = (p: StreamProtocol) => PROTOCOLS.find((x) => x.value === p)?.label ?? p.toUpperCase();
+/** "SRT · Listener". */
+const streamBadge = (o: StreamOutput) => (o.protocol === 'srt' ? `SRT · ${tc('short', o.listen ? 'Listener' : 'Caller')}` : protocolLabel(o.protocol));
+/** SRT outputs: Strata calls the receiver, or waits for the receivers. Labels translated where shown. */
+const SRT_MODES = [
+  { listen: false, label: 'Caller', hint: 'Strata connects to the receiver, which must be listening.' },
+  { listen: true, label: 'Listener', hint: 'Strata waits for the receivers to connect.' },
+];
 
 /** Where Strata serves an HLS stream output. */
 const hlsUrl = (channel: string, picture: string, output: string) => `${location.origin}/hls/${encodeURIComponent(channel)}/${encodeURIComponent(picture)}/${encodeURIComponent(output)}/index.m3u8`;
@@ -293,7 +300,7 @@ export function Outputs() {
         ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: p.name, sub: `${p.width}×${p.height}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
         ...allDests.map((d) => {
           const st = destStatus(d);
-          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch), tone: st.tone, status: st.text, badge: d.kind === 'stream' ? protocolLabel((d.value as StreamOutput).protocol) : undefined, chip: d.kind === 'html5' ? undefined : rateChip(d.value.id) };
+          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch), tone: st.tone, status: st.text, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : undefined, chip: d.kind === 'html5' ? undefined : rateChip(d.value.id) };
         }),
       ]
     : [];
@@ -1041,6 +1048,32 @@ export function Outputs() {
                               ))}
                             </div>
                           </Group>
+                          {o.protocol === 'srt' && (
+                            <Group label={t('Mode')} hint={t(SRT_MODES.find((m) => m.listen === !!o.listen)!.hint)}>
+                              <div className="seg vs-seg">
+                                {SRT_MODES.map((m) => (
+                                  <button
+                                    key={m.label}
+                                    type="button"
+                                    className={!!o.listen === m.listen ? 'on' : ''}
+                                    onClick={() =>
+                                      editDest<StreamOutput>((d) => {
+                                        if (!!d.listen === m.listen) return;
+                                        // An address still the default of the other mode follows.
+                                        const port = /:(\d+)(?:[/?]|$)/.exec(d.url)?.[1] ?? '9000';
+                                        const def = (listen: boolean) => (listen ? `srt://0.0.0.0:${port}` : `srt://host:${port}`);
+                                        const was = !d.url.trim() || d.url === def(!!d.listen);
+                                        d.listen = m.listen;
+                                        if (was) d.url = def(m.listen);
+                                      })
+                                    }
+                                  >
+                                    {t(m.label)}
+                                  </button>
+                                ))}
+                              </div>
+                            </Group>
+                          )}
                           {o.protocol === 'hls' ? (
                             <div className="set-field">
                               <span className="set-label">{t('Playback address')}</span>
@@ -1067,22 +1100,6 @@ export function Outputs() {
                             >
                               <input value={o.url} placeholder={o.protocol === 'srt' && o.listen ? 'srt://0.0.0.0:9000' : proto.placeholder} spellCheck={false} onChange={(e) => editDest<StreamOutput>((d) => void (d.url = e.target.value))} />
                             </Field>
-                          )}
-                          {o.protocol === 'srt' && (
-                            <label className="check">
-                              <input
-                                type="checkbox"
-                                checked={o.listen}
-                                onChange={(e) =>
-                                  editDest<StreamOutput>((d) => {
-                                    d.listen = e.target.checked;
-                                    const port = /:(\d+)(?:[/?]|$)/.exec(d.url)?.[1] ?? '9000';
-                                    if (d.listen && (!d.url || d.url === 'srt://host:9000')) d.url = `srt://0.0.0.0:${port}`;
-                                  })
-                                }
-                              />
-                              {t('Wait for the receivers (listener)')}
-                            </label>
                           )}
                           <div className="oc-pair">
                             <Field label={t('Bit rate (kbit/s)')}>
@@ -1203,7 +1220,7 @@ function destSub(d: Dest, ch: ChannelConfig): string {
     case 'stream': {
       const o = d.value as StreamOutput;
       const where = o.protocol === 'hls' ? `/hls/${ch.id}/${d.picture}/${o.id}/` : o.url || '—';
-      return `${where}${o.protocol === 'srt' && o.listen ? ` · ${t('listener')}` : ''}\n${o.codec === 'hevc' ? 'HEVC' : 'H.264'} · ${bitrateLabel(o.bitrate)}${o.audio ? '' : ` · ${t('no audio')}`}`;
+      return `${where}\n${o.codec === 'hevc' ? 'HEVC' : 'H.264'} · ${bitrateLabel(o.bitrate)}${o.audio ? '' : ` · ${t('no audio')}`}`;
     }
   }
 }

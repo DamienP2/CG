@@ -26,9 +26,10 @@ export const cores = (v: number) => num(v, v >= 10 ? 1 : 2);
 /** "0.39 cores", "1 core" (French: singular under 2). */
 export const coresLabel = (v: number) => tn(v, '{n} core', '{n} cores', { n: cores(v) });
 
+/** "12 GB", "850 MB" (never broken across lines). */
 export function bytes(n: number): string {
-  if (n >= 1024 ** 3) return t('{n} GB', { n: num(n / 1024 ** 3, 1) });
-  return t('{n} MB', { n: num(n / 1024 ** 2, 0) });
+  const s = n >= 1024 ** 3 ? t('{n} GB', { n: num(n / 1024 ** 3, 1) }) : t('{n} MB', { n: num(n / 1024 ** 2, 0) });
+  return s.replace(' ', '\u00a0');
 }
 
 /** HH:MM:SS.mmm, local time. */

@@ -1,7 +1,7 @@
 import { Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 import { inputMessage as messageText } from '../engine/liveInputs';
 import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
 import { useMetrics, type InputMetrics } from '../engine/metrics';
@@ -33,6 +33,24 @@ const SCHEMES: Partial<Record<InputKind, RegExp>> = { srt: /^srt:/i, udp: /^udp:
 const isStream = (k: InputKind) => k !== 'ndi' && k !== 'sdi';
 const canListen = (k: InputKind) => k === 'srt' || k === 'rtmp';
 
+/** SRT: Strata calls the sender, or waits for it; RTMP: Strata pulls, or the encoder pushes. Labels translated where shown. */
+const MODES: Partial<Record<InputKind, { listen: boolean; label: string; hint: string }[]>> = {
+  srt: [
+    { listen: false, label: 'Caller', hint: 'Strata connects to the sender, which must be listening.' },
+    { listen: true, label: 'Listener', hint: 'Strata waits for the sender to connect.' },
+  ],
+  rtmp: [
+    { listen: false, label: 'Pull', hint: 'Strata pulls the stream from a server.' },
+    { listen: true, label: 'Listen', hint: 'The encoder pushes the stream to Strata.' },
+  ],
+};
+const modeOf = (c: Pick<InputConfig, 'kind' | 'listen'>) => MODES[c.kind]?.find((m) => m.listen === !!c.listen);
+/** "SRT · Listener". */
+const badgeText = (c: Pick<InputConfig, 'kind' | 'listen'>) => {
+  const m = modeOf(c);
+  return m ? `${badgeOf(c.kind)} · ${tc('short', m.label)}` : badgeOf(c.kind);
+};
+
 const SIZES = [
   { width: 1920, height: 1080 },
   { width: 1280, height: 720 },
@@ -61,6 +79,13 @@ function placeholder(c: Pick<InputConfig, 'kind' | 'listen'>): string {
     default:
       return 'https://… · /path/to/clip.mp4';
   }
+}
+
+/** The address a mode starts with (SRT keeps the port). */
+function modeDefault(c: Pick<InputConfig, 'kind' | 'listen' | 'url'>): string {
+  const port = /:(\d+)(?:[/?]|$)/.exec(c.url)?.[1] ?? '9000';
+  if (c.kind === 'srt') return c.listen ? `srt://0.0.0.0:${port}` : `srt://host:${port}`;
+  return placeholder(c);
 }
 
 function addressHint(c: InputConfig): string {
@@ -195,7 +220,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
               </span>
               <Rate m={rates(i.id)} />
               <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
-                {badgeOf(i.kind)}
+                {badgeText(i)}
               </span>
             </button>
           );
@@ -242,7 +267,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                       <span className="vs-tile-head">
                         <strong>{i.name || i.id}</strong>
                         <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
-                          {badgeOf(i.kind)}
+                          {badgeText(i)}
                         </span>
                       </span>
                       <span className="vs-tile-status" title={st.text}>
@@ -359,25 +384,33 @@ function Inspector({
 
       {isStream(i.kind) && (
         <>
+          {canListen(i.kind) && (
+            <Group label={t('Mode')} hint={t(modeOf(i)?.hint ?? '')}>
+              <div className="seg vs-seg">
+                {MODES[i.kind]!.map((m) => (
+                  <button
+                    key={m.label}
+                    type="button"
+                    className={!!i.listen === m.listen ? 'on' : ''}
+                    onClick={() =>
+                      editInput((x) => {
+                        if (!!x.listen === m.listen) return;
+                        // An address still the default of the other mode follows.
+                        const was = !x.url.trim() || x.url === placeholder(x) || x.url === modeDefault(x);
+                        x.listen = m.listen;
+                        if (was) x.url = modeDefault(x);
+                      })
+                    }
+                  >
+                    {t(m.label)}
+                  </button>
+                ))}
+              </div>
+            </Group>
+          )}
           <Field label={t('Address')} hint={addressHint(i)}>
             <input value={i.url} placeholder={placeholder(i)} spellCheck={false} onChange={(e) => editInput((x) => void (x.url = e.target.value))} />
           </Field>
-          {canListen(i.kind) && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={i.listen}
-                onChange={(e) =>
-                  editInput((x) => {
-                    const was = placeholder(x);
-                    x.listen = e.target.checked;
-                    if (!x.url || x.url === was) x.url = placeholder(x);
-                  })
-                }
-              />
-              {t('Wait for the sender (listener)')}
-            </label>
-          )}
         </>
       )}
 
@@ -515,6 +548,17 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <span className="set-hint">{hint}</span>}
     </label>
+  );
+}
+
+/** A field holding buttons (a `<label>` would click the first one). */
+function Group({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="set-field">
+      <span className="set-label">{label}</span>
+      {children}
+      {hint && <span className="set-hint">{hint}</span>}
+    </div>
   );
 }
 
