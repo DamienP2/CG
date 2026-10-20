@@ -3,9 +3,14 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './styles.css';
 import { loadFonts } from './engine/fonts';
+import { installNumberWheel } from './ui/fields';
+import { installTooltips } from './ui/tooltips';
 
 // Server fonts for every page (designer, operator, HTML5 outputs, plugins).
 void loadFonts();
+// Wheel on number fields and designed tooltips, everywhere.
+installNumberWheel();
+installTooltips();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

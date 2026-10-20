@@ -2,35 +2,112 @@ import { useEffect, useRef, useState } from 'react';
 import { parseHex, toHex } from '../engine/evaluate';
 import type { Color } from '../engine/types';
 
-/**
- * Mouse wheel / trackpad steps on a focused input (the page does not scroll
- * meanwhile). A wheel notch is one step; trackpad deltas accumulate.
+/*
+ * Mouse wheel / trackpad on number fields, without clicking first: resting
+ * the pointer on a field arms it (a short pause, so scrolling a panel past
+ * the field keeps scrolling the panel). A wheel notch is one step; trackpad
+ * movement adds up. Hold Shift for ×10, Alt for ×0.1.
  */
+
+/** When the page last scrolled outside a number field, and when the pointer entered one. */
+const wheelState = { outside: 0, entered: 0, field: null as Element | null };
+let wheelWatch = false;
+function watchWheel() {
+  if (wheelWatch) return;
+  wheelWatch = true;
+  window.addEventListener(
+    'wheel',
+    (e) => {
+      const f = (e.target as Element | null)?.closest?.('[data-wheel-field], input[type="number"]');
+      if (!f) wheelState.outside = performance.now();
+    },
+    { capture: true, passive: true },
+  );
+  window.addEventListener(
+    'pointerover',
+    (e) => {
+      const f = (e.target as Element | null)?.closest?.('[data-wheel-field], input[type="number"]') ?? null;
+      if (f !== wheelState.field) {
+        wheelState.field = f;
+        wheelState.entered = performance.now();
+      }
+    },
+    { capture: true, passive: true },
+  );
+}
+
+/** Whether a wheel event over field `el` adjusts it (else the page scrolls). */
+function wheelArmed(el: Element): boolean {
+  if (document.activeElement === el) return true;
+  const now = performance.now();
+  // Still scrolling the panel, or just arrived on the field while scrolling: let the panel scroll.
+  return now - wheelState.outside > 300 && now - wheelState.entered > 120;
+}
+
+/** Steps of a wheel event: ±1 per notch, trackpad pixels added up (Shift turns the wheel sideways on macOS). */
+function wheelSteps(e: WheelEvent, acc: { v: number }): number {
+  const raw = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+  const d = e.deltaMode === 1 ? raw * 40 : e.deltaMode === 2 ? raw * 400 : raw;
+  // A mouse notch: big, round deltas.
+  if (Math.abs(d) >= 50 && (e.deltaMode !== 0 || Math.abs(d) % 1 === 0)) {
+    acc.v = 0;
+    return -Math.sign(d);
+  }
+  acc.v += d;
+  let steps = 0;
+  while (Math.abs(acc.v) >= 16) {
+    steps -= Math.sign(acc.v);
+    acc.v -= Math.sign(acc.v) * 16;
+  }
+  return steps;
+}
+
+/** Wheel / trackpad steps on a number field (see above). */
 export function useWheelSteps(ref: React.RefObject<HTMLInputElement | null>, onSteps: (steps: number, e: WheelEvent) => void) {
   const cb = useRef(onSteps);
   cb.current = onSteps;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let acc = 0;
+    watchWheel();
+    el.dataset.wheelField = '';
+    const acc = { v: 0 };
     const onWheel = (e: WheelEvent) => {
-      if (document.activeElement !== el) return;
+      if (!wheelArmed(el) || e.ctrlKey) return;
       e.preventDefault();
-      const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
-      let steps = 0;
-      if (Math.abs(dy) >= 50) steps = -Math.sign(dy);
-      else {
-        acc += dy;
-        while (Math.abs(acc) >= 24) {
-          steps -= Math.sign(acc);
-          acc -= Math.sign(acc) * 24;
-        }
-      }
+      const steps = wheelSteps(e, acc);
       if (steps) cb.current(steps, e);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [ref]);
+}
+
+/** The same for every plain <input type="number"> of the app (installed once). */
+export function installNumberWheel() {
+  watchWheel();
+  const acc = { v: 0 };
+  window.addEventListener(
+    'wheel',
+    (e) => {
+      const el = e.target as HTMLInputElement | null;
+      if (!el || el.tagName !== 'INPUT' || el.type !== 'number' || el.disabled || el.readOnly || e.ctrlKey) return;
+      if (!wheelArmed(el)) return;
+      e.preventDefault();
+      const steps = wheelSteps(e, acc);
+      if (!steps) return;
+      const step = Number(el.step) || 1;
+      const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+      let v = (Number(el.value) || 0) + steps * step * mult;
+      if (el.min !== '') v = Math.max(Number(el.min), v);
+      if (el.max !== '') v = Math.min(Number(el.max), v);
+      const digits = Math.max(0, (String(step * mult).split('.')[1] ?? '').length);
+      // React listens to the native setter + an input event.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, String(+v.toFixed(digits)));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    { passive: false },
+  );
 }
 
 /** Number input with AE-style scrubbing on its label. */
@@ -121,7 +198,7 @@ export function NumberField({
       <input
         ref={inputRef}
         value={text}
-        title="Click, then use the mouse wheel or trackpad to adjust (Shift ×10, Alt ×0.1)"
+        title="Wheel or trackpad to adjust · Shift ×10 · Alt ×0.1"
         onFocus={(e) => {
           focused.current = true;
           e.target.select();
