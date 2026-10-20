@@ -15,7 +15,7 @@ foreach ($item in "CSXS", "host", "ui", "index.html", "loader.js", ".debug", "st
 }
 if ($Server) { Set-Content -Path (Join-Path $dest "strata.ini") -Value "[strata]`nserver=$Server" }
 # The panel is not signed by Adobe Exchange: allow unsigned extensions.
-foreach ($v in 9..13) {
+foreach ($v in 9..16) {
   New-Item -Force -Path "HKCU:\Software\Adobe\CSXS.$v" | Out-Null
   Set-ItemProperty -Path "HKCU:\Software\Adobe\CSXS.$v" -Name PlayerDebugMode -Value "1"
 }

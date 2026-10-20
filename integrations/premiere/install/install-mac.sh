@@ -13,7 +13,7 @@ for item in CSXS host ui index.html loader.js .debug strata.ini; do
 done
 if [ $# -gt 0 ]; then printf '[strata]\nserver=%s\n' "$1" > "$DEST/strata.ini"; fi
 # The panel is not signed by Adobe Exchange: allow unsigned extensions.
-for v in 9 10 11 12 13; do
+for v in 9 10 11 12 13 14 15 16; do
   defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1
 done
 echo "Installed in $DEST"

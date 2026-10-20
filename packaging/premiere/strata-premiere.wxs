@@ -52,6 +52,9 @@
         <RegistryValue Root="HKCU" Key="Software\Adobe\CSXS.11" Name="PlayerDebugMode" Value="1" Type="string" />
         <RegistryValue Root="HKCU" Key="Software\Adobe\CSXS.12" Name="PlayerDebugMode" Value="1" Type="string" />
         <RegistryValue Root="HKCU" Key="Software\Adobe\CSXS.13" Name="PlayerDebugMode" Value="1" Type="string" />
+        <RegistryValue Root="HKCU" Key="Software\Adobe\CSXS.14" Name="PlayerDebugMode" Value="1" Type="string" />
+        <RegistryValue Root="HKCU" Key="Software\Adobe\CSXS.15" Name="PlayerDebugMode" Value="1" Type="string" />
+        <RegistryValue Root="HKCU" Key="Software\Adobe\CSXS.16" Name="PlayerDebugMode" Value="1" Type="string" />
         <util:RemoveFolderEx On="uninstall" Property="EXTDIR" />
         <RemoveFolder Id="RemoveExtensionsDir" Directory="ExtensionsDir" On="uninstall" />
         <RemoveFolder Id="RemoveCepDir" Directory="CepDir" On="uninstall" />
