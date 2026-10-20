@@ -88,13 +88,14 @@ jobs:
           cp docs/INSTALL.md assets/fonts/OFL.txt "dist/$NAME/"
           cp docs/outputs.example.json "dist/$NAME/"
           # NDI runtime next to the server (lib/ on macOS).
-          if [ -d dist/ndi ] && ls dist/ndi/libndi.dylib dist/ndi/*.dll >/dev/null 2>&1; then
+          if [ -f dist/ndi/libndi.dylib ] || [ -f dist/ndi/Processing.NDI.Lib.x64.dll ]; then
             if [ "${{ matrix.pkg }}" = macos ]; then mkdir -p "dist/$NAME/lib" && cp dist/ndi/* "dist/$NAME/lib/"; else cp dist/ndi/* "dist/$NAME/"; fi
           fi
           # ffmpeg in bin/ next to the server.
-          if ls dist/ffmpeg/ffmpeg dist/ffmpeg/ffmpeg.exe >/dev/null 2>&1; then
+          if [ -f dist/ffmpeg/ffmpeg ] || [ -f dist/ffmpeg/ffmpeg.exe ]; then
             mkdir -p "dist/$NAME/bin" && cp dist/ffmpeg/* "dist/$NAME/bin/"
           fi
+          ls -la "dist/$NAME" "dist/$NAME/bin" "dist/$NAME/lib" 2>/dev/null || true
           cd dist
           if [ "${{ matrix.pkg }}" = windows ]; then
             7z a "$NAME.zip" "$NAME" >/dev/null
@@ -125,7 +126,8 @@ jobs:
             dist/*.msi
 
   macos-installer:
-    needs: web
+    # After the per-platform builds: fewer macOS jobs waiting for a machine at once.
+    needs: [web, build]
     runs-on: macos-latest
     env:
       # Secrets cannot be tested in `if:` directly.
