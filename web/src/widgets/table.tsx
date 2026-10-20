@@ -2,12 +2,12 @@
 // mapped columns, header row / column, merges, widths fixed / auto / %, styles per level, borders, conditional
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
-import { Table } from 'lucide-react';
+import { Pencil, Rows3, Table } from 'lucide-react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
-import type { Data } from '../engine/types';
-import { GroupRow } from '../designer/Inspector';
-import { ColorField, NumberField } from '../ui/fields';
-import { Btns, clamp, Content, defineWidget, easeOut, GridEditor, Handle, hex, ListEditor, Note, Num, parseCsv, Range, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import type { Data, Template } from '../engine/types';
+import { useTableEditor } from './table-editor-store';
+import { ColorField } from '../ui/fields';
+import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, tw, type FitCfg, type Overflow } from './table-text';
 
 export interface Col {
@@ -19,6 +19,8 @@ export interface Col {
   pct?: number;
   fmt?: string;
   on?: boolean;
+  /** A colour column of the data drawn as a small swatch before the text ('' = none). */
+  mark?: string;
 }
 interface Pair {
   bg?: string;
@@ -76,8 +78,8 @@ export interface State {
 
 // ------------------------------------------------------------ defaults --
 const P = (bg: string, color: string) => ({ bg, color });
-const DST = { header: P('#7c5cff', '#ffffff'), hcol: P('#232a4d', '#ffffff'), odd: P('#141a33', '#ffffff'), even: P('#1c2344', '#ffffff'), hl: P('#ff3b5c', '#ffffff'), top3: P('#2c2717', '#fff4cc'), tableBg: '#060812d9' };
-const DCOL: Required<Col> = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true };
+export const DST = { header: P('#7c5cff', '#ffffff'), hcol: P('#232a4d', '#ffffff'), odd: P('#141a33', '#ffffff'), even: P('#1c2344', '#ffffff'), hl: P('#ff3b5c', '#ffffff'), top3: P('#2c2717', '#fff4cc'), tableBg: '#060812d9' };
+const DCOL: Required<Col> = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '' };
 export function cfg(c: Config) {
   const st = c.st ?? {};
   const b = c.borders ?? {};
@@ -170,7 +172,7 @@ export interface MRow {
   key: string;
   rank: number;
 }
-const RANK: Required<Col> = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true };
+const RANK: Required<Col> = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true, mark: '' };
 export function model(k: K, data: Data) {
   const g = gridOf(k, data);
   const head = (g[0] ?? []).map((h) => String(h ?? '').trim());
@@ -187,7 +189,7 @@ export function model(k: K, data: Data) {
       else cols.push({ col: c, i });
     });
   if (k.showRank) cols.unshift({ col: RANK });
-  const unmapped = auto ? [] : head.filter((h) => h && !k.cols.some((c) => c.src === h));
+  const unmapped = auto ? [] : head.filter((h) => h && !k.cols.some((c) => c.src === h || (c.on && c.mark === h)));
   const keyCol = cols.find((m) => m.i !== undefined && k.headerColOn && m.col.src === k.headerCol) ?? cols.find((m) => m.col.type === 'text' && m.i !== undefined);
   const rows: MRow[] = body.map((r, i) => ({ r, k: i, key: keyCol ? String(r[keyCol.i!] ?? '') : String(i + 1), rank: 0 }));
   const sc = cols.find((m) => m.i !== undefined && k.sortCol && m.col.src === k.sortCol);
@@ -276,7 +278,7 @@ export function Picture({ v, cx, cy, h }: { v: string; cx: number; cy: number; h
 }
 
 // ------------------------------------------------------------- render --
-function TableRender({ layer, r, w, data, time, state }: { layer: Config; r: Record<string, unknown>; w: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
+export function TableRender({ layer, r, w, data, time, state }: { layer: Config; r: Record<string, unknown>; w: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
   const k = cfg(layer);
   const st = (state ?? {}) as State;
   const m = model(k, data);
@@ -380,8 +382,17 @@ function TableRender({ layer, r, w, data, time, state }: { layer: Config; r: Rec
         cells.push(<span key={`l${j}`}>{lines(i > 0 || showHead || k.title.on, j > 0, x, 0, cw, rh, `c${j}`)}</span>);
         if (j === 0 && top3) cells.push(<div key="t3" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(k.cf.top3Color) }} />);
         if (j === 0 && hl) cells.push(<div key="hl" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: '#fff' }} />);
+        // A colour swatch before the text (a colour column of the data).
+        let tx0 = x + pad;
+        const mi = type === 'text' && c.col.mark ? m.head.indexOf(c.col.mark) : -1;
+        const mv = mi >= 0 ? String(row.r[mi] ?? '').trim() : '';
+        if (mv) {
+          const s = Math.round(rh * 0.3);
+          cells.push(<div key={`m${j}`} style={{ position: 'absolute', left: tx0, top: (rh - s) / 2, width: s, height: s, borderRadius: s * 0.2, background: hex(mv) }} />);
+          tx0 += s * 1.6;
+        }
         if (type === 'image') cells.push(<Picture key={`p${j}`} v={txt} cx={x + cw / 2} cy={rh / 2} h={Math.round(rh * 0.5)} />);
-        else cells.push(<FitLine key={`t${j}`} text={txt} size={size} weight={type === 'number' ? 800 : 700} align={align} box={[x + pad, 0, cw - 2 * pad, rh]} color={hex(color)} fit={fit} style={type === 'number' ? { fontVariantNumeric: 'tabular-nums' } : undefined} />);
+        else cells.push(<FitLine key={`t${j}`} text={txt} size={size} weight={type === 'number' ? 800 : 700} align={align} box={[tx0, 0, cw - pad - (tx0 - x), rh]} color={hex(color)} fit={fit} style={type === 'number' ? { fontVariantNumeric: 'tabular-nums' } : undefined} />);
       });
       rowsOut.push(
         <div key={`r${i}`} style={{ position: 'absolute', left: 0, top: ry, width: w, height: rh, transform, transformOrigin: 'left top', opacity }}>
@@ -412,7 +423,7 @@ function TableRender({ layer, r, w, data, time, state }: { layer: Config; r: Rec
 
 // ------------------------------------------------------------ inspector --
 /** Background · text colours of a level. */
-function PairRow({ label, path }: { label: string; path: string }) {
+export function PairRow({ label, path }: { label: string; path: string }) {
   const b = useBound();
   const v = (path.split('.').reduce<unknown>((a, x) => (a as Record<string, unknown> | undefined)?.[x], b.obj) ?? {}) as Pair;
   const d = path.split('.').reduce<unknown>((a, x) => (a as Record<string, unknown> | undefined)?.[x], { st: DST, cell: { bg: '#facc15', color: '#111111' } }) as Pair;
@@ -426,7 +437,7 @@ function PairRow({ label, path }: { label: string; path: string }) {
     </Row>
   );
 }
-const FMTS: [string, string][] = [
+export const FMTS: [string, string][] = [
   ['0', '1 234'],
   ['0.0', '12.3'],
   ['+0', '+5 / −3'],
@@ -490,245 +501,7 @@ export default defineWidget({
     return k.cascade.on || k.pageMode === 'scroll';
   },
   Render: ({ layer, r, w, data, time, state }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} />,
-  Inspector: ({ layer, data, edit, set }) => {
-    const k = cfg(layer);
-    const m = model(k, data);
-    const srcOpts = [...new Set([...m.head, ...k.cols.map((c) => c.src)])].filter(Boolean).map((h) => [h, h] as [string, string]);
-    const colOpts: [string, string][] = k.cols.map((c) => [c.src, c.label || c.src]);
-    const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
-    return (
-      <>
-        <Section id="table-data" title="Data">
-          <Content label="Source" path="link" placeholder="{{key}}" />
-          {!k.link.trim() && (
-            <Row expose="grid" exposeValue={k.grid}>
-              <GridEditor path="grid" header csv />
-            </Row>
-          )}
-          {m.unmapped.length > 0 && <Btns list={m.unmapped.map((h) => ({ label: `Map '${h}'`, cls: 'violet', onClick: () => edit((l) => void (l.cols = [...(l.cols ?? []), { src: h, label: h, type: 'number', align: 'center', w: 100, pct: 8, fmt: '0.0', on: true }])) }))} />}
-        </Section>
-        <Section id="table-cols" title="Columns">
-          <Row expose="cols" exposeValue={k.cols}>
-            <ListEditor
-              path="cols"
-              toggle="on"
-              fields={[
-                { key: 'src', options: srcOpts.length ? srcOpts : [['', '—']], w: 84 },
-                { key: 'label', placeholder: 'Label' },
-                {
-                  key: 'type',
-                  options: [
-                    ['text', 'Text'],
-                    ['image', 'Image'],
-                    ['number', 'Number'],
-                  ],
-                  w: 84,
-                },
-              ]}
-              add={() => ({ src: m.head[0] ?? '', label: 'New', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true })}
-              addLabel="Column"
-            />
-          </Row>
-          <Seg
-            label="Width"
-            path="widthMode"
-            value={k.widthMode}
-            options={[
-              ['auto', 'Auto'],
-              ['fixed', 'px'],
-              ['percent', '%'],
-            ]}
-          />
-          {k.cols.map((c, i) => {
-            if (!c.on) return null;
-            const wk = k.widthMode === 'fixed' ? 'w' : 'pct';
-            const paths = [`cols.${i}.align`, ...(k.widthMode !== 'auto' ? [`cols.${i}.${wk}`] : []), ...(c.type === 'number' ? [`cols.${i}.fmt`] : [])];
-            return (
-              <Row expose={paths} exposeValue={{ [`cols.${i}.align`]: c.align, [`cols.${i}.${wk}`]: c[wk], [`cols.${i}.fmt`]: c.fmt }} key={i} label={c.label || c.src}>
-                <div style={{ display: 'flex', gap: 4, flex: 1, minWidth: 0 }}>
-                  <select style={{ flex: 1, minWidth: 0 }} value={c.align} onChange={(e) => edit((l) => void (l.cols![i] = { ...l.cols![i], align: e.target.value as Col['align'] }))}>
-                    <option value="left">Left</option>
-                    <option value="center">Centre</option>
-                    <option value="right">Right</option>
-                  </select>
-                  {k.widthMode !== 'auto' && (
-                    <span className="pp-field" style={{ width: 84, flex: 'none' }}>
-                      <NumberField value={c[wk]} min={0} suffix={k.widthMode === 'fixed' ? 'px' : '%'} onChange={(v) => edit((l) => void (l.cols![i] = { ...l.cols![i], [wk]: v }), `colw-${layer.id}-${i}`)} />
-                    </span>
-                  )}
-                  {c.type === 'number' && (
-                    <select style={{ flex: 1, minWidth: 0 }} value={c.fmt} onChange={(e) => edit((l) => void (l.cols![i] = { ...l.cols![i], fmt: e.target.value }))}>
-                      {FMTS.map(([v, lab]) => (
-                        <option key={v} value={v}>
-                          {lab}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </Row>
-            );
-          })}
-        </Section>
-        <Section id="table-structure" title="Structure">
-          <Toggle label="Title" path="title.on" value={k.title.on} />
-          {k.title.on && <Content label="Text" path="title.text" value={k.title.text} />}
-          <Toggle label="Header row" path="headerRow" value={k.headerRow} />
-          <Toggle label="Header column" path="headerColOn" value={k.headerColOn} />
-          {k.headerColOn && <Select label="Column" path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />}
-          <Toggle label="Rank" path="showRank" value={k.showRank} />
-          <Toggle label="Merges" value={k.merges.length > 0} onChange={(v) => set('merges', v ? [{ on: true, row: 2, col: 1, span: 2, text: '' }] : [])} />
-          {k.merges.length > 0 && (
-            <Row expose="merges" exposeValue={k.merges}>
-              <ListEditor
-                path="merges"
-                toggle="on"
-                fields={[
-                  { key: 'row', placeholder: 'Row', w: 46, num: true },
-                  { key: 'col', placeholder: 'Col', w: 46, num: true },
-                  { key: 'span', placeholder: 'Cells', w: 50, num: true },
-                  { key: 'text', placeholder: 'Text' },
-                ]}
-                add={() => ({ on: true, row: 2, col: 1, span: 2, text: '' })}
-                addLabel="Merge"
-              />
-            </Row>
-          )}
-        </Section>
-        <Section id="table-text" title="Text">
-          <GroupRow layer={layer as never} spec={{ label: 'Size', props: ['fontSize'], min: 1, suffix: 'px' }} />
-          {k.headerRow && <Num label="Header size" path="headSize" value={k.headSize} min={6} max={200} unit="px" />}
-          <Seg
-            label="Too long"
-            path="overflow"
-            value={k.overflow}
-            options={[
-              ['shrink', 'Shrink'],
-              ['squeeze', 'Squeeze'],
-              ['ellipsis', '…'],
-            ]}
-          />
-          {k.overflow === 'shrink' && <Num label="Min size" path="minSize" value={k.minSize} min={4} max={200} unit="px" />}
-          {k.overflow !== 'ellipsis' && <Num label="Min width" path="minSqueeze" value={k.minSqueeze} min={20} max={100} unit="%" />}
-        </Section>
-        <Section id="table-cells" title="Cells">
-          <Num label="Row height" path="rowH" value={k.rowH} min={30} max={160} unit="px" />
-          <Num label="Padding" path="pad" value={k.pad} min={0} max={200} unit="px" />
-          <Num label="Spacing" path="gap" value={k.gap} min={0} max={100} unit="px" />
-        </Section>
-        <Section id="table-styles" title="Colors">
-          <ColorPickRow label="Background" path="st.tableBg" value={k.st.tableBg} />
-          <PairRow label="Rows" path="st.odd" />
-          <Toggle label="Zebra" value={zebra} onChange={(v) => set('st.even', v ? { ...(k.st.odd.bg === DST.even.bg ? DST.odd : DST.even), color: k.st.odd.color } : { ...k.st.odd })} />
-          {zebra && <PairRow label="Even rows" path="st.even" />}
-          {k.headerRow && <PairRow label="Header" path="st.header" />}
-          {k.headerColOn && <PairRow label="Header col." path="st.hcol" />}
-          <PairRow label="Highlight" path="st.hl" />
-          <Toggle label="Negative" path="cf.neg" value={k.cf.neg} />
-          {k.cf.neg && <ColorPickRow label="Color" path="cf.negColor" value={k.cf.negColor} />}
-          <Toggle label="Top 3" path="cf.top3" value={k.cf.top3} />
-          {k.cf.top3 && (
-            <>
-              <PairRow label="Rows" path="st.top3" />
-              <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />
-            </>
-          )}
-          <Toggle label="One cell" path="cell.on" value={k.cell.on} />
-          {k.cell.on && (
-            <>
-              <Num label="Row" path="cell.row" value={k.cell.row} min={1} />
-              <Num label="Column" path="cell.col" value={k.cell.col} min={1} />
-              <PairRow label="Colors" path="cell" />
-            </>
-          )}
-        </Section>
-        <Section id="table-borders" title="Borders">
-          {(
-            [
-              ['outer', 'Outer'],
-              ['innerH', 'Rows'],
-              ['innerV', 'Columns'],
-            ] as const
-          ).map(([b, lab]) => (
-            <div key={b}>
-              <Toggle label={lab} path={`borders.${b}.on`} value={k.borders[b].on} />
-              {k.borders[b].on && (
-                <>
-                  <Num label="Width" path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={50} unit="px" />
-                  <ColorPickRow label="Color" path={`borders.${b}.color`} value={k.borders[b].color} />
-                </>
-              )}
-            </div>
-          ))}
-        </Section>
-        <Section id="table-sort" title="Sort" closed>
-          <Select label="Column" path="sortCol" value={k.sortCol} options={[['', 'Data order'], ...colOpts]} />
-          {!!k.sortCol && (
-            <Seg
-              label="Direction"
-              path="sortDir"
-              value={k.sortDir}
-              options={[
-                ['desc', '↓', 'Descending'],
-                ['asc', '↑', 'Ascending'],
-              ]}
-            />
-          )}
-        </Section>
-        <Section id="table-pages" title="Pages" closed>
-          <Num label="Rows per page" path="perPage" value={k.perPage} min={1} max={99} />
-          <Seg
-            label="Mode"
-            path="pageMode"
-            value={k.pageMode}
-            options={[
-              ['pages', 'Pages'],
-              ['scroll', 'Scroll'],
-            ]}
-          />
-          {k.pageMode === 'pages' ? (
-            <>
-              <Toggle label="Repeat header" path="repeatHeader" value={k.repeatHeader} />
-              <Toggle label="Indicator" path="indicator" value={k.indicator} />
-            </>
-          ) : (
-            <Num label="Speed" path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />
-          )}
-        </Section>
-        <Section id="table-anim" title="Cascade" closed>
-          <Toggle label="Cascade" path="cascade.on" value={k.cascade.on} />
-          {k.cascade.on && (
-            <>
-              <Seg
-                label="Style"
-                path="cascade.style"
-                value={k.cascade.style}
-                options={[
-                  ['slide', 'Slide'],
-                  ['fade', 'Fade'],
-                  ['flip', 'Flip'],
-                ]}
-              />
-              <Num label="Offset" path="cascade.offset" value={k.cascade.offset} min={0} max={5000} step={5} unit="ms" />
-              <Num label="Duration" path="cascade.dur" value={k.cascade.dur} min={10} max={5000} step={10} unit="ms" />
-            </>
-          )}
-        </Section>
-        <Section id="table-empty" title="Empty" closed>
-          <Seg
-            label="No rows"
-            path="emptyMode"
-            value={k.emptyMode}
-            options={[
-              ['message', 'Message'],
-              ['hide', 'Hide'],
-            ]}
-          />
-          {k.emptyMode === 'message' && <Text label="Message" path="emptyText" value={k.emptyText} />}
-        </Section>
-      </>
-    );
-  },
+  Inspector: ({ layer, data, template }) => <TableCard layer={layer as unknown as TL} data={data} template={template} />,
   Operator: ({ layer, state, data, act, time }) => {
     const now = useFrame() + (time.nowMs - Date.now());
     const k = cfg(layer);
@@ -783,12 +556,38 @@ export default defineWidget({
   warnings: (layer, { data, state, r }) => warningsOf(layer as unknown as TL, data, state, vnum(r?.width ?? (layer.props.width as number) ?? 0), vnum(r?.height ?? (layer.props.height as number) ?? 0)),
 });
 
-function ColorPickRow({ label, path, value }: { label: string; path: string; value: string }) {
+export function ColorPickRow({ label, path, value }: { label: string; path: string; value: string }) {
   const b = useBound();
   const v = (path.split('.').reduce<unknown>((a, x) => (a as Record<string, unknown> | undefined)?.[x], b.obj) as string | undefined) ?? value;
   return (
     <Row expose={path} exposeValue={v} label={label}>
       <ColorField value={parseHex(v) ?? [1, 1, 1, 1]} onChange={(c) => b.set(path, toHex(c, c[3] < 1), true)} />
     </Row>
+  );
+}
+
+/** The right panel: what the table shows, and the button to its editor (every setting is there). */
+function TableCard({ layer, data, template }: { layer: TL; data: Data; template: Template }) {
+  const open = useTableEditor((s) => s.open);
+  const k = cfg(layer);
+  const m = model(k, data);
+  const dsKey = /\{\{(\w+)__table\}\}/.exec(k.link)?.[1];
+  const ds = dsKey ? template.datasets?.find((d) => d.key === dsKey) : undefined;
+  const ncols = m.cols.filter((c) => c.i !== undefined).length;
+  return (
+    <div className="te-card">
+      <div className="te-sum">
+        <span className={`te-chip ${ds || k.link.trim() ? 'data' : ''}`}>
+          <Rows3 size={11} /> {ds ? `${ds.name} · All rows` : k.link.trim() ? 'Linked data' : 'Rows by hand'}
+        </span>
+        <span className="te-chip">
+          {ncols} column{ncols === 1 ? '' : 's'}
+        </span>
+        <span className="te-chip">{k.pageMode === 'scroll' ? 'Scrolling' : `${k.perPage} rows per page`}</span>
+      </div>
+      <button className="btn primary te-edit" onClick={() => open(layer.id)}>
+        <Pencil size={14} /> Edit the table
+      </button>
+    </div>
   );
 }

@@ -14,6 +14,7 @@ import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { ICONS } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
+import { BuildCard, TableNodeInfo } from './TableBuild';
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
@@ -289,6 +290,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const [ghost, setGhost] = useState<{ label: string; x: number; y: number } | null>(null);
   // The columns each data set node shows (from its preview), by node id.
   const [dsColumns, setDsColumns] = useState<Record<string, string[]>>({});
+  // The Table whose "Build the table" card is open.
+  const [building, setBuilding] = useState<string | null>(null);
   const logic: Logic = template.logic ?? { nodes: [], edges: [] };
   const migrated = useMemo(() => (template.dataflow ? null : migrate(template)), [template]);
   const flow: DataFlow = template.dataflow ?? migrated!;
@@ -524,6 +527,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         if (contentOf(l).includes(p)) wireContent(l, p, w.key);
         else l.bindings[p as Prop] = w.key;
       });
+      // All rows into a table with no columns yet: offer to build it.
+      const l = findLayer(template, layerId);
+      if (l?.type === 'table' && takesTable(l, p) && w.key.endsWith('__table') && !(l as { cols?: unknown[] }).cols?.length) setBuilding(layerId);
     } else if (w.kind === 'logic' && !contentOf(findLayer(template, layerId)!).includes(p)) {
       editLogic((l) => {
         let to = l.nodes.find((n) => n.type === 'target' && n.layer === layerId && n.prop === p)?.id;
@@ -880,7 +886,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               const r = resolved.get(l.id);
               const hidden = portsOf(l).filter((x) => !ports(l).includes(x)).length;
               return (
-                <div key={l.id} className="logic-node dc-node kind-layer" style={{ left: p.x, top: p.y, width: widthOf(`l:${l.id}`, W.layer) }} onPointerDown={(e) => dragNode(e, `l:${l.id}`, 'layout')}>
+                <div key={l.id} data-node={`l:${l.id}`} className="logic-node dc-node kind-layer" style={{ left: p.x, top: p.y, width: widthOf(`l:${l.id}`, W.layer) }} onPointerDown={(e) => dragNode(e, `l:${l.id}`, 'layout')}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <Icon size={12} />
                     <span>{l.name}</span>
@@ -933,10 +939,16 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       <WidgetRunButtons layer={l} compact />
                     </div>
                   )}
+                  {l.type === 'table' && <TableNodeInfo layer={l} values={values} onBuild={() => setBuilding(l.id)} />}
                   {resizer(`l:${l.id}`, false)}
                 </div>
               );
             })}
+            {(() => {
+              const l = building ? template.layers.find((x) => x.id === building) : undefined;
+              if (!l) return null;
+              return <BuildCard key={l.id} layer={l} template={template} values={values} onClose={() => setBuilding(null)} />;
+            })()}
           </div>
           {cv.controls}
         </div>

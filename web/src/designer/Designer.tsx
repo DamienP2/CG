@@ -12,6 +12,7 @@ import { Timeline } from './Timeline';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
+import { TableEditor } from '../widgets/table-editor';
 import { GuidesMenu, SafeMenu, SplitButton, useGuidesView } from './Guides';
 import { ProjectHistory, ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
@@ -457,6 +458,7 @@ export function Designer() {
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
       <DataCanvas />
+      <TableEditor />
     </div>
   );
 }

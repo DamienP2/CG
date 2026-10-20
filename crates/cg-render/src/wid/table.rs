@@ -526,6 +526,30 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                     draw_picture(d, &txt, x + w / 2.0, ry + rh / 2.0, (rh * 0.5).round(), rm);
                     continue;
                 }
+                // A colour swatch before the text (a colour column of the data).
+                let mut tx0 = x + pad;
+                if kind == ColKind::Text && !mc.col.mark.is_empty() {
+                    let mark = m
+                        .head
+                        .iter()
+                        .position(|h| *h == mc.col.mark)
+                        .and_then(|i| row.r.get(i))
+                        .filter(|v| !v.trim().is_empty());
+                    if let Some(v) = mark {
+                        let s = (rh * 0.3).round();
+                        rect(
+                            d,
+                            tx0,
+                            ry + (rh - s) / 2.0,
+                            s,
+                            s,
+                            s * 0.2,
+                            Draw::hex(v.trim()),
+                            rm,
+                        );
+                        tx0 += s * 1.6;
+                    }
+                }
                 let f = if kind == ColKind::Number { &f8 } else { &f7 };
                 if let Some(f) = f {
                     let (p, _) = fitted_path(
@@ -534,7 +558,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                         size,
                         0.0,
                         align_of(align),
-                        (x + pad, ry, w - 2.0 * pad, rh),
+                        (tx0, ry, w - pad - (tx0 - x), rh),
                         Some(fit),
                     );
                     if let Some(p) = p {

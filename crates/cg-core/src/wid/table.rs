@@ -47,6 +47,8 @@ pub struct Col {
     /// Number format: `0`, `0.0`, `+0`, `0 %`.
     pub fmt: String,
     pub on: bool,
+    /// A colour column of the data drawn as a small swatch before the text ("" = none).
+    pub mark: String,
 }
 
 impl Default for Col {
@@ -60,6 +62,7 @@ impl Default for Col {
             pct: 10.0,
             fmt: "0".into(),
             on: true,
+            mark: String::new(),
         }
     }
 }
@@ -643,6 +646,7 @@ pub fn rank_col() -> Col {
         pct: 7.0,
         fmt: "0".into(),
         on: true,
+        mark: String::new(),
     }
 }
 
@@ -695,7 +699,13 @@ pub fn model(c: &Config, data: &Data) -> Model {
         Vec::new()
     } else {
         head.iter()
-            .filter(|h| !h.is_empty() && !c.cols.iter().any(|x| x.src == **h))
+            .filter(|h| {
+                !h.is_empty()
+                    && !c
+                        .cols
+                        .iter()
+                        .any(|x| x.src == **h || (x.on && x.mark == **h))
+            })
             .cloned()
             .collect()
     };
@@ -1016,6 +1026,23 @@ mod tests {
             sort_col: "Pts".into(),
             ..Config::default()
         }
+    }
+    #[test]
+    fn a_colour_mark_counts_as_mapped() {
+        let mut c = sample(2);
+        for r in c.grid.iter_mut() {
+            r.push(if r[0] == "Team" {
+                "Color".into()
+            } else {
+                "#ff0000".into()
+            });
+        }
+        assert_eq!(model(&c, &Data::new()).unmapped, vec!["Color".to_string()]);
+        c.cols[0].mark = "Color".into();
+        assert!(model(&c, &Data::new()).unmapped.is_empty());
+        // Old tables (no mark) still load.
+        let old: Col = serde_json::from_str(r#"{"src":"Team"}"#).unwrap();
+        assert_eq!(old.mark, "");
     }
     fn ctx(data: &Data, now: i64) -> ActCtx<'_> {
         ActCtx {

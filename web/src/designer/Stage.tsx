@@ -1,3 +1,4 @@
+import { useTableEditor } from '../widgets/table-editor-store';
 import { settingDefaults } from '../engine/settings';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LiveTime, useTicker } from '../engine/LiveTime';
@@ -194,12 +195,20 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     beginDrag(e, 'move', sel);
   };
 
+  // A double-click on a Table opens its editor.
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]')?.dataset.layerId;
+    const st = useDesigner.getState();
+    const l = id && st.template ? findLayer(st.template, id) : undefined;
+    if (l?.type === 'table' && !l.locked) useTableEditor.getState().open(l.id);
+  };
+
   if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={background} showZones={showZones} wrapRef={wrapRef} now={now} fps={fps} />;
 
   return (
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
       <div className={`stage-frame bg-${background}`} onPointerDown={(e) => e.stopPropagation()}>
-        <div ref={sceneRef} onPointerDown={onPointerDown} style={{ position: 'relative' }}>
+        <div ref={sceneRef} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
             <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} widgetState={(id) => widgetState[id]} fps={fps} lang={_project.language}>
