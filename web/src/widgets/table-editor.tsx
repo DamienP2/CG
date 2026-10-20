@@ -6,6 +6,7 @@ import { Eye, EyeOff, GripVertical, Plus, Redo2, Table as TableIcon, Trash2, Tri
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoundData } from '../data/dataStore';
+import { t, tn } from '../i18n';
 import { findLayer, useDesigner } from '../designer/designerStore';
 import { holdFrame, num as vnum, resolveLayer } from '../engine/evaluate';
 import type { Data, Layer, Template } from '../engine/types';
@@ -95,7 +96,7 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
   const shown: TL = sample ? { ...layer, link: '', grid: sampleGrid(cols) } : layer;
   const dsKey = /\{\{(\w+)__table\}\}/.exec(k.link)?.[1];
   const ds = dsKey ? template.datasets?.find((d) => d.key === dsKey) : undefined;
-  const source = ds ? `${ds.name} · ${live.rows.length} rows` : k.link.trim() ? `Linked data · ${live.rows.length} rows` : `Rows by hand · ${live.rows.length}`;
+  const source = ds ? tn(live.rows.length, '{name} · {n} row', '{name} · {n} rows', { name: ds.name }) : k.link.trim() ? tn(live.rows.length, 'Linked data · {n} row', 'Linked data · {n} rows') : t('Rows by hand · {n}', { n: live.rows.length });
   const add = () => addCol(edit, ensureCols, live, setSel);
   // Width modes keep what is shown: switching writes the current widths in the new unit.
   const W = Math.max(50, vnum(resolveLayer(layer, frame, data, holdFrame(template)).width));
@@ -141,25 +142,25 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
     }, `grid-${layer.id}`);
 
   return (
-    <div className="logic-editor te-full" role="dialog" aria-label={`Table editor: ${layer.name}`}>
+    <div className="logic-editor te-full" role="dialog" aria-label={t('Table editor: {name}', { name: layer.name })}>
       <CanvasHeader icon={<TableIcon size={15} />} title={layer.name} subject={template.name} onClose={onClose}>
         <span className={`te-chip ${ds || k.link.trim() ? 'data' : ''}`}>{source}</span>
-        <div className="segmented te-seg" title="Preview the table with its data, or with sample rows">
+        <div className="segmented te-seg" title={t('Preview the table with its data, or with sample rows')}>
           <button className={!sample ? 'on' : ''} onClick={() => setSample(false)}>
-            Live data
+            {t('Live data')}
           </button>
           <button className={sample ? 'on' : ''} onClick={() => setSample(true)} disabled={!cols.length}>
-            Sample
+            {t('Sample')}
           </button>
         </div>
-        <button className="icon-btn ghost" title="Undo" disabled={!past.length} onClick={undo}>
+        <button className="icon-btn ghost" title={t('Undo')} disabled={!past.length} onClick={undo}>
           <Undo2 size={15} />
         </button>
-        <button className="icon-btn ghost" title="Redo" disabled={!future.length} onClick={redo}>
+        <button className="icon-btn ghost" title={t('Redo')} disabled={!future.length} onClick={redo}>
           <Redo2 size={15} />
         </button>
         <button className="btn primary small" onClick={onClose}>
-          Done
+          {t('Done')}
         </button>
       </CanvasHeader>
       <div className="te-body">
@@ -214,12 +215,12 @@ function Structure({ k, cols, live, opRows, sel, setSel, selectCol, edit, ensure
   return (
     <>
       <div className="te-sec">
-        <span className="te-lbl">Columns</span>
+        <span className="te-lbl">{t('Columns')}</span>
         {k.showRank && (
           <button className={`te-item ${sel.k === 'rank' ? 'on' : ''}`} onClick={() => setSel({ k: 'rank' })}>
             <span className="te-grip" />
-            <span className="te-nm"># Rank</span>
-            <span className={`te-aa ${k.txt.rank ? 'own' : ''}`} title={k.txt.rank ? 'Its own text' : 'Text of the rows'}>
+            <span className="te-nm"># {t('Rank')}</span>
+            <span className={`te-aa ${k.txt.rank ? 'own' : ''}`} title={k.txt.rank ? t('Its own text') : t('Text of the rows')}>
               Aa
             </span>
             <span className="te-ty">auto</span>
@@ -253,25 +254,25 @@ function Structure({ k, cols, live, opRows, sel, setSel, selectCol, edit, ensure
               onClick={() => selectCol(i)}
               onKeyDown={(e) => e.key === 'Enter' && selectCol(i)}
             >
-              <span className="te-grip" title="Drag to reorder">
+              <span className="te-grip" title={t('Drag to reorder')}>
                 <GripVertical size={12} />
               </span>
               <span className="te-nm">{c.label || c.src || '—'}</span>
               {c.type !== 'image' && (
-                <span className={`te-aa ${c.txt ? 'own' : ''}`} title={c.txt ? 'Its own text' : 'Text of the rows'}>
+                <span className={`te-aa ${c.txt ? 'own' : ''}`} title={c.txt ? t('Its own text') : t('Text of the rows')}>
                   Aa
                 </span>
               )}
               {missing ? (
-                <span className="te-warn" title={`'${c.src}' is not in the data`}>
+                <span className="te-warn" title={t("'{name}' is not in the data", { name: c.src })}>
                   <TriangleAlert size={12} />
                 </span>
               ) : (
-                <span className="te-ty">{TYPE_ABBR[c.type]}</span>
+                <span className="te-ty">{t(TYPE_ABBR[c.type])}</span>
               )}
               <button
                 className="te-eye"
-                title={c.on ? 'Hide' : 'Show'}
+                title={c.on ? t('Hide') : t('Show')}
                 onClick={(e) => {
                   e.stopPropagation();
                   edit((l) => {
@@ -288,7 +289,7 @@ function Structure({ k, cols, live, opRows, sel, setSel, selectCol, edit, ensure
         {unmapped.map((h) => (
           <div key={h} className="te-new">
             <span>
-              New in the data: <b>{h}</b>
+              {t('New in the data:')} <b>{h}</b>
             </span>
             <button
               className="btn small"
@@ -299,43 +300,43 @@ function Structure({ k, cols, live, opRows, sel, setSel, selectCol, edit, ensure
                 })
               }
             >
-              Add
+              {t('Add')}
             </button>
           </div>
         ))}
         <button className="te-add" onClick={add}>
-          <Plus size={12} /> Column
+          <Plus size={12} /> {t('Column')}
         </button>
       </div>
       <div className="te-sec">
-        <span className="te-lbl">Display</span>
-        {tog('Title bar', k.title.on, (l, v) => void (l.title = { ...l.title, on: v }))}
-        {tog('Header row', k.headerRow, (l, v) => void (l.headerRow = v))}
-        {tog('Rank column', k.showRank, (l, v) => void (l.showRank = v))}
-        {tog('Header column', k.headerColOn, (l, v) => {
+        <span className="te-lbl">{t('Display')}</span>
+        {tog(t('Title bar'), k.title.on, (l, v) => void (l.title = { ...l.title, on: v }))}
+        {tog(t('Header row'), k.headerRow, (l, v) => void (l.headerRow = v))}
+        {tog(t('Rank column'), k.showRank, (l, v) => void (l.showRank = v))}
+        {tog(t('Header column'), k.headerColOn, (l, v) => {
           l.headerColOn = v;
           if (v && !l.headerCol) l.headerCol = cols.find((c) => c.type === 'text')?.src ?? '';
         })}
-        {tog('Page dots', k.indicator, (l, v) => void (l.indicator = v), 'Under the table, when there are several pages')}
+        {tog(t('Page dots'), k.indicator, (l, v) => void (l.indicator = v), t('Under the table, when there are several pages'))}
       </div>
       <div className="te-sec">
-        <span className="te-lbl">Options</span>
+        <span className="te-lbl">{t('Options')}</span>
         {opRows.show && (
-          <button className={`te-tog ${opRows.on ? 'on' : ''}`} title="The operator types the rows or imports a CSV in the Operator" onClick={opRows.toggle}>
-            <span>Rows typed in the Operator</span>
+          <button className={`te-tog ${opRows.on ? 'on' : ''}`} title={t('The operator types the rows or imports a CSV in the Operator')} onClick={opRows.toggle}>
+            <span>{t('Rows typed in the Operator')}</span>
             <i />
           </button>
         )}
-        {tog('Odd / even rows differ', zebra, (l, v) => void (l.st = { ...l.st, even: v ? { ...(k.st.odd.bg === DST.even.bg ? DST.odd : DST.even), color: k.st.odd.color } : { ...k.st.odd } }))}
-        {tog('Top rows', k.cf.top3, (l, v) => void (l.cf = { ...l.cf, top3: v }), 'The first rows marked; how many in the rows settings')}
-        {tog('Highlight marker', k.cf.hlBar, (l, v) => void (l.cf = { ...l.cf, hlBar: v }), 'A bar on the row the operator highlights')}
-        {tog('Negatives in colour', k.cf.neg, (l, v) => void (l.cf = { ...l.cf, neg: v }))}
-        {tog('Sort', !!k.sortCol, (l, v) => void (l.sortCol = v ? firstNum : ''))}
-        {tog('Rows come in animated', k.cascade.on, (l, v) => void (l.cascade = { ...l.cascade, on: v }))}
-        {tog('Lines between rows', k.borders.innerH.on, (l, v) => void (l.borders = { ...l.borders, innerH: { ...k.borders.innerH, on: v } }))}
-        {tog('Lines between columns', k.borders.innerV.on, (l, v) => void (l.borders = { ...l.borders, innerV: { ...k.borders.innerV, on: v } }))}
-        {tog('Outer border', k.borders.outer.on, (l, v) => void (l.borders = { ...l.borders, outer: { ...k.borders.outer, on: v } }))}
-        {tog('Scroll instead of pages', k.pageMode === 'scroll', (l, v) => void (l.pageMode = v ? 'scroll' : 'pages'))}
+        {tog(t('Odd / even rows differ'), zebra, (l, v) => void (l.st = { ...l.st, even: v ? { ...(k.st.odd.bg === DST.even.bg ? DST.odd : DST.even), color: k.st.odd.color } : { ...k.st.odd } }))}
+        {tog(t('Top rows'), k.cf.top3, (l, v) => void (l.cf = { ...l.cf, top3: v }), t('The first rows marked; how many in the rows settings'))}
+        {tog(t('Highlight marker'), k.cf.hlBar, (l, v) => void (l.cf = { ...l.cf, hlBar: v }), t('A bar on the row the operator highlights'))}
+        {tog(t('Negatives in colour'), k.cf.neg, (l, v) => void (l.cf = { ...l.cf, neg: v }))}
+        {tog(t('Sort'), !!k.sortCol, (l, v) => void (l.sortCol = v ? firstNum : ''))}
+        {tog(t('Rows come in animated'), k.cascade.on, (l, v) => void (l.cascade = { ...l.cascade, on: v }))}
+        {tog(t('Lines between rows'), k.borders.innerH.on, (l, v) => void (l.borders = { ...l.borders, innerH: { ...k.borders.innerH, on: v } }))}
+        {tog(t('Lines between columns'), k.borders.innerV.on, (l, v) => void (l.borders = { ...l.borders, innerV: { ...k.borders.innerV, on: v } }))}
+        {tog(t('Outer border'), k.borders.outer.on, (l, v) => void (l.borders = { ...l.borders, outer: { ...k.borders.outer, on: v } }))}
+        {tog(t('Scroll instead of pages'), k.pageMode === 'scroll', (l, v) => void (l.pageMode = v ? 'scroll' : 'pages'))}
       </div>
     </>
   );
@@ -454,7 +455,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
     drag(e, (_, dy) => {
       const v = Math.round(Math.min(160, Math.max(30, r0 + dy)));
       edit((l) => void (l.rowH = v), `te-rowh-${layer.id}`);
-      return `Row ${v} px`;
+      return t('Row {v} px', { v });
     });
   };
   const perPage = (e: React.PointerEvent) => {
@@ -463,7 +464,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
       const v = Math.min(99, Math.max(1, p0 + Math.round(dy / step)));
       edit((l) => void (l.perPage = v), `te-per-${layer.id}`);
       setPage(0);
-      return `${v} rows per page`;
+      return tn(v, '{n} row per page', '{n} rows per page');
     });
   };
   const target = sizeTarget(k, sel, size);
@@ -472,7 +473,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
     drag(e, (dx) => {
       const v = Math.round(Math.min(200, Math.max(6, t0 + dx / 4)));
       edit((l) => setPath(l, `${target.path}.size`, v), `te-size-${layer.id}`);
-      return `Text ${v} px`;
+      return t('Text {v} px', { v });
     });
   };
   const bandY = sel.k === 'title' && k.title.on ? TH / 2 : sel.k === 'header' && showHead ? headY + hh / 2 : bodyY + k.rowH / 2;
@@ -497,39 +498,39 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
           <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: viewH, transform: `scale(${s})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
             <TableRender layer={layer} r={r as never} w={W} data={data} time={{ nowMs: Date.now(), ageSecs: k.pageMode === 'scroll' ? 0 : 60 }} state={{ page: pg }} />
           </div>
-          {k.title.on && Z({ x: 0, y: 0, w: W, h: TH, cls: `title ${sel.k === 'title' ? 'on' : ''}`, title: 'Title bar', onClick: () => setSel({ k: 'title' }) })}
+          {k.title.on && Z({ x: 0, y: 0, w: W, h: TH, cls: `title ${sel.k === 'title' ? 'on' : ''}`, title: t('Title bar'), onClick: () => setSel({ k: 'title' }) })}
           {list.map((_, i) => (
-            <div key={i}>{Z({ x: 0, y: bodyY + i * step, w: W, h: k.rowH, cls: `row ${sel.k === 'rows' ? 'on' : ''}`, title: 'Rows', onClick: () => setSel({ k: 'rows' }) })}</div>
+            <div key={i}>{Z({ x: 0, y: bodyY + i * step, w: W, h: k.rowH, cls: `row ${sel.k === 'rows' ? 'on' : ''}`, title: t('Rows'), onClick: () => setSel({ k: 'rows' }) })}</div>
           ))}
           {selJ >= 0 && Z({ x: xs[selJ], y: 0, w: ws[selJ], h: totalH, cls: 'colsel' })}
-          {showHead && Z({ x: 0, y: headY, w: W, h: hh, cls: `head ${sel.k === 'header' ? 'on' : ''}`, title: 'Header row', onClick: () => setSel({ k: 'header' }) })}
+          {showHead && Z({ x: 0, y: headY, w: W, h: hh, cls: `head ${sel.k === 'header' ? 'on' : ''}`, title: t('Header row'), onClick: () => setSel({ k: 'header' }) })}
           {/* Column tabs above the table: a click selects the column. */}
           {m.cols.map((c, j) => (
-            <div key={`c${j}`} className={`te-zone chead ${j === selJ ? 'on' : ''}`} title={c.i === undefined ? 'Rank column' : `Column ${c.col.label || c.col.src}`} style={{ left: xs[j] * s, top: -28, width: ws[j] * s, height: 20 }} onClick={(e) => (e.stopPropagation(), pickCol(j))}>
+            <div key={`c${j}`} className={`te-zone chead ${j === selJ ? 'on' : ''}`} title={c.i === undefined ? t('Rank column') : t('Column {name}', { name: c.col.label || c.col.src })} style={{ left: xs[j] * s, top: -28, width: ws[j] * s, height: 20 }} onClick={(e) => (e.stopPropagation(), pickCol(j))}>
               <span>{c.i === undefined ? '#' : c.col.label || c.col.src}</span>
             </div>
           ))}
           {/* Quick-edit handles */}
           {m.cols.map((c, j) =>
-            j < m.cols.length - 1 && c.i !== undefined && m.cols[j + 1].i !== undefined ? <div key={`rz${j}`} className="te-cw" title="Column width" style={{ left: (xs[j] + ws[j] + k.gap / 2) * s - 3, top: (showHead ? headY + hh / 2 : bodyY + k.rowH / 2) * s - 14 }} onPointerDown={(e) => resize(e, j)} onClick={(e) => e.stopPropagation()} /> : null,
+            j < m.cols.length - 1 && c.i !== undefined && m.cols[j + 1].i !== undefined ? <div key={`rz${j}`} className="te-cw" title={t('Column width')} style={{ left: (xs[j] + ws[j] + k.gap / 2) * s - 3, top: (showHead ? headY + hh / 2 : bodyY + k.rowH / 2) * s - 14 }} onPointerDown={(e) => resize(e, j)} onClick={(e) => e.stopPropagation()} /> : null,
           )}
           {list.length > 0 && (
-            <div className="te-hd ns" title="Row height" style={{ left: -30, top: (bodyY + k.rowH) * s - 9 }} onPointerDown={rowHeight} onClick={(e) => e.stopPropagation()}>
+            <div className="te-hd ns" title={t('Row height')} style={{ left: -30, top: (bodyY + k.rowH) * s - 9 }} onPointerDown={rowHeight} onClick={(e) => e.stopPropagation()}>
               ↕
             </div>
           )}
           {list.length > 0 && !scroll && (
-            <div className="te-hd ns pill" title="Rows per page" style={{ left: (W * s) / 2, top: totalH * s + 8, transform: 'translateX(-50%)' }} onPointerDown={perPage} onClick={(e) => e.stopPropagation()}>
-              ⇕ {k.perPage} rows
+            <div className="te-hd ns pill" title={t('Rows per page')} style={{ left: (W * s) / 2, top: totalH * s + 8, transform: 'translateX(-50%)' }} onPointerDown={perPage} onClick={(e) => e.stopPropagation()}>
+              ⇕ {tn(k.perPage, '{n} row', '{n} rows')}
             </div>
           )}
-          <div className="te-hd ew pill" title="Text size of the selection" style={{ left: W * s + 12, top: bandY * s - 11 }} onPointerDown={textSize} onClick={(e) => e.stopPropagation()}>
+          <div className="te-hd ew pill" title={t('Text size of the selection')} style={{ left: W * s + 12, top: bandY * s - 11 }} onPointerDown={textSize} onClick={(e) => e.stopPropagation()}>
             Aa {Math.round(target.t.size)}
           </div>
           <button
             className="te-plus"
             style={{ left: W * s + 8, top: -31 }}
-            title="Add a column"
+            title={t('Add a column')}
             onClick={(e) => {
               e.stopPropagation();
               add();
@@ -541,11 +542,11 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
         {!scroll && pages > 1 && (
           <div className="te-dots" onClick={(e) => e.stopPropagation()}>
             {Array.from({ length: pages }, (_, i) => (
-              <button key={i} className={i === pg ? 'on' : ''} title={`Page ${i + 1}`} onClick={() => setPage(i)} />
+              <button key={i} className={i === pg ? 'on' : ''} title={t('Page {n}', { n: i + 1 })} onClick={() => setPage(i)} />
             ))}
           </div>
         )}
-        {!m.rows.length && !m.cols.length && <p className="te-empty">No columns yet: wire a data set's All rows to the table in the Data canvas, or type rows in Pages, animation, sort › Source.</p>}
+        {!m.rows.length && !m.cols.length && <p className="te-empty">{t("No columns yet: wire a data set's All rows to the table in the Data canvas, or type rows in Pages, animation, sort › Source.")}</p>}
       </div>
       {tip && createPortal(<div className="te-readv" style={{ left: tip.x + 14, top: tip.y + 16 }}>{tip.text}</div>, document.body)}
     </div>
@@ -554,50 +555,50 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
 
 // ------------------------------------------------------------ right --
 /** Font, weight, size, spacing, case, line, style of a level (`path` holds its Typo). */
-function TypoRows({ path, t }: { path: string; t: CellText }) {
+function TypoRows({ path, t: tx }: { path: string; t: CellText }) {
   const b = useBound();
   return (
     <>
-      <Row label="Font" expose={[`${path}.family`, `${path}.weight`]} exposeValue={{ [`${path}.family`]: t.family, [`${path}.weight`]: t.weight }}>
+      <Row label={t('Font')} expose={[`${path}.family`, `${path}.weight`]} exposeValue={{ [`${path}.family`]: tx.family, [`${path}.weight`]: tx.weight }}>
         <FontPick
-          family={t.family}
-          weight={t.weight}
+          family={tx.family}
+          weight={tx.weight}
           onChange={(f, w) => {
             b.set(`${path}.family`, f);
             b.set(`${path}.weight`, w);
           }}
         />
       </Row>
-      <Num label="Size" path={`${path}.size`} value={Math.round(t.size)} min={4} max={300} unit="px" />
-      <Num label="Spacing" path={`${path}.spacing`} value={t.spacing} min={-20} max={100} step={0.5} precision={1} unit="px" />
+      <Num label={t('Size')} path={`${path}.size`} value={Math.round(tx.size)} min={4} max={300} unit="px" />
+      <Num label={t('Spacing')} path={`${path}.spacing`} value={tx.spacing} min={-20} max={100} step={0.5} precision={1} unit="px" />
       <Seg
-        label="Case"
+        label={t('Case')}
         path={`${path}.case`}
-        value={t.case}
+        value={tx.case}
         options={[
-          ['none', '—', 'As typed'],
-          ['upper', 'AA', 'Uppercase'],
-          ['lower', 'aa', 'Lowercase'],
-          ['title', 'Aa', 'Capitalized'],
+          ['none', '—', t('As typed')],
+          ['upper', 'AA', t('Uppercase')],
+          ['lower', 'aa', t('Lowercase')],
+          ['title', 'Aa', t('Capitalized')],
         ]}
       />
       <Seg
-        label="Line"
+        label={t('Line')}
         path={`${path}.deco`}
-        value={t.deco}
+        value={tx.deco}
         options={[
-          ['none', '—', 'None'],
-          ['underline', <u key="u">U</u>, 'Underline'],
-          ['strike', <s key="s">S</s>, 'Strikethrough'],
+          ['none', '—', t('None')],
+          ['underline', <u key="u">U</u>, t('Underline')],
+          ['strike', <s key="s">S</s>, t('Strikethrough')],
         ]}
       />
       <Seg
-        label="Style"
+        label={t('Style')}
         path={`${path}.italic`}
-        value={t.italic}
+        value={tx.italic}
         options={[
-          [false, 'Upright'],
-          [true, <i key="i">Italic</i>],
+          [false, t('Upright')],
+          [true, <i key="i">{t('Italic')}</i>],
         ]}
       />
     </>
@@ -605,57 +606,57 @@ function TypoRows({ path, t }: { path: string; t: CellText }) {
 }
 
 /** One line or several, and what a too-long text does. */
-function LinesRows({ path, t }: { path: string; t: CellText }) {
+function LinesRows({ path, t: tx }: { path: string; t: CellText }) {
   return (
     <>
       <Seg
-        label="Lines"
+        label={t('Lines')}
         path={`${path}.lines`}
-        value={t.multi ? 'multi' : 'one'}
+        value={tx.multi ? 'multi' : 'one'}
         options={[
-          ['one', 'One line'],
-          ['multi', 'Several lines'],
+          ['one', t('One line')],
+          ['multi', t('Several lines')],
         ]}
       />
-      {t.multi && (
+      {tx.multi && (
         <>
-          <Num label="Max lines" path={`${path}.max`} value={t.max} min={2} max={9} />
-          <Num label="Line height" path={`${path}.lh`} value={t.lh} min={0.7} max={3} step={0.05} precision={2} unit="×" />
+          <Num label={t('Max lines')} path={`${path}.max`} value={tx.max} min={2} max={9} />
+          <Num label={t('Line height')} path={`${path}.lh`} value={tx.lh} min={0.7} max={3} step={0.05} precision={2} unit="×" />
           <Seg
-            label="Line break"
+            label={t('Line break')}
             path={`${path}.brk`}
-            value={t.anyBreak ? 'any' : 'words'}
+            value={tx.anyBreak ? 'any' : 'words'}
             options={[
-              ['words', 'Between words'],
-              ['any', 'Anywhere'],
+              ['words', t('Between words')],
+              ['any', t('Anywhere')],
             ]}
           />
         </>
       )}
       <Seg
-        label="Too long"
+        label={t('Too long')}
         path={`${path}.fit`}
-        value={t.fit}
+        value={tx.fit}
         options={[
-          ['fit', 'Fit'],
-          ['ellipsis', 'Ellipsis …'],
-          ['clip', 'Cut'],
+          ['fit', t('Fit')],
+          ['ellipsis', t('Ellipsis …')],
+          ['clip', t('Cut')],
         ]}
       />
-      {t.fit === 'fit' && (
+      {tx.fit === 'fit' && (
         <>
-          {!t.multi && <Num label="Narrower to" path={`${path}.narrow`} value={Math.round(t.narrow)} min={10} max={100} unit="%" />}
-          <Num label="Smaller to" path={`${path}.small`} value={Math.round(t.small)} min={10} max={100} unit="%" />
+          {!tx.multi && <Num label={t('Narrower to')} path={`${path}.narrow`} value={Math.round(tx.narrow)} min={10} max={100} unit="%" />}
+          <Num label={t('Smaller to')} path={`${path}.small`} value={Math.round(tx.small)} min={10} max={100} unit="%" />
           <Seg
-            label="Then"
+            label={t('Then')}
             path={`${path}.then`}
-            value={t.then}
+            value={tx.then}
             options={[
-              ['ellipsis', 'Ellipsis …'],
-              ['clip', 'Cut'],
+              ['ellipsis', t('Ellipsis …')],
+              ['clip', t('Cut')],
             ]}
           />
-          <Note>{t.multi ? 'The text wraps up to the max lines, then gets smaller; what still does not fit ends with the choice above.' : 'The text first gets narrower, then smaller; what still does not fit ends with the choice above.'}</Note>
+          <Note>{tx.multi ? t('The text wraps up to the max lines, then gets smaller; what still does not fit ends with the choice above.') : t('The text first gets narrower, then smaller; what still does not fit ends with the choice above.')}</Note>
         </>
       )}
     </>
@@ -663,14 +664,14 @@ function LinesRows({ path, t }: { path: string; t: CellText }) {
 }
 
 /** Text and Lines sections of a level. */
-function TextSections({ id, path, t }: { id: string; path: string; t: CellText }) {
+function TextSections({ id, path, t: tx }: { id: string; path: string; t: CellText }) {
   return (
     <>
-      <Section id={`te-${id}-text`} title="Text">
-        <TypoRows path={path} t={t} />
+      <Section id={`te-${id}-text`} title={t('Text')}>
+        <TypoRows path={path} t={tx} />
       </Section>
-      <Section id={`te-${id}-lines`} title="Lines & too long text">
-        <LinesRows path={path} t={t} />
+      <Section id={`te-${id}-lines`} title={t('Lines & too long text')}>
+        <LinesRows path={path} t={tx} />
       </Section>
     </>
   );
@@ -690,8 +691,8 @@ function Colours({ path }: { path: string }) {
   );
   return (
     <>
-      {one('bg', 'Background')}
-      {one('color', 'Text')}
+      {one('bg', t('Background'))}
+      {one('color', t('Text'))}
     </>
   );
 }
@@ -700,11 +701,11 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
   const head = live.head.filter(Boolean);
   const colOpts: [string, string][] = k.cols.map((c) => [c.src, c.label || c.src]);
   const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
-  const wOpts: [number, string][] = [[0, 'Like the rows'], ...[400, 500, 600, 700, 800, 900].map((w) => [w, WEIGHT_NAMES[w]] as [number, string])];
+  const wOpts: [number, string][] = [[0, t('Like the rows')], ...[400, 500, 600, 700, 800, 900].map((w) => [w, t(WEIGHT_NAMES[w])] as [number, string])];
   const ALIGN: [string, string][] = [
-    ['left', 'Left'],
-    ['center', 'Centre'],
-    ['right', 'Right'],
+    ['left', t('Left')],
+    ['center', t('Centre')],
+    ['right', t('Right')],
   ];
   const title = (badge: string, name: string, extra?: ReactNode) => (
     <div className="te-selname">
@@ -715,7 +716,7 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
   );
   const toRows = (
     <button className="te-link" onClick={() => setSel({ k: 'rows' })}>
-      Edit the rows' text →
+      {t("Edit the rows' text →")}
     </button>
   );
 
@@ -723,35 +724,35 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
     const grad = !k.titleBg.trim();
     return (
       <div className="te-form">
-        {title('Title', 'Title bar')}
-        <Section id="te-ti-content" title="Content">
-          <Content label="Text" path="title.text" value={k.title.text} />
+        {title(t('Title'), t('Title bar'))}
+        <Section id="te-ti-content" title={t('Content')}>
+          <Content label={t('Text')} path="title.text" value={k.title.text} />
         </Section>
         <TextSections id="ti" path="txt.title" t={titleText(k)} />
-        <Section id="te-ti-col" title="Colours">
+        <Section id="te-ti-col" title={t('Colours')}>
           <Seg
-            label="Background"
+            label={t('Background')}
             value={grad ? 'grad' : 'solid'}
             onChange={(v) => set('titleBg', v === 'solid' ? k.titleTo : '')}
             options={[
-              ['grad', 'Gradient'],
-              ['solid', 'Solid'],
+              ['grad', t('Gradient')],
+              ['solid', t('Solid')],
             ]}
           />
           {grad ? (
             <>
-              <ColorPickRow label="From" path="titleFrom" value={k.titleFrom} />
-              <ColorPickRow label="To" path="titleTo" value={k.titleTo} />
+              <ColorPickRow label={t('From')} path="titleFrom" value={k.titleFrom} />
+              <ColorPickRow label={t('To')} path="titleTo" value={k.titleTo} />
             </>
           ) : (
-            <ColorPickRow label="Colour" path="titleBg" value={k.titleBg} />
+            <ColorPickRow label={t('Colour')} path="titleBg" value={k.titleBg} />
           )}
-          <ColorPickRow label="Text" path="titleColor" value={k.titleColor} />
+          <ColorPickRow label={t('Text')} path="titleColor" value={k.titleColor} />
         </Section>
-        <Section id="te-ti-layout" title="Layout">
-          <Num label="Height" path="titleH" value={k.titleH} min={20} max={300} unit="px" />
-          <Seg label="Align" path="titleAlign" value={k.titleAlign} options={ALIGN} />
-          <Num label="Side margin" path="titlePad" value={k.titlePad} min={0} max={300} unit="px" />
+        <Section id="te-ti-layout" title={t('Layout')}>
+          <Num label={t('Height')} path="titleH" value={k.titleH} min={20} max={300} unit="px" />
+          <Seg label={t('Align')} path="titleAlign" value={k.titleAlign} options={ALIGN} />
+          <Num label={t('Side margin')} path="titlePad" value={k.titlePad} min={0} max={300} unit="px" />
         </Section>
       </div>
     );
@@ -759,15 +760,15 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
   if (sel.k === 'header') {
     return (
       <div className="te-form">
-        {title('Header', 'Header row')}
+        {title(t('Header'), t('Header row'))}
         <TextSections id="hd" path="txt.header" t={headerText(k)} />
-        <Section id="te-hd-col" title="Colours">
+        <Section id="te-hd-col" title={t('Colours')}>
           <Colours path="st.header" />
         </Section>
-        <Section id="te-hd-layout" title="Layout">
-          <Num label="Height" expose="headH" exposeValue={headerH(k)} value={headerH(k)} min={16} max={300} unit="px" onChange={(v) => set('headH', v, true)} />
-          <Seg label="Align" value={k.headAlign ?? 'cols'} onChange={(v) => set('headAlign', v === 'cols' ? null : v)} options={[['cols', 'Columns'], ...ALIGN]} />
-          {k.pageMode === 'pages' && <Toggle label="Each page" path="repeatHeader" value={k.repeatHeader} text="Repeat on every page" />}
+        <Section id="te-hd-layout" title={t('Layout')}>
+          <Num label={t('Height')} expose="headH" exposeValue={headerH(k)} value={headerH(k)} min={16} max={300} unit="px" onChange={(v) => set('headH', v, true)} />
+          <Seg label={t('Align')} value={k.headAlign ?? 'cols'} onChange={(v) => set('headAlign', v === 'cols' ? null : v)} options={[['cols', t('Columns')], ...ALIGN]} />
+          {k.pageMode === 'pages' && <Toggle label={t('Each page')} path="repeatHeader" value={k.repeatHeader} text={t('Repeat on every page')} />}
         </Section>
       </div>
     );
@@ -775,72 +776,72 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
   if (sel.k === 'rows') {
     return (
       <div className="te-form">
-        {title('Rows', 'All the rows')}
+        {title(t('Rows'), t('All the rows'))}
         <TextSections id="rw" path="txt.rows" t={rowsText(k, size)} />
-        <Section id="te-rw-col" title={zebra ? 'Odd rows' : 'Colours'}>
+        <Section id="te-rw-col" title={zebra ? t('Odd rows') : t('Colours')}>
           <Colours path="st.odd" />
-          <Select label="Weight" path="kw.odd" value={k.kw.odd ?? 0} options={wOpts} />
+          <Select label={t('Weight')} path="kw.odd" value={k.kw.odd ?? 0} options={wOpts} />
         </Section>
         {zebra && (
-          <Section id="te-rw-even" title="Even rows">
+          <Section id="te-rw-even" title={t('Even rows')}>
             <Colours path="st.even" />
-            <Select label="Weight" path="kw.even" value={k.kw.even ?? 0} options={wOpts} />
+            <Select label={t('Weight')} path="kw.even" value={k.kw.even ?? 0} options={wOpts} />
           </Section>
         )}
         {k.cf.top3 && (
-          <Section id="te-rw-top" title="Top rows">
-            <Num label="How many" path="cf.topN" value={k.cf.topN} min={1} max={50} />
+          <Section id="te-rw-top" title={t('Top rows')}>
+            <Num label={t('How many')} path="cf.topN" value={k.cf.topN} min={1} max={50} />
             <Colours path="st.top3" />
-            <Toggle label="Accent bar" path="cf.topBar" value={k.cf.topBar} text="On the left" />
-            <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />
-            <Select label="Weight" path="kw.top3" value={k.kw.top3 ?? 0} options={wOpts} />
+            <Toggle label={t('Accent bar')} path="cf.topBar" value={k.cf.topBar} text={t('On the left')} />
+            <ColorPickRow label={t('Accent')} path="cf.top3Color" value={k.cf.top3Color} />
+            <Select label={t('Weight')} path="kw.top3" value={k.kw.top3 ?? 0} options={wOpts} />
           </Section>
         )}
-        <Section id="te-rw-hl" title="Highlighted row" closed>
+        <Section id="te-rw-hl" title={t('Highlighted row')} closed>
           <Colours path="st.hl" />
-          {k.cf.hlBar && <ColorPickRow label="Marker" path="cf.hlBarColor" value={k.cf.hlBarColor} />}
-          <Select label="Weight" path="kw.hl" value={k.kw.hl ?? 0} options={wOpts} />
-          <Note>The operator picks the row in the Operator.</Note>
+          {k.cf.hlBar && <ColorPickRow label={t('Marker')} path="cf.hlBarColor" value={k.cf.hlBarColor} />}
+          <Select label={t('Weight')} path="kw.hl" value={k.kw.hl ?? 0} options={wOpts} />
+          <Note>{t('The operator picks the row in the Operator.')}</Note>
         </Section>
-        <Section id="te-rw-data" title="Colour from the data">
-          <Row label="Column">
-            <Dropdown value={k.rowFrom} options={[{ value: '', label: 'None' }, ...head.map((h) => ({ value: h, label: h }))]} onChange={(v) => set('rowFrom', v)} />
+        <Section id="te-rw-data" title={t('Colour from the data')}>
+          <Row label={t('Column')}>
+            <Dropdown value={k.rowFrom} options={[{ value: '', label: t('None') }, ...head.map((h) => ({ value: h, label: h }))]} onChange={(v) => set('rowFrom', v)} />
           </Row>
           {k.rowFrom && (
             <Seg
-              label="Shows as"
+              label={t('Shows as')}
               path="rowPaint"
               value={k.rowPaint}
               options={[
-                ['bar', 'Bar'],
-                ['bg', 'Background'],
-                ['text', 'Text'],
+                ['bar', t('Bar')],
+                ['bg', t('Background')],
+                ['text', t('Text')],
               ]}
             />
           )}
-          <Note>Each row takes the colour written in this column (#rrggbb), e.g. the team's colour.</Note>
+          <Note>{t("Each row takes the colour written in this column (#rrggbb), e.g. the team's colour.")}</Note>
         </Section>
         {k.headerColOn && (
-          <Section id="te-rw-hcol" title="Header column">
-            <Select label="Column" path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />
+          <Section id="te-rw-hcol" title={t('Header column')}>
+            <Select label={t('Column')} path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />
             <Colours path="st.hcol" />
           </Section>
         )}
-        <Section id="te-rw-size" title="Size & spacing">
-          <Num label="Row height" path="rowH" value={k.rowH} min={20} max={300} unit="px" />
-          <Num label="Padding" path="pad" value={k.pad} min={0} max={200} unit="px" />
-          <Num label="Gap" path="gap" value={k.gap} min={0} max={100} unit="px" />
-          <Num label="Corners" path="radius" value={k.radius} min={0} max={100} unit="px" />
+        <Section id="te-rw-size" title={t('Size & spacing')}>
+          <Num label={t('Row height')} path="rowH" value={k.rowH} min={20} max={300} unit="px" />
+          <Num label={t('Padding')} path="pad" value={k.pad} min={0} max={200} unit="px" />
+          <Num label={t('Gap')} path="gap" value={k.gap} min={0} max={100} unit="px" />
+          <Num label={t('Corners')} path="radius" value={k.radius} min={0} max={100} unit="px" />
         </Section>
         {k.cf.neg && (
-          <Section id="te-rw-num" title="Negative numbers" closed>
-            <ColorPickRow label="Colour" path="cf.negColor" value={k.cf.negColor} />
+          <Section id="te-rw-num" title={t('Negative numbers')} closed>
+            <ColorPickRow label={t('Colour')} path="cf.negColor" value={k.cf.negColor} />
           </Section>
         )}
         {k.borders.innerH.on && (
-          <Section id="te-rw-lines" title="Lines between rows" closed>
-            <Num label="Width" path="borders.innerH.width" value={k.borders.innerH.width} min={1} max={50} unit="px" />
-            <ColorPickRow label="Colour" path="borders.innerH.color" value={k.borders.innerH.color} />
+          <Section id="te-rw-lines" title={t('Lines between rows')} closed>
+            <Num label={t('Width')} path="borders.innerH.width" value={k.borders.innerH.width} min={1} max={50} unit="px" />
+            <ColorPickRow label={t('Colour')} path="borders.innerH.color" value={k.borders.innerH.color} />
           </Section>
         )}
       </div>
@@ -850,10 +851,10 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
     const rank = sel.k === 'rank';
     const i = rank ? -1 : sel.i;
     const c = rank ? undefined : k.cols[i];
-    if (!rank && !c) return <Note>Select a column.</Note>;
+    if (!rank && !c) return <Note>{t('Select a column.')}</Note>;
     const p = rank ? 'txt.rank' : `cols.${i}.txt`;
     const own = rank ? k.txt.rank : c!.txt;
-    const t = colText(k, rank ? { col: { type: 'number' } as never } : { col: c as never, i: 0 }, size);
+    const ct = colText(k, rank ? { col: { type: 'number' } as never } : { col: c as never, i: 0 }, size);
     const cp = `cols.${i}`;
     const srcs = [...new Set([...head, c?.src ?? ''])].filter(Boolean);
     const sorted = !!c && k.sortCol === c.src;
@@ -862,16 +863,16 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
     return (
       <div className="te-form">
         {title(
-          'Column',
-          rank ? 'Rank' : c!.label || c!.src,
+          t('Column'),
+          rank ? t('Rank') : c!.label || c!.src,
           !rank && (
             <span className="te-acts">
-              <button className="icon-btn" title={c!.on ? 'Hide' : 'Show'} onClick={() => edit((l) => void (l.cols![i] = { ...l.cols![i], on: !c!.on }))}>
+              <button className="icon-btn" title={c!.on ? t('Hide') : t('Show')} onClick={() => edit((l) => void (l.cols![i] = { ...l.cols![i], on: !c!.on }))}>
                 {c!.on ? <Eye size={14} /> : <EyeOff size={14} />}
               </button>
               <button
                 className="icon-btn"
-                title="Remove"
+                title={t('Remove')}
                 onClick={() => {
                   edit((l) => void l.cols!.splice(i, 1));
                   setSel({ k: 'table' });
@@ -883,70 +884,70 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
           ),
         )}
         {rank ? (
-          <Section id="te-rank" title="Column">
-            <Note>The position of each row once sorted (1, 2, 3…). Top rows show it in their accent colour.</Note>
+          <Section id="te-rank" title={t('Column')}>
+            <Note>{t('The position of each row once sorted (1, 2, 3…). Top rows show it in their accent colour.')}</Note>
           </Section>
         ) : (
-          <Section id="te-col" title="Column">
-            <Row label="Data">
+          <Section id="te-col" title={t('Column')}>
+            <Row label={t('Data')}>
               <Dropdown value={c!.src} options={srcs.length ? srcs.map((v) => ({ value: v, label: v })) : [{ value: '', label: '—' }]} onChange={(v) => set(`${cp}.src`, v)} />
             </Row>
-            <Text label="Header" path={`${cp}.label`} value={c!.label} />
+            <Text label={t('Header')} path={`${cp}.label`} value={c!.label} />
             <Seg
-              label="Shows"
+              label={t('Shows')}
               path={`${cp}.type`}
               value={c!.type}
               expose={false}
               options={[
-                ['text', 'Text'],
-                ['number', 'Number'],
-                ['image', 'Picture'],
+                ['text', t('Text')],
+                ['number', t('Number')],
+                ['image', t('Picture')],
               ]}
             />
-            <Seg label="Align" path={`${cp}.align`} value={c!.align} options={ALIGN} />
+            <Seg label={t('Align')} path={`${cp}.align`} value={c!.align} options={ALIGN} />
             <Seg
-              label="Widths"
+              label={t('Widths')}
               value={k.widthMode}
               onChange={(v) => widthsAs(v as 'auto')}
               options={[
-                ['auto', 'Auto'],
+                ['auto', t('Auto')],
                 ['percent', '%'],
                 ['fixed', 'px'],
               ]}
             />
-            {k.widthMode === 'percent' && <Num label="Width" value={shareOf(i)} min={1} max={95} unit="%" onChange={(v) => setShare(i, v)} />}
-            {k.widthMode === 'fixed' && <Num label="Width" path={`${cp}.w`} value={c!.w} min={10} max={4000} unit="px" />}
-            {c!.type === 'number' && <Seg label="Format" path={`${cp}.fmt`} value={c!.fmt} options={FMTS} />}
+            {k.widthMode === 'percent' && <Num label={t('Width')} value={shareOf(i)} min={1} max={95} unit="%" onChange={(v) => setShare(i, v)} />}
+            {k.widthMode === 'fixed' && <Num label={t('Width')} path={`${cp}.w`} value={c!.w} min={10} max={4000} unit="px" />}
+            {c!.type === 'number' && <Seg label={t('Format')} path={`${cp}.fmt`} value={c!.fmt} options={FMTS} />}
             {!pic && (
               <>
-                <Text label="Before" path={`${cp}.prefix`} value={c!.prefix ?? ''} placeholder="e.g. €" />
-                <Text label="After" path={`${cp}.suffix`} value={c!.suffix ?? ''} placeholder="e.g. pts" />
+                <Text label={t('Before')} path={`${cp}.prefix`} value={c!.prefix ?? ''} placeholder={t('e.g. €')} />
+                <Text label={t('After')} path={`${cp}.suffix`} value={c!.suffix ?? ''} placeholder={t('e.g. pts')} />
               </>
             )}
             {!pic && (
               <>
-                <Row label="Text colour">
-                  <Dropdown value={c!.colorFrom ?? ''} options={[{ value: '', label: 'Rows colour' }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: `From ${h}` }))]} onChange={(v) => set(`${cp}.colorFrom`, v)} />
+                <Row label={t('Text colour')}>
+                  <Dropdown value={c!.colorFrom ?? ''} options={[{ value: '', label: t('Rows colour') }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: t('From {name}', { name: h }) }))]} onChange={(v) => set(`${cp}.colorFrom`, v)} />
                 </Row>
-                <Row label="Background">
-                  <Dropdown value={c!.bgFrom ?? ''} options={[{ value: '', label: 'Rows colour' }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: `From ${h}` }))]} onChange={(v) => set(`${cp}.bgFrom`, v)} />
+                <Row label={t('Background')}>
+                  <Dropdown value={c!.bgFrom ?? ''} options={[{ value: '', label: t('Rows colour') }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: t('From {name}', { name: h }) }))]} onChange={(v) => set(`${cp}.bgFrom`, v)} />
                 </Row>
               </>
             )}
             {c!.type === 'text' && (
-              <Row label="Colour mark">
-                <Dropdown value={c!.mark} options={[{ value: '', label: 'None' }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: `From ${h}` }))]} onChange={(v) => set(`${cp}.mark`, v)} />
+              <Row label={t('Colour mark')}>
+                <Dropdown value={c!.mark} options={[{ value: '', label: t('None') }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: t('From {name}', { name: h }) }))]} onChange={(v) => set(`${cp}.mark`, v)} />
               </Row>
             )}
-            <Toggle label="Sort" value={sorted} text="Sort on this column" onChange={(v) => set('sortCol', v ? c!.src : '')} />
+            <Toggle label={t('Sort')} value={sorted} text={t('Sort on this column')} onChange={(v) => set('sortCol', v ? c!.src : '')} />
             {sorted && (
               <Seg
-                label="Order"
+                label={t('Order')}
                 path="sortDir"
                 value={k.sortDir}
                 options={[
-                  ['desc', 'Biggest first'],
-                  ['asc', 'Smallest first'],
+                  ['desc', t('Biggest first')],
+                  ['asc', t('Smallest first')],
                 ]}
               />
             )}
@@ -954,62 +955,62 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
         )}
         {pic ? (
           <>
-            <Section id="te-pic-fit" title="Picture">
+            <Section id="te-pic-fit" title={t('Picture')}>
               <Seg
-                label="Fit"
+                label={t('Fit')}
                 path={`${cp}.img.fit`}
                 value={img.fit}
                 options={[
-                  ['contain', 'Contain'],
-                  ['cover', 'Cover'],
-                  ['stretch', 'Stretch'],
+                  ['contain', t('Contain')],
+                  ['cover', t('Cover')],
+                  ['stretch', t('Stretch')],
                 ]}
               />
-              <Num label="Height" path={`${cp}.img.size`} value={img.size} min={5} max={100} unit="%" />
-              {img.fit !== 'contain' && img.mask !== 'circle' && <Num label="Width" path={`${cp}.img.width`} value={img.width} min={5} max={100} unit="%" />}
-              <Num label="Opacity" path={`${cp}.img.opacity`} value={img.opacity} min={0} max={100} unit="%" />
-              <Content label="If empty" path={`${cp}.img.fallback`} value={img.fallback} placeholder="/assets/… picture" />
+              <Num label={t('Height')} path={`${cp}.img.size`} value={img.size} min={5} max={100} unit="%" />
+              {img.fit !== 'contain' && img.mask !== 'circle' && <Num label={t('Width')} path={`${cp}.img.width`} value={img.width} min={5} max={100} unit="%" />}
+              <Num label={t('Opacity')} path={`${cp}.img.opacity`} value={img.opacity} min={0} max={100} unit="%" />
+              <Content label={t('If empty')} path={`${cp}.img.fallback`} value={img.fallback} placeholder={t('/assets/… picture')} />
             </Section>
-            <Section id="te-pic-shape" title="Shape">
+            <Section id="te-pic-shape" title={t('Shape')}>
               <Seg
-                label="Mask"
+                label={t('Mask')}
                 path={`${cp}.img.mask`}
                 value={img.mask}
                 options={[
-                  ['none', 'None'],
-                  ['rounded', 'Rounded'],
-                  ['circle', 'Circle'],
+                  ['none', t('None')],
+                  ['rounded', t('Rounded')],
+                  ['circle', t('Circle')],
                 ]}
               />
-              {img.mask === 'rounded' && <Num label="Radius" path={`${cp}.img.radius`} value={img.radius} min={0} max={500} unit="px" />}
+              {img.mask === 'rounded' && <Num label={t('Radius')} path={`${cp}.img.radius`} value={img.radius} min={0} max={500} unit="px" />}
             </Section>
           </>
         ) : (
           <>
-            <Section id="te-col-text" title="Text">
+            <Section id="te-col-text" title={t('Text')}>
               <Seg
-                label="Uses"
+                label={t('Uses')}
                 value={own ? 'own' : 'rows'}
                 onChange={(v) => edit((l) => (v === 'own' ? setPath(l, p, {}) : rank ? void (l.txt = { ...l.txt, rank: undefined }) : void delete l.cols![i].txt))}
                 options={[
-                  ['rows', 'The rows’ text'],
-                  ['own', 'Its own text'],
+                  ['rows', t('The rows’ text')],
+                  ['own', t('Its own text')],
                 ]}
               />
               {own ? (
-                <TypoRows path={p} t={t} />
+                <TypoRows path={p} t={ct} />
               ) : (
                 <div className="te-inherit">
                   <span>
-                    <b>{t.family}</b> {WEIGHT_NAMES[t.weight] ?? t.weight} · {Math.round(t.size)} px
+                    <b>{ct.family}</b> {WEIGHT_NAMES[ct.weight] ? t(WEIGHT_NAMES[ct.weight]) : ct.weight} · {Math.round(ct.size)} px
                   </span>
                   {toRows}
                 </div>
               )}
             </Section>
             {own && (
-              <Section id="te-col-lines" title="Lines & too long text">
-                <LinesRows path={p} t={t} />
+              <Section id="te-col-lines" title={t('Lines & too long text')}>
+                <LinesRows path={p} t={ct} />
               </Section>
             )}
           </>
@@ -1020,131 +1021,129 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
   // The table itself.
   return (
     <div className="te-form">
-      {title('Table', layer.name)}
-      <Section id="te-pages" title="Pages">
-        <Num label="Rows per page" path="perPage" value={k.perPage} min={1} max={99} />
-        {k.pageMode === 'scroll' && <Num label="Scroll speed" path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />}
-        {k.pageMode === 'pages' && k.indicator && <ColorPickRow label="Page dots" path="indicatorColor" value={k.indicatorColor} />}
+      {title(t('Table'), layer.name)}
+      <Section id="te-pages" title={t('Pages')}>
+        <Num label={t('Rows per page')} path="perPage" value={k.perPage} min={1} max={99} />
+        {k.pageMode === 'scroll' && <Num label={t('Scroll speed')} path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />}
+        {k.pageMode === 'pages' && k.indicator && <ColorPickRow label={t('Page dots')} path="indicatorColor" value={k.indicatorColor} />}
       </Section>
       {k.cascade.on && (
-        <Section id="te-cascade" title="Rows come in">
+        <Section id="te-cascade" title={t('Rows come in')}>
           <Seg
-            label="Style"
+            label={t('Style')}
             path="cascade.style"
             value={k.cascade.style}
             options={[
-              ['slide', 'Slide'],
-              ['fade', 'Fade'],
-              ['flip', 'Flip'],
+              ['slide', t('Slide')],
+              ['fade', t('Fade')],
+              ['flip', t('Flip')],
             ]}
           />
-          <Num label="Offset" path="cascade.offset" value={k.cascade.offset} min={0} max={5000} step={5} unit="ms" />
-          <Num label="Duration" path="cascade.dur" value={k.cascade.dur} min={10} max={5000} step={10} unit="ms" />
+          <Num label={t('Offset')} path="cascade.offset" value={k.cascade.offset} min={0} max={5000} step={5} unit="ms" />
+          <Num label={t('Duration')} path="cascade.dur" value={k.cascade.dur} min={10} max={5000} step={10} unit="ms" />
         </Section>
       )}
       {!!k.sortCol && (
-        <Section id="te-sort" title="Sort">
-          <Select label="Column" path="sortCol" value={k.sortCol} options={colOpts.length ? colOpts : [[k.sortCol, k.sortCol]]} />
+        <Section id="te-sort" title={t('Sort')}>
+          <Select label={t('Column')} path="sortCol" value={k.sortCol} options={colOpts.length ? colOpts : [[k.sortCol, k.sortCol]]} />
           <Seg
-            label="Order"
+            label={t('Order')}
             path="sortDir"
             value={k.sortDir}
             options={[
-              ['desc', 'Biggest first'],
-              ['asc', 'Smallest first'],
+              ['desc', t('Biggest first')],
+              ['asc', t('Smallest first')],
             ]}
           />
         </Section>
       )}
-      <Section id="te-source" title="Source" closed>
+      <Section id="te-source" title={t('Source')} closed>
         {/\{\{\w+\}\}/.test(k.link) ? (
           <>
-            <Row label="Rows">
-              <span className="te-chip data">{dsName ? `${dsName} · All rows` : 'Linked data'}</span>
+            <Row label={t('Rows')}>
+              <span className="te-chip data">{dsName ? t('{name} · All rows', { name: dsName }) : t('Linked data')}</span>
             </Row>
-            <Note>
-              {live.rows.length} rows · {head.length} columns. Wired in the Data canvas.
-            </Note>
+            <Note>{t('{rows} · {cols}. Wired in the Data canvas.', { rows: tn(live.rows.length, '{n} row', '{n} rows'), cols: tn(head.length, '{n} column', '{n} columns') })}</Note>
           </>
         ) : (
           <>
-            <Content label="Rows" path="link" placeholder="{{key}}" />
+            <Content label={t('Rows')} path="link" placeholder="{{key}}" />
             {!k.link.trim() && (
               <>
                 <div className="te-grid">
                   <GridEditor value={k.grid} onChange={setGrid} header csv />
                 </div>
-                {layer.settingBindings?.grid && <Note>The Operator starts from these rows; the operator can type others or import a CSV.</Note>}
+                {layer.settingBindings?.grid && <Note>{t('The Operator starts from these rows; the operator can type others or import a CSV.')}</Note>}
               </>
             )}
           </>
         )}
       </Section>
-      <Section id="te-widths" title="Column widths" closed>
+      <Section id="te-widths" title={t('Column widths')} closed>
         <Seg
-          label="Widths"
+          label={t('Widths')}
           value={k.widthMode}
           onChange={(v) => widthsAs(v as 'auto')}
           options={[
-            ['auto', 'Auto'],
+            ['auto', t('Auto')],
             ['percent', '%'],
             ['fixed', 'px'],
           ]}
         />
       </Section>
-      <Section id="te-bg" title="Background" closed>
-        <ColorPickRow label="Colour" path="st.tableBg" value={k.st.tableBg} />
+      <Section id="te-bg" title={t('Background')} closed>
+        <ColorPickRow label={t('Colour')} path="st.tableBg" value={k.st.tableBg} />
       </Section>
       {(k.borders.outer.on || k.borders.innerV.on) && (
-        <Section id="te-borders" title="Borders" closed>
+        <Section id="te-borders" title={t('Borders')} closed>
           {(
             [
-              ['outer', 'Outer'],
-              ['innerV', 'Between columns'],
+              ['outer', 'Outer width', 'Outer colour'],
+              ['innerV', 'Between columns width', 'Between columns colour'],
             ] as const
           )
             .filter(([b]) => k.borders[b].on)
-            .map(([b, lab]) => (
+            .map(([b, wLab, cLab]) => (
               <div key={b}>
-                <Num label={`${lab} width`} path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={50} unit="px" />
-                <ColorPickRow label={`${lab} colour`} path={`borders.${b}.color`} value={k.borders[b].color} />
+                <Num label={t(wLab)} path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={50} unit="px" />
+                <ColorPickRow label={t(cLab)} path={`borders.${b}.color`} value={k.borders[b].color} />
               </div>
             ))}
         </Section>
       )}
-      <Section id="te-merges" title="Merged cells" closed>
-        <Btns list={[{ label: k.merges.length ? '+ Merge' : 'Merge cells', cls: 'ghost', onClick: () => set('merges', [...k.merges, { on: true, row: 2, col: 1, span: 2, text: '' }]) }]} />
+      <Section id="te-merges" title={t('Merged cells')} closed>
+        <Btns list={[{ label: k.merges.length ? t('+ Merge') : t('Merge cells'), cls: 'ghost', onClick: () => set('merges', [...k.merges, { on: true, row: 2, col: 1, span: 2, text: '' }]) }]} />
         {k.merges.map((g, x) => (
           <div key={x} className="te-merge">
-            <Num label="Row" path={`merges.${x}.row`} value={g.row} min={1} />
-            <Num label="From column" path={`merges.${x}.col`} value={g.col} min={1} />
-            <Num label="Cells" path={`merges.${x}.span`} value={g.span} min={2} />
-            <Text label="Text" path={`merges.${x}.text`} value={g.text} placeholder="Keep the first cell" />
-            <Btns list={[{ label: 'Remove', cls: 'ghost', onClick: () => set('merges', k.merges.filter((_, q) => q !== x)) }]} />
+            <Num label={t('Row')} path={`merges.${x}.row`} value={g.row} min={1} />
+            <Num label={t('From column')} path={`merges.${x}.col`} value={g.col} min={1} />
+            <Num label={t('Cells')} path={`merges.${x}.span`} value={g.span} min={2} />
+            <Text label={t('Text')} path={`merges.${x}.text`} value={g.text} placeholder={t('Keep the first cell')} />
+            <Btns list={[{ label: t('Remove'), cls: 'ghost', onClick: () => set('merges', k.merges.filter((_, q) => q !== x)) }]} />
           </div>
         ))}
       </Section>
-      <Section id="te-cell" title="One cell" closed>
-        <Toggle label="Shown" path="cell.on" value={k.cell.on} />
+      <Section id="te-cell" title={t('One cell')} closed>
+        <Toggle label={t('Shown')} path="cell.on" value={k.cell.on} />
         {k.cell.on && (
           <>
-            <Num label="Row" path="cell.row" value={k.cell.row} min={1} />
-            <Num label="Column" path="cell.col" value={k.cell.col} min={1} />
+            <Num label={t('Row')} path="cell.row" value={k.cell.row} min={1} />
+            <Num label={t('Column')} path="cell.col" value={k.cell.col} min={1} />
             <Colours path="cell" />
           </>
         )}
       </Section>
-      <Section id="te-empty" title="No rows" closed>
+      <Section id="te-empty" title={t('No rows')} closed>
         <Seg
-          label="Shows"
+          label={t('Shows')}
           path="emptyMode"
           value={k.emptyMode}
           options={[
-            ['message', 'Message'],
-            ['hide', 'Nothing'],
+            ['message', t('Message')],
+            ['hide', t('Nothing')],
           ]}
         />
-        {k.emptyMode === 'message' && <Text label="Message" path="emptyText" value={k.emptyText} />}
+        {k.emptyMode === 'message' && <Text label={t('Message')} path="emptyText" value={k.emptyText} />}
       </Section>
     </div>
   );

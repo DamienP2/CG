@@ -6,6 +6,7 @@ import { Pencil, Table } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import { locale, t, tn } from '../i18n';
 import { useTableEditor } from './table-editor-store';
 import { ColorField } from '../ui/fields';
 import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
@@ -348,6 +349,8 @@ export function currentPage(st: State, pages: number, now: number): [number, num
   }
   return [Math.min(page, pages - 1), st.pageAt ?? 0];
 }
+/** Seconds shown to the operator, one decimal. */
+const secs = (v: number) => Math.max(0, v).toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 function nextIn(st: State, now: number): number | undefined {
   if (!st.auto || !(st.interval! > 0) || !st.autoAt) return;
   const t = st.pausedAt ? st.pausedAt : now;
@@ -617,23 +620,26 @@ function warningsOf(layer: TL, data: Data, state: unknown, W: number, H: number)
   const k = cfg(layer);
   const m = model(k, data);
   const out: Warning[] = [];
-  m.unmapped.forEach((h) => out.push({ level: 'warn', text: `New column '${h}' in the data — not mapped (ignored until mapped in Columns).`, op: true }));
-  if (m.missing.length) out.push({ level: 'error', text: `Mapped column(s) not in the data: ${m.missing.join(', ')} — not shown.` });
-  if (!m.rows.length) out.push({ level: 'info', text: k.emptyMode === 'hide' ? 'No data: the table is hidden.' : 'No data: the fallback message is on air.', op: true });
+  m.unmapped.forEach((h) => out.push({ level: 'warn', text: t("New column '{name}' in the data — not mapped (ignored until mapped in Columns).", { name: h }), op: true }));
+  if (m.missing.length) out.push({ level: 'error', text: tn(m.missing.length, 'Mapped column not in the data: {names} — not shown.', 'Mapped columns not in the data: {names} — not shown.', { names: m.missing.join(', ') }) });
+  if (!m.rows.length) out.push({ level: 'info', text: k.emptyMode === 'hide' ? t('No data: the table is hidden.') : t('No data: the fallback message is on air.'), op: true });
   const pages = pageCount(k, m);
   const [page] = currentPage((state ?? {}) as State, pages, Date.now());
-  if (pages > 1 && k.pageMode === 'pages') out.push({ level: 'info', text: `${m.rows.length} rows for ${k.perPage} per page: automatic pagination, page ${page + 1}/${pages}.` });
+  if (pages > 1 && k.pageMode === 'pages') out.push({ level: 'info', text: t('{rows} rows for {per} per page: automatic pagination, page {page}/{pages}.', { rows: m.rows.length, per: k.perPage, page: page + 1, pages }) });
   const size = sizeOf(layer);
   const ws = widths(k, m, W, size);
   if (k.widthMode === 'fixed') {
     const sum = ws.reduce((a, b) => a + b, 0) + k.gap * Math.max(0, m.cols.length - 1);
-    if (sum > W + 0.5) out.push({ level: 'warn', text: `Fixed widths total ${Math.round(sum)} px for a ${Math.round(W)} px box: the right columns are cut.` });
+    if (sum > W + 0.5) out.push({ level: 'warn', text: t('Fixed widths total {sum} px for a {w} px box: the right columns are cut.', { sum: Math.round(sum), w: Math.round(W) }) });
   }
   const need = (k.title.on ? titleH(k) + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0) + Math.min(k.perPage, Math.max(1, m.rows.length)) * (k.rowH + k.gap) + (k.indicator && pages > 1 && k.pageMode === 'pages' ? 70 : 0);
-  if (need > H + 1) out.push({ level: 'warn', text: `The table (${Math.round(need)} px) is taller than the box (${Math.round(H)} px): fewer rows per page or a smaller row height.` });
+  if (need > H + 1) out.push({ level: 'warn', text: t('The table ({need} px) is taller than the box ({h} px): fewer rows per page or a smaller row height.', { need: Math.round(need), h: Math.round(H) }) });
   let cut = 0;
   m.rows.forEach((r) => m.cols.forEach((c, j) => c.col.type === 'text' && c.i !== undefined && tw(cellText(c, r), size, 700) > ws[j] - 2 * k.pad && cut++));
-  if (cut) out.push({ level: 'info', text: `${cut} cell(s) too long: ${k.overflow === 'shrink' ? 'shrunk (then squeezed / ellipsis at the minimum)' : k.overflow === 'squeeze' ? 'squeezed (then ellipsis at the minimum)' : 'cut with an ellipsis'}.` });
+  if (cut) {
+    const how = k.overflow === 'shrink' ? t('shrunk (then squeezed / ellipsis at the minimum)') : k.overflow === 'squeeze' ? t('squeezed (then ellipsis at the minimum)') : t('cut with an ellipsis');
+    out.push({ level: 'info', text: tn(cut, '{n} cell too long: {how}.', '{n} cells too long: {how}.', { how }) });
+  }
   return out;
 }
 
@@ -680,42 +686,40 @@ export default defineWidget({
     return (
       <>
         {!m.rows.length ? (
-          <Readout sub={k.emptyMode === 'hide' ? 'table hidden' : 'fallback message on air'}>NO DATA</Readout>
+          <Readout sub={k.emptyMode === 'hide' ? t('table hidden') : t('fallback message on air')}>{t('NO DATA')}</Readout>
         ) : scroll ? (
-          <Readout sub={`${m.rows.length} rows · ${k.scrollSpeed} px/s continuous`}>SCROLL</Readout>
+          <Readout sub={tn(m.rows.length, '{n} row · {speed} px/s continuous', '{n} rows · {speed} px/s continuous', { speed: k.scrollSpeed })}>{t('SCROLL')}</Readout>
         ) : (
-          <Readout sub={`rows ${a}–${b} of ${m.rows.length}`}>{`PAGE ${page + 1}/${pages}`}</Readout>
+          <Readout sub={t('rows {a}–{b} of {n}', { a, b, n: m.rows.length })}>{t('PAGE {page}/{pages}', { page: page + 1, pages })}</Readout>
         )}
         <Btns
           list={[
-            { label: 'Previous', cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
-            { label: 'Next', cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
+            { label: t('Previous'), cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
+            { label: t('Next'), cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
           ]}
         />
-        {!scroll && pages > 1 && <Btns label="Go to page" list={Array.from({ length: pages }, (_, i) => ({ label: String(i + 1), cls: i === page ? 'violet' : 'ghost', title: `Go to page ${i + 1}`, onClick: () => act('go', { page: i + 1 }) }))} />}
-        <Toggle label="Auto pages" value={!!st.auto} text="Turn pages automatically" disabled={scroll ? 'Not in continuous scroll' : pages < 2 ? 'One page only' : undefined} onChange={(v) => act(v ? 'auto' : 'stop', v ? { seconds: st.interval || 6 } : undefined)} />
+        {!scroll && pages > 1 && <Btns label={t('Go to page')} list={Array.from({ length: pages }, (_, i) => ({ label: String(i + 1), cls: i === page ? 'violet' : 'ghost', title: t('Go to page {n}', { n: i + 1 }), onClick: () => act('go', { page: i + 1 }) }))} />}
+        <Toggle label={t('Auto pages')} value={!!st.auto} text={t('Turn pages automatically')} disabled={scroll ? t('Not in continuous scroll') : pages < 2 ? t('One page only') : undefined} onChange={(v) => act(v ? 'auto' : 'stop', v ? { seconds: st.interval || 6 } : undefined)} />
         {st.auto && !scroll && (
           <>
-            <Range label="Interval" value={st.interval ?? 6} min={2} max={30} unit=" s" onChange={(v) => act('auto', { seconds: v })} />
-            <Btns list={[st.pausedAt ? { label: '▶ Resume', cls: 'green', onClick: () => act('resume') } : { label: '❚❚ Pause', cls: 'amber', onClick: () => act('pause') }]} />
+            <Range label={t('Interval')} value={st.interval ?? 6} min={2} max={30} unit=" s" onChange={(v) => act('auto', { seconds: v })} />
+            <Btns list={[st.pausedAt ? { label: t('▶ Resume'), cls: 'green', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'amber', onClick: () => act('pause') }]} />
             {left !== undefined && (
-              <Note>
-                {st.pausedAt ? '❚❚ Paused' : '▶ Next page in'} {Math.max(0, left).toFixed(1)} s
-              </Note>
+              <Note>{st.pausedAt ? t('❚❚ Paused {s} s', { s: secs(left) }) : t('▶ Next page in {s} s', { s: secs(left) })}</Note>
             )}
           </>
         )}
-        <Select label="Highlight row" value={st.hl ?? ''} options={[['', '— none —'], ...m.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])]} onChange={(v) => act('highlight', { row: v })} />
-        {st.hl && <Btns list={[{ label: 'Clear highlight', cls: 'ghost', onClick: () => act('highlight', { row: '' }) }]} />}
-        {k.link.trim() && <Btns list={[{ label: 'Reload data', cls: 'ghost', onClick: () => act('reload') }]} />}
-        <Note>{k.link.trim() ? 'Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.' : 'Source: manual grid.'}</Note>
+        <Select label={t('Highlight row')} value={st.hl ?? ''} options={[['', t('— none —')], ...m.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])]} onChange={(v) => act('highlight', { row: v })} />
+        {st.hl && <Btns list={[{ label: t('Clear highlight'), cls: 'ghost', onClick: () => act('highlight', { row: '' }) }]} />}
+        {k.link.trim() && <Btns list={[{ label: t('Reload data'), cls: 'ghost', onClick: () => act('reload') }]} />}
+        <Note>{k.link.trim() ? t('Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.') : t('Source: manual grid.')}</Note>
       </>
     );
   },
   Overlay: ({ layer, scale, edit }) => {
     const k = cfg(layer);
     const top = (k.title.on ? titleH(k) + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0);
-    return <Handle x={-14 / scale} y={top + k.rowH} scale={scale} label={`Row height ${k.rowH} px`} onDrag={(_, y) => edit((l) => void (l.rowH = clamp(Math.round(y - top), 30, 160)), `rowh-${layer.id}`)} />;
+    return <Handle x={-14 / scale} y={top + k.rowH} scale={scale} label={t('Row height {n} px', { n: k.rowH })} onDrag={(_, y) => edit((l) => void (l.rowH = clamp(Math.round(y - top), 30, 160)), `rowh-${layer.id}`)} />;
   },
   warnings: (layer, { data, state, r }) => warningsOf(layer as unknown as TL, data, state, vnum(r?.width ?? (layer.props.width as number) ?? 0), vnum(r?.height ?? (layer.props.height as number) ?? 0)),
 });
@@ -736,7 +740,7 @@ function TableCard({ layer }: { layer: TL }) {
   return (
     <div className="te-card">
       <button className="btn primary te-edit" onClick={() => open(layer.id)}>
-        <Pencil size={14} /> Edit the table
+        <Pencil size={14} /> {t('Edit the table')}
       </button>
     </div>
   );

@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { ChartColumn } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import { t, tn } from '../i18n';
 import { GroupRow } from '../designer/Inspector';
 import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
 import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Config as LConfig, type Out, type Prim, type State as LState } from './chart-layout';
@@ -144,28 +145,28 @@ export default defineWidget({
     const labelsOn = c.labels.value || c.labels.pct || c.labels.name;
     return (
       <>
-        <Section id="chart-data" title="Data">
+        <Section id="chart-data" title={t('Data')}>
           <Seg
-            label="Source"
+            label={t('Source')}
             path="source"
             value={c.source}
             options={[
-              ['grid', 'Table'],
+              ['grid', t('Table')],
               ['csv', 'CSV'],
             ]}
           />
           {c.source === 'csv' ? (
-            <Content label="CSV" path="csv" value="" multiline placeholder={'Month;Martin;Durand\nJan;28;24'} />
+            <Content label="CSV" path="csv" value="" multiline placeholder={t('Month;Martin;Durand\nJan;28;24')} />
           ) : (
             <>
               <Select
-                label="Sample"
+                label={t('Sample')}
                 value=""
                 options={[
-                  ['', 'Load…'],
-                  ['poll', 'Poll'],
-                  ['budget', 'Budget'],
-                  ['share', 'Audience share'],
+                  ['', t('Load…')],
+                  ['poll', t('Poll')],
+                  ['budget', t('Budget')],
+                  ['share', t('Audience share')],
                 ]}
                 onChange={(v) =>
                   SAMPLES[v] &&
@@ -181,85 +182,85 @@ export default defineWidget({
             </>
           )}
           <Seg
-            label="Missing"
+            label={t('Missing')}
             path="missing"
             value={c.missing}
             options={[
-              ['gap', 'Gap'],
-              ['interp', 'Interpolate'],
-              ['zero', 'Zero'],
+              ['gap', t('Gap')],
+              ['interp', t('Interpolate')],
+              ['zero', t('Zero')],
             ]}
           />
         </Section>
-        <Section id="chart-chart" title="Chart">
+        <Section id="chart-chart" title={t('Chart')}>
           <Seg
-            label="Type"
+            label={t('Type')}
             path="chartType"
             value={c.chartType}
             options={[
-              ['columns', 'Columns'],
-              ['areas', 'Areas'],
-              ['lines', 'Lines'],
-              ['pie', 'Pie'],
+              ['columns', t('Columns')],
+              ['areas', t('Areas')],
+              ['lines', t('Lines')],
+              ['pie', t('Pie')],
             ]}
           />
           {type === 'columns' && (
             <Seg
-              label="Columns"
+              label={t('Columns')}
               path="colMode"
               value={c.colMode}
               options={[
-                ['grouped', 'Grouped'],
-                ['stacked', 'Stacked'],
+                ['grouped', t('Grouped')],
+                ['stacked', t('Stacked')],
                 ['percent', '100 %'],
               ]}
             />
           )}
           {type === 'areas' && (
             <Seg
-              label="Areas"
+              label={t('Areas')}
               path="areaMode"
               value={c.areaMode}
               options={[
-                ['simple', 'Simple'],
-                ['stacked', 'Stacked'],
+                ['simple', t('Simple')],
+                ['stacked', t('Stacked')],
               ]}
             />
           )}
           {type === 'pie' && (
             <>
-              <Select label="Series" path="pie.series" value={c.pie.series} options={P.ser.map((x, j) => [j, x] as const)} />
+              <Select label={t('Series')} path="pie.series" value={c.pie.series} options={P.ser.map((x, j) => [j, x] as const)} />
               <Seg
-                label="Sort"
+                label={t('Sort')}
                 path="pie.sort"
                 value={c.pie.sort}
                 options={[
-                  ['none', 'As typed'],
-                  ['desc', 'Largest'],
-                  ['asc', 'Smallest'],
+                  ['none', t('As typed')],
+                  ['desc', t('Largest')],
+                  ['asc', t('Smallest')],
                 ]}
               />
-              <Num label="Start angle" path="pie.start" value={c.pie.start} min={0} max={359} unit="°" />
-              <Num label="Donut" path="pie.donut" value={c.pie.donut} min={0} max={85} unit="%" />
-              {c.pie.donut > 30 && <Toggle label="Total" path="pie.centerTotal" value={c.pie.centerTotal} />}
-              <Select label="Exploded" path="pie.explode" value={c.pie.explode} options={[[-1, 'None'] as const, ...P.cats.map((x) => [x.ri, x.name] as const)]} />
-              {c.pie.explode >= 0 && <Num label="Distance" path="pie.explodeDist" value={c.pie.explodeDist} min={0} max={400} unit="px" />}
-              <Toggle label="Others" path="pie.others" value={c.pie.others} />
-              {c.pie.others && <Num label="Under" path="pie.othersPct" value={c.pie.othersPct} min={0} max={50} step={0.5} precision={1} unit="%" />}
+              <Num label={t('Start angle')} path="pie.start" value={c.pie.start} min={0} max={359} unit="°" />
+              <Num label={t('Donut')} path="pie.donut" value={c.pie.donut} min={0} max={85} unit="%" />
+              {c.pie.donut > 30 && <Toggle label={t('Total')} path="pie.centerTotal" value={c.pie.centerTotal} />}
+              <Select label={t('Exploded')} path="pie.explode" value={c.pie.explode} options={[[-1, t('None')] as const, ...P.cats.map((x) => [x.ri, x.name] as const)]} />
+              {c.pie.explode >= 0 && <Num label={t('Distance')} path="pie.explodeDist" value={c.pie.explodeDist} min={0} max={400} unit="px" />}
+              <Toggle label={t('Others')} path="pie.others" value={c.pie.others} />
+              {c.pie.others && <Num label={t('Under')} path="pie.othersPct" value={c.pie.othersPct} min={0} max={50} step={0.5} precision={1} unit="%" />}
             </>
           )}
         </Section>
         {type !== 'pie' && (
-          <Section id="chart-axes" title="Axes">
+          <Section id="chart-axes" title={t('Axes')}>
             {!pct && (
               <>
                 <Seg
-                  label="Range"
+                  label={t('Range')}
                   path="axis.auto"
                   value={c.axis.auto}
                   options={[
-                    [true, 'Auto'],
-                    [false, 'Fixed'],
+                    [true, t('Auto')],
+                    [false, t('Fixed')],
                   ]}
                 />
                 {!c.axis.auto && (
@@ -268,19 +269,19 @@ export default defineWidget({
                     <Num label="Max" path="axis.max" value={c.axis.max} precision={2} />
                   </>
                 )}
-                {type === 'lines' && c.axis.auto && <Toggle label="From zero" path="axis.zero" value={c.axis.zero} />}
+                {type === 'lines' && c.axis.auto && <Toggle label={t('From zero')} path="axis.zero" value={c.axis.zero} />}
               </>
             )}
-            <Num label="Ticks" path="axis.ticks" value={c.axis.ticks} min={2} max={12} />
-            <Toggle label="Grid" path="axis.grid" value={c.axis.grid} />
-            <Toggle label="Vertical grid" path="axis.vgrid" value={c.axis.vgrid} />
-            <Text label="X title" path="axis.xTitle" value={c.axis.xTitle} />
-            <Text label="Y title" path="axis.yTitle" value={c.axis.yTitle} />
+            <Num label={t('Ticks')} path="axis.ticks" value={c.axis.ticks} min={2} max={12} />
+            <Toggle label={t('Grid')} path="axis.grid" value={c.axis.grid} />
+            <Toggle label={t('Vertical grid')} path="axis.vgrid" value={c.axis.vgrid} />
+            <Text label={t('X title')} path="axis.xTitle" value={c.axis.xTitle} />
+            <Text label={t('Y title')} path="axis.yTitle" value={c.axis.yTitle} />
           </Section>
         )}
-        <Section id="chart-format" title="Numbers">
+        <Section id="chart-format" title={t('Numbers')}>
           <Seg
-            label="Decimals"
+            label={t('Decimals')}
             path="axis.decimals"
             value={c.axis.decimals}
             options={[
@@ -289,10 +290,10 @@ export default defineWidget({
               [2, '0.00'],
             ]}
           />
-          <Text label="Prefix" path="axis.prefix" value={c.axis.prefix} placeholder="$" />
-          <Text label="Suffix" path="axis.suffix" value={c.axis.suffix} placeholder=" %" />
+          <Text label={t('Prefix')} path="axis.prefix" value={c.axis.prefix} placeholder="$" />
+          <Text label={t('Suffix')} path="axis.suffix" value={c.axis.suffix} placeholder=" %" />
           <Seg
-            label="Thousands"
+            label={t('Thousands')}
             path="axis.sep"
             value={c.axis.sep}
             options={[
@@ -303,7 +304,7 @@ export default defineWidget({
           />
         </Section>
         {type !== 'pie' ? (
-          <Section id="chart-series" title="Series">
+          <Section id="chart-series" title={t('Series')}>
             {P.ser.map((name, j) => {
               const s = seriesStyle(c, j);
               return (
@@ -311,17 +312,17 @@ export default defineWidget({
                   <input type="color" value={s.color.slice(0, 7)} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), color: e.target.value }), `chs-${layer.id}-${j}`)} />
                   {type !== 'columns' && (
                     <>
-                      <span className="dd-cell" title="Line width">
+                      <span className="dd-cell" title={t('Line width')}>
                         <Dropdown value={String(s.width)} options={[0, 2, 4, 6, 8, 12].map((v) => ({ value: String(v), label: `${v} px` }))} onChange={(v) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), width: +v }))} />
                       </span>
-                      <span className="dd-cell" title="Marker">
+                      <span className="dd-cell" title={t('Marker')}>
                         <Dropdown
                           value={s.marker}
                           options={[
                             { value: 'none', label: '—' },
-                            { value: 'circle', label: '● Circle' },
-                            { value: 'square', label: '■ Square' },
-                            { value: 'diamond', label: '◆ Diamond' },
+                            { value: 'circle', label: t('● Circle') },
+                            { value: 'square', label: t('■ Square') },
+                            { value: 'diamond', label: t('◆ Diamond') },
                           ]}
                           onChange={(v) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), marker: v as never }))}
                         />
@@ -331,11 +332,11 @@ export default defineWidget({
                 </Row>
               );
             })}
-            {type !== 'columns' && <Toggle label="Smooth" path="smooth" value={c.smooth} />}
-            {type === 'areas' && <Num label="Area opacity" expose="areaOpacity" exposeValue={c.areaOpacity} value={Math.round(c.areaOpacity * 100)} min={10} max={100} unit="%" onChange={(v) => edit((l) => void (l.areaOpacity = v / 100), `chao-${layer.id}`)} />}
+            {type !== 'columns' && <Toggle label={t('Smooth')} path="smooth" value={c.smooth} />}
+            {type === 'areas' && <Num label={t('Area opacity')} expose="areaOpacity" exposeValue={c.areaOpacity} value={Math.round(c.areaOpacity * 100)} min={10} max={100} unit="%" onChange={(v) => edit((l) => void (l.areaOpacity = v / 100), `chao-${layer.id}`)} />}
           </Section>
         ) : (
-          <Section id="chart-slices" title="Slices">
+          <Section id="chart-slices" title={t('Slices')}>
             {P.cats.slice(0, 12).map((x, i) => (
               <ColorPick
                 expose={`sliceColors.${i}`}
@@ -348,67 +349,67 @@ export default defineWidget({
             ))}
           </Section>
         )}
-        <Section id="chart-labels" title="Labels">
+        <Section id="chart-labels" title={t('Labels')}>
           <Toggle
             expose={['labels.value', 'labels.pct', 'labels.name']}
             exposeValue={{ 'labels.value': c.labels.value, 'labels.pct': c.labels.pct, 'labels.name': c.labels.name }}
-            label="Labels"
+            label={t('Labels')}
             value={labelsOn}
             onChange={(v) => edit((l) => void (l.labels = { ...l.labels, value: v, pct: false, name: false }))}
           />
           {labelsOn && (
             <>
-              <Toggle label="Value" path="labels.value" value={c.labels.value} />
-              <Toggle label="Percentage" path="labels.pct" value={c.labels.pct} />
-              <Toggle label="Name" path="labels.name" value={c.labels.name} />
+              <Toggle label={t('Value')} path="labels.value" value={c.labels.value} />
+              <Toggle label={t('Percentage')} path="labels.pct" value={c.labels.pct} />
+              <Toggle label={t('Name')} path="labels.name" value={c.labels.name} />
               <Seg
-                label="Position"
+                label={t('Position')}
                 path="labels.pos"
                 value={c.labels.pos}
                 options={[
-                  ['inside', 'Inside'],
-                  ['outside', 'Outside'],
+                  ['inside', t('Inside')],
+                  ['outside', t('Outside')],
                 ]}
               />
               <Seg
-                label="Overlap"
+                label={t('Overlap')}
                 path="labels.overlap"
                 value={c.labels.overlap}
                 options={[
-                  ['offset', 'Offset'],
-                  ['hide', 'Hide'],
+                  ['offset', t('Offset')],
+                  ['hide', t('Hide')],
                 ]}
               />
-              {type === 'pie' && <Num label="Min slice" path="labels.minSize" value={c.labels.minSize} min={0} max={10} step={0.5} precision={1} unit="%" />}
+              {type === 'pie' && <Num label={t('Min slice')} path="labels.minSize" value={c.labels.minSize} min={0} max={10} step={0.5} precision={1} unit="%" />}
             </>
           )}
         </Section>
-        <Section id="chart-layout" title="Layout">
-          <GroupRow layer={layer} spec={{ label: 'Text size', props: ['fontSize'], min: 8, suffix: 'px' }} />
+        <Section id="chart-layout" title={t('Layout')}>
+          <GroupRow layer={layer} spec={{ label: t('Text size'), props: ['fontSize'], min: 8, suffix: 'px' }} />
           <Toggle
             expose="title.pos"
             exposeValue={c.title.pos}
             exposeOptions={[
-              ['left', 'Left'],
-              ['center', 'Centre'],
-              ['none', 'Hidden'],
+              ['left', t('Left')],
+              ['center', t('Centre')],
+              ['none', t('Hidden')],
             ]}
-            label="Title"
+            label={t('Title')}
             value={c.title.pos !== 'none'}
             onChange={(v) => edit((l) => void (l.title = { ...l.title, pos: v ? 'left' : 'none' }))}
           />
           {c.title.pos !== 'none' && (
             <>
-              <Content label="Title" path="title.text" value={c.title.text} />
-              <Content label="Subtitle" path="title.sub" value={c.title.sub} />
+              <Content label={t('Title')} path="title.text" value={c.title.text} />
+              <Content label={t('Subtitle')} path="title.sub" value={c.title.sub} />
               <Seg
                 expose={false}
-                label="Align"
+                label={t('Align')}
                 path="title.pos"
                 value={c.title.pos}
                 options={[
-                  ['left', 'Left'],
-                  ['center', 'Centre'],
+                  ['left', t('Left')],
+                  ['center', t('Centre')],
                 ]}
               />
             </>
@@ -417,71 +418,71 @@ export default defineWidget({
             expose="legend"
             exposeValue={c.legend}
             exposeOptions={[
-              ['top', 'Top'],
-              ['bottom', 'Bottom'],
-              ['right', 'Right'],
-              ['none', 'None'],
+              ['top', t('Top')],
+              ['bottom', t('Bottom')],
+              ['right', t('Right')],
+              ['none', t('None')],
             ]}
-            label="Legend"
+            label={t('Legend')}
             value={c.legend !== 'none'}
             onChange={(v) => edit((l) => void (l.legend = v ? 'top' : 'none'))}
           />
           {c.legend !== 'none' && (
             <Seg
               expose={false}
-              label="Position"
+              label={t('Position')}
               path="legend"
               value={c.legend}
               options={[
-                ['top', 'Top'],
-                ['bottom', 'Bottom'],
-                ['right', 'Right'],
+                ['top', t('Top')],
+                ['bottom', t('Bottom')],
+                ['right', t('Right')],
               ]}
             />
           )}
-          <Toggle label="Panel" path="panel.on" value={c.panel.on} />
+          <Toggle label={t('Panel')} path="panel.on" value={c.panel.on} />
           {c.panel.on && (
             <>
-              <ColorPick label="Color" path="panel.color" value={c.panel.color} />
-              <Num label="Opacity" expose="panel.opacity" exposeValue={c.panel.opacity} value={Math.round(c.panel.opacity * 100)} min={0} max={100} unit="%" onChange={(v) => edit((l) => void (l.panel = { ...l.panel, opacity: v / 100 }), `chpo-${layer.id}`)} />
+              <ColorPick label={t('Color')} path="panel.color" value={c.panel.color} />
+              <Num label={t('Opacity')} expose="panel.opacity" exposeValue={c.panel.opacity} value={Math.round(c.panel.opacity * 100)} min={0} max={100} unit="%" onChange={(v) => edit((l) => void (l.panel = { ...l.panel, opacity: v / 100 }), `chpo-${layer.id}`)} />
             </>
           )}
         </Section>
-        <Section id="chart-anim" title="Animation">
+        <Section id="chart-anim" title={t('Animation')}>
           <Seg
-            label="Entrance"
+            label={t('Entrance')}
             path="anim.fx"
             value={c.anim.fx}
             options={[
-              ['auto', 'Auto'],
-              ['grow', 'Grow'],
-              ['draw', 'Draw'],
-              ['sweep', 'Sweep'],
-              ['fade', 'Fade'],
-              ['none', 'Cut'],
+              ['auto', t('Auto')],
+              ['grow', t('Grow')],
+              ['draw', t('Draw')],
+              ['sweep', t('Sweep')],
+              ['fade', t('Fade')],
+              ['none', t('Cut')],
             ]}
           />
-          <Num label="Duration" path="anim.dur" value={c.anim.dur} min={0} max={30} step={0.1} precision={1} unit="s" />
-          <Num label="Stagger" path="anim.stagger" value={c.anim.stagger} min={0} max={5000} step={10} unit="ms" />
-          <Num label="Update" path="anim.upd" value={c.anim.upd} min={0} max={30} step={0.1} precision={1} unit="s" />
+          <Num label={t('Duration')} path="anim.dur" value={c.anim.dur} min={0} max={30} step={0.1} precision={1} unit="s" />
+          <Num label={t('Stagger')} path="anim.stagger" value={c.anim.stagger} min={0} max={5000} step={10} unit="ms" />
+          <Num label={t('Update')} path="anim.upd" value={c.anim.upd} min={0} max={30} step={0.1} precision={1} unit="s" />
           <Seg
-            label="Curve"
+            label={t('Curve')}
             path="anim.curve"
             value={c.anim.curve}
             options={[
-              ['ease', 'Ease in-out'],
-              ['out', 'Ease out'],
-              ['linear', 'Linear'],
+              ['ease', t('Ease in-out')],
+              ['out', t('Ease out')],
+              ['linear', t('Linear')],
             ]}
           />
           <Seg
-            label="Reveal"
+            label={t('Reveal')}
             path="reveal"
             value={c.reveal}
             options={[
-              ['all', 'All'],
-              ['series', 'By series'],
-              ['categories', type === 'pie' ? 'By slice' : 'By category'],
+              ['all', t('All')],
+              ['series', t('By series')],
+              ['categories', type === 'pie' ? t('By slice') : t('By category')],
             ]}
           />
         </Section>
@@ -506,54 +507,54 @@ export default defineWidget({
     useKeys({ r: () => act('reload'), ArrowRight: () => n && act('next'), ArrowLeft: () => n && act('prev') });
     const next = mode === 'series' ? P.ser[step] : P.cats[step]?.name;
     const hlBtns = (kind: 'series' | 'category', items: [number, string][]) => [
-      { label: 'None', cls: s.hl.kind === 'none' ? 'violet' : 'ghost', onClick: () => act('highlight', { kind: 'none' }) },
+      { label: t('None'), cls: s.hl.kind === 'none' ? 'violet' : 'ghost', onClick: () => act('highlight', { kind: 'none' }) },
       ...items.map(([idx, name]) => ({ label: name, cls: s.hl.kind === kind && s.hl.idx === idx ? 'violet' : 'ghost', onClick: () => act('highlight', { kind, idx }) })),
     ];
     void time;
     return (
       <>
         <Note>
-          {s.cur ? pending ? <b style={{ color: '#facc15' }}>● New data waiting: Reload to show it</b> : 'Data on screen is up to date' : 'Live data'}
+          {s.cur ? pending ? <b style={{ color: '#facc15' }}>{t('● New data waiting: Reload to show it')}</b> : t('Data on screen is up to date') : t('Live data')}
           {n ? (
             <>
               {' '}
-              · Step{' '}
+              · {t('Step')}{' '}
               <b>
                 {step} / {n}
               </b>
               {step < n ? (
                 <>
                   {' '}
-                  · next: <b>{next}</b>
+                  · {t('next:')} <b>{next}</b>
                 </>
               ) : (
-                ' · all shown'
+                ` · ${t('all shown')}`
               )}
             </>
           ) : null}
         </Note>
-        <Btns label="Data" list={[{ label: '⟳ Reload data', cls: `violet big`, keyHint: 'R', onClick: () => act('reload'), title: 'Values move from what is shown to the current data' }]} />
-        <Seg label="Reveal" value={mode} onChange={(v) => act('revealMode', { mode: v })} options={[['all', 'All at once'], ...(c.chartType === 'pie' ? [] : [['series', 'Series by series'] as const]), ['categories', c.chartType === 'pie' ? 'Slice by slice' : 'Category by category']]} />
+        <Btns label={t('Data')} list={[{ label: t('⟳ Reload data'), cls: `violet big`, keyHint: 'R', onClick: () => act('reload'), title: t('Values move from what is shown to the current data') }]} />
+        <Seg label={t('Reveal')} value={mode} onChange={(v) => act('revealMode', { mode: v })} options={[['all', t('All at once')], ...(c.chartType === 'pie' ? [] : [['series', t('Series by series')] as const]), ['categories', c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')]]} />
         {n > 0 && (
           <Btns
             list={[
-              { label: 'Back', cls: 'ghost', keyHint: '←', onClick: () => act('prev'), disabled: step <= 1 },
-              { label: 'Next step', cls: 'green big', keyHint: '→', onClick: () => act('next'), disabled: step >= n },
-              { label: 'Show all', cls: 'ghost', onClick: () => act('showAll'), disabled: step >= n },
+              { label: t('Back'), cls: 'ghost', keyHint: '←', onClick: () => act('prev'), disabled: step <= 1 },
+              { label: t('Next step'), cls: 'green big', keyHint: '→', onClick: () => act('next'), disabled: step >= n },
+              { label: t('Show all'), cls: 'ghost', onClick: () => act('showAll'), disabled: step >= n },
             ]}
           />
         )}
         {c.chartType !== 'pie' ? (
           <>
             <Btns
-              label="Highlight series"
+              label={t('Highlight series')}
               list={hlBtns(
                 'series',
                 P.ser.map((x, j) => [j, x]),
               )}
             />
             <Btns
-              label={c.chartType === 'columns' ? 'Highlight column' : 'Highlight point'}
+              label={c.chartType === 'columns' ? t('Highlight column') : t('Highlight point')}
               list={hlBtns(
                 'category',
                 P.cats.slice(0, 14).map((x) => [x.ri, x.name]),
@@ -562,7 +563,7 @@ export default defineWidget({
           </>
         ) : (
           <Btns
-            label="Highlight slice"
+            label={t('Highlight slice')}
             list={hlBtns(
               'category',
               P.cats.slice(0, 14).map((x) => [x.ri, x.name]),
@@ -571,9 +572,9 @@ export default defineWidget({
         )}
         {s.cur && !item && (
           <Msg level="info">
-            The try-out holds the data of its last Reload.{' '}
+            {t('The try-out holds the data of its last Reload.')}{' '}
             <a href="#" onClick={(e) => (e.preventDefault(), act('reset'))}>
-              Back to the live data
+              {t('Back to the live data')}
             </a>
           </Msg>
         )}
@@ -589,23 +590,30 @@ export default defineWidget({
     const o = run(layer, data, state, w, h, fsOf(r, layer), 1e9, Date.now() + 1e7);
     const out: Warning[] = [];
     if (c.chartType === 'pie') {
-      if (o.pieNeg.length) out.push({ level: 'error', text: `Negative value refused in a pie: ${o.pieNeg.map(([n, v]) => `${n} (${fmt(c, v)})`).join(', ')} not drawn.`, op: true });
-      if (o.pieZero) out.push({ level: 'error', text: 'Pie total is zero: empty circle shown, nothing to share out.', op: true });
-      if (o.pieOthers) out.push({ level: 'info', text: `${o.pieOthers} slices under ${c.pie.othersPct} % grouped in "Others".` });
-      if (P.ser.length > 1) out.push({ level: 'info', text: `A pie shows one series: "${P.ser[Math.min(Math.max(0, c.pie.series), P.ser.length - 1)]}".` });
-      if (o.pieMissing) out.push({ level: 'info', text: `${o.pieMissing} missing value${o.pieMissing > 1 ? 's' : ''}: slice not drawn.` });
+      if (o.pieNeg.length) out.push({ level: 'error', text: t('Negative value refused in a pie: {list} not drawn.', { list: o.pieNeg.map(([n, v]) => `${n} (${fmt(c, v)})`).join(', ') }), op: true });
+      if (o.pieZero) out.push({ level: 'error', text: t('Pie total is zero: empty circle shown, nothing to share out.'), op: true });
+      if (o.pieOthers) out.push({ level: 'info', text: t('{n} slices under {pct} % grouped in "Others".', { n: o.pieOthers, pct: c.pie.othersPct }) });
+      if (P.ser.length > 1) out.push({ level: 'info', text: t('A pie shows one series: "{name}".', { name: P.ser[Math.min(Math.max(0, c.pie.series), P.ser.length - 1)] }) });
+      if (o.pieMissing) out.push({ level: 'info', text: tn(o.pieMissing, '{n} missing value: slice not drawn.', '{n} missing values: slice not drawn.') });
     } else {
-      if (P.missing) out.push({ level: 'info', text: `${P.missing} missing value${P.missing > 1 ? 's' : ''}: ${c.missing === 'gap' ? 'shown as a gap' : c.missing === 'interp' ? 'interpolated (hollow marker / dashed column), gap at the ends' : 'counted as zero'}.`, op: true });
+      if (P.missing) {
+        const how = c.missing === 'gap' ? t('shown as a gap') : c.missing === 'interp' ? t('interpolated (hollow marker / dashed column), gap at the ends') : t('counted as zero');
+        out.push({ level: 'info', text: tn(P.missing, '{n} missing value: {how}.', '{n} missing values: {how}.', { how }), op: true });
+      }
       const hasNeg = P.cats.some((x) => x.vals.some((v) => v != null && v < 0));
-      if (hasNeg && c.chartType === 'columns' && c.colMode === 'percent') out.push({ level: 'warn', text: '100 % columns with negative values: negatives are left out of the shares.' });
-      if (hasNeg && c.chartType === 'areas' && c.areaMode === 'stacked') out.push({ level: 'warn', text: 'Stacked areas with negative values are hard to read: prefer lines or columns.' });
+      if (hasNeg && c.chartType === 'columns' && c.colMode === 'percent') out.push({ level: 'warn', text: t('100 % columns with negative values: negatives are left out of the shares.') });
+      if (hasNeg && c.chartType === 'areas' && c.areaMode === 'stacked') out.push({ level: 'warn', text: t('Stacked areas with negative values are hard to read: prefer lines or columns.') });
       if (!c.axis.auto && !(c.chartType === 'columns' && c.colMode === 'percent')) {
         const all = P.cats.flatMap((x) => x.vals).filter((v): v is number => v != null);
-        if (all.some((v) => v > c.axis.max || v < c.axis.min)) out.push({ level: 'warn', text: `Fixed axis ${c.axis.min} – ${c.axis.max}: some values are outside and cut at the edge.` });
+        if (all.some((v) => v > c.axis.max || v < c.axis.min)) out.push({ level: 'warn', text: t('Fixed axis {min} – {max}: some values are outside and cut at the edge.', { min: c.axis.min, max: c.axis.max }) });
       }
     }
-    if (!P.cats.length || !P.ser.length) out.push({ level: 'warn', text: 'No data: the chart shows "No data".', op: true });
-    if (o.hidden) out.push({ level: 'info', text: `${o.hidden} label${o.hidden > 1 ? 's' : ''} hidden to avoid overlaps${c.chartType === 'pie' && c.labels.overlap === 'hide' ? ` (or under ${c.labels.minSize} %)` : ''}.` });
+    if (!P.cats.length || !P.ser.length) out.push({ level: 'warn', text: t('No data: the chart shows "No data".'), op: true });
+    if (o.hidden)
+      out.push({
+        level: 'info',
+        text: c.chartType === 'pie' && c.labels.overlap === 'hide' ? tn(o.hidden, '{n} label hidden to avoid overlaps (or under {pct} %).', '{n} labels hidden to avoid overlaps (or under {pct} %).', { pct: c.labels.minSize }) : tn(o.hidden, '{n} label hidden to avoid overlaps.', '{n} labels hidden to avoid overlaps.'),
+      });
     return out;
   },
 });

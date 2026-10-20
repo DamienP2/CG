@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import { t } from '../i18n';
 import { AssetPicker } from '../designer/Inspector';
 import { Btns, ColorPick, Content, defineWidget, getPath, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { col, ink, mix, poly, rrect, tf, ellipse, Pt, type Cmd } from './scoreboard-paint';
@@ -238,6 +239,8 @@ export const PRESETS: Record<Sport, Preset> = {
   },
 };
 const CARD_COL: Record<string, string> = { yellow: '#facc15', red: '#ef4444', '2 min': '#38bdf8' };
+/** Names of the cards on the Operator's buttons (translated where shown). */
+const CARD_NAMES: Record<string, string> = { yellow: 'Yellow', red: 'Red', '2 min': '2 min' };
 const SAMPLE: Required<Team>[] = [
   { name: 'Paris Saint-Germain', short: 'PSG', c1: '#1e3a8a', c2: '#e11d48', crest: 'shield', logo: '', score: '' },
   { name: 'Olympique de Marseille', short: 'OM', c1: '#0ea5e9', c2: '#ffffff', crest: 'round', logo: '', score: '' },
@@ -342,11 +345,12 @@ function activeSource(k: K, s: State, data: Data, now: number): Active {
   const left = k.source.overS * 1000 - (now - (s.src?.manualAt ?? 0));
   return dirty && left > 0 ? { id: 'priority', left: Math.ceil(left / 1000) } : { id: 'feed' };
 }
+/** The source in control, for the operator (never drawn on air). */
 function activeText(a: Active, rule: string) {
-  if (a.id === 'manual') return 'MANUAL';
-  if (a.id === 'lost') return 'MANUAL · feed lost';
-  if (a.id === 'priority') return a.left != null ? `MANUAL override · feed back in ${a.left} s` : 'MANUAL (manual has priority)';
-  return rule === 'feed' ? 'FEED (feed has priority)' : rule === 'manual' ? 'FEED (until a manual change)' : 'FEED';
+  if (a.id === 'manual') return t('MANUAL');
+  if (a.id === 'lost') return t('MANUAL · feed lost');
+  if (a.id === 'priority') return a.left != null ? t('MANUAL override · feed back in {n} s', { n: a.left }) : t('MANUAL (manual has priority)');
+  return rule === 'feed' ? t('FEED (feed has priority)') : rule === 'manual' ? t('FEED (until a manual change)') : t('FEED');
 }
 function scores(k: K, s: State, data: Data, now: number): number[] {
   const feed = activeSource(k, s, data, now).id === 'feed';
@@ -897,9 +901,9 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: `${aCol}22`, border: `1px solid ${aCol}`, fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: aCol, boxShadow: `0 0 8px ${aCol}` }} />
-        ACTIVE SOURCE: {activeText(a, k.source.rule)}
+        {t('ACTIVE SOURCE: {source}', { source: activeText(a, k.source.rule) })}
       </div>
-      <Readout sub={`${pr.kind === 'tennis' ? tennisTag(tn) : (pr.periods[s.period ?? 0] ?? '')}${ck ? ` · ${ck[0]}${s.added ? ` +${s.added}` : ''} ${s.clock?.running ? '▶' : '❚❚'}` : ''}${ign ? ' · ⚠ double press ignored' : ''}`}>{score}</Readout>
+      <Readout sub={`${pr.kind === 'tennis' ? tennisTag(tn) : (pr.periods[s.period ?? 0] ?? '')}${ck ? ` · ${ck[0]}${s.added ? ` +${s.added}` : ''} ${s.clock?.running ? '▶' : '❚❚'}` : ''}${ign ? ` · ${t('⚠ double press ignored')}` : ''}`}>{score}</Readout>
       {order.map((i) => {
         const sh = shortOf(team(k, i));
         return (
@@ -907,30 +911,30 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
             key={i}
             label={sh}
             list={[
-              { label: '−', cls: 'huge ghost', title: pr.kind === 'tennis' ? 'Remove a point in this game' : `−${pr.pts[0].v}`, onClick: () => act('sub', { team: i }) },
-              ...pr.pts.map((pt, j) => ({ label: pr.kind === 'points' ? pt.label : `POINT ${sh}`, cls: `huge ${j ? '' : 'green'}`, keyHint: j === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'P' : undefined) : undefined, onClick: () => act('add', { team: i, pts: j }) })),
+              { label: '−', cls: 'huge ghost', title: pr.kind === 'tennis' ? t('Remove a point in this game') : `−${pr.pts[0].v}`, onClick: () => act('sub', { team: i }) },
+              ...pr.pts.map((pt, j) => ({ label: pr.kind === 'points' ? t(pt.label) : t('POINT {team}', { team: sh }), cls: `huge ${j ? '' : 'green'}`, keyHint: j === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'P' : undefined) : undefined, onClick: () => act('add', { team: i, pts: j }) })),
             ]}
           />
         );
       })}
       {pr.kind === 'tennis' ? (
         <>
-          <Btns label="Free entry" list={[{ label: tn.free ? 'Free entry ON' : 'Free entry off', cls: tn.free ? 'amber' : 'ghost', title: 'Type the points by hand (fallback)', onClick: () => act('tennisFree', { on: !tn.free }) }]} />
+          <Btns label={t('Free entry')} list={[{ label: tn.free ? t('Free entry ON') : t('Free entry off'), cls: tn.free ? 'amber' : 'ghost', title: t('Type the points by hand (fallback)'), onClick: () => act('tennisFree', { on: !tn.free }) }]} />
           {tn.free && (
-            <Row label="Points / games">
+            <Row label={t('Points / games')}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[0, 1].map((i) => (
                   <input key={`p${i}`} style={{ width: 70 }} placeholder={`${shortOf(team(k, i))} pts`} defaultValue={tn.freePts[i]} onBlur={(e) => act('tennisFree', { pts: [i ? tn.freePts[0] : e.target.value, i ? e.target.value : tn.freePts[1]] })} />
                 ))}
                 {[0, 1].map((i) => (
-                  <input key={`g${i}`} style={{ width: 60 }} type="number" min={0} max={7} placeholder="games" defaultValue={tn.games[i]} onBlur={(e) => act('tennisFree', { games: [i ? tn.games[0] : +e.target.value, i ? +e.target.value : tn.games[1]] })} />
+                  <input key={`g${i}`} style={{ width: 60 }} type="number" min={0} max={7} placeholder={t('games')} defaultValue={tn.games[i]} onBlur={(e) => act('tennisFree', { games: [i ? tn.games[0] : +e.target.value, i ? +e.target.value : tn.games[1]] })} />
                 ))}
               </div>
             </Row>
           )}
         </>
       ) : (
-        <Row label="Set score">
+        <Row label={t('Set score')}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             {Array.from({ length: n }, (_, i) => (
               <input key={i} type="number" min={0} max={999} style={{ width: 64 }} value={setV[i] ?? String(sc[i])} onChange={(e) => setSetV(Object.assign([...setV], { [i]: e.target.value }))} title={shortOf(team(k, i))} />
@@ -942,40 +946,40 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
                 setSetV([]);
               }}
             >
-              Set score
+              {t('Set score')}
             </button>
           </div>
         </Row>
       )}
       {pr.kind !== 'tennis' && (
         <Btns
-          label="Period"
+          label={t('Period')}
           list={[
-            { label: '◀ Prev period', cls: 'big', disabled: (s.period ?? 0) <= 0, onClick: () => act('prevPeriod') },
-            { label: 'Next period ▶', cls: 'big', disabled: (s.period ?? 0) >= pr.periods.length - 1, onClick: () => act('nextPeriod') },
+            { label: t('◀ Prev period'), cls: 'big', disabled: (s.period ?? 0) <= 0, onClick: () => act('prevPeriod') },
+            { label: t('Next period ▶'), cls: 'big', disabled: (s.period ?? 0) >= pr.periods.length - 1, onClick: () => act('nextPeriod') },
           ]}
         />
       )}
       {hasClock && (
         <>
           <Btns
-            label="Clock"
+            label={t('Clock')}
             list={[
-              { label: '▶ Start', cls: 'big green', disabled: !!s.clock?.running, onClick: () => act('clockStart') },
-              { label: '❚❚ Pause', cls: 'big amber', disabled: !s.clock?.running, onClick: () => act('clockPause') },
-              { label: 'Reset', cls: 'big ghost', confirm: 'Reset the clock of this period?', onClick: () => act('clockReset') },
+              { label: t('▶ Start'), cls: 'big green', disabled: !!s.clock?.running, onClick: () => act('clockStart') },
+              { label: t('❚❚ Pause'), cls: 'big amber', disabled: !s.clock?.running, onClick: () => act('clockPause') },
+              { label: t('Reset'), cls: 'big ghost', confirm: t('Reset the clock of this period?'), onClick: () => act('clockReset') },
             ]}
           />
-          <Row label="Set clock">
+          <Row label={t('Set clock')}>
             <div style={{ display: 'flex', gap: 6 }}>
               <input style={{ width: 80 }} value={clk} placeholder="mm:ss" onChange={(e) => setClk(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
               <button className="opx-btn wk-btn violet" onClick={() => act('clockSet', { time: clk })}>
-                Set
+                {t('Set')}
               </button>
             </div>
           </Row>
           <Btns
-            label="Adjust"
+            label={t('Adjust')}
             list={(
               [
                 [-60, '−1 min'],
@@ -985,37 +989,37 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
               ] as const
             ).map(([d, l]) => ({ label: l, onClick: () => act('clockAdjust', { secs: d }) }))}
           />
-          <Btns label="Added time" list={[...[1, 2, 3, 4, 5].map((m) => ({ label: `+${m}`, cls: s.added === m ? 'violet' : '', onClick: () => act('added', { min: m }) })), { label: 'None', cls: 'ghost', onClick: () => act('added', { min: 0 }) }]} />
+          <Btns label={t('Added time')} list={[...[1, 2, 3, 4, 5].map((m) => ({ label: `+${m}`, cls: s.added === m ? 'violet' : '', onClick: () => act('added', { min: m }) })), { label: t('None'), cls: 'ghost', onClick: () => act('added', { min: 0 }) }]} />
         </>
       )}
       {(pr.cards.length > 0 || pr.timeouts > 0 || k.fields.fouls || pr.kind === 'points') && (
         <>
-          <Seg label="Team" value={who} onChange={(v) => setWho(+v)} options={Array.from({ length: n }, (_, i) => [i, shortOf(team(k, i))] as const)} />
-          <Row label="Player">
-            <input value={player} placeholder="#10 Name" onChange={(e) => setPlayer(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
+          <Seg label={t('Team')} value={who} onChange={(v) => setWho(+v)} options={Array.from({ length: n }, (_, i) => [i, shortOf(team(k, i))] as const)} />
+          <Row label={t('Player')}>
+            <input value={player} placeholder={t('#10 Name')} onChange={(e) => setPlayer(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
           </Row>
           <Btns
-            label="Event"
+            label={t('Event')}
             list={[
-              pr.kind === 'points' && { label: `⚽ ${pr.pts[0].label}`, cls: 'big green', title: 'Scores with the player in the banner', onClick: () => act('goal', { team: who, player }) },
-              ...pr.cards.map((c) => ({ label: `▮ ${c[0].toUpperCase()}${c.slice(1)}`, cls: c === 'red' ? 'red' : c === 'yellow' ? 'amber' : '', onClick: () => act('card', { team: who, player, color: c }) })),
-              pr.timeouts > 0 && { label: `Timeout (${Math.max(0, pr.timeouts - ts(s, who).toUsed)} left)`, cls: 'big', disabled: ts(s, who).toUsed >= pr.timeouts, onClick: () => act('timeout', { team: who }) },
-              k.fields.fouls && { label: '+ Foul', onClick: () => act('foul', { team: who }) },
+              pr.kind === 'points' && { label: `⚽ ${t(pr.pts[0].label)}`, cls: 'big green', title: t('Scores with the player in the banner'), onClick: () => act('goal', { team: who, player }) },
+              ...pr.cards.map((c) => ({ label: `▮ ${t(CARD_NAMES[c] ?? c)}`, cls: c === 'red' ? 'red' : c === 'yellow' ? 'amber' : '', onClick: () => act('card', { team: who, player, color: c }) })),
+              pr.timeouts > 0 && { label: t('Timeout ({n} left)', { n: Math.max(0, pr.timeouts - ts(s, who).toUsed) }), cls: 'big', disabled: ts(s, who).toUsed >= pr.timeouts, onClick: () => act('timeout', { team: who }) },
+              k.fields.fouls && { label: t('+ Foul'), onClick: () => act('foul', { team: who }) },
             ]}
           />
         </>
       )}
       <Btns
-        label="Board"
+        label={t('Board')}
         list={[
-          { label: `${pr.poss} → ${shortOf(team(k, ((s.poss ?? 0) + 1) % n))}`, cls: 'big', onClick: () => act('possession') },
-          { label: '⇄ Swap sides', cls: 'big', onClick: () => act('swap') },
-          { label: (s.version ?? k.version) === 'full' ? 'Compact' : 'Full', cls: 'big', onClick: () => act('version') },
+          { label: `${t(pr.poss)} → ${shortOf(team(k, ((s.poss ?? 0) + 1) % n))}`, cls: 'big', onClick: () => act('possession') },
+          { label: t('⇄ Swap sides'), cls: 'big', onClick: () => act('swap') },
+          { label: (s.version ?? k.version) === 'full' ? t('Compact') : t('Full'), cls: 'big', onClick: () => act('version') },
         ]}
       />
-      <Btns list={[{ label: `↶ Undo last action${hist ? ` (${hist})` : ''}`, cls: 'big violet', keyHint: 'Z', disabled: !hist, onClick: () => act('undo') }]} />
-      {a.id === 'priority' && <Btns list={[{ label: 'Back to feed now', cls: 'green', onClick: () => act('backToFeed') }]} />}
-      <Btns list={[{ label: 'Reset match', cls: 'ghost', confirm: 'Reset the whole match (scores, clock, cards)? Undo stays available.', onClick: () => act('reset') }]} />
+      <Btns list={[{ label: hist ? t('↶ Undo last action ({n})', { n: hist }) : t('↶ Undo last action'), cls: 'big violet', keyHint: 'Z', disabled: !hist, onClick: () => act('undo') }]} />
+      {a.id === 'priority' && <Btns list={[{ label: t('Back to feed now'), cls: 'green', onClick: () => act('backToFeed') }]} />}
+      <Btns list={[{ label: t('Reset match'), cls: 'ghost', confirm: t('Reset the whole match (scores, clock, cards)? Undo stays available.'), onClick: () => act('reset') }]} />
     </>
   );
 }
@@ -1095,11 +1099,11 @@ export default defineWidget({
     const points = pr.kind === 'points';
     return (
       <>
-        <Section id="sb-sport" title="Sport">
-          <Select expose="preset" exposeValue={k.preset} label="Preset" value={k.preset} onChange={(v) => edit((l) => applyPreset(l as never, v as Sport))} options={(Object.keys(PRESETS) as Sport[]).map((sp) => [sp, PRESETS[sp].name] as const)} />
+        <Section id="sb-sport" title={t('Sport')}>
+          <Select expose="preset" exposeValue={k.preset} label={t('Preset')} value={k.preset} onChange={(v) => edit((l) => applyPreset(l as never, v as Sport))} options={(Object.keys(PRESETS) as Sport[]).map((sp) => [sp, t(PRESETS[sp].name)] as const)} />
           {pr.kind === 'tennis' && (
             <Seg
-              label="Best of"
+              label={t('Best of')}
               path="bestOf"
               value={3}
               options={[
@@ -1109,17 +1113,17 @@ export default defineWidget({
             />
           )}
         </Section>
-        <Section id="sb-teams" title="Teams">
+        <Section id="sb-teams" title={t('Teams')}>
           {Array.from({ length: n }, (_, i) => {
-            const t = team(k, i);
+            const tm = team(k, i);
             return (
-              <Section key={i} id={`sb-team-${i}`} title={`Team ${i + 1}`} level={2}>
+              <Section key={i} id={`sb-team-${i}`} title={t('Team {n}', { n: i + 1 })} level={2}>
                 <div onFocusCapture={ensure(i)} onPointerDownCapture={ensure(i)}>
-                  <Text label="Name" path={`teams.${i}.name`} value={t.name} placeholder="Full name" />
-                  <Text label="Short" path={`teams.${i}.short`} value={t.short} placeholder={autoShort(t.name)} />
-                  <ColorPick label="Primary" path={`teams.${i}.c1`} value={t.c1} />
-                  <ColorPick label="Secondary" path={`teams.${i}.c2`} value={t.c2} />
-                  <Content label="Score feed" path={`teams.${i}.score`} value={t.score} placeholder="{{key}}" />
+                  <Text label={t('Name')} path={`teams.${i}.name`} value={tm.name} placeholder={t('Full name')} />
+                  <Text label={t('Short')} path={`teams.${i}.short`} value={tm.short} placeholder={autoShort(tm.name)} />
+                  <ColorPick label={t('Primary')} path={`teams.${i}.c1`} value={tm.c1} />
+                  <ColorPick label={t('Secondary')} path={`teams.${i}.c2`} value={tm.c2} />
+                  <Content label={t('Score feed')} path={`teams.${i}.score`} value={tm.score} placeholder="{{key}}" />
                 </div>
               </Section>
             );
@@ -1127,137 +1131,137 @@ export default defineWidget({
           {(pr.multi || n > 2) && (
             <Btns
               list={[
-                pr.multi && { label: '+ Add team', onClick: () => edit((l) => void (l.teams = [...Array.from({ length: n }, (_, j) => ({ ...team(cfg(l), j) })), { ...SAMPLE[n % 4] }])) },
-                n > 2 && { label: '− Last team', cls: 'ghost', onClick: () => edit((l) => void (l.teams = (l.teams ?? []).slice(0, n - 1))) },
+                pr.multi && { label: t('+ Add team'), onClick: () => edit((l) => void (l.teams = [...Array.from({ length: n }, (_, j) => ({ ...team(cfg(l), j) })), { ...SAMPLE[n % 4] }])) },
+                n > 2 && { label: t('− Last team'), cls: 'ghost', onClick: () => edit((l) => void (l.teams = (l.teams ?? []).slice(0, n - 1))) },
               ]}
             />
           )}
         </Section>
-        <Section id="sb-layout" title="Layout">
+        <Section id="sb-layout" title={t('Layout')}>
           <Seg
-            label="Version"
+            label={t('Version')}
             path="version"
             value={k.version}
             options={[
-              ['compact', 'Compact'],
-              ['full', 'Full'],
+              ['compact', t('Compact')],
+              ['full', t('Full')],
             ]}
           />
           {pr.kind !== 'tennis' && (
             <Seg
-              label="Layout"
+              label={t('Layout')}
               path="layout"
               value={k.layout}
               options={[
-                ['horizontal', 'Horizontal'],
-                ['stacked', 'Stacked'],
+                ['horizontal', t('Horizontal')],
+                ['stacked', t('Stacked')],
               ]}
             />
           )}
           <Seg
-            label="Order"
+            label={t('Order')}
             path="order"
             value={k.order}
             options={[
-              ['clockFirst', 'Clock first'],
-              ['clockMid', 'Between'],
-              ['clockLast', 'Clock last'],
+              ['clockFirst', t('Clock first')],
+              ['clockMid', t('Between')],
+              ['clockLast', t('Clock last')],
             ]}
           />
-          {k.version === 'full' && <Num label="Name space" path="nameW" value={k.nameW} min={2.5} max={9} step={0.1} precision={1} unit="×h" />}
+          {k.version === 'full' && <Num label={t('Name space')} path="nameW" value={k.nameW} min={2.5} max={9} step={0.1} precision={1} unit="×h" />}
           <Seg
-            label="Score width"
+            label={t('Score width')}
             path="digits"
             value={k.digits}
             options={[
-              [2, '2 digits'],
-              [3, '3 digits'],
+              [2, t('2 digits')],
+              [3, t('3 digits')],
             ]}
           />
-          <Num label="Corners" path="radius" value={k.radius} min={0} max={30} unit="px" />
-          <Btns list={[{ label: 'Fit box', title: 'Fit the box to the board', onClick: fit }]} />
+          <Num label={t('Corners')} path="radius" value={k.radius} min={0} max={30} unit="px" />
+          <Btns list={[{ label: t('Fit box'), title: t('Fit the box to the board'), onClick: fit }]} />
         </Section>
-        <Section id="sb-elements" title="Elements">
-          <Toggle label="Period" path="fields.period" value={k.fields.period} />
-          {pr.kind === 'sets' && <Toggle label="Sets" path="fields.sets" value={k.fields.sets} />}
-          <Toggle label={pr.poss} path="fields.poss" value={k.fields.poss} />
-          <Toggle label="Fouls" path="fields.fouls" value={k.fields.fouls} />
-          {pr.timeouts > 0 && <Toggle label="Timeouts" path="fields.timeouts" value={k.fields.timeouts} />}
-          {pr.cards.length > 0 && <Toggle label="Cards" path="fields.cards" value={k.fields.cards} />}
-          <Toggle label="Crests" path="showCrest" value={k.showCrest} />
+        <Section id="sb-elements" title={t('Elements')}>
+          <Toggle label={t('Period')} path="fields.period" value={k.fields.period} />
+          {pr.kind === 'sets' && <Toggle label={t('Sets')} path="fields.sets" value={k.fields.sets} />}
+          <Toggle label={t(pr.poss)} path="fields.poss" value={k.fields.poss} />
+          <Toggle label={t('Fouls')} path="fields.fouls" value={k.fields.fouls} />
+          {pr.timeouts > 0 && <Toggle label={t('Timeouts')} path="fields.timeouts" value={k.fields.timeouts} />}
+          {pr.cards.length > 0 && <Toggle label={t('Cards')} path="fields.cards" value={k.fields.cards} />}
+          <Toggle label={t('Crests')} path="showCrest" value={k.showCrest} />
           {k.showCrest &&
             Array.from({ length: n }, (_, i) => {
-              const t = team(k, i);
+              const tm = team(k, i);
               return (
                 <div key={i} onFocusCapture={ensure(i)} onPointerDownCapture={ensure(i)}>
                   <Seg
-                    label={shortOf(t)}
+                    label={shortOf(tm)}
                     path={`teams.${i}.crest`}
-                    value={t.crest}
+                    value={tm.crest}
                     options={[
-                      ['shield', 'Shield'],
-                      ['round', 'Round'],
-                      ['diamond', 'Diamond'],
+                      ['shield', t('Shield')],
+                      ['round', t('Round')],
+                      ['diamond', t('Diamond')],
                     ]}
                   />
-                  <TeamLogo i={i} label="Picture" />
+                  <TeamLogo i={i} label={t('Picture')} />
                 </div>
               );
             })}
         </Section>
         {points && (
-          <Section id="sb-clock" title="Clock">
-            <Toggle label="Clock" path="fields.clock" value={k.fields.clock} />
+          <Section id="sb-clock" title={t('Clock')}>
+            <Toggle label={t('Clock')} path="fields.clock" value={k.fields.clock} />
             {k.fields.clock && (
               <>
                 <Seg
-                  label="Direction"
+                  label={t('Direction')}
                   path="clock.dir"
                   value={k.clock.dir}
                   options={[
-                    ['up', 'Up ↑'],
-                    ['down', 'Down ↓'],
-                    ['none', 'None'],
+                    ['up', t('Up ↑')],
+                    ['down', t('Down ↓')],
+                    ['none', t('None')],
                   ]}
                 />
-                <Num label="Period" path="clock.len" value={k.clock.len} min={1} max={90} unit="min" />
-                <Num label="Extra period" path="clock.extra" value={k.clock.extra} min={0} max={30} unit="min" />
-                {k.clock.dir === 'down' && <Toggle label="Tenths" path="clock.tenths" value={k.clock.tenths} />}
+                <Num label={t('Period')} path="clock.len" value={k.clock.len} min={1} max={90} unit="min" />
+                <Num label={t('Extra period')} path="clock.extra" value={k.clock.extra} min={0} max={30} unit="min" />
+                {k.clock.dir === 'down' && <Toggle label={t('Tenths')} path="clock.tenths" value={k.clock.tenths} />}
               </>
             )}
           </Section>
         )}
-        <Section id="sb-anim" title="Animation">
+        <Section id="sb-anim" title={t('Animation')}>
           <Seg
-            label="Score"
+            label={t('Score')}
             path="anim.score"
             value={k.anim.score}
             options={[
-              ['flip', 'Flip'],
-              ['highlight', 'Highlight'],
-              ['none', 'None'],
+              ['flip', t('Flip')],
+              ['highlight', t('Highlight')],
+              ['none', t('None')],
             ]}
           />
-          <Toggle label="Banners" path="anim.banner" value={k.anim.banner} />
-          {k.anim.banner && <Num label="Duration" path="anim.evDur" value={k.anim.evDur} min={1} max={8} step={0.1} precision={1} unit="s" />}
+          <Toggle label={t('Banners')} path="anim.banner" value={k.anim.banner} />
+          {k.anim.banner && <Num label={t('Duration')} path="anim.evDur" value={k.anim.evDur} min={1} max={8} step={0.1} precision={1} unit="s" />}
         </Section>
-        <Section id="sb-control" title="Control">
+        <Section id="sb-control" title={t('Control')}>
           {points && (
             <>
               <Seg
-                label="Priority"
+                label={t('Priority')}
                 path="source.rule"
                 value={k.source.rule}
                 options={[
-                  ['override', 'Override', 'Manual override, then feed'],
-                  ['manual', 'Manual', 'Manual wins'],
-                  ['feed', 'Feed', 'Feed wins'],
+                  ['override', t('Override'), t('Manual override, then feed')],
+                  ['manual', t('Manual'), t('Manual wins')],
+                  ['feed', t('Feed'), t('Feed wins')],
                 ]}
               />
-              {k.source.rule === 'override' && <Num label="Override" path="source.overS" value={k.source.overS} min={5} max={120} unit="s" />}
+              {k.source.rule === 'override' && <Num label={t('Override')} path="source.overS" value={k.source.overS} min={5} max={120} unit="s" />}
             </>
           )}
-          <Num label="Debounce" path="debounce" value={k.debounce} min={0} max={1000} step={50} unit="ms" />
+          <Num label={t('Debounce')} path="debounce" value={k.debounce} min={0} max={1000} step={50} unit="ms" />
         </Section>
       </>
     );
@@ -1269,38 +1273,38 @@ export default defineWidget({
     const now = Date.now();
     const out: Warning[] = [];
     const n = teamCount(k);
-    if (s.fx?.ignAt && now - s.fx.ignAt < 4000) out.push({ level: 'warn', op: true, text: `Double press ignored (${s.ignored ?? 0} so far) — the second press within ${k.debounce} ms counted once. Undo is available.` });
+    if (s.fx?.ignAt && now - s.fx.ignAt < 4000) out.push({ level: 'warn', op: true, text: t('Double press ignored ({n} so far) — the second press within {ms} ms counted once. Undo is available.', { n: s.ignored ?? 0, ms: k.debounce }) });
     if ((s.version ?? k.version) === 'full') {
       const pad = new Pt(true);
       const long: string[] = [];
       for (let i = 0; i < n; i++) {
-        const t = team(k, i);
+        const tm = team(k, i);
         // Scale-free: the name space is nameW × h, the text 0.4 h.
-        if (pad.tw(t.name.toUpperCase(), 40, 800, 0.8) > 100 * k.nameW - 30) long.push(t.name);
+        if (pad.tw(tm.name.toUpperCase(), 40, 800, 0.8) > 100 * k.nameW - 30) long.push(tm.name);
       }
-      if (long.length) out.push({ level: 'info', text: `Name too long for its space: short name shown for ${long.join(', ')}.` });
+      if (long.length) out.push({ level: 'info', text: t('Name too long for its space: short name shown for {names}.', { names: long.join(', ') }) });
     }
-    if (k.teams.some((t) => String(t.short ?? '').trim().length > 3)) out.push({ level: 'info', text: 'Short names are cut to 3 letters.' });
+    if (k.teams.some((t) => String(t.short ?? '').trim().length > 3)) out.push({ level: 'info', text: t('Short names are cut to 3 letters.') });
     const sc = scores(k, s, data, now);
     const big = sc.find((v) => String(v).length > k.digits);
-    if (big != null) out.push({ level: 'warn', op: true, text: `Score with ${String(big).length} digits in a ${k.digits}-digit cell: compressed to keep the layout. Set “Score width” to 3 digits.` });
+    if (big != null) out.push({ level: 'warn', op: true, text: t('Score with {n} digits in a {cell}-digit cell: compressed to keep the layout. Set “Score width” to 3 digits.', { n: String(big).length, cell: k.digits }) });
     const fv = feedValues(k, data);
     if (fv.some((v) => v !== undefined) && P(k).kind === 'points') {
       const a = activeSource(k, s, data, now);
       const manual = Array.from({ length: n }, (_, i) => ts(s, i).score).join('–');
       const feed = fv.map((v, i) => (typeof v === 'number' ? v : ts(s, i).score)).join('–');
-      if (a.id === 'lost') out.push({ level: 'error', op: true, text: 'Feed lost (data not a number): manual control (automatic fallback).' });
-      else if (feed !== manual && s.src?.dirty) out.push({ level: 'warn', op: true, text: `Conflict: feed ${feed} · manual ${manual} → ${activeText(a, k.source.rule)} is on air.` });
+      if (a.id === 'lost') out.push({ level: 'error', op: true, text: t('Feed lost (data not a number): manual control (automatic fallback).') });
+      else if (feed !== manual && s.src?.dirty) out.push({ level: 'warn', op: true, text: t('Conflict: feed {feed} · manual {manual} → {source} is on air.', { feed, manual, source: activeText(a, k.source.rule) }) });
     }
-    if (fv.some((v) => v !== undefined) && P(k).kind !== 'points') out.push({ level: 'info', op: true, text: 'The score feed covers point sports only: manual here.' });
-    if (k.clock.dir === 'down' && clockOn(k, s) && clockText(k, s, now)[2]) out.push({ level: 'info', op: true, text: 'Period over: clock at 0. Next period to continue.' });
-    if (P(k).kind === 'tennis' && tennisOf(s).free) out.push({ level: 'warn', op: true, text: 'Tennis free entry: automatic counting is off, the typed points show as they are.' });
+    if (fv.some((v) => v !== undefined) && P(k).kind !== 'points') out.push({ level: 'info', op: true, text: t('The score feed covers point sports only: manual here.') });
+    if (k.clock.dir === 'down' && clockOn(k, s) && clockText(k, s, now)[2]) out.push({ level: 'info', op: true, text: t('Period over: clock at 0. Next period to continue.') });
+    if (P(k).kind === 'tennis' && tennisOf(s).free) out.push({ level: 'warn', op: true, text: t('Tennis free entry: automatic counting is off, the typed points show as they are.') });
     if (r) {
       const w = num(r.width);
       const h = num(r.height);
       const [bw, bh] = sizeAt(k, s, data, now, 100);
       const row = (100 * Math.min(w / bw, h / bh)) | 0;
-      if (row < 30) out.push({ level: 'warn', text: `The box is small for the board (row height ${row} px): use “Fit box” or enlarge it.` });
+      if (row < 30) out.push({ level: 'warn', text: t('The box is small for the board (row height {n} px): use “Fit box” or enlarge it.', { n: row }) });
     }
     return out;
   },

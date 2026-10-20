@@ -9,5 +9,6 @@ import { common } from './common';
 import { data } from './data';
 import { home } from './home';
 import { operator } from './operator';
+import { widgetsData } from './widgetsData';
 
-export const fr: Record<string, string> = { ...common, ...home, ...data, ...operator };
+export const fr: Record<string, string> = { ...common, ...home, ...data, ...operator, ...widgetsData };

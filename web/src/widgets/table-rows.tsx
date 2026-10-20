@@ -3,15 +3,16 @@
 import { useRef } from 'react';
 import { fieldUsed, newFieldKey } from '../engine/settings';
 import type { Layer, Template } from '../engine/types';
+import { t, tn } from '../i18n';
 import { GridEditor, parseCsv } from './kit';
 
 type TL = Layer & { grid?: string[][] };
 
 /** Exposes the grid of a table to the Operator (a field the operator fills). */
-export function exposeRows(t: Template, l: Layer) {
+export function exposeRows(tpl: Template, l: Layer) {
   if (l.settingBindings?.grid) return;
-  const key = newFieldKey(t, `${l.name} rows`);
-  t.fields.push({ key, label: `${l.name} · Rows`, kind: 'table', default: JSON.stringify((l as TL).grid ?? []) });
+  const key = newFieldKey(tpl, `${l.name} rows`);
+  tpl.fields.push({ key, label: t('{name} · Rows', { name: l.name }), kind: 'table', default: JSON.stringify((l as TL).grid ?? []) });
   l.settingBindings = { ...l.settingBindings, grid: key };
 }
 
@@ -60,13 +61,13 @@ export function TableRowsInput({ value, onChange }: { value: string; onChange: (
     <div className="op-rows">
       <GridEditor value={rows.length ? rows : [head, head.map(() => '')]} onChange={put} header />
       <div className="wk-btns">
-        <button className="opx-btn small" onClick={() => file.current?.click()} title="A CSV file: the first line holds the column names">
-          Import CSV file…
+        <button className="opx-btn small" onClick={() => file.current?.click()} title={t('A CSV file: the first line holds the column names')}>
+          {t('Import CSV file…')}
         </button>
-        <button className="opx-btn small" onClick={example} title="A CSV with the table's columns, to fill in a spreadsheet">
-          Example CSV
+        <button className="opx-btn small" onClick={example} title={t("A CSV with the table's columns, to fill in a spreadsheet")}>
+          {t('Example CSV')}
         </button>
-        <span className="op-rows-n">{Math.max(0, rows.length - 1)} rows</span>
+        <span className="op-rows-n">{tn(Math.max(0, rows.length - 1), '{n} row', '{n} rows')}</span>
       </div>
       <input
         ref={file}

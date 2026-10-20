@@ -8,6 +8,7 @@ import { useRef, useState } from 'react';
 import { Map as MapIcon } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import { t, tn } from '../i18n';
 import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { col, ellipse, mix, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
@@ -663,52 +664,55 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
 
 // --------------------------------------------------------------- operator --
 
+/** The layers the operator turns on and off, by name (translated where shown). */
+const LAYER_NAMES = { markers: 'Markers', routes: 'Routes', zones: 'Zones', labels: 'Labels' } as const;
+
 function Operator({ layer, state, act }: { layer: Config; state: unknown; act: (op: string, args?: unknown) => void }) {
   const now = useFrame();
   const k = cfg(layer);
   const s = (state ?? {}) as State;
-  const [v, t] = viewAt(k, s, now, 1600);
+  const [v, fly] = viewAt(k, s, now, 1600);
   const [zone, setZone] = useState('idf');
   useKeys({ ArrowRight: () => act('next'), ArrowLeft: () => act('prev') });
   const cur = s.cur;
-  const name = cur != null ? k.views[cur]?.name : 'Template view';
+  const name = cur != null ? k.views[cur]?.name : t('Template view');
   return (
     <>
-      <Readout sub={`${v.lat.toFixed(3)}°, ${v.lon.toFixed(3)}° · z ${v.zoom.toFixed(2)} · ${Math.round(v.rot)}° · tilt ${Math.round(v.tilt)}°${t != null ? ` · flying ${Math.round(t * 100)} %` : ''}`}>{name ?? '—'}</Readout>
+      <Readout sub={`${v.lat.toFixed(3)}°, ${v.lon.toFixed(3)}° · z ${v.zoom.toFixed(2)} · ${Math.round(v.rot)}° · ${t('tilt {n}°', { n: Math.round(v.tilt) })}${fly != null ? ` · ${t('flying {n} %', { n: Math.round(fly * 100) })}` : ''}`}>{name ?? '—'}</Readout>
       <Btns
-        label="Views"
+        label={t('Views')}
         list={[
           ...k.views.map((kv, i) => ({ label: kv.name, cls: `big ${cur === i ? 'violet' : ''}`, onClick: () => act('go', { view: i }) })),
-          { label: 'Next view', cls: 'big green', keyHint: '→', onClick: () => act('next') },
-          { label: 'Reset', cls: 'big ghost', title: 'Template view, no highlight, layers and routes as designed', onClick: () => act('reset') },
+          { label: t('Next view'), cls: 'big green', keyHint: '→', onClick: () => act('next') },
+          { label: t('Reset'), cls: 'big ghost', title: t('Template view, no highlight, layers and routes as designed'), onClick: () => act('reset') },
         ]}
       />
       <Btns
-        label="Layers"
+        label={t('Layers')}
         list={(['markers', 'routes', 'zones', 'labels'] as const).map((l) => {
           const on = layerOn(k, s, l);
-          return { label: `${on ? '◉' : '○'} ${l[0].toUpperCase()}${l.slice(1)}`, cls: on ? 'green' : 'ghost', onClick: () => act('layer', { name: l, on: !on }) };
+          return { label: `${on ? '◉' : '○'} ${t(LAYER_NAMES[l])}`, cls: on ? 'green' : 'ghost', onClick: () => act('layer', { name: l, on: !on }) };
         })}
       />
       {k.markers.length > 0 && (
         <Btns
-          label="Markers"
+          label={t('Markers')}
           list={k.markers.map((m) => {
             const on = markerOn(s, m);
             return { label: `${on ? '◉' : '○'} ${m.name}`, cls: on ? 'violet' : 'ghost', onClick: () => act('marker', { id: keyOf(m), on: !on }) };
           })}
         />
       )}
-      <Row label="Zone">
+      <Row label={t('Zone')}>
         <Dropdown value={zone} options={world().regions.map((r) => ({ value: r.id, label: r.name }))} onChange={setZone} />
       </Row>
       <Btns
         list={[
-          { label: '✦ Highlight zone', cls: 'amber', onClick: () => act('highlight', { zone }) },
-          { label: 'Clear highlight', cls: 'ghost', disabled: !s.highlight, onClick: () => act('highlight', { zone: '' }) },
+          { label: t('✦ Highlight zone'), cls: 'amber', onClick: () => act('highlight', { zone }) },
+          { label: t('Clear highlight'), cls: 'ghost', disabled: !s.highlight, onClick: () => act('highlight', { zone: '' }) },
         ]}
       />
-      {k.routes.length > 0 && <Btns label="Routes" list={k.routes.map((r) => ({ label: `▶ Draw ${r.name}`, cls: 'big', onClick: () => act('route', { id: keyOf(r) }) }))} />}
+      {k.routes.length > 0 && <Btns label={t('Routes')} list={k.routes.map((r) => ({ label: t('▶ Draw {name}', { name: r.name }), cls: 'big', onClick: () => act('route', { id: keyOf(r) }) }))} />}
     </>
   );
 }
@@ -786,22 +790,22 @@ export default defineWidget({
     const [v] = viewAt(k, (state ?? {}) as State, Date.now(), num(layer.props.width ?? 1600));
     return (
       <>
-        <Section id="map-view" title="View">
-          <Num label="Latitude" path="view.lat" value={k.view.lat} min={-85} max={85} step={0.01} precision={3} unit="°" />
-          <Num label="Longitude" path="view.lon" value={k.view.lon} min={-180} max={180} step={0.01} precision={3} unit="°" />
-          <Num label="Zoom" path="view.zoom" value={k.view.zoom} min={1.5} max={18} step={0.05} precision={2} />
-          <Num label="Rotation" path="view.rot" value={k.view.rot} min={-180} max={180} unit="°" />
-          <Num label="Tilt" path="view.tilt" value={k.view.tilt} min={0} max={60} unit="°" />
-          <Toggle label="Drag to pan" value={k.dragPans} onChange={(x) => edit((l) => void (l.dragPans = x || undefined))} />
-          <Btns list={[{ label: '+ Key view', title: 'Save this view as a key view', onClick: () => edit((l) => void (l.views = [...cfg(l).views, { name: `View ${cfg(l).views.length + 1}`, ...clampView(cfg(l).view) }])) }]} />
+        <Section id="map-view" title={t('View')}>
+          <Num label={t('Latitude')} path="view.lat" value={k.view.lat} min={-85} max={85} step={0.01} precision={3} unit="°" />
+          <Num label={t('Longitude')} path="view.lon" value={k.view.lon} min={-180} max={180} step={0.01} precision={3} unit="°" />
+          <Num label={t('Zoom')} path="view.zoom" value={k.view.zoom} min={1.5} max={18} step={0.05} precision={2} />
+          <Num label={t('Rotation')} path="view.rot" value={k.view.rot} min={-180} max={180} unit="°" />
+          <Num label={t('Tilt')} path="view.tilt" value={k.view.tilt} min={0} max={60} unit="°" />
+          <Toggle label={t('Drag to pan')} value={k.dragPans} onChange={(x) => edit((l) => void (l.dragPans = x || undefined))} />
+          <Btns list={[{ label: t('+ Key view'), title: t('Save this view as a key view'), onClick: () => edit((l) => void (l.views = [...cfg(l).views, { name: `View ${cfg(l).views.length + 1}`, ...clampView(cfg(l).view) }])) }]} />
         </Section>
-        <Section id="map-views" title="Key views">
+        <Section id="map-views" title={t('Key views')}>
           <Row expose="views" exposeValue={k.views}>
             <ListEditor
               path="views"
               value={k.views}
               fields={[
-                { key: 'name', placeholder: 'Name' },
+                { key: 'name', placeholder: t('Name') },
                 { key: 'lat', num: true, w: 58 },
                 { key: 'lon', num: true, w: 58 },
                 { key: 'zoom', num: true, w: 44 },
@@ -809,15 +813,15 @@ export default defineWidget({
                 { key: 'tilt', num: true, w: 36 },
               ]}
               add={() => ({ name: `View ${k.views.length + 1}`, ...clampView(k.view) })}
-              addLabel="Key view"
+              addLabel={t('Key view')}
               min={1}
-              minMsg="At least one key view"
+              minMsg={t('At least one key view')}
             />
           </Row>
-          <Btns list={k.views.map((kv) => ({ label: `◎ ${kv.name}`, title: 'Show in the Designer', onClick: () => edit((l) => void (l.view = clampView(kv as View))) }))} label="Preview" />
+          <Btns list={k.views.map((kv) => ({ label: `◎ ${kv.name}`, title: t('Show in the Designer'), onClick: () => edit((l) => void (l.view = clampView(kv as View))) }))} label={t('Preview')} />
         </Section>
-        <Section id="map-markers" title="Markers">
-          <Toggle label="Markers" path="layers.markers" value={true} />
+        <Section id="map-markers" title={t('Markers')}>
+          <Toggle label={t('Markers')} path="layers.markers" value={true} />
           {k.layers.markers && (
             <>
               <Row expose="markers" exposeValue={k.markers}>
@@ -826,32 +830,32 @@ export default defineWidget({
                   value={k.markers}
                   toggle="on"
                   fields={[
-                    { key: 'name', placeholder: 'Label' },
+                    { key: 'name', placeholder: t('Label') },
                     { key: 'lat', w: 58, placeholder: 'lat' },
                     { key: 'lon', w: 58, placeholder: 'lon' },
                     {
                       key: 'icon',
                       w: 74,
                       options: [
-                        ['pin', 'Pin'],
-                        ['dot', 'Dot'],
-                        ['star', 'Star'],
-                        ['stadium', 'Stadium'],
-                        ['plane', 'Plane'],
+                        ['pin', t('Pin')],
+                        ['dot', t('Dot')],
+                        ['star', t('Star')],
+                        ['stadium', t('Stadium')],
+                        ['plane', t('Plane')],
                       ],
                     },
                     { key: 'color', w: 34, color: true },
                   ]}
                   add={() => ({ on: true, name: 'New marker', lat: v.lat.toFixed(3), lon: v.lon.toFixed(3), icon: 'pin', color: '#ff3b5c' })}
-                  addLabel="Marker"
+                  addLabel={t('Marker')}
                 />
               </Row>
-              <Num label="Size" path="mkSize" value={k.mkSize} min={1} max={400} unit="px" />
+              <Num label={t('Size')} path="mkSize" value={k.mkSize} min={1} max={400} unit="px" />
             </>
           )}
         </Section>
-        <Section id="map-routes" title="Routes">
-          <Toggle label="Routes" path="layers.routes" value={true} />
+        <Section id="map-routes" title={t('Routes')}>
+          <Toggle label={t('Routes')} path="layers.routes" value={true} />
           {k.layers.routes && (
             <>
               <Row expose="routes" exposeValue={k.routes}>
@@ -860,58 +864,58 @@ export default defineWidget({
                   value={k.routes}
                   toggle="on"
                   fields={[
-                    { key: 'name', placeholder: 'Name', w: 96 },
+                    { key: 'name', placeholder: t('Name'), w: 96 },
                     { key: 'path', placeholder: 'Paris > Tokyo' },
                     { key: 'color', w: 34, color: true },
                     { key: 'dur', num: true, w: 36, placeholder: 's' },
                   ]}
                   add={() => ({ on: true, name: 'Route', path: 'Paris > New York', color: '#38bdf8', dur: 4 })}
-                  addLabel="Route"
+                  addLabel={t('Route')}
                 />
               </Row>
               <Seg
-                label="Path"
+                label={t('Path')}
                 path="curve"
                 value={k.curve}
                 options={[
-                  ['gc', 'Great circle'],
-                  ['straight', 'Straight'],
+                  ['gc', t('Great circle')],
+                  ['straight', t('Straight')],
                 ]}
               />
-              <Num label="Width" path="routeW" value={k.routeW} min={1} max={100} unit="px" />
-              <Toggle label="Plane" path="planeHead" value={true} />
+              <Num label={t('Width')} path="routeW" value={k.routeW} min={1} max={100} unit="px" />
+              <Toggle label={t('Plane')} path="planeHead" value={true} />
             </>
           )}
         </Section>
-        <Section id="map-zones" title="Zones">
-          <Toggle label="Zones" path="layers.zones" value={true} />
+        <Section id="map-zones" title={t('Zones')}>
+          <Toggle label={t('Zones')} path="layers.zones" value={true} />
           {k.layers.zones && (
             <>
               <Btns
-                label="Sample"
+                label={t('Sample')}
                 list={[
-                  { label: 'Election', onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...ELECTION })) },
-                  { label: 'Weather', onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...WEATHER, scale: SCALE })) },
+                  { label: t('Election'), onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...ELECTION })) },
+                  { label: t('Weather'), onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...WEATHER, scale: SCALE })) },
                 ]}
               />
               <Seg
-                label="Values"
+                label={t('Values')}
                 path="zones.mode"
                 value={k.zones.mode}
                 options={[
-                  ['category', 'Categories'],
-                  ['scale', 'Scale'],
+                  ['category', t('Categories')],
+                  ['scale', t('Scale')],
                 ]}
               />
               <Row expose="zones.rows" exposeValue={k.zones.rows}>
                 <GridEditor path="zones.rows" value={k.zones.rows} header csv />
               </Row>
               {k.zones.mode === 'category' ? (
-                <ListEditor label="Categories" path="zones.categories" value={k.zones.categories as Record<string, unknown>[]} fields={[{ key: 'name' }, { key: 'color', w: 34, color: true }]} add={() => ({ name: 'New', color: '#a594ff' })} addLabel="Category" />
+                <ListEditor label={t('Categories')} path="zones.categories" value={k.zones.categories as Record<string, unknown>[]} fields={[{ key: 'name' }, { key: 'color', w: 34, color: true }]} add={() => ({ name: 'New', color: '#a594ff' })} addLabel={t('Category')} />
               ) : (
                 <>
                   <ListEditor
-                    label="Scale"
+                    label={t('Scale')}
                     path="zones.scale"
                     value={k.zones.scale as Record<string, unknown>[]}
                     fields={[
@@ -919,27 +923,27 @@ export default defineWidget({
                       { key: 'color', w: 34, color: true },
                     ]}
                     add={() => ({ v: 0, color: '#ffffff' })}
-                    addLabel="Stop"
+                    addLabel={t('Stop')}
                   />
-                  <Text label="Unit" path="zones.unit" value={k.zones.unit} />
+                  <Text label={t('Unit')} path="zones.unit" value={k.zones.unit} />
                 </>
               )}
-              <Num label="Opacity" expose="zones.opacity" exposeValue={k.zones.opacity} value={Math.round(k.zones.opacity * 100)} min={0} max={100} unit="%" onChange={(x) => edit((l) => void (l.zones = { ...l.zones, opacity: x / 100 }), `mzo-${layer.id}`)} />
-              <Toggle label="Legend" path="zones.legend" value={true} />
+              <Num label={t('Opacity')} expose="zones.opacity" exposeValue={k.zones.opacity} value={Math.round(k.zones.opacity * 100)} min={0} max={100} unit="%" onChange={(x) => edit((l) => void (l.zones = { ...l.zones, opacity: x / 100 }), `mzo-${layer.id}`)} />
+              <Toggle label={t('Legend')} path="zones.legend" value={true} />
               {k.zones.legend && (
                 <>
-                  <Text label="Title" path="zones.title" value={k.zones.title} />
-                  <Seg label="Position" path="zones.legendPos" value={k.zones.legendPos} options={POS} />
+                  <Text label={t('Title')} path="zones.title" value={k.zones.title} />
+                  <Seg label={t('Position')} path="zones.legendPos" value={k.zones.legendPos} options={POS} />
                 </>
               )}
             </>
           )}
         </Section>
-        <Section id="map-base" title="Map">
+        <Section id="map-base" title={t('Map')}>
           <Seg
             expose="style"
             exposeValue={k.style}
-            label="Style"
+            label={t('Style')}
             value={k.style}
             onChange={(sv) =>
               edit((l) => {
@@ -948,84 +952,84 @@ export default defineWidget({
               })
             }
             options={[
-              ['vector', 'Vector'],
-              ['satellite', 'Satellite'],
+              ['vector', t('Vector')],
+              ['satellite', t('Satellite')],
               ['mono', 'Mono'],
             ]}
           />
           <Seg
-            label="Projection"
+            label={t('Projection')}
             path="projection"
             value={k.projection}
             options={[
               ['mercator', 'Mercator'],
               ['equalearth', 'Equal Earth'],
-              ['equirect', 'Equirect.'],
+              ['equirect', t('Equirect.')],
             ]}
           />
-          <ColorPick label="Water" path="colors.water" value={k.colors.water} />
-          <ColorPick label="Land" path="colors.land" value={k.colors.land} />
-          <Toggle label="Borders" path="showBorders" value={true} />
-          {k.showBorders && <ColorPick label="Color" path="colors.border" value={k.colors.border} />}
-          <Toggle label="Roads" path="showRoads" value={true} />
-          {k.showRoads && <ColorPick label="Color" path="colors.road" value={k.colors.road} />}
-          <Toggle label="Graticule" path="graticule" value={false} />
-          {k.graticule && !k.showBorders && <ColorPick label="Color" path="colors.border" value={k.colors.border} />}
-          <Num label="Corners" path="radius" value={k.radius} min={0} max={2000} unit="px" />
+          <ColorPick label={t('Water')} path="colors.water" value={k.colors.water} />
+          <ColorPick label={t('Land')} path="colors.land" value={k.colors.land} />
+          <Toggle label={t('Borders')} path="showBorders" value={true} />
+          {k.showBorders && <ColorPick label={t('Color')} path="colors.border" value={k.colors.border} />}
+          <Toggle label={t('Roads')} path="showRoads" value={true} />
+          {k.showRoads && <ColorPick label={t('Color')} path="colors.road" value={k.colors.road} />}
+          <Toggle label={t('Graticule')} path="graticule" value={false} />
+          {k.graticule && !k.showBorders && <ColorPick label={t('Color')} path="colors.border" value={k.colors.border} />}
+          <Num label={t('Corners')} path="radius" value={k.radius} min={0} max={2000} unit="px" />
         </Section>
-        <Section id="map-labels" title="Labels">
-          <Toggle label="Labels" path="layers.labels" value={true} />
+        <Section id="map-labels" title={t('Labels')}>
+          <Toggle label={t('Labels')} path="layers.labels" value={true} />
           {k.layers.labels && (
             <>
-              <Toggle label="Cities" path="labels.cities" value={true} />
-              <Toggle label="Countries" path="labels.countries" value={true} />
-              <Num label="Importance" path="labels.minImp" value={k.labels.minImp} min={1} max={10} />
-              <Num label="Size" path="labels.size" value={k.labels.size} min={1} max={400} unit="px" />
-              <Toggle label="Collisions" path="labels.collide" value={true} />
+              <Toggle label={t('Cities')} path="labels.cities" value={true} />
+              <Toggle label={t('Countries')} path="labels.countries" value={true} />
+              <Num label={t('Importance')} path="labels.minImp" value={k.labels.minImp} min={1} max={10} />
+              <Num label={t('Size')} path="labels.size" value={k.labels.size} min={1} max={400} unit="px" />
+              <Toggle label={t('Collisions')} path="labels.collide" value={true} />
               {k.labels.collide && (
                 <>
-                  <Num label="Spacing" path="labels.pad" value={k.labels.pad} min={0} max={200} unit="px" />
-                  <Toggle label="Show hidden" value={k.labels.showHidden} onChange={(x) => edit((l) => void (l.labels = { ...l.labels, showHidden: x || undefined }))} />
+                  <Num label={t('Spacing')} path="labels.pad" value={k.labels.pad} min={0} max={200} unit="px" />
+                  <Toggle label={t('Show hidden')} value={k.labels.showHidden} onChange={(x) => edit((l) => void (l.labels = { ...l.labels, showHidden: x || undefined }))} />
                 </>
               )}
             </>
           )}
         </Section>
-        <Section id="map-att" title="Attribution">
-          <Select label="Provider" path="attribution.provider" value={k.attribution.provider} options={(Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]).map((x) => [x, PROVIDERS[x].name] as const)} />
-          <Toggle label="Show" path="attribution.show" value={prov.required ? true : k.attribution.show} disabled={prov.required ? 'Required by the licence' : undefined} />
+        <Section id="map-att" title={t('Attribution')}>
+          <Select label={t('Provider')} path="attribution.provider" value={k.attribution.provider} options={(Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]).map((x) => [x, t(PROVIDERS[x].name)] as const)} />
+          <Toggle label={t('Show')} path="attribution.show" value={prov.required ? true : k.attribution.show} disabled={prov.required ? t('Required by the licence') : undefined} />
           {(k.attribution.show || prov.required) && (
             <>
-              <Seg label="Position" path="attribution.pos" value={k.attribution.pos} options={POS} />
+              <Seg label={t('Position')} path="attribution.pos" value={k.attribution.pos} options={POS} />
               <Seg
-                label="Style"
+                label={t('Style')}
                 path="attribution.style"
                 value={k.attribution.style}
                 options={[
-                  ['dark', 'Dark'],
-                  ['light', 'Light'],
-                  ['minimal', 'Text'],
+                  ['dark', t('Dark')],
+                  ['light', t('Light')],
+                  ['minimal', t('Text')],
                 ]}
               />
             </>
           )}
         </Section>
-        <Section id="map-trans" title="Transition">
-          <Num label="Duration" path="transition.dur" value={k.transition.dur} min={0} max={60} step={0.1} precision={1} unit="s" />
+        <Section id="map-trans" title={t('Transition')}>
+          <Num label={t('Duration')} path="transition.dur" value={k.transition.dur} min={0} max={60} step={0.1} precision={1} unit="s" />
           <Seg
-            label="Curve"
+            label={t('Curve')}
             path="transition.ease"
             value={k.transition.ease}
             options={[
-              ['linear', 'Linear'],
-              ['inout', 'In-out'],
-              ['out', 'Out'],
-              ['in', 'In'],
-              ['sine', 'Sine'],
+              ['linear', t('Linear')],
+              ['inout', t('In-out')],
+              ['out', t('Out')],
+              ['in', t('In')],
+              ['sine', t('Sine')],
             ]}
           />
-          <Toggle label="Fly" path="transition.fly" value={true} />
-          {k.transition.fly && <Num label="Height" expose="transition.flyAmt" exposeValue={k.transition.flyAmt} value={Math.round(k.transition.flyAmt * 100)} min={0} max={100} unit="%" onChange={(x) => edit((l) => void (l.transition = { ...l.transition, flyAmt: x / 100 }), `mfa-${layer.id}`)} />}
+          <Toggle label={t('Fly')} path="transition.fly" value={true} />
+          {k.transition.fly && <Num label={t('Height')} expose="transition.flyAmt" exposeValue={k.transition.flyAmt} value={Math.round(k.transition.flyAmt * 100)} min={0} max={100} unit="%" onChange={(x) => edit((l) => void (l.transition = { ...l.transition, flyAmt: x / 100 }), `mfa-${layer.id}`)} />}
         </Section>
       </>
     );
@@ -1035,26 +1039,26 @@ export default defineWidget({
     const k = cfg(layer);
     const s = (state ?? {}) as State;
     const out: Warning[] = [];
-    if (layerOn(k, s, 'markers')) for (const m of k.markers) if (markerOn(s, m) && !markerPos(m, data)) out.push({ level: 'error', op: true, text: `Marker “${m.name}” ignored: invalid coordinates (lat ${m.lat || '—'}, lon ${m.lon || '—'}).` });
+    if (layerOn(k, s, 'markers')) for (const m of k.markers) if (markerOn(s, m) && !markerPos(m, data)) out.push({ level: 'error', op: true, text: t('Marker “{name}” ignored: invalid coordinates (lat {lat}, lon {lon}).', { name: m.name, lat: m.lat || '—', lon: m.lon || '—' }) });
     if (layerOn(k, s, 'routes'))
       for (const rt of k.routes) {
         if (!routeOn(s, rt)) continue;
         const [, bad] = routeLine(rt.path, k.curve);
-        if (bad.length) out.push({ level: 'warn', op: true, text: `Route “${rt.name}”: waypoint not found — ${bad.join(', ')}. Use a known city or “lat,lon”.` });
+        if (bad.length) out.push({ level: 'warn', op: true, text: t('Route “{name}”: waypoint not found — {places}. Use a known city or “lat,lon”.', { name: rt.name, places: bad.join(', ') }) });
       }
     const [, unmatched] = zoneFills(k.zones, data);
-    if (unmatched.length) out.push({ level: 'warn', text: `Zone data: no region named ${unmatched.join(', ')}.` });
-    for (const kv of k.views) if (!Number.isFinite(+kv.lat) || !Number.isFinite(+kv.lon) || Math.abs(+kv.lat) > 90 || Math.abs(+kv.lon) > 180) out.push({ level: 'error', op: true, text: `Key view “${kv.name}” has invalid coordinates: the Operator cannot go to it.` });
+    if (unmatched.length) out.push({ level: 'warn', text: t('Zone data: no region named {names}.', { names: unmatched.join(', ') }) });
+    for (const kv of k.views) if (!Number.isFinite(+kv.lat) || !Number.isFinite(+kv.lon) || Math.abs(+kv.lat) > 90 || Math.abs(+kv.lon) > 180) out.push({ level: 'error', op: true, text: t('Key view “{name}” has invalid coordinates: the Operator cannot go to it.', { name: kv.name }) });
     const prov = PROVIDERS[k.attribution.provider];
-    if (!k.attribution.show && prov.required) out.push({ level: 'info', text: `Attribution kept on air: required by the ${prov.name} licence.` });
+    if (!k.attribution.show && prov.required) out.push({ level: 'info', text: t('Attribution kept on air: required by the {name} licence.', { name: t(prov.name) }) });
     if (r) {
       const w = num(r.width);
       const h = num(r.height);
       const { hidden } = paint(new Pt(true), k, s, data, Date.now(), w, h, false);
-      if (hidden.length) out.push({ level: 'info', text: `${hidden.length} label(s) hidden by priority: ${hidden.slice(0, 6).join(', ')}${hidden.length > 6 ? '…' : ''}` });
+      if (hidden.length) out.push({ level: 'info', text: tn(hidden.length, '{n} label hidden by priority: {names}', '{n} labels hidden by priority: {names}', { names: `${hidden.slice(0, 6).join(', ')}${hidden.length > 6 ? '…' : ''}` }) });
     }
     const [v] = viewAt(k, s, Date.now(), 1600);
-    if (k.projection !== 'mercator' && v.zoom > 8) out.push({ level: 'info', text: 'Equal Earth / equirectangular are meant for world maps; Web Mercator suits city views.' });
+    if (k.projection !== 'mercator' && v.zoom > 8) out.push({ level: 'info', text: t('Equal Earth / equirectangular are meant for world maps; Web Mercator suits city views.') });
     return out;
   },
 });
