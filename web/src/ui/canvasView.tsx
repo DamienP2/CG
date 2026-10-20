@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /*
  * Pan and zoom of the node canvases (Data, Logic, Outputs): the viewport
  * keeps its size and the space inside is moved and scaled.
- *   wheel (mouse) or pinch (trackpad, ctrl+wheel)   zoom around the pointer
- *   two-finger scroll (trackpad)                    pan
+ *   Shift + wheel, or pinch (trackpad)              zoom around the pointer
+ *   wheel, two-finger scroll (trackpad)             pan
  *   Space + drag, middle button, drag on the void   pan (hand)
  *   Fit                                             every node in view
  * Positions given to the canvas (toWorld) are in the space's coordinates,
@@ -125,12 +125,14 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node') {
   useEffect(() => {
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      const zoom = e.ctrlKey || e.metaKey || isMouseWheel(e);
+      const zoom = e.ctrlKey || e.metaKey || e.shiftKey;
       // A list or a table inside a node scrolls by itself.
       const inner = (e.target as HTMLElement).closest?.('[data-scroll], textarea, select');
       if (inner && !(e.ctrlKey || e.metaKey) && inner.scrollHeight > inner.clientHeight) return;
       e.preventDefault();
-      if (zoom) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey && !isMouseWheel(e) ? 0.01 : 0.0015)), e.clientX, e.clientY);
+      // Shift turns the wheel sideways on macOS: either axis zooms.
+      const dz = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+      if (zoom) zoomAt(Math.exp(-dz * (e.ctrlKey && !isMouseWheel(e) ? 0.01 : 0.0015)), e.clientX, e.clientY);
       else {
         const v = viewRef.current;
         setView({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
@@ -233,7 +235,7 @@ function CanvasControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (factor
       <button title="Zoom out" onClick={() => onZoom(1 / 1.2)}>
         <Minus size={13} />
       </button>
-      <span title="Wheel or pinch to zoom · Space + drag to move">{Math.round(zoom * 100)}%</span>
+      <span title="Shift + wheel or pinch to zoom · wheel or Space + drag to move">{Math.round(zoom * 100)}%</span>
       <button title="Zoom in" onClick={() => onZoom(1.2)}>
         <Plus size={13} />
       </button>

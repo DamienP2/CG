@@ -36,9 +36,16 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => {
-      if (!list.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false);
+      if (!list.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) {
+        setOpen(false);
+        // A click elsewhere leaves the list for good (no focused look left behind).
+        btn.current?.blur();
+      }
     };
-    const away = () => setOpen(false);
+    // Scrolling the list keeps it open; scrolling anything else closes it.
+    const away = (e: Event) => {
+      if (!list.current?.contains(e.target as Node)) setOpen(false);
+    };
     window.addEventListener('pointerdown', close, true);
     window.addEventListener('wheel', away, { passive: true });
     window.addEventListener('resize', away);
@@ -53,10 +60,11 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
     if (open) list.current?.querySelector('.dd-opt.hover')?.scrollIntoView({ block: 'nearest' });
   }, [open, hover]);
 
-  const pick = (v: V) => {
+  const pick = (v: V, keyboard = false) => {
     setOpen(false);
     if (v !== value) onChange(v);
-    btn.current?.focus();
+    if (keyboard) btn.current?.focus();
+    else btn.current?.blur();
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) {
@@ -66,10 +74,13 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
     }
     if (!open) return;
     e.stopPropagation();
-    if (e.key === 'Escape') setOpen(false);
+    if (e.key === 'Escape') {
+      setOpen(false);
+      btn.current?.focus();
+    }
     else if (e.key === 'ArrowDown') setHover((h) => Math.min(options.length - 1, h + 1));
     else if (e.key === 'ArrowUp') setHover((h) => Math.max(0, h - 1));
-    else if (e.key === 'Enter' && options[hover]) pick(options[hover].value);
+    else if (e.key === 'Enter' && options[hover]) pick(options[hover].value, true);
     else return;
     e.preventDefault();
   };
