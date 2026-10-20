@@ -186,7 +186,8 @@ export async function publishTemplate(project: Project, id: string) {
   const st = useDesigner.getState();
   if (!(await confirmPublish(project, [id]))) return;
   try {
-    if (st.base?.id === id) await saveTemplate(st.base);
+    // Not saved: the Operator must not get an older version.
+    if (st.base?.id === id && !(await saveTemplate(st.base))) return;
     const r = await api<{ revision: number }>('POST', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(id)}/publish`);
     const name = project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id;
     toast(`“${name}” v${r.revision} is live in the Operator`, 'info');
@@ -241,7 +242,7 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
     setBusy(true);
     try {
       const st = useDesigner.getState();
-      if (st.base) await saveTemplate(st.base);
+      if (st.base && !(await saveTemplate(st.base))) return;
       const r = await api<{ name: string; revision: number }[]>('POST', `/api/projects/${encodeURIComponent(project.id)}/publish`);
       toast(`${r.length} template${r.length > 1 ? 's' : ''} live in the Operator`, 'info');
     } catch (e) {
@@ -275,7 +276,7 @@ export function PublishButton({ project, readOnly }: { project: Project; readOnl
     setBusy(true);
     try {
       // The latest edits first (autosave may still be pending).
-      await saveTemplate(useDesigner.getState().base!);
+      if (!(await saveTemplate(useDesigner.getState().base!))) return;
       const r = await api<{ revision: number }>('POST', `${url}/publish`);
       toast(`“${base.name}” v${r.revision} is live in the Operator`, 'info');
     } catch (e) {

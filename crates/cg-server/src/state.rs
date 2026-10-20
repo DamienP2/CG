@@ -387,8 +387,11 @@ impl AppState {
                         .then(|| v.strip_prefix("for:"))
                         .flatten()
                         .and_then(|n| n.trim().parse::<f64>().ok())
+                        .filter(|s| s.is_finite() && *s >= 0.0)
                     {
-                        *v = format!("until:{}", now_ms() + (secs * 1000.0) as i64);
+                        // At most a day: no overflow, and never "manual for ever" by accident.
+                        let ms = (secs.min(86_400.0) * 1000.0) as i64;
+                        *v = format!("until:{}", now_ms().saturating_add(ms));
                     }
                 }
             }

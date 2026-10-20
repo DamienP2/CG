@@ -1280,6 +1280,17 @@ async fn list_channels(
     )
 }
 
+/// The project loaded on a channel is one the user may see (operators scoped to projects).
+async fn sees_loaded(s: &Shared, me: &User, channel: &str) -> ApiResult<()> {
+    let Some(ch) = s.channel(channel) else {
+        return Ok(());
+    };
+    match ch.project_id.read().await.as_deref() {
+        Some(pid) if !me.sees_project(pid) => Err(not_found("project")),
+        _ => Ok(()),
+    }
+}
+
 fn visible_channel(me: &User, id: &str) -> ApiResult<()> {
     if me.sees_channel(id) {
         Ok(())
@@ -1327,6 +1338,7 @@ async fn channel_command(
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    sees_loaded(&s, &me, &id).await?;
     s.command(&id, cmd).await.map(Json).map_err(bad)
 }
 
@@ -1347,6 +1359,7 @@ async fn item_command(
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
+    sees_loaded(&s, &me, &id).await?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
     let pid = ch
         .project_id
@@ -1405,6 +1418,7 @@ async fn channel_preview(
     Query(q): Query<PreviewQuery>,
 ) -> ApiResult<Response> {
     visible_channel(&me, &id)?;
+    sees_loaded(&s, &me, &id).await?;
     let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?.clone();
     let project = match ch.project_id.read().await.clone() {
         Some(pid) => s.project(&pid).await,
@@ -2305,8 +2319,9 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
             ev = events.recv() => {
                 let ev = match ev {
                     Ok(ev) => ev,
-                    // Slow client: states are absolute, the next one catches up.
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    // Slow client: events it missed (project, channels, locks) are not sent again,
+                    // so it reconnects and gets everything afresh.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => break,
                     Err(_) => break,
                 };
                 let mut extra = None;

@@ -159,6 +159,8 @@ export function NumberField({
     l.onChange(rounded);
   });
   const commit = (s: string) => {
+    // Untouched: nothing to write (no keyframe added, no rounding, no undo step).
+    if (s.trim() === String(shown)) return;
     // Allow simple expressions: "100+20", "1920/2".
     const expr = s.replace(/[^-+*/().\d\s]/g, '');
     let v: number;
@@ -167,8 +169,12 @@ export function NumberField({
     } catch {
       v = NaN;
     }
-    if (Number.isFinite(v)) onChange(clamp(v / display));
-    else setText(String(shown));
+    if (Number.isFinite(v)) {
+      const c = clamp(v / display);
+      onChange(c);
+      // Clamped to the same value: show it again (the field would keep the typed number).
+      setText(String(+(c * display).toFixed(precision)));
+    } else setText(String(shown));
   };
 
   const scrub = (e: React.PointerEvent) => {

@@ -10,6 +10,8 @@ import { findLayer, useDesigner } from '../designer/designerStore';
 import { holdFrame, num as vnum, resolveLayer } from '../engine/evaluate';
 import type { Data, Layer, Template } from '../engine/types';
 import { CanvasHeader } from '../ui/CanvasHeader';
+import { ColorField } from '../ui/fields';
+import { parseHex, toHex } from '../engine/evaluate';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick, WEIGHT_NAMES } from '../ui/FontPick';
 import { Btns, Bound, Content, getPath, GridEditor, Note, Num, Row, Section, Seg, Select, setPath, Text, Toggle, useBound } from './kit';
@@ -95,6 +97,36 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
   const ds = dsKey ? template.datasets?.find((d) => d.key === dsKey) : undefined;
   const source = ds ? `${ds.name} · ${live.rows.length} rows` : k.link.trim() ? `Linked data · ${live.rows.length} rows` : `Rows by hand · ${live.rows.length}`;
   const add = () => addCol(edit, ensureCols, live, setSel);
+  // Width modes keep what is shown: switching writes the current widths in the new unit.
+  const W = Math.max(50, vnum(resolveLayer(layer, frame, data, holdFrame(template)).width));
+  const widthsAs = (mode: 'auto' | 'percent' | 'fixed') =>
+    edit((l) => {
+      ensureCols(l);
+      const ws = widths(k, live, W, size);
+      const sum = live.cols.reduce((a, c, j) => (c.i === undefined ? a : a + ws[j]), 0) || 1;
+      live.cols.forEach((c, j) => {
+        if (c.ci === undefined || !l.cols![c.ci]) return;
+        if (mode === 'percent') l.cols![c.ci].pct = Math.round((ws[j] / sum) * 1000) / 10;
+        if (mode === 'fixed') l.cols![c.ci].w = Math.round(ws[j]);
+      });
+      l.widthMode = mode;
+    });
+  // One column's share: the others share the rest, so the total stays 100 %.
+  const setShare = (i: number, v: number) =>
+    edit((l) => {
+      ensureCols(l);
+      const shown = live.cols.filter((c) => c.ci !== undefined).map((c) => c.ci!);
+      const share = Math.min(95, Math.max(1, v));
+      const others = shown.filter((x) => x !== i);
+      const rest = others.reduce((a, x) => a + Math.max(0, +(l.cols![x].pct ?? 10)), 0);
+      others.forEach((x) => (l.cols![x].pct = Math.round((rest > 0 ? (Math.max(0, +(l.cols![x].pct ?? 10)) / rest) * (100 - share) : (100 - share) / others.length) * 10) / 10));
+      l.cols![i].pct = share;
+    }, `te-share-${layer.id}`);
+  const shareOf = (i: number) => {
+    const shown = live.cols.filter((c) => c.ci !== undefined).map((c) => c.ci!);
+    const sum = shown.reduce((a, x) => a + Math.max(0, +(k.cols[x]?.pct ?? 0)), 0) || 1;
+    return Math.round((Math.max(0, +(k.cols[i]?.pct ?? 0)) / sum) * 100);
+  };
   // Rows typed by the operator (a table without a data set).
   const linked = /\{\{\w+\}\}/.test(k.link);
   const opRows = { show: !linked, on: !!layer.settingBindings?.grid, toggle: () => update((t) => (layer.settingBindings?.grid ? unexposeRows : exposeRows)(t, findLayer(t, layer.id)!)) };
@@ -137,7 +169,7 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
           </aside>
           <TableCanvas layer={shown} template={template} data={data} frame={frame} sel={sel} setSel={setSel} selectCol={selectCol} page={page} setPage={setPage} edit={edit} ensureCols={ensureCols} add={add} />
           <aside className="te-right">
-            <Settings layer={layer} k={k} live={live} size={size} setGrid={setGrid} sel={sel} setSel={setSel} edit={edit} set={set} dsName={ds?.name} />
+            <Settings layer={layer} k={k} live={live} size={size} setGrid={setGrid} widthsAs={widthsAs} setShare={setShare} shareOf={shareOf} sel={sel} setSel={setSel} edit={edit} set={set} dsName={ds?.name} />
           </aside>
         </Bound>
       </div>
@@ -326,7 +358,8 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setAvail(el.clientWidth));
+    // Small changes (a scrollbar showing up) do not rescale: no feedback loop.
+    const ro = new ResizeObserver(() => setAvail((a) => (Math.abs(a - el.clientWidth) > 24 ? el.clientWidth : a)));
     ro.observe(el);
     setAvail(el.clientWidth);
     return () => ro.disconnect();
@@ -340,7 +373,8 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
   const pages = Math.max(1, Math.ceil(m.rows.length / k.perPage));
   const pg = Math.min(page, pages - 1);
   const scroll = k.pageMode === 'scroll';
-  const s = Math.max(0.15, Math.min(1, (avail - 170) / W));
+  // Rounded down: the scale never makes the canvas overflow by a pixel (no scrollbar flip-flop).
+  const s = Math.max(0.15, Math.min(1, Math.floor(((avail - 180) / W) * 100) / 100));
   const ws = widths(k, m, W, size);
   const xs: number[] = [];
   ws.reduce((x, w, i) => ((xs[i] = x), x + w + k.gap), 0);
@@ -357,7 +391,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
   const colIndex = (j: number) => {
     const mc = m.cols[j];
     if (!mc || mc.i === undefined) return -1;
-    return k.cols.length ? k.cols.findIndex((c) => c.on && c.src === mc.col.src) : m.head.filter(Boolean).indexOf(mc.col.src);
+    return mc.ci ?? -1;
   };
   const selJ = sel.k === 'col' ? m.cols.findIndex((_, j) => colIndex(j) === sel.i) : sel.k === 'rank' ? m.cols.findIndex((c) => c.i === undefined) : -1;
   const pickCol = (j: number) => {
@@ -461,7 +495,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
         <div className="te-stage" style={{ width: W * s, height: viewH * s }}>
           <div className="te-box" style={{ width: W * s, height: H * s }} />
           <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: viewH, transform: `scale(${s})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
-            <TableRender layer={layer} r={r as never} w={W} data={data} time={{ nowMs: Date.now(), ageSecs: 60 }} state={{ page: pg }} />
+            <TableRender layer={layer} r={r as never} w={W} data={data} time={{ nowMs: Date.now(), ageSecs: k.pageMode === 'scroll' ? 0 : 60 }} state={{ page: pg }} />
           </div>
           {k.title.on && Z({ x: 0, y: 0, w: W, h: TH, cls: `title ${sel.k === 'title' ? 'on' : ''}`, title: 'Title bar', onClick: () => setSel({ k: 'title' }) })}
           {list.map((_, i) => (
@@ -642,20 +676,27 @@ function TextSections({ id, path, t }: { id: string; path: string; t: CellText }
   );
 }
 
-/** Background and text colours of a level, one per row. */
+/** Background and text colours of a level, one per row. Both are always written together, so the
+ * renderer on air never fills a missing one with another level's default. */
 function Colours({ path }: { path: string }) {
   const b = useBound();
   const v = (getPath(b.obj, path) ?? {}) as { bg?: string; color?: string };
   const d = (getPath({ st: DST, cell: { bg: '#facc15', color: '#111111' } }, path) ?? {}) as { bg?: string; color?: string };
+  const pair = { bg: v.bg ?? d.bg ?? '#000000', color: v.color ?? d.color ?? '#ffffff' };
+  const one = (key: 'bg' | 'color', label: string) => (
+    <Row expose={[`${path}.bg`, `${path}.color`]} exposeValue={{ [`${path}.bg`]: pair.bg, [`${path}.color`]: pair.color }} label={label}>
+      <ColorField value={parseHex(pair[key]) ?? [1, 1, 1, 1]} onChange={(c) => b.set(path, { ...(getPath(b.obj, path) as object), ...pair, [key]: toHex(c, c[3] < 1) }, true)} />
+    </Row>
+  );
   return (
     <>
-      <ColorPickRow label="Background" path={`${path}.bg`} value={v.bg ?? d.bg ?? '#000000'} />
-      <ColorPickRow label="Text" path={`${path}.color`} value={v.color ?? d.color ?? '#ffffff'} />
+      {one('bg', 'Background')}
+      {one('color', 'Text')}
     </>
   );
 }
 
-function Settings({ layer, k, live, size, setGrid, sel, setSel, edit, set, dsName }: { layer: TL; k: K; live: Live; size: number; setGrid: (g: string[][]) => void; sel: Sel; setSel: (s: Sel) => void; edit: Edit; set: Set; dsName?: string }) {
+function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, sel, setSel, edit, set, dsName }: { layer: TL; k: K; live: Live; size: number; setGrid: (g: string[][]) => void; widthsAs: (m: 'auto' | 'percent' | 'fixed') => void; setShare: (i: number, v: number) => void; shareOf: (i: number) => number; sel: Sel; setSel: (s: Sel) => void; edit: Edit; set: Set; dsName?: string }) {
   const head = live.head.filter(Boolean);
   const colOpts: [string, string][] = k.cols.map((c) => [c.src, c.label || c.src]);
   const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
@@ -845,20 +886,18 @@ function Settings({ layer, k, live, size, setGrid, sel, setSel, edit, set, dsNam
               ]}
             />
             <Seg label="Align" path={`${cp}.align`} value={c!.align} options={ALIGN} />
-            {k.widthMode === 'auto' ? (
-              <Seg
-                label="Width"
-                value="auto"
-                onChange={(v) => v !== 'auto' && set('widthMode', v)}
-                options={[
-                  ['auto', 'Auto'],
-                  ['percent', '%'],
-                  ['fixed', 'px'],
-                ]}
-              />
-            ) : (
-              <Num label="Width" path={`${cp}.${k.widthMode === 'fixed' ? 'w' : 'pct'}`} value={k.widthMode === 'fixed' ? c!.w : c!.pct} min={0} unit={k.widthMode === 'fixed' ? 'px' : '%'} />
-            )}
+            <Seg
+              label="Widths"
+              value={k.widthMode}
+              onChange={(v) => widthsAs(v as 'auto')}
+              options={[
+                ['auto', 'Auto'],
+                ['percent', '%'],
+                ['fixed', 'px'],
+              ]}
+            />
+            {k.widthMode === 'percent' && <Num label="Width" value={shareOf(i)} min={1} max={95} unit="%" onChange={(v) => setShare(i, v)} />}
+            {k.widthMode === 'fixed' && <Num label="Width" path={`${cp}.w`} value={c!.w} min={10} max={4000} unit="px" />}
             {c!.type === 'number' && <Seg label="Format" path={`${cp}.fmt`} value={c!.fmt} options={FMTS} />}
             {!pic && (
               <>
@@ -1016,8 +1055,8 @@ function Settings({ layer, k, live, size, setGrid, sel, setSel, edit, set, dsNam
       <Section id="te-widths" title="Column widths" closed>
         <Seg
           label="Widths"
-          path="widthMode"
           value={k.widthMode}
+          onChange={(v) => widthsAs(v as 'auto')}
           options={[
             ['auto', 'Auto'],
             ['percent', '%'],

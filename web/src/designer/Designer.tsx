@@ -91,17 +91,28 @@ function useAutosave() {
   const edits = useDesigner((s) => s.edits);
   const saveTemplate = useApp((s) => s.saveTemplate);
   const [state, setState] = useState<'saved' | 'pending'>('saved');
+  // Edits waiting to be saved, per template: switching template or leaving never drops one.
+  const pending = useRef(new Map<string, Template>());
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const flush = useRef(async () => {});
+  flush.current = async () => {
+    clearTimeout(timer.current);
+    const list = [...pending.current.values()];
+    pending.current.clear();
+    for (const t of list) await saveTemplate(t);
+    setState('saved');
+  };
   useEffect(() => {
     if (!edits) return;
-    setState('pending');
-    // The edited template, even if another one is opened meanwhile.
     const { base, readOnly } = useDesigner.getState();
-    const h = setTimeout(async () => {
-      if (base && !readOnly) await saveTemplate(base);
-      setState('saved');
-    }, 500);
-    return () => clearTimeout(h);
+    if (!base || readOnly) return;
+    setState('pending');
+    pending.current.set(base.id, base);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => void flush.current(), 500);
   }, [edits, saveTemplate]);
+  // Leaving the Designer: saved now.
+  useEffect(() => () => void flush.current(), []);
   return state;
 }
 
@@ -109,7 +120,9 @@ function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest('input, textarea, select')) return;
+      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      // A full-screen editor (Logic, Data, table) or a dialog is open: its keys are its own (Delete would remove the layer behind it).
+      if (e.defaultPrevented || document.querySelector('.logic-editor, .modal-back')) return;
       const st = useDesigner.getState();
       const t = st.template;
       // Esc: out of the safe area editing, off the selected layers, then off the template (overview).

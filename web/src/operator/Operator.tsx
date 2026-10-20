@@ -77,6 +77,21 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
   }
 }
 
+/**
+ * What Update sends: the values the operator set, without the rows of the data sets (NEXT is not
+ * the row on air) and without the values read from a source (they are read again on air).
+ */
+function updateData(t: Template, draft: Record<string, string>, read: ReadMode): Record<string, string> {
+  const ds = usedDatasets(t).map((d) => d.key);
+  const bound = new Set(read === 'manual' ? [] : t.fields.filter((f) => f.binding?.source).map((f) => f.key));
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries({ ...defaultData(t), ...draft })) {
+    if (bound.has(k) || ds.some((d) => k.startsWith(`${d}__`))) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
 /** Fields grouped by layer ("Name · Vertical": group Name, label Vertical). */
 function fieldGroups(fields: Field[]): { title: string; fields: { f: Field; label: string }[] }[] {
   const out: { title: string; fields: { f: Field; label: string }[] }[] = [];
@@ -156,7 +171,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const rundown = project?.rundown ?? [];
   const playlists = project?.playlists ?? [];
   const activeList = playlists.find((p) => p.id === playlistId)?.id ?? playlists[0]?.id ?? '';
-  const items = rundown.filter((r) => r.playlist === activeList || !playlists.some((p) => p.id === r.playlist));
+  // An empty template (or one that became empty) is not part of the rundown.
+  const playable = (id: string) => !!project?.templates.find((t) => t.id === id)?.layers.some((l) => l.visible !== false);
+  const items = rundown.filter((r) => (r.playlist === activeList || !playlists.some((p) => p.id === r.playlist)) && playable(r.templateId));
   const activePl = playlists.find((p) => p.id === activeList);
   const setPlaylist = (patch: Partial<Playlist>) =>
     project &&
@@ -165,38 +182,61 @@ export function Operator({ channelId }: { channelId: string | null }) {
       `/api/projects/${encodeURIComponent(project.id)}/playlists`,
       playlists.map((p) => (p.id === activeList ? { ...p, ...patch } : p)),
     ).catch((e) => toast((e as Error).message, 'error'));
-  const item = rundown.find((r) => r.id === cued) ?? null;
+  const item = rundown.find((r) => r.id === cued && playable(r.templateId)) ?? null;
   const template = item ? project?.templates.find((t) => t.id === item.templateId) : undefined;
   const readMode: ReadMode = item?.read ?? 'live';
 
   useEffect(() => {
-    if ((!cued || !items.some((r) => r.id === cued)) && items.length) setCued(items[0].id);
+    if (!cued || !items.some((r) => r.id === cued)) setCued(items.length ? items[0].id : null);
   }, [cued, activeList, items.length]);
 
   // The draft follows the selected item; its data on selection is what Revert restores.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const pending = useRef<{ id: string; data: Record<string, string> } | null>(null);
   useEffect(() => {
     if (!item || !template) return;
-    setDraft({ ...defaultData(template), ...item.data });
+    const fresh = { ...defaultData(template), ...item.data };
+    draftRef.current = fresh;
+    setDraft(fresh);
     original.current = { id: item.id, data: structuredClone(item.data) };
   }, [cued, template?.id]);
+  // Changed elsewhere (another operator, MOS, the API) or new fields after a publish: follow, unless an edit is on its way.
+  useEffect(() => {
+    if (!item || !template || pending.current?.id === item.id) return;
+    const fresh = { ...defaultData(template), ...item.data };
+    if (JSON.stringify(fresh) === JSON.stringify(draftRef.current)) return;
+    draftRef.current = fresh;
+    setDraft(fresh);
+  }, [item?.data, template?.fields]);
 
   // Bound fields read live show the source's value (manual ones show what was read).
   const boundDraft = useBoundData(readMode === 'manual' ? undefined : template, draft);
-  const previewData = { ...draft, ...boundDraft };
+  const previewData = { ...(template ? defaultData(template) : {}), ...draft, ...boundDraft };
   // Texts too long for their box with these values.
   const fitWarnings = template ? textWarnings(template, previewData) : [];
 
   /** Saves the item's data a moment after the last edit. */
-  const saveData = (id: string, data: Record<string, string>) => {
+  const flush = async () => {
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const cur = useApp.getState().project?.rundown ?? [];
-      await saveRundown(cur.map((r) => (r.id === id ? { ...r, data } : r)));
-    }, 500);
+    const p = pending.current;
+    pending.current = null;
+    if (!p) return;
+    const cur = useApp.getState().project?.rundown ?? [];
+    await saveRundown(cur.map((r) => (r.id === p.id ? { ...r, data: p.data } : r)));
+  };
+  const saveData = (id: string, data: Record<string, string>) => {
+    // Another item's edit still on its way: saved now, not dropped.
+    if (pending.current && pending.current.id !== id) void flush();
+    pending.current = { id, data };
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void flush(), 500);
   };
   const editDraft = (patch: Record<string, string>) => {
     if (!item) return;
-    const next = { ...draft, ...patch };
+    // From the latest draft: two edits in the same moment both count.
+    const next = { ...draftRef.current, ...patch };
+    draftRef.current = next;
     setDraft(next);
     saveData(item.id, next);
   };
@@ -241,8 +281,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
       if ((e.target as HTMLElement).closest('input, textarea, select')) return;
       const idx = items.findIndex((r) => r.id === cued);
       if (e.key === 'F1' || e.key === 'Enter') (e.preventDefault(), take());
-      else if (e.key === 'F2' || e.key === ' ') (e.preventDefault(), item && command({ action: 'continue', zone: zoneOf(item)?.id }));
-      else if (e.key === 'F3') (e.preventDefault(), item && outZone(zoneOf(item)));
+      // Continue / Out act on the graphic on air shown in the controls (not on the next one cued).
+      else if (e.key === 'F2' || e.key === ' ') (e.preventDefault(), selZone && command({ action: 'continue', zone: selZone.id }));
+      else if (e.key === 'F3') (e.preventDefault(), outZone(selZone));
       else if (e.key === 'F12') (e.preventDefault(), command({ action: 'clear' }));
       else if (e.key === 'ArrowDown' && idx < items.length - 1) setCued(items[idx + 1].id);
       else if (e.key === 'ArrowUp' && idx > 0) setCued(items[idx - 1].id);
@@ -298,7 +339,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <Splitter axis="y" className="opx-gap" value={layout.lists} min={90} max={500} reset={200} onChange={(v) => setLayout('lists', v)} />
         <section className="opx-pane grow">
           <header className="opx-head">
-            <span className="opx-title">Graphics · {playlists.find((p) => p.id === activeList)?.name ?? ''}</span>
+            <span className="opx-title">Rundown · {playlists.find((p) => p.id === activeList)?.name ?? ''}</span>
             {activePl && canEdit && (
               <>
                 <button className={`opx-btn small ${activePl.autoNext ? 'violet' : ''}`} title="Auto next: each graphic takes the next one after its time (set on each graphic)" onClick={() => setPlaylist({ autoNext: !activePl.autoNext || undefined })}>
@@ -317,7 +358,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
           </header>
           {adding && (
             <div className="opx-addmenu">
-              {project.templates.map((t) => (
+              {project.templates.filter((t) => playable(t.id)).map((t) => (
                 <button
                   key={t.id}
                   onClick={() => {
@@ -479,7 +520,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       className="opx-btn violet"
                       disabled={!operate || !onAirByItem.get(item.id)}
                       title={onAirByItem.get(item.id) ? 'Send these values to the graphic on air' : 'Not on air: the values go with the take'}
-                      onClick={() => command({ action: 'update', zone: itemZone?.id, data: { ...defaultData(template), ...draft } })}
+                      onClick={() => command({ action: 'update', zone: itemZone?.id, data: updateData(template, draft, readMode) })}
                     >
                       <RefreshCw size={13} /> Update
                     </button>

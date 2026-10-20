@@ -338,13 +338,21 @@ pub(crate) fn widths(d: &mut Draw, c: &Config, m: &Model, size: f32) -> Vec<f32>
             } else {
                 0.0
             };
+            // Shares of the width: always 100 % in total, whatever the numbers typed.
+            let sum: f32 = m
+                .cols
+                .iter()
+                .filter(|x| !x.rank())
+                .map(|x| x.col.pct.max(0.0))
+                .sum();
+            let sum = if sum > 0.0 { sum } else { 1.0 };
             m.cols
                 .iter()
                 .map(|x| {
                     if x.rank() {
                         80.0
                     } else {
-                        x.col.pct / 100.0 * (avail - rk)
+                        x.col.pct.max(0.0) / sum * (avail - rk)
                     }
                 })
                 .collect()
@@ -624,7 +632,8 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             );
         }
     } else {
-        let region = d.clip(0.0, y0, d.w, clip_h);
+        // Inside the layer's box, like the web (a table taller than its box is cut).
+        let region = d.clip(0.0, y0, d.w, clip_h.min((d.h - y0).max(0.0)));
         let rm = region.as_ref().or(bm);
         let step = rh + gap;
         let looped = scroll && m.rows.len() > per;

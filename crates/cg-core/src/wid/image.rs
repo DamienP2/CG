@@ -203,8 +203,9 @@ pub fn place(
             // The focal point goes to the centre, as far as the picture still covers.
             let fx = (c.focal.x - cr.l) * iw * k;
             let fy = (c.focal.y - cr.t) * ih * k;
-            x = (fw / 2.0 - fx).clamp(fw - cw * k, 0.0);
-            y = (fh / 2.0 - fy).clamp(fh - ch * k, 0.0);
+            // Rounding can make the lower bound a hair above 0: never a reversed range.
+            x = (fw / 2.0 - fx).clamp((fw - cw * k).min(0.0), 0.0);
+            y = (fh / 2.0 - fy).clamp((fh - ch * k).min(0.0), 0.0);
         }
         (sx, sy, ox, oy) = (k, k, x, y);
     }

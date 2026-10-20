@@ -11462,3 +11462,6 @@ body.cv-moving * {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.te-canvas {
+  scrollbar-gutter: stable;
+}

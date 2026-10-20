@@ -658,6 +658,12 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
   }
 }
 
+/** A new duration: markers past the end come back to it (they would be out of reach). */
+function setDuration(t: Template, v: number) {
+  t.duration = Math.max(1, v);
+  for (const m of t.markers) if (m.frame > t.duration) m.frame = t.duration;
+}
+
 /** Font picker: the fonts the server really has (bundled, uploaded, system). */
 export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
   const families = useFonts((s) => s.families);
@@ -1246,7 +1252,7 @@ function TemplateInspector({ template }: { template: Template }) {
       <div className="tpl-props">
         <div className="tpl-field">
           <span className="tpl-label">Duration</span>
-          <DurationField frames={template.duration} rate={rate} onChange={(v) => update((t) => void (t.duration = v), 'duration')} />
+          <DurationField frames={template.duration} rate={rate} onChange={(v) => (update((t) => setDuration(t, v), 'duration'), useDesigner.getState().setFrame(useDesigner.getState().frame))} />
         </div>
         <div className="tpl-field">
           <span className="tpl-label">
@@ -1297,7 +1303,7 @@ export function Inspector() {
       {selectedSegment ? (
         <SegmentInspector />
       ) : layer ? (
-        <LayerInspector layer={layer} />
+        <LayerInspector key={layer.id} layer={layer} />
       ) : selected.length > 1 ? (
         <Section title="Selection">
           <p className="hint">{selected.length} layers selected. Drag on the stage to move them together.</p>

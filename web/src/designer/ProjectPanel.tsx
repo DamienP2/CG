@@ -6,6 +6,8 @@ import type { Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { ProjectPublish } from './Collab';
+import { useDesigner } from './designerStore';
+import { draftOf } from '../engine/drafts';
 
 /*
  * Left panel, above the templates: the project — its name, format,
@@ -203,7 +205,18 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
   };
   const restore = async (v: Version) => {
     if (!(await confirmDialog({ title: `Restore the version of ${when(v.at)}?`, message: `“${v.note}”. The project as it is now is kept as a version first, so you can come back to it.`, confirm: 'Restore', danger: true }))) return;
-    await api('POST', `${url}/versions/${encodeURIComponent(v.id)}/restore`).catch((e) => toast((e as Error).message, 'error'));
+    try {
+      await api('POST', `${url}/versions/${encodeURIComponent(v.id)}/restore`);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      return;
+    }
+    // The open template is reloaded as restored: a later autosave must not write the old one back.
+    const d = useDesigner.getState();
+    if (d.base) {
+      const p = await api<Project>('GET', url).catch(() => null);
+      d.load((p && draftOf(p, d.base.id)) ?? null);
+    }
     toast('Version restored', 'info');
     void loadVersions();
   };

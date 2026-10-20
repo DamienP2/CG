@@ -6,7 +6,7 @@ import { COLOR_PROPS, PROPS, TEXT_LIKE, type Cmp, type Layer, type Logic, type L
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { NumberField } from '../ui/fields';
-import { ResizeCorner, useCanvasView } from '../ui/canvasView';
+import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
 
@@ -260,7 +260,8 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     const v = cv.visible();
     const x = Math.round(v.x + 60 + ((logic.nodes.length * 30) % 300));
     const y = Math.round(v.y + 60 + ((logic.nodes.length * 40) % 360));
-    const n = makeNode(type, template, x, y);
+    const at = freeSpot(document.querySelector('.logic-editor:not(.data-canvas) .logic-canvas'), { x, y });
+    const n = makeNode(type, template, at.x, at.y);
     edit((l) => void l.nodes.push(n));
     setSelected(n.id);
   };

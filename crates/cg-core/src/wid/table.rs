@@ -826,6 +826,13 @@ fn json_cell(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::String(s) => s.clone(),
         serde_json::Value::Null => String::new(),
+        // 1.0 shows as 1, like the web (JavaScript numbers).
+        serde_json::Value::Number(n) => match n.as_f64() {
+            Some(f) if f.fract() == 0.0 && f.abs() < 9.0e15 && !n.is_i64() && !n.is_u64() => {
+                format!("{}", f as i64)
+            }
+            _ => n.to_string(),
+        },
         other => other.to_string(),
     }
 }

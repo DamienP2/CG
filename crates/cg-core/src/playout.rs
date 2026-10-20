@@ -340,6 +340,8 @@ impl Command {
 pub enum PlayoutError {
     #[error("unknown template `{0}`")]
     UnknownTemplate(String),
+    #[error("the template `{0}` is empty: nothing to put on air")]
+    EmptyTemplate(String),
     #[error("unknown zone `{0}`")]
     UnknownZone(String),
     #[error("say which zone (or layer) to play in")]
@@ -439,6 +441,9 @@ impl ChannelState {
                 let t = project
                     .template(&template_id)
                     .ok_or_else(|| PlayoutError::UnknownTemplate(template_id.clone()))?;
+                if !t.playable() {
+                    return Err(PlayoutError::EmptyTemplate(t.name.clone()));
+                }
                 let layer = match resolve(project, &zone, layer)? {
                     Some(l) => l,
                     None => project
@@ -815,6 +820,13 @@ impl ChannelState {
                 .rundown
                 .iter()
                 .filter(|x| x.playlist == r.playlist)
+                // An empty template is not part of the rundown.
+                .filter(|x| {
+                    x.id == r.id
+                        || project
+                            .template(&x.template_id)
+                            .is_some_and(|t| t.playable())
+                })
                 .collect();
             let at = items.iter().position(|x| x.id == r.id).unwrap_or(0);
             let next = items
@@ -988,7 +1000,11 @@ mod tests {
                     },
                 ],
                 fields: vec![],
-                layers: vec![],
+                // Something to show: an empty template is not taken.
+                layers: vec![serde_json::from_str(
+                    r#"{"id":"l","name":"T","type":"text","text":"Hi","fontFamily":"Inter","props":{}}"#,
+                )
+                .unwrap()],
                 zone: "z".into(),
             }],
             rundown: vec![],
@@ -1449,6 +1465,24 @@ mod tests {
             },
         );
         assert_eq!(r, Err(PlayoutError::UnknownTemplate("x".into())));
+    }
+
+    #[test]
+    fn an_empty_template_is_not_taken() {
+        let mut p = project();
+        p.templates[0].layers[0].visible = false;
+        let mut ch = ChannelState::default();
+        let r = ch.apply(
+            &p,
+            Command::Take {
+                zone: None,
+                layer: Some(0),
+                template_id: "t".into(),
+                data: None,
+                rundown_id: None,
+            },
+        );
+        assert_eq!(r, Err(PlayoutError::EmptyTemplate("t".into())));
     }
 
     #[test]

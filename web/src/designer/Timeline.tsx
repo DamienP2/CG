@@ -150,7 +150,9 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     );
   const width = template.duration * zoom + TAIL;
   const step = tickStep(zoom);
-  const outF = template.markers.find((m) => m.kind === 'out')?.frame;
+  const outRaw = template.markers.find((m) => m.kind === 'out')?.frame;
+  // A marker past the end (the duration was shortened) stays reachable at the end.
+  const outF = outRaw === undefined ? undefined : Math.min(outRaw, template.duration);
 
   const frameAt = (clientX: number) => {
     const el = scrollRef.current!;
@@ -638,7 +640,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   <div
                     key={m.id}
                     className={`tl-marker ${role} ${moving ? 'moving' : ''} ${editing?.id === m.id ? 'editing' : ''}`}
-                    style={{ left: m.frame * zoom }}
+                    style={{ left: Math.min(m.frame, template.duration) * zoom }}
                     title={`${role === 'onair' ? 'End of IN, start of OUT: the take holds here on air' : m.name} · ${formatTime(m.frame, fps)} — drag to move, click to edit, double-click to go there`}
                     onPointerDown={(e) => dragMarker(e, m.id)}
                     onDoubleClick={() => st.setFrame(m.frame)}
@@ -670,7 +672,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                 />
               )}
               {markers.map((m) => (
-                <div key={m.id} className={`marker-line ${markerRole(template, m)}`} style={{ left: m.frame * zoom }} />
+                <div key={m.id} className={`marker-line ${markerRole(template, m)}`} style={{ left: Math.min(m.frame, template.duration) * zoom }} />
               ))}
               {body}
               <div className="tl-end" style={{ left: template.duration * zoom }} />

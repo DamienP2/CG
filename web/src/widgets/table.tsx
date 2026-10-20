@@ -267,6 +267,8 @@ export function fmtNum(s: string, f: string): string {
 }
 export interface MCol {
   col: typeof DCOL;
+  /** Index in the columns of the settings (or of the data, when they follow it). */
+  ci?: number;
   i?: number;
 }
 export interface MRow {
@@ -284,13 +286,12 @@ export function model(k: K, data: Data) {
   const mapped = auto ? head.filter(Boolean).map((h) => ({ ...DCOL, src: h, label: h })) : k.cols;
   const cols: MCol[] = [];
   const missing: string[] = [];
-  mapped
-    .filter((c) => c.on)
-    .forEach((c) => {
-      const i = head.indexOf(c.src);
-      if (i < 0) missing.push(c.src);
-      else cols.push({ col: c, i });
-    });
+  mapped.forEach((c, ci) => {
+    if (!c.on) return;
+    const i = head.indexOf(c.src);
+    if (i < 0) missing.push(c.src);
+    else cols.push({ col: c, i, ci });
+  });
   if (k.showRank) cols.unshift({ col: RANK });
   const unmapped = auto ? [] : head.filter((h) => h && !k.cols.some((c) => c.src === h || (c.on && c.mark === h)));
   const keyCol = cols.find((m) => m.i !== undefined && k.headerColOn && m.col.src === k.headerCol) ?? cols.find((m) => m.col.type === 'text' && m.i !== undefined);
@@ -352,8 +353,10 @@ export function widths(k: K, m: M, W: number, size: number): number[] {
   const avail = W - k.gap * Math.max(0, n - 1);
   if (k.widthMode === 'fixed') return m.cols.map((c) => c.col.w);
   if (k.widthMode === 'percent') {
+    // Shares of the width: always 100 % in total, whatever the numbers typed.
     const rk = m.cols.some((c) => c.i === undefined) ? 80 : 0;
-    return m.cols.map((c) => (c.i === undefined ? 80 : (c.col.pct / 100) * (avail - rk)));
+    const sum = m.cols.reduce((a, c) => (c.i === undefined ? a : a + Math.max(0, +c.col.pct || 0)), 0) || 1;
+    return m.cols.map((c) => (c.i === undefined ? 80 : (Math.max(0, +c.col.pct || 0) / sum) * (avail - rk)));
   }
   const nat = m.cols.map((c) => {
     if (c.col.type === 'image') return k.rowH * 0.75 + 2 * k.pad;
@@ -379,20 +382,22 @@ export function widths(k: K, m: M, W: number, size: number): number[] {
 
 /** A picture in its cell, set like the Image widget (mirrors cell_picture of cg-render table.rs). */
 export function CellPicture({ v, p = {}, align, box: [x, y, w, h] }: { v: string; p?: Pic; align: 'left' | 'center' | 'right'; box: [number, number, number, number] }) {
-  const [nat, setNat] = useState<[number, number] | null>(null);
+  const [nat, setNat] = useState<[number, number] | 'missing' | null>(null);
   const s = (v.trim() || p.fallback?.trim() || '').trim();
-  const isImg = s.startsWith('/') || s.includes('.');
+  // A picture that does not load shows as a chip, like on air.
+  const isImg = (s.startsWith('/') || s.includes('.')) && nat !== 'missing';
   useEffect(() => {
-    if (!isImg) return setNat(null);
+    if (!(s.startsWith('/') || s.includes('.'))) return setNat(null);
     const im = new Image();
     im.onload = () => setNat([im.naturalWidth, im.naturalHeight]);
+    im.onerror = () => setNat('missing');
     im.src = s;
-  }, [s, isImg]);
+  }, [s]);
   if (!s || w <= 1) return null;
   const fit = p.fit ?? 'contain';
   const mask = p.mask ?? 'none';
   const bh = Math.round((h * Math.min(100, Math.max(5, p.size ?? 50))) / 100);
-  let bw = mask === 'circle' ? bh : fit === 'contain' ? (nat && isImg ? (nat[0] * bh) / Math.max(1, nat[1]) : bh * 1.5) : (w * Math.min(100, Math.max(5, p.width ?? 80))) / 100;
+  let bw = mask === 'circle' ? bh : fit === 'contain' ? (Array.isArray(nat) && isImg ? (nat[0] * bh) / Math.max(1, nat[1]) : bh * 1.5) : (w * Math.min(100, Math.max(5, p.width ?? 80))) / 100;
   bw = Math.min(bw, w);
   const bx = align === 'left' ? x : align === 'right' ? x + w - bw : x + (w - bw) / 2;
   const r = mask === 'rounded' ? (p.radius ?? 8) : mask === 'circle' ? bh / 2 : 0;
@@ -603,10 +608,6 @@ function warningsOf(layer: TL, data: Data, state: unknown, W: number, H: number)
   if (k.widthMode === 'fixed') {
     const sum = ws.reduce((a, b) => a + b, 0) + k.gap * Math.max(0, m.cols.length - 1);
     if (sum > W + 0.5) out.push({ level: 'warn', text: `Fixed widths total ${Math.round(sum)} px for a ${Math.round(W)} px box: the right columns are cut.` });
-  }
-  if (k.widthMode === 'percent') {
-    const sum = m.cols.filter((c) => c.i !== undefined).reduce((a, c) => a + (+c.col.pct || 0), 0);
-    if (Math.abs(sum - 100) > 0.5) out.push({ level: 'warn', text: `Column widths total ${sum} % (should be 100 %).` });
   }
   const need = (k.title.on ? titleH(k) + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0) + Math.min(k.perPage, Math.max(1, m.rows.length)) * (k.rowH + k.gap) + (k.indicator && pages > 1 && k.pageMode === 'pages' ? 70 : 0);
   if (need > H + 1) out.push({ level: 'warn', text: `The table (${Math.round(need)} px) is taller than the box (${Math.round(H)} px): fewer rows per page or a smaller row height.` });

@@ -9,12 +9,13 @@ import { api } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate } from '../router';
-import { ResizeCorner, useCanvasView } from '../ui/canvasView';
+import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { ICONS } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
 import { BuildCard, TableNodeInfo } from './TableBuild';
+import { unexposeRows } from '../widgets/table-rows';
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
@@ -342,10 +343,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       y += h + 24;
     }
   };
+  // Values the Operator fills for an exposed setting (a table's rows, a colour…) are not variables of the data.
+  const exposed = new Set(template.layers.flatMap((l) => Object.values(l.settingBindings ?? {})));
+  const shownFields = template.fields.filter((f) => !exposed.has(f.key));
   const fieldHeight = (f: Field) => HEAD + (f.binding ? 90 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
   stack(
     COLS.field,
-    template.fields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
+    shownFields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
   );
   stack(
     COLS.layer,
@@ -496,7 +500,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           link(f, w.id, `field:${made}`);
           compile(t, f);
         });
-        setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: { x: at.x, y: at.y - HEAD / 2 } } }));
+        const spot = freeSpot(document.querySelector('.data-canvas .logic-canvas'), { x: at.x, y: at.y - HEAD / 2 });
+        setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: spot } }));
       }
       return;
     }
@@ -527,6 +532,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         const l = findLayer(t, layerId)!;
         if (contentOf(l).includes(p)) wireContent(l, p, w.key);
         else l.bindings[p as Prop] = w.key;
+        // Its rows now come from the data: the operator no longer types them.
+        if (l.type === 'table' && takesTable(l, p)) unexposeRows(t, l);
       });
       // All rows into a table with no columns yet: offer to build it.
       const l = findLayer(template, layerId);
@@ -608,12 +615,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setGhost(null);
-      if (!moved) return add(inView());
+      const world = document.querySelector('.data-canvas .logic-canvas');
+      if (!moved) return add(freeSpot(world, inView()));
       const el = document.elementFromPoint(ev.clientX, ev.clientY) as Element | null;
       if (!el?.closest('.logic-canvas')) return;
       const edge = el.closest('[data-edge]')?.getAttribute('data-edge');
       const p = point(ev.clientX, ev.clientY);
-      add({ x: Math.round(p.x - 30), y: Math.round(p.y - HEAD / 2) }, edge != null ? +edge : undefined);
+      const drop = { x: Math.round(p.x - 30), y: Math.round(p.y - HEAD / 2) };
+      add(edge != null ? drop : freeSpot(world, drop), edge != null ? +edge : undefined);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -810,7 +819,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             })}
 
             {/* Variables */}
-            {template.fields.map((f) => {
+            {shownFields.map((f) => {
               const p = nodePos.get(`f:${f.key}`)!;
               const v = values[f.key] ?? '';
               const fed = flow.edges.some((e) => e.to === `field:${f.key}`);

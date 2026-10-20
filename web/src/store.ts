@@ -69,7 +69,8 @@ interface AppStore {
   selectChannel: (id: string | null) => void;
   command: (cmd: Command, channelId?: string) => void;
   loadOnChannel: (channelId: string, projectId: string | null) => Promise<void>;
-  saveTemplate: (t: Template) => Promise<void>;
+  /** False when not saved (already toasted). */
+  saveTemplate: (t: Template) => Promise<boolean>;
   deleteTemplate: (id: string) => Promise<void>;
   saveRundown: (r: RundownItem[]) => Promise<void>;
   saveZones: (z: Zone[]) => Promise<boolean>;
@@ -299,11 +300,13 @@ export const useApp = create<AppStore>((set, get) => {
 
     async saveTemplate(t) {
       const pid = get().projectId;
-      if (!pid) return;
+      if (!pid) return false;
       try {
         await api('PUT', `/api/projects/${encodeURIComponent(pid)}/templates/${encodeURIComponent(t.id)}`, t);
+        return true;
       } catch (e) {
         get().toast(`Save failed: ${errText(e)}`, 'error');
+        return false;
       }
     },
 
@@ -316,11 +319,18 @@ export const useApp = create<AppStore>((set, get) => {
     async saveRundown(r) {
       const p = get().project;
       if (!p) return;
+      const before = p.rundown;
       const full = { ...get().full, [p.id]: { ...p, rundown: r } };
       set({ full, ...select(p.id, full) });
       try {
         await api('PUT', `/api/projects/${encodeURIComponent(p.id)}/rundown`, r);
       } catch (e) {
+        // Not saved: back to what the server has, so Take does not use it.
+        const cur = get().full[p.id];
+        if (cur && cur.rundown === r) {
+          const back = { ...get().full, [p.id]: { ...cur, rundown: before } };
+          set({ full: back, ...select(p.id, back) });
+        }
         get().toast(`Save failed: ${errText(e)}`, 'error');
       }
     },

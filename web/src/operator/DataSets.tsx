@@ -682,7 +682,7 @@ export function AirRows({
     const total = parseInt(item.data[`${ds.key}__count`] ?? "0", 10) || 0;
     const loop = data[loopKey(ds.key)] === "1";
     const chosen = nextRowOf?.(ds.key);
-    if (chosen && chosen !== row && chosen <= Math.max(total, chosen))
+    if (chosen && chosen !== row && chosen <= total)
       return chosen;
     return row < total ? row + 1 : loop ? 1 : row;
   };

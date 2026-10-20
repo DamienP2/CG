@@ -445,7 +445,7 @@ pub fn step(t: Table, s: &DataStep, data: &Data) -> Table {
             let end = if *count == 0 {
                 rows.len()
             } else {
-                (start + count).min(rows.len())
+                start.saturating_add(*count).min(rows.len())
             };
             rows = rows.drain(start..end).collect();
             if columns.is_empty() {

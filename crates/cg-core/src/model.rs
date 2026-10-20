@@ -1338,6 +1338,14 @@ impl Template {
     /// the old out marker are cut. Returns true if anything changed.
     pub fn normalize_markers(&mut self) -> bool {
         let before = (self.markers.clone(), self.duration, self.marker_model);
+        // A template lasts at least a frame (a negative or broken duration from an import or the API).
+        if !self.duration.is_finite() || self.duration < 1.0 {
+            self.duration = if self.duration.is_finite() {
+                1.0
+            } else {
+                100.0
+            };
+        }
         if self.marker_model < MARKER_MODEL {
             self.marker_model = MARKER_MODEL;
             if let Some(out) = self.out_frame() {
@@ -1379,7 +1387,7 @@ impl Template {
             });
         }
         for m in &mut self.markers {
-            m.frame = m.frame.clamp(0.0, self.duration);
+            m.frame = m.frame.clamp(0.0, self.duration.max(0.0));
             if m.kind == MarkerKind::Out {
                 m.name = "On air".into();
                 m.resume = Resume::Manual;
@@ -1422,11 +1430,16 @@ impl Template {
         self.layers.iter().find(|l| l.id == id)
     }
 
+    /// Has something to put on air (a visible layer).
+    pub fn playable(&self) -> bool {
+        self.layers.iter().any(|l| l.visible)
+    }
+
     pub fn out_frame(&self) -> Option<f64> {
         self.markers
             .iter()
             .find(|m| m.kind == MarkerKind::Out)
-            .map(|m| m.frame)
+            .map(|m| m.frame.min(self.duration))
     }
 
     /// Default data built from field defaults.
@@ -1705,6 +1718,18 @@ impl Project {
             if self.zone(&self.rundown[i].zone).is_some() {
                 continue;
             }
+            // No zone given ("the template's zone"): the template's, not a new one.
+            if self.rundown[i].zone.is_empty() {
+                let tz = self
+                    .template(&self.rundown[i].template_id)
+                    .map(|t| t.zone.clone())
+                    .filter(|z| self.zone(z).is_some());
+                if let Some(tz) = tz {
+                    self.rundown[i].zone = tz;
+                    changed = true;
+                    continue;
+                }
+            }
             let layer = self.rundown[i].layer;
             let id = match self.zone_at(layer) {
                 Some(z) => z.id.clone(),
@@ -1959,11 +1984,14 @@ fn set_setting(root: &mut serde_json::Value, path: &str, raw: &str) {
     };
     let t = raw.trim();
     let new = match slot {
-        J::Number(_) => t
-            .parse::<f64>()
-            .ok()
-            .and_then(serde_json::Number::from_f64)
-            .map(J::Number),
+        // A whole number stays an integer (counts, rows, weights are integers in the model).
+        J::Number(_) => t.parse::<f64>().ok().and_then(|f| {
+            if f.fract() == 0.0 && f.abs() < 9.0e15 {
+                Some(J::Number(serde_json::Number::from(f as i64)))
+            } else {
+                serde_json::Number::from_f64(f).map(J::Number)
+            }
+        }),
         J::Bool(_) => match t {
             "true" | "1" | "yes" | "on" => Some(J::Bool(true)),
             "false" | "0" | "no" | "off" | "" => Some(J::Bool(false)),
@@ -1999,7 +2027,7 @@ mod setting_tests {
         set_setting(&mut j, "missing.deep", "3");
         assert_eq!(
             j,
-            serde_json::json!({"mask": "circle", "radius": 40.0, "crop": {"l": 0.25}, "on": true, "teams": [{"logo": "b.png"}], "missing": {"deep": 3}})
+            serde_json::json!({"mask": "circle", "radius": 40, "crop": {"l": 0.25}, "on": true, "teams": [{"logo": "b.png"}], "missing": {"deep": 3}})
         );
     }
 
