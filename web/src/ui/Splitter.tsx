@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../i18n';
 
 /** Panel sizes of a page, remembered in this browser. */
 export function useLayout<T extends Record<string, number>>(key: string, defaults: T): [T, (k: keyof T, v: number) => void] {
@@ -60,5 +61,5 @@ export function Splitter({
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
-  return <div className={`splitter ${axis} ${className}`} onPointerDown={start} onMouseDown={(e) => e.preventDefault()} onDoubleClick={() => reset !== undefined && onChange(reset)} title="Drag to resize — double-click to reset" />;
+  return <div className={`splitter ${axis} ${className}`} onPointerDown={start} onMouseDown={(e) => e.preventDefault()} onDoubleClick={() => reset !== undefined && onChange(reset)} title={t('Drag to resize — double-click to reset')} />;
 }

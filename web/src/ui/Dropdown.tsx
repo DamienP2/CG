@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { t } from '../i18n';
 
 /*
  * A designed drop-down list (instead of the browser's <select>): a button
@@ -126,7 +127,7 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
                 </div>
               );
             })}
-            {!options.length && <div className="dd-empty">Nothing to choose</div>}
+            {!options.length && <div className="dd-empty">{t('Nothing to choose')}</div>}
           </div>,
           document.body,
         )}

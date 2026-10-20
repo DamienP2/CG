@@ -9,6 +9,7 @@ import { NumberField } from '../ui/fields';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
+import { t } from '../i18n';
 
 /*
  * Relations editor (MXMZ-style logic): sources → operations → targets,
@@ -77,7 +78,7 @@ export function propsOf(l: Layer | undefined, numeric: boolean): Prop[] {
 }
 /** Property names in full, for the lists (the Inspector's labels are short: W, H). */
 const PROP_NAMES: Partial<Record<Prop, string>> = { x: 'X position', y: 'Y position', width: 'Width', height: 'Height', anchorX: 'Anchor X', anchorY: 'Anchor Y', scaleX: 'Scale X', scaleY: 'Scale Y', rotation: 'Rotation', opacity: 'Opacity', strokeWidth: 'Stroke width', cornerRadius: 'Corner radius', fontSize: 'Text size', letterSpacing: 'Letter spacing' };
-const propName = (p: Prop) => PROP_NAMES[p] ?? PROP_LABELS[p] ?? p;
+const propName = (p: Prop) => t(PROP_NAMES[p] ?? PROP_LABELS[p] ?? p);
 const METRICS: { value: TextMetric; label: string }[] = [
   { value: 'width', label: 'Text width' },
   { value: 'height', label: 'Text height' },
@@ -123,7 +124,7 @@ export const fmt = (v: LVal | undefined) => (v === undefined ? '' : typeof v ===
 export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template: Template; setNode: (id: string, patch: Partial<LogicNode>, key?: string) => void }) {
   const layerOpts = template.layers.map((l) => ({ value: l.id, label: l.name, note: l.type }));
   const layerOf = (id: string) => template.layers.find((l) => l.id === id);
-  const propOpts = (l: Layer | undefined, numeric: boolean) => propsOf(l, numeric).map((p) => ({ value: p as string, label: propName(p), group: 'Property' }));
+  const propOpts = (l: Layer | undefined, numeric: boolean) => propsOf(l, numeric).map((p) => ({ value: p as string, label: propName(p), group: t('Property') }));
   const replace = (patch: Partial<LogicNode> & { type: LogicNode['type'] }) => setNode(n.id, patch as Partial<LogicNode>);
 
   switch (n.type) {
@@ -133,7 +134,7 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
       const l = layerOf(n.layer);
       const measured = l?.type === 'text';
       const value = n.type === 'textSize' ? `m:${n.metric}` : n.prop;
-      const opts = [...propOpts(l, true), ...(measured ? METRICS.map((m) => ({ value: `m:${m.value}`, label: m.label, group: 'Measured text' })) : [])];
+      const opts = [...propOpts(l, true), ...(measured ? METRICS.map((m) => ({ value: `m:${m.value}`, label: t(m.label), group: t('Measured text') })) : [])];
       return (
         <>
           <Dropdown
@@ -158,30 +159,30 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
       return (
         <Dropdown
           value={n.key}
-          placeholder="Choose a field"
-          options={[...(template.fields.some((f) => f.key === n.key) || !n.key ? [] : [{ value: n.key, label: n.key }]), ...template.fields.map((f) => ({ value: f.key, label: f.label, note: f.kind }))]}
+          placeholder={t('Choose a field')}
+          options={[...(template.fields.some((f) => f.key === n.key) || !n.key ? [] : [{ value: n.key, label: n.key }]), ...template.fields.map((f) => ({ value: f.key, label: f.label, note: t(f.kind) }))]}
           onChange={(key) => setNode(n.id, { key })}
         />
       );
     case 'constant':
       return <NumberField value={n.value} onChange={(v) => setNode(n.id, { value: v }, `logic-v-${n.id}`)} />;
     case 'math':
-      return <Dropdown value={n.op} options={MATH} onChange={(op) => setNode(n.id, { op })} />;
+      return <Dropdown value={n.op} options={MATH.map((o) => ({ ...o, label: t(o.label) }))} onChange={(op) => setNode(n.id, { op })} />;
     case 'clamp':
       return (
         <div className="ln-pair">
           <label>
-            <span>Min</span>
+            <span>{t('Min')}</span>
             <NumberField value={n.min} onChange={(v) => setNode(n.id, { min: v }, `logic-v-${n.id}`)} />
           </label>
           <label>
-            <span>Max</span>
+            <span>{t('Max')}</span>
             <NumberField value={n.max} onChange={(v) => setNode(n.id, { max: v }, `logic-v-${n.id}`)} />
           </label>
         </div>
       );
     case 'condition':
-      return <Dropdown value={n.cmp} options={CMP} onChange={(cmp) => setNode(n.id, { cmp })} />;
+      return <Dropdown value={n.cmp} options={CMP.map((o) => ({ ...o, label: t(o.label) }))} onChange={(cmp) => setNode(n.id, { cmp })} />;
     case 'target': {
       const l = layerOf(n.layer);
       return (
@@ -191,9 +192,9 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
           <Dropdown
             value={n.mode}
             options={[
-              { value: 'set', label: 'Set to' },
-              { value: 'add', label: 'Add to the animation' },
-              { value: 'multiply', label: 'Multiply the animation' },
+              { value: 'set', label: t('Set to') },
+              { value: 'add', label: t('Add to the animation') },
+              { value: 'multiply', label: t('Multiply the animation') },
             ]}
             onChange={(mode) => setNode(n.id, { mode: mode as 'set' })}
           />
@@ -203,7 +204,7 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
   }
 }
 
-export const inputLabel = (n: LogicNode, port: string) => (n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' ? port.toUpperCase() : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port);
+export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' ? port.toUpperCase() : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port) ?? port);
 
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const { template, update, frame, previewData } = useDesigner();
@@ -313,16 +314,16 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="logic-editor" onKeyDown={(e) => e.stopPropagation()}>
-      <CanvasHeader icon={<Link2 size={15} />} title="Logic" subject={template.name} onClose={onClose} />
+      <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={template.name} onClose={onClose} />
       <div className="logic-body">
         <aside className="logic-palette">
           {CATS.map((c) => (
             <div key={c.id} className="lp-group">
-              <div className="dc-pal-title">{c.label}</div>
+              <div className="dc-pal-title">{t(c.label)}</div>
               {KINDS.filter((k) => k.cat === c.id).map((k) => (
                 <button key={k.type} onClick={() => add(k.type)} className={`cat-${k.cat}`}>
                   <k.icon size={14} />
-                  <strong>{k.label}</strong>
+                  <strong>{t(k.label)}</strong>
                 </button>
               ))}
             </div>
@@ -362,7 +363,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                       edit((l) => void (l.edges = l.edges.filter((x) => x !== l.edges[i])));
                     }}
                   >
-                    <title>Click to remove</title>
+                    <title>{t('Click to remove')}</title>
                   </path>
                 );
               })}
@@ -374,11 +375,11 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                 <div key={n.id} className={`logic-node kind-${n.type} cat-${k.cat} ${selected === n.id ? 'sel' : ''}`} style={{ left: n.x, top: n.y, width: widthOf(n) }} onPointerDown={(e) => (e.stopPropagation(), dragNode(e, n))}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <k.icon size={12} />
-                    <span>{k.label}</span>
+                    <span>{t(k.label)}</span>
                     <span className="ln-value">{fmt(values.get(n.id))}</span>
                     <button
                       className="ln-del"
-                      title="Delete (Del)"
+                      title={t('Delete (Del)')}
                       onClick={() =>
                         edit((l) => {
                           l.nodes = l.nodes.filter((x) => x.id !== n.id);
@@ -388,7 +389,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                     >
                       <Trash2 size={11} />
                     </button>
-                    {n.type !== 'target' && <span className="port out" title="Drag to an input" onPointerDown={(e) => startWire(e, n.id)} />}
+                    {n.type !== 'target' && <span className="port out" title={t('Drag to an input')} onPointerDown={(e) => startWire(e, n.id)} />}
                   </div>
                   {INPUTS[n.type].map((port) => (
                     <div key={port} className="ln-input" style={{ height: ROW }}>
@@ -405,7 +406,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
             })}
             {!logic.nodes.length && (
               <div className="logic-empty">
-                <p>No relation yet.</p>
+                <p>{t('No relation yet.')}</p>
               </div>
             )}
           </div>

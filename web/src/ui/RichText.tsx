@@ -1,6 +1,7 @@
 import { Bold, Italic, RemoveFormatting, Strikethrough, Underline } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parse, type Run, type RunStyle } from '../engine/rich';
+import { t } from '../i18n';
 
 /*
  * Rich text field (like TinyMCE, kept small): select part of the text, then
@@ -134,20 +135,20 @@ export function RichInput({ value, onChange, multiline, placeholder }: { value: 
   return (
     <div className="rt">
       <div className="rt-bar">
-        <B cmd="bold" icon={<Bold size={13} />} title="Bold (Ctrl+B)" />
-        <B cmd="italic" icon={<Italic size={13} />} title="Italic (Ctrl+I)" />
-        <B cmd="underline" icon={<Underline size={13} />} title="Underline (Ctrl+U)" />
-        <B cmd="strikeThrough" icon={<Strikethrough size={13} />} title="Strike through" />
+        <B cmd="bold" icon={<Bold size={13} />} title={t('Bold (Ctrl+B)')} />
+        <B cmd="italic" icon={<Italic size={13} />} title={t('Italic (Ctrl+I)')} />
+        <B cmd="underline" icon={<Underline size={13} />} title={t('Underline (Ctrl+U)')} />
+        <B cmd="strikeThrough" icon={<Strikethrough size={13} />} title={t('Strike through')} />
         <span className="rt-sep" />
         {SWATCHES.map((c) => (
-          <button key={c} type="button" className="rt-sw" title={`Colour ${c}`} style={{ background: c }} onMouseDown={keep} onClick={() => run('foreColor', c)} />
+          <button key={c} type="button" className="rt-sw" title={t('Colour {c}', { c })} style={{ background: c }} onMouseDown={keep} onClick={() => run('foreColor', c)} />
         ))}
-        <label className="rt-pick" title="Another colour" onMouseDown={(e) => e.stopPropagation()}>
+        <label className="rt-pick" title={t('Another colour')} onMouseDown={(e) => e.stopPropagation()}>
           <span style={{ background: color }} />
           <input type="color" value={color} onChange={(e) => (setColor(e.target.value), run('foreColor', e.target.value))} />
         </label>
         <span className="rt-sep" />
-        <B cmd="removeFormat" icon={<RemoveFormatting size={13} />} title="Back to the style of the whole text" />
+        <B cmd="removeFormat" icon={<RemoveFormatting size={13} />} title={t('Back to the style of the whole text')} />
       </div>
       <div
         ref={box}

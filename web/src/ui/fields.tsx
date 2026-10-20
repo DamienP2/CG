@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { parseHex, toHex } from '../engine/evaluate';
 import type { Color } from '../engine/types';
+import { t } from '../i18n';
 
 /*
  * Mouse wheel / trackpad on number fields, without clicking first: resting
@@ -204,7 +205,7 @@ export function NumberField({
       <input
         ref={inputRef}
         value={text}
-        title="Wheel or trackpad to adjust · Shift ×10 · Alt ×0.1"
+        title={t('Wheel or trackpad to adjust · Shift ×10 · Alt ×0.1')}
         onFocus={(e) => {
           focused.current = true;
           e.target.select();

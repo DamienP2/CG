@@ -1,6 +1,7 @@
 import { AlertTriangle, Info, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
+import { t } from '../i18n';
 
 /*
  * In-app confirmation, question and information boxes (instead of the
@@ -73,7 +74,7 @@ export function DialogHost() {
             <Icon size={16} />
           </span>
           <h2 id="dialog-title">{r.title}</h2>
-          <button type="button" className="icon-btn ghost" title="Close" onClick={() => close(false)}>
+          <button type="button" className="icon-btn ghost" title={t('Close')} onClick={() => close(false)}>
             <X size={16} />
           </button>
         </header>
@@ -87,11 +88,11 @@ export function DialogHost() {
         <footer>
           {r.kind !== 'alert' && (
             <button type="button" className="btn" onClick={() => close(false)}>
-              {(r.kind === 'confirm' && r.cancel) || 'Cancel'}
+              {(r.kind === 'confirm' && r.cancel) || t('Cancel')}
             </button>
           )}
           <button ref={ok} type="submit" className={`btn ${r.kind === 'confirm' && r.danger ? 'danger-solid' : 'primary'}`} disabled={r.kind === 'prompt' && !text.trim()}>
-            {r.kind === 'alert' ? 'OK' : r.confirm || (r.kind === 'prompt' ? 'OK' : 'Confirm')}
+            {r.kind === 'alert' ? t('OK') : r.confirm || (r.kind === 'prompt' ? t('OK') : t('Confirm'))}
           </button>
         </footer>
       </form>

@@ -6,6 +6,7 @@ import { JsonTree } from './JsonTree';
 import { useData, useSources } from './dataStore';
 import { confirmDialog } from '../ui/dialogs';
 import { navigate } from '../router';
+import { locale, t } from '../i18n';
 
 const KINDS: { type: DataSource['type']; label: string; hint: string; icon: typeof Database }[] = [
   { type: 'json', label: 'JSON API', hint: 'Any web service answering JSON (scores, weather, elections…)', icon: Braces },
@@ -26,9 +27,9 @@ const blank = (type: DataSource['type'], project?: string | null): DataSource =>
   }) as DataSource;
 
 const ago = (ms?: number | null) => {
-  if (!ms) return 'never';
+  if (!ms) return t('never');
   const s = Math.round((Date.now() - ms) / 1000);
-  return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : new Date(ms).toLocaleString();
+  return s < 60 ? t('{n}s ago', { n: s }) : s < 3600 ? t('{n} min ago', { n: Math.round(s / 60) }) : new Date(ms).toLocaleString(locale());
 };
 
 /**
@@ -54,12 +55,12 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
       <aside className="data-list">
         <header>
           <Database size={15} />
-          <h2>{projectId ? 'Data sources' : 'Shared data sources'}</h2>
+          <h2>{projectId ? t('Data sources') : t('Shared data sources')}</h2>
           <div className="spacer" />
           {edit && (
             <button
               className="icon-btn"
-              title="New data source"
+              title={t('New data source')}
               onClick={() => {
                 setSel(null);
                 setDraft(blank('json', projectId));
@@ -83,7 +84,7 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
               <K.icon size={14} />
               <span>
                 <strong>{s.name}</strong>
-                <em>{s.error ? s.error : `${K.label} · ${s.type === 'push' ? 'updated' : 'checked'} ${ago(s.type === 'push' ? s.updatedAt : s.checkedAt)}`}</em>
+                <em>{s.error ? s.error : s.type === 'push' ? t('{kind} · updated {ago}', { kind: t(K.label), ago: ago(s.updatedAt) }) : t('{kind} · checked {ago}', { kind: t(K.label), ago: ago(s.checkedAt) })}</em>
               </span>
               <i className={`status-dot ${s.error ? 'err' : s.updatedAt ? 'ok' : 'idle'}`} />
             </button>
@@ -91,15 +92,15 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
         })}
         {!sources.length && !draft && (
           <p className="muted small pad">
-            {projectId ? 'No data source in this project yet. Connect a JSON API, a Google Sheet, an RSS feed… then bind template fields to it in the Designer.' : 'No shared data source yet. The sources here are offered in every project (Data canvas), next to its own.'}
+            {projectId ? t('No data source in this project yet. Connect a JSON API, a Google Sheet, an RSS feed… then bind template fields to it in the Designer.') : t('No shared data source yet. The sources here are offered in every project (Data canvas), next to its own.')}
           </p>
         )}
         {projectId && (
           <>
             <div className="data-sep">
-              <span>Shared by every project</span>
-              <button className="link-btn" title="Manage the shared sources (main menu > Data)" onClick={() => navigate('/data')}>
-                Manage
+              <span>{t('Shared by every project')}</span>
+              <button className="link-btn" title={t('Manage the shared sources (main menu > Data)')} onClick={() => navigate('/data')}>
+                {t('Manage')}
               </button>
             </div>
             {shared.map((s) => {
@@ -109,13 +110,13 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
                   <K.icon size={14} />
                   <span>
                     <strong>{s.name}</strong>
-                    <em>{s.error ? s.error : `${K.label} · shared`}</em>
+                    <em>{s.error ? s.error : t('{kind} · shared', { kind: t(K.label) })}</em>
                   </span>
                   <i className={`status-dot ${s.error ? 'err' : s.updatedAt ? 'ok' : 'idle'}`} />
                 </button>
               );
             })}
-            {!shared.length && <p className="muted small pad">None. Shared sources are created in the main menu, Data.</p>}
+            {!shared.length && <p className="muted small pad">{t('None. Shared sources are created in the main menu, Data.')}</p>}
           </>
         )}
       </aside>
@@ -128,7 +129,7 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
         ) : (
           <div className="data-empty">
             <Database size={28} />
-            <p>Pick a source, or create one with +.</p>
+            <p>{t('Pick a source, or create one with +.')}</p>
           </div>
         )}
       </main>
@@ -172,7 +173,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
         await load();
         onSaved(s.id);
       }
-      toast(`“${s.name}” saved`, 'info');
+      toast(t('“{name}” saved', { name: s.name }), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -194,7 +195,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
     try {
       const res = await fetch(`/api/data/sources/${encodeURIComponent(s.id)}/value`, { method: 'PUT', body: file, credentials: 'same-origin' });
       if (!res.ok) throw new Error(await res.text());
-      toast(`${file.name} sent to “${s.name}”`, 'info');
+      toast(t('{file} sent to “{name}”', { file: file.name, name: s.name }), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     }
@@ -208,7 +209,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
       <div className="se-form">
         <div className="se-head">
           <K.icon size={18} />
-          <input className="se-name" placeholder="Name (e.g. Live score)" value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
+          <input className="se-name" placeholder={t('Name (e.g. Live score)')} value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
           {!isNew && info && (
             <span className={`se-status ${info.error ? 'err' : ''}`}>
               {info.error ? (
@@ -216,7 +217,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
                   <CircleAlert size={13} /> {info.error}
                 </>
               ) : (
-                <>Updated {ago(info.updatedAt)}</>
+                <>{t('Updated {ago}', { ago: ago(info.updatedAt) })}</>
               )}
             </span>
           )}
@@ -226,8 +227,8 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             {KINDS.map((k) => (
               <button key={k.type} className={k.type === s.type ? 'on' : ''} onClick={() => setS({ ...blank(k.type), name: s.name })}>
                 <k.icon size={15} />
-                <strong>{k.label}</strong>
-                <em>{k.hint}</em>
+                <strong>{t(k.label)}</strong>
+                <em>{t(k.hint)}</em>
               </button>
             ))}
           </div>
@@ -235,19 +236,19 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
         {s.type !== 'push' ? (
           <>
             <label>
-              Address
+              {t('Address')}
               <input placeholder={s.type === 'csv' ? 'https://docs.google.com/spreadsheets/d/…' : 'https://…'} value={url} disabled={!editable} onChange={(e) => patch({ url: e.target.value } as Partial<DataSource>)} />
             </label>
             {s.type === 'csv' && (
               <label className="check">
                 <input type="checkbox" checked={s.header !== false} disabled={!editable} onChange={(e) => patch({ header: e.target.checked } as Partial<DataSource>)} />
-                The first line names the columns
+                {t('The first line names the columns')}
               </label>
             )}
             {(s.type === 'json' || s.type === 'xml') && (
               <label>
                 <span>
-                  Headers, one per line: <code>Name: value</code> (an API key…)
+                  {t('Headers, one per line:')} <code>{t('Name: value')}</code> {t('(an API key…)')}
                 </span>
                 <textarea
                   rows={2}
@@ -270,7 +271,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             )}
             <div className="row">
               <label>
-                Check every
+                {t('Check every')}
                 <span className="with-suffix">
                   <input type="number" min={2} value={s.interval} disabled={!editable} onChange={(e) => patch({ interval: Math.max(2, +e.target.value) })} />
                   <em>s</em>
@@ -278,14 +279,14 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
               </label>
               <label className="check">
                 <input type="checkbox" checked={s.enabled} disabled={!editable} onChange={(e) => patch({ enabled: e.target.checked })} />
-                Enabled
+                {t('Enabled')}
               </label>
             </div>
           </>
         ) : (
           <>
             <label>
-              Format sent
+              {t('Format sent')}
               <select value={s.format ?? 'json'} disabled={!editable} onChange={(e) => patch({ format: e.target.value as 'json' } as Partial<DataSource>)}>
                 <option value="json">JSON</option>
                 <option value="csv">CSV</option>
@@ -294,10 +295,10 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             </label>
             {!isNew && (
               <div className="push-help">
-                <p>Send the values from automation (an API key from Settings):</p>
+                <p>{t('Send the values from automation (an API key from Settings):')}</p>
                 <pre>{`curl -X PUT -H "Authorization: Bearer pcg_…" \\\n  --data-binary @scores.${s.format ?? 'json'} \\\n  ${origin}/api/data/sources/${s.id}/value`}</pre>
                 <button className="btn small" onClick={() => fileRef.current?.click()}>
-                  <Upload size={13} /> Send a file now
+                  <Upload size={13} /> {t('Send a file now')}
                 </button>
                 <input ref={fileRef} type="file" hidden accept=".json,.csv,.xml,.txt" onChange={(e) => e.target.files?.[0] && push(e.target.files[0])} />
               </div>
@@ -309,48 +310,48 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             <button
               className="btn small danger"
               onClick={async () => {
-                if (!(await confirmDialog({ title: `Delete the data source “${s.name}”?`, message: 'Fields bound to it keep their last value.', confirm: 'Delete', danger: true }))) return;
+                if (!(await confirmDialog({ title: t('Delete the data source “{name}”?', { name: s.name }), message: t('Fields bound to it keep their last value.'), confirm: t('Delete'), danger: true }))) return;
                 await api('DELETE', `/api/data/sources/${encodeURIComponent(s.id)}`);
                 await load();
                 onDeleted?.();
               }}
             >
-              <Trash2 size={13} /> Delete
+              <Trash2 size={13} /> {t('Delete')}
             </button>
           )}
           <div className="spacer" />
           {isNew && (
             <button className="btn small" onClick={onCancel}>
-              Cancel
+              {t('Cancel')}
             </button>
           )}
           {s.type !== 'push' && (
             <button className="btn small" disabled={busy || !url} onClick={test}>
-              <FileUp size={13} /> Test
+              <FileUp size={13} /> {t('Test')}
             </button>
           )}
           {!isNew && s.type !== 'push' && !dirty && (
             <button className="btn small" onClick={() => api('POST', `/api/data/sources/${encodeURIComponent(s.id)}/refresh`)}>
-              <RefreshCw size={13} /> Refresh now
+              <RefreshCw size={13} /> {t('Refresh now')}
             </button>
           )}
           {editable && (isNew || dirty) && (
             <button className="btn small primary" disabled={busy || !s.name.trim()} onClick={save}>
-              <Save size={13} /> {isNew ? 'Create' : 'Save'}
+              <Save size={13} /> {isNew ? t('Create') : t('Save')}
             </button>
           )}
         </div>
       </div>
       <div className="se-preview">
         <div className="se-preview-head">
-          <strong>Value</strong>
-          <span className="muted small">Click a value to see its path; bind fields to it in the Designer (data fields → link).</span>
+          <strong>{t('Value')}</strong>
+          <span className="muted small">{t('Click a value to see its path; bind fields to it in the Designer (data fields → link).')}</span>
         </div>
         {picked && (
           <div className="picked-path">
-            <code>{picked || '(root)'}</code>
+            <code>{picked || t('(root)')}</code>
             <button className="btn small" onClick={() => navigator.clipboard?.writeText(picked)}>
-              Copy
+              {t('Copy')}
             </button>
           </div>
         )}
@@ -359,7 +360,7 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             <CircleAlert size={13} /> {preview.error}
           </p>
         )}
-        {preview && preview.value !== undefined && preview.value !== null ? <JsonTree value={preview.value} onPick={setPicked} picked={picked} /> : !preview?.error && <p className="muted small">{isNew ? 'Press Test to fetch it.' : 'No value yet.'}</p>}
+        {preview && preview.value !== undefined && preview.value !== null ? <JsonTree value={preview.value} onPick={setPicked} picked={picked} /> : !preview?.error && <p className="muted small">{isNew ? t('Press Test to fetch it.') : t('No value yet.')}</p>}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { Maximize, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '../i18n';
 
 /*
  * Pan and zoom of the node canvases (Data, Logic, Outputs): the viewport
@@ -232,15 +233,15 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node') {
 function CanvasControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (factor: number) => void; onFit: () => void }) {
   return (
     <div className="cv-controls" onPointerDown={(e) => e.stopPropagation()}>
-      <button title="Zoom out" onClick={() => onZoom(1 / 1.2)}>
+      <button title={t('Zoom out')} onClick={() => onZoom(1 / 1.2)}>
         <Minus size={13} />
       </button>
-      <span title="Shift + wheel or pinch to zoom · wheel or Space + drag to move">{Math.round(zoom * 100)}%</span>
-      <button title="Zoom in" onClick={() => onZoom(1.2)}>
+      <span title={t('Shift + wheel or pinch to zoom · wheel or Space + drag to move')}>{Math.round(zoom * 100)}%</span>
+      <button title={t('Zoom in')} onClick={() => onZoom(1.2)}>
         <Plus size={13} />
       </button>
-      <button title="Fit: every node in view" onClick={onFit}>
-        <Maximize size={13} /> Fit
+      <button title={t('Fit: every node in view')} onClick={onFit}>
+        <Maximize size={13} /> {t('Fit')}
       </button>
     </div>
   );
@@ -248,7 +249,7 @@ function CanvasControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (factor
 
 /** The corner a node is resized from. */
 export function ResizeCorner({ onPointerDown }: { onPointerDown: (e: React.PointerEvent) => void }) {
-  return <span className="cv-resize" title="Resize" onPointerDown={onPointerDown} />;
+  return <span className="cv-resize" title={t('Resize')} onPointerDown={onPointerDown} />;
 }
 
 /**

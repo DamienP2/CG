@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { columnKey, countKey, tableKey, linesKey, oneKey, rowKey, type Data, type DataFilter, type DataSet, type DataSort, type DataSourceInfo, type DataStatus, type DataStep, type FieldBinding, type Template } from '../engine/types';
 import { api } from '../store';
+import { t, tn } from '../i18n';
 
 /** Data sources, their status (pushed live) and a version per source. */
 interface DataState {
@@ -76,8 +77,8 @@ export async function pipeline(source: string, list: string, steps: DataStep[], 
 /** A table binding (list and steps), else a path. */
 export const isTable = (b: FieldBinding) => b.list !== undefined || !!b.steps?.length;
 
-/** A short description of where a binding reads. */
-export const bindingLabel = (b: FieldBinding) => (isTable(b) ? `${b.list || 'root'}${b.steps?.length ? ` · ${b.steps.length} step${b.steps.length > 1 ? 's' : ''}` : ''}` : b.path || '(no path)');
+/** A short description of where a binding reads (shown: called when drawing). */
+export const bindingLabel = (b: FieldBinding) => (isTable(b) ? `${b.list || t('root')}${b.steps?.length ? ` · ${tn(b.steps.length, '{n} step', '{n} steps')}` : ''}` : b.path || t('(no path)'));
 
 /** What a binding gives now. */
 export async function readBinding(b: FieldBinding, data: Data): Promise<string | null> {

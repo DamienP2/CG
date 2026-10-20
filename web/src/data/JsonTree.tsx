@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { t } from '../i18n';
 
 const SIMPLE = /^[A-Za-z_@#$][\w@#$-]*$/;
 
@@ -31,7 +32,7 @@ function Node({ name, value, path, depth, onPick, picked }: { name: string | nul
   if (!isObj) {
     const text = value === null ? 'null' : typeof value === 'string' ? `“${value}”` : String(value);
     return (
-      <div className={`jt-row jt-leaf ${picked === path ? 'picked' : ''}`} onClick={() => onPick?.(path)} title={onPick ? `Use ${path || '(root)'}` : path}>
+      <div className={`jt-row jt-leaf ${picked === path ? 'picked' : ''}`} onClick={() => onPick?.(path)} title={onPick ? t('Use {path}', { path: path || t('(root)') }) : path}>
         {label}
         <span className={`jt-val t-${value === null ? 'null' : typeof value}`}>{text.length > 120 ? `${text.slice(0, 120)}…` : text}</span>
       </div>
@@ -50,8 +51,8 @@ function Node({ name, value, path, depth, onPick, picked }: { name: string | nul
           {isArr ? `[${entries.length}]` : `{${entries.length}}`}
         </span>
         {onPick && isArr && entries.length > 0 && (
-          <button className="jt-all" title="Every item, one per line (tickers, lists)" onClick={() => onPick(`${path}[*]`)}>
-            all items
+          <button className="jt-all" title={t('Every item, one per line (tickers, lists)')} onClick={() => onPick(`${path}[*]`)}>
+            {t('all items')}
           </button>
         )}
       </div>
@@ -62,7 +63,7 @@ function Node({ name, value, path, depth, onPick, picked }: { name: string | nul
           ))}
           {!more && entries.length > shown.length && (
             <button className="jt-more" onClick={() => setMore(true)}>
-              {entries.length - shown.length} more…
+              {t('{n} more…', { n: entries.length - shown.length })}
             </button>
           )}
         </div>

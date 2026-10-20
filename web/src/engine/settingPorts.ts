@@ -46,8 +46,12 @@ export interface SettingPort {
   value: unknown;
 }
 
-/** A readable name for a setting path. */
-export function settingLabel(l: Layer, path: string): { label: string; group: string } {
+/** Translates a word of a label (the interface's t(); English by default). */
+export type Tr = (text: string, vars?: Record<string, string | number>) => string;
+const same: Tr = (s) => s;
+
+/** A readable name for a setting path; `tr` translates its words when it is shown. */
+export function settingLabel(l: Layer, path: string, tr: Tr = same): { label: string; group: string } {
   const ks = path.split('.');
   const parts: string[] = [];
   for (let i = 0; i < ks.length; i++) {
@@ -56,27 +60,27 @@ export function settingLabel(l: Layer, path: string): { label: string; group: st
       // An item of a list: its own name (a column's label).
       const item = ks.slice(0, i + 1).reduce<unknown>((a, x) => (a as Record<string, unknown>)?.[x], l) as Record<string, unknown> | undefined;
       const name = (item?.label || item?.src || item?.name || `#${+k + 1}`) as string;
-      parts[parts.length - 1] = `${ks[i - 1] === 'cols' ? 'column' : parts[parts.length - 1]} ${name}`;
+      parts[parts.length - 1] = `${ks[i - 1] === 'cols' ? tr('column') : parts[parts.length - 1]} ${name}`;
       continue;
     }
     const w = human(k);
-    if (w) parts.push(w);
+    if (w) parts.push(tr(w));
   }
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   // A setting of the widget itself (titleFrom, radius…): in General.
-  if (parts.length < 2) return { group: 'General', label: `General · ${parts[0] ?? path}` };
+  if (parts.length < 2) return { group: tr('General'), label: `${tr('General')} · ${parts[0] ?? path}` };
   const group = cap(parts[0]);
   return { group, label: `${group} · ${parts.slice(1).join(' ')}` };
 }
 
-/** Every setting of the layer that takes a single value. */
-export function settingPorts(l: Layer): SettingPort[] {
+/** Every setting of the layer that takes a single value (`tr` as for settingLabel). */
+export function settingPorts(l: Layer, tr: Tr = same): SettingPort[] {
   const out: SettingPort[] = [];
   const seen = new Set<string>();
   const add = (path: string, value: unknown) => {
     if (seen.has(path)) return;
     seen.add(path);
-    out.push({ path, value, ...settingLabel(l, path) });
+    out.push({ path, value, ...settingLabel(l, path, tr) });
   };
   const walk = (o: unknown, path: string, depth: number) => {
     if (o == null || depth > 5) return;

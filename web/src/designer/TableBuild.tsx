@@ -9,6 +9,7 @@ import { cfg, model, parseRows, type Config } from '../widgets/table';
 import { applyBuild, colFor, colsOf, defaultOpts, detect, ROLES, type BuildOpts, type Detected, type Role } from '../widgets/table-build';
 import { useTableEditor } from '../widgets/table-editor-store';
 import { findLayer, useDesigner } from './designerStore';
+import { t, tn } from '../i18n';
 
 /*
  * A Table in the Data canvas: once a data set's All rows is wired into it, Strata reads the columns
@@ -41,13 +42,13 @@ export function TableNodeInfo({ layer, values, onBuild }: { layer: Layer; values
   return (
     <div className="ln-body tb-info">
       {wired && !k.cols.length ? (
-        <button className="tb-build" onClick={onBuild} title="Make the columns from the data">
-          <Sparkles size={12} /> Build the table
+        <button className="tb-build" onClick={onBuild} title={t('Make the columns from the data')}>
+          <Sparkles size={12} /> {t('Build the table')}
         </button>
       ) : (
         shown.length > 0 && (
           <span className="tb-cols" title={shown.map((c) => c.label || c.src).join(', ')}>
-            {shown.length} columns · {shown.map((c) => c.label || c.src).join(', ')}
+            {tn(shown.length, '{n} column · {names}', '{n} columns · {names}', { names: shown.map((c) => c.label || c.src).join(', ') })}
           </span>
         )
       )}
@@ -55,7 +56,7 @@ export function TableNodeInfo({ layer, values, onBuild }: { layer: Layer; values
         m.unmapped.map((h) => (
           <div key={h} className="tb-new">
             <span>
-              New column <b>{h}</b>
+              {t('New column')} <b>{h}</b>
             </span>
             <button
               className="btn small"
@@ -73,12 +74,12 @@ export function TableNodeInfo({ layer, values, onBuild }: { layer: Layer; values
                 })
               }
             >
-              Add
+              {t('Add')}
             </button>
           </div>
         ))}
       <button className="tb-edit" onClick={() => useTableEditor.getState().open(l.id)}>
-        <Pencil size={11} /> Edit the table
+        <Pencil size={11} /> {t('Edit the table')}
       </button>
     </div>
   );
@@ -120,12 +121,12 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
     place();
     return () => cancelAnimationFrame(raf);
   }, [l.id]);
-  const name = tableDataset(l, template)?.ds?.name ?? 'the data';
+  const name = tableDataset(l, template)?.ds?.name ?? t('the data');
   const cols = colsOf(det);
   const mark = det.find((d) => d.on && d.role === 'mark')?.src;
   const colAt = (src: string) => head.indexOf(src);
   const sortOpts = [
-    { value: '', label: 'As received' },
+    { value: '', label: t('As received') },
     ...det
       .filter((d) => d.on && d.role !== 'skip' && d.role !== 'mark')
       .flatMap((d) => [
@@ -145,17 +146,17 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
         <>
           <h4>
             <span className="tb-ok">
-              <Check size={12} /> In sync
+              <Check size={12} /> {t('In sync')}
             </span>
-            Built from {name}
-            <button className="icon-btn" title="Close" onClick={onClose}>
+            {t('Built from {name}', { name })}
+            <button className="icon-btn" title={t('Close')} onClick={onClose}>
               <X size={13} />
             </button>
           </h4>
-          <p className="tb-note">Columns, labels, types and the sort are set. A new column in the data will be offered here, never added on its own.</p>
+          <p className="tb-note">{t('Columns, labels, types and the sort are set. A new column in the data will be offered here, never added on its own.')}</p>
           <div className="tb-foot">
             <button className="btn small" onClick={() => setBuilt(false)}>
-              Back
+              {t('Back')}
             </button>
             <button
               className="btn primary small"
@@ -164,39 +165,39 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
                 useTableEditor.getState().open(l.id);
               }}
             >
-              Open the editor
+              {t('Open the editor')}
             </button>
           </div>
         </>
       ) : (
         <>
           <h4>
-            <Sparkles size={13} /> Build the table from {name}
-            <button className="icon-btn" title="Not now" onClick={onClose}>
+            <Sparkles size={13} /> {t('Build the table from {name}', { name })}
+            <button className="icon-btn" title={t('Not now')} onClick={onClose}>
               <X size={13} />
             </button>
           </h4>
           {!det.length ? (
-            <p className="tb-note">No columns in the data yet.</p>
+            <p className="tb-note">{t('No columns in the data yet.')}</p>
           ) : (
             <div className="tb-detect">
               {det.map((d) => (
                 <label key={d.src} className={d.on ? '' : 'off'}>
                   <input type="checkbox" checked={d.on} onChange={(e) => setDet((ds) => ds.map((x) => (x.src === d.src ? { ...x, on: e.target.checked } : x)))} />
-                  <span className="tb-kind">{KIND[d.kind]}</span>
+                  <span className="tb-kind">{t(KIND[d.kind])}</span>
                   <b>{d.src}</b>
-                  <Dropdown value={d.role} options={ROLES} onChange={(r) => setRole(d.src, r)} />
+                  <Dropdown value={d.role} options={ROLES.map((r) => ({ ...r, label: t(r.label) }))} onChange={(r) => setRole(d.src, r)} />
                 </label>
               ))}
             </div>
           )}
           <button className={`te-tog ${opts.rank ? 'on' : ''}`} onClick={() => setOpts({ ...opts, rank: !opts.rank })}>
-            <span>Rank column</span>
+            <span>{t('Rank column')}</span>
             <i />
           </button>
           <div className="tb-row2">
             <label>
-              <span>Sort by</span>
+              <span>{t('Sort by')}</span>
               <Dropdown
                 value={opts.sort ? `${opts.sort}|${opts.dir}` : ''}
                 options={sortOpts}
@@ -210,7 +211,7 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
               />
             </label>
             <label>
-              <span>Rows per page</span>
+              <span>{t('Rows per page')}</span>
               <span className="pp-field">
                 <NumberField value={opts.perPage} min={1} max={99} onChange={(v) => setOpts({ ...opts, perPage: v })} />
               </span>
@@ -247,10 +248,10 @@ export function BuildCard({ layer, template, values, onClose }: { layer: Layer; 
           )}
           <div className="tb-foot">
             <button className="btn small" onClick={onClose}>
-              Not now
+              {t('Not now')}
             </button>
             <button className="btn primary small" disabled={!cols.length} onClick={build}>
-              Build the table
+              {t('Build the table')}
             </button>
           </div>
         </>

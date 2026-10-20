@@ -1,4 +1,5 @@
 import { useFonts } from '../engine/fonts';
+import { t } from '../i18n';
 import { Dropdown } from './Dropdown';
 
 const ORDER = ['uploaded', 'bundled', 'system'];
@@ -11,7 +12,7 @@ export function FontPick({ family, weight, onChange }: { family: string; weight:
   const families = useFonts((s) => s.families);
   const current = families.find((f) => f.family.toLowerCase() === family.toLowerCase());
   const weights = [...new Set([...(current?.weights ?? [400, 700]), weight])].sort((a, b) => a - b);
-  const famOpts = [...(current ? [] : [{ value: family, label: `${family} (missing)` }]), ...[...families].sort((a, b) => ORDER.indexOf(a.source) - ORDER.indexOf(b.source)).map((f) => ({ value: f.family, label: f.family, group: GROUP[f.source] ?? 'Server', style: { fontFamily: `"${f.family}", Inter, sans-serif` } }))];
+  const famOpts = [...(current ? [] : [{ value: family, label: t('{family} (missing)', { family }) }]), ...[...families].sort((a, b) => ORDER.indexOf(a.source) - ORDER.indexOf(b.source)).map((f) => ({ value: f.family, label: f.family, group: t(GROUP[f.source] ?? 'Server'), style: { fontFamily: `"${f.family}", Inter, sans-serif` } }))];
   return (
     <div className="font-pick">
       <Dropdown
@@ -23,7 +24,7 @@ export function FontPick({ family, weight, onChange }: { family: string; weight:
           onChange(v, w);
         }}
       />
-      <Dropdown className="font-weight" value={String(weight)} options={weights.map((w) => ({ value: String(w), label: WEIGHT_NAMES[w] ?? String(w), note: String(w) }))} onChange={(v) => onChange(current?.family ?? family, +v)} />
+      <Dropdown className="font-weight" value={String(weight)} options={weights.map((w) => ({ value: String(w), label: WEIGHT_NAMES[w] ? t(WEIGHT_NAMES[w]) : String(w), note: String(w) }))} onChange={(v) => onChange(current?.family ?? family, +v)} />
     </div>
   );
 }

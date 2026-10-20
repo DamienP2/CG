@@ -21,6 +21,7 @@ import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
 import { isColorValue, settingLabel, settingPorts } from '../engine/settingPorts';
 import { forgetKeys, formatSetting, settingKind } from '../engine/settings';
+import { t, tn } from '../i18n';
 
 /*
  * Data canvas. The data goes through as tables:
@@ -62,7 +63,7 @@ function tableSummary(v: string): string | null {
   try {
     const a = JSON.parse(v) as string[][];
     const head = a[0] ?? [];
-    return `${a.length - 1} rows · ${head.slice(0, 3).join(', ')}${head.length > 3 ? '…' : ''}`;
+    return tn(a.length - 1, '{n} row · {columns}', '{n} rows · {columns}', { columns: `${head.slice(0, 3).join(', ')}${head.length > 3 ? '…' : ''}` });
   } catch {
     return null;
   }
@@ -469,7 +470,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     if (!a) return;
     const to = e.to.startsWith('field:') ? (nodePos.has(`f:${e.to.slice(6)}`) ? inOf(`f:${e.to.slice(6)}`) : null) : nodePos.has(e.to) ? inOf(e.to) : null;
     if (!to) return;
-    wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: 'Data (click to remove · drop a Filter, Sort or Transform on it)', onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
+    wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: t('Data (click to remove · drop a Filter, Sort or Transform on it)'), onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
   });
   for (const l of template.layers)
     for (const port of [...contentOf(l), ...settingPortsOf(l), ...portsOf(l)]) {
@@ -482,7 +483,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         wires.push({
           d: curve(keyOut(key)!, to),
           data: columnPorts.has(key),
-          title: `${key} → ${l.name} ${content ? port : setting ? settingLabel(l, setting).label : PROP_LABELS[port as Prop]} (click to remove)`,
+          title: t('{key} → {layer} {port} (click to remove)', { key, layer: l.name, port: content ? port : setting ? settingLabel(l, setting, t).label : t(PROP_LABELS[port as Prop]) }),
           onClick: () =>
             update((t) => {
               const x = findLayer(t, l.id)!;
@@ -713,13 +714,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   return (
     <div className="logic-editor data-canvas" onKeyDown={(e) => e.stopPropagation()}>
-      <CanvasHeader icon={<Database size={15} />} title="Data" subject={template.name} onClose={onClose} />
+      <CanvasHeader icon={<Database size={15} />} title={t('Data')} subject={template.name} onClose={onClose} />
       <div className="logic-body">
         <aside className="logic-palette">
           <button
             className="kind-field"
             onPointerDown={(e) =>
-              fromPalette(e, 'Variable', (at) => {
+              fromPalette(e, t('Variable'), (at) => {
                 let made = '';
                 update((t) => void (made = newField(t, `Field ${t.fields.length + 1}`, 'text', '')));
                 setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: at } }));
@@ -728,14 +729,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           >
             <Variable size={14} />
             <span>
-              <strong>Variable</strong>
+              <strong>{t('Variable')}</strong>
             </span>
           </button>
 
-          <div className="dc-pal-title">Data sources</div>
+          <div className="dc-pal-title">{t('Data sources')}</div>
           {offered.map((s, i) => (
             <span key={s.id} style={{ display: 'contents' }}>
-              {!s.project && (i === 0 || offered[i - 1].project) && <div className="dc-pal-sub">Shared</div>}
+              {!s.project && (i === 0 || offered[i - 1].project) && <div className="dc-pal-sub">{t('Shared')}</div>}
               <button className="kind-source" onPointerDown={(e) => fromPalette(e, s.name, addSource(s.id))}>
                 <Database size={14} />
                 <span>
@@ -747,32 +748,32 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           ))}
           {!offered.length && (
             <p className="hint">
-              No source yet:{' '}
+              {t('No source yet:')}{' '}
               <a href="#" onClick={(e) => (e.preventDefault(), projectId && navigate(projectPath(projectId, 'data')))}>
-                add one in Connectors
+                {t('add one in Connectors')}
               </a>{' '}
-              (this project) or in the main menu, Data (shared).
+              {t('(this project) or in the main menu, Data (shared).')}
             </p>
           )}
 
-          <div className="dc-pal-title">On the way</div>
+          <div className="dc-pal-title">{t('On the way')}</div>
           {(['filter', 'sort', 'transform'] as StepType[]).map((type) => {
             const k = STEP[type];
             return (
-              <button key={type} className={`kind-${type}`} onPointerDown={(e) => fromPalette(e, k.label, addStep(type))}>
+              <button key={type} className={`kind-${type}`} onPointerDown={(e) => fromPalette(e, t(k.label), addStep(type))}>
                 <k.icon size={14} />
                 <span>
-                  <strong>{k.label}</strong>
+                  <strong>{t(k.label)}</strong>
                 </span>
               </button>
             );
           })}
 
-          <div className="dc-pal-title">Into the graphic</div>
-          <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, 'Data set', addDataset)}>
+          <div className="dc-pal-title">{t('Into the graphic')}</div>
+          <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, t('Data set'), addDataset)}>
             <Rows3 size={14} />
             <span>
-              <strong>Data set</strong>
+              <strong>{t('Data set')}</strong>
             </span>
           </button>
         </aside>
@@ -802,15 +803,15 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                   <div key={n.id} className={`logic-node dc-node kind-source ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                     <div className="ln-head" style={{ height: HEAD }}>
                       <Database size={12} />
-                      <span>{s?.name ?? `Missing: ${n.source}`}</span>
-                      <button className="ln-del" title={used ? 'Remove (and its wires)' : 'Remove'} onClick={() => removeFlowNode(n.id)}>
+                      <span>{s?.name ?? t('Missing: {source}', { source: n.source })}</span>
+                      <button className="ln-del" title={used ? t('Remove (and its wires)') : t('Remove')} onClick={() => removeFlowNode(n.id)}>
                         <Trash2 size={11} />
                       </button>
-                      <span className="port out" title="Drag to a filter, a sort, a transform or a variable" onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
+                      <span className="port out" title={t('Drag to a filter, a sort, a transform or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                     </div>
                     <div className="ln-body">
                       <span className="dc-meta">
-                        <span className={`live-dot ${s?.error ? 'err' : ''}`} /> {s ? `${s.type.toUpperCase()} · every ${s.interval} s` : 'not found'}
+                        <span className={`live-dot ${s?.error ? 'err' : ''}`} /> {s ? t('{type} · every {n} s', { type: s.type.toUpperCase(), n: s.interval }) : t('not found')}
                       </span>
                       <SourceBody node={n} version={s?.updatedAt ?? 0} data={values} onList={(list) => setFlowNode(n.id, (x) => void ((x as { list: string }).list = list))} />
                     </div>
@@ -823,10 +824,10 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 return (
                   <div key={n.id} className="logic-node dc-node kind-dataset" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                     <div className="ln-head" style={{ height: HEAD }}>
-                      <span className="port in" data-flow={n.id} title="Drop a source or a step here" />
+                      <span className="port in" data-flow={n.id} title={t('Drop a source or a step here')} />
                       <Rows3 size={12} />
-                      <input className="dc-title" value={n.name} onChange={(e) => setFlowNode(n.id, (x) => void ((x as { name: string }).name = e.target.value), `ds-name-${n.id}`)} title={`Key: ${n.key}`} />
-                      <button className="ln-del" title="Remove" onClick={() => removeFlowNode(n.id)}>
+                      <input className="dc-title" value={n.name} onChange={(e) => setFlowNode(n.id, (x) => void ((x as { name: string }).name = e.target.value), `ds-name-${n.id}`)} title={t('Key: {key}', { key: n.key })} />
+                      <button className="ln-del" title={t('Remove')} onClick={() => removeFlowNode(n.id)}>
                         <Trash2 size={11} />
                       </button>
                     </div>
@@ -846,16 +847,16 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               return (
                 <div key={n.id} className={`logic-node dc-node kind-${n.type} ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.step) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                   <div className="ln-head" style={{ height: HEAD }}>
-                    <span className="port in" data-flow={n.id} title="Drop a source or a step here" />
+                    <span className="port in" data-flow={n.id} title={t('Drop a source or a step here')} />
                     <k.icon size={12} />
-                    <span>{k.label}</span>
-                    <button className="ln-del" title="Remove (the wires go through)" onClick={() => removeFlowNode(n.id)}>
+                    <span>{t(k.label)}</span>
+                    <button className="ln-del" title={t('Remove (the wires go through)')} onClick={() => removeFlowNode(n.id)}>
                       <Trash2 size={11} />
                     </button>
-                    <span className="port out" title="Drag to a step or a variable" onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
+                    <span className="port out" title={t('Drag to a step or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                   </div>
                   <div className="ln-body">
-                    {chain ? <StepBody source={chain.source} steps={chain.steps} data={values} node={n as FlowNode & DataStep} onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)} /> : <span className="dc-meta">Wire a source (or a step) into it.</span>}
+                    {chain ? <StepBody source={chain.source} steps={chain.steps} data={values} node={n as FlowNode & DataStep} onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)} /> : <span className="dc-meta">{t('Wire a source (or a step) into it.')}</span>}
                   </div>
                   {resizer(n.id)}
                 </div>
@@ -871,12 +872,12 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               return (
                 <div key={f.key} className="logic-node dc-node kind-field" style={{ left: p.x, top: p.y, ...sizeStyle(`f:${f.key}`, W.field) }} onPointerDown={(e) => dragNode(e, `f:${f.key}`, 'layout')}>
                   <div className="ln-head" style={{ height: HEAD }}>
-                    <span className="port in" data-field={f.key} title="Drop a source or a step here" />
+                    <span className="port in" data-field={f.key} title={t('Drop a source or a step here')} />
                     <Variable size={12} />
-                    <input className="dc-title" value={f.label} onChange={(e) => editField(f.key, (x) => void (x.label = e.target.value), `label-${f.key}`)} title={`Key: ${f.key}`} />
+                    <input className="dc-title" value={f.label} onChange={(e) => editField(f.key, (x) => void (x.label = e.target.value), `label-${f.key}`)} title={t('Key: {key}', { key: f.key })} />
                     <button
                       className="ln-del"
-                      title="Delete the variable"
+                      title={t('Delete the variable')}
                       onClick={() =>
                         update((t) => {
                           t.fields = t.fields.filter((x) => x.key !== f.key);
@@ -889,12 +890,12 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     >
                       <Trash2 size={11} />
                     </button>
-                    <span className="port out" title="Drag to a layer's value or to an operation" onPointerDown={(e) => startWire(e, { kind: 'field', key: f.key })} />
+                    <span className="port out" title={t("Drag to a layer's value or to an operation")} onPointerDown={(e) => startWire(e, { kind: 'field', key: f.key })} />
                   </div>
                   <div className="ln-body">
                     <div className="row">
-                      <Dropdown value={f.kind} options={FIELD_KINDS} onChange={(k) => editField(f.key, (x) => void (x.kind = k))} />
-                      <code className="dc-key" title="Key (API, MOS)">
+                      <Dropdown value={f.kind} options={FIELD_KINDS.map((o) => ({ ...o, label: t(o.label) }))} onChange={(k) => editField(f.key, (x) => void (x.kind = k))} />
+                      <code className="dc-key" title={t('Key (API, MOS)')}>
                         {f.key}
                       </code>
                     </div>
@@ -906,14 +907,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                           </span>
                         ) : (
                           <span className="dc-result" title={v}>
-                            {v === '' ? <em>(empty)</em> : v}
+                            {v === '' ? <em>{t('(empty)')}</em> : v}
                           </span>
                         )}
                         {legacy && (
-                          <span className="dc-meta" title="Made before the tables: unlink it and wire the data again to change it">
-                            Path {f.binding.path}
+                          <span className="dc-meta" title={t('Made before the tables: unlink it and wire the data again to change it')}>
+                            {t('Path {path}', { path: f.binding.path })}
                             <button className="dc-addfilter" onClick={() => update((t) => void delete t.fields.find((x) => x.key === f.key)!.binding)}>
-                              Unlink
+                              {t('Unlink')}
                             </button>
                           </span>
                         )}
@@ -949,26 +950,26 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       return (
                         <div key={port} className={`ln-content ${isWired ? 'wired' : ''}`} style={{ height: CROW }}>
                           <div className="ln-input" style={{ height: ROW }}>
-                            <span className="port in" data-layer={l.id} data-port={port} title={takesTable(l, port) ? "Drop a data set's All rows here (or a variable)" : 'Drop a variable here'} />
-                            {port === 'src' ? <ImageIcon size={11} /> : takesTable(l, port) ? <Rows3 size={11} /> : <Type size={11} />} {CONTENT_LABEL[port] ?? port}
-                            {isWired && <span className="dc-from">from data</span>}
+                            <span className="port in" data-layer={l.id} data-port={port} title={takesTable(l, port) ? t("Drop a data set's All rows here (or a variable)") : t('Drop a variable here')} />
+                            {port === 'src' ? <ImageIcon size={11} /> : takesTable(l, port) ? <Rows3 size={11} /> : <Type size={11} />} {CONTENT_LABEL[port] ? t(CONTENT_LABEL[port]) : port}
+                            {isWired && <span className="dc-from">{t('from data')}</span>}
                           </div>
                           {isWired && port === 'src' && cellType(result) === 'image' ? (
                             <span className="dc-value live dc-pic" title={result}>
                               <img src={result} alt="" /> {result.split('/').pop()}
                             </span>
                           ) : isWired ? (
-                            <span className="dc-value live" title={`Result: ${result}`}>
-                              {result === '' ? '(empty)' : (tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')))}
+                            <span className="dc-value live" title={t('Result: {value}', { value: result })}>
+                              {result === '' ? t('(empty)') : (tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')))}
                             </span>
                           ) : port === 'items' ? (
-                            <span className="dc-value">{raw ? `${raw.split('\n').length} items (Inspector)` : 'No items'}</span>
+                            <span className="dc-value">{raw ? tn(raw.split('\n').length, '{n} item (Inspector)', '{n} items (Inspector)') : t('No items')}</span>
                           ) : (
                             <input
                               className="dc-content-input"
                               value={raw}
-                              placeholder={takesTable(l, port) ? "A data set's All rows" : undefined}
-                              title="Default value (until a variable is wired)"
+                              placeholder={takesTable(l, port) ? t("A data set's All rows") : undefined}
+                              title={t('Default value (until a variable is wired)')}
                               onChange={(e) => update((t) => setPath(findLayer(t, l.id), port, e.target.value), `content-${l.id}-${port}`)}
                             />
                           )}
@@ -981,12 +982,12 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       const sv = key !== undefined && values[key] !== undefined ? values[key] : getPath(l, path);
                       return (
                         <div key={port} className="ln-input wired dc-setting" style={{ height: ROW }}>
-                          <span className="port in" data-layer={l.id} data-port={port} title="Drop a variable or a data set column here" />
-                          <span title={path}>{settingLabel(l, path).label.replace(/^General · /, '')}</span>
-                          <span className="dc-port-value live" title="Value it gets from the data">
+                          <span className="port in" data-layer={l.id} data-port={port} title={t('Drop a variable or a data set column here')} />
+                          <span title={path}>{settingLabel(l, path, t).label.replace(`${t('General')} · `, '')}</span>
+                          <span className="dc-port-value live" title={t('Value it gets from the data')}>
                             {isColorValue(sv) ? <span className="dc-swatch" style={{ background: String(sv) }} /> : String(sv ?? '').slice(0, 14)}
                           </span>
-                          <button className="dc-unset" title="Stop setting it from the data" onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
+                          <button className="dc-unset" title={t('Stop setting it from the data')} onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
                             ×
                           </button>
                         </div>
@@ -995,17 +996,17 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     const v = r ? r[port as Prop] : undefined;
                     return (
                       <div key={port} className={`ln-input ${wired.has(port) ? 'wired' : ''}`} style={{ height: ROW }}>
-                        <span className="port in" data-layer={l.id} data-port={port} title="Drop a variable or an operation here" />
-                        <span>{PROP_LABELS[port as Prop]}</span>
-                        <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={wired.has(port) ? 'Value it gets from the data' : 'Value in Properties'}>
+                        <span className="port in" data-layer={l.id} data-port={port} title={t('Drop a variable or an operation here')} />
+                        <span>{t(PROP_LABELS[port as Prop])}</span>
+                        <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={wired.has(port) ? t('Value it gets from the data') : t('Value in Properties')}>
                           {v === undefined ? '' : isColor(port) ? <span className="dc-swatch" style={{ background: toHex(col(v), true) }} /> : +num(v).toFixed(2)}
                         </span>
                       </div>
                     );
                   })}
                   <SettingAdd layer={l} onPick={(path) => update((t) => void ((findLayer(t, l.id)!.settingBindings ??= {})[path] ??= ''))} />
-                  <button className="dc-props-toggle" onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))} title="Position, size, colours… (Properties)">
-                    {hidden ? `+ ${hidden} properties` : '− Fold the properties'}
+                  <button className="dc-props-toggle" onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))} title={t('Position, size, colours… (Properties)')}>
+                    {hidden ? tn(hidden, '+ {n} property', '+ {n} properties') : t('− Fold the properties')}
                   </button>
                   {isTimed(l) && (
                     <div className="ln-body">
@@ -1153,13 +1154,13 @@ function kindOf(flow: DataFlow, id: string): FieldKind | null {
 
 /** A table, 10 rows in view (more when the node is taller), scrolling. */
 function StageTable({ stage, title }: { stage: Stage | undefined; title?: string }) {
-  if (!stage) return <span className="dc-meta">Loading the data…</span>;
+  if (!stage) return <span className="dc-meta">{t('Loading the data…')}</span>;
   const types = columnTypes(stage);
   return (
     <div className="dc-table-wrap">
       <div className="dc-table-title">
         {title && <strong>{title}</strong>}
-        {stage.total} row{stage.total === 1 ? '' : 's'} · {stage.columns.length} column{stage.columns.length === 1 ? '' : 's'}
+        {tn(stage.total, '{n} row', '{n} rows')} · {tn(stage.columns.length, '{n} column', '{n} columns')}
       </div>
       <div className="dc-table-scroll" data-scroll>
         <table className="dc-table">
@@ -1169,7 +1170,7 @@ function StageTable({ stage, title }: { stage: Stage | undefined; title?: string
               {stage.columns.map((c, i) => {
                 const Icon = TYPE_ICON[types[i]];
                 return (
-                  <th key={c} title={`${c} · ${types[i]}`}>
+                  <th key={c} title={`${c} · ${t(types[i])}`}>
                     <Icon size={10} className={`dc-type t-${types[i]}`} /> {c}
                   </th>
                 );
@@ -1190,7 +1191,7 @@ function StageTable({ stage, title }: { stage: Stage | undefined; title?: string
             {!stage.rows.length && (
               <tr>
                 <td colSpan={stage.columns.length + 1} className="dc-none">
-                  No row
+                  {t('No row')}
                 </td>
               </tr>
             )}
@@ -1209,10 +1210,10 @@ function SourceBody({ node, version, data, onList }: { node: FlowNode & { type: 
   return (
     <>
       <label className="dc-inline">
-        Rows
-        <Dropdown value={node.list} options={[...(lists.includes(node.list) ? [] : [node.list]), ...lists].map((l) => ({ value: l, label: l === '' ? (Array.isArray(value) ? 'The list' : 'The whole value') : l }))} onChange={onList} />
+        {t('Rows')}
+        <Dropdown value={node.list} options={[...(lists.includes(node.list) ? [] : [node.list]), ...lists].map((l) => ({ value: l, label: l === '' ? (Array.isArray(value) ? t('The list') : t('The whole value')) : l }))} onChange={onList} />
       </label>
-      {res === null ? <span className="dc-meta">No data at this place.</span> : <StageTable stage={res?.stages[0]} />}
+      {res === null ? <span className="dc-meta">{t('No data at this place.')}</span> : <StageTable stage={res?.stages[0]} />}
     </>
   );
 }
@@ -1223,21 +1224,21 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
   const input = res?.stages[res.stages.length - 2];
   const out = res?.stages[res.stages.length - 1];
   const columns = input?.columns ?? [];
-  const colSelect = (value: string, set: (c: string) => void) => <Dropdown value={value} placeholder="Column" options={[...(columns.includes(value) || !value ? [] : [value]), ...columns].map((c) => ({ value: c, label: c }))} onChange={set} />;
+  const colSelect = (value: string, set: (c: string) => void) => <Dropdown value={value} placeholder={t('Column')} options={[...(columns.includes(value) || !value ? [] : [value]), ...columns].map((c) => ({ value: c, label: c }))} onChange={set} />;
   let settings: React.ReactNode = null;
   if (node.type === 'filter') {
     settings = (
       <>
         <div className="dc-sec">
           <span className="dc-sec-title">
-            Rows where
+            {t('Rows where')}
             {node.where.length > 1 && (
               <span className="seg tiny">
                 <button className={node.any ? '' : 'on'} onClick={() => onChange((n) => void ((n as typeof node).any = false))}>
-                  all
+                  {t('all')}
                 </button>
                 <button className={node.any ? 'on' : ''} onClick={() => onChange((n) => void ((n as typeof node).any = true))}>
-                  any
+                  {t('any')}
                 </button>
               </span>
             )}
@@ -1248,31 +1249,31 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
             return (
               <div key={i} className="dc-cond">
                 {colSelect(c.column, (column) => set({ column }))}
-                <Dropdown value={c.op} options={CONDITIONS.map((x) => ({ value: x.op, label: x.label }))} onChange={(op) => set({ op })} />
-                {op.value && <input value={c.value} placeholder="value or {key}" onChange={(e) => set({ value: e.target.value })} />}
-                <button className="icon-btn ghost" title="Remove" onClick={() => onChange((n) => void (n as typeof node).where.splice(i, 1))}>
+                <Dropdown value={c.op} options={CONDITIONS.map((x) => ({ value: x.op, label: t(x.label) }))} onChange={(op) => set({ op })} />
+                {op.value && <input value={c.value} placeholder={t('value or {key}')} onChange={(e) => set({ value: e.target.value })} />}
+                <button className="icon-btn ghost" title={t('Remove')} onClick={() => onChange((n) => void (n as typeof node).where.splice(i, 1))}>
                   <X size={11} />
                 </button>
               </div>
             );
           })}
           <button className="dc-addfilter" onClick={() => onChange((n) => void (n as typeof node).where.push({ column: columns[0] ?? '', op: 'eq', value: '' }))}>
-            <Plus size={11} /> Condition
+            <Plus size={11} /> {t('Condition')}
           </button>
         </div>
         <div className="dc-sec">
-          <span className="dc-sec-title">Rows</span>
+          <span className="dc-sec-title">{t('Rows')}</span>
           <div className="row">
-            <label className="dc-inline" title="1 = the first, −1 = the last; 0 = from the first">
-              From <input type="number" value={node.from} onChange={(e) => onChange((n) => void ((n as typeof node).from = +e.target.value))} />
+            <label className="dc-inline" title={t('1 = the first, −1 = the last; 0 = from the first')}>
+              {t('From')} <input type="number" value={node.from} onChange={(e) => onChange((n) => void ((n as typeof node).from = +e.target.value))} />
             </label>
-            <label className="dc-inline" title="0 = all">
-              Count <input type="number" min={0} value={node.count} onChange={(e) => onChange((n) => void ((n as typeof node).count = Math.max(0, +e.target.value)))} />
+            <label className="dc-inline" title={t('0 = all')}>
+              {t('Count')} <input type="number" min={0} value={node.count} onChange={(e) => onChange((n) => void ((n as typeof node).count = Math.max(0, +e.target.value)))} />
             </label>
           </div>
         </div>
         <div className="dc-sec">
-          <span className="dc-sec-title">Columns {node.columns.length ? '' : <em>all</em>}</span>
+          <span className="dc-sec-title">{t('Columns')} {node.columns.length ? '' : <em>{t('all')}</em>}</span>
           <ColumnChips columns={columns} selected={node.columns} onChange={(cols) => onChange((n) => void ((n as typeof node).columns = cols))} />
         </div>
       </>
@@ -1280,30 +1281,30 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
   } else if (node.type === 'sort') {
     settings = (
       <div className="dc-sec">
-        <span className="dc-sec-title">By</span>
+        <span className="dc-sec-title">{t('By')}</span>
         {node.keys.map((k, i) => {
           const set = (patch: Partial<typeof k>) => onChange((n) => void Object.assign((n as typeof node).keys[i], patch));
           return (
             <div key={i} className="dc-cond">
               <span className="dc-step-n">{i + 1}</span>
               {colSelect(k.column, (column) => set({ column }))}
-              <button className={`btn small ${k.descending ? '' : 'on'}`} title="Smallest first" onClick={() => set({ descending: false })}>
+              <button className={`btn small ${k.descending ? '' : 'on'}`} title={t('Smallest first')} onClick={() => set({ descending: false })}>
                 <ArrowUp size={12} />
               </button>
-              <button className={`btn small ${k.descending ? 'on' : ''}`} title="Largest first" onClick={() => set({ descending: true })}>
+              <button className={`btn small ${k.descending ? 'on' : ''}`} title={t('Largest first')} onClick={() => set({ descending: true })}>
                 <ArrowDown size={12} />
               </button>
-              <button className={`btn small ${k.numeric ? 'on' : ''}`} title="Compare as numbers (else as text)" onClick={() => set({ numeric: !k.numeric })}>
+              <button className={`btn small ${k.numeric ? 'on' : ''}`} title={t('Compare as numbers (else as text)')} onClick={() => set({ numeric: !k.numeric })}>
                 123
               </button>
-              <button className="icon-btn ghost" title="Remove" onClick={() => onChange((n) => void (n as typeof node).keys.splice(i, 1))}>
+              <button className="icon-btn ghost" title={t('Remove')} onClick={() => onChange((n) => void (n as typeof node).keys.splice(i, 1))}>
                 <X size={11} />
               </button>
             </div>
           );
         })}
         <button className="dc-addfilter" onClick={() => onChange((n) => void (n as typeof node).keys.push({ column: columns[0] ?? '', descending: true, numeric: true }))}>
-          <Plus size={11} /> {node.keys.length ? 'Then by' : 'Column'}
+          <Plus size={11} /> {node.keys.length ? t('Then by') : t('Column')}
         </button>
       </div>
     );
@@ -1311,11 +1312,11 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
     settings = (
       <>
         <div className="dc-sec">
-          <span className="dc-sec-title">On the columns {node.columns.length ? '' : <em>all</em>}</span>
+          <span className="dc-sec-title">{t('On the columns')} {node.columns.length ? '' : <em>{t('all')}</em>}</span>
           <ColumnChips columns={columns} selected={node.columns} onChange={(cols) => onChange((n) => void ((n as typeof node).columns = cols))} />
         </div>
         <div className="dc-sec">
-          <span className="dc-sec-title">Operations, in order</span>
+          <span className="dc-sec-title">{t('Operations, in order')}</span>
           <TransformSteps steps={node.ops} onChange={(ops) => onChange((n) => void ((n as typeof node).ops = ops))} />
         </div>
       </>
@@ -1324,7 +1325,7 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
   return (
     <>
       {settings}
-      {res === null ? <span className="dc-meta">No data at this place.</span> : <StageTable stage={out} title="Result" />}
+      {res === null ? <span className="dc-meta">{t('No data at this place.')}</span> : <StageTable stage={out} title={t('Result')} />}
     </>
   );
 }
@@ -1344,8 +1345,8 @@ function ColumnChips({ columns, selected, onChange }: { columns: string[]; selec
         );
       })}
       {selected.length > 0 && (
-        <button className="dc-chip clear" onClick={() => onChange([])} title="Every column">
-          All
+        <button className="dc-chip clear" onClick={() => onChange([])} title={t('Every column')}>
+          {t('All')}
         </button>
       )}
     </div>
@@ -1359,23 +1360,23 @@ function ColumnChips({ columns, selected, onChange }: { columns: string[]; selec
  */
 function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node: FlowNode & { type: 'dataset' }; chain: ReturnType<typeof chainOf>; data: Data; onColumns: (cols: string[]) => void; onRow: (row: number) => void; startWire: (e: React.PointerEvent, key: string) => void }) {
   const res = useStages(chain?.source.source ?? '', chain?.source.list ?? '', chain?.steps ?? [], data);
-  const t = chain ? res?.stages[res.stages.length - 1] : undefined;
-  const cols = t?.columns ?? [];
+  const tbl = chain ? res?.stages[res.stages.length - 1] : undefined;
+  const cols = tbl?.columns ?? [];
   useEffect(() => onColumns(cols), [cols.join('\n')]); // eslint-disable-line react-hooks/exhaustive-deps
-  const types = t ? columnTypes(t) : [];
-  const total = t?.total ?? 0;
+  const types = tbl ? columnTypes(tbl) : [];
+  const total = tbl?.total ?? 0;
   const row = Math.min(Math.max(1, parseInt(data[rowKey(node.key)] ?? '1', 10) || 1), Math.max(1, total));
   return (
     <>
       <div className="ds-col ds-all" style={{ height: DS_ROW }}>
         <Rows3 size={11} className="dc-type" />
-        <span className="ds-name">All rows</span>
-        <span className="ds-val">{t ? `${total} × ${cols.length} table` : ''}</span>
-        <span className="port out" title={`Drag to a Table, Credits, Ticker or Chart: the whole table (key ${tableKey(node.key)})`} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
+        <span className="ds-name">{t('All rows')}</span>
+        <span className="ds-val">{tbl ? t('{rows} × {columns} table', { rows: total, columns: cols.length }) : ''}</span>
+        <span className="port out" title={t('Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
       </div>
       {cols.map((c, i) => {
         const Icon = TYPE_ICON[types[i]];
-        const v = t?.rows[row - 1]?.[i] ?? '';
+        const v = tbl?.rows[row - 1]?.[i] ?? '';
         return (
           <div key={c} className="ds-col" style={{ height: DS_ROW }}>
             <Icon size={11} className={`dc-type t-${types[i]}`} />
@@ -1383,24 +1384,24 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
             <span className="ds-val" title={v}>
               <Cell v={v} />
             </span>
-            <span className="port out" title={`Drag ${c} to a layer's value (key ${columnKey(node.key, c)})`} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
+            <span className="port out" title={t("Drag {column} to a layer's value (key {key})", { column: c, key: columnKey(node.key, c) })} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
           </div>
         );
       })}
       <div className="ln-body">
-        {!chain && <span className="dc-meta">Wire a source (or a step) into it.</span>}
-        {chain && res === null && <span className="dc-meta">No data at this place.</span>}
-        {chain && t && (
+        {!chain && <span className="dc-meta">{t('Wire a source (or a step) into it.')}</span>}
+        {chain && res === null && <span className="dc-meta">{t('No data at this place.')}</span>}
+        {chain && tbl && (
           <div className="ds-cursor">
-            <span className="dc-meta">Row</span>
+            <span className="dc-meta">{t('Row')}</span>
             <b>
               {total ? row : 0} / {total}
             </b>
-            <span className="dc-meta ds-first">{t.rows[row - 1]?.find((x) => x && cellType(x) === 'text') ?? ''}</span>
-            <button className="icon-btn ghost" title="Previous row (preview)" disabled={row <= 1} onClick={() => onRow(row - 1)}>
+            <span className="dc-meta ds-first">{tbl.rows[row - 1]?.find((x) => x && cellType(x) === 'text') ?? ''}</span>
+            <button className="icon-btn ghost" title={t('Previous row (preview)')} disabled={row <= 1} onClick={() => onRow(row - 1)}>
               <ArrowLeft size={12} />
             </button>
-            <button className="icon-btn ghost" title="Next row (preview)" disabled={row >= total} onClick={() => onRow(row + 1)}>
+            <button className="icon-btn ghost" title={t('Next row (preview)')} disabled={row >= total} onClick={() => onRow(row + 1)}>
               <ArrowRight size={12} />
             </button>
           </div>
@@ -1426,16 +1427,16 @@ function TransformSteps({ steps, onChange }: { steps: DataFilter[]; onChange: (s
             <span className="dc-step-n">{i + 1}</span>
             <Dropdown
               value={f.type as string}
-              options={[...TRANSFORMS.map((x) => ({ value: x.make().type as string, label: x.label })), ...(TRANSFORMS.some((x) => x.make().type === f.type) ? [] : [{ value: f.type as string, label: f.type as string }])]}
-              onChange={(t) => set(i, TRANSFORMS.find((x) => x.make().type === t)!.make())}
+              options={[...TRANSFORMS.map((x) => ({ value: x.make().type as string, label: t(x.label) })), ...(TRANSFORMS.some((x) => x.make().type === f.type) ? [] : [{ value: f.type as string, label: f.type as string }])]}
+              onChange={(ty) => set(i, TRANSFORMS.find((x) => x.make().type === ty)!.make())}
             />
-            <button className="icon-btn ghost" title="Earlier" disabled={i === 0} onClick={() => move(i, -1)}>
+            <button className="icon-btn ghost" title={t('Earlier')} disabled={i === 0} onClick={() => move(i, -1)}>
               <ArrowUp size={11} />
             </button>
-            <button className="icon-btn ghost" title="Later" disabled={i === steps.length - 1} onClick={() => move(i, 1)}>
+            <button className="icon-btn ghost" title={t('Later')} disabled={i === steps.length - 1} onClick={() => move(i, 1)}>
               <ArrowDown size={11} />
             </button>
-            <button className="icon-btn ghost" title="Remove" onClick={() => onChange(steps.filter((_, k) => k !== i))}>
+            <button className="icon-btn ghost" title={t('Remove')} onClick={() => onChange(steps.filter((_, k) => k !== i))}>
               <X size={11} />
             </button>
           </div>
@@ -1443,7 +1444,7 @@ function TransformSteps({ steps, onChange }: { steps: DataFilter[]; onChange: (s
         </div>
       ))}
       <button className="dc-addfilter" onClick={() => onChange([...steps, { type: 'upper' }])}>
-        <Plus size={11} /> Operation
+        <Plus size={11} /> {t('Operation')}
       </button>
     </div>
   );
@@ -1457,45 +1458,45 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
   switch (f.type) {
     case 'prefix':
     case 'suffix':
-      body = text('text', f.type === 'prefix' ? 'Text before' : 'Text after');
+      body = text('text', f.type === 'prefix' ? t('Text before') : t('Text after'));
       break;
     case 'default':
-      body = text('text', 'Text when empty');
+      body = text('text', t('Text when empty'));
       break;
     case 'replace':
       body = (
         <>
-          {text('find', 'Find')}
-          {text('with', 'Replace with')}
+          {text('find', t('Find'))}
+          {text('with', t('Replace with'))}
         </>
       );
       break;
     case 'map':
       body = (
         <>
-          {text('when', 'When the value is')}
-          {text('then', 'Show')}
+          {text('when', t('When the value is'))}
+          {text('then', t('Show'))}
         </>
       );
       break;
     case 'truncate':
-      body = <label className="dc-inline">Max {number('max', 'Characters', 1)}</label>;
+      body = <label className="dc-inline">{t('Max')} {number('max', t('Characters'), 1)}</label>;
       break;
     case 'lines':
       body = (
         <div className="row">
-          <label className="dc-inline">From {number('from', 'First line (1 = first, −1 = last)')}</label>
-          <label className="dc-inline">Count {number('count', '0 = all', 0)}</label>
+          <label className="dc-inline">{t('From')} {number('from', t('First line (1 = first, −1 = last)'))}</label>
+          <label className="dc-inline">{t('Count')} {number('count', t('0 = all'), 0)}</label>
         </div>
       );
       break;
     case 'join':
-      body = text('separator', 'Separator');
+      body = text('separator', t('Separator'));
       break;
     case 'number':
       body = (
         <div className="row">
-          <label className="dc-inline">Decimals {number('decimals', 'Decimals', 0)}</label>
+          <label className="dc-inline">{t('Decimals')} {number('decimals', t('Decimals'), 0)}</label>
           <label className="dc-inline">
             <input type="checkbox" checked={f.grouping} onChange={(e) => onChange({ ...f, grouping: e.target.checked })} /> 1 000
           </label>
@@ -1508,14 +1509,14 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
           <Dropdown
             value={f.op}
             options={[
-              { value: 'add', label: '+ add' },
-              { value: 'sub', label: '− subtract' },
-              { value: 'mul', label: '× multiply' },
-              { value: 'div', label: '÷ divide' },
+              { value: 'add', label: t('+ add') },
+              { value: 'sub', label: t('− subtract') },
+              { value: 'mul', label: t('× multiply') },
+              { value: 'div', label: t('÷ divide') },
             ]}
             onChange={(op) => onChange({ ...f, op })}
           />
-          {number('value', 'Value')}
+          {number('value', t('Value'))}
         </div>
       );
       break;
@@ -1528,7 +1529,7 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
   const set = (v: string) => onChange((x) => void (x.default = v), `default-${f.key}`);
   switch (f.kind) {
     case 'multiline':
-      return <textarea rows={3} placeholder="Default value" value={f.default} onChange={(e) => set(e.target.value)} />;
+      return <textarea rows={3} placeholder={t('Default value')} value={f.default} onChange={(e) => set(e.target.value)} />;
     case 'number': {
       const min = f.min ?? 0;
       const max = f.max ?? 100;
@@ -1540,10 +1541,10 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
           </div>
           <div className="row dc-range">
             <label className="dc-inline">
-              Min <input type="number" value={min} onChange={(e) => onChange((x) => void (x.min = +e.target.value), `min-${f.key}`)} />
+              {t('Min')} <input type="number" value={min} onChange={(e) => onChange((x) => void (x.min = +e.target.value), `min-${f.key}`)} />
             </label>
             <label className="dc-inline">
-              Max <input type="number" value={max} onChange={(e) => onChange((x) => void (x.max = +e.target.value), `max-${f.key}`)} />
+              {t('Max')} <input type="number" value={max} onChange={(e) => onChange((x) => void (x.max = +e.target.value), `max-${f.key}`)} />
             </label>
           </div>
         </>
@@ -1564,11 +1565,11 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
       return (
         <label className="switch">
           <input type="checkbox" checked={f.default === 'true'} onChange={(e) => set(e.target.checked ? 'true' : 'false')} />
-          <span>{f.default === 'true' ? 'On' : 'Off'}</span>
+          <span>{f.default === 'true' ? t('On') : t('Off')}</span>
         </label>
       );
     default:
-      return <input placeholder="Default value" title="Value until the operator types another one" value={f.default} onChange={(e) => set(e.target.value)} />;
+      return <input placeholder={t('Default value')} title={t('Value until the operator types another one')} value={f.default} onChange={(e) => set(e.target.value)} />;
   }
 }
 
@@ -1577,8 +1578,8 @@ export function DataCanvasButton({ className = 'btn small' }: { className?: stri
   // What the canvas holds: its nodes and the fields fed by a source.
   const count = useDesigner((s) => (s.template?.dataflow?.nodes.length ?? 0) + (s.template?.fields.filter((f) => f.binding?.source).length ?? 0));
   return (
-    <button className={`${className} ${count ? 'on' : ''}`} onClick={() => open(true)} title="Sources, filters, variables, operations and the layers' values, on a canvas">
-      <Database size={13} /> Data{count ? ` · ${count}` : ''}
+    <button className={`${className} ${count ? 'on' : ''}`} onClick={() => open(true)} title={t("Sources, filters, variables, operations and the layers' values, on a canvas")}>
+      <Database size={13} /> {t('Data')}{count ? ` · ${count}` : ''}
     </button>
   );
 }
@@ -1595,18 +1596,18 @@ function SettingAdd({ layer, onPick }: { layer: Layer; onPick: (path: string) =>
     return () => window.removeEventListener('pointerdown', close);
   }, [open]);
   const taken = new Set(Object.keys(layer.settingBindings ?? {}));
-  const all = open ? settingPorts(layer).filter((s) => !taken.has(s.path) && !contentOf(layer).includes(s.path)) : [];
+  const all = open ? settingPorts(layer, t).filter((s) => !taken.has(s.path) && !contentOf(layer).includes(s.path)) : [];
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const list = all.filter((s) => words.every((w) => s.label.toLowerCase().includes(w)));
   const groups = [...new Set(list.map((s) => s.group))];
   return (
     <div className="dc-setadd" ref={ref}>
-      <button className="dc-props-toggle" onClick={() => setOpen(!open)} title="A colour, a size, a switch… of this widget set from the data">
-        <Plus size={11} /> Setting from data
+      <button className="dc-props-toggle" onClick={() => setOpen(!open)} title={t('A colour, a size, a switch… of this widget set from the data')}>
+        <Plus size={11} /> {t('Setting from data')}
       </button>
       {open && (
         <div className="dc-setmenu" data-scroll onWheel={(e) => e.stopPropagation()}>
-          <input autoFocus placeholder="Search a setting (colour, title…)" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)} />
+          <input autoFocus placeholder={t('Search a setting (colour, title…)')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)} />
           <div className="dc-setlist">
             {groups.map((g) => (
               <div key={g}>
@@ -1628,7 +1629,7 @@ function SettingAdd({ layer, onPick }: { layer: Layer; onPick: (path: string) =>
                   ))}
               </div>
             ))}
-            {!list.length && <em className="dc-setnone">No setting</em>}
+            {!list.length && <em className="dc-setnone">{t('No setting')}</em>}
           </div>
         </div>
       )}

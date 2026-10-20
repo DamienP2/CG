@@ -1,4 +1,5 @@
 import { LayoutTemplate, X } from 'lucide-react';
+import { t } from '../i18n';
 
 /** Top of a node canvas (Logic, Data): what it is, for which template, and Close. */
 export function CanvasHeader({ icon, title, subject, onClose, children }: { icon: React.ReactNode; title: string; subject?: string; onClose: () => void; children?: React.ReactNode }) {
@@ -14,7 +15,7 @@ export function CanvasHeader({ icon, title, subject, onClose, children }: { icon
       )}
       <div className="spacer" />
       {children}
-      <button className="icon-btn ghost" onClick={onClose} title="Close (Esc)">
+      <button className="icon-btn ghost" onClick={onClose} title={t('Close (Esc)')}>
         <X size={16} />
       </button>
     </header>
