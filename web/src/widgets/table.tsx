@@ -2,13 +2,14 @@
 // mapped columns, header row / column, merges, widths fixed / auto / %, styles per level, borders, conditional
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
-import { Pencil, Rows3, Table } from 'lucide-react';
+import { Pencil, Table } from 'lucide-react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
-import type { Data, Template } from '../engine/types';
+import type { Data } from '../engine/types';
 import { useTableEditor } from './table-editor-store';
 import { ColorField } from '../ui/fields';
 import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
-import { FitLine, tw, type FitCfg, type Overflow } from './table-text';
+import { cased, TextCell, tw, type CellText, type Overflow } from './table-text';
+import { textWidth } from '../engine/textFit';
 
 export interface Col {
   src?: string;
@@ -21,6 +22,26 @@ export interface Col {
   on?: boolean;
   /** A colour column of the data drawn as a small swatch before the text ('' = none). */
   mark?: string;
+  /** Its own text (unset = the text of all the rows). */
+  txt?: Typo;
+}
+/** Typography of a level of the table; unset = the level's default (mirrors `Typo` of the Rust module). */
+export interface Typo {
+  family?: string;
+  weight?: number;
+  size?: number;
+  spacing?: number;
+  case?: CellText['case'];
+  italic?: boolean;
+  deco?: CellText['deco'];
+  lines?: 'one' | 'multi';
+  max?: number;
+  lh?: number;
+  brk?: 'words' | 'any';
+  fit?: CellText['fit'];
+  narrow?: number;
+  small?: number;
+  then?: CellText['then'];
 }
 interface Pair {
   bg?: string;
@@ -63,6 +84,15 @@ export interface Config {
   cascade?: { on?: boolean; style?: 'slide' | 'fade' | 'flip'; offset?: number; dur?: number };
   emptyMode?: 'message' | 'hide';
   emptyText?: string;
+  txt?: { title?: Typo; header?: Typo; rows?: Typo; rank?: Typo };
+  /** Weights of the kinds of rows (0 = the rows' weight). */
+  kw?: { odd?: number; even?: number; hl?: number; top3?: number };
+  titleH?: number;
+  /** '' = the default gradient. */
+  titleBg?: string;
+  titleColor?: string;
+  /** 0 = 85 % of a row. */
+  headH?: number;
 }
 
 /** Mirrors `State` of the Rust module. */
@@ -79,7 +109,7 @@ export interface State {
 // ------------------------------------------------------------ defaults --
 const P = (bg: string, color: string) => ({ bg, color });
 export const DST = { header: P('#7c5cff', '#ffffff'), hcol: P('#232a4d', '#ffffff'), odd: P('#141a33', '#ffffff'), even: P('#1c2344', '#ffffff'), hl: P('#ff3b5c', '#ffffff'), top3: P('#2c2717', '#fff4cc'), tableBg: '#060812d9' };
-const DCOL: Required<Col> = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '' };
+const DCOL: Required<Omit<Col, 'txt'>> & { txt?: Typo } = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '' };
 export function cfg(c: Config) {
   const st = c.st ?? {};
   const b = c.borders ?? {};
@@ -115,8 +145,51 @@ export function cfg(c: Config) {
     cascade: { on: true, style: 'slide' as const, offset: 70, dur: 450, ...c.cascade },
     emptyMode: c.emptyMode ?? 'message',
     emptyText: c.emptyText ?? 'No data yet',
+    txt: { title: c.txt?.title ?? {}, header: c.txt?.header ?? {}, rows: c.txt?.rows ?? {}, rank: c.txt?.rank },
+    kw: { odd: 0, even: 0, hl: 0, top3: 0, ...c.kw },
+    titleH: c.titleH && c.titleH > 0 ? c.titleH : 64,
+    titleBg: c.titleBg ?? '',
+    titleColor: c.titleColor ?? '#ffffff',
+    headH: c.headH ?? 0,
   };
 }
+
+// --------------------------------------------------------------- texts --
+/** `t` over `b` (mirrors Text::over). */
+export function over(b: CellText, t: Typo | undefined): CellText {
+  if (!t) return b;
+  const clamp10 = (v: number) => Math.min(100, Math.max(10, v));
+  return {
+    family: t.family || b.family,
+    weight: t.weight ?? b.weight,
+    size: t.size && t.size > 0 ? t.size : b.size,
+    spacing: t.spacing ?? b.spacing,
+    case: t.case ?? b.case,
+    italic: t.italic ?? b.italic,
+    deco: t.deco ?? b.deco,
+    multi: t.lines ? t.lines === 'multi' : b.multi,
+    max: Math.max(1, t.max ?? b.max),
+    lh: t.lh && t.lh > 0 ? t.lh : b.lh,
+    anyBreak: t.brk ? t.brk === 'any' : b.anyBreak,
+    fit: t.fit ?? b.fit,
+    narrow: clamp10(t.narrow ?? b.narrow),
+    small: clamp10(t.small ?? b.small),
+    then: t.then ?? b.then,
+  };
+}
+function base(k: K, size: number, weight: number, spacing: number, cs: CellText['case']): CellText {
+  const [fit, narrow, small]: [CellText['fit'], number, number] = k.overflow === 'ellipsis' ? ['ellipsis', 100, 100] : k.overflow === 'squeeze' ? ['fit', k.minSqueeze, 100] : ['fit', k.minSqueeze, Math.min(100, (k.minSize / Math.max(1, size)) * 100)];
+  return { family: 'Inter', weight, size, spacing, case: cs, italic: false, deco: 'none', multi: false, max: 2, lh: 1.1, anyBreak: false, fit, narrow, small, then: 'ellipsis' };
+}
+export const titleText = (k: K) => over({ ...base(k, 30, 900, 1.2, 'upper'), fit: 'fit', narrow: 70, small: 60 }, k.txt.title);
+export const headerText = (k: K) => over(base(k, k.headSize, 800, k.headSize * 0.05, 'upper'), k.txt.header);
+export const rowsText = (k: K, size: number) => over(base(k, size, 700, 0, 'none'), k.txt.rows);
+export function colText(k: K, mc: MCol, size: number): CellText {
+  const rows = rowsText(k, size);
+  if (mc.col.type === 'number' && k.txt.rows.weight === undefined) rows.weight = 800;
+  return over(rows, mc.i === undefined ? k.txt.rank : mc.col.txt);
+}
+const cellW = (t: CellText) => (s: string) => textWidth(cased(t, s), { fontFamily: t.family, fontWeight: t.weight, letterSpacing: t.spacing }, t.size);
 type K = ReturnType<typeof cfg>;
 
 // ---------------------------------------------------------------- data --
@@ -163,7 +236,7 @@ export function fmtNum(s: string, f: string): string {
   return minus + (r >= 1000 ? String(r).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : String(r));
 }
 export interface MCol {
-  col: Required<Col>;
+  col: typeof DCOL;
   i?: number;
 }
 export interface MRow {
@@ -172,7 +245,7 @@ export interface MRow {
   key: string;
   rank: number;
 }
-const RANK: Required<Col> = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true, mark: '' };
+const RANK: typeof DCOL = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true, mark: '' };
 export function model(k: K, data: Data) {
   const g = gridOf(k, data);
   const head = (g[0] ?? []).map((h) => String(h ?? '').trim());
@@ -217,8 +290,8 @@ function mergeOf(k: K, m: M, row: MRow): [number, number, string] | undefined {
   if (j >= m.cols.length) return;
   return [j, Math.min(Math.max(1, +g.span), m.cols.length - j), g.text];
 }
-export const headerH = (k: K) => Math.round(k.rowH * 0.85);
-export const TITLE_H = 64;
+export const headerH = (k: K) => (k.headH > 0 ? k.headH : Math.round(k.rowH * 0.85));
+export const titleH = (k: K) => k.titleH;
 
 /** Page shown at `now` and when it appeared (0 = since on air), mirrors current_page. */
 export function currentPage(st: State, pages: number, now: number): [number, number] {
@@ -250,8 +323,10 @@ export function widths(k: K, m: M, W: number, size: number): number[] {
   }
   const nat = m.cols.map((c) => {
     if (c.col.type === 'image') return k.rowH * 0.75 + 2 * k.pad;
-    let w = tw(c.col.label.toUpperCase(), k.headSize, 800);
-    for (const r of m.rows) w = Math.max(w, tw(cellText(c, r), size, c.col.type === 'number' ? 800 : 700));
+    const hw = cellW(headerText(k));
+    const cw = cellW(colText(k, c, size));
+    let w = hw(c.col.label);
+    for (const r of m.rows) w = Math.max(w, cw(cellText(c, r)));
     return Math.min(w, 600) + 2 * k.pad + 8;
   });
   const isText = m.cols.map((c) => c.col.type === 'text' && c.i !== undefined);
@@ -294,13 +369,15 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
   const { rowH: rh, gap, pad } = k;
   const hh = headerH(k);
   const showHead = k.headerRow && (scroll || k.repeatHeader || page === 0);
-  const fit: FitCfg = { overflow: k.overflow, minSize: k.minSize, minSqueeze: k.minSqueeze };
+  const rowsT = rowsText(k, size);
+  const colTs = m.cols.map((c) => colText(k, c, size));
+  const TH = titleH(k);
   const per = k.perPage;
   const list = scroll ? m.rows : m.rows.slice(page * per, page * per + per);
   const shownN = scroll ? per : list.length;
   const clipH = !m.rows.length ? rh * 2 : Math.max(0, Math.min(per, shownN) * (rh + gap) - gap);
   let y = 0;
-  if (k.title.on) y += TITLE_H + gap;
+  if (k.title.on) y += TH + gap;
   if (showHead) y += hh + gap;
   const y0 = y;
   const totalH = y0 + clipH;
@@ -316,23 +393,24 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
   out.push(<div key="bg" style={{ position: 'absolute', left: 0, top: 0, width: w, height: totalH, background: hex(k.st.tableBg) }} />);
   let yy = 0;
   if (k.title.on) {
-    out.push(<div key="title" style={{ position: 'absolute', left: 0, top: 0, width: w, height: TITLE_H, background: 'linear-gradient(90deg,#ff3b5c,#7c5cff)' }} />);
-    out.push(<FitLine key="tt" text={k.title.text.toUpperCase()} size={30} weight={900} ls={1.2} align="left" box={[24, 0, w - 48, TITLE_H]} color="#ffffff" fit={{ overflow: 'shrink', minSize: 18, minSqueeze: 70 }} />);
-    yy += TITLE_H + gap;
+    out.push(<div key="title" style={{ position: 'absolute', left: 0, top: 0, width: w, height: TH, background: k.titleBg.trim() ? hex(k.titleBg) : 'linear-gradient(90deg,#ff3b5c,#7c5cff)' }} />);
+    out.push(<TextCell key="tt" t={titleText(k)} text={k.title.text} align="left" box={[24, 0, w - 48, TH]} color={hex(k.titleColor)} />);
+    yy += TH + gap;
   }
   if (showHead) {
     const top = yy;
+    const headT = headerText(k);
     m.cols.forEach((c, j) => {
       out.push(<div key={`h${j}`} style={{ position: 'absolute', left: xs[j], top, width: ws[j], height: hh, background: hex(k.st.header.bg) }} />);
       out.push(<span key={`hl${j}`}>{lines(false, j > 0, xs[j], top, ws[j], hh, `h${j}`)}</span>);
-      out.push(<FitLine key={`ht${j}`} text={c.col.label.toUpperCase()} size={k.headSize} weight={800} ls={k.headSize * 0.05} align={c.col.align} box={[xs[j] + pad, top, ws[j] - 2 * pad, hh]} color={hex(k.st.header.color)} fit={fit} />);
+      out.push(<TextCell key={`ht${j}`} t={headT} text={c.col.label} align={c.col.align} box={[xs[j] + pad, top, ws[j] - 2 * pad, hh]} color={hex(k.st.header.color)} />);
     });
     yy += hh + gap;
   }
   if (!m.rows.length) {
     out.push(
       <div key="empty" style={{ position: 'absolute', left: 0, top: y0, width: w, height: rh * 2, background: hex(k.st.odd.bg), opacity: 0.85 }}>
-        <FitLine text={k.emptyText} size={size} weight={700} align="center" box={[pad, 0, w - 2 * pad, rh * 2]} color={hex(k.st.odd.color)} fit={fit} />
+        <TextCell t={rowsT} text={k.emptyText} align="center" box={[pad, 0, w - 2 * pad, rh * 2]} color={hex(k.st.odd.color)} />
       </div>,
     );
   } else {
@@ -392,7 +470,12 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
           tx0 += s * 1.6;
         }
         if (type === 'image') cells.push(<Picture key={`p${j}`} v={txt} cx={x + cw / 2} cy={rh / 2} h={Math.round(rh * 0.5)} />);
-        else cells.push(<FitLine key={`t${j}`} text={txt} size={size} weight={type === 'number' ? 800 : 700} align={align} box={[tx0, 0, cw - pad - (tx0 - x), rh]} color={hex(color)} fit={fit} style={type === 'number' ? { fontVariantNumeric: 'tabular-nums' } : undefined} />);
+        else {
+          const t = merge && merge[0] === j ? { ...rowsT } : { ...colTs[j] };
+          const kw = hl ? k.kw.hl : top3 ? k.kw.top3 : row.rank % 2 ? k.kw.odd : k.kw.even;
+          if (kw) t.weight = kw;
+          cells.push(<TextCell key={`t${j}`} t={t} text={txt} align={align} box={[tx0, 0, cw - pad - (tx0 - x), rh]} color={hex(color)} style={type === 'number' ? { fontVariantNumeric: 'tabular-nums' } : undefined} />);
+        }
       });
       rowsOut.push(
         <div key={`r${i}`} style={{ position: 'absolute', left: 0, top: ry, width: w, height: rh, transform, transformOrigin: 'left top', opacity }}>
@@ -467,7 +550,7 @@ function warningsOf(layer: TL, data: Data, state: unknown, W: number, H: number)
     const sum = m.cols.filter((c) => c.i !== undefined).reduce((a, c) => a + (+c.col.pct || 0), 0);
     if (Math.abs(sum - 100) > 0.5) out.push({ level: 'warn', text: `Column widths total ${sum} % (should be 100 %).` });
   }
-  const need = (k.title.on ? TITLE_H + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0) + Math.min(k.perPage, Math.max(1, m.rows.length)) * (k.rowH + k.gap) + (k.indicator && pages > 1 && k.pageMode === 'pages' ? 70 : 0);
+  const need = (k.title.on ? titleH(k) + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0) + Math.min(k.perPage, Math.max(1, m.rows.length)) * (k.rowH + k.gap) + (k.indicator && pages > 1 && k.pageMode === 'pages' ? 70 : 0);
   if (need > H + 1) out.push({ level: 'warn', text: `The table (${Math.round(need)} px) is taller than the box (${Math.round(H)} px): fewer rows per page or a smaller row height.` });
   let cut = 0;
   m.rows.forEach((r) => m.cols.forEach((c, j) => c.col.type === 'text' && c.i !== undefined && tw(cellText(c, r), size, 700) > ws[j] - 2 * k.pad && cut++));
@@ -501,7 +584,8 @@ export default defineWidget({
     return k.cascade.on || k.pageMode === 'scroll';
   },
   Render: ({ layer, r, w, data, time, state }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} />,
-  Inspector: ({ layer, data, template }) => <TableCard layer={layer as unknown as TL} data={data} template={template} />,
+  Inspector: ({ layer }) => <TableCard layer={layer as unknown as TL} />,
+  quiet: true,
   Operator: ({ layer, state, data, act, time }) => {
     const now = useFrame() + (time.nowMs - Date.now());
     const k = cfg(layer);
@@ -525,8 +609,8 @@ export default defineWidget({
         )}
         <Btns
           list={[
-            { label: '◀ Previous', cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
-            { label: 'Next ▶', cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
+            { label: 'Previous', cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
+            { label: 'Next', cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
           ]}
         />
         {!scroll && pages > 1 && <Btns label="Go to page" list={Array.from({ length: pages }, (_, i) => ({ label: String(i + 1), cls: i === page ? 'violet' : 'ghost', title: `Go to page ${i + 1}`, onClick: () => act('go', { page: i + 1 }) }))} />}
@@ -550,7 +634,7 @@ export default defineWidget({
   },
   Overlay: ({ layer, scale, edit }) => {
     const k = cfg(layer);
-    const top = (k.title.on ? TITLE_H + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0);
+    const top = (k.title.on ? titleH(k) + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0);
     return <Handle x={-14 / scale} y={top + k.rowH} scale={scale} label={`Row height ${k.rowH} px`} onDrag={(_, y) => edit((l) => void (l.rowH = clamp(Math.round(y - top), 30, 160)), `rowh-${layer.id}`)} />;
   },
   warnings: (layer, { data, state, r }) => warningsOf(layer as unknown as TL, data, state, vnum(r?.width ?? (layer.props.width as number) ?? 0), vnum(r?.height ?? (layer.props.height as number) ?? 0)),
@@ -566,25 +650,11 @@ export function ColorPickRow({ label, path, value }: { label: string; path: stri
   );
 }
 
-/** The right panel: what the table shows, and the button to its editor (every setting is there). */
-function TableCard({ layer, data, template }: { layer: TL; data: Data; template: Template }) {
-  const open = useTableEditor((s) => s.open);
-  const k = cfg(layer);
-  const m = model(k, data);
-  const dsKey = /\{\{(\w+)__table\}\}/.exec(k.link)?.[1];
-  const ds = dsKey ? template.datasets?.find((d) => d.key === dsKey) : undefined;
-  const ncols = m.cols.filter((c) => c.i !== undefined).length;
+/** The right panel: the button to the table's editor (every setting is there). */
+function TableCard({ layer }: { layer: TL }) {
+  const open = useTableEditor((st) => st.open);
   return (
     <div className="te-card">
-      <div className="te-sum">
-        <span className={`te-chip ${ds || k.link.trim() ? 'data' : ''}`}>
-          <Rows3 size={11} /> {ds ? `${ds.name} · All rows` : k.link.trim() ? 'Linked data' : 'Rows by hand'}
-        </span>
-        <span className="te-chip">
-          {ncols} column{ncols === 1 ? '' : 's'}
-        </span>
-        <span className="te-chip">{k.pageMode === 'scroll' ? 'Scrolling' : `${k.perPage} rows per page`}</span>
-      </div>
       <button className="btn primary te-edit" onClick={() => open(layer.id)}>
         <Pencil size={14} /> Edit the table
       </button>

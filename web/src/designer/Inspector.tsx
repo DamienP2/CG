@@ -1,4 +1,6 @@
 import { Boundary } from '../ui/Boundary';
+import { Dropdown } from '../ui/Dropdown';
+import { FontPick } from '../ui/FontPick';
 import { AssetPicker } from './AssetPicker';
 import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
@@ -10,7 +12,7 @@ import { MAIN_FORMAT, TEXT_LIKE, type TextOverflow, type Easing, type FontStyle,
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
-import { loadFonts, nearestWeight, useFonts } from '../engine/fonts';
+import { loadFonts, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
 import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, useDesigner } from './designerStore';
 import { isTimed } from '../engine/widgets';
@@ -461,12 +463,16 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
       return (
         <>
           <Row label="Mode">
-            <select value={layer.mode} onChange={(e) => set('mode', e.target.value)}>
-              <option value="time">Time of day</option>
-              <option value="countdown">Countdown to…</option>
-              <option value="timer">Timer (from take)</option>
-              <option value="elapsed">Stopwatch (since take)</option>
-            </select>
+            <Dropdown
+              value={layer.mode}
+              onChange={(v) => set('mode', v)}
+              options={[
+                { value: 'time', label: 'Time of day' },
+                { value: 'countdown', label: 'Countdown to…' },
+                { value: 'timer', label: 'Timer (from take)' },
+                { value: 'elapsed', label: 'Stopwatch (since take)' },
+              ]}
+            />
           </Row>
           <Row label="Format">
             <input list="clock-formats" value={layer.format} onChange={(e) => set('format', e.target.value, true)} onKeyDown={(e) => e.stopPropagation()} />
@@ -652,18 +658,6 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
   }
 }
 
-const WEIGHT_NAMES: Record<number, string> = {
-  100: 'Thin',
-  200: 'ExtraLight',
-  300: 'Light',
-  400: 'Regular',
-  500: 'Medium',
-  600: 'SemiBold',
-  700: 'Bold',
-  800: 'ExtraBold',
-  900: 'Black',
-};
-
 /** Font picker: the fonts the server really has (bundled, uploaded, system). */
 export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (key: string, v: unknown) => void }) {
   const families = useFonts((s) => s.families);
@@ -671,50 +665,11 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
   useEffect(() => {
     if (!families.length) void loadFonts();
   }, [families.length]);
-  const current = families.find((f) => f.family.toLowerCase() === layer.fontFamily.toLowerCase());
-  const weights = current?.weights ?? [400, 700];
-  const groups: [string, typeof families][] = [
-    ['Uploaded', families.filter((f) => f.source === 'uploaded')],
-    ['Built in', families.filter((f) => f.source === 'bundled')],
-    ['Server', families.filter((f) => f.source === 'system')],
-  ];
 
   return (
     <>
       <KitRow label="Font" expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }}>
-        <select
-          value={current?.family ?? layer.fontFamily}
-          onChange={(e) => {
-            const fam = families.find((f) => f.family === e.target.value);
-            set('fontFamily', e.target.value);
-            // Keep a weight that exists in the new family.
-            if (fam && !fam.weights.includes(layer.fontWeight)) set('fontWeight', nearestWeight(fam, layer.fontWeight));
-          }}
-          style={{ fontFamily: `"${current?.family ?? layer.fontFamily}"` }}
-        >
-          {!current && <option value={layer.fontFamily}>{layer.fontFamily} (missing on the server)</option>}
-          {groups
-            .filter(([, list]) => list.length)
-            .map(([label, list]) => (
-              <optgroup key={label} label={label}>
-                {list.map((f) => (
-                  <option key={f.family} value={f.family} style={{ fontFamily: `"${f.family}"` }}>
-                    {f.family}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-        </select>
-        <select value={layer.fontWeight} onChange={(e) => set('fontWeight', +e.target.value)}>
-          {[...new Set([...weights, layer.fontWeight])]
-            .sort((a, b) => a - b)
-            .map((w) => (
-              <option key={w} value={w}>
-                {WEIGHT_NAMES[w] ?? w}
-                {weights.includes(w) ? '' : ' (n/a)'}
-              </option>
-            ))}
-        </select>
+        <FontPick family={layer.fontFamily} weight={layer.fontWeight} onChange={(f, w) => (set('fontFamily', f), w !== layer.fontWeight && set('fontWeight', w))} />
       </KitRow>
       <KitRow label="Align" expose={['align', 'verticalAlign', 'uppercase']} exposeValue={{ align: layer.align, verticalAlign: layer.verticalAlign, uppercase: !!layer.uppercase }}>
         <Segmented
@@ -960,14 +915,14 @@ function SpecInspector({ layer }: { layer: Layer }) {
   };
   const Op = def.Operator;
   const r = resolveLayer(layer, useDesigner.getState().frame, data, holdFrame(template));
-  const warnings = (def.warnings?.(layer as never, { data, state, r }) ?? []).filter((w) => w.op !== 'only');
+  const warnings = def.quiet ? [] : (def.warnings?.(layer as never, { data, state, r }) ?? []).filter((w) => w.op !== 'only');
   return (
     <Bound obj={layer} set={set} data={data}>
       <FirstSection.Provider value={claimFirst}>
         <Warnings list={warnings} />
         <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
         {Op && (
-          <SpecSection id={`try-${def.id}`} title="Operator · try it" closed>
+          <SpecSection id={`try-${def.id}`} title="Operator" closed>
             <div className="wk-op">
               <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
             </div>

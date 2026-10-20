@@ -15,6 +15,8 @@ export interface DropOption<V extends string> {
   group?: string;
   /** Muted text after the label (a unit, a hint). */
   note?: string;
+  /** Style of the label (a font shown in itself). */
+  style?: React.CSSProperties;
 }
 
 export function Dropdown<V extends string>({ value, options, onChange, title, placeholder = '—', className = '' }: { value: V; options: readonly DropOption<V>[]; onChange: (v: V) => void; title?: string; placeholder?: string; className?: string }) {
@@ -97,7 +99,7 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onKey}
       >
-        <span className="dd-label">{current?.label ?? (value || placeholder)}</span>
+        <span className="dd-label" style={current?.style}>{current?.label ?? (value || placeholder)}</span>
         <ChevronDown size={12} />
       </button>
       {open &&
@@ -118,7 +120,7 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
                   {head && <div className="dd-group">{head}</div>}
                   <div role="option" aria-selected={o.value === value} className={`dd-opt ${o.value === value ? 'on' : ''} ${i === hover ? 'hover' : ''}`} onPointerEnter={() => setHover(i)} onClick={() => pick(o.value)}>
                     <span className="dd-check">{o.value === value && <Check size={12} />}</span>
-                    <span className="dd-text">{o.label}</span>
+                    <span className="dd-text" style={o.style}>{o.label}</span>
                     {o.note && <span className="dd-note">{o.note}</span>}
                   </div>
                 </div>

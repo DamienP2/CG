@@ -1,4 +1,5 @@
 import { HYPHEN_LANGS } from '../engine/textFit';
+import { Dropdown } from '../ui/Dropdown';
 import { ChevronDown, History, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../engine/types';
@@ -159,13 +160,7 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
             <FormatButtons width={project.width} height={project.height} rate={project.frameRate} disabled={readOnly} onSize={(w, h) => void setSize(w, h)} onRate={(r) => void setRate(r)} />
             <label className="pjp-lang" title="Hyphenation rules and French spaces of every text of the project">
               <span>Language of the texts</span>
-              <select value={project.language ?? 'fr'} disabled={readOnly} onChange={(e) => void meta({ language: e.target.value })}>
-                {HYPHEN_LANGS.map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
+              <Dropdown value={project.language ?? 'fr'} options={HYPHEN_LANGS.map(([v, l]) => ({ value: v, label: l }))} onChange={(v) => !readOnly && void meta({ language: v })} />
             </label>
           </>
         )}

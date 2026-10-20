@@ -2,8 +2,9 @@
 
 use ab_glyph::FontArc;
 use cg_core::wid::table::{
-    cell_text, current_page, header_h, merge_of, model, page_count, Align, CascadeStyle, ColKind,
-    Config, EmptyMode, MRow, Model, Overflow, PageMode, State, TITLE_H,
+    cell_text, col_text, current_page, header_h, header_text, merge_of, model, page_count,
+    rows_text, title_h as title_height, Align, CascadeStyle, ColKind, Config, Deco, EmptyMode,
+    FitMode, MRow, Model, Overflow, PageMode, State, Text, Then,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -105,6 +106,218 @@ pub(crate) fn fitted_path(
     (p, changed)
 }
 
+/// A text cut to `max_w`: with "…" (`dots`) or plainly.
+fn cut_to(width: &dyn Fn(&str, f32) -> f32, s: &str, size: f32, max_w: f32, dots: bool) -> String {
+    if width(s, size) <= max_w + 0.5 {
+        return s.to_string();
+    }
+    let mut ch: Vec<char> = s.chars().collect();
+    loop {
+        let t: String = ch.iter().collect();
+        let t = if dots {
+            t.trim_end().to_string() + "…"
+        } else {
+            t
+        };
+        if ch.is_empty() || width(&t, size) <= max_w + 0.5 {
+            return t;
+        }
+        ch.pop();
+    }
+}
+
+/// Lines of `s` at most `max_w` wide: between words, or anywhere.
+fn wrap_cell(
+    width: &dyn Fn(&str, f32) -> f32,
+    s: &str,
+    size: f32,
+    max_w: f32,
+    any: bool,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for para in s.split('\n') {
+        let mut cur = String::new();
+        if any {
+            for ch in para.chars() {
+                let next = format!("{cur}{ch}");
+                if !cur.is_empty() && width(&next, size) > max_w + 0.5 {
+                    out.push(std::mem::take(&mut cur).trim_end().to_string());
+                    cur = ch.to_string().trim_start().to_string();
+                } else {
+                    cur = next;
+                }
+            }
+        } else {
+            for word in para.split(' ') {
+                let next = if cur.is_empty() {
+                    word.to_string()
+                } else {
+                    format!("{cur} {word}")
+                };
+                if !cur.is_empty() && width(&next, size) > max_w + 0.5 {
+                    out.push(std::mem::take(&mut cur));
+                    cur = word.to_string();
+                } else {
+                    cur = next;
+                }
+            }
+        }
+        out.push(cur);
+    }
+    out
+}
+
+fn block_h(n: usize, size: f32, lh: f32) -> f32 {
+    if n == 0 {
+        0.0
+    } else {
+        (n - 1) as f32 * size * lh + size
+    }
+}
+
+/// How a text fits its cell with its level's settings: (lines, size, horizontal scale).
+/// Mirrors `fitCell` of web/src/widgets/table-text.tsx.
+pub(crate) fn fit_cell(
+    width: &dyn Fn(&str, f32) -> f32,
+    t: &Text,
+    s: &str,
+    w: f32,
+    h: f32,
+) -> (String, f32, f32) {
+    let size0 = t.size.max(1.0);
+    let (w, h) = (w.max(1.0), h.max(1.0));
+    let dots_after_fit = t.then == Then::Ellipsis;
+    if !t.multi {
+        let w0 = width(s, size0);
+        if w0 <= w + 0.5 {
+            return (s.to_string(), size0, 1.0);
+        }
+        return match t.fit {
+            FitMode::Ellipsis => (cut_to(width, s, size0, w, true), size0, 1.0),
+            FitMode::Clip => (cut_to(width, s, size0, w, false), size0, 1.0),
+            FitMode::Fit => {
+                let narrow = t.narrow / 100.0;
+                if w / w0 >= narrow {
+                    return (s.to_string(), size0, w / w0);
+                }
+                let min = size0 * t.small / 100.0;
+                let fits = |sz: f32| width(s, sz) * narrow <= w + 0.5;
+                if !fits(min) {
+                    return (
+                        cut_to(width, s, min, w / narrow, dots_after_fit),
+                        min,
+                        narrow,
+                    );
+                }
+                let (mut lo, mut hi) = (min, size0);
+                for _ in 0..14 {
+                    let mid = (lo + hi) / 2.0;
+                    if fits(mid) {
+                        lo = mid;
+                    } else {
+                        hi = mid;
+                    }
+                }
+                let sx = (w / width(s, lo)).clamp(narrow, 1.0);
+                (s.to_string(), lo, sx)
+            }
+        };
+    }
+    let max = t.max.max(1) as usize;
+    let lines = |sz: f32| wrap_cell(width, s, sz, w, t.any_break);
+    let fits = |sz: f32| {
+        let l = lines(sz);
+        l.len() <= max
+            && block_h(l.len(), sz, t.lh) <= h + 0.5
+            && l.iter().all(|x| width(x, sz) <= w + 0.5)
+    };
+    if fits(size0) {
+        return (lines(size0).join("\n"), size0, 1.0);
+    }
+    let mut size = size0;
+    if t.fit == FitMode::Fit {
+        let min = size0 * t.small / 100.0;
+        if fits(min) {
+            let (mut lo, mut hi) = (min, size0);
+            for _ in 0..14 {
+                let mid = (lo + hi) / 2.0;
+                if fits(mid) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            return (lines(lo).join("\n"), lo, 1.0);
+        }
+        size = min;
+    }
+    // Still too long: the lines that fit, ending with "…" or a cut.
+    let dots = match t.fit {
+        FitMode::Ellipsis => true,
+        FitMode::Clip => false,
+        FitMode::Fit => dots_after_fit,
+    };
+    let room = (((h - size) / (size * t.lh)).floor().max(0.0) as usize + 1)
+        .min(max)
+        .max(1);
+    let mut l = lines(size);
+    let more = l.len() > room;
+    l.truncate(room);
+    let n = l.len();
+    for (i, line) in l.iter_mut().enumerate() {
+        if i + 1 == n && more && dots {
+            *line = cut_to(width, &format!("{line}…"), size, w, true);
+            if !line.ends_with('…') {
+                line.push('…');
+            }
+        } else {
+            *line = cut_to(width, line, size, w, dots);
+        }
+    }
+    (l.join("\n"), size, 1.0)
+}
+
+/// A text in (x, y, w, h) with its level's typography (font, case, spacing, lines, italic,
+/// underline) and too-long rule.
+pub(crate) fn text_path(
+    d: &mut Draw,
+    t: &Text,
+    s: &str,
+    align: TextAlign,
+    (x, y, w, h): (f32, f32, f32, f32),
+) -> Option<tiny_skia::Path> {
+    let font = super::text::paint::main_font(d, &t.family, t.weight)?;
+    let s = t.cased(s);
+    let ls = t.spacing;
+    let width = |txt: &str, size: f32| tx::text_width(&font, txt, size, ls);
+    let (text, size, sx) = fit_cell(&width, t, &s, w, h);
+    let style = tx::TextStyle {
+        size,
+        letter_spacing: ls,
+        align,
+        vertical_align: VerticalAlign::Middle,
+        box_w: (w / sx).max(1.0),
+        box_h: h.max(size),
+        line_height: if t.multi { t.lh } else { tx::LINE_HEIGHT },
+        decoration: match t.deco {
+            Deco::None => cg_core::TextDecoration::None,
+            Deco::Underline => cg_core::TextDecoration::Underline,
+            Deco::Strike => cg_core::TextDecoration::LineThrough,
+        },
+    };
+    let skew = if t.italic { 0.25 } else { 0.0 };
+    tx::layout_text(&font, &text, &style).and_then(|p| {
+        p.transform(Transform::from_row(
+            sx,
+            0.0,
+            -skew,
+            1.0,
+            x + skew * h / 2.0,
+            y,
+        ))
+    })
+}
+
 pub(crate) fn align_of(a: Align) -> TextAlign {
     match a {
         Align::Left => TextAlign::Left,
@@ -137,30 +350,32 @@ pub(crate) fn widths(d: &mut Draw, c: &Config, m: &Model, size: f32) -> Vec<f32>
                 .collect()
         }
         cg_core::wid::table::WidthMode::Auto => {
-            let f7 = d.font(FAMILY, 700);
-            let f8 = d.font(FAMILY, 800);
-            let (Some(f7), Some(f8)) = (f7, f8) else {
+            let ht = header_text(c);
+            let Some(hf) = super::text::paint::main_font(d, &ht.family, ht.weight) else {
                 return vec![avail / n.max(1) as f32; n];
             };
-            let nat: Vec<f32> = m
-                .cols
-                .iter()
-                .map(|x| {
-                    if x.col.kind == ColKind::Image {
-                        return c.row_h * 0.75 + 2.0 * c.pad;
-                    }
-                    let mut w = tx::text_width(&f8, &x.col.label.to_uppercase(), c.head_size, 0.0);
-                    for r in &m.rows {
-                        let f = if x.col.kind == ColKind::Number {
-                            &f8
-                        } else {
-                            &f7
-                        };
-                        w = w.max(tx::text_width(f, &cell_text(x, r), size, 0.0));
-                    }
-                    w.min(600.0) + 2.0 * c.pad + 8.0
-                })
-                .collect();
+            let mut nat = Vec::with_capacity(n);
+            for x in &m.cols {
+                if x.col.kind == ColKind::Image {
+                    nat.push(c.row_h * 0.75 + 2.0 * c.pad);
+                    continue;
+                }
+                let t = col_text(c, x, size);
+                let Some(f) = super::text::paint::main_font(d, &t.family, t.weight) else {
+                    nat.push(avail / n.max(1) as f32);
+                    continue;
+                };
+                let mut w = tx::text_width(&hf, &ht.cased(&x.col.label), ht.size, ht.spacing);
+                for r in &m.rows {
+                    w = w.max(tx::text_width(
+                        &f,
+                        &t.cased(&cell_text(x, r)),
+                        t.size,
+                        t.spacing,
+                    ));
+                }
+                nat.push(w.min(600.0) + 2.0 * c.pad + 8.0);
+            }
             let is_text: Vec<bool> = m
                 .cols
                 .iter()
@@ -262,14 +477,10 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let (rh, gap, pad) = (c.row_h, c.gap, c.pad);
     let hh = header_h(&c);
     let show_head = c.header_row && (scroll || c.repeat_header || page == 0);
-    let title_h = if c.title.on { TITLE_H } else { 0.0 };
+    let title_h = if c.title.on { title_height(&c) } else { 0.0 };
+    let rows_t = rows_text(&c, size);
     let boxed = d.boxed();
     let bm = boxed.as_ref();
-    let fit = Fit {
-        overflow: c.overflow,
-        min_size: c.min_size,
-        min_squeeze: c.min_squeeze,
-    };
     let per = c.per_page.max(1) as usize;
     let list: Vec<&MRow> = if scroll {
         m.rows.iter().collect()
@@ -332,7 +543,9 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         };
     let mut yy = 0.0;
     if c.title.on {
-        if let Some(p) = rrect(0.0, 0.0, d.w, title_h, 0.0) {
+        if !c.title_bg.trim().is_empty() {
+            rect(d, 0.0, 0.0, d.w, title_h, 0.0, Draw::hex(&c.title_bg), bm);
+        } else if let Some(p) = rrect(0.0, 0.0, d.w, title_h, 0.0) {
             let grad = LinearGradient::new(
                 Point::from_xy(0.0, 0.0),
                 Point::from_xy(d.w, 0.0),
@@ -344,54 +557,40 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                 Transform::identity(),
             );
             if let Some(sh) = grad {
-                let paint = Paint {
+                let mut paint = Paint {
                     shader: sh,
                     anti_alias: true,
                     ..Paint::default()
                 };
-                let mut paint = paint;
                 paint.shader.apply_opacity(d.opacity);
                 d.fill_paint(&p, &paint, FillRule::Winding, bm);
             }
         }
-        if let Some(f) = d.font(FAMILY, 900) {
-            let (p, _) = fitted_path(
-                &f,
-                &c.title.text.to_uppercase(),
-                30.0,
-                30.0 * 0.04,
-                TextAlign::Left,
-                (24.0, 0.0, d.w - 48.0, title_h),
-                Some(Fit {
-                    overflow: Overflow::Shrink,
-                    min_size: 18.0,
-                    min_squeeze: 70.0,
-                }),
-            );
-            if let Some(p) = p {
-                d.fill(&p, Color::WHITE, FillRule::Winding, bm);
-            }
+        let tt = cg_core::wid::table::title_text(&c);
+        if let Some(p) = text_path(
+            d,
+            &tt,
+            &c.title.text,
+            TextAlign::Left,
+            (24.0, 0.0, d.w - 48.0, title_h),
+        ) {
+            d.fill(&p, Draw::hex(&c.title_color), FillRule::Winding, bm);
         }
         yy += title_h + gap;
     }
     if show_head {
-        let hf = d.font(FAMILY, 800);
+        let ht = header_text(&c);
         for (j, mc) in m.cols.iter().enumerate() {
             rect(d, xs[j], yy, ws[j], hh, 0.0, Draw::hex(&c.st.header.bg), bm);
             lines(d, xs[j], yy, ws[j], hh, false, j > 0, bm);
-            if let Some(f) = &hf {
-                let (p, _) = fitted_path(
-                    f,
-                    &mc.col.label.to_uppercase(),
-                    c.head_size,
-                    c.head_size * 0.05,
-                    align_of(mc.col.align),
-                    (xs[j] + pad, yy, ws[j] - 2.0 * pad, hh),
-                    Some(fit),
-                );
-                if let Some(p) = p {
-                    d.fill(&p, Draw::hex(&c.st.header.color), FillRule::Winding, bm);
-                }
+            if let Some(p) = text_path(
+                d,
+                &ht,
+                &mc.col.label,
+                align_of(mc.col.align),
+                (xs[j] + pad, yy, ws[j] - 2.0 * pad, hh),
+            ) {
+                d.fill(&p, Draw::hex(&c.st.header.color), FillRule::Winding, bm);
             }
         }
         yy += hh + gap;
@@ -401,24 +600,19 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         let o = 0.85;
         let bg = with_alpha(Draw::hex(&c.st.odd.bg), o);
         rect(d, 0.0, y0, d.w, rh * 2.0, 0.0, bg, bm);
-        if let Some(f) = d.font(FAMILY, 700) {
-            let (p, _) = fitted_path(
-                &f,
-                &c.empty_text,
-                size,
-                0.0,
-                TextAlign::Center,
-                (pad, y0, d.w - 2.0 * pad, rh * 2.0),
-                Some(fit),
+        if let Some(p) = text_path(
+            d,
+            &rows_t,
+            &c.empty_text,
+            TextAlign::Center,
+            (pad, y0, d.w - 2.0 * pad, rh * 2.0),
+        ) {
+            d.fill(
+                &p,
+                with_alpha(Draw::hex(&c.st.odd.color), o),
+                FillRule::Winding,
+                bm,
             );
-            if let Some(p) = p {
-                d.fill(
-                    &p,
-                    with_alpha(Draw::hex(&c.st.odd.color), o),
-                    FillRule::Winding,
-                    bm,
-                );
-            }
         }
     } else {
         let region = d.clip(0.0, y0, d.w, clip_h);
@@ -435,8 +629,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         } else {
             list.clone()
         };
-        let f7 = d.font(FAMILY, 700);
-        let f8 = d.font(FAMILY, 800);
+        let col_ts: Vec<Text> = m.cols.iter().map(|mc| col_text(&c, mc, size)).collect();
         let (tf0, op0) = (d.tf, d.opacity);
         for (i, row) in shown.iter().enumerate() {
             let ry = y0 + i as f32 * step - off;
@@ -550,20 +743,31 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                         tx0 += s * 1.6;
                     }
                 }
-                let f = if kind == ColKind::Number { &f8 } else { &f7 };
-                if let Some(f) = f {
-                    let (p, _) = fitted_path(
-                        f,
-                        &txt,
-                        size,
-                        0.0,
-                        align_of(align),
-                        (tx0, ry, w - pad - (tx0 - x), rh),
-                        Some(fit),
-                    );
-                    if let Some(p) = p {
-                        d.fill(&p, color, FillRule::Winding, rm);
-                    }
+                let mut t = if merge.is_some_and(|g| g.0 == j) {
+                    rows_t.clone()
+                } else {
+                    col_ts[j].clone()
+                };
+                let kw = if look.hl {
+                    c.kw.hl
+                } else if look.top3 {
+                    c.kw.top3
+                } else if row.rank % 2 == 1 {
+                    c.kw.odd
+                } else {
+                    c.kw.even
+                };
+                if kw > 0 {
+                    t.weight = kw;
+                }
+                if let Some(p) = text_path(
+                    d,
+                    &t,
+                    &txt,
+                    align_of(align),
+                    (tx0, ry, w - pad - (tx0 - x), rh),
+                ) {
+                    d.fill(&p, color, FillRule::Winding, rm);
                 }
             }
             d.tf = tf0;
@@ -673,5 +877,72 @@ pub(crate) fn draw_picture(d: &mut Draw, v: &str, cx: f32, cy: f32, h: f32, m: O
         ) {
             d.fill(&p, Draw::hex("#cbd5e1"), FillRule::Winding, m);
         }
+    }
+}
+
+#[cfg(test)]
+mod fit_tests {
+    use super::fit_cell;
+    use cg_core::wid::table::{Config, Lines, Text, Typo};
+
+    /// 10 px wide per character at size 20 (half the size per character).
+    fn width(s: &str, size: f32) -> f32 {
+        s.chars().count() as f32 * size * 0.5
+    }
+    fn text(t: Typo) -> Text {
+        let mut c = Config::default();
+        c.txt.rows = t;
+        cg_core::wid::table::rows_text(&c, 20.0)
+    }
+
+    #[test]
+    fn one_line_fits_narrower_then_smaller_then_ellipsis() {
+        let t = text(Typo::default());
+        // Fits as it is.
+        assert_eq!(
+            fit_cell(&width, &t, "abcd", 100.0, 40.0),
+            ("abcd".into(), 20.0, 1.0)
+        );
+        // A bit too wide: narrower only.
+        let (s, size, sx) = fit_cell(&width, &t, "abcdefghijk", 100.0, 40.0);
+        assert_eq!((s.as_str(), size), ("abcdefghijk", 20.0));
+        assert!((0.7..1.0).contains(&sx));
+        // Much too wide: at the minimums, then "…".
+        let (s, _, _) = fit_cell(&width, &t, &"x".repeat(80), 100.0, 40.0);
+        assert!(s.ends_with('…'));
+    }
+
+    #[test]
+    fn ellipsis_and_cut() {
+        let e = text(Typo {
+            fit: Some(cg_core::wid::table::FitMode::Ellipsis),
+            ..Typo::default()
+        });
+        let (s, size, sx) = fit_cell(&width, &e, "abcdefghijkl", 100.0, 40.0);
+        assert_eq!((size, sx), (20.0, 1.0));
+        assert_eq!(s, "abcdefghi…");
+        let c = text(Typo {
+            fit: Some(cg_core::wid::table::FitMode::Clip),
+            ..Typo::default()
+        });
+        assert_eq!(
+            fit_cell(&width, &c, "abcdefghijkl", 100.0, 40.0).0,
+            "abcdefghij"
+        );
+    }
+
+    #[test]
+    fn several_lines_wrap_then_shrink() {
+        let t = text(Typo {
+            lines: Some(Lines::Multi),
+            max: Some(2),
+            ..Typo::default()
+        });
+        // Two words on two lines at full size.
+        let (s, size, _) = fit_cell(&width, &t, "Paris Germain", 80.0, 60.0);
+        assert_eq!((s.as_str(), size), ("Paris\nGermain", 20.0));
+        // Three lines needed: smaller until two fit, or "…" at the minimum.
+        let (s, _, _) = fit_cell(&width, &t, "Olympique de Marseille Club", 80.0, 60.0);
+        assert!(s.lines().count() <= 2);
     }
 }

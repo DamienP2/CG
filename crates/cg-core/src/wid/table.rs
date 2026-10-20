@@ -49,6 +49,9 @@ pub struct Col {
     pub on: bool,
     /// A colour column of the data drawn as a small swatch before the text ("" = none).
     pub mark: String,
+    /// Its own text (None = the text of all the rows).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub txt: Option<Typo>,
 }
 
 impl Default for Col {
@@ -63,7 +66,270 @@ impl Default for Col {
             fmt: "0".into(),
             on: true,
             mark: String::new(),
+            txt: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Case {
+    #[default]
+    None,
+    Upper,
+    Lower,
+    Title,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Deco {
+    #[default]
+    None,
+    Underline,
+    Strike,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Lines {
+    #[default]
+    One,
+    Multi,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Break {
+    #[default]
+    Words,
+    Any,
+}
+
+/// What a too-long text does: narrower then smaller (then `then`), "…", or cut.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FitMode {
+    #[default]
+    Fit,
+    Ellipsis,
+    Clip,
+}
+
+/// After Fit, what still does not fit: "…" or a plain cut.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Then {
+    #[default]
+    Ellipsis,
+    Clip,
+}
+
+/// Typography of a level of the table (title, header, rows, a column). Every
+/// field is optional: unset = the level's default.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Typo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<f32>,
+    /// Letter spacing, px.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spacing: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case: Option<Case>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub italic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deco: Option<Deco>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Lines>,
+    /// Several lines: at most.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+    /// Line height, × the size.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lh: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brk: Option<Break>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fit: Option<FitMode>,
+    /// Fit: narrower down to, % (one line).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub narrow: Option<f32>,
+    /// Fit: smaller down to, %.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub small: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub then: Option<Then>,
+}
+
+/// The texts of the table's levels (unset = defaults from the older settings).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Texts {
+    pub title: Typo,
+    pub header: Typo,
+    pub rows: Typo,
+    /// The rank column (None = the rows).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rank: Option<Typo>,
+}
+
+/// Weight of a kind of row (0 = the rows' weight).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct KindWeights {
+    pub odd: u16,
+    pub even: u16,
+    pub hl: u16,
+    pub top3: u16,
+}
+
+/// A level's text with every setting known.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Text {
+    pub family: String,
+    pub weight: u16,
+    pub size: f32,
+    pub spacing: f32,
+    pub case: Case,
+    pub italic: bool,
+    pub deco: Deco,
+    pub multi: bool,
+    pub max: u32,
+    pub lh: f32,
+    pub any_break: bool,
+    pub fit: FitMode,
+    pub narrow: f32,
+    pub small: f32,
+    pub then: Then,
+}
+
+impl Text {
+    /// `t` over `base`.
+    pub fn over(base: Text, t: &Typo) -> Text {
+        Text {
+            family: t
+                .family
+                .clone()
+                .filter(|f| !f.is_empty())
+                .unwrap_or(base.family),
+            weight: t.weight.unwrap_or(base.weight),
+            size: t.size.filter(|v| *v > 0.0).unwrap_or(base.size),
+            spacing: t.spacing.unwrap_or(base.spacing),
+            case: t.case.unwrap_or(base.case),
+            italic: t.italic.unwrap_or(base.italic),
+            deco: t.deco.unwrap_or(base.deco),
+            multi: t.lines.map(|l| l == Lines::Multi).unwrap_or(base.multi),
+            max: t.max.unwrap_or(base.max).max(1),
+            lh: t.lh.filter(|v| *v > 0.0).unwrap_or(base.lh),
+            any_break: t.brk.map(|b| b == Break::Any).unwrap_or(base.any_break),
+            fit: t.fit.unwrap_or(base.fit),
+            narrow: t.narrow.unwrap_or(base.narrow).clamp(10.0, 100.0),
+            small: t.small.unwrap_or(base.small).clamp(10.0, 100.0),
+            then: t.then.unwrap_or(base.then),
+        }
+    }
+    /// The text as it shows (case applied).
+    pub fn cased(&self, s: &str) -> String {
+        match self.case {
+            Case::None => s.to_string(),
+            Case::Upper => s.to_uppercase(),
+            Case::Lower => s.to_lowercase(),
+            Case::Title => {
+                let mut out = String::with_capacity(s.len());
+                let mut start = true;
+                for ch in s.chars() {
+                    if start && ch.is_alphanumeric() {
+                        out.extend(ch.to_uppercase());
+                        start = false;
+                    } else {
+                        if ch.is_whitespace() || ch == '-' {
+                            start = true;
+                        }
+                        out.push(ch);
+                    }
+                }
+                out
+            }
+        }
+    }
+}
+
+/// The older single setting of the too-long cells, as a level's default.
+fn fit_of(c: &Config, size: f32) -> (FitMode, f32, f32) {
+    match c.overflow {
+        Overflow::Ellipsis => (FitMode::Ellipsis, 100.0, 100.0),
+        Overflow::Squeeze => (FitMode::Fit, c.min_squeeze, 100.0),
+        Overflow::Shrink => (
+            FitMode::Fit,
+            c.min_squeeze,
+            (c.min_size / size.max(1.0) * 100.0).min(100.0),
+        ),
+    }
+}
+
+fn base(c: &Config, size: f32, weight: u16, spacing: f32, case: Case) -> Text {
+    let (fit, narrow, small) = fit_of(c, size);
+    Text {
+        family: "Inter".into(),
+        weight,
+        size,
+        spacing,
+        case,
+        italic: false,
+        deco: Deco::None,
+        multi: false,
+        max: 2,
+        lh: 1.1,
+        any_break: false,
+        fit,
+        narrow,
+        small,
+        then: Then::Ellipsis,
+    }
+}
+
+/// The title bar's text.
+pub fn title_text(c: &Config) -> Text {
+    let b = Text {
+        narrow: 70.0,
+        small: 60.0,
+        fit: FitMode::Fit,
+        ..base(c, 30.0, 900, 1.2, Case::Upper)
+    };
+    Text::over(b, &c.txt.title)
+}
+
+/// The header row's text.
+pub fn header_text(c: &Config) -> Text {
+    let s = c.head_size;
+    Text::over(base(c, s, 800, s * 0.05, Case::Upper), &c.txt.header)
+}
+
+/// The text of every row (`size`: the animated fontSize).
+pub fn rows_text(c: &Config, size: f32) -> Text {
+    Text::over(base(c, size, 700, 0.0, Case::None), &c.txt.rows)
+}
+
+/// The text of a column's cells: its own, else the rows' (numbers a bit bolder by default).
+pub fn col_text(c: &Config, mc: &MCol, size: f32) -> Text {
+    let mut rows = rows_text(c, size);
+    if mc.col.kind == ColKind::Number && c.txt.rows.weight.is_none() {
+        rows.weight = 800;
+    }
+    let own = if mc.rank() {
+        c.txt.rank.as_ref()
+    } else {
+        mc.col.txt.as_ref()
+    };
+    match own {
+        Some(t) => Text::over(rows, t),
+        None => rows,
     }
 }
 
@@ -367,6 +633,16 @@ pub struct Config {
     pub cascade: Cascade,
     pub empty_mode: EmptyMode,
     pub empty_text: String,
+    /// Typography of the title, header and rows.
+    pub txt: Box<Texts>,
+    /// Weights of the kinds of rows.
+    pub kw: KindWeights,
+    /// Title bar: height, px; background ("" = the default gradient); text colour.
+    pub title_h: f32,
+    pub title_bg: String,
+    pub title_color: String,
+    /// Header row height, px (0 = 85 % of a row).
+    pub head_h: f32,
 }
 
 impl Default for Config {
@@ -403,6 +679,12 @@ impl Default for Config {
             cascade: Cascade::default(),
             empty_mode: EmptyMode::Message,
             empty_text: "No data yet".into(),
+            txt: Box::default(),
+            kw: KindWeights::default(),
+            title_h: 64.0,
+            title_bg: String::new(),
+            title_color: "#ffffff".into(),
+            head_h: 0.0,
         }
     }
 }
@@ -647,6 +929,7 @@ pub fn rank_col() -> Col {
         fmt: "0".into(),
         on: true,
         mark: String::new(),
+        txt: None,
     }
 }
 
@@ -799,7 +1082,20 @@ pub fn merge_of<'a>(c: &'a Config, m: &Model, row: &MRow) -> Option<(usize, usiz
 /// Heights: title bar, header row.
 pub const TITLE_H: f32 = 64.0;
 pub fn header_h(c: &Config) -> f32 {
-    (c.row_h * 0.85).round()
+    if c.head_h > 0.0 {
+        c.head_h
+    } else {
+        (c.row_h * 0.85).round()
+    }
+}
+
+/// The title bar's height.
+pub fn title_h(c: &Config) -> f32 {
+    if c.title_h > 0.0 {
+        c.title_h
+    } else {
+        TITLE_H
+    }
 }
 
 // ----------------------------------------------------------------- state --

@@ -1,4 +1,5 @@
 import { designTemplates } from '../engine/drafts';
+import { Dropdown } from '../ui/Dropdown';
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Zone } from '../engine/types';
@@ -57,10 +58,16 @@ export function ZonesDialog({ onClose }: { onClose: () => void }) {
             <div key={i} className="zone-row" style={{ ['--zone' as string]: z.color }}>
               <input type="color" value={z.color.slice(0, 7)} title="Colour" onChange={(e) => edit(i, { color: e.target.value })} />
               <input className="zone-name-input" value={z.name} placeholder="Name" onChange={(e) => edit(i, { name: e.target.value })} />
-              <select value={z.transition} onChange={(e) => edit(i, { transition: e.target.value as Zone['transition'] })} title="When a template is taken while the zone is busy">
-                <option value="sequential">Out, then in</option>
-                <option value="cut">Cut</option>
-              </select>
+              <span className="dd-cell" style={{ flex: '0 0 130px' }} title="When a template is taken while the zone is busy">
+                <Dropdown
+                  value={z.transition}
+                  onChange={(v) => edit(i, { transition: v as Zone['transition'] })}
+                  options={[
+                    { value: 'sequential', label: 'Out, then in' },
+                    { value: 'cut', label: 'Cut' },
+                  ]}
+                />
+              </span>
               <span className="muted small">{used(z.id) ? `${used(z.id)} use(s)` : 'unused'}</span>
               <button className="icon-btn ghost" title="Bring forward" disabled={i === 0} onClick={() => move(i, -1)}>
                 <ArrowUp size={13} />

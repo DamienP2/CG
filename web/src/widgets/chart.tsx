@@ -1,5 +1,6 @@
 // Chart: settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/chart.rs; layout mirrored in chart-layout.tsx; actions in crates/cg-core/src/wid/chart.rs.
+import { Dropdown } from '../ui/Dropdown';
 import { useEffect } from 'react';
 import { ChartColumn } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
@@ -310,19 +311,21 @@ export default defineWidget({
                   <input type="color" value={s.color.slice(0, 7)} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), color: e.target.value }), `chs-${layer.id}-${j}`)} />
                   {type !== 'columns' && (
                     <>
-                      <select title="Line width" value={s.width} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), width: +e.target.value }))}>
-                        {[0, 2, 4, 6, 8, 12].map((v) => (
-                          <option key={v} value={v}>
-                            {v} px
-                          </option>
-                        ))}
-                      </select>
-                      <select title="Marker" value={s.marker} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), marker: e.target.value as never }))}>
-                        <option value="none">—</option>
-                        <option value="circle">● Circle</option>
-                        <option value="square">■ Square</option>
-                        <option value="diamond">◆ Diamond</option>
-                      </select>
+                      <span className="dd-cell" title="Line width">
+                        <Dropdown value={String(s.width)} options={[0, 2, 4, 6, 8, 12].map((v) => ({ value: String(v), label: `${v} px` }))} onChange={(v) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), width: +v }))} />
+                      </span>
+                      <span className="dd-cell" title="Marker">
+                        <Dropdown
+                          value={s.marker}
+                          options={[
+                            { value: 'none', label: '—' },
+                            { value: 'circle', label: '● Circle' },
+                            { value: 'square', label: '■ Square' },
+                            { value: 'diamond', label: '◆ Diamond' },
+                          ]}
+                          onChange={(v) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), marker: v as never }))}
+                        />
+                      </span>
                     </>
                   )}
                 </Row>
@@ -534,8 +537,8 @@ export default defineWidget({
         {n > 0 && (
           <Btns
             list={[
-              { label: '◀ Back', cls: 'ghost', keyHint: '←', onClick: () => act('prev'), disabled: step <= 1 },
-              { label: 'Next step ▶', cls: 'green big', keyHint: '→', onClick: () => act('next'), disabled: step >= n },
+              { label: 'Back', cls: 'ghost', keyHint: '←', onClick: () => act('prev'), disabled: step <= 1 },
+              { label: 'Next step', cls: 'green big', keyHint: '→', onClick: () => act('next'), disabled: step >= n },
               { label: 'Show all', cls: 'ghost', onClick: () => act('showAll'), disabled: step >= n },
             ]}
           />

@@ -3,6 +3,7 @@
 // labels by priority, provider attribution.
 // Same picture as crates/cg-render/src/wid/map.rs (line for line); actions in
 // crates/cg-core/src/wid/map.rs; geometry and logic in ./map-geo.ts.
+import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState } from 'react';
 import { Map as MapIcon } from 'lucide-react';
 import { num } from '../engine/evaluate';
@@ -678,7 +679,7 @@ function Operator({ layer, state, act }: { layer: Config; state: unknown; act: (
         label="Views"
         list={[
           ...k.views.map((kv, i) => ({ label: kv.name, cls: `big ${cur === i ? 'violet' : ''}`, onClick: () => act('go', { view: i }) })),
-          { label: 'Next view ▶', cls: 'big green', keyHint: '→', onClick: () => act('next') },
+          { label: 'Next view', cls: 'big green', keyHint: '→', onClick: () => act('next') },
           { label: 'Reset', cls: 'big ghost', title: 'Template view, no highlight, layers and routes as designed', onClick: () => act('reset') },
         ]}
       />
@@ -699,13 +700,7 @@ function Operator({ layer, state, act }: { layer: Config; state: unknown; act: (
         />
       )}
       <Row label="Zone">
-        <select value={zone} onChange={(e) => setZone(e.target.value)}>
-          {world().regions.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
+        <Dropdown value={zone} options={world().regions.map((r) => ({ value: r.id, label: r.name }))} onChange={setZone} />
       </Row>
       <Btns
         list={[

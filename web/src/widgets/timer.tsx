@@ -1,6 +1,7 @@
 // Timer: clock, date, stopwatch and countdown — settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/timer.rs; logic mirrored in ./timer-fmt.ts
 // (crates/cg-core/src/wid/timer.rs); actions in crates/cg-core/src/wid/timer.rs.
+import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Timer } from 'lucide-react';
 import { col, cssColor, num, type Resolved } from '../engine/evaluate';
@@ -301,10 +302,11 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           }
         />
         <Row expose="format" exposeValue={layer.format} label="Preset">
-          <select
+          <Dropdown
             value={list.some((p) => p[0] === layer.format) ? layer.format : '__custom'}
-            onChange={(ev) => {
-              const p = list.find((x) => x[0] === ev.target.value);
+            options={[...list.map(([f]) => ({ value: f, label: `${f} → ${sampleText(layer, data, f)}` })), { value: '__custom', label: 'Custom' }]}
+            onChange={(v) => {
+              const p = list.find((x) => x[0] === v);
               if (!p) return;
               edit((l) => {
                 const x = l as L & Config;
@@ -313,14 +315,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
                 if (mode === 'stopwatch') x.swRound = x.swRound ?? 'trunc';
               });
             }}
-          >
-            {list.map(([f]) => (
-              <option key={f} value={f}>
-                {f} → {sampleText(layer, data, f)}
-              </option>
-            ))}
-            <option value="__custom">Custom</option>
-          </select>
+          />
         </Row>
         <Text label="Format" path="format" placeholder="HH:mm:ss" />
         <Content label="Prefix" path="prefix" value="" />

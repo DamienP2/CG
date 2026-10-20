@@ -2,6 +2,7 @@
 // fit warnings come from engine/Scene.tsx textWarnings).
 // Same picture as crates/cg-render/src/wid/text.rs; fit chain in engine/textFit.ts
 // (fitLines, mirror of text::fit_lines); language rules in crates/cg-core/src/wid/text.rs.
+import { FontPick } from '../ui/FontPick';
 import type { CSSProperties } from 'react';
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Italic, Strikethrough, Type, Underline } from 'lucide-react';
 import { Segmented } from '../ui/fields';
@@ -478,45 +479,12 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
 
 /** Font and weight, from the fonts of Assets. */
 function FontRow({ layer, set }: { layer: TextLayer; set: (key: string, v: unknown) => void }) {
-  const families = useFonts((s) => s.families);
-  const current = families.find((f) => f.family.toLowerCase() === layer.fontFamily.toLowerCase());
-  const weights = current?.weights ?? [400, 700];
   return (
     <Row expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: layer.fontFamily, fontWeight: layer.fontWeight }} label="Font">
-      <select
-        value={current?.family ?? layer.fontFamily}
-        style={{ fontFamily: `"${current?.family ?? layer.fontFamily}"`, flex: 1, minWidth: 0 }}
-        onChange={(e) => {
-          const fam = families.find((f) => f.family === e.target.value);
-          set('fontFamily', e.target.value);
-          if (fam && !fam.weights.includes(layer.fontWeight))
-            set(
-              'fontWeight',
-              fam.weights.reduce((a, b) => (Math.abs(b - layer.fontWeight) < Math.abs(a - layer.fontWeight) ? b : a)),
-            );
-        }}
-      >
-        {!current && <option value={layer.fontFamily}>{layer.fontFamily} (missing)</option>}
-        {families.map((f) => (
-          <option key={f.family} value={f.family} style={{ fontFamily: `"${f.family}"` }}>
-            {f.family}
-          </option>
-        ))}
-      </select>
-      <select value={layer.fontWeight} style={{ width: 96, flex: 'none' }} onChange={(e) => set('fontWeight', +e.target.value)}>
-        {[...new Set([...weights, layer.fontWeight])]
-          .sort((a, b) => a - b)
-          .map((w) => (
-            <option key={w} value={w}>
-              {WEIGHTS[w] ?? w}
-            </option>
-          ))}
-      </select>
+      <FontPick family={layer.fontFamily} weight={layer.fontWeight} onChange={(f, w) => (set('fontFamily', f), w !== layer.fontWeight && set('fontWeight', w))} />
     </Row>
   );
 }
-
-const WEIGHTS: Record<number, string> = { 100: 'Thin', 200: 'Extra light', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'Semibold', 700: 'Bold', 800: 'Extra bold', 900: 'Black' };
 
 const missingFont = (l: TextLayer) => {
   const fams = useFonts.getState().families;

@@ -461,7 +461,7 @@ function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: un
           { label: '▶ Start', cls: 'green big', keyHint: 'Enter', onClick: () => act('start', cur) },
           mode === 'paused' ? { label: '▶ Resume', cls: 'violet big', keyHint: 'Space', onClick: () => act('resume', cur) } : { label: '❚❚ Pause', cls: 'big', keyHint: 'Space', disabled: !running, onClick: () => act('pause', cur) },
           { label: 'Show all', cls: 'big', onClick: () => act('showAll', cur) },
-          { label: 'Next text ▸', cls: 'big', keyHint: 'Right', disabled: R.list.length < 2, onClick: () => act('next', cur) },
+          { label: 'Next text', cls: 'big', keyHint: 'Right', disabled: R.list.length < 2, onClick: () => act('next', cur) },
           { label: 'Clear', cls: 'big', onClick: () => act('clear', cur) },
           { label: 'Reset', cls: 'ghost big', onClick: () => act('reset', cur) },
         ]}

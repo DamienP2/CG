@@ -2,6 +2,7 @@
 // text / symbol / picture, categories, title block, edge fade, end of list. The queue lives in the operator's
 // state (seeded from the layer's items); its edits apply at the next pass, without a jump.
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
+import { Dropdown } from '../ui/Dropdown';
 import { useState } from 'react';
 import { ArrowLeftRight } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
@@ -491,14 +492,9 @@ function QueueRow({ it, i, n, cats, act }: { it: Item; i: number; n: number; cat
   return (
     <div className={`wk-item ${it.on === false ? 'off' : ''}`}>
       <input type="checkbox" checked={it.on !== false} title="On / off" onChange={(e) => act('toggle', { index: i, on: e.target.checked })} />
-      <select style={{ flex: '0 0 92px', width: 92 }} value={it.cat ?? ''} onChange={(e) => act('edit', { index: i, cat: e.target.value })}>
-        <option value="">—</option>
-        {cats.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
+      <span className="dd-cell" style={{ flex: '0 0 92px', width: 92 }}>
+        <Dropdown value={it.cat ?? ''} options={[{ value: '', label: '—' }, ...cats.map((c) => ({ value: c, label: c }))]} onChange={(v) => act('edit', { index: i, cat: v })} />
+      </span>
       <input value={draft ?? it.text ?? ''} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && commit())} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
       <button className="wk-x" title="Up" disabled={!i} onClick={() => act('move', { from: i, to: i - 1 })}>
         ↑

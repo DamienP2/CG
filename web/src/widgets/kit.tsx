@@ -3,6 +3,7 @@
 // state and actions) and crates/cg-render/src/wid/<id>.rs (drawing). This
 // file is what they share: the definition of a widget and the controls of
 // the inspector and of the Operator, styled like the rest of the app.
+import { Dropdown } from '../ui/Dropdown';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Database, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
@@ -95,6 +96,8 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   content?: string[];
   /** Draws the layer inside its box (absolute position, w × h). */
   Render?: (p: RenderProps<T>) => ReactNode;
+  /** Its warnings are not shown in the inspector (its editor or the Operator shows them). */
+  quiet?: boolean;
   /** Groups of the inspector, above Properties (replaces General). */
   Inspector?: (p: InspectorProps<T>) => ReactNode;
   /** Controls in the Operator (graphic on air) and in the Designer's try-out. */
@@ -157,7 +160,7 @@ function useBind<V>(path: string | undefined, value: V | undefined, onChange: ((
   if (path) {
     // `value` is the default shown while the path is not set.
     const got = getPath(b.obj, path);
-    return [(got === undefined ? value : got) as V, (v, coalesce) => b.set(path, v, coalesce)];
+    return [(got == null ? value : got) as V, (v, coalesce) => b.set(path, v, coalesce)];
   }
   return [value as V, (v) => onChange?.(v)];
 }
@@ -294,13 +297,7 @@ export function Select<V extends string | number>(p: { label?: ReactNode; path?:
       exposeValue={p.exposeValue ?? (p.path ? v : undefined)}
       exposeOptions={p.exposeOptions ?? (p.path || typeof p.expose === 'string' ? o.map(([val, lab]) => [String(val), typeof lab === 'string' ? lab : String(val)] as [string, string]) : undefined)}
     >
-      <select value={String(v ?? '')} onChange={(e) => set(o.find((x) => String(x[0]) === e.target.value)![0])}>
-        {o.map(([val, lab]) => (
-          <option key={String(val)} value={String(val)}>
-            {typeof lab === 'string' ? lab : String(val)}
-          </option>
-        ))}
-      </select>
+      <Dropdown value={String(v ?? '')} options={o.map(([val, lab]) => ({ value: String(val), label: typeof lab === 'string' ? lab : String(val) }))} onChange={(s) => set(o.find((x) => String(x[0]) === s)![0])} />
     </Row>
   );
 }
@@ -523,7 +520,11 @@ export interface BtnSpec {
   confirm?: string;
 }
 
-/** Buttons of the Operator (and of the inspector). */
+const LEFT_KEYS = new Set(['←', 'Left']);
+const KEY_NAMES: Record<string, string> = { Left: '←', Right: '→', Up: '↑', Down: '↓' };
+const keyName = (k: string) => KEY_NAMES[k] ?? k;
+
+/** Buttons of the Operator (and of the inspector); a keyboard shortcut shows as a key in the button. */
 export function Btns({ list, label }: { list: (BtnSpec | false | null | undefined)[]; label?: ReactNode }) {
   const row = (
     <div className="wk-btns">
@@ -533,7 +534,7 @@ export function Btns({ list, label }: { list: (BtnSpec | false | null | undefine
           <button
             key={i}
             className={`opx-btn wk-btn ${b.cls ?? ''}`}
-            title={b.title}
+            title={b.keyHint ? `${b.title ?? (typeof b.label === 'string' ? b.label : '')} · key ${keyName(b.keyHint)}`.replace(/^ · /, '') : b.title}
             disabled={b.disabled}
             onClick={async () => {
               if (b.confirm) {
@@ -542,8 +543,9 @@ export function Btns({ list, label }: { list: (BtnSpec | false | null | undefine
               b.onClick();
             }}
           >
-            {b.label}
-            {b.keyHint && <kbd>{b.keyHint}</kbd>}
+            {b.keyHint && LEFT_KEYS.has(b.keyHint) && <kbd className="kc">{keyName(b.keyHint)}</kbd>}
+            <span>{b.label}</span>
+            {b.keyHint && !LEFT_KEYS.has(b.keyHint) && <kbd className="kc">{keyName(b.keyHint)}</kbd>}
           </button>
         ))}
     </div>
@@ -581,13 +583,9 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
             const style = f.w ? { flex: `0 0 ${f.w}px`, width: f.w } : undefined;
             if (f.options)
               return (
-                <select key={f.key} style={style} value={String(val ?? '')} onChange={(e) => change(e.target.value)}>
-                  {opts(f.options).map(([o, l]) => (
-                    <option key={o} value={o}>
-                      {typeof l === 'string' ? l : o}
-                    </option>
-                  ))}
-                </select>
+                <span key={f.key} className="dd-cell" style={style}>
+                  <Dropdown value={String(val ?? '')} options={opts(f.options).map(([o, l]) => ({ value: String(o), label: typeof l === 'string' ? l : String(o) }))} onChange={(nv) => change(nv)} />
+                </span>
               );
             if (f.color) return <input key={f.key} type="color" style={style} value={String(val ?? '#ffffff').slice(0, 7)} onChange={(e) => change(e.target.value, true)} />;
             return <input key={f.key} style={style} placeholder={f.placeholder ?? f.key} value={String(val ?? '')} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => change(f.num ? +e.target.value : e.target.value, true)} />;
