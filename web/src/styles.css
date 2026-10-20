@@ -10270,3 +10270,225 @@ body.cv-moving * {
   font-size: 12.5px;
   color: var(--text);
 }
+/* Drop-down lists (ui/Dropdown). */
+.dd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.dd-btn:hover {
+  border-color: var(--text-3);
+  background: var(--panel-3);
+}
+.dd-btn.open,
+.dd-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.dd-btn > svg {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.15s;
+}
+.dd-btn.open > svg {
+  transform: rotate(180deg);
+}
+.dd-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dd-list {
+  position: fixed;
+  z-index: 2000;
+  max-width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12.5px;
+  animation: dd-in 0.12s ease-out;
+}
+@keyframes dd-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.dd-list.up {
+  animation-name: dd-in-up;
+}
+@keyframes dd-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.dd-group {
+  padding: 8px 8px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.dd-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border-radius: 6px;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dd-opt.hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.dd-opt.on {
+  color: var(--text);
+  font-weight: 600;
+}
+.dd-check {
+  flex: none;
+  width: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+}
+.dd-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-note {
+  font: 10.5px var(--mono);
+  color: var(--text-3);
+}
+.dd-empty {
+  padding: 8px 10px;
+  color: var(--text-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dd-list {
+    animation: none;
+  }
+}
+/* Node canvases: header. */
+.logic-editor > header.cv-head {
+  height: 50px;
+  padding: 0 12px 0 14px;
+  gap: 10px;
+}
+.cv-head-icon {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.cv-head h2 {
+  font-size: 15px !important;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.cv-head-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.cv-head-subject svg {
+  color: var(--text-3);
+}
+/* Logic: categories (palette and nodes). */
+.logic-palette .lp-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.logic-palette .lp-group:first-child .dc-pal-title {
+  margin-top: 0;
+}
+.logic-palette button.cat-input,
+.logic-palette button.cat-op,
+.logic-palette button.cat-output {
+  align-items: center;
+  padding: 7px 9px;
+}
+.cat-input {
+  --kind: #38bdf8;
+}
+.cat-op {
+  --kind: #f5a524;
+}
+.cat-output {
+  --kind: #22c55e;
+}
+.logic-node.cat-input {
+  --kind: #38bdf8;
+}
+.logic-node.cat-op {
+  --kind: #f5a524;
+}
+.logic-node.cat-output {
+  --kind: #22c55e;
+}
+.logic-palette button.cat-input > svg,
+.logic-palette button.cat-op > svg,
+.logic-palette button.cat-output > svg,
+.logic-node .ln-head > svg:first-child {
+  color: var(--kind);
+}
+.logic-palette button[class*='cat-'] {
+  border-left: 3px solid var(--kind);
+}
+.ln-body .dd-btn + .dd-btn {
+  margin-top: 6px;
+}
+.ln-pair {
+  display: flex;
+  gap: 6px;
+}
+.ln-pair label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ln-pair label > span {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}

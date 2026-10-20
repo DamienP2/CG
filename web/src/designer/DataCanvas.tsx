@@ -14,6 +14,8 @@ import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { ICONS } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
+import { CanvasHeader } from '../ui/CanvasHeader';
+import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
 
 /*
@@ -122,6 +124,15 @@ const TRANSFORMS: { make: () => DataFilter; label: string }[] = [
   { make: () => ({ type: 'map', when: '', then: '' }), label: 'If equals' },
   { make: () => ({ type: 'default', text: '' }), label: 'If empty' },
   { make: () => ({ type: 'join', separator: ' · ' }), label: 'Join rows' },
+];
+
+const FIELD_KINDS: { value: FieldKind; label: string }[] = [
+  { value: 'text', label: 'Text' },
+  { value: 'multiline', label: 'Paragraph' },
+  { value: 'number', label: 'Number' },
+  { value: 'color', label: 'Color' },
+  { value: 'image', label: 'Picture' },
+  { value: 'boolean', label: 'On / off' },
 ];
 
 const CONDITIONS: { op: CondOp; label: string; value: boolean }[] = [
@@ -642,15 +653,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   return (
     <div className="logic-editor data-canvas" onKeyDown={(e) => e.stopPropagation()}>
-      <header>
-        <Database size={16} />
-        <h2>Data — {template.name}</h2>
-        <span className="muted small">Source → Filter / Sort / Transform → variable → layer. Drag from a dot on the right to a dot on the left; click a wire to remove it.</span>
-        <div className="spacer" />
-        <button className="icon-btn ghost" onClick={onClose} title="Close">
-          <X size={16} />
-        </button>
-      </header>
+      <CanvasHeader icon={<Database size={15} />} title="Data" subject={template.name} onClose={onClose} />
       <div className="logic-body">
         <aside className="logic-palette">
           <button
@@ -666,7 +669,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             <Variable size={14} />
             <span>
               <strong>Variable</strong>
-              <em>Typed by the operator, or fed by the data</em>
             </span>
           </button>
 
@@ -690,7 +692,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             </p>
           )}
 
-          <div className="dc-pal-title">On the way · drag onto a wire</div>
+          <div className="dc-pal-title">On the way</div>
           {(['filter', 'sort', 'transform'] as StepType[]).map((type) => {
             const k = STEP[type];
             return (
@@ -698,7 +700,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 <k.icon size={14} />
                 <span>
                   <strong>{k.label}</strong>
-                  <em>{k.hint}</em>
                 </span>
               </button>
             );
@@ -709,7 +710,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             <Rows3 size={14} />
             <span>
               <strong>Data set</strong>
-              <em>Rows the operator steps through · a port per column</em>
             </span>
           </button>
         </aside>
@@ -835,11 +835,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                   </div>
                   <div className="ln-body">
                     <div className="row">
-                      <select value={f.kind} onChange={(e) => editField(f.key, (x) => void (x.kind = e.target.value as FieldKind))}>
-                        {(['text', 'multiline', 'number', 'color', 'image', 'boolean'] as FieldKind[]).map((k) => (
-                          <option key={k}>{k}</option>
-                        ))}
-                      </select>
+                      <Dropdown value={f.kind} options={FIELD_KINDS} onChange={(k) => editField(f.key, (x) => void (x.kind = k))} />
                       <code className="dc-key" title="Key (API, MOS)">
                         {f.key}
                       </code>
@@ -1126,14 +1122,11 @@ function SourceBody({ node, version, data, onList }: { node: FlowNode & { type: 
     <>
       <label className="dc-inline">
         Rows
-        <select value={node.list} onChange={(e) => onList(e.target.value)}>
-          {!lists.includes(node.list) && <option value={node.list}>{node.list}</option>}
-          {lists.map((l) => (
-            <option key={l} value={l}>
-              {l === '' ? (Array.isArray(value) ? 'The list' : 'The whole value') : l}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          value={node.list}
+          options={[...(lists.includes(node.list) ? [] : [node.list]), ...lists].map((l) => ({ value: l, label: l === '' ? (Array.isArray(value) ? 'The list' : 'The whole value') : l }))}
+          onChange={onList}
+        />
       </label>
       {res === null ? <span className="dc-meta">No data at this place.</span> : <StageTable stage={res?.stages[0]} />}
     </>
@@ -1147,12 +1140,7 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
   const out = res?.stages[res.stages.length - 1];
   const columns = input?.columns ?? [];
   const colSelect = (value: string, set: (c: string) => void) => (
-    <select value={value} onChange={(e) => set(e.target.value)}>
-      {!columns.includes(value) && <option value={value}>{value || '— column —'}</option>}
-      {columns.map((c) => (
-        <option key={c}>{c}</option>
-      ))}
-    </select>
+    <Dropdown value={value} placeholder="Column" options={[...(columns.includes(value) || !value ? [] : [value]), ...columns].map((c) => ({ value: c, label: c }))} onChange={set} />
   );
   let settings: React.ReactNode = null;
   if (node.type === 'filter') {
@@ -1178,13 +1166,7 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
             return (
               <div key={i} className="dc-cond">
                 {colSelect(c.column, (column) => set({ column }))}
-                <select value={c.op} onChange={(e) => set({ op: e.target.value as CondOp })}>
-                  {CONDITIONS.map((x) => (
-                    <option key={x.op} value={x.op}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
+                <Dropdown value={c.op} options={CONDITIONS.map((x) => ({ value: x.op, label: x.label }))} onChange={(op) => set({ op })} />
                 {op.value && <input value={c.value} placeholder="value or {key}" onChange={(e) => set({ value: e.target.value })} />}
                 <button className="icon-btn ghost" title="Remove" onClick={() => onChange((n) => void (n as typeof node).where.splice(i, 1))}>
                   <X size={11} />
@@ -1341,7 +1323,6 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
             </button>
           </div>
         )}
-        <span className="dc-meta">The operator steps through the rows (and chooses how the graphic changes: out › in, fade or cut); the values follow the source live.</span>
       </div>
     </>
   );
@@ -1361,14 +1342,11 @@ function TransformSteps({ steps, onChange }: { steps: DataFilter[]; onChange: (s
         <div key={i} className="dc-step">
           <div className="row">
             <span className="dc-step-n">{i + 1}</span>
-            <select value={f.type} onChange={(e) => set(i, TRANSFORMS.find((x) => x.make().type === e.target.value)!.make())}>
-              {TRANSFORMS.map((x) => (
-                <option key={x.label} value={x.make().type}>
-                  {x.label}
-                </option>
-              ))}
-              {!TRANSFORMS.some((x) => x.make().type === f.type) && <option value={f.type}>{f.type}</option>}
-            </select>
+            <Dropdown
+              value={f.type as string}
+              options={[...TRANSFORMS.map((x) => ({ value: x.make().type as string, label: x.label })), ...(TRANSFORMS.some((x) => x.make().type === f.type) ? [] : [{ value: f.type as string, label: f.type as string }])]}
+              onChange={(t) => set(i, TRANSFORMS.find((x) => x.make().type === t)!.make())}
+            />
             <button className="icon-btn ghost" title="Earlier" disabled={i === 0} onClick={() => move(i, -1)}>
               <ArrowUp size={11} />
             </button>
@@ -1445,12 +1423,16 @@ function FilterBody({ filter: f, onChange }: { filter: DataFilter; onChange: (f:
     case 'math':
       body = (
         <div className="row">
-          <select value={f.op} onChange={(e) => onChange({ ...f, op: e.target.value as typeof f.op })}>
-            <option value="add">+</option>
-            <option value="sub">−</option>
-            <option value="mul">×</option>
-            <option value="div">÷</option>
-          </select>
+          <Dropdown
+            value={f.op}
+            options={[
+              { value: 'add', label: '+ add' },
+              { value: 'sub', label: '− subtract' },
+              { value: 'mul', label: '× multiply' },
+              { value: 'div', label: '÷ divide' },
+            ]}
+            onChange={(op) => onChange({ ...f, op })}
+          />
           {number('value', 'Value')}
         </div>
       );
