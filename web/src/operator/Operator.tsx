@@ -1,3 +1,5 @@
+import { RichInput } from '../ui/RichText';
+import { richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -31,7 +33,9 @@ import { Splitter, useLayout } from '../ui/Splitter';
  */
 
 /** The control of an exposed value, as in the Designer (text, choices, number, colour, picture, on / off). */
-export function FieldInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+export function FieldInput({ field, value, onChange, rich }: { field: Field; value: string; onChange: (v: string) => void; rich?: boolean }) {
+  // A text the operator can style (bold, colour…: it is only shown in Texts).
+  if (rich) return <RichInput multiline={field.kind === 'multiline'} value={value} onChange={onChange} />;
   if (field.options?.length) {
     const short = field.options.length <= 4 && field.options.every(([, l]) => l.length <= 12);
     return short ? (
@@ -261,13 +265,19 @@ export function Operator({ channelId }: { channelId: string | null }) {
   };
   /** The NEXT row the operator chose for a data set of the graphic on air (in the cued item), if it is that one. */
   const nextRowOf = (onAir: PlayoutItem, key: string) => (item && onAirByItem.get(item.id) === onAir ? parseInt(draft[rowKey(key)] ?? '', 10) || undefined : undefined);
+  /** The graphic after `r` in the playlist (the first again when it loops). */
+  const after = (r: RundownItem) => {
+    const i = items.findIndex((x) => x.id === r.id);
+    const n = i >= 0 && i < items.length - 1 ? items[i + 1] : activePl?.loop ? items[0] : undefined;
+    return n && n.id !== r.id ? n : undefined;
+  };
+  /** NEXT: takes the cued graphic (the one after it when it is already on air), then cues the following one. */
+  const nextTarget = item && onAirByItem.get(item.id) ? after(item) : (item ?? undefined);
   const take = () => {
-    if (!item) return;
-    takeItem(item);
-    // Select the next item of the playlist (a graphic with rows stays: its next row).
-    if (template && usedDatasets(template).length) return;
-    const idx = items.findIndex((r) => r.id === item.id);
-    if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
+    if (!nextTarget) return;
+    takeItem(nextTarget);
+    const n = after(nextTarget);
+    if (n) setCued(n.id);
   };
   const outZone = (z: Zone | undefined) => z && command({ action: 'takeOut', zone: z.id });
 
@@ -381,6 +391,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 zone={zoneOf(r)}
                 air={onAirByItem.get(r.id)}
                 selected={r.id === cued}
+                cue={r.id === nextTarget?.id}
                 operate={operate}
                 editable={canEdit}
                 onSelect={() => setCued(r.id)}
@@ -434,9 +445,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
             {!items.length && <p className="opx-hint">Empty playlist: add graphics from your templates with +.</p>}
           </div>
           <footer className="opx-foot">
-            <button className="opx-btn big red" disabled={!item || !operate} onClick={take} title={`F1 / Enter: takes ${item?.name ?? 'the next graphic'}`}>
+            <button className="opx-btn big red" disabled={!nextTarget || !operate} onClick={take} title={`F1 / Enter: takes ${nextTarget?.name ?? 'the next graphic'}`}>
               <SkipForward size={15} fill="currentColor" /> Next
-              {item && <span className="opx-next-name">{item.name}</span>}
+              {nextTarget && <span className="opx-next-name">{nextTarget.name}</span>}
             </button>
             <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title="F12: everything out at once">
               Clear all
@@ -490,7 +501,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                                     {boundDraft[f.key] ?? draft[f.key] ?? '…'}
                                   </span>
                                 ) : (
-                                  <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => editDraft({ [f.key]: v })} />
+                                  <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => editDraft({ [f.key]: v })} />
                                 )}
                               </Row>
                               {fitWarnings
@@ -700,6 +711,8 @@ function GraphicRow(props: {
   zone?: Zone;
   air?: PlayoutItem;
   selected: boolean;
+  /** NEXT takes this one. */
+  cue: boolean;
   operate: boolean;
   editable: boolean;
   onSelect: () => void;
@@ -719,7 +732,7 @@ function GraphicRow(props: {
   const [renaming, setRenaming] = useState(false);
   const [autoAt, setAutoAt] = useState<DOMRect | null>(null);
   return (
-    <div className={`opx-gr ${props.selected ? 'on' : ''} ${air ? 'air' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
+    <div className={`opx-gr ${props.selected ? 'on' : ''} ${props.cue ? 'cue' : ''} ${air ? 'air' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
       {props.editable && (
         <span className="opx-grip" draggable onDragStart={props.drag.onStart} onDragEnd={props.drag.onEnd} title="Drag to reorder" onClick={(e) => e.stopPropagation()}>
           <GripVertical size={14} />
@@ -761,6 +774,7 @@ function GraphicRow(props: {
           </strong>
         )}
         <span className="muted small">
+          {props.cue && <b className="opx-cue" title="NEXT takes this graphic">CUE</b>}
           <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? 'no zone'} · {t?.name ?? 'missing template'}
           {props.autoNext && item.autoSecs !== undefined && <span className="opx-auto"> · next {item.autoSecs} s</span>}
           {item.hold && <span className="opx-hold"> · hold</span>}

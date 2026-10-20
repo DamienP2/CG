@@ -394,6 +394,10 @@ impl Renderer {
             .collect();
         for layer in children {
             let mut r = resolve_layer(layer, ctx.frame, ctx.data, ctx.template.hold_frame());
+            // Styles typed by the operator too: the text without their tags.
+            if let Some(runs) = cg_core::rich::layer_runs(ctx.template, layer, ctx.data) {
+                r.text = Some(runs.into_iter().map(|r| r.text).collect());
+            }
             if let Some(v) = ctx.logic.get(&layer.id) {
                 r.values = v.clone();
             }
@@ -467,6 +471,7 @@ impl Renderer {
                 fps: ctx.fps,
                 state,
                 lang: ctx.lang,
+                runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
             };
             if wid::draw(&mut d) {
                 return;
@@ -1323,6 +1328,34 @@ mod tests {
         // Top-left zone: 4 %..28 % x 5 %..19 % of the frame.
         assert!(alpha(200, 100) > 0);
         assert_eq!(alpha(1500, 800), 0);
+    }
+
+    #[test]
+    fn styled_parts_of_a_text_have_their_colour() {
+        let project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "rt", "name": "T", "duration": 10.0, "markers": [], "zone": "",
+            "fields": [{"key": "v", "label": "V", "kind": "text", "default": ""}],
+            "layers": [{
+                "id": "t", "name": "Text", "type": "text", "fontFamily": "Inter",
+                "text": "MMMM <c=#00ff00>MMMM</c> {{v}}",
+                "props": {"x": 0.0, "y": 0.0, "width": 1600.0, "height": 200.0, "fontSize": 120.0, "fill": [1.0, 0.0, 0.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let count = |f: &Frame, want: [u8; 3]| {
+            f.data
+                .chunks(4)
+                .filter(|p| p[3] == 255 && p[..3] == want)
+                .count()
+        };
+        // The operator's value is styled too (a typed field).
+        let data: Data = [("v".to_string(), "<c=#0000ff>MMMM</c>".to_string())].into();
+        let f = r.render_template(&project, &t, "main", 5.0, &data);
+        assert!(count(&f, [255, 0, 0]) > 500, "the text's own colour");
+        assert!(count(&f, [0, 255, 0]) > 500, "the green part");
+        assert!(count(&f, [0, 0, 255]) > 500, "the operator's blue part");
     }
 
     #[test]

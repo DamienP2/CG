@@ -176,15 +176,19 @@ pub fn resolve_layer<'a>(
             transform,
             ..
         } => {
-            let t = interpolate_text(text, data);
-            (
-                Some(if *uppercase {
+            let case = |t: &str| {
+                if *uppercase {
                     t.to_uppercase()
                 } else {
-                    transform.apply(&t)
-                }),
-                None,
-            )
+                    transform.apply(t)
+                }
+            };
+            // Styled parts (<b>…): the text without its tags.
+            let shown = match crate::rich::runs(text, data, |_| false, case) {
+                Some(runs) => runs.into_iter().map(|r| r.text).collect(),
+                None => case(&interpolate_text(text, data)),
+            };
+            (Some(shown), None)
         }
         LayerKind::Image { src, .. } => (None, Some(interpolate_text(src, data))),
         _ => (None, None),

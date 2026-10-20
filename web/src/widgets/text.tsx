@@ -3,7 +3,8 @@
 // Same picture as crates/cg-render/src/wid/text.rs; fit chain in engine/textFit.ts
 // (fitLines, mirror of text::fit_lines); language rules in crates/cg-core/src/wid/text.rs.
 import { FontPick } from '../ui/FontPick';
-import type { CSSProperties } from 'react';
+import { useContext, type CSSProperties } from 'react';
+import { align, RichKeys, runs as richRuns, type Run } from '../engine/rich';
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Italic, Strikethrough, Type, Underline } from 'lucide-react';
 import { Segmented } from '../ui/fields';
 import { col, cssColor, interpolateText, num, propValue, transformText, type Resolved } from '../engine/evaluate';
@@ -107,11 +108,16 @@ export function measure(font: string, ls: number, s: string): number {
   return w;
 }
 
-/** The text as shown (fields filled in, case changed), as ResolvedLayer::text. */
-export const shownText = (l: TextLayer, data: Data) => {
-  const t = interpolateText(l.text, data);
-  return l.uppercase ? t.toUpperCase() : transformText(t, l.transform);
+const caseOf = (l: TextLayer) => (t: string) => (l.uppercase ? t.toUpperCase() : transformText(t, l.transform));
+/** Its styled parts as shown (<b>…), null when it has one style. */
+export const textRuns = (l: TextLayer, data: Data, rich: (key: string) => boolean = () => false) => richRuns(l.text, data, rich, caseOf(l));
+/** The text as shown (fields filled in, case changed, without style tags), as ResolvedLayer::text. */
+export const shownText = (l: TextLayer, data: Data, rich?: (key: string) => boolean) => {
+  const rs = textRuns(l, data, rich);
+  return rs ? rs.map((r) => r.text).join('') : caseOf(l)(interpolateText(l.text, data));
 };
+/** The weight of the bold parts. */
+export const boldOf = (w: number) => Math.min(900, Math.max(400, w) + 300);
 
 export interface TextLayout {
   fit: FitLines;
@@ -120,12 +126,16 @@ export interface TextLayout {
   pad: number;
   avail: number;
   text: string;
+  runs: Run[] | null;
 }
 
 /** The fit of the layer with these values (same as the Rust renderer). */
-export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string): TextLayout {
+export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string, rich?: (key: string) => boolean): TextLayout {
   const k = cfg(l);
-  const text = shownText(l, data);
+  const runs = k.dir === 'rtl' ? null : textRuns(l, data, rich);
+  const text = runs ? runs.map((x) => x.text).join('') : shownText(l, data);
+  // With bold parts, measured in bold: the lines never get wider than the box.
+  const mw = runs?.some((x) => x.style.bold) ? boldOf(l.fontWeight) : l.fontWeight;
   const size0 = num(r.fontSize);
   const ls = num(r.letterSpacing);
   const pad = k.band ? Math.max(0, k.bandPadX) : 0;
@@ -148,9 +158,9 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string)
       lang: k.lang || lang || useApp.getState().project?.language || 'fr',
       ellipsisEnd: k.fitEnd === 'ellipsis',
     },
-    (s, size) => measure(fontCss(fam, l.fontWeight, size, k.italic), ls, s),
+    (s, size) => measure(fontCss(fam, mw, size, k.italic), ls, s),
   );
-  return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text };
+  return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text, runs };
 }
 
 /** The fit badge of the Designer (as the other texts have it). */
@@ -160,7 +170,8 @@ const fitBadge = (l: TextLayer, f: FitLines) => (f.overflows ? (l.overflow === '
 
 function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string }) {
   const k = cfg(layer);
-  const text = shownText(layer, data);
+  const rich = useContext(RichKeys);
+  const text = shownText(layer, data, rich);
   if (!text.trim())
     return designer ? (
       <>
@@ -168,7 +179,9 @@ function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r:
         <div style={{ position: 'absolute', left: 14, top: 10, font: '600 22px Inter, sans-serif', color: 'rgba(255,255,255,.45)', whiteSpace: 'nowrap' }}>Empty text · nothing on air</div>
       </>
     ) : null;
-  const L = layoutText(layer, r, data, lang);
+  const L = layoutText(layer, r, data, lang, rich);
+  const parts = L.runs ? align(L.runs, L.fit.lines.map((x) => x.text)) : null;
+  const boldFont = fontCss(layer.fontFamily, boldOf(layer.fontWeight), L.fit.size, k.italic);
   const { fit, pad, avail, ls } = L;
   const size = fit.size;
   const sx = fit.squeeze;
@@ -187,7 +200,8 @@ function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r:
   const bands: CSSProperties[] = [];
   const lines = fit.lines.map((l, i) => {
     const spaces = (l.text.match(/ /g) ?? []).length;
-    const lw0 = measure(L.font, ls, l.text);
+    const segs = parts?.[i];
+    const lw0 = segs ? segs.reduce((a, [t, ri]) => a + measure(L.runs![ri].style.bold ? boldFont : L.font, ls, t), 0) : measure(L.font, ls, l.text);
     const justified = k.justify && !l.end && spaces > 0 && lw0 < bw;
     const lw = justified ? bw : lw0;
     const eff = k.justify && !justified ? (rtl ? 'right' : 'left') : layer.align;
@@ -242,12 +256,34 @@ function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r:
     }
     // Stroke as its own copy of the line: outside = twice as wide behind the fill, else centred on top (as before).
     const strokeSt: CSSProperties = { ...st, backgroundImage: undefined, color: 'transparent', textDecorationColor: stroke, WebkitTextStroke: `${k.strokeOutside ? sw * 2 : sw}px ${stroke}`, filter: undefined };
-    const body = l.text || ' ';
+    // Styled parts: one span each (colours only on the fill, not on the stroke copies).
+    const body = (colours: boolean) =>
+      segs
+        ? segs.map(([t, ri], j) => {
+            const rs = L.runs![ri].style;
+            const d = [deco, rs.underline && 'underline', rs.strike && 'line-through'].filter(Boolean).join(' ') || undefined;
+            return (
+              <span
+                key={j}
+                style={{
+                  fontWeight: rs.bold ? boldOf(layer.fontWeight) : undefined,
+                  fontStyle: rs.italic ? 'italic' : undefined,
+                  textDecoration: d,
+                  textDecorationThickness: d ? `${Math.max(1, size * 0.06)}px` : undefined,
+                  textUnderlineOffset: d?.includes('underline') ? `${size * 0.1}px` : undefined,
+                  ...(colours && rs.color ? { color: hex(rs.color), WebkitTextFillColor: hex(rs.color), textDecorationColor: hex(rs.color) } : {}),
+                }}
+              >
+                {t}
+              </span>
+            );
+          })
+        : l.text || ' ';
     return (
       <div key={i}>
-        {sw > 0 && k.strokeOutside && <div style={{ ...strokeSt, WebkitTextStroke: `${sw * 2}px ${stroke}`, color: stroke, WebkitTextFillColor: stroke } as CSSProperties}>{body}</div>}
-        <div style={st}>{body}</div>
-        {sw > 0 && !k.strokeOutside && <div style={strokeSt}>{body}</div>}
+        {sw > 0 && k.strokeOutside && <div style={{ ...strokeSt, WebkitTextStroke: `${sw * 2}px ${stroke}`, color: stroke, WebkitTextFillColor: stroke } as CSSProperties}>{body(false)}</div>}
+        <div style={st}>{body(true)}</div>
+        {sw > 0 && !k.strokeOutside && <div style={strokeSt}>{body(false)}</div>}
       </div>
     );
   });
@@ -282,7 +318,7 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
   return (
     <>
       <Section id="text-content" title="Content">
-        <Content path="text" value="" multiline lorem expose placeholder="Text" />
+        <Content path="text" rich value="" multiline lorem expose placeholder="Text" />
       </Section>
       <Section id="text-font" title="Typography">
         <FontRow layer={layer} set={set} />

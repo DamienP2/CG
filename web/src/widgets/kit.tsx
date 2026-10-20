@@ -1,3 +1,5 @@
+import { RichInput } from '../ui/RichText';
+import { plain as plainText } from '../engine/rich';
 // The widgets of the spec, one file each (web/src/widgets/<id>.tsx), with
 // their Rust twins in crates/cg-core/src/wid/<id>.rs (settings, operator
 // state and actions) and crates/cg-render/src/wid/<id>.rs (drawing). This
@@ -428,14 +430,14 @@ export function ExposeToggle({ on, onClick }: { on: boolean; onClick: () => void
   );
 }
 
-export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean }) {
+export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean; rich?: boolean }) {
   const { raw, data, field, exposed, wired, shown: value, change, canExpose, toggleExpose } = useExposable(p.path, p.value, p.onChange, p.multiline ? 'multiline' : 'text', p.expose);
-  if (wired) return <DataValue label={p.label} value={interpolateText(raw, data)} multiline={p.multiline} />;
+  if (wired) return <DataValue label={p.label} value={plainText(interpolateText(raw, data))} multiline={p.multiline} />;
   const inline = p.label === undefined;
   return (
     <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={toggleExpose} /> : undefined}>
       <div className="wk-content">
-        <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />
+        {p.rich && !exposed ? <RichInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
         {(p.lorem || (canExpose && inline) || exposed) && (
           <div className="wk-content-tools">
             {p.lorem && (

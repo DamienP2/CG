@@ -8,6 +8,7 @@ pub mod logic;
 pub mod lottie;
 pub mod model;
 pub mod playout;
+pub mod rich;
 pub mod sample;
 pub mod wid;
 pub mod widgets;

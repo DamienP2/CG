@@ -59,6 +59,8 @@ pub(crate) struct Draw<'a, 'b> {
     pub state: &'a serde_json::Value,
     /// The project's language.
     pub lang: &'a str,
+    /// A Text's styled parts (bold, colour…), none when it has one style.
+    pub runs: Option<Vec<cg_core::rich::Run>>,
 }
 
 impl Draw<'_, '_> {

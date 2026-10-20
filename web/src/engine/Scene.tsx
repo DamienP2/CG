@@ -1,8 +1,9 @@
+import { RichKeys, runs as richRuns, typedKeys } from './rich';
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
 import { Boundary } from '../ui/Boundary';
 import { withSettings } from './settings';
-import { createContext, memo, useContext, useEffect, useReducer, type CSSProperties } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
@@ -63,16 +64,18 @@ export function textWarnings(template: Template, data: Data): TextWarning[] {
   const out: TextWarning[] = [];
   for (const l of template.layers) {
     if (l.type !== 'text' || !l.visible || (l.scroll && l.scroll !== 'none') || (l.overflow ?? 'fit') === 'visible') continue;
-    const fit = fitLayer(l, resolveLayer(l, hold, data, hold), layerText(l, data));
+    const fit = fitLayer(l, resolveLayer(l, hold, data, hold), layerText(l, data, typedKeys(template)));
     if (fit.overflows || fit.ratio < (l.warnBelow ?? 0.8)) out.push({ layer: l, ratio: fit.ratio, overflows: fit.overflows, keys: [...l.text.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]) });
   }
   return out;
 }
 
 /** A text layer's text as shown (fields filled in, case changed). */
-export const layerText = (layer: Layer & { type: 'text' }, data: Data) => {
-  const text = interpolateText(layer.text, data);
-  return layer.uppercase ? text.toUpperCase() : transformText(text, layer.transform);
+export const layerText = (layer: Layer & { type: 'text' }, data: Data, rich: (key: string) => boolean = () => false) => {
+  const kase = (t: string) => (layer.uppercase ? t.toUpperCase() : transformText(t, layer.transform));
+  // Styled parts (<b>…): the text without its tags.
+  const rs = richRuns(layer.text, data, rich, kase);
+  return rs ? rs.map((r) => r.text).join('') : kase(interpolateText(layer.text, data));
 };
 
 function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic?: Resolved): { style: CSSProperties; text?: string; src?: string; squeeze?: number; fit?: string } {
@@ -422,12 +425,15 @@ export const Scene = memo(function Scene({ template, frame, data, interactive }:
     applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText));
     for (const n of template.logic.nodes) if (n.type === 'target' && values.has(n.layer)) logic.set(n.layer, values.get(n.layer)!);
   }
+  const rich = useMemo(() => typedKeys(template), [template.fields]);
   return (
-    <LogicContext.Provider value={logic}>
-      {(childrenOf.get(null) ?? []).map((l) => (
-        <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
-      ))}
-    </LogicContext.Provider>
+    <RichKeys.Provider value={rich}>
+      <LogicContext.Provider value={logic}>
+        {(childrenOf.get(null) ?? []).map((l) => (
+          <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
+        ))}
+      </LogicContext.Provider>
+    </RichKeys.Provider>
   );
 });
 

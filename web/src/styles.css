@@ -11662,3 +11662,122 @@ body.cv-moving * {
   background: rgba(0, 0, 0, 0.7);
   color: var(--text-2);
 }
+/* The graphic NEXT takes. */
+.opx-gr.cue {
+  box-shadow: inset 3px 0 var(--pvw);
+}
+.opx-gr.cue.air {
+  box-shadow: inset 3px 0 var(--live);
+}
+.opx-cue {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--pvw);
+  color: #04120a;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 15px;
+  vertical-align: 1px;
+}
+
+/* Rich text field (ui/RichText.tsx): toolbar above an editable box. */
+.rt {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-3);
+  transition: border-color 0.12s;
+}
+.rt:focus-within {
+  border-color: var(--accent);
+}
+.rt-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.rt-bar > button {
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.rt-bar > button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.rt-bar > button.on {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.rt-bar > button.rt-sw {
+  width: 14px;
+  height: 14px;
+  margin: 0 1px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--line-2);
+}
+.rt-bar > button.rt-sw:hover {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.rt-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 4px;
+  background: var(--line-2);
+}
+.rt-pick {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  cursor: pointer;
+}
+.rt-pick span {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--line-2);
+  background-image: conic-gradient(red, yellow, lime, aqua, blue, magenta, red) !important;
+}
+.rt-pick input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+.rt-box {
+  min-height: 30px;
+  padding: 5px 8px;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  cursor: text;
+}
+.rt-box.multi {
+  min-height: 64px;
+  max-height: 180px;
+  overflow: auto;
+}
+.rt-box:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-3);
+}

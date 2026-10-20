@@ -47,6 +47,14 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         return true;
     };
     let chain = paint::chain(d, main.clone(), &content);
+    let rtl = c.dir == Direction::Rtl;
+    // Styled parts (not for right-to-left lines, drawn in visual order).
+    let runs = d.runs.clone().filter(|_| !rtl);
+    let bold = runs
+        .as_ref()
+        .filter(|r| r.iter().any(|r| r.style.bold))
+        .and_then(|_| paint::main_font(d, font_family, ((*font_weight).max(400) + 300).min(900)))
+        .map(|f| paint::chain(d, f, &content));
     let size0 = d.num(Prop::FontSize);
     let ls = d.num(Prop::LetterSpacing);
     let lh = line_height.unwrap_or(tx::LINE_HEIGHT);
@@ -70,11 +78,16 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         lang: if c.lang.is_empty() { d.lang } else { &c.lang },
         ellipsis_end: c.fit_end == FitEnd::Ellipsis,
     };
+    // With bold parts, measured in bold: the lines never get wider than the box.
+    let measure = bold.as_ref().unwrap_or(&chain);
     let fit = tx::fit_lines(&content, &opts, &mut |s, z| {
-        tx::chain_width(&chain, s, z, ls)
+        tx::chain_width(measure, s, z, ls)
     });
     let (size, sx) = (fit.size, fit.squeeze);
-    let rtl = c.dir == Direction::Rtl;
+    let parts = runs.as_ref().map(|r| {
+        let lines: Vec<&str> = fit.lines.iter().map(|l| l.text.as_str()).collect();
+        cg_core::rich::align(r, &lines)
+    });
     let bw = avail / sx; // the box the lines are aligned in, before squeezing
     let line_h = size * lh;
     let n = fit.lines.len();
@@ -90,6 +103,8 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     let mask = clip.as_ref();
     let mut text_pb = PathBuilder::new();
     let mut deco_pb = PathBuilder::new();
+    // Parts in their own colour: (colour, glyphs and lines).
+    let mut colored: Vec<(String, PathBuilder)> = Vec::new();
     let mut pictures = Vec::new();
     let mut bands = Vec::new();
     for (i, l) in fit.lines.iter().enumerate() {
@@ -99,7 +114,21 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             l.text.clone()
         };
         let spaces = shown.chars().filter(|ch| *ch == ' ').count();
-        let w = tx::chain_width(&chain, &shown, size, ls);
+        let segs = parts.as_ref().map(|p| &p[i]);
+        let chain_of = |run: usize| {
+            let styled = runs.as_ref().map(|r| &r[run].style);
+            match (styled.is_some_and(|s| s.bold), &bold) {
+                (true, Some(b)) => b,
+                _ => &chain,
+            }
+        };
+        let w = match segs {
+            Some(segs) => segs
+                .iter()
+                .map(|(t, run)| tx::chain_width(chain_of(*run), t, size, ls))
+                .sum(),
+            None => tx::chain_width(&chain, &shown, size, ls),
+        };
         let justified = c.justify && !l.end && spaces > 0 && w < bw;
         let extra = if justified {
             (bw - w) / spaces as f32
@@ -123,33 +152,85 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             TextAlign::Right => bw - lw,
         };
         let baseline = top + i as f32 * line_h + half + asc;
-        let lp = paint::line(
-            &chain,
-            &shown,
-            size,
-            ls,
-            extra,
-            pad + x,
-            baseline,
-            sx,
-            pad,
-            if c.italic { 0.25 } else { 0.0 },
-        );
-        if let Some(p) = &lp.path {
-            text_pb.push_path(p);
-        }
-        pictures.extend(lp.pictures);
-        // Underline / strike through, as layout_text draws them.
-        let bar = match decoration {
-            TextDecoration::Underline => Some(baseline + size * 0.1),
-            TextDecoration::LineThrough => Some(baseline - size * 0.3),
-            TextDecoration::None => None,
-        };
         let (lx, lwx) = (pad + x * sx, lw * sx);
-        if let (Some(y), true) = (bar, lw > 0.0) {
-            let t = (size * 0.06).max(1.0);
-            if let Some(r) = tiny_skia::Rect::from_xywh(lx, y - t / 2.0, lwx, t) {
-                deco_pb.push_rect(r);
+        let thick = (size * 0.06).max(1.0);
+        let bar = |pb: &mut PathBuilder, y: f32, x0: f32, w: f32| {
+            if let Some(r) = tiny_skia::Rect::from_xywh(x0, y - thick / 2.0, w, thick) {
+                pb.push_rect(r);
+            }
+        };
+        // Underline / strike through, as layout_text draws them.
+        let under = baseline + size * 0.1;
+        let through = baseline - size * 0.3;
+        match segs {
+            // One part after the other, each in its style.
+            Some(segs) => {
+                let mut px = pad + x;
+                for (t, run) in segs {
+                    let st = &runs.as_ref().expect("parts come from runs")[*run].style;
+                    let lp = paint::line(
+                        chain_of(*run),
+                        t,
+                        size,
+                        ls,
+                        extra,
+                        px,
+                        baseline,
+                        sx,
+                        pad,
+                        if c.italic || st.italic { 0.25 } else { 0.0 },
+                    );
+                    let pb = match &st.color {
+                        Some(col) => match colored.iter().position(|(c, _)| c == col) {
+                            Some(k) => &mut colored[k].1,
+                            None => {
+                                colored.push((col.clone(), PathBuilder::new()));
+                                &mut colored.last_mut().expect("pushed").1
+                            }
+                        },
+                        None => &mut text_pb,
+                    };
+                    if let Some(p) = &lp.path {
+                        pb.push_path(p);
+                    }
+                    let (sx0, sw0) = (pad + (px - pad) * sx, lp.width * sx);
+                    if sw0 > 0.0 {
+                        if st.underline || *decoration == TextDecoration::Underline {
+                            bar(pb, under, sx0, sw0);
+                        }
+                        if st.strike || *decoration == TextDecoration::LineThrough {
+                            bar(pb, through, sx0, sw0);
+                        }
+                    }
+                    pictures.extend(lp.pictures);
+                    px += lp.width;
+                }
+            }
+            None => {
+                let lp = paint::line(
+                    &chain,
+                    &shown,
+                    size,
+                    ls,
+                    extra,
+                    pad + x,
+                    baseline,
+                    sx,
+                    pad,
+                    if c.italic { 0.25 } else { 0.0 },
+                );
+                if let Some(p) = &lp.path {
+                    text_pb.push_path(p);
+                }
+                pictures.extend(lp.pictures);
+                let y = match decoration {
+                    TextDecoration::Underline => Some(under),
+                    TextDecoration::LineThrough => Some(through),
+                    TextDecoration::None => None,
+                };
+                if let (Some(y), true) = (y, lw > 0.0) {
+                    bar(&mut deco_pb, y, lx, lwx);
+                }
             }
         }
         if c.band && !l.text.trim().is_empty() {
@@ -178,10 +259,17 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             }
         }
     }
-    let Some(path) = text_pb.finish() else {
+    let colored: Vec<(cg_core::Color, tiny_skia::Path)> = colored
+        .into_iter()
+        .filter_map(|(c, pb)| Some((Draw::hex(&c), pb.finish()?)))
+        .collect();
+    let path = text_pb.finish();
+    if path.is_none() && colored.is_empty() {
         draw_pictures(d, &chain, &pictures, size, sx, mask);
         return true;
-    };
+    }
+    // Shadow and strokes go around every part, whatever its colour.
+    let all: Vec<&tiny_skia::Path> = path.iter().chain(colored.iter().map(|(_, p)| p)).collect();
     let sw = d.num(Prop::StrokeWidth);
     let stroke_col = d.color(Prop::Stroke);
     if c.shadow {
@@ -192,7 +280,7 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         };
         paint::shadow(
             d,
-            &[&path],
+            &all,
             st,
             Draw::hex(&c.shadow_color),
             c.shadow_x,
@@ -207,11 +295,17 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             line_join: tiny_skia::LineJoin::Round,
             ..Default::default()
         };
-        d.stroke(&path, stroke_col, &s, mask);
+        for p in &all {
+            d.stroke(p, stroke_col, &s, mask);
+        }
     }
-    match c.fill_type {
-        FillType::Solid => d.fill(&path, d.color(Prop::Fill), FillRule::Winding, mask),
-        FillType::Gradient => {
+    for (col, p) in &colored {
+        d.fill(p, *col, FillRule::Winding, mask);
+    }
+    match (c.fill_type, &path) {
+        (_, None) => {}
+        (FillType::Solid, Some(path)) => d.fill(path, d.color(Prop::Fill), FillRule::Winding, mask),
+        (FillType::Gradient, Some(path)) => {
             if let Some(shader) = paint::gradient(
                 d.color(Prop::Fill),
                 Draw::hex(&c.color2),
@@ -225,7 +319,7 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
                     anti_alias: true,
                     ..Default::default()
                 };
-                d.fill_paint(&path, &p, FillRule::Winding, mask);
+                d.fill_paint(path, &p, FillRule::Winding, mask);
             }
         }
     }
@@ -234,7 +328,9 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             width: sw,
             ..Default::default()
         };
-        d.stroke(&path, stroke_col, &s, mask);
+        for p in &all {
+            d.stroke(p, stroke_col, &s, mask);
+        }
     }
     draw_pictures(d, &chain, &pictures, size, sx, mask);
     true
