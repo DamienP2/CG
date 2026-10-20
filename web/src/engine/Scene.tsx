@@ -377,8 +377,6 @@ function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; f
 const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold, interactive }: { layer: Layer; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
   const logic = useContext(LogicContext).get(layer.id);
   const self = layer;
-  // A scrolling text is drawn as the ticker or roll it behaves like.
-  layer = W.scrollingAs(layer) ?? layer;
   const { style, text, src, squeeze = 1, fit } = layerStyle(layer, frame, data, hold, logic);
   const kids = childrenOf.get(self.id) ?? [];
   const lines = text?.split('\n').map((line, i) => (

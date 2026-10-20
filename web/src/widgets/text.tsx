@@ -12,6 +12,7 @@ import type { Data, Layer, Template, TextOverflow } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
 import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
+import { scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
 
@@ -127,13 +128,22 @@ export interface TextLayout {
   avail: number;
   text: string;
   runs: Run[] | null;
+  /** Weight the lines were measured with. */
+  mw: number;
 }
 
 /** The fit of the layer with these values (same as the Rust renderer). */
 export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string, rich?: (key: string) => boolean): TextLayout {
   const k = cfg(l);
-  const runs = k.dir === 'rtl' ? null : textRuns(l, data, rich);
-  const text = runs ? runs.map((x) => x.text).join('') : shownText(l, data);
+  let runs = k.dir === 'rtl' ? null : textRuns(l, data, rich);
+  let text = runs ? runs.map((x) => x.text).join('') : shownText(l, data, rich);
+  // A ticker: the lines one after the other, with the separator (mirror of wid/text.rs).
+  const scroll = l.scroll && l.scroll !== 'none' ? l.scroll : null;
+  const sep = l.separator ?? '   •   ';
+  if (scroll === 'horizontal') {
+    text = text.split('\n').join(sep) + sep;
+    runs = runs ? runs.map((x, i, a) => ({ ...x, text: x.text.split('\n').join(sep) + (i === a.length - 1 ? sep : '') })) : null;
+  }
   // With bold parts, measured in bold: the lines never get wider than the box.
   const mw = runs?.some((x) => x.style.bold) ? boldOf(l.fontWeight) : l.fontWeight;
   const size0 = num(r.fontSize);
@@ -142,15 +152,19 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
   const w = num(r.width);
   const avail = k.band ? Math.max(20, w - 2 * pad) : w;
   const fam = l.fontFamily;
-  const fit = fitLines(
+  const fit: FitLines =
+    scroll === 'horizontal'
+      ? { lines: [{ text, end: true }], size: size0, squeeze: 1, clip: true, ratio: 1, overflows: false, stage: 'fit', forced: false, hyphenated: false }
+      : fitLines(
     text,
     {
       size: size0,
       lineHeight: l.lineHeight ?? 1.2,
       boxW: avail,
-      boxH: num(r.height),
+      // A roll: every line at its size, however long it is.
+      boxH: scroll ? 1e9 : num(r.height),
       wrap: !!l.wrap,
-      overflow: l.overflow ?? 'fit',
+      overflow: scroll ? 'visible' : (l.overflow ?? 'fit'),
       squeeze: l.squeeze ?? 0.8,
       minSize: l.minSize ?? 0.6,
       maxLines: k.maxLines,
@@ -160,7 +174,8 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
     },
     (s, size) => measure(fontCss(fam, mw, size, k.italic), ls, s),
   );
-  return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text, runs };
+  if (scroll) fit.clip = true;
+  return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text, runs, mw };
 }
 
 /** The fit badge of the Designer (as the other texts have it). */
@@ -168,7 +183,7 @@ const fitBadge = (l: TextLayer, f: FitLines) => (f.overflows ? (l.overflow === '
 
 // --------------------------------------------------------------- render --
 
-function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string }) {
+function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0 }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string; ageSecs?: number }) {
   const k = cfg(layer);
   const rich = useContext(RichKeys);
   const text = shownText(layer, data, rich);
@@ -198,15 +213,24 @@ function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r:
   const shadowCss = k.shadow ? `${k.shadowX}px ${k.shadowY}px ${k.shadowBlur}px ${hex(k.shadowColor)}` : '';
   const deco = layer.decoration === 'underline' ? 'underline' : layer.decoration === 'lineThrough' ? 'line-through' : undefined;
   const bands: CSSProperties[] = [];
-  const lines = fit.lines.map((l, i) => {
+  // Where the text is drawn: once, or each copy of a scroll on its way.
+  const travelled = (layer.speed ?? 120) * Math.max(0, ageSecs);
+  const scroll = layer.scroll && layer.scroll !== 'none' ? layer.scroll : null;
+  const placements: [number, number][] =
+    scroll === 'horizontal'
+      ? scrollPositions(w, measure(fontCss(layer.fontFamily, L.mw, size, k.italic), ls, L.text) + ls, travelled, true).map((x) => [x, 0])
+      : scroll === 'vertical'
+        ? scrollPositions(h, layer.looping ? lineH * n + h : lineH * n, travelled, !!layer.looping).map((y) => [0, y - top])
+        : [[0, 0]];
+  const lines = placements.flatMap(([ox, oy], pi) => fit.lines.map((l, i) => {
     const spaces = (l.text.match(/ /g) ?? []).length;
     const segs = parts?.[i];
     const lw0 = segs ? segs.reduce((a, [t, ri]) => a + measure(L.runs![ri].style.bold ? boldFont : L.font, ls, t), 0) : measure(L.font, ls, l.text);
     const justified = k.justify && !l.end && spaces > 0 && lw0 < bw;
     const lw = justified ? bw : lw0;
     const eff = k.justify && !justified ? (rtl ? 'right' : 'left') : layer.align;
-    const x = justified ? 0 : eff === 'center' ? (bw - lw) / 2 : eff === 'right' ? bw - lw : 0;
-    const y = top + i * lineH;
+    const x = scroll === 'horizontal' ? ox : justified ? 0 : eff === 'center' ? (bw - lw) / 2 : eff === 'right' ? bw - lw : 0;
+    const y = top + oy + i * lineH;
     const left = pad + x * sx;
     if (k.band && l.text.trim())
       bands.push({
@@ -280,13 +304,13 @@ function Render({ layer, r, w, h, data, designer, lang }: { layer: TextLayer; r:
           })
         : l.text || ' ';
     return (
-      <div key={i}>
+      <div key={`${pi}-${i}`}>
         {sw > 0 && k.strokeOutside && <div style={{ ...strokeSt, WebkitTextStroke: `${sw * 2}px ${stroke}`, color: stroke, WebkitTextFillColor: stroke } as CSSProperties}>{body(false)}</div>}
         <div style={st}>{body(true)}</div>
         {sw > 0 && !k.strokeOutside && <div style={strokeSt}>{body(false)}</div>}
       </div>
     );
-  });
+  }));
   const badge = designer ? fitBadge(layer, fit) : undefined;
   return (
     <>
@@ -567,7 +591,9 @@ export default defineWidget({
   create: () => ({}),
   ownsLook: true,
   content: ['text'],
-  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} />,
+  // A scrolling text moves with its time on air.
+  live: (l) => !!l.scroll && l.scroll !== 'none',
+  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} ageSecs={time.ageSecs} />,
   Inspector: ({ layer, data, template, edit }) => <Inspector layer={layer} data={data} template={template} edit={edit} />,
   warnings: (layer, { data }) => {
     const out: Warning[] = [];

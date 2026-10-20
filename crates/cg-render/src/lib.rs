@@ -1384,6 +1384,40 @@ mod tests {
     }
 
     #[test]
+    fn a_scrolling_text_comes_in_from_the_right_with_its_looks() {
+        let project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "sc", "name": "T", "duration": 500.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "t", "name": "Ticker", "type": "text", "fontFamily": "Inter",
+                "text": "Breaking <c=#00ff00>news</c>\nSecond line", "scroll": "horizontal", "speed": 600.0,
+                "band": true, "bandColor": "#0000ff",
+                "props": {"x": 0.0, "y": 0.0, "width": 1920.0, "height": 120.0, "fontSize": 60.0, "fill": [1.0, 0.0, 0.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let fps = project.frame_rate.as_f64();
+        let seen = |f: &Frame| f.data.chunks(4).filter(|p| p[3] > 200).count();
+        let count = |f: &Frame, want: [u8; 3]| {
+            f.data
+                .chunks(4)
+                .filter(|p| p[3] == 255 && p[..3] == want)
+                .count()
+        };
+        // At the take it starts beyond the right edge.
+        assert_eq!(
+            seen(&r.render_template(&project, &t, "main", 0.0, &Default::default())),
+            0
+        );
+        // Two seconds later: on screen, with its band and its green part.
+        let f = r.render_template(&project, &t, "main", 2.0 * fps, &Default::default());
+        assert!(count(&f, [0, 0, 255]) > 1000, "band");
+        assert!(count(&f, [0, 255, 0]) > 200, "rich text");
+        assert!(count(&f, [255, 0, 0]) > 200, "text");
+    }
+
+    #[test]
     fn styled_parts_of_a_text_have_their_colour() {
         let project = sample::demo_project();
         let t: cg_core::Template = serde_json::from_value(serde_json::json!({
