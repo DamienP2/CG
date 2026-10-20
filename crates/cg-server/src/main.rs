@@ -16,6 +16,7 @@ mod service;
 mod state;
 mod update;
 mod web;
+mod webproxy;
 
 use std::collections::BTreeMap;
 use std::future::Future;

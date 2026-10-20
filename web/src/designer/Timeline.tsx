@@ -12,7 +12,6 @@ import {
   FolderPlus,
   PenTool,
   Pentagon,
-  Watch,
   Image,
   Lock,
   Minus,
@@ -897,12 +896,9 @@ const MENU: { type?: LayerType; label: string; soon?: typeof Video; patch?: Reco
   { type: 'map', label: 'Map' },
   { type: 'qrCode', label: 'QR code' },
   { label: 'Video', soon: Video, action: 'video', hint: 'A video file (mp4, mov, webm…; alpha kept) played as frames, at most a minute' },
-  { type: 'web', label: 'Web page', hint: 'A web address (HTML5 outputs)' },
-  { type: 'web', label: 'Iframe', soon: Code, hint: 'Your HTML code (HTML5 outputs)', patch: { source: 'html', html: '<div style="font:700 64px sans-serif;color:#fff">Hello</div>' } },
+  { type: 'web', label: 'Iframe', soon: Code, hint: 'A web page or your HTML code (HTML5 outputs)' },
   { label: 'Animation (Lottie)', soon: Sparkles, action: 'lottie', hint: 'A Lottie / Bodymovin file (.json, .zip, .lottie) added as layers' },
   { type: 'scoreboard', label: 'Scoreboard' },
-  { label: 'Analog clock', soon: Watch, preset: 'analogClock', hint: 'Face with hands' },
-  { label: 'Rotator', soon: Repeat, preset: 'rotator', hint: 'Lines one after another' },
 ];
 type Menu = MenuItem & { action?: 'video' | 'lottie' };
 const menu = (): Menu[] =>

@@ -17,7 +17,7 @@ import { widgetOf } from '../widgets';
 export const TimeContext = createContext<W.TimeCtx>({ nowMs: Date.now(), ageSecs: 0, defaultTz: '' });
 
 /** Layers whose look depends on the clock: their scene re-renders every frame. */
-export const LIVE_TYPES: ReadonlySet<LayerType> = new Set(['clock', 'ticker', 'roll', 'analogClock', 'counter', 'progress', 'rotator', 'typewriter', 'slideshow', 'barChart']);
+export const LIVE_TYPES: ReadonlySet<LayerType> = new Set(['clock', 'ticker', 'roll', 'counter', 'progress', 'rotator', 'typewriter', 'slideshow', 'barChart']);
 
 export const hasLiveWidgets = (t: Template) => t.layers.some((l) => l.visible && (LIVE_TYPES.has(l.type) || !!widgetOf(l.type)?.live?.(l as never)));
 
@@ -160,7 +160,7 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
       return { style, src: interpolateText(layer.src, data) };
     default:
       // Widgets draw their own content (see WidgetContent), inside their box.
-      if (layer.type !== 'analogClock' && layer.type !== 'progress' && layer.type !== 'qrCode') style.overflow = 'hidden';
+      if (layer.type !== 'progress' && layer.type !== 'qrCode') style.overflow = 'hidden';
       return { style };
   }
 }
@@ -275,29 +275,6 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
             <TextBox key={i} text={body} font={layer} r={r} align={layer.align} valign="top" box={[0, y, w, block]} />
           ))}
         </div>
-      );
-    }
-    case 'analogClock': {
-      const [ha, ma, sa] = W.clockHands(layer.timezone, time);
-      const d = Math.min(w, h);
-      const [cx, cy, rad] = [w / 2, h / 2, d / 2];
-      const ink = cssColor(col(r.stroke));
-      const accent = hexColor(layer.accent, 'white');
-      const seg = (deg: number, r0: number, r1: number) => {
-        const a = (deg * Math.PI) / 180;
-        return { x1: cx + Math.sin(a) * r0, y1: cy - Math.cos(a) * r0, x2: cx + Math.sin(a) * r1, y2: cy - Math.cos(a) * r1 };
-      };
-      return (
-        <svg style={{ position: 'absolute', inset: 0, overflow: 'visible' }} width={w} height={h} strokeLinecap="round">
-          <circle cx={cx} cy={cy} r={rad} fill={cssColor(col(r.fill))} />
-          {Array.from({ length: 12 }, (_, i) => (
-            <line key={i} {...seg(i * 30, rad * (i % 3 === 0 ? 0.78 : 0.84), rad * 0.92)} stroke={ink} strokeWidth={Math.max(1.5, d * 0.02)} />
-          ))}
-          <line {...seg(ha, -rad * 0.08, rad * 0.5)} stroke={ink} strokeWidth={d * 0.06} />
-          <line {...seg(ma, -rad * 0.08, rad * 0.74)} stroke={ink} strokeWidth={d * 0.04} />
-          {layer.seconds && <line {...seg(sa, -rad * 0.15, rad * 0.86)} stroke={accent} strokeWidth={Math.max(1, d * 0.012)} />}
-          <circle cx={cx} cy={cy} r={d * 0.035} fill={layer.seconds ? accent : ink} />
-        </svg>
       );
     }
     case 'progress': {

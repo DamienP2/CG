@@ -8,9 +8,11 @@
 
 use ab_glyph::FontArc;
 use cg_core::wid::timer::fmt::{Seg, SegKind, ZoneSel};
-use cg_core::wid::timer::{affixes, banner, display, eff, widest, At, Disp, Eff, State};
+use cg_core::wid::timer::{
+    affixes, banner, display, eff, hands, widest, At, Disp, Eff, Face, State, Ticks,
+};
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
-use tiny_skia::{FillRule, Stroke, Transform};
+use tiny_skia::{FillRule, LineCap, PathBuilder, Stroke, Transform};
 
 use super::{rrect, Draw};
 
@@ -224,6 +226,10 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     } else {
         vec![(None, String::new())]
     };
+    if c.face == Face::Analog {
+        draw_analog(d, &cx, st, at, &zones, fs.align, fs.vertical_align);
+        return true;
+    }
     let aw = |s: &str| match &cx.afont {
         Some(f) if !s.is_empty() => Draw::text_width(f, s, cx.affix_size(1.0), 0.0),
         _ => 0.0,
@@ -363,6 +369,174 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         }
     }
     true
+}
+
+/// Analog faces, side by side (one per city), each with its label under
+/// it. Same geometry as `AnalogFaces` in web/src/widgets/timer.tsx.
+fn draw_analog(
+    d: &mut Draw,
+    cx: &Ctx,
+    st: &State,
+    at: At,
+    zones: &[(Option<ZoneSel>, String)],
+    align: TextAlign,
+    valign: VerticalAlign,
+) {
+    let a = &cx.e.c.analog;
+    let n = zones.len().max(1) as f32;
+    let lab = if zones.iter().any(|(_, l)| !l.is_empty()) {
+        0.16
+    } else {
+        0.0
+    };
+    let diam = (d.h / (1.0 + lab))
+        .min(d.w / (n + (n - 1.0) * 0.15))
+        .max(0.0);
+    if diam < 1.0 {
+        return;
+    }
+    let gap = diam * 0.15;
+    let total = n * diam + (n - 1.0) * gap;
+    let x0 = match align {
+        TextAlign::Left => 0.0,
+        TextAlign::Center => (d.w - total) / 2.0,
+        TextAlign::Right => d.w - total,
+    };
+    let gh = diam * (1.0 + lab);
+    let y0 = match valign {
+        VerticalAlign::Top => 0.0,
+        VerticalAlign::Middle => (d.h - gh) / 2.0,
+        VerticalAlign::Bottom => d.h - gh,
+    };
+    let ink = if a.hands.trim().is_empty() {
+        d.color(Prop::Fill)
+    } else {
+        Draw::hex(&a.hands)
+    };
+    let accent = Draw::hex(&a.accent);
+    let round = |w: f32| Stroke {
+        width: w,
+        line_cap: LineCap::Round,
+        ..Default::default()
+    };
+    for (i, (zone, label)) in zones.iter().enumerate() {
+        let (ccx, ccy, r) = (
+            x0 + i as f32 * (diam + gap) + diam / 2.0,
+            y0 + diam / 2.0,
+            diam / 2.0,
+        );
+        let seg = |pb: &mut PathBuilder, deg: f32, r0: f32, r1: f32| {
+            let (sn, cs) = deg.to_radians().sin_cos();
+            pb.move_to(ccx + sn * r0, ccy - cs * r0);
+            pb.line_to(ccx + sn * r1, ccy - cs * r1);
+        };
+        if !a.face.trim().is_empty() {
+            if let Some(p) = PathBuilder::from_circle(ccx, ccy, r) {
+                d.fill(&p, Draw::hex(&a.face), FillRule::Winding, None);
+            }
+        }
+        if !a.rim.trim().is_empty() {
+            if let Some(p) = PathBuilder::from_circle(ccx, ccy, r - diam * 0.015) {
+                d.stroke(&p, Draw::hex(&a.rim), &round(diam * 0.03), None);
+            }
+        }
+        // Marks: (count, every, major from, minor from, major width, minor width).
+        let marks = match a.ticks {
+            Ticks::Hours => Some((
+                12,
+                3,
+                0.78,
+                0.84,
+                (diam * 0.02).max(1.5),
+                (diam * 0.02).max(1.5),
+            )),
+            Ticks::Minutes => Some((
+                60,
+                5,
+                0.80,
+                0.88,
+                (diam * 0.022).max(1.5),
+                (diam * 0.008).max(1.0),
+            )),
+            Ticks::None => None,
+        };
+        if let Some((count, every, major, minor, wmaj, wmin)) = marks {
+            for big in [true, false] {
+                let mut pb = PathBuilder::new();
+                for k in 0..count {
+                    if (k % every == 0) == big {
+                        let from = if big { major } else { minor };
+                        seg(&mut pb, k as f32 * 360.0 / count as f32, r * from, r * 0.92);
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    d.stroke(&p, ink, &round(if big { wmaj } else { wmin }), None);
+                }
+            }
+        }
+        if a.numbers {
+            let rr = r * if a.ticks == Ticks::None { 0.8 } else { 0.64 };
+            let sz = diam * 0.11;
+            let font = cx.font.clone();
+            for k in 1..=12 {
+                let (sn, cs) = (k as f32 * 30.0).to_radians().sin_cos();
+                let (nx, ny) = (ccx + sn * rr, ccy - cs * rr);
+                if let Some(p) = Draw::text_path(
+                    &font,
+                    &k.to_string(),
+                    sz,
+                    0.0,
+                    TextAlign::Center,
+                    VerticalAlign::Middle,
+                    (nx - sz, ny - sz * LH / 2.0, sz * 2.0, sz * LH),
+                    LH,
+                ) {
+                    d.fill(&p, ink, FillRule::Winding, None);
+                }
+            }
+        }
+        if let Some([ha, ma, sa]) = hands(&cx.e, st, at, zone.as_ref()) {
+            for (deg, len, w) in [(ha, 0.5, 0.06), (ma, 0.74, 0.04)] {
+                let mut pb = PathBuilder::new();
+                seg(&mut pb, deg as f32, -r * 0.08, r * len);
+                if let Some(p) = pb.finish() {
+                    d.stroke(&p, ink, &round(diam * w), None);
+                }
+            }
+            if a.seconds {
+                let mut pb = PathBuilder::new();
+                seg(&mut pb, sa as f32, -r * 0.15, r * 0.86);
+                if let Some(p) = pb.finish() {
+                    d.stroke(&p, accent, &round((diam * 0.012).max(1.0)), None);
+                }
+            }
+            if let Some(p) = PathBuilder::from_circle(ccx, ccy, diam * 0.035) {
+                d.fill(
+                    &p,
+                    if a.seconds { accent } else { ink },
+                    FillRule::Winding,
+                    None,
+                );
+            }
+        }
+        if !label.is_empty() {
+            if let Some(f) = cx.afont.clone() {
+                let sz = diam * 0.11;
+                if let Some(p) = Draw::text_path(
+                    &f,
+                    label,
+                    sz,
+                    0.0,
+                    TextAlign::Center,
+                    VerticalAlign::Middle,
+                    (ccx - diam, y0 + diam + diam * 0.02, diam * 2.0, diam * lab),
+                    LH,
+                ) {
+                    d.fill(&p, affix_color(cx, d), FillRule::Winding, None);
+                }
+            }
+        }
+    }
 }
 
 fn affix_color(cx: &Ctx, d: &Draw) -> Color {

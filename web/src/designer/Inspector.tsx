@@ -532,19 +532,6 @@ export function WidgetSettings({ layer, set, data = {} }: { layer: Layer; set: (
           {check('loop', t('Loop'))}
         </>
       );
-    case 'analogClock':
-      return (
-        <>
-          <Row label={t('Time zone')}>
-            <ZoneInput value={layer.timezone} onChange={(v) => set('timezone', v, true)} />
-          </Row>
-          {check('seconds', t('Second hand'))}
-          <Row label={t('Accent')}>
-            <HexInput value={layer.accent} onChange={(v) => set('accent', v, true)} />
-          </Row>
-          <p className="hint">{t('Face = fill colour, hands and ticks = stroke colour.')}</p>
-        </>
-      );
     case 'counter':
       return (
         <>
@@ -755,7 +742,6 @@ export function FontControls({ layer, set }: { layer: Layer & FontStyle; set: (k
 const FILL_LABEL: Partial<Record<LayerType, string>> = {
   progress: 'Bar',
   barChart: 'Bars',
-  analogClock: 'Face',
   qrCode: 'Modules',
 };
 
@@ -984,9 +970,9 @@ function LayerInspector({ layer }: { layer: Layer }) {
         {(hasLook || layer.type === 'group' || (layer.type === 'image' && !spec?.Inspector)) && (
           <Group id="contents" title={t('Contents')} level={2}>
             {hasLook && <ColorGroupRow layer={layer} prop="fill" label={FILL_LABEL[layer.type] ?? (textLike ? 'Color' : 'Fill')} />}
-            {hasLook && layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorGroupRow layer={layer} prop="stroke" label={layer.type === 'analogClock' ? 'Hands' : 'Stroke'} />}
+            {hasLook && layer.type !== 'progress' && layer.type !== 'qrCode' && <ColorGroupRow layer={layer} prop="stroke" label="Stroke" />}
             {hasLook &&
-              STYLE.filter((st) => (st.prop === 'cornerRadius' ? radius : !['analogClock', 'progress', 'qrCode'].includes(layer.type))).map((st) => (
+              STYLE.filter((st) => (st.prop === 'cornerRadius' ? radius : !['progress', 'qrCode'].includes(layer.type))).map((st) => (
                 <GroupRow
                   key={st.prop}
                   layer={layer}

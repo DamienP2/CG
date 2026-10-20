@@ -67,7 +67,6 @@ export type LayerKind =
   | (({ type: 'clock'; mode: ClockMode; format: string; timezone: string; target: string } & FontStyle) & import('../widgets/timer').Config)
   | (({ type: 'ticker'; text: string; separator: string; speed: number } & FontStyle) & import('../widgets/ticker').Config)
   | ({ type: 'roll'; text: string; speed: number; loop: boolean } & FontStyle)
-  | { type: 'analogClock'; timezone: string; seconds: boolean; accent: string }
   | (({ type: 'counter'; from: string; to: string; duration: number; decimals: number; prefix: string; suffix: string; grouping: boolean } & FontStyle) & import('../widgets/counter').Config)
   | ({ type: 'progress'; value: string; max: string; duration: number; track: string } & import('../widgets/progress').Config)
   | ({ type: 'rotator'; text: string; interval: number; fade: number } & FontStyle)

@@ -1,6 +1,18 @@
 // The widgets: their settings in the Designer, their controls in the Operator,
 // and the names / groups of the widget registry shown in the Designer menus.
 export const widgets: Record<string, string> = {
+  'Choose a colour': 'Choisir une couleur',
+  // Analog face of the timer.
+  'Rim': 'Contour',
+  'Second hand colour': 'Couleur de la trotteuse',
+  'The second hand moves smoothly': 'La trotteuse avance en continu',
+  'Marks': 'Graduations',
+  'Minutes': 'Minutes',
+  '1 to 12 around the face': 'De 1 à 12 autour du cadran',
+  'clock|Numbers': 'Chiffres',
+  // Iframe through the server.
+  'Through the server': 'Via le serveur',
+  'For sites that refuse to be shown in a frame (most of them). Off: the browser loads the page itself (local network sites).': 'Pour les sites qui refusent d’être affichés dans un cadre (la plupart). Désactivé\u00a0: le navigateur charge la page lui-même (sites du réseau local).',
   'Empty text · nothing on air': 'Texte vide · rien à l’antenne',
   'Web page: an http(s) address': 'Page web\u00a0: une adresse http(s)',
   'Reserved width': 'Largeur réservée',

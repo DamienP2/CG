@@ -30,6 +30,9 @@ pub struct Config {
     pub zoom: f32,
     /// The page's own background shows (else transparent where it is).
     pub opaque: bool,
+    /// Fetched by the server, for the many sites that refuse to be shown
+    /// in a frame (cg-server/src/webproxy.rs).
+    pub proxy: bool,
 }
 
 impl Default for Config {
@@ -41,6 +44,7 @@ impl Default for Config {
             refresh: 0.0,
             zoom: 100.0,
             opaque: false,
+            proxy: true,
         }
     }
 }

@@ -162,6 +162,59 @@ impl Default for Plate {
     }
 }
 
+/// Digits, or a face with hands.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Face {
+    #[default]
+    Digital,
+    Analog,
+}
+
+/// The marks around an analog face.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Ticks {
+    /// 12 marks, longer at 3, 6, 9 and 12.
+    Hours,
+    /// 60 marks, the hours longer.
+    #[default]
+    Minutes,
+    None,
+}
+
+/// The look of an analog face. Colours: "" = none (face, rim) or the text
+/// colour (hands).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Analog {
+    pub seconds: bool,
+    /// The second hand sweeps (else it jumps each second).
+    pub smooth: bool,
+    pub ticks: Ticks,
+    /// 1 to 12 around the face.
+    pub numbers: bool,
+    pub face: String,
+    pub rim: String,
+    pub hands: String,
+    pub accent: String,
+}
+
+impl Default for Analog {
+    fn default() -> Self {
+        Self {
+            seconds: true,
+            smooth: false,
+            ticks: Ticks::Minutes,
+            numbers: false,
+            face: "#0f1222e6".into(),
+            rim: String::new(),
+            hands: String::new(),
+            accent: "#ff3b5c".into(),
+        }
+    }
+}
+
 /// "From X seconds" (stopwatch) / "under X seconds" (countdown): this style.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -225,6 +278,9 @@ pub struct Config {
     /// None = an older layer: mapped from `mode`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timer_mode: Option<TimerMode>,
+    /// Digits or an analog face (its look in `analog`).
+    pub face: Face,
+    pub analog: Analog,
     pub tabular: bool,
     pub zeros: Zeros,
     pub hours_auto: bool,
@@ -295,6 +351,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             timer_mode: None,
+            face: Face::Digital,
+            analog: Analog::default(),
             tabular: false,
             zeros: Zeros::Pad,
             hours_auto: false,
@@ -803,6 +861,33 @@ pub fn display(e: &Eff, st: &State, at: At, zone: Option<&ZoneSel>) -> Disp {
     out
 }
 
+/// Angles of the hour, minute and second hands, degrees from 12 o'clock
+/// (None: nothing to show). A clock reads its zone's time of day; a
+/// stopwatch or countdown shows its value as hours, minutes, seconds.
+pub fn hands(e: &Eff, st: &State, at: At, zone: Option<&ZoneSel>) -> Option<[f64; 3]> {
+    let secs = if e.timed() {
+        let d = display(e, st, at, zone);
+        if d.hidden {
+            return None;
+        }
+        d.v?.unsigned_abs() as f64 / 1000.0
+    } else {
+        let ms = clock_ms(e, at.now, at.fps);
+        let c = comp_at(ms, &zone.unwrap_or(&e.zone).tz(at.default_tz));
+        (c.h * 3600 + c.mi * 60 + c.s) as f64 + c.ms as f64 / 1000.0
+    };
+    let s = if e.c.analog.smooth {
+        secs
+    } else {
+        secs.floor()
+    };
+    Some([
+        (s / 120.0).rem_euclid(360.0),
+        (s / 10.0).rem_euclid(360.0),
+        (s * 6.0).rem_euclid(360.0),
+    ])
+}
+
 /// The widest strings the format can produce (digits as 8): the box is
 /// sized on them so 9:59 → 10:00 does not move anything.
 pub fn widest(e: &Eff, d: &Disp, sep: &str, fps: f64) -> Vec<String> {
@@ -1164,6 +1249,34 @@ mod tests {
             r#"{"id":"a","name":"C","type":"clock","mode":"time","format":"dd/MM/yyyy h:mm A","timezone":"UTC","props":{}}"#,
         );
         assert!(text(&l, &State::default(), 0, 0).starts_with("01/01/1970 12:00 AM"));
+    }
+
+    #[test]
+    fn analog_hands_follow_the_time() {
+        let d = data();
+        let at = |now| At {
+            now,
+            age_ms: 0,
+            fps: 25.0,
+            default_tz: "UTC",
+        };
+        // 1970-01-01 03:15:30 UTC.
+        let now = (3 * 3600 + 15 * 60 + 30) * 1000;
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","timerMode":"clock","face":"analog","timezone":"UTC","props":{}}"#,
+        );
+        let e = eff(&l, &d).unwrap();
+        let [h, m, s] = hands(&e, &State::default(), at(now), None).unwrap();
+        assert!((h - (3.0 * 30.0 + 15.5 * 0.5)).abs() < 1e-9);
+        assert!((m - 15.5 * 6.0).abs() < 1e-9);
+        assert_eq!(s, 180.0);
+        // A countdown shows its remaining time: 5 minutes.
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","timerMode":"countdown","face":"analog","cdDuration":300000,"props":{}}"#,
+        );
+        let e = eff(&l, &d).unwrap();
+        let [_, m, s] = hands(&e, &State::default(), at(T0), None).unwrap();
+        assert_eq!((m, s), (30.0, 0.0));
     }
 
     fn sw() -> Layer {

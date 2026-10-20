@@ -344,14 +344,30 @@ export function Num(p: { label?: ReactNode; path?: string; expose?: Expose; expo
 }
 
 /** `#rrggbb[aa]` colour. */
-export function ColorPick(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: string; onChange?: (v: string) => void }) {
+/**
+ * A colour. With `none` (what an empty colour means: "None", "Text colour"…)
+ * the colour can be left empty: a button sets one, × empties it again.
+ */
+export function ColorPick(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: string; onChange?: (v: string) => void; none?: string; first?: string }) {
   const [v, set] = useBind<string>(p.path, p.value, p.onChange);
+  const empty = p.none !== undefined && !(v ?? '').trim();
   const c = parseHex(v ?? '') ?? [1, 1, 1, 1];
   return (
     <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
-      <span className="pp-field color">
-        <ColorField value={c} onChange={(x) => set(toHex(x, x[3] < 1), true)} />
-      </span>
+      {empty ? (
+        <button type="button" className="pp-none" title={t('Choose a colour')} onClick={() => set(p.first ?? '#ffffff', true)}>
+          {p.none}
+        </button>
+      ) : (
+        <span className="pp-field color">
+          <ColorField value={c} onChange={(x) => set(toHex(x, x[3] < 1), true)} />
+          {p.none !== undefined && (
+            <button type="button" className="pp-clear" title={p.none} onClick={() => set('', true)}>
+              ×
+            </button>
+          )}
+        </span>
+      )}
     </Row>
   );
 }

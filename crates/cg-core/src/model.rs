@@ -62,6 +62,16 @@ impl Color {
         };
         Some(Color([r, g, b, a].map(|v| v as f32 / 255.0)))
     }
+
+    /// `#rrggbb`, or `#rrggbbaa` when not opaque.
+    pub fn to_hex(self) -> String {
+        let [r, g, b, a] = self.0.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+        if a == 255 {
+            format!("#{r:02x}{g:02x}{b:02x}")
+        } else {
+            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+        }
+    }
 }
 
 /// A value a property can take. Untagged so JSON stays natural:
@@ -392,7 +402,7 @@ pub enum LayerKind {
         font: FontStyle,
         /// Settings of the spec widget (`wid::timer`).
         #[serde(flatten)]
-        x: crate::wid::timer::Config,
+        x: Box<crate::wid::timer::Config>,
     },
     /// Horizontal crawl: one item per line of `text`, joined by `separator`.
     #[serde(rename_all = "camelCase")]
@@ -1338,6 +1348,59 @@ impl Template {
             .find(|m| m.kind == MarkerKind::Pause && (m.frame - frame).abs() < 1e-6)
     }
 
+    /// Layers of widgets that are gone become their replacement. Returns
+    /// true if anything changed.
+    pub fn upgrade_layers(&mut self) -> bool {
+        let mut changed = false;
+        for l in &mut self.layers {
+            // The analog clock is now a Timer with an analog face.
+            if let LayerKind::AnalogClock {
+                timezone,
+                seconds,
+                accent,
+            } = &l.kind
+            {
+                let color = |p: Prop, or: &str| {
+                    l.props
+                        .get(&p)
+                        .and_then(Value::as_color)
+                        .map(Color::to_hex)
+                        .unwrap_or_else(|| or.into())
+                };
+                use crate::wid::timer::{Analog, Config, Face, Ticks, TimerMode};
+                let x = Config {
+                    timer_mode: Some(TimerMode::Clock),
+                    face: Face::Analog,
+                    analog: Analog {
+                        seconds: *seconds,
+                        ticks: Ticks::Hours,
+                        face: color(Prop::Fill, "#0f1222e6"),
+                        hands: color(Prop::Stroke, "#ffffff"),
+                        accent: accent.clone(),
+                        ..Analog::default()
+                    },
+                    ..Config::default()
+                };
+                l.kind = LayerKind::Clock {
+                    mode: ClockMode::Time,
+                    format: "HH:mm:ss".into(),
+                    timezone: timezone.clone(),
+                    target: String::new(),
+                    font: FontStyle {
+                        font_family: default_font(),
+                        font_weight: default_weight(),
+                        align: TextAlign::Center,
+                        vertical_align: VerticalAlign::Middle,
+                        uppercase: false,
+                    },
+                    x: Box::new(x),
+                };
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// Brings the markers to the current model: one on-air / out marker,
     /// frames inside the timeline. Templates made when the on-air point was
     /// the first pause (and the out marker could come later) get their last
@@ -1785,6 +1848,7 @@ impl Project {
         let mut changed = false;
         for t in self.templates.iter_mut().chain(self.drafts.iter_mut()) {
             changed |= t.normalize_markers();
+            changed |= t.upgrade_layers();
         }
         for i in 0..self.rundown.len() {
             if self.zone(&self.rundown[i].zone).is_some() {
@@ -1976,6 +2040,19 @@ pub fn new_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_analog_clock_becomes_a_timer_with_an_analog_face() {
+        let mut t = crate::sample::analog_clock();
+        let LayerKind::Clock { x, timezone, .. } = &t.layers[0].kind else {
+            panic!("not a timer: {:?}", t.layers[0].kind);
+        };
+        assert_eq!(x.face, crate::wid::timer::Face::Analog);
+        assert_eq!(x.analog.face, "#0f1222e6");
+        assert_eq!(x.analog.hands, "#ffffff");
+        assert!(x.analog.seconds && timezone.is_empty());
+        assert!(!t.upgrade_layers());
+    }
 
     #[test]
     fn legacy_markers_become_one_on_air_marker() {

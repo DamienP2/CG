@@ -284,7 +284,6 @@ export const LABELS: Record<LayerType, string> = {
   clock: 'Clock',
   ticker: 'Ticker',
   roll: 'Credits roll',
-  analogClock: 'Analog clock',
   counter: 'Counter',
   progress: 'Progress bar',
   rotator: 'Rotator',
@@ -299,7 +298,7 @@ export const LABELS: Record<LayerType, string> = {
   chart: 'Chart',
   map: 'Map',
   scoreboard: 'Scoreboard',
-  web: 'Web page',
+  web: 'Iframe',
 };
 
 /** Widget presets offered in the toolbar menu (a type plus overrides). */
@@ -309,7 +308,6 @@ export const WIDGET_PRESETS: { key: string; label: string; hint: string; type: L
   { key: 'countdown', label: 'Countdown', hint: 'To a time of day or a date', type: 'clock', patch: { mode: 'countdown', target: '20:00', format: 'HH:mm:ss' } },
   { key: 'timer', label: 'Timer', hint: 'Counts down a duration once on air', type: 'clock', patch: { mode: 'timer', target: '5:00', format: 'mm:ss' } },
   { key: 'elapsed', label: 'Stopwatch', hint: 'Time since the take', type: 'clock', patch: { mode: 'elapsed', format: 'mm:ss.f' } },
-  { key: 'analogClock', label: 'Analog clock', hint: 'Face with hands', type: 'analogClock' },
   // Ticker and credit roll: a text that scrolls (General > Scroll).
   {
     key: 'ticker',
@@ -340,7 +338,6 @@ export const WIDGET_PRESETS: { key: string; label: string; hint: string; type: L
       props: { x: 460, y: 0, width: 1000, height: 1080, fontSize: 40, fill: [1, 1, 1, 1] },
     },
   },
-  { key: 'rotator', label: 'Rotator', hint: 'Lines one after another', type: 'rotator' },
   { key: 'typewriter', label: 'Typewriter', hint: 'Letter-by-letter reveal', type: 'typewriter' },
   { key: 'counter', label: 'Counter', hint: 'Animated number', type: 'counter' },
   { key: 'progress', label: 'Progress bar', hint: 'Value / max, animated', type: 'progress' },
@@ -414,8 +411,6 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
         ...font('center', 600),
         props: { ...centered(900, 800), fontSize: 44, fill: DEFAULTS.fill },
       };
-    case 'analogClock':
-      return { ...base, type, timezone: '', seconds: true, accent: '#ff3b5c', props: { ...centered(300, 300), fill: [1, 1, 1, 1], stroke: [0.07, 0.08, 0.12, 1] } };
     case 'counter':
       return {
         ...base,

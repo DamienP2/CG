@@ -1384,6 +1384,33 @@ mod tests {
     }
 
     #[test]
+    fn a_timer_with_an_analog_face_draws_its_face_and_hands() {
+        let project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "ac", "name": "T", "duration": 50.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "c", "name": "Clock", "type": "clock", "timerMode": "countdown", "cdDuration": 11730000, "face": "analog",
+                "analog": {"face": "#0000ff", "hands": "#ffffff", "accent": "#ff0000", "ticks": "hours"},
+                "props": {"x": 0.0, "y": 0.0, "width": 400.0, "height": 400.0, "fill": [1.0, 1.0, 1.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 0.0, &Default::default());
+        let px = |x: u32, y: u32| {
+            let i = ((y * f.width + x) * 4) as usize;
+            [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]]
+        };
+        // A countdown not started yet shows 3:15:30 (hands away from 12): blue face,
+        // nothing in the corner, the red dot of the second hand at the centre.
+        assert_eq!(px(200, 60), [0, 0, 255, 255]);
+        assert_eq!(px(5, 5)[3], 0);
+        assert_eq!(px(200, 200), [255, 0, 0, 255]);
+        // The 12 o'clock mark is white.
+        assert_eq!(px(200, 26), [255, 255, 255, 255]);
+    }
+
+    #[test]
     fn a_scrolling_text_comes_in_from_the_right_with_its_looks() {
         let project = sample::demo_project();
         let t: cg_core::Template = serde_json::from_value(serde_json::json!({

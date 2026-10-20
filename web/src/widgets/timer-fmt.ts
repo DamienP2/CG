@@ -24,8 +24,25 @@ export interface City {
 }
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
+export type Face = 'digital' | 'analog';
+export type Ticks = 'hours' | 'minutes' | 'none';
+/** The look of an analog face (colours: '' = none for face and rim, the text colour for the hands). */
+export interface Analog {
+  seconds?: boolean;
+  smooth?: boolean;
+  ticks?: Ticks;
+  numbers?: boolean;
+  face?: string;
+  rim?: string;
+  hands?: string;
+  accent?: string;
+}
+
 export interface Config {
   timerMode?: TimerMode;
+  /** Digits or an analog face (its look in `analog`). */
+  face?: Face;
+  analog?: Analog;
   tabular?: boolean;
   zeros?: 'pad' | 'trim';
   hoursAuto?: boolean;
@@ -87,6 +104,8 @@ export interface State {
 }
 
 export const DEF = {
+  face: 'digital' as Face,
+  analog: { seconds: true, smooth: false, ticks: 'minutes' as Ticks, numbers: false, face: '#0f1222e6', rim: '', hands: '', accent: '#ff3b5c' },
   tabular: false,
   zeros: 'pad' as 'pad' | 'trim',
   hoursAuto: false,
@@ -133,7 +152,7 @@ export const DEF = {
   startAt: '20:00:00',
 };
 export type Cfg = typeof DEF & { timerMode?: TimerMode; tzOffset?: number; roundUp?: boolean };
-export const cfg = (c: Config): Cfg => ({ ...DEF, ...c, affix: { ...DEF.affix, ...c.affix }, plate: { ...DEF.plate, ...c.plate } }) as Cfg;
+export const cfg = (c: Config): Cfg => ({ ...DEF, ...c, affix: { ...DEF.affix, ...c.affix }, plate: { ...DEF.plate, ...c.plate }, analog: { ...DEF.analog, ...c.analog } }) as Cfg;
 
 // ------------------------------------------------------------- segments --
 
@@ -821,6 +840,22 @@ export function display(e: Eff, st: State | undefined, at: At, zone?: ZoneSel): 
     out.blink = !!s.blink;
   }
   return out;
+}
+
+/** Angles of the hour, minute and second hands, degrees from 12 (mirror of timer::hands). */
+export function hands(e: Eff, st: State | undefined, at: At, zone?: ZoneSel): [number, number, number] | null {
+  let secs: number;
+  if (timed(e)) {
+    const d = display(e, st, at, zone);
+    if (d.hidden || d.v == null) return null;
+    secs = Math.abs(d.v) / 1000;
+  } else {
+    const c = compAt(clockMs(e, at.now, at.fps), zone ?? e.zone, at.defaultTz);
+    secs = c.h * 3600 + c.mi * 60 + c.s + c.ms / 1000;
+  }
+  const s = e.c.analog.smooth ? secs : Math.floor(secs);
+  const mod = (x: number) => ((x % 360) + 360) % 360;
+  return [mod(s / 120), mod(s / 10), mod(s * 6)];
 }
 
 export function widest(e: Eff, d: Disp, sep: string, fps: number): string[] {

@@ -29,6 +29,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/me/lang", put(put_my_lang))
+        .route("/api/web/proxy", get(crate::webproxy::proxy))
         .route("/api/users", get(list_users).post(create_user))
         .route("/api/users/{id}", put(update_user).delete(delete_user))
         .route("/api/keys", get(list_keys).post(create_key))

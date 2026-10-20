@@ -12,7 +12,7 @@ import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import * as T from './timer-fmt';
-import { t } from '../i18n';
+import { t, tc } from '../i18n';
 
 export type Config = T.Config;
 export type State = T.State;
@@ -111,6 +111,10 @@ function TimerView({ layer, r, w, h, data, time, state, fps, designer }: { layer
           return [T.zoneNamed(ct.zone), c.affix.upper ? label.toUpperCase() : label];
         })
       : [[undefined, '']];
+  if (c.face === 'analog') {
+    const fill = cssColor(col(r.fill));
+    return <AnalogFaces e={e} st={st} at={at} zones={zones} w={w} h={h} align={layer.align} valign={layer.verticalAlign} ink={c.analog.hands.trim() ? hex(c.analog.hands) : fill} labelCol={c.affix.color.trim() ? hex(c.affix.color) : fill} fam={fam} wt={wt} labelWt={c.affix.weight} />;
+  }
   const afam = fam;
   const asz = (k: number) => (size * k * c.affix.size) / 100;
   const aw = (s: string) => (s ? textWidth(s, afam, c.affix.weight, asz(1), 0) : 0);
@@ -244,6 +248,84 @@ function TimerView({ layer, r, w, h, data, time, state, fps, designer }: { layer
   return <>{els}</>;
 }
 
+/** Analog faces side by side (one per city), labels under them. Same geometry as draw_analog in cg-render. */
+function AnalogFaces({ e, st, at, zones, w, h, align, valign, ink, labelCol, fam, wt, labelWt }: { e: T.Eff; st: State | undefined; at: T.At; zones: [T.ZoneSel | undefined, string][]; w: number; h: number; align?: string; valign?: string; ink: string; labelCol: string; fam: string; wt: number; labelWt: number }) {
+  const a = e.c.analog;
+  const n = Math.max(1, zones.length);
+  const lab = zones.some(([, l]) => l) ? 0.16 : 0;
+  const diam = Math.max(0, Math.min(h / (1 + lab), w / (n + (n - 1) * 0.15)));
+  if (diam < 1) return null;
+  const gap = diam * 0.15;
+  const total = n * diam + (n - 1) * gap;
+  const x0 = align === 'left' ? 0 : align === 'right' ? w - total : (w - total) / 2;
+  const gh = diam * (1 + lab);
+  const y0 = valign === 'top' ? 0 : valign === 'bottom' ? h - gh : (h - gh) / 2;
+  const accent = hex(a.accent);
+  // Marks: count, a long one every, long from, short from, widths.
+  const marks: [number, number, number, number, number, number] | null =
+    a.ticks === 'hours' ? [12, 3, 0.78, 0.84, Math.max(1.5, diam * 0.02), Math.max(1.5, diam * 0.02)] : a.ticks === 'minutes' ? [60, 5, 0.8, 0.88, Math.max(1.5, diam * 0.022), Math.max(1, diam * 0.008)] : null;
+  const faces: ReactNode[] = [];
+  const texts: ReactNode[] = [];
+  zones.forEach(([zone, label], i) => {
+    const cx = x0 + i * (diam + gap) + diam / 2;
+    const cy = y0 + diam / 2;
+    const r = diam / 2;
+    const seg = (deg: number, r0: number, r1: number) => {
+      const t = (deg * Math.PI) / 180;
+      return { x1: cx + Math.sin(t) * r0, y1: cy - Math.cos(t) * r0, x2: cx + Math.sin(t) * r1, y2: cy - Math.cos(t) * r1 };
+    };
+    const parts: ReactNode[] = [];
+    if (a.face.trim()) parts.push(<circle key="f" cx={cx} cy={cy} r={r} fill={hex(a.face)} />);
+    if (a.rim.trim()) parts.push(<circle key="r" cx={cx} cy={cy} r={r - diam * 0.015} fill="none" stroke={hex(a.rim)} strokeWidth={diam * 0.03} />);
+    if (marks) {
+      const [count, every, major, minor, wmaj, wmin] = marks;
+      for (let k = 0; k < count; k++) {
+        const big = k % every === 0;
+        parts.push(<line key={`t${k}`} {...seg((k * 360) / count, r * (big ? major : minor), r * 0.92)} stroke={ink} strokeWidth={big ? wmaj : wmin} />);
+      }
+    }
+    const hd = T.hands(e, st, at, zone);
+    if (hd) {
+      const [ha, ma, sa] = hd;
+      parts.push(<line key="h" {...seg(ha, -r * 0.08, r * 0.5)} stroke={ink} strokeWidth={diam * 0.06} />);
+      parts.push(<line key="m" {...seg(ma, -r * 0.08, r * 0.74)} stroke={ink} strokeWidth={diam * 0.04} />);
+      if (a.seconds) parts.push(<line key="s" {...seg(sa, -r * 0.15, r * 0.86)} stroke={accent} strokeWidth={Math.max(1, diam * 0.012)} />);
+      parts.push(<circle key="d" cx={cx} cy={cy} r={diam * 0.035} fill={a.seconds ? accent : ink} />);
+    }
+    faces.push(<g key={i}>{parts}</g>);
+    if (a.numbers) {
+      const rr = r * (a.ticks === 'none' ? 0.8 : 0.64);
+      const sz = diam * 0.11;
+      for (let k = 1; k <= 12; k++) {
+        const t = (k * 30 * Math.PI) / 180;
+        const nx = cx + Math.sin(t) * rr;
+        const ny = cy - Math.cos(t) * rr;
+        texts.push(
+          <div key={`n${i}-${k}`} style={{ position: 'absolute', left: nx - sz, top: ny - (sz * LH) / 2, width: sz * 2, height: sz * LH, lineHeight: LH, fontSize: sz, textAlign: 'center', color: ink, fontFamily: fontCss(fam), fontWeight: wt, whiteSpace: 'pre' }}>
+            {k}
+          </div>,
+        );
+      }
+    }
+    if (label) {
+      const sz = diam * 0.11;
+      texts.push(
+        <div key={`l${i}`} style={{ position: 'absolute', left: cx - diam, top: y0 + diam + diam * 0.02 + (diam * lab - sz * LH) / 2, width: diam * 2, height: sz * LH, lineHeight: LH, fontSize: sz, textAlign: 'center', color: labelCol, fontFamily: fontCss(fam), fontWeight: labelWt, whiteSpace: 'pre' }}>
+          {label}
+        </div>,
+      );
+    }
+  });
+  return (
+    <>
+      <svg style={{ position: 'absolute', inset: 0, overflow: 'visible' }} width={w} height={h} strokeLinecap="round">
+        {faces}
+      </svg>
+      {texts}
+    </>
+  );
+}
+
 // ------------------------------------------------------------ inspector --
 
 function DurField({ label, value, onChange, min = 0, expose }: { label: string; value: number; onChange: (ms: number) => void; min?: number; expose?: string }) {
@@ -359,72 +441,108 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
         )}
       </Section>
 
-      <Section id="timer-digits" title={t('Digits')}>
-        <Toggle label={t('Tabular')} path="tabular" value={false} />
-        <Seg
-          label={t('Zeros')}
-          path="zeros"
-          value="pad"
-          options={[
-            ['pad', '00:01:05'],
-            ['trim', '1:05'],
-          ]}
-        />
-        {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
-        <Seg
-          label={t('Separator')}
-          path="sep"
-          value=":"
-          options={[
-            [':', ':'],
-            ['h', 'h'],
-            ["'", "'"],
-            [' ', t('space')],
-            ['.', '.'],
-          ]}
-        />
-        <Toggle label={t('Blink')} path="sepBlink" value={false} />
-        {mode === 'clock' && (
-          <>
-            <Seg
-              label={t('Hours')}
-              path="h12"
-              value={false}
-              options={[
-                [false, '24 h'],
-                [true, '12 h'],
-              ]}
-            />
-            {c.h12 && (
-              <>
-                <Text label="AM" path="am" value="AM" />
-                <Text label="PM" path="pm" value="PM" />
-              </>
-            )}
-          </>
-        )}
-        {mode === 'date' && (
-          <>
-            <Select label={t('Language')} path="lang" value="en-GB" options={T.LANGS} />
-            <Seg
-              label={t('Case')}
-              path="case"
-              value="none"
-              options={[
-                ['none', t('As is')],
-                ['first', t('First')],
-                ['words', t('Words')],
-                ['upper', t('UPPER')],
-                ['lower', t('lower')],
-              ]}
-            />
-          </>
-        )}
-      </Section>
+      {c.face !== 'analog' && (
+        <Section id="timer-digits" title={t('Digits')}>
+          <Toggle label={t('Tabular')} path="tabular" value={false} />
+          <Seg
+            label={t('Zeros')}
+            path="zeros"
+            value="pad"
+            options={[
+              ['pad', '00:01:05'],
+              ['trim', '1:05'],
+            ]}
+          />
+          {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
+          <Seg
+            label={t('Separator')}
+            path="sep"
+            value=":"
+            options={[
+              [':', ':'],
+              ['h', 'h'],
+              ["'", "'"],
+              [' ', t('space')],
+              ['.', '.'],
+            ]}
+          />
+          <Toggle label={t('Blink')} path="sepBlink" value={false} />
+          {mode === 'clock' && (
+            <>
+              <Seg
+                label={t('Hours')}
+                path="h12"
+                value={false}
+                options={[
+                  [false, '24 h'],
+                  [true, '12 h'],
+                ]}
+              />
+              {c.h12 && (
+                <>
+                  <Text label="AM" path="am" value="AM" />
+                  <Text label="PM" path="pm" value="PM" />
+                </>
+              )}
+            </>
+          )}
+          {mode === 'date' && (
+            <>
+              <Select label={t('Language')} path="lang" value="en-GB" options={T.LANGS} />
+              <Seg
+                label={t('Case')}
+                path="case"
+                value="none"
+                options={[
+                  ['none', t('As is')],
+                  ['first', t('First')],
+                  ['words', t('Words')],
+                  ['upper', t('UPPER')],
+                  ['lower', t('lower')],
+                ]}
+              />
+            </>
+          )}
+        </Section>
+      )}
 
       <Section id="timer-style" title={t('Style')}>
+        <Seg
+          label={t('Look')}
+          path="face"
+          value={c.face}
+          options={[
+            ['digital', t('Digits')],
+            ['analog', t('Analog clock')],
+          ]}
+        />
+        {c.face === 'analog' && (
+          <>
+            <ColorPick label={t('Face')} path="analog.face" value={T.DEF.analog.face} none={t('None')} first={T.DEF.analog.face} />
+            <ColorPick label={t('Rim')} path="analog.rim" value="" none={t('None')} />
+            <ColorPick label={t('Hands')} path="analog.hands" value="" none={t('Text colour')} />
+            <Toggle label={t('Second hand')} path="analog.seconds" value={true} />
+            {c.analog.seconds && (
+              <>
+                <ColorPick label={t('Second hand colour')} path="analog.accent" value={T.DEF.analog.accent} />
+                <Toggle label={t('Sweep')} path="analog.smooth" value={false} text={t('The second hand moves smoothly')} />
+              </>
+            )}
+            <Seg
+              label={t('Marks')}
+              path="analog.ticks"
+              value={c.analog.ticks}
+              options={[
+                ['minutes', t('Minutes')],
+                ['hours', t('Hours')],
+                ['none', t('None')],
+              ]}
+            />
+            <Toggle label={tc('clock', 'Numbers')} path="analog.numbers" value={false} text={t('1 to 12 around the face')} />
+          </>
+        )}
         <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
-        <GroupRow layer={layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
+        {c.face !== 'analog' && <GroupRow layer={layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />}
         <ColorGroupRow layer={layer} prop="fill" label={t('Colour')} />
         {affixed && (
           <>
@@ -444,21 +562,25 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
             <Toggle label={t('Affix caps')} path="affix.upper" value={true} />
           </>
         )}
-        <Toggle label={t('Plate')} path="plate.on" value={false} />
-        {c.plate.on && (
+        {c.face !== 'analog' && (
           <>
-            <ColorPick label={t('Colour')} path="plate.color" value={T.DEF.plate.color} />
-            <Num label={t('Radius')} path="plate.radius" value={22} min={0} max={80} unit="px" />
-            <Num label={t('Padding')} path="plate.padX" value={46} min={0} max={120} unit="px" />
-            <Num label={t('Padding V')} path="plate.padY" value={14} min={0} max={80} unit="px" />
-            <Toggle label={t('Accent')} path="plate.accent" value={true} />
-            {c.plate.accent && <ColorPick label={t('Accent colour')} path="plate.accentColor" value="#ff3b5c" />}
-            <Toggle label={t('Shadow')} path="plate.shadow" value={true} />
+            <Toggle label={t('Plate')} path="plate.on" value={false} />
+            {c.plate.on && (
+              <>
+                <ColorPick label={t('Colour')} path="plate.color" value={T.DEF.plate.color} />
+                <Num label={t('Radius')} path="plate.radius" value={22} min={0} max={80} unit="px" />
+                <Num label={t('Padding')} path="plate.padX" value={46} min={0} max={120} unit="px" />
+                <Num label={t('Padding V')} path="plate.padY" value={14} min={0} max={80} unit="px" />
+                <Toggle label={t('Accent')} path="plate.accent" value={true} />
+                {c.plate.accent && <ColorPick label={t('Accent colour')} path="plate.accentColor" value="#ff3b5c" />}
+                <Toggle label={t('Shadow')} path="plate.shadow" value={true} />
+              </>
+            )}
+            <Toggle label={t('Reserve width')} path="reserve" value={false} />
+            {c.reserve && <Toggle label={t('Guide')} path="guide" value={true} />}
+            <Toggle label={t('Shrink to fit')} path="fit" value={false} />
           </>
         )}
-        <Toggle label={t('Reserve width')} path="reserve" value={false} />
-        {c.reserve && <Toggle label={t('Guide')} path="guide" value={true} />}
-        <Toggle label={t('Shrink to fit')} path="fit" value={false} />
       </Section>
 
       {!T.timed(e) && (

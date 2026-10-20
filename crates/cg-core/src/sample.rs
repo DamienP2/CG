@@ -746,7 +746,10 @@ pub fn analog_clock() -> Template {
         ],
     );
     fade(&mut c, 0.0, 30.0);
-    simple("analog-clock", "Analog clock", 45.0, vec![], vec![c])
+    // A Timer with an analog face.
+    let mut t = simple("analog-clock", "Analog clock", 45.0, vec![], vec![c]);
+    t.upgrade_layers();
+    t
 }
 
 /// Poll / results with animated bars and a counting total.
