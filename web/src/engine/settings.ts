@@ -118,3 +118,39 @@ export function settingDefaults(t: Template | null | undefined): Data {
     }
   return out;
 }
+
+/**
+ * Takes every use of the keys `gone` matches out of the layers (bound properties,
+ * settings, `{{key}}` in texts) and the logic: after a variable or a data set is
+ * deleted, nothing still waits for a value that never comes.
+ */
+export function forgetKeys(t: Template, gone: (key: string) => boolean) {
+  const strip = (o: unknown): unknown => {
+    if (typeof o === 'string') {
+      if (!o.includes('{{')) return o;
+      const out = o.replace(/\{\{(\w+)\}\}/g, (m, k: string) => (gone(k) ? '' : m));
+      return out === o ? o : out.replace(/ {2,}/g, ' ').trim();
+    }
+    if (Array.isArray(o)) return o.map(strip);
+    if (o && typeof o === 'object') {
+      const r = o as Record<string, unknown>;
+      for (const k of Object.keys(r)) r[k] = strip(r[k]);
+      return r;
+    }
+    return o;
+  };
+  for (const l of t.layers) {
+    for (const [p, k] of Object.entries(l.bindings ?? {})) if (k && gone(k)) delete (l.bindings as Record<string, string>)[p];
+    if (l.settingBindings) {
+      for (const [p, k] of Object.entries(l.settingBindings)) if (gone(k)) delete l.settingBindings[p];
+      if (!Object.keys(l.settingBindings).length) delete l.settingBindings;
+    }
+    const r = l as unknown as Record<string, unknown>;
+    for (const k of Object.keys(r)) if (!['id', 'name', 'props', 'tracks', 'bindings', 'settingBindings'].includes(k)) r[k] = strip(r[k]);
+  }
+  if (t.logic) {
+    const dead = new Set(t.logic.nodes.filter((n) => n.type === 'field' && gone(n.key)).map((n) => n.id));
+    t.logic.nodes = t.logic.nodes.filter((n) => !dead.has(n.id));
+    t.logic.edges = t.logic.edges.filter((e) => !dead.has(e.from));
+  }
+}

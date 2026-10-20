@@ -417,6 +417,7 @@ pub async fn serve(
             mos: mos_store.clone(),
             data: data_hub.clone(),
             locks: locks.clone(),
+            edits: Default::default(),
             output_status: output_status.clone(),
             config,
             bind,

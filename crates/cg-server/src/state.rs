@@ -155,6 +155,9 @@ pub struct AppState {
     pub data: Arc<crate::datasources::Hub>,
     /// Who edits which template in the designer.
     pub locks: Arc<crate::locks::Locks>,
+    /// Held from reading a project to saving it, so two edits at the same
+    /// time (an autosave and a rundown change…) never undo each other.
+    pub edits: tokio::sync::Mutex<()>,
     /// Whether each video output runs, by channel and output id.
     pub output_status: Arc<OutputStatus>,
     /// Settings this engine cycle was started with.

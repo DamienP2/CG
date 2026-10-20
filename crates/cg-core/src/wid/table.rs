@@ -31,6 +31,26 @@ pub enum Align {
     Right,
 }
 
+/// How a row's own colour (from the data) shows.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RowPaint {
+    /// A bar on its left.
+    #[default]
+    Bar,
+    /// Its background.
+    Bg,
+    /// Its text.
+    Text,
+}
+
+/// A colour read from a data cell: `#rgb`, `#rrggbb` or `#rrggbbaa` only.
+pub fn cell_color(v: &str) -> Option<&str> {
+    let v = v.trim();
+    let hex = v.strip_prefix('#')?;
+    (matches!(hex.len(), 3 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(v)
+}
+
 /// A mapped column: source column → label, type, alignment, width, format.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -57,6 +77,9 @@ pub struct Col {
     pub suffix: String,
     /// Pictures of a picture column.
     pub img: Pic,
+    /// Data columns whose value (a colour) paints this column's text / background, row by row ("" = none).
+    pub color_from: String,
+    pub bg_from: String,
 }
 
 impl Default for Col {
@@ -75,6 +98,8 @@ impl Default for Col {
             prefix: String::new(),
             suffix: String::new(),
             img: Pic::default(),
+            color_from: String::new(),
+            bg_from: String::new(),
         }
     }
 }
@@ -720,6 +745,9 @@ pub struct Config {
     pub radius: f32,
     /// Colour of the page dots.
     pub indicator_color: String,
+    /// A data column whose value (a colour) marks each row ("" = none), and how.
+    pub row_from: String,
+    pub row_paint: RowPaint,
 }
 
 impl Default for Config {
@@ -769,6 +797,8 @@ impl Default for Config {
             head_align: None,
             radius: 0.0,
             indicator_color: "#ff3b5c".into(),
+            row_from: String::new(),
+            row_paint: RowPaint::Bar,
         }
     }
 }
@@ -1019,11 +1049,7 @@ pub fn rank_col() -> Col {
         pct: 7.0,
         fmt: "0".into(),
         on: true,
-        mark: String::new(),
-        txt: None,
-        prefix: String::new(),
-        suffix: String::new(),
-        img: Pic::default(),
+        ..Col::default()
     }
 }
 
@@ -1078,10 +1104,11 @@ pub fn model(c: &Config, data: &Data) -> Model {
         head.iter()
             .filter(|h| {
                 !h.is_empty()
-                    && !c
-                        .cols
-                        .iter()
-                        .any(|x| x.src == **h || (x.on && x.mark == **h))
+                    && !c.cols.iter().any(|x| {
+                        x.src == **h
+                            || (x.on && [&x.mark, &x.color_from, &x.bg_from].contains(&&**h))
+                    })
+                    && **h != c.row_from
             })
             .cloned()
             .collect()
@@ -1438,6 +1465,23 @@ mod tests {
         // Old tables (no mark) still load.
         let old: Col = serde_json::from_str(r#"{"src":"Team"}"#).unwrap();
         assert_eq!(old.mark, "");
+        // A row colour or a column painted from the data is mapped too.
+        c.cols[0].mark.clear();
+        c.row_from = "Color".into();
+        assert!(model(&c, &Data::new()).unmapped.is_empty());
+        c.row_from.clear();
+        c.cols[0].bg_from = "Color".into();
+        assert!(model(&c, &Data::new()).unmapped.is_empty());
+    }
+
+    #[test]
+    fn colours_from_cells() {
+        assert_eq!(cell_color(" #ff0000 "), Some("#ff0000"));
+        assert_eq!(cell_color("#abc"), Some("#abc"));
+        assert_eq!(cell_color("#ff000080"), Some("#ff000080"));
+        assert_eq!(cell_color("red"), None);
+        assert_eq!(cell_color("#ff00"), None);
+        assert_eq!(cell_color("#gg0000"), None);
     }
     fn ctx(data: &Data, now: i64) -> ActCtx<'_> {
         ActCtx {

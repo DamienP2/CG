@@ -1,6 +1,6 @@
 import { widgetOf } from '../widgets';
 import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
@@ -19,6 +19,8 @@ import { unexposeRows } from '../widgets/table-rows';
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
+import { isColorValue, settingLabel, settingPorts } from '../engine/settingPorts';
+import { forgetKeys, formatSetting, settingKind } from '../engine/settings';
 
 /*
  * Data canvas. The data goes through as tables:
@@ -100,6 +102,29 @@ function unwireContent(x: Layer, port: string, key: string) {
 }
 /** A {{key}} in a layer's text or picture. */
 const tokensIn = (l: Layer, port: string, key: string) => contentValue(l, port).includes(`{{${key}}}`);
+
+/** Setting ports of a layer: the settings set from the data (or waiting for a wire). */
+const settingPortsOf = (l: Layer) =>
+  Object.keys(l.settingBindings ?? {})
+    .filter((p) => !HAND_ONLY.has(p) && !contentOf(l).includes(p))
+    .map((p) => `s:${p}`);
+/** Sets a setting of `l` from `key` (a variable or a data set column); a plain text variable takes the setting's type. */
+function bindSetting(t: Template, l: Layer, path: string, key: string) {
+  (l.settingBindings ??= {})[path] = key;
+  const f = t.fields.find((x) => x.key === key);
+  const cur = getPath(l, path);
+  if (f && f.kind === 'text' && !f.binding) {
+    const kind = settingKind(cur ?? (/color$/i.test(path) ? '#ffffff' : ''), path);
+    if (kind !== 'text') f.kind = kind;
+    if (!f.default) f.default = formatSetting(cur ?? '');
+  }
+}
+/** The setting goes back to its value in Properties. */
+function unbindSetting(l: Layer, path: string) {
+  if (!l.settingBindings) return;
+  delete l.settingBindings[path];
+  if (!Object.keys(l.settingBindings).length) delete l.settingBindings;
+}
 
 /** Properties a layer exposes as ports. */
 function portsOf(l: Layer): string[] {
@@ -318,11 +343,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   }, [template, frame, values]);
 
   // ---- What the canvas shows and where.
-  const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c)))]);
-  /** Content ports always; properties when unfolded (or wired). */
+  const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))), ...settingPortsOf(l)]);
+  /** Content ports always; the settings set from the data; properties when unfolded (or wired). */
   const ports = (l: Layer) => {
     const wired = wiredPorts(l);
-    return [...contentOf(l), ...portsOf(l).filter((p) => layout.collapsed[l.id] === false || wired.has(p))];
+    return [...contentOf(l), ...settingPortsOf(l), ...portsOf(l).filter((p) => layout.collapsed[l.id] === false || wired.has(p))];
   };
   const portTop = (l: Layer, port: string) => {
     let y = HEAD;
@@ -332,7 +357,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     }
     return -1;
   };
-  const layerHeight = (l: Layer) => HEAD + ports(l).reduce((h, p) => h + (contentOf(l).includes(p) ? CROW : ROW), 0) + 30 + (isTimed(l) ? 40 : 0);
+  const layerHeight = (l: Layer) => HEAD + ports(l).reduce((h, p) => h + (contentOf(l).includes(p) ? CROW : ROW), 0) + 30 + 26 + (isTimed(l) ? 40 : 0);
 
   const widthOf = (id: string, def: number) => layout.size[id]?.w ?? def;
   const nodePos = new Map<string, Pt>();
@@ -343,8 +368,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       y += h + 24;
     }
   };
-  // Values the Operator fills for an exposed setting (a table's rows, a colour…) are not variables of the data.
-  const exposed = new Set(template.layers.flatMap((l) => Object.values(l.settingBindings ?? {})));
+  // Rows the Operator types into a table are not variables of the data (other exposed settings are, wired to their setting).
+  const exposed = new Set(template.layers.flatMap((l) => Object.entries(l.settingBindings ?? {}).flatMap(([p, k]) => (HAND_ONLY.has(p) ? [k] : []))));
   const shownFields = template.fields.filter((f) => !exposed.has(f.key));
   const fieldHeight = (f: Field) => HEAD + (f.binding ? 90 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
   stack(
@@ -444,20 +469,22 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: 'Data (click to remove · drop a Filter, Sort or Transform on it)', onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
   });
   for (const l of template.layers)
-    for (const port of [...contentOf(l), ...portsOf(l)]) {
+    for (const port of [...contentOf(l), ...settingPortsOf(l), ...portsOf(l)]) {
       const to = layerIn(l, port);
       if (!to) continue;
       const content = contentOf(l).includes(port);
-      const keys = content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [l.bindings[port as Prop]].filter((k): k is string => !!k && wiredKey(k));
+      const setting = port.startsWith('s:') ? port.slice(2) : null;
+      const keys = content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]].filter((k): k is string => !!k && wiredKey(k));
       for (const key of keys)
         wires.push({
           d: curve(keyOut(key)!, to),
           data: columnPorts.has(key),
-          title: `${key} → ${l.name} ${content ? port : PROP_LABELS[port as Prop]} (click to remove)`,
+          title: `${key} → ${l.name} ${content ? port : setting ? settingLabel(l, setting).label : PROP_LABELS[port as Prop]} (click to remove)`,
           onClick: () =>
             update((t) => {
               const x = findLayer(t, l.id)!;
               if (content) unwireContent(x, port, key);
+              else if (setting) unbindSetting(x, setting);
               else delete x.bindings[port as Prop];
             }),
         });
@@ -527,6 +554,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const layerId = d.layer;
     const p = d.port;
     if (!layerId || !p) return;
+    if (w.kind === 'field' && p.startsWith('s:')) {
+      update((t) => bindSetting(t, findLayer(t, layerId)!, p.slice(2), w.key));
+      return;
+    }
+    if (p.startsWith('s:')) return;
     if (w.kind === 'field') {
       update((t) => {
         const l = findLayer(t, layerId)!;
@@ -660,7 +692,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const addSource = (source: string) => (at: Pt) => editFlow((f) => void f.nodes.push({ id: newId(), ...at, type: 'source', source, list: '' }));
 
   const dragFrom = drag && wireStart(drag.wire);
-  const removeFlowNode = (id: string) =>
+  const removeFlowNode = (id: string) => {
+    // A data set: its rows and columns are no longer anywhere.
+    const ds = flow.nodes.find((n) => n.id === id && n.type === 'dataset') as { key: string } | undefined;
+    if (ds) update((t) => forgetKeys(t, (k) => k.startsWith(`${ds.key}_`)));
+    removeFlow(id);
+  };
+  const removeFlow = (id: string) =>
     editFlow((f) => {
       // The wires through it are kept: what fed it feeds what it fed.
       const into = f.edges.find((e) => e.to === id)?.from;
@@ -836,12 +874,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       onClick={() =>
                         update((t) => {
                           t.fields = t.fields.filter((x) => x.key !== f.key);
-                          for (const l of t.layers) for (const [prop, k] of Object.entries(l.bindings)) if (k === f.key) delete l.bindings[prop as Prop];
-                          if (t.logic) {
-                            const gone = new Set(t.logic.nodes.filter((n) => n.type === 'field' && n.key === f.key).map((n) => n.id));
-                            t.logic.nodes = t.logic.nodes.filter((n) => !gone.has(n.id));
-                            t.logic.edges = t.logic.edges.filter((e) => !gone.has(e.from));
-                          }
+                          forgetKeys(t, (k) => k === f.key);
                           if (t.dataflow) {
                             t.dataflow.edges = t.dataflow.edges.filter((e) => e.to !== `field:${f.key}`);
                           }
@@ -920,13 +953,36 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                             </span>
                           ) : isWired ? (
                             <span className="dc-value live" title={`Result: ${result}`}>
-                              {result === '' ? '(empty)' : tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ '))}
+                              {result === '' ? '(empty)' : (tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')))}
                             </span>
                           ) : port === 'items' ? (
                             <span className="dc-value">{raw ? `${raw.split('\n').length} items (Inspector)` : 'No items'}</span>
                           ) : (
-                            <input className="dc-content-input" value={raw} placeholder={takesTable(l, port) ? "A data set's All rows" : undefined} title="Default value (until a variable is wired)" onChange={(e) => update((t) => setPath(findLayer(t, l.id), port, e.target.value), `content-${l.id}-${port}`)} />
+                            <input
+                              className="dc-content-input"
+                              value={raw}
+                              placeholder={takesTable(l, port) ? "A data set's All rows" : undefined}
+                              title="Default value (until a variable is wired)"
+                              onChange={(e) => update((t) => setPath(findLayer(t, l.id), port, e.target.value), `content-${l.id}-${port}`)}
+                            />
                           )}
+                        </div>
+                      );
+                    }
+                    if (port.startsWith('s:')) {
+                      const path = port.slice(2);
+                      const key = l.settingBindings?.[path];
+                      const sv = key !== undefined && values[key] !== undefined ? values[key] : getPath(l, path);
+                      return (
+                        <div key={port} className="ln-input wired dc-setting" style={{ height: ROW }}>
+                          <span className="port in" data-layer={l.id} data-port={port} title="Drop a variable or a data set column here" />
+                          <span title={path}>{settingLabel(l, path).label.replace(/^General · /, '')}</span>
+                          <span className="dc-port-value live" title="Value it gets from the data">
+                            {isColorValue(sv) ? <span className="dc-swatch" style={{ background: String(sv) }} /> : String(sv ?? '').slice(0, 14)}
+                          </span>
+                          <button className="dc-unset" title="Stop setting it from the data" onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
+                            ×
+                          </button>
                         </div>
                       );
                     }
@@ -941,6 +997,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       </div>
                     );
                   })}
+                  <SettingAdd layer={l} onPick={(path) => update((t) => void ((findLayer(t, l.id)!.settingBindings ??= {})[path] ??= ''))} />
                   <button className="dc-props-toggle" onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))} title="Position, size, colours… (Properties)">
                     {hidden ? `+ ${hidden} properties` : '− Fold the properties'}
                   </button>
@@ -1147,11 +1204,7 @@ function SourceBody({ node, version, data, onList }: { node: FlowNode & { type: 
     <>
       <label className="dc-inline">
         Rows
-        <Dropdown
-          value={node.list}
-          options={[...(lists.includes(node.list) ? [] : [node.list]), ...lists].map((l) => ({ value: l, label: l === '' ? (Array.isArray(value) ? 'The list' : 'The whole value') : l }))}
-          onChange={onList}
-        />
+        <Dropdown value={node.list} options={[...(lists.includes(node.list) ? [] : [node.list]), ...lists].map((l) => ({ value: l, label: l === '' ? (Array.isArray(value) ? 'The list' : 'The whole value') : l }))} onChange={onList} />
       </label>
       {res === null ? <span className="dc-meta">No data at this place.</span> : <StageTable stage={res?.stages[0]} />}
     </>
@@ -1164,9 +1217,7 @@ function StepBody({ source, steps, data, node, onChange }: { source: FlowNode & 
   const input = res?.stages[res.stages.length - 2];
   const out = res?.stages[res.stages.length - 1];
   const columns = input?.columns ?? [];
-  const colSelect = (value: string, set: (c: string) => void) => (
-    <Dropdown value={value} placeholder="Column" options={[...(columns.includes(value) || !value ? [] : [value]), ...columns].map((c) => ({ value: c, label: c }))} onChange={set} />
-  );
+  const colSelect = (value: string, set: (c: string) => void) => <Dropdown value={value} placeholder="Column" options={[...(columns.includes(value) || !value ? [] : [value]), ...columns].map((c) => ({ value: c, label: c }))} onChange={set} />;
   let settings: React.ReactNode = null;
   if (node.type === 'filter') {
     settings = (
@@ -1523,5 +1574,58 @@ export function DataCanvasButton({ className = 'btn small' }: { className?: stri
     <button className={`${className} ${count ? 'on' : ''}`} onClick={() => open(true)} title="Sources, filters, variables, operations and the layers' values, on a canvas">
       <Database size={13} /> Data{count ? ` · ${count}` : ''}
     </button>
+  );
+}
+
+/** "+ Setting from data": picks a setting of the layer to give a port (then wire a variable or a column into it). */
+function SettingAdd({ layer, onPick }: { layer: Layer; onPick: (path: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  const taken = new Set(Object.keys(layer.settingBindings ?? {}));
+  const all = open ? settingPorts(layer).filter((s) => !taken.has(s.path) && !contentOf(layer).includes(s.path)) : [];
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const list = all.filter((s) => words.every((w) => s.label.toLowerCase().includes(w)));
+  const groups = [...new Set(list.map((s) => s.group))];
+  return (
+    <div className="dc-setadd" ref={ref}>
+      <button className="dc-props-toggle" onClick={() => setOpen(!open)} title="A colour, a size, a switch… of this widget set from the data">
+        <Plus size={11} /> Setting from data
+      </button>
+      {open && (
+        <div className="dc-setmenu" data-scroll onWheel={(e) => e.stopPropagation()}>
+          <input autoFocus placeholder="Search a setting (colour, title…)" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)} />
+          <div className="dc-setlist">
+            {groups.map((g) => (
+              <div key={g}>
+                <div className="dc-setgroup">{g}</div>
+                {list
+                  .filter((s) => s.group === g)
+                  .map((s) => (
+                    <button
+                      key={s.path}
+                      onClick={() => {
+                        onPick(s.path);
+                        setOpen(false);
+                        setQ('');
+                      }}
+                    >
+                      {isColorValue(s.value) ? <span className="dc-swatch" style={{ background: String(s.value) }} /> : <span className="dc-setv">{s.value === undefined ? '' : String(s.value).slice(0, 10)}</span>}
+                      <span>{s.label.slice(g.length + 3) || s.label}</span>
+                    </button>
+                  ))}
+              </div>
+            ))}
+            {!list.length && <em className="dc-setnone">No setting</em>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -1234,15 +1234,16 @@ pub struct Template {
 }
 
 impl Template {
-    /// An empty template: 2 s at 50 fps, on air at 1 s.
-    pub fn blank(name: &str, zone: &str) -> Self {
+    /// An empty template: 1 s long (at `fps`), on air at half of it.
+    pub fn blank(name: &str, zone: &str, fps: f64) -> Self {
+        let len = fps.round().max(2.0);
         Template {
             id: new_id(),
             name: name.into(),
-            duration: 100.0,
+            duration: len,
             markers: vec![Marker {
                 id: new_id(),
-                frame: 50.0,
+                frame: (len / 2.0).round(),
                 name: "On air".into(),
                 kind: MarkerKind::Out,
                 resume: Resume::Manual,
@@ -1449,6 +1450,71 @@ impl Template {
             .map(|f| (f.key.clone(), f.default.clone()))
             .collect()
     }
+}
+
+/// Applies what one client changed (`base` → `next`) to the rundown as it
+/// is now (`current`), so two operators editing at the same time keep each
+/// other's changes: items removed, edited, added or moved by this client
+/// are applied; the others stay as they are.
+pub fn merge_rundown(
+    current: &[RundownItem],
+    base: &[RundownItem],
+    next: &[RundownItem],
+) -> Vec<RundownItem> {
+    use std::collections::HashSet;
+    let ids = |v: &[RundownItem]| v.iter().map(|r| r.id.clone()).collect::<HashSet<_>>();
+    let (in_base, in_next) = (ids(base), ids(next));
+    let mut out: Vec<RundownItem> = current
+        .iter()
+        .filter(|r| !(in_base.contains(&r.id) && !in_next.contains(&r.id)))
+        .cloned()
+        .collect();
+    // Edited by this client.
+    for n in next {
+        if let (Some(b), Some(o)) = (
+            base.iter().find(|b| b.id == n.id),
+            out.iter_mut().find(|o| o.id == n.id),
+        ) {
+            if b != n {
+                *o = n.clone();
+            }
+        }
+    }
+    // Moved by this client: its order, others' new items after.
+    let common = |v: &[RundownItem]| {
+        v.iter()
+            .filter(|r| in_base.contains(&r.id) && in_next.contains(&r.id))
+            .map(|r| r.id.clone())
+            .collect::<Vec<_>>()
+    };
+    if common(base) != common(next) {
+        let mut ordered: Vec<RundownItem> = next
+            .iter()
+            .filter_map(|n| {
+                if in_base.contains(&n.id) {
+                    out.iter().find(|o| o.id == n.id).cloned()
+                } else {
+                    Some(n.clone())
+                }
+            })
+            .collect();
+        let placed = ids(&ordered);
+        ordered.extend(out.into_iter().filter(|o| !placed.contains(&o.id)));
+        return ordered;
+    }
+    // Added by this client: after the item before it.
+    for (i, n) in next.iter().enumerate() {
+        if in_base.contains(&n.id) || out.iter().any(|o| o.id == n.id) {
+            continue;
+        }
+        let at = next[..i]
+            .iter()
+            .rev()
+            .find_map(|p| out.iter().position(|o| o.id == p.id))
+            .map_or(0, |p| p + 1);
+        out.insert(at, n.clone());
+    }
+    out
 }
 
 /// An entry of the operator rundown (playlist).
@@ -2008,6 +2074,53 @@ fn set_setting(root: &mut serde_json::Value, path: &str, raw: &str) {
     };
     if let Some(v) = new {
         *slot = v;
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    fn item(id: &str, name: &str) -> RundownItem {
+        serde_json::from_value(serde_json::json!({"id": id, "name": name, "templateId": "t"}))
+            .unwrap()
+    }
+    fn names(v: &[RundownItem]) -> Vec<String> {
+        v.iter().map(|r| format!("{}:{}", r.id, r.name)).collect()
+    }
+
+    #[test]
+    fn two_operators_keep_each_others_changes() {
+        let base = vec![item("a", "A"), item("b", "B"), item("c", "C")];
+        // Someone else renamed b and added d meanwhile.
+        let current = vec![
+            item("a", "A"),
+            item("b", "B2"),
+            item("c", "C"),
+            item("d", "D"),
+        ];
+        // This client renamed a.
+        let next = vec![item("a", "A1"), item("b", "B"), item("c", "C")];
+        assert_eq!(
+            names(&merge_rundown(&current, &base, &next)),
+            ["a:A1", "b:B2", "c:C", "d:D"]
+        );
+        // This client deleted c and added e after a.
+        let next = vec![item("a", "A"), item("e", "E"), item("b", "B")];
+        assert_eq!(
+            names(&merge_rundown(&current, &base, &next)),
+            ["a:A", "e:E", "b:B2", "d:D"]
+        );
+        // This client moved c first.
+        let next = vec![item("c", "C"), item("a", "A"), item("b", "B")];
+        assert_eq!(
+            names(&merge_rundown(&current, &base, &next)),
+            ["c:C", "a:A", "b:B2", "d:D"]
+        );
+        // An item deleted by someone else is not brought back by an edit.
+        let current = vec![item("a", "A")];
+        let next = vec![item("a", "A"), item("b", "B9"), item("c", "C")];
+        assert_eq!(names(&merge_rundown(&current, &base, &next)), ["a:A"]);
     }
 }
 

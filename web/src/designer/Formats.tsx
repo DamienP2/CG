@@ -24,12 +24,15 @@ function Shape({ width, height, size = 44 }: { width: number; height: number; si
 const shapeIcon = (f: { width: number; height: number }) => (f.width > f.height * 1.1 ? RectangleHorizontal : f.height > f.width * 1.1 ? RectangleVertical : Square);
 
 /** Lays every template of the project out in `format` (smart adaptation). */
-async function adaptProject(project: Project, format: Format, only?: string) {
+/** Returns the templates left as they were (someone else is editing them). */
+async function adaptProject(project: Project, format: Format, only?: string): Promise<string[]> {
+  const skipped: string[] = [];
   for (const t of designTemplates(project)) {
     if (only && t.id !== only) continue;
     const adapted = adaptTemplate(t, project, format);
-    await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(t.id)}`, adapted);
+    await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(t.id)}`, adapted).catch(() => skipped.push(t.name));
   }
+  return skipped;
 }
 
 function AddFormat({ project, onClose }: { project: Project; onClose: () => void }) {
@@ -60,12 +63,12 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
       if (st.base) await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(st.base.id)}`, st.base);
       await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/formats`, [...(project.formats ?? []), format]);
       const fresh = await api<Project>('GET', `/api/projects/${encodeURIComponent(project.id)}`);
-      await adaptProject(fresh, format);
+      const skipped = await adaptProject(fresh, format);
       const reloaded = await api<Project>('GET', `/api/projects/${encodeURIComponent(project.id)}`);
       const cur = designTemplates(reloaded).find((t) => t.id === st.base?.id);
       st.setFormat(format.id);
       if (cur) st.load(cur);
-      toast(`${format.name} added: every template has a first layout to refine`, 'info');
+      toast(skipped.length ? `${format.name} added. Not adapted (being edited by someone else): ${skipped.join(', ')}` : `${format.name} added: every template has a first layout to refine`, skipped.length ? 'error' : 'info');
       onClose();
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -141,7 +144,7 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
 
 /** Format tabs of the designer (Main 16:9 | 9:16 | +). */
 export function FormatBar({ project }: { project: Project }) {
-  const { format, setFormat, base, load } = useDesigner();
+  const { format, setFormat, base, readOnly } = useDesigner();
   const toast = useApp((s) => s.toast);
   const [adding, setAdding] = useState(false);
   const formats = projectFormats(project);
@@ -171,12 +174,16 @@ export function FormatBar({ project }: { project: Project }) {
         <>
           <button
             className="tool-link"
+            disabled={readOnly}
             title="Generate this template's layout again from the main format (replaces its changes in this format)"
             onClick={async () => {
               if (!(await confirmDialog({ title: `Re-adapt “${base.name}” to ${current.name}?`, message: `Its changes in ${current.name} are replaced by a new layout made from the main format.`, confirm: 'Re-adapt', danger: true }))) return;
               const adapted = adaptTemplate(base, project, current);
-              load(adapted);
-              await api('PUT', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(base.id)}`, adapted).catch((e) => toast((e as Error).message, 'error'));
+              // An edit like the others: undoable, saved by the autosave (with the edit lock).
+              useDesigner.getState().updateBase((t) => {
+                for (const k of Object.keys(t)) delete (t as unknown as Record<string, unknown>)[k];
+                Object.assign(t, structuredClone(adapted));
+              });
             }}
           >
             <Wand2 size={13} /> Re-adapt

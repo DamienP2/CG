@@ -275,6 +275,9 @@ pub enum Command {
         #[serde(default)]
         layer: Option<u32>,
         data: Data,
+        /// The old values fade out (half a second) instead of a cut.
+        #[serde(default)]
+        fade: bool,
     },
     /// Starts, pauses or resets the internal animation of widgets (timer,
     /// stopwatch, ticker, roll, counter…) of the graphic on air. `target` is
@@ -459,6 +462,22 @@ impl ChannelState {
                     rundown_id,
                     target: hold_target(t, 0.0),
                 };
+                // The same rundown item on air elsewhere (its zone changed since): it goes out there.
+                if let Some(rid) = take.rundown_id.clone() {
+                    let stale: Vec<u32> = self
+                        .layers
+                        .iter()
+                        .filter(|(l, it)| **l != layer && it.rundown_id.as_deref() == Some(&*rid))
+                        .map(|(l, _)| *l)
+                        .collect();
+                    for l in stale {
+                        let it = self.layers.get_mut(&l).expect("listed");
+                        it.next = None;
+                        if !begin_out(project, it) {
+                            self.layers.remove(&l);
+                        }
+                    }
+                }
                 let sequential = project
                     .zone_at(layer)
                     .is_none_or(|z| z.transition == ZoneTransition::Sequential);
@@ -522,7 +541,12 @@ impl ChannelState {
                     self.layers.remove(&layer);
                 }
             }
-            Command::Update { zone, layer, data } => {
+            Command::Update {
+                zone,
+                layer,
+                data,
+                fade,
+            } => {
                 let layer = resolve(project, &zone, layer)?.ok_or(PlayoutError::NoZone)?;
                 let item = self
                     .layers
@@ -543,7 +567,18 @@ impl ChannelState {
                 // Update what is (about to be) on air.
                 match &mut item.next {
                     Some(q) => q.data.extend(data),
-                    None => item.data.extend(data),
+                    None => {
+                        let changed = data.iter().any(|(k, v)| item.data.get(k) != Some(v));
+                        if fade && changed {
+                            let fps = project.frame_rate.as_f64().max(1.0);
+                            item.fade = Some(Fade {
+                                data: item.data.clone(),
+                                frame: 0.0,
+                                length: (fps * 0.5).round(),
+                            });
+                        }
+                        item.data.extend(data)
+                    }
                 }
             }
             Command::Row {
@@ -780,6 +815,12 @@ impl ChannelState {
     /// it holds anyway or the next one plays in its zone (which replaces
     /// it). Returns true when something was taken.
     pub fn auto_next(&mut self, project: &Project) -> bool {
+        self.auto_next_taken(project).is_some()
+    }
+
+    /// [`Self::auto_next`], with the rundown items it took (their data read
+    /// "on take" is read for them); `None` when nothing changed.
+    pub fn auto_next_taken(&mut self, project: &Project) -> Option<Vec<String>> {
         let fps = project.frame_rate.as_f64().max(1.0);
         let zone_of = |r: &RundownItem| {
             if r.zone.is_empty() {
@@ -848,6 +889,7 @@ impl ChannelState {
             }
         }
         let changed = !takes.is_empty() || !outs.is_empty();
+        let ids: Vec<String> = takes.iter().map(|n| n.id.clone()).collect();
         for n in takes {
             let Some(t) = project.template(&n.template_id) else {
                 continue;
@@ -866,7 +908,7 @@ impl ChannelState {
                 },
             );
         }
-        changed
+        changed.then_some(ids)
     }
 
     /// Data sets going on by themselves: the next row once the graphic has
@@ -1465,6 +1507,32 @@ mod tests {
             },
         );
         assert_eq!(r, Err(PlayoutError::UnknownTemplate("x".into())));
+    }
+
+    #[test]
+    fn update_cuts_or_fades() {
+        let p = project();
+        let mut ch = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(0),
+            template_id: "t".into(),
+            data: None,
+            rundown_id: None,
+        };
+        ch.apply(&p, take).unwrap();
+        let update = |v: &str, fade: bool| Command::Update {
+            zone: None,
+            layer: Some(0),
+            data: [("name".to_string(), v.to_string())].into(),
+            fade,
+        };
+        ch.apply(&p, update("A", false)).unwrap();
+        assert!(ch.layers[&0].fade.is_none(), "cut");
+        ch.apply(&p, update("B", true)).unwrap();
+        let f = ch.layers[&0].fade.as_ref().expect("fade");
+        assert_eq!(f.data["name"], "A");
+        assert_eq!(ch.layers[&0].data["name"], "B");
     }
 
     #[test]

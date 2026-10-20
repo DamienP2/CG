@@ -242,7 +242,7 @@ function TemplateList({ project }: { project: Project }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const create = async (base?: Template) => {
-    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${designTemplates(project).length + 1}`, (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id);
+    const t = base ? { ...structuredClone(base), id: newId(), name: `${base.name} copy` } : newTemplate(`Template ${designTemplates(project).length + 1}`, (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den);
     // Open it at once; the save follows.
     load(t);
     await saveTemplate(t);

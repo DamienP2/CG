@@ -90,7 +90,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     mode: 'move' | Handle;
     startX: number;
     startY: number;
-    start: Record<string, { x: number; y: number; w: number; h: number }>;
+    start: Record<string, { x: number; y: number; w: number; h: number; ox: number; oy: number }>;
   } | null>(null);
 
   useEffect(() => {
@@ -109,15 +109,16 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       if (first && snapRef.current.on && !e.altKey) {
         const { x: tx, y: ty } = snapRef.current.targets;
         const th = 6 / scale;
-        const nx = first.x + dx;
-        const ny = first.y + dy;
+        // In a group, x / y are from the group: the guides are on the stage.
+        const nx = first.ox + first.x + dx;
+        const ny = first.oy + first.y + dy;
         if (d.mode === 'move') {
           dx += snapShift([nx, nx + first.w / 2, nx + first.w], tx, th);
           dy += snapShift([ny, ny + first.h / 2, ny + first.h], ty, th);
         } else {
-          if (d.mode.includes('e')) dx += snapShift([first.x + first.w + dx], tx, th);
+          if (d.mode.includes('e')) dx += snapShift([nx + first.w], tx, th);
           if (d.mode.includes('w')) dx += snapShift([nx], tx, th);
-          if (d.mode.includes('s')) dy += snapShift([first.y + first.h + dy], ty, th);
+          if (d.mode.includes('s')) dy += snapShift([ny + first.h], ty, th);
           if (d.mode.includes('n')) dy += snapShift([ny], ty, th);
         }
       }
@@ -162,11 +163,22 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   const beginDrag = (e: React.PointerEvent, mode: 'move' | Handle, ids: string[]) => {
     const st = useDesigner.getState();
     if (!st.template) return;
-    const start: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    const start: Record<string, { x: number; y: number; w: number; h: number; ox: number; oy: number }> = {};
     for (const id of ids) {
       const l = findLayer(st.template, id);
       if (!l) continue;
+      // Where its group is on the stage.
+      let ox = 0;
+      let oy = 0;
+      const seen = new Set<string>();
+      for (let p = l.parent ? findLayer(st.template, l.parent) : undefined; p && !seen.has(p.id); p = p.parent ? findLayer(st.template, p.parent) : undefined) {
+        seen.add(p.id);
+        ox += num(propValue(p, 'x', st.frame));
+        oy += num(propValue(p, 'y', st.frame));
+      }
       start[id] = {
+        ox,
+        oy,
         x: num(propValue(l, 'x', st.frame)),
         y: num(propValue(l, 'y', st.frame)),
         w: num(propValue(l, 'width', st.frame)),

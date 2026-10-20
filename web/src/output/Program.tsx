@@ -51,6 +51,12 @@ export function Program({ project, live, width, height }: { project: Project; li
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
             <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
               <Scene template={t} frame={item.frame} data={item.data} />
+              {/* A row or an Update fading: the old values above, fading out. */}
+              {item.fade && item.fade.frame < item.fade.length && (
+                <div style={{ position: 'absolute', inset: 0, opacity: Math.max(0, 1 - item.fade.frame / Math.max(1, item.fade.length)) }}>
+                  <Scene template={t} frame={item.frame} data={item.fade.data} />
+                </div>
+              )}
             </LiveTime>
           </div>
         );

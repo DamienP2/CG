@@ -1326,6 +1326,31 @@ mod tests {
     }
 
     #[test]
+    fn table_rows_take_their_colour_from_the_data() {
+        let project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "tt", "name": "T", "duration": 10.0, "markers": [], "fields": [], "zone": "",
+            "layers": [{
+                "id": "tb", "name": "Table", "type": "table",
+                "grid": [["team", "color"], ["A", "#00ff00"], ["B", "#0000ff"]],
+                "cols": [{"src": "team", "label": "Team", "pct": 100.0}],
+                "title": {"on": false, "text": ""}, "headerRow": false, "showRank": false,
+                "cascade": {"on": false}, "rowH": 100.0, "gap": 0.0,
+                "rowFrom": "color", "rowPaint": "bg",
+                "props": {"x": 0.0, "y": 0.0, "width": 800.0, "height": 400.0}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 5.0, &Default::default());
+        let w = f.width as usize;
+        let px = |x: usize, y: usize| &f.data[(y * w + x) * 4..(y * w + x) * 4 + 3];
+        // Far right of each row (no text there): the row's own colour.
+        assert_eq!(px(780, 50), [0, 255, 0], "first row green");
+        assert_eq!(px(780, 150), [0, 0, 255], "second row blue");
+    }
+
+    #[test]
     fn widgets_render_and_scale() {
         let project = sample::demo_project();
         let mut state = ChannelState::default();

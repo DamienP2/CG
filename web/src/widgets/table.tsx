@@ -28,6 +28,9 @@ export interface Col {
   prefix?: string;
   suffix?: string;
   img?: Pic;
+  /** Data columns whose value (a colour) paints this column's text / background, row by row ('' = none). */
+  colorFrom?: string;
+  bgFrom?: string;
 }
 /** Typography of a level of the table; unset = the level's default (mirrors `Typo` of the Rust module). */
 export interface Typo {
@@ -106,6 +109,9 @@ export interface Config {
   /** Corners of the cells, px. */
   radius?: number;
   indicatorColor?: string;
+  /** A data column whose value (a colour) marks each row ('' = none), and how. */
+  rowFrom?: string;
+  rowPaint?: 'bar' | 'bg' | 'text';
 }
 /** How a picture column draws its pictures (like the Image widget; mirrors `Pic`). */
 export interface Pic {
@@ -132,7 +138,7 @@ export interface State {
 // ------------------------------------------------------------ defaults --
 const P = (bg: string, color: string) => ({ bg, color });
 export const DST = { header: P('#7c5cff', '#ffffff'), hcol: P('#232a4d', '#ffffff'), odd: P('#141a33', '#ffffff'), even: P('#1c2344', '#ffffff'), hl: P('#ff3b5c', '#ffffff'), top3: P('#2c2717', '#fff4cc'), tableBg: '#060812d9' };
-const DCOL: Required<Omit<Col, 'txt' | 'img'>> & { txt?: Typo; img?: Pic } = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '', prefix: '', suffix: '' };
+const DCOL: Required<Omit<Col, 'txt' | 'img'>> & { txt?: Typo; img?: Pic } = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '', prefix: '', suffix: '', colorFrom: '', bgFrom: '' };
 export function cfg(c: Config) {
   const st = c.st ?? {};
   const b = c.borders ?? {};
@@ -181,6 +187,8 @@ export function cfg(c: Config) {
     headAlign: c.headAlign ?? null,
     radius: c.radius ?? 0,
     indicatorColor: c.indicatorColor ?? '#ff3b5c',
+    rowFrom: c.rowFrom ?? '',
+    rowPaint: c.rowPaint ?? 'bar',
   };
 }
 
@@ -277,7 +285,7 @@ export interface MRow {
   key: string;
   rank: number;
 }
-const RANK: typeof DCOL = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true, mark: '', prefix: '', suffix: '' };
+const RANK: typeof DCOL = { ...DCOL, label: '#', type: 'number', align: 'center', w: 80, pct: 7 };
 export function model(k: K, data: Data) {
   const g = gridOf(k, data);
   const head = (g[0] ?? []).map((h) => String(h ?? '').trim());
@@ -293,7 +301,7 @@ export function model(k: K, data: Data) {
     else cols.push({ col: c, i, ci });
   });
   if (k.showRank) cols.unshift({ col: RANK });
-  const unmapped = auto ? [] : head.filter((h) => h && !k.cols.some((c) => c.src === h || (c.on && c.mark === h)));
+  const unmapped = auto ? [] : head.filter((h) => h && h !== k.rowFrom && !k.cols.some((c) => c.src === h || (c.on && [c.mark, c.colorFrom, c.bgFrom].includes(h))));
   const keyCol = cols.find((m) => m.i !== undefined && k.headerColOn && m.col.src === k.headerCol) ?? cols.find((m) => m.col.type === 'text' && m.i !== undefined);
   const rows: MRow[] = body.map((r, i) => ({ r, k: i, key: keyCol ? String(r[keyCol.i!] ?? '') : String(i + 1), rank: 0 }));
   const sc = cols.find((m) => m.i !== undefined && k.sortCol && m.col.src === k.sortCol);
@@ -496,7 +504,17 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
       }
       const hl = !!row.key && row.key === st.hl;
       const top3 = !hl && k.cf.top3 && row.rank <= Math.max(1, k.cf.topN);
-      const base = hl ? k.st.hl : top3 ? k.st.top3 : row.rank % 2 ? k.st.odd : k.st.even;
+      const base = { ...(hl ? k.st.hl : top3 ? k.st.top3 : row.rank % 2 ? k.st.odd : k.st.even) };
+      // The row's own colour, from a column of the data (mirrors cell_color).
+      const cellOf = (name?: string) => {
+        if (!name) return null;
+        const i = m.head.indexOf(name);
+        const v = i >= 0 ? String(row.r[i] ?? '').trim() : '';
+        return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v) ? v : null;
+      };
+      const rowColor = cellOf(k.rowFrom);
+      if (rowColor && !hl && k.rowPaint === 'bg') base.bg = rowColor;
+      if (rowColor && !hl && k.rowPaint === 'text') base.color = rowColor;
       const merge = mergeOf(k, m, row);
       let skipTo = 0;
       const cells: React.ReactNode[] = [];
@@ -517,11 +535,13 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
         if (!hl && k.headerColOn && c.i !== undefined && c.col.src === k.headerCol) ((bg = k.st.hcol.bg), (color = k.st.hcol.color));
         if (type === 'number' && c.i !== undefined && k.cf.neg && !hl && (num(row.r[c.i] ?? '') ?? 0) < 0) color = k.cf.negColor;
         if (c.i === undefined && top3) color = k.cf.top3Color;
+        if (!hl) ((color = cellOf(c.col.colorFrom) ?? color), (bg = cellOf(c.col.bgFrom) ?? bg));
         if (k.cell.on && +k.cell.row === row.rank && +k.cell.col === j + 1) ((bg = k.cell.bg), (color = k.cell.color));
         const x = xs[j];
         cells.push(<div key={`b${j}`} style={{ position: 'absolute', left: x, top: 0, width: cw, height: rh, background: hex(bg), borderRadius: k.radius }} />);
         cells.push(<span key={`l${j}`}>{lines(i > 0 || showHead || k.title.on, j > 0, x, 0, cw, rh, `c${j}`)}</span>);
         if (j === 0 && top3 && k.cf.topBar) cells.push(<div key="t3" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(k.cf.top3Color) }} />);
+        if (j === 0 && rowColor && !hl && k.rowPaint === 'bar') cells.push(<div key="rc" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(rowColor) }} />);
         if (j === 0 && hl && k.cf.hlBar) cells.push(<div key="hl" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(k.cf.hlBarColor) }} />);
         // A colour swatch before the text (a colour column of the data).
         let tx0 = x + pad;

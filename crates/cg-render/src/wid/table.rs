@@ -4,7 +4,7 @@ use ab_glyph::FontArc;
 use cg_core::wid::table::{
     cell_text, col_text, current_page, header_h, header_text, merge_of, model, page_count,
     rows_text, title_h as title_height, Align, CascadeStyle, ColKind, Config, Deco, EmptyMode,
-    FitMode, MRow, Model, Overflow, PageMode, State, Text, Then,
+    FitMode, MRow, Model, Overflow, PageMode, RowPaint, State, Text, Then,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -680,7 +680,27 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                     continue;
                 }
             }
-            let look = row_look(&c, st, row);
+            let mut look = row_look(&c, st, row);
+            // The row's own colour, from a column of the data.
+            let cell_of = |name: &str| {
+                if name.is_empty() {
+                    return None;
+                }
+                m.head
+                    .iter()
+                    .position(|h| h == name)
+                    .and_then(|i| row.r.get(i))
+                    .and_then(|v| cg_core::wid::table::cell_color(v))
+                    .map(Draw::hex)
+            };
+            let row_color = cell_of(&c.row_from);
+            if let Some(rc) = row_color {
+                match c.row_paint {
+                    RowPaint::Bg if !look.hl => look.bg = rc,
+                    RowPaint::Text if !look.hl => look.color = rc,
+                    _ => {}
+                }
+            }
             let merge = merge_of(&c, &m, row);
             let mut skip_to = 0usize;
             for (j, mc) in m.cols.iter().enumerate() {
@@ -720,6 +740,14 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                 if mc.rank() && look.top3 {
                     color = Draw::hex(&c.cf.top3_color);
                 }
+                if !look.hl {
+                    if let Some(v) = cell_of(&mc.col.color_from) {
+                        color = v;
+                    }
+                    if let Some(v) = cell_of(&mc.col.bg_from) {
+                        bg = v;
+                    }
+                }
                 if c.cell.on && c.cell.row as usize == row.rank && c.cell.col as usize == j + 1 {
                     bg = Draw::hex(&c.cell.bg);
                     color = Draw::hex(&c.cell.color);
@@ -729,6 +757,9 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                 lines(d, x, ry, w, rh, i > 0 || show_head || c.title.on, j > 0, rm);
                 if j == 0 && look.top3 && c.cf.top_bar {
                     rect(d, x, ry, 8.0, rh, 0.0, Draw::hex(&c.cf.top3_color), rm);
+                }
+                if let (0, Some(rc), RowPaint::Bar, false) = (j, row_color, c.row_paint, look.hl) {
+                    rect(d, x, ry, 8.0, rh, 0.0, rc, rm);
                 }
                 if j == 0 && look.hl && c.cf.hl_bar {
                     rect(d, x, ry, 8.0, rh, 0.0, Draw::hex(&c.cf.hl_bar_color), rm);

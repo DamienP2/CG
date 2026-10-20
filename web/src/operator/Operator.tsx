@@ -10,7 +10,7 @@ import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
 import { LiveTime } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
-import { api, can, useApp } from '../store';
+import { api, can, thumbnailUrl, useApp } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { Row } from '../widgets/kit';
@@ -157,6 +157,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200, fields: 50 });
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [updateFade, setUpdateFade] = useUpdateFade();
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
@@ -357,23 +358,19 @@ export function Operator({ channelId }: { channelId: string | null }) {
             )}
           </header>
           {adding && (
-            <div className="opx-addmenu">
-              {project.templates.filter((t) => playable(t.id)).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    const z = project.zones.find((x) => x.id === t.zone);
-                    const it: RundownItem = { id: newId(), name: t.name, templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t) };
-                    saveRundown([...rundown, it]);
-                    setCued(it.id);
-                    setAdding(false);
-                  }}
-                >
-                  {t.name}
-                  <span className="muted small">{project.zones.find((z) => z.id === t.zone)?.name}</span>
-                </button>
-              ))}
-            </div>
+            <AddGraphic
+              project={project}
+              templates={project.templates.filter((t) => playable(t.id))}
+              used={(id) => items.filter((r) => r.templateId === id).length}
+              onClose={() => setAdding(false)}
+              onPick={(t) => {
+                const z = project.zones.find((x) => x.id === t.zone);
+                const it: RundownItem = { id: newId(), name: t.name, templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t) };
+                saveRundown([...rundown, it]);
+                setCued(it.id);
+                setAdding(false);
+              }}
+            />
           )}
           <div className="opx-scroll">
             {items.map((r) => (
@@ -516,11 +513,12 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     ))}
                   </div>
                   <footer className="opx-fields-foot">
+                    <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
                     <button
                       className="opx-btn violet"
                       disabled={!operate || !onAirByItem.get(item.id)}
-                      title={onAirByItem.get(item.id) ? 'Send these values to the graphic on air' : 'Not on air: the values go with the take'}
-                      onClick={() => command({ action: 'update', zone: itemZone?.id, data: updateData(template, draft, readMode) })}
+                      title={onAirByItem.get(item.id) ? `Send these values to the graphic on air (${updateFade ? 'cross-fade' : 'cut'})` : 'Not on air: the values go with the take'}
+                      onClick={() => command({ action: 'update', zone: itemZone?.id, data: updateData(template, draft, readMode), fade: updateFade })}
                     >
                       <RefreshCw size={13} /> Update
                     </button>
@@ -604,7 +602,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 const p = channel.layers[String(z.layer)];
                 return (
                   <button key={z.id} className={z.id === selZone?.id ? 'on' : ''} onClick={() => setAirSel(z.id)}>
-                    {rundownName(project, p.rundownId) ?? project.templates.find((t) => t.id === p.templateId)?.name}
+                    {rundownName(project, p.rundownId) ?? project.templates.find((t) => t.id === p.templateId)?.name ?? 'Deleted graphic'}
                   </button>
                 );
               })
@@ -964,10 +962,120 @@ function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutIt
   );
 }
 
+/** The templates the operator can add to the rundown: searchable cards with their picture, by zone. */
+function AddGraphic({ project, templates, used, onPick, onClose }: { project: Project; templates: Template[]; used: (id: string) => number; onPick: (t: Template) => void; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.opx-add') && onClose();
+    window.addEventListener('pointerdown', down);
+    return () => window.removeEventListener('pointerdown', down);
+  }, [onClose]);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const zoneOf = (t: Template) => project.zones.find((z) => z.id === t.zone);
+  const list = templates.filter((t) => words.every((w) => `${t.name} ${zoneOf(t)?.name ?? ''}`.toLowerCase().includes(w)));
+  // By zone, in the zones' order.
+  const groups = [...project.zones.map((z) => ({ zone: z as Zone | undefined, list: list.filter((t) => t.zone === z.id) })), { zone: undefined, list: list.filter((t) => !zoneOf(t)) }].filter((g) => g.list.length);
+  const fps = project.frameRate.num / project.frameRate.den || 25;
+  const secs = (f: number) => `${+(f / fps).toFixed(1)} s`;
+  return (
+    <div className="opx-addpanel" ref={ref} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="opx-addsearch">
+        <input
+          autoFocus
+          placeholder={templates.length > 1 ? `Search ${templates.length} graphics…` : 'Search a graphic…'}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && list[0]) onPick(list[0]);
+          }}
+        />
+        <button className="icon-btn ghost" title="Close (Esc)" onClick={onClose}>
+          <X size={14} />
+        </button>
+      </div>
+      <div className="opx-addbody">
+        {groups.map((g) => (
+          <section key={g.zone?.id ?? '-'}>
+            <h4>
+              <span className="opx-dot" style={{ background: g.zone?.color ?? '#6b7090' }} /> {g.zone?.name ?? 'No zone'}
+              <em>{g.list.length}</em>
+            </h4>
+            <div className="opx-addgrid">
+              {g.list.map((t) => {
+                const n = used(t.id);
+                return (
+                  <button key={t.id} className="opx-addcard" title={`Add “${t.name}” to the rundown`} onClick={() => onPick(t)}>
+                    <span className="opx-addpic" style={{ aspectRatio: `${project.width} / ${project.height}` }}>
+                      <img src={thumbnailUrl(project.id, t)} alt="" loading="lazy" draggable={false} />
+                      {n > 0 && <i title={`Already ${n}× in this playlist`}>×{n}</i>}
+                    </span>
+                    <strong>{t.name}</strong>
+                    <span className="muted small">
+                      {secs(t.duration)}
+                      {t.fields.length ? ` · ${t.fields.length} field${t.fields.length > 1 ? 's' : ''}` : ''}
+                      {usedDatasets(t).length ? ' · data set' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {!groups.length && <p className="opx-hint pad">{templates.length ? 'No graphic matches.' : 'No graphic published yet: publish templates from the Designer.'}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** How Update changes the values on air: a cross-fade or a cut (kept in this browser). */
+function UpdateMode({ value, onChange, disabled }: { value: boolean; onChange: (fade: boolean) => void; disabled: boolean }) {
+  return (
+    <div className="opx-seg opx-upd-mode" title="How the values change on air">
+      <button className={value ? 'on' : ''} disabled={disabled} title="The new values cross-fade in (½ s)" onClick={() => onChange(true)}>
+        Fade
+      </button>
+      <button className={value ? '' : 'on'} disabled={disabled} title="The new values replace the old ones at once" onClick={() => onChange(false)}>
+        Cut
+      </button>
+    </div>
+  );
+}
+
+function useUpdateFade(): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState(() => {
+    try {
+      return localStorage.getItem('pulse.operator.updateFade') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const set = (x: boolean) => {
+    setV(x);
+    try {
+      localStorage.setItem('pulse.operator.updateFade', x ? '1' : '0');
+    } catch {
+      /* private mode */
+    }
+  };
+  return [v, set];
+}
+
 function AirControls({ project, zone, item, command, nextRowOf }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined }) {
   const t = project.templates.find((x) => x.id === item.templateId);
-  if (!t) return null;
   const target = { zone: zone.id };
+  // Deleted (or unpublished) while on air: it can still be taken out.
+  if (!t)
+    return (
+      <div className="opx-controls">
+        <div className="opx-actions sticky">
+          <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
+            <CircleStop size={14} /> Out
+          </button>
+        </div>
+        <p className="opx-hint">This graphic is no longer in the project: take it out.</p>
+      </div>
+    );
   // A Text scrolls by itself: no start / pause for it in the Operator.
   const timed = t.layers.filter((l) => isTimed(l) && l.type !== 'text');
   // Pauses waiting for a trigger, and values set by hand until one.

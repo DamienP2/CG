@@ -5926,29 +5926,6 @@ a.btn {
 .opx-hint.pad {
   padding: 16px 14px;
 }
-.opx-addmenu {
-  display: flex;
-  flex-direction: column;
-  padding: 4px;
-  background: var(--op-2);
-  max-height: 260px;
-  overflow: auto;
-}
-.opx-addmenu button {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  border-radius: 5px;
-  background: none;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-.opx-addmenu button:hover {
-  background: var(--op-3);
-}
 /* Playlists */
 .opx-pl {
   display: flex;
@@ -11464,4 +11441,224 @@ body.cv-moving * {
 }
 .te-canvas {
   scrollbar-gutter: stable;
+}
+
+/* Data canvas: settings of a widget set from the data. */
+.dc-setting > span:nth-child(2) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-setting .dc-port-value {
+  margin-right: 2px;
+}
+.dc-unset {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  width: 18px;
+  margin-right: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.dc-unset:hover {
+  color: var(--live);
+}
+.dc-setadd {
+  position: relative;
+}
+.dc-setadd .dc-props-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  padding-bottom: 2px;
+}
+.dc-setmenu {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 100%;
+  z-index: 30;
+  min-width: 240px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+}
+.dc-setmenu input {
+  width: 100%;
+  margin-bottom: 6px;
+}
+.dc-setlist {
+  max-height: 300px;
+  overflow: auto;
+}
+.dc-setgroup {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 8px 6px 3px;
+}
+.dc-setlist button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+}
+.dc-setlist button:hover {
+  background: var(--accent-soft);
+}
+.dc-setv {
+  width: 52px;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dc-setlist .dc-swatch {
+  margin-right: 40px;
+}
+.dc-setnone {
+  display: block;
+  padding: 8px;
+  color: var(--text-3);
+}
+/* Update's Fade / Cut, before the button. */
+.opx-fields-foot .opx-upd-mode {
+  flex: none;
+  width: 128px;
+}
+.opx-fields-foot .opx-upd-mode button {
+  height: 26px;
+}
+
+/* Operator: add a graphic to the rundown (the + of Rundown). */
+.opx-addpanel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 62%;
+  min-height: 0;
+  background: var(--op-1);
+  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -12px 16px -16px rgba(0, 0, 0, 0.6);
+}
+.opx-addsearch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 6px;
+}
+.opx-addsearch input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--op-2);
+  color: var(--text);
+}
+.opx-addsearch input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.opx-addbody {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+.opx-addbody h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.opx-addbody h4 em {
+  font-style: normal;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.opx-addgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.opx-addcard {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--op-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.opx-addcard:hover,
+.opx-addcard:focus-visible {
+  border-color: var(--accent);
+  background: var(--op-3);
+  outline: none;
+}
+.opx-addcard strong {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}
+.opx-addcard .small {
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opx-addpic {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 5px;
+  overflow: hidden;
+  background: repeating-conic-gradient(#1a1d29 0 25%, #14161f 0 50%) 0 0 / 14px 14px;
+}
+.opx-addpic img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.opx-addpic i {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text-2);
 }

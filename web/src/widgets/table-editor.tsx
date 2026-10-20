@@ -802,6 +802,24 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
           <Select label="Weight" path="kw.hl" value={k.kw.hl ?? 0} options={wOpts} />
           <Note>The operator picks the row in the Operator.</Note>
         </Section>
+        <Section id="te-rw-data" title="Colour from the data">
+          <Row label="Column">
+            <Dropdown value={k.rowFrom} options={[{ value: '', label: 'None' }, ...head.map((h) => ({ value: h, label: h }))]} onChange={(v) => set('rowFrom', v)} />
+          </Row>
+          {k.rowFrom && (
+            <Seg
+              label="Shows as"
+              path="rowPaint"
+              value={k.rowPaint}
+              options={[
+                ['bar', 'Bar'],
+                ['bg', 'Background'],
+                ['text', 'Text'],
+              ]}
+            />
+          )}
+          <Note>Each row takes the colour written in this column (#rrggbb), e.g. the team's colour.</Note>
+        </Section>
         {k.headerColOn && (
           <Section id="te-rw-hcol" title="Header column">
             <Select label="Column" path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />
@@ -903,6 +921,16 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
               <>
                 <Text label="Before" path={`${cp}.prefix`} value={c!.prefix ?? ''} placeholder="e.g. €" />
                 <Text label="After" path={`${cp}.suffix`} value={c!.suffix ?? ''} placeholder="e.g. pts" />
+              </>
+            )}
+            {!pic && (
+              <>
+                <Row label="Text colour">
+                  <Dropdown value={c!.colorFrom ?? ''} options={[{ value: '', label: 'Rows colour' }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: `From ${h}` }))]} onChange={(v) => set(`${cp}.colorFrom`, v)} />
+                </Row>
+                <Row label="Background">
+                  <Dropdown value={c!.bgFrom ?? ''} options={[{ value: '', label: 'Rows colour' }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: `From ${h}` }))]} onChange={(v) => set(`${cp}.bgFrom`, v)} />
+                </Row>
               </>
             )}
             {c!.type === 'text' && (

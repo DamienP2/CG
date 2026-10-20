@@ -263,8 +263,22 @@ impl RunningOrder {
     }
 }
 
-/// Playlist id of a running order.
+/// Playlist id of a running order. Ids that had to be cleaned get a short
+/// hash of the original, so "RO.1" and "RO/1" stay two playlists.
 pub fn playlist_id(ro_id: &str) -> String {
+    let legacy = legacy_playlist_id(ro_id);
+    if legacy == format!("mos-{ro_id}") {
+        return legacy;
+    }
+    // FNV-1a: stable across versions and machines.
+    let h = ro_id.bytes().fold(0x811c9dc5u32, |h, b| {
+        (h ^ b as u32).wrapping_mul(0x01000193)
+    });
+    format!("{legacy}-{h:08x}")
+}
+
+/// The id older versions gave (kept to take their playlists over).
+fn legacy_playlist_id(ro_id: &str) -> String {
     let safe: String = ro_id
         .chars()
         .map(|c| {
@@ -282,6 +296,16 @@ pub fn playlist_id(ro_id: &str) -> String {
 /// per Strata graphic of the stories, in order. Returns the number of items.
 pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usize {
     let pl = playlist_id(&ro.id);
+    // A playlist made by an older version under the cleaned id: it is this one.
+    let old = legacy_playlist_id(&ro.id);
+    if old != pl && !p.playlists.iter().any(|x| x.id == pl) {
+        if let Some(x) = p.playlists.iter_mut().find(|x| x.id == old) {
+            x.id = pl.clone();
+            for r in p.rundown.iter_mut().filter(|r| r.playlist == old) {
+                r.playlist = pl.clone();
+            }
+        }
+    }
     let name = if ro.slug.is_empty() {
         ro.id.clone()
     } else {
@@ -336,9 +360,9 @@ pub fn apply_to_project(p: &mut Project, ro: &RunningOrder, mos_id: &str) -> usi
 }
 
 pub fn remove_from_project(p: &mut Project, ro_id: &str) {
-    let pl = playlist_id(ro_id);
-    p.rundown.retain(|r| r.playlist != pl);
-    p.playlists.retain(|x| x.id != pl);
+    let ids = [playlist_id(ro_id), legacy_playlist_id(ro_id)];
+    p.rundown.retain(|r| !ids.contains(&r.playlist));
+    p.playlists.retain(|x| !ids.contains(&x.id));
     p.ensure_playlists();
 }
 
@@ -419,8 +443,9 @@ fn mos_objects(projects: &[std::sync::Arc<Project>], mos_id: &str) -> String {
                 esc(&t.name),
                 esc(&t.name),
                 esc(&p.name),
-                p.frame_rate.num / p.frame_rate.den.max(1),
-                t.duration as u64,
+                // Exact for 29.97 / 59.94: a time base of num, durations in 1/num s.
+                p.frame_rate.num.max(1),
+                (t.duration.max(0.0) as u64).saturating_mul(p.frame_rate.den.max(1) as u64),
                 mos_time(),
                 esc(&format!("Fields: {}", t.fields.iter().map(|f| f.label.as_str()).collect::<Vec<_>>().join(", "))),
                 esc(&p.id),
@@ -737,6 +762,7 @@ async fn target_project(state: &Shared, ro: &RunningOrder) -> Option<String> {
 }
 
 async fn write_ro(state: &Shared, project_id: &str, ro: &RunningOrder) -> Result<usize, String> {
+    let _edit = state.edits.lock().await;
     let mut p = (*state.project(project_id).await.ok_or("no such project")?).clone();
     let n = apply_to_project(&mut p, ro, &state.config.mos.mos_id);
     state.save_project(p).await.map_err(|e| e.to_string())?;
@@ -795,6 +821,7 @@ async fn delete_ro(state: &Shared, ro_id: &str) -> String {
         .unwrap_or_else(|e| e.into_inner())
         .remove(ro_id);
     if let Some((pid, _)) = entry {
+        let edit = state.edits.lock().await;
         if let Some(p) = state.project(&pid).await {
             let mut p = (*p).clone();
             remove_from_project(&mut p, ro_id);
@@ -802,6 +829,7 @@ async fn delete_ro(state: &Shared, ro_id: &str) -> String {
                 return e.to_string();
             }
         }
+        drop(edit);
         let ros = state.mos.ros.lock().unwrap_or_else(|e| e.into_inner());
         state.mos.save(&ros);
     }
@@ -811,6 +839,15 @@ async fn delete_ro(state: &Shared, ro_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn running_orders_never_share_a_playlist() {
+        assert_eq!(playlist_id("RO-1"), "mos-RO-1");
+        let (a, b) = (playlist_id("RO.1"), playlist_id("RO/1"));
+        assert_ne!(a, b);
+        assert!(a.starts_with("mos-RO-1-"));
+        assert_eq!(a, playlist_id("RO.1"), "stable");
+    }
 
     const RO: &str = r#"<mos><mosID>pulsecg.mos</mosID><ncsID>SAGA</ncsID><messageID>12</messageID>
 <roCreate><roID>RO-1</roID><roSlug>Evening news</roSlug>

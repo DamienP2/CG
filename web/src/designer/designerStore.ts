@@ -453,14 +453,16 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
   }
 }
 
-export function newTemplate(name: string, zone = ''): Template {
+/** A new template: 1 s long (`fps` frames), on air at half of it. */
+export function newTemplate(name: string, zone = '', fps = 25): Template {
+  const len = Math.max(2, Math.round(fps));
   return {
     id: newId(),
     name,
     zone,
-    duration: 100,
+    duration: len,
     // Animate in up to the On air point, out from there to the end.
-    markers: [{ id: newId(), frame: 50, name: 'On air', kind: 'out' }],
+    markers: [{ id: newId(), frame: Math.round(len / 2), name: 'On air', kind: 'out' }],
     fields: [],
     layers: [],
     markerModel: MARKER_MODEL,

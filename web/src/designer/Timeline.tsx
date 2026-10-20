@@ -186,8 +186,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const startX = e.clientX;
     let lastDelta = 0;
     useDesigner.setState({ lastCoalesce: null });
+    // The keys move together: the group stops at the start or the end, keys never pile up there.
+    const lo = Math.min(...sel.map((k) => k.frame));
+    const hi = Math.max(...sel.map((k) => k.frame));
     const move = (ev: PointerEvent) => {
-      const delta = Math.round((ev.clientX - startX) / zoom);
+      const delta = Math.max(-lo, Math.min(base.duration - hi, Math.round((ev.clientX - startX) / zoom)));
       if (delta === lastDelta) return;
       lastDelta = delta;
       const moved: KeyRef[] = [];
@@ -202,7 +205,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             .filter((k) => frames.has(k.frame))
             .map((k) => ({
               ...k,
-              frame: Math.max(0, Math.min(t.duration, k.frame + delta)),
+              frame: k.frame + delta,
             }));
           const newFrames = new Set(movedKeys.map((k) => k.frame));
           const kept = baseTrack.filter((k) => !frames.has(k.frame) && !newFrames.has(k.frame));
@@ -380,7 +383,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           const id = e.dataTransfer.getData('text/layer');
           const d = drop;
           setDrop(null);
-          if (id && d) st.update((t) => moveLayer(t, id, d.id, d.pos));
+          if (id && d) st.update((t) => moveLayer(t, id, d.id, d.pos, st.frame));
         }}
         onClick={(e) => {
           if (e.shiftKey || e.metaKey || e.ctrlKey) st.select(isSel ? selected.filter((x) => x !== layer.id) : [...selected, layer.id]);

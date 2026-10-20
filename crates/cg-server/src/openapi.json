@@ -643,16 +643,41 @@
      "Projects"
     ],
     "summary": "Replace the rundown",
-    "description": "**Rights:** admin, designer, operator.",
+    "description": "Either the whole rundown (an array), or `{ \"base\": [...], \"rundown\": [...] }`: the rundown the client started from and the one it wants. Only that change (items removed, edited, added, moved) is applied over the rundown as it is now, so operators editing at the same time keep each other's changes.\n\n**Rights:** admin, designer, operator.",
     "requestBody": {
      "required": true,
      "content": {
       "application/json": {
        "schema": {
-        "type": "array",
-        "items": {
-         "$ref": "#/components/schemas/RundownItem"
-        }
+        "oneOf": [
+         {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/RundownItem"
+          }
+         },
+         {
+          "type": "object",
+          "required": [
+           "base",
+           "rundown"
+          ],
+          "properties": {
+           "base": {
+            "type": "array",
+            "items": {
+             "$ref": "#/components/schemas/RundownItem"
+            }
+           },
+           "rundown": {
+            "type": "array",
+            "items": {
+             "$ref": "#/components/schemas/RundownItem"
+            }
+           }
+          }
+         }
+        ]
        }
       }
      }
@@ -3388,6 +3413,10 @@
       "type": "integer",
       "minimum": 1,
       "description": "row: the row to show (1 = first); the graphic changes the way its data set says (out › in, crossfade or cut)"
+     },
+     "fade": {
+      "type": "boolean",
+      "description": "update: the old values cross-fade out (½ s) instead of a cut"
      }
     },
     "example": {

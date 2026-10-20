@@ -443,6 +443,8 @@ export interface PlayoutItem {
   clocks?: Record<string, LayerClock>;
   /** What the operator changed in the spec widgets (web/src/widgets), by layer id. */
   widgets?: Record<string, unknown>;
+  /** A cross-fade from the data it had (drawn fading out above it). */
+  fade?: { data: Record<string, string>; frame: number; length: number } | null;
 }
 
 /** Own time of a widget layer, in frames on air. */
@@ -464,7 +466,7 @@ export type Command =
   | ({ action: 'take'; templateId: string; data?: Record<string, string>; rundownId?: string } & Target)
   | ({ action: 'continue' } & Target)
   | ({ action: 'takeOut' } & Target)
-  | ({ action: 'update'; data: Record<string, string> } & Target)
+  | ({ action: 'update'; data: Record<string, string>; fade?: boolean } & Target)
   | ({ action: 'widget'; target: string; control: WidgetControl } & Target)
   /** An operator action on a spec widget of the graphic on air (see web/src/widgets). */
   | ({ action: 'act'; target: string; op: string; args?: unknown } & Target)

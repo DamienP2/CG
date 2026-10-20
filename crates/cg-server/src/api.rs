@@ -476,6 +476,7 @@ async fn create_project(
     CurrentUser(me): CurrentUser,
     Json(n): Json<NewProject>,
 ) -> ApiResult<Json<ProjectSummary>> {
+    let _edit = s.edits.lock().await;
     require(me.can_create_projects())?;
     if n.name.trim().is_empty() {
         return Err(bad("a project needs a name"));
@@ -519,7 +520,11 @@ async fn create_project(
     if n.from.is_none() {
         // A new project starts with one (draft) template to design.
         let zone = p.zones.first().map(|z| z.id.clone()).unwrap_or_default();
-        p.drafts.push(cg_core::Template::blank("Template 1", &zone));
+        p.drafts.push(cg_core::Template::blank(
+            "Template 1",
+            &zone,
+            p.frame_rate.as_f64(),
+        ));
     }
     if let Some(src) = &n.from {
         // The copy gets its own media, and its templates point to them.
@@ -550,6 +555,7 @@ async fn create_from_demo(
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ProjectSummary>> {
+    let _edit = s.edits.lock().await;
     require(me.can_create_projects())?;
     let mut p = crate::demos::project(&id).ok_or_else(|| not_found("demo project"))?;
     p.id = cg_core::new_id();
@@ -579,6 +585,7 @@ async fn import_project(
     CurrentUser(me): CurrentUser,
     Json(mut p): Json<Project>,
 ) -> ApiResult<Json<ProjectSummary>> {
+    let _edit = s.edits.lock().await;
     require(me.can_create_projects())?;
     check_format(p.width, p.height, p.frame_rate)?;
     if !valid_id(&p.id) || s.project(&p.id).await.is_some() {
@@ -631,6 +638,7 @@ async fn put_project_meta(
     Path(id): Path<String>,
     Json(m): Json<ProjectMeta>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     check_format(m.width, m.height, m.frame_rate)?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
@@ -675,6 +683,7 @@ async fn put_template(
     headers: HeaderMap,
     Json(t): Json<Template>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     if t.id != tid {
         return Err(bad("template id mismatch"));
@@ -781,6 +790,7 @@ async fn publish_template(
     CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
 ) -> ApiResult<Json<BTreeMap<&'static str, u32>>> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     let rev = match p.publish(&tid) {
@@ -812,6 +822,7 @@ async fn publish_project(
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Vec<Published>>> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     let ids: Vec<String> = p.drafts.iter().map(|t| t.id.clone()).collect();
@@ -896,6 +907,7 @@ async fn restore_version(
     CurrentUser(me): CurrentUser,
     Path((id, vid)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let current = visible_project(&s, &me, &id).await?;
     let mut old = s
@@ -920,6 +932,7 @@ async fn discard_draft(
     CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     if p.template(&tid).is_none() {
@@ -952,6 +965,7 @@ async fn import_after_effects(
     Query(q): Query<ImportQuery>,
     body: Bytes,
 ) -> ApiResult<Json<ImportResult>> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     let opts = cg_core::lottie::Options {
@@ -1003,6 +1017,7 @@ async fn delete_template(
     CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     if p.design_templates().all(|t| t.id == tid) {
@@ -1022,15 +1037,31 @@ async fn delete_template(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// A whole rundown, or what a client changed (`base` → `rundown`): only
+/// that change is applied, over edits made meanwhile by others.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RundownPut {
+    Full(Vec<RundownItem>),
+    Change {
+        base: Vec<RundownItem>,
+        rundown: Vec<RundownItem>,
+    },
+}
+
 async fn put_rundown(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
-    Json(r): Json<Vec<RundownItem>>,
+    Json(r): Json<RundownPut>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_edit_rundown(&id))?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    p.rundown = r;
+    p.rundown = match r {
+        RundownPut::Full(r) => r,
+        RundownPut::Change { base, rundown } => cg_core::merge_rundown(&p.rundown, &base, &rundown),
+    };
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1043,10 +1074,13 @@ async fn put_zones(
     Path(id): Path<String>,
     Json(zones): Json<Vec<cg_core::Zone>>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     Project::validate_zones(&zones).map_err(bad)?;
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
-    let kept = |z: &str| zones.iter().any(|x| x.id == z);
+    // Only zones removed now count: a draft already pointing to an unknown
+    // zone (it plays in the default one) does not block every zone change.
+    let kept = |z: &str| zones.iter().any(|x| x.id == z) || !p.zones.iter().any(|x| x.id == z);
     if let Some(t) = p.templates.iter().chain(&p.drafts).find(|t| !kept(&t.zone)) {
         return Err(bad(format!(
             "template “{}” still plays in a removed zone; move it first",
@@ -1089,6 +1123,7 @@ async fn put_playlists(
     Path(id): Path<String>,
     Json(lists): Json<Vec<cg_core::Playlist>>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_edit_rundown(&id))?;
     let mut ids = std::collections::HashSet::new();
     if lists.is_empty()
@@ -1112,6 +1147,7 @@ async fn put_guides(
     Path(id): Path<String>,
     Json(g): Json<cg_core::Guides>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let frac = |v: f64| v.is_finite() && (-0.5..=1.5).contains(&v);
     if !g.vertical.iter().chain(&g.horizontal).all(|v| frac(*v))
@@ -1140,6 +1176,7 @@ async fn put_formats(
     Path(id): Path<String>,
     Json(formats): Json<Vec<cg_core::Format>>,
 ) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
     require(me.can_design(&id))?;
     let mut ids = std::collections::HashSet::from([cg_core::MAIN_FORMAT.to_string()]);
     for f in &formats {
@@ -1393,6 +1430,7 @@ async fn item_command(
             zone,
             layer: None,
             data: data.unwrap_or_else(|| it.data.clone()),
+            fade: false,
         },
         "clear" => Command::Clear { zone, layer: None },
         _ => {
