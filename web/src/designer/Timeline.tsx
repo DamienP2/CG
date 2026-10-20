@@ -11,9 +11,7 @@ import {
   Flag,
   FolderPlus,
   PenTool,
-  ArrowLeftRight,
-  ScrollText,
-  Clock,
+  Pentagon,
   Globe,
   Image,
   Lock,
@@ -826,6 +824,9 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       <button className="tool" title="Ellipse" onClick={() => onAdd('ellipse')}>
         <Circle size={15} />
       </button>
+      <button className="tool" title="Polygon" onClick={() => onAdd('polygon', { sides: 5 })}>
+        <Pentagon size={15} />
+      </button>
       <button
         className="tool"
         title="Line"
@@ -856,15 +857,6 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       <button className="tool" title="Pen" onClick={() => onAdd('pen')}>
         <PenTool size={15} />
       </button>
-      <button className="tool" title="Ticker" onClick={() => onAdd('ticker')}>
-        <ArrowLeftRight size={15} />
-      </button>
-      <button className="tool" title="Credits" onClick={() => onAdd('credits')}>
-        <ScrollText size={15} />
-      </button>
-      <button className="tool" title="Clock" onClick={() => onAdd('clock', {}, 'Clock')}>
-        <Clock size={15} />
-      </button>
       <div className="spacer" />
       <AddMenu onAdd={onAdd} />
       <button className="add-btn folder" title="New folder (group)" onClick={() => onAdd('group')}>
@@ -885,24 +877,32 @@ type MenuItem = {
   soon?: boolean;
 };
 
-const TABS = ['Shapes & tools', 'Time', 'Data', 'Sport & interaction', 'More'] as const;
-type Tab = (typeof TABS)[number];
-
-/** The + menu: the spec widgets by group, then the older widgets (built on first use: the registry imports this module's neighbours). */
-const menu = (): Record<Tab, MenuItem[]> => ({
-  ...(Object.fromEntries(TABS.slice(0, 4).map((g) => [g, WIDGET_LIST.filter((w) => w.group === g).map((w) => ({ label: w.label, icon: w.icon, type: w.type }))])) as Record<Exclude<Tab, 'More'>, MenuItem[]>),
-  More: [
-    { label: 'Analog clock', icon: ICONS.analogClock, preset: 'analogClock' },
-    { label: 'Video', icon: Video, soon: true },
-    { label: 'Animation (Lottie)', icon: Sparkles, soon: true },
-    { label: 'Iframe', icon: Code, soon: true },
-    { label: 'Web page', icon: Globe, soon: true },
-  ],
-});
+/** The + menu: one list of widgets, in this order. */
+const MENU: { type?: LayerType; label: string; soon?: typeof Video }[] = [
+  { type: 'ticker', label: 'Ticker' },
+  { type: 'credits', label: 'Credits' },
+  { type: 'clock', label: 'Timer' },
+  { type: 'table', label: 'Table' },
+  { type: 'counter', label: 'Counter' },
+  { type: 'chart', label: 'Chart' },
+  { type: 'typewriter', label: 'Typewriter' },
+  { type: 'progress', label: 'Progress bar' },
+  { type: 'map', label: 'Map' },
+  { type: 'qrCode', label: 'QR code' },
+  { label: 'Video', soon: Video },
+  { label: 'Web page', soon: Globe },
+  { label: 'Iframe', soon: Code },
+  { label: 'Animation (Lottie)', soon: Sparkles },
+  { type: 'scoreboard', label: 'Scoreboard' },
+];
+const menu = (): MenuItem[] =>
+  MENU.map((m) => {
+    const w = m.type ? WIDGET_LIST.find((x) => x.type === m.type) : undefined;
+    return { label: m.label, icon: w?.icon ?? m.soon ?? Square, type: w?.type, soon: !w };
+  });
 
 function AddMenu({ onAdd }: { onAdd: AddLayer }) {
   const [open, setOpen] = useState<{ left: number; bottom: number } | null>(null);
-  const [tab, setTab] = useState<Tab>('Shapes & tools');
   useEffect(() => {
     if (!open) return;
     const close = () => setOpen(null);
@@ -928,7 +928,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
     <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
       <button
         className={`add-btn ${open ? 'on' : ''}`}
-        title="Basics and Strata widgets"
+        title="Widgets"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setOpen(
@@ -953,15 +953,8 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
             top: 'auto',
           }}
         >
-          <div className="add-tabs">
-            {TABS.map((t) => (
-              <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </div>
           <div className="add-grid">
-            {menu()[tab].map((it) => (
+            {menu().map((it) => (
               <button key={it.label} disabled={it.soon} title={it.soon ? 'Coming soon' : it.hint} onClick={() => pick(it)}>
                 <span className="add-icon">
                   <it.icon size={15} />

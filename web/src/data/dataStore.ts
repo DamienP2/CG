@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import { columnKey, countKey, tableKey, rowKey, type Data, type DataFilter, type DataSet, type DataSort, type DataSourceInfo, type DataStatus, type DataStep, type FieldBinding, type Template } from '../engine/types';
+import { columnKey, countKey, tableKey, linesKey, oneKey, rowKey, type Data, type DataFilter, type DataSet, type DataSort, type DataSourceInfo, type DataStatus, type DataStep, type FieldBinding, type Template } from '../engine/types';
 import { api } from '../store';
 
 /** Data sources, their status (pushed live) and a version per source. */
@@ -79,6 +79,12 @@ export async function readBinding(b: FieldBinding, data: Data): Promise<string |
   return lookup(b.source, b.path, data, b.filters, b.sort);
 }
 
+/** A row as one line of text: its text / title / headline column, else its cells joined (as the server). */
+export function rowLine(columns: string[], row: string[]): string {
+  const i = columns.findIndex((c) => ['text', 'title', 'headline'].includes(c.trim().toLowerCase()));
+  return i >= 0 ? (row[i] ?? '') : row.map((c) => c.trim()).filter(Boolean).join(' · ');
+}
+
 /** The columns of the current row of a data set (and its number of rows), as the server fills them. */
 export async function readDataset(ds: DataSet, data: Data): Promise<Data | null> {
   const r = await pipeline(ds.source, ds.list, ds.steps ?? [], data);
@@ -86,7 +92,9 @@ export async function readDataset(ds: DataSet, data: Data): Promise<Data | null>
   if (!t) return null;
   const n = t.total;
   const row = Math.min(Math.max(1, parseInt(data[rowKey(ds.key)] ?? '1', 10) || 1), Math.max(1, n));
-  const out: Data = { [countKey(ds.key)]: String(n), [tableKey(ds.key)]: JSON.stringify([t.columns, ...t.rows]) };
+  const line = (r: string[]) => rowLine(t.columns, r);
+  const lines = data[oneKey(ds.key)] === '1' ? (t.rows[row - 1] ? line(t.rows[row - 1]) : '') : t.rows.map(line).join('\n');
+  const out: Data = { [countKey(ds.key)]: String(n), [tableKey(ds.key)]: JSON.stringify([t.columns, ...t.rows]), [linesKey(ds.key)]: lines };
   t.columns.forEach((c, i) => (out[columnKey(ds.key, c)] = t.rows[row - 1]?.[i] ?? ''));
   return out;
 }

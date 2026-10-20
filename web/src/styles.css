@@ -10521,3 +10521,6 @@ body.cv-moving * {
     transition: none;
   }
 }
+.add-menu .add-grid button {
+  justify-content: flex-start;
+}

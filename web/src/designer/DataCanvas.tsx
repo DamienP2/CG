@@ -6,7 +6,7 @@ import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { api } from '../store';
-import { columnKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
+import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -65,6 +65,8 @@ function tableSummary(v: string): string | null {
 }
 /** Wires `{{key}}` into a layer's content port (`x` is the draft layer). */
 function wireContent(x: Layer, port: string, key: string) {
+  // A data set's rows into a text: a line per row (or only the current one, in the Operator).
+  if (x.type === 'text' && port === 'text' && key.endsWith('__table')) key = linesKey(key.slice(0, -'__table'.length));
   const token = `{{${key}}}`;
   const l = x as unknown as Record<string, unknown>;
   if (port === 'text') {
@@ -417,6 +419,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       // All the rows first (for tables, credits…), then each column of the current row.
       const at = (i: number) => ({ x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 });
       columnPorts.set(tableKey(n.key), at(0));
+      columnPorts.set(linesKey(n.key), at(0));
       (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), at(i + 1)));
     }
   /** Where a value wired by key starts: a variable, or a data set column. */

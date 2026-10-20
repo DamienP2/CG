@@ -960,6 +960,14 @@ impl DataSet {
     pub fn table_key(&self) -> String {
         format!("{}__table", self.key)
     }
+    /// Its rows as text, a line per row, for a Text (only the current row when `one_key` is "1").
+    pub fn lines_key(&self) -> String {
+        format!("{}__lines", self.key)
+    }
+    /// "1": the Text shows one entry (the current row), chosen by the operator.
+    pub fn one_key(&self) -> String {
+        format!("{}__one", self.key)
+    }
     /// Seconds between rows when the rows go on by themselves (empty: off).
     pub fn auto_key(&self) -> String {
         format!("{}__auto", self.key)

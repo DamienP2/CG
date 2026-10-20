@@ -305,7 +305,7 @@ export default defineWidget({
   label: 'Polygon',
   group: 'Shapes & tools',
   icon: Pentagon,
-  create: () => ({ props: { width: 600, height: 600 } }),
+  create: () => ({ sides: 5, props: { width: 600, height: 600 } }),
   ownsLook: true,
   Render: ({ layer, r, w, h, data }) => {
     const k = cfg(layer);
@@ -337,7 +337,7 @@ export default defineWidget({
           />
           {k.mode === 'regular' && (
             <>
-              <Num label="Sides" path="sides" value={k.sides} min={3} max={64} />
+              <Num label="Sides" path="sides" value={k.sides} min={5} max={64} />
               <Num label="Rotation" path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
               <Toggle label="Star" path="star" value={k.star} />
               {k.star && <Num label="Inner radius" path="inner" value={k.inner} min={1} max={100} unit="%" />}

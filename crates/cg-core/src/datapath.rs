@@ -633,6 +633,13 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
         serde_json::to_string(&all).unwrap_or_default(),
         data,
     );
+    let line = |r: &Vec<String>| row_line(&t.columns, r);
+    let lines = if data.get(&ds.one_key()).is_some_and(|v| v.trim() == "1") {
+        t.rows.get(row - 1).map(line).unwrap_or_default()
+    } else {
+        t.rows.iter().map(line).collect::<Vec<_>>().join("\n")
+    };
+    changed |= set(ds.lines_key(), lines, data);
     for (i, c) in t.columns.iter().enumerate() {
         let key = ds.column_key(c);
         // Set by hand: kept until the operator (or its time, or a trigger) lets go.
@@ -648,6 +655,24 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
         changed |= set(key, v, data);
     }
     changed
+}
+
+/// A row as one line of text: its text / title / headline column, else its cells joined.
+pub fn row_line(columns: &[String], row: &[String]) -> String {
+    let named = ["text", "title", "headline"].iter().find_map(|n| {
+        columns
+            .iter()
+            .position(|c| c.trim().eq_ignore_ascii_case(n))
+    });
+    match named {
+        Some(i) => row.get(i).cloned().unwrap_or_default(),
+        None => row
+            .iter()
+            .map(|c| c.trim())
+            .filter(|c| !c.is_empty())
+            .collect::<Vec<_>>()
+            .join(" · "),
+    }
 }
 
 /// A value the operator set by hand over the data (`<key>__manual` holds
@@ -1092,9 +1117,16 @@ mod tests {
             data["standings__table"],
             r#"[["team","club.city"],["PSG","Paris"],["OM","Marseille"]]"#
         );
+        assert_eq!(data["standings__lines"], "PSG · Paris\nOM · Marseille");
         data.insert("standings__row".into(), "2".into());
         bind_datasets(&t, &mut data, &store);
         assert_eq!(data["standings_team"], "OM");
+        // One entry: the current row only.
+        data.insert("standings__one".into(), "1".into());
+        bind_datasets(&t, &mut data, &store);
+        assert_eq!(data["standings__lines"], "OM · Marseille");
+        data.remove("standings__one");
+        bind_datasets(&t, &mut data, &store);
         // Past the end: the last row.
         data.insert("standings__row".into(), "9".into());
         bind_datasets(&t, &mut data, &store);

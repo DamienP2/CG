@@ -205,6 +205,9 @@ export const rowKey = (key: string) => `${key}__row`;
 export const countKey = (key: string) => `${key}__count`;
 /** All the rows of a data set, for widgets showing a table: JSON `[[header…], [cells…], …]`. */
 export const tableKey = (key: string) => `${key}__table`;
+/** Its rows as text lines, for a Text; only the current row when `oneKey` is "1" (chosen in the Operator). */
+export const linesKey = (key: string) => `${key}__lines`;
+export const oneKey = (key: string) => `${key}__one`;
 export const columnKey = (key: string, column: string) => `${key}_${column.replace(/[^A-Za-z0-9]/g, '_')}`;
 
 /** A node of the Data canvas graph: a source's list, a step, or a data set. */

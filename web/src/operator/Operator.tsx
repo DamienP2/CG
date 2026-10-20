@@ -924,7 +924,8 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
   const t = project.templates.find((x) => x.id === item.templateId);
   if (!t) return null;
   const target = { zone: zone.id };
-  const timed = t.layers.filter(isTimed);
+  // A Text scrolls by itself: no start / pause for it in the Operator.
+  const timed = t.layers.filter((l) => isTimed(l) && l.type !== 'text');
   // Pauses waiting for a trigger, and values set by hand until one.
   const triggers = [...new Set([...t.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])), ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : []))])];
   const waiting = pauseOf(item, project);
