@@ -8,7 +8,7 @@ import { useRef, useState } from 'react';
 import { Map as MapIcon } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { col, ellipse, mix, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
@@ -1007,7 +1007,7 @@ export default defineWidget({
                 value={k.attribution.style}
                 options={[
                   ['dark', t('Dark')],
-                  ['light', t('Light')],
+                  ['light', tc('theme', 'Light')],
                   ['minimal', t('Text')],
                 ]}
               />

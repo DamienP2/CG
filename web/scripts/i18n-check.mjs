@@ -1,6 +1,6 @@
 // Checks the French texts of the interface.
 //
-//   node scripts/i18n-check.mjs              texts in t()/tn() without French
+//   node scripts/i18n-check.mjs              texts in t()/tn()/tc() without French
 //   node scripts/i18n-check.mjs --raw PATH   English texts in PATH not in t()
 //
 // Texts are looked up by their English wording (src/i18n/index.ts); the
@@ -76,11 +76,14 @@ for (const f of files(root)) {
   const visit = (node) => {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text;
-      const texts = name === 't' ? [literal(node.arguments[0])] : name === 'tn' ? [literal(node.arguments[1]), literal(node.arguments[2])] : [];
+      const ctx = name === 'tc' ? literal(node.arguments[0]) : null;
+      const texts = name === 't' ? [literal(node.arguments[0])] : name === 'tn' ? [literal(node.arguments[1]), literal(node.arguments[2])] : name === 'tc' ? [literal(node.arguments[1])] : [];
       for (const s of texts) {
         if (s === null) continue;
         const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
-        if (!used.has(s)) used.set(s, `${path.relative(root, f)}:${line + 1}`);
+        // tc(context, text): its own entry 'context|text', else the text's.
+        const key = ctx !== null && fr.has(`${ctx}|${s}`) ? `${ctx}|${s}` : s;
+        if (!used.has(key)) used.set(key, `${path.relative(root, f)}:${line + 1}`);
       }
     }
     ts.forEachChild(node, visit);

@@ -68,6 +68,15 @@ export function t(s: string, vars?: Record<string, string | number>): string {
   return vars ? out.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : out;
 }
 
+/**
+ * A short text whose French depends on what it is about: `tc('theme',
+ * 'Light')` looks up 'theme|Light' first ("Clair", not the font weight).
+ */
+export function tc(context: string, s: string, vars?: Record<string, string | number>): string {
+  const key = `${context}|${s}`;
+  return key in DICT[current] ? t(key, vars) : t(s, vars);
+}
+
 /** Singular or plural by `n` (French: 0 and 1 are singular), `{n}` replaced. */
 export function tn(n: number, one: string, other: string, vars?: Record<string, string | number>): string {
   const single = current === 'fr' ? Math.abs(n) < 2 : n === 1;

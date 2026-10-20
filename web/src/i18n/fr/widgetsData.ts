@@ -1,6 +1,8 @@
 // Tables, charts, maps and scoreboards (widgets): Designer settings and Operator controls.
 // What these widgets draw on air (chart labels, map names, scoreboard periods…) stays as typed.
 export const widgetsData: Record<string, string> = {
+  // A light look (map attribution), not the font weight.
+  'theme|Light': 'Clair',
   '#10 Name': '#10 Nom',
   "'{name}' is not in the data": '« {name} » n’est pas dans les données',
   '+ Add team': '+ Ajouter une équipe',
