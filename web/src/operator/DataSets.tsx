@@ -26,6 +26,7 @@ import {
   type Template,
 } from "../engine/types";
 import { useApp } from "../store";
+import { t } from "../i18n";
 
 /*
  * The data sets of a graphic in the Operator's Data block: its rows, the
@@ -141,12 +142,12 @@ export function DataSetPanel({
   /** ← → drive this one. */
   keys?: boolean;
 }) {
-  const t = useDatasetRows(ds, draft);
+  const stage = useDatasetRows(ds, draft);
   const live = onAir ? shownData(onAir) : undefined;
   // Auto, loop and the added rows: as on air, else as kept in the item.
   const conf = live ?? draft;
   const added = parseAdded(conf[addedKey(ds.key)]);
-  const table = t ? withAdded(t, added) : null;
+  const table = stage ? withAdded(stage, added) : null;
   const total = table?.rows.length ?? 0;
   const air = live ? Math.min(rowOf(live, ds), Math.max(total, 1)) : null;
   const next = Math.min(rowOf(draft, ds), Math.max(total, 1));
@@ -221,23 +222,24 @@ export function DataSetPanel({
       <div className="ods-bar">
         <Rows3 size={14} className="ods-icon" />
         <strong>{ds.name}</strong>
-        <div className="opx-seg tiny" title="How the graphic changes row">
+        <div className="opx-seg tiny" title={t("How the graphic changes row")}>
           {CHANGES.map((x) => (
             <button
               key={x.id}
               className={change === x.id ? "on" : ""}
-              title={x.hint}
+              title={t(x.hint)}
               disabled={!operate}
               onClick={() => set({ [changeKey(ds.key)]: x.id })}
             >
-              {x.label}
+              {/* OUT › IN and CUT keep their broadcast names. */}
+              {x.id === "fade" ? t(x.label) : x.label}
             </button>
           ))}
         </div>
         <span className="spacer" />
         <button
           className="opx-btn small"
-          title="Previous row as NEXT (←)"
+          title={t("Previous row as NEXT (←)")}
           disabled={next <= 1}
           onClick={() => onDraft({ [rowKey(ds.key)]: String(next - 1) })}
         >
@@ -245,18 +247,18 @@ export function DataSetPanel({
         </button>
         <button
           className="opx-btn small"
-          title="Following row as NEXT (→)"
+          title={t("Following row as NEXT (→)")}
           disabled={next >= total}
           onClick={() => onDraft({ [rowKey(ds.key)]: String(next + 1) })}
         >
           <ChevronRight size={13} />
         </button>
         <span className="muted small ods-pos">
-          next <b className="ods-next">{next}</b> / {total}
+          {t("next")} <b className="ods-next">{next}</b> / {total}
           {air !== null && (
             <>
               {" "}
-              · air <b className="ods-air">{air}</b>
+              · {t("air")} <b className="ods-air">{air}</b>
             </>
           )}
         </span>
@@ -264,11 +266,11 @@ export function DataSetPanel({
         <button
           className={`ods-switch ${auto ? "on" : ""}`}
           disabled={!operate}
-          title="The next row by itself, once the graphic holds on air; only you stop it"
+          title={t("The next row by itself, once the graphic holds on air; only you stop it")}
           onClick={() => set({ [autoKey(ds.key)]: auto ? "" : String(every) })}
         >
           <span className="ods-knob" />
-          Auto next
+          {t("Auto next")}
         </button>
         <input
           className="ods-every"
@@ -276,7 +278,7 @@ export function DataSetPanel({
           min={1}
           max={3600}
           value={every}
-          title="Seconds per row"
+          title={t("Seconds per row")}
           onChange={(e) => {
             const v = Math.max(1, +e.target.value || 1);
             setEvery(v);
@@ -287,20 +289,20 @@ export function DataSetPanel({
         <span className="muted small">s</span>
         <button
           className={`ods-switch ${loop ? "on" : ""}`}
-          title="After the last row, the first again"
+          title={t("After the last row, the first again")}
           onClick={() => set({ [loopKey(ds.key)]: loop ? "" : "1" })}
         >
           <span className="ods-knob" />
-          <Repeat size={13} /> Loop
+          <Repeat size={13} /> {t("Loop")}
         </button>
         {usesLines && (
           <button
             className={`ods-switch ${one ? "on" : ""}`}
-            title="The text shows only the current row, instead of all of them"
+            title={t("The text shows only the current row, instead of all of them")}
             onClick={() => set({ [oneKey(ds.key)]: one ? "" : "1" })}
           >
             <span className="ods-knob" />
-            One entry
+            {t("One entry")}
           </button>
         )}
       </div>
@@ -310,9 +312,13 @@ export function DataSetPanel({
         </div>
       )}
       <div className="ods-rows">
-        {t === undefined && <p className="opx-hint pad">Loading the rows…</p>}
-        {t === null && (
-          <p className="opx-hint pad">No data from {ds.source} yet.</p>
+        {stage === undefined && (
+          <p className="opx-hint pad">{t("Loading the rows…")}</p>
+        )}
+        {stage === null && (
+          <p className="opx-hint pad">
+            {t("No data from {source} yet.", { source: ds.source })}
+          </p>
         )}
         {table && (
           <table>
@@ -338,7 +344,7 @@ export function DataSetPanel({
                     className={`${isAir ? "air" : isNext ? "next" : ""} ${entry !== null ? "manual" : ""}`}
                     onClick={() => onDraft({ [rowKey(ds.key)]: String(n) })}
                     onDoubleClick={() => operate && show(n)}
-                    title="Click: next · double-click: on air"
+                    title={t("Click: next · double-click: on air")}
                   >
                     <td className="ods-tag">
                       {isAir ? (
@@ -350,7 +356,7 @@ export function DataSetPanel({
                     <td className="ods-n">
                       {n}
                       {entry !== null && (
-                        <span className="ods-manual">manual</span>
+                        <span className="ods-manual">{t("manual")}</span>
                       )}
                     </td>
                     {r.map((c, j) => (
@@ -361,7 +367,7 @@ export function DataSetPanel({
                     <td className="ods-x">
                       {entry !== null && (
                         <button
-                          title="Remove this row added by hand"
+                          title={t("Remove this row added by hand")}
                           onClick={(e) => {
                             e.stopPropagation();
                             set({
@@ -421,12 +427,12 @@ export function DataSetHand({
   onDraft: (patch: Data) => void;
   command: (c: Command) => void;
 }) {
-  const t = useDatasetRows(ds, draft);
+  const stage = useDatasetRows(ds, draft);
   const serverOffset = useApp((s) => s.serverOffset ?? 0);
   const live = onAir ? shownData(onAir) : undefined;
   const conf = live ?? draft;
   const added = parseAdded(conf[addedKey(ds.key)]);
-  const table = t ? withAdded(t, added) : null;
+  const table = stage ? withAdded(stage, added) : null;
   const total = table?.rows.length ?? 0;
   const air = live ? Math.min(rowOf(live, ds), Math.max(total, 1)) : null;
   const [, tick] = useState(0);
@@ -455,10 +461,12 @@ export function DataSetHand({
   const [where, setWhere] = useState<"after" | "end">("after");
   const label = (k: string) => targets.find((x) => x.key === k)?.label ?? k;
   const remaining = (m: string) => {
-    if (m === "removed") return "until removed";
-    if (m.startsWith("trigger:")) return `until “${m.slice(8)}”`;
+    if (m === "removed") return t("until removed");
+    if (m.startsWith("trigger:")) return t("until “{name}”", { name: m.slice(8) });
     if (m.startsWith("until:"))
-      return `${Math.max(0, Math.ceil((+m.slice(6) - (Date.now() + serverOffset)) / 1000))} s left`;
+      return t("{n} s left", {
+        n: Math.max(0, Math.ceil((+m.slice(6) - (Date.now() + serverOffset)) / 1000)),
+      });
     return m;
   };
   useEffect(() => {
@@ -471,7 +479,7 @@ export function DataSetHand({
     <div className="ods-hand">
       <span className="opx-label">
         <span>
-          <PenLine size={12} /> Values by hand
+          <PenLine size={12} /> {t("Values by hand")}
           {usedDatasets(template).length > 1
             ? ` · ${ds.name}`
             : ""}
@@ -489,7 +497,7 @@ export function DataSetHand({
           ))}
         </select>
         <input
-          placeholder="Value"
+          placeholder={t("Value")}
           value={ovValue}
           onChange={(e) => setOvValue(e.target.value)}
           onKeyDown={(e) => e.stopPropagation()}
@@ -497,24 +505,24 @@ export function DataSetHand({
         <div className="opx-seg tiny">
           <button
             className={ovMode === "for" ? "on" : ""}
-            title="For a number of seconds"
+            title={t("For a number of seconds")}
             onClick={() => setOvMode("for")}
           >
-            For
+            {t("For")}
           </button>
           <button
             className={ovMode === "trigger" ? "on" : ""}
-            title="Until a trigger is fired"
+            title={t("Until a trigger is fired")}
             onClick={() => setOvMode("trigger")}
           >
-            Trigger
+            {t("Trigger")}
           </button>
           <button
             className={ovMode === "removed" ? "on" : ""}
-            title="Until you remove it"
+            title={t("Until you remove it")}
             onClick={() => setOvMode("removed")}
           >
-            Removed
+            {t("Removed")}
           </button>
         </div>
         {ovMode === "for" && (
@@ -536,13 +544,13 @@ export function DataSetHand({
             value={ovTrigger}
             onChange={(e) => setOvTrigger(e.target.value)}
             onKeyDown={(e) => e.stopPropagation()}
-            title="Trigger name"
+            title={t("Trigger name")}
           />
         )}
         <button
           className="opx-btn small"
           disabled={!onAir || !operate || !target}
-          title={onAir ? "Set this value on air now" : "Take the graphic first"}
+          title={onAir ? t("Set this value on air now") : t("Take the graphic first")}
           onClick={() =>
             target &&
             command({
@@ -560,7 +568,7 @@ export function DataSetHand({
             })
           }
         >
-          Override
+          {t("Override")}
         </button>
       </div>
       {manual.map(([k, m]) => {
@@ -571,7 +579,7 @@ export function DataSetHand({
             <b>{label(key)}</b> = {live?.[key]}
             <span className="ods-left">{remaining(m)}</span>
             <button
-              title="Back to the data"
+              title={t("Back to the data")}
               onClick={() =>
                 command({
                   action: "update",
@@ -590,7 +598,7 @@ export function DataSetHand({
           </div>
         );
       })}
-      <span className="opx-label ods-hand-sub">Add a row</span>
+      <span className="opx-label ods-hand-sub">{t("Add a row")}</span>
       <div className="ods-line">
         {cols.map((c) => (
           <input
@@ -605,17 +613,17 @@ export function DataSetHand({
           <button
             className={where === "after" ? "on" : ""}
             disabled={air === null}
-            title="After the row on air"
+            title={t("After the row on air")}
             onClick={() => setWhere("after")}
           >
-            After air
+            {t("After air")}
           </button>
           <button
             className={where === "end" || air === null ? "on" : ""}
-            title="At the end of the list"
+            title={t("At the end of the list")}
             onClick={() => setWhere("end")}
           >
-            At the end
+            {t("At the end")}
           </button>
         </div>
         <button
@@ -637,7 +645,7 @@ export function DataSetHand({
             setNewRow({});
           }}
         >
-          <Plus size={12} /> Add row
+          <Plus size={12} /> {t("Add row")}
         </button>
       </div>
     </div>
@@ -703,13 +711,13 @@ export function AirRows({
               <span className="opx-widget-name">
                 <strong>{ds.name}</strong>
                 <span className="muted small">
-                  row {row} / {total}
-                  {auto ? ` · auto every ${auto} s` : ""}
+                  {t("row {row} / {total}", { row, total })}
+                  {auto ? ` · ${t("auto every {n} s", { n: auto })}` : ""}
                 </span>
               </span>
               <button
                 className="opx-sq"
-                title="Previous row"
+                title={t("Previous row")}
                 disabled={row <= 1}
                 onClick={() => go(row - 1)}
               >
@@ -717,7 +725,7 @@ export function AirRows({
               </button>
               <button
                 className="opx-sq"
-                title="Following row"
+                title={t("Following row")}
                 disabled={row >= total}
                 onClick={() => go(row + 1)}
               >
@@ -728,9 +736,9 @@ export function AirRows({
               className="opx-btn big green"
               disabled={next === row}
               onClick={() => go(next)}
-              title="Show the NEXT row on air (N)"
+              title={t("Show the NEXT row on air (N)")}
             >
-              <ChevronsRight size={16} /> Next row · {next}
+              <ChevronsRight size={16} /> {t("Next row · {n}", { n: next })}
             </button>
           </div>
         );

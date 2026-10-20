@@ -4,6 +4,7 @@ import { api, can, useApp, useChanged } from '../store';
 import { joinAddr, splitAddr, VIDEO_FORMATS, type ChannelConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type SystemInfo } from './types';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { t, tn } from '../i18n';
 
 /*
  * Video outputs as a node canvas: each channel (an independent playout) feeds
@@ -15,6 +16,7 @@ import { confirmDialog, promptDialog } from '../ui/dialogs';
 type Kind = 'program' | 'picture' | 'html5' | 'sdi' | 'st2110' | 'ndi';
 type DestKind = Exclude<Kind, 'program' | 'picture'>;
 
+/** Labels translated where shown. */
 const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = {
   program: { label: 'Program', color: '#bfcaff', icon: Play },
   picture: { label: 'Picture', color: '#38bdf8', icon: ImageIcon },
@@ -55,7 +57,7 @@ interface Picture {
   outputs: OutputsConfig;
 }
 
-const pictures = (ch: ChannelConfig): Picture[] => [{ id: 'main', name: 'Main', width: ch.width, height: ch.height, outputs: ch.outputs }, ...(ch.renditions ?? [])];
+const pictures = (ch: ChannelConfig): Picture[] => [{ id: 'main', name: t('Main'), width: ch.width, height: ch.height, outputs: ch.outputs }, ...(ch.renditions ?? [])];
 
 type Dest = { kind: DestKind; picture: string; value: St2110Output | SdiOutput | NdiOutput | Html5Output };
 
@@ -171,15 +173,15 @@ export function Outputs() {
   const appliedAt = useRef(0);
   useChanged('config', () => {
     if (Date.now() - appliedAt.current < 5000) return; // our own Apply
-    if (editing.current) toast('Another user changed the outputs. Discard your changes to see theirs.', 'info');
+    if (editing.current) toast(t('Another user changed the outputs. Discard your changes to see theirs.'), 'info');
     else load().catch(() => {});
   });
   const dirty = useMemo(() => !!info && !!cfg && JSON.stringify(info.config) !== JSON.stringify(cfg), [info, cfg]);
   editing.current = dirty;
-  if (!can.admin(auth?.user)) return <div className="loading">Only administrators set up the outputs.</div>;
-  if (!info || !cfg) return <div className="loading">Loading outputs…</div>;
+  if (!can.admin(auth?.user)) return <div className="loading">{t('Only administrators set up the outputs.')}</div>;
+  if (!info || !cfg) return <div className="loading">{t('Loading outputs…')}</div>;
 
-  const locations = cfg.locations?.length ? cfg.locations : [{ id: 'main', name: 'Main' }];
+  const locations = cfg.locations?.length ? cfg.locations : [{ id: 'main', name: t('Main') }];
   const chIndex = Math.max(0, cfg.channels.findIndex((c) => c.id === current));
   const ch = cfg.channels[chIndex];
   const saved = info.config.channels.find((c) => c.id === ch?.id);
@@ -207,11 +209,11 @@ export function Outputs() {
 
   const savedDest = (id: string) => !!saved && pictures(saved).some((p) => dests(p).some((d) => d.value.id === id));
   const destStatus = (d: Dest): { tone: 'ok' | 'warn' | 'idle'; text: string } => {
-    if (d.kind === 'html5') return { tone: 'ok', text: 'Web link' };
-    if (!savedDest(d.value.id)) return { tone: 'idle', text: 'Not applied yet' };
+    if (d.kind === 'html5') return { tone: 'ok', text: t('Web link') };
+    if (!savedDest(d.value.id)) return { tone: 'idle', text: t('Not applied yet') };
     const s = status[ch.id]?.[d.value.id];
-    if (!s) return { tone: 'idle', text: 'Starting…' };
-    return s.ok ? { tone: 'ok', text: s.message || 'Running' } : { tone: 'warn', text: s.message };
+    if (!s) return { tone: 'idle', text: t('Starting…') };
+    return s.ok ? { tone: 'ok', text: s.message || t('Running') } : { tone: 'warn', text: s.message };
   };
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name;
   const liveCh = live.find((c) => c.id === ch?.id);
@@ -223,11 +225,11 @@ export function Outputs() {
           id: 'program',
           kind: 'program',
           title: ch.name,
-          sub: `${formatLabel(ch)}\n${projectName(liveCh?.projectId) ? `plays “${projectName(liveCh?.projectId)}”` : 'no project loaded'}`,
+          sub: `${formatLabel(ch)}\n${projectName(liveCh?.projectId) ? t('plays “{name}”', { name: projectName(liveCh?.projectId)! }) : t('no project loaded')}`,
           tone: liveCh ? 'ok' : 'idle',
-          status: liveCh ? 'Running' : 'Not applied yet',
+          status: liveCh ? t('Running') : t('Not applied yet'),
         },
-        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: p.name, sub: `${p.width}×${p.height}`, tone: 'ok' as const, status: `${dests(p).length} destination${dests(p).length === 1 ? '' : 's'}` })),
+        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: p.name, sub: `${p.width}×${p.height}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations') })),
         ...allDests.map((d) => {
           const st = destStatus(d);
           return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch), tone: st.tone, status: st.text };
@@ -272,7 +274,7 @@ export function Outputs() {
         for (let k = 2; names.has(name.toLowerCase()); k++) name = `${c.name}${p.id === 'main' ? '' : ` ${p.name}`} ${k}`;
         (picOutputs.ndi ??= []).push({ id, name, groups: '', alpha: true });
       } else {
-        (picOutputs.html5 ??= []).push({ id, name: 'Web page', background: '' });
+        (picOutputs.html5 ??= []).push({ id, name: t('Web page'), background: '' });
       }
     });
     if (at) setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), [id]: at } }));
@@ -283,7 +285,7 @@ export function Outputs() {
     const taken = new Set(pics.map((p) => p.id));
     const preset = PICTURE_PRESETS.find((p) => !taken.has(p.id)) ?? PICTURE_PRESETS[0];
     const id = unique(preset.id, taken);
-    editCh((c) => void (c.renditions ??= []).push({ id, name: preset.name, width: preset.width, height: preset.height, outputs: { st2110: [], sdi: [], ndi: [], html5: [] } }));
+    editCh((c) => void (c.renditions ??= []).push({ id, name: t(preset.name), width: preset.width, height: preset.height, outputs: { st2110: [], sdi: [], ndi: [], html5: [] } }));
     setSel(`pic:${id}`);
   };
 
@@ -298,7 +300,7 @@ export function Outputs() {
         );
       });
     } else if (selPic && selPic.id !== 'main') {
-      if (dests(selPic).length && !(await confirmDialog({ title: `Remove the picture “${selPic.name}”?`, message: `Its ${dests(selPic).length} destinations are removed too.`, confirm: 'Remove', danger: true }))) return;
+      if (dests(selPic).length && !(await confirmDialog({ title: t('Remove the picture “{name}”?', { name: selPic.name }), message: tn(dests(selPic).length, 'Its {n} destination is removed too.', 'Its {n} destinations are removed too.'), confirm: t('Remove'), danger: true }))) return;
       editCh((c) => void (c.renditions = (c.renditions ?? []).filter((r) => r.id !== selPic.id)));
     }
     setSel('program');
@@ -329,7 +331,7 @@ export function Outputs() {
     });
 
   const addLocation = async () => {
-    const name = await promptDialog({ title: 'New location', label: 'Name', placeholder: 'A studio, a truck, the web desk…', confirm: 'Add' });
+    const name = await promptDialog({ title: t('New location'), label: t('Name'), placeholder: t('A studio, a truck, the web desk…'), confirm: t('Add') });
     if (!name) return;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
@@ -337,7 +339,7 @@ export function Outputs() {
     });
   };
   const renameLocation = async (id: string, old: string) => {
-    const name = await promptDialog({ title: 'Rename the location', label: 'Name', value: old, confirm: 'Rename' });
+    const name = await promptDialog({ title: t('Rename the location'), label: t('Name'), value: old, confirm: t('Rename') });
     if (!name || name === old) return;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
@@ -345,9 +347,9 @@ export function Outputs() {
     });
   };
   const removeLocation = async (id: string, name: string) => {
-    if (locations.length < 2) return toast('Keep at least one location', 'error');
+    if (locations.length < 2) return toast(t('Keep at least one location'), 'error');
     const n = cfg.channels.filter((c) => c.location === id).length;
-    if (!(await confirmDialog({ title: `Remove the location “${name}”?`, message: n ? `Its ${n} channel${n > 1 ? 's move' : ' moves'} to “${locations.find((l) => l.id !== id)!.name}”.` : undefined, confirm: 'Remove', danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Remove the location “{name}”?', { name }), message: n ? tn(n, 'Its {n} channel moves to “{name}”.', 'Its {n} channels move to “{name}”.', { name: locations.find((l) => l.id !== id)!.name }) : undefined, confirm: t('Remove'), danger: true }))) return;
     edit((c) => {
       c.locations = (c.locations?.length ? c.locations : [...locations]).filter((l) => l.id !== id);
       for (const x of c.channels) if (x.location === id) x.location = c.locations[0].id;
@@ -361,14 +363,14 @@ export function Outputs() {
     const id = `channel-${n}`;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
-      c.channels.push({ id, name: `Channel ${n}`, width: first?.width ?? 1920, height: first?.height ?? 1080, frameRate: first?.frameRate ?? { num: 50, den: 1 }, projectId: null, location: loc, outputs: { st2110: [], sdi: [], ndi: [], html5: [{ id: 'html5-1', name: 'Web page', background: '' }] }, renditions: [] });
+      c.channels.push({ id, name: t('Channel {n}', { n }), width: first?.width ?? 1920, height: first?.height ?? 1080, frameRate: first?.frameRate ?? { num: 50, den: 1 }, projectId: null, location: loc, outputs: { st2110: [], sdi: [], ndi: [], html5: [{ id: 'html5-1', name: t('Web page'), background: '' }] }, renditions: [] });
     });
     setCurrent(id);
     setSel('program');
   };
   const removeChannel = async () => {
     if (cfg.channels.length < 2) return;
-    if (!(await confirmDialog({ title: `Remove the channel “${ch.name}”?`, message: 'All its outputs are removed too.', confirm: 'Remove', danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Remove the channel “{name}”?', { name: ch.name }), message: t('All its outputs are removed too.'), confirm: t('Remove'), danger: true }))) return;
     edit((c) => void c.channels.splice(chIndex, 1));
     setCurrent(null);
     setSel('program');
@@ -379,7 +381,7 @@ export function Outputs() {
     try {
       appliedAt.current = Date.now();
       await api('PUT', '/api/system/config', cfg);
-      toast('Outputs applied — the engine is restarting', 'info');
+      toast(t('Outputs applied — the engine is restarting'), 'info');
       setTimeout(() => load().catch(() => {}), 1500);
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -461,8 +463,8 @@ export function Outputs() {
     <div className="outputs-page">
       <aside className="lib-nav">
         <div className="lib-nav-section">
-          <span className="grow">Locations</span>
-          <button className="icon-btn ghost" title="Add a location" onClick={addLocation}>
+          <span className="grow">{t('Locations')}</span>
+          <button className="icon-btn ghost" title={t('Add a location')} onClick={addLocation}>
             <Plus size={14} />
           </button>
         </div>
@@ -472,14 +474,14 @@ export function Outputs() {
             <div key={l.id} className="oc-location">
               <div className="oc-loc-head">
                 <MapPin size={14} />
-                <span className="grow" onDoubleClick={() => renameLocation(l.id, l.name)} title="Double-click to rename">
+                <span className="grow" onDoubleClick={() => renameLocation(l.id, l.name)} title={t('Double-click to rename')}>
                   {l.name}
                 </span>
                 <span className="lib-nav-actions">
-                  <button className="icon-btn ghost" title="Rename" onClick={() => renameLocation(l.id, l.name)}>
+                  <button className="icon-btn ghost" title={t('Rename')} onClick={() => renameLocation(l.id, l.name)}>
                     <Pencil size={12} />
                   </button>
-                  <button className="icon-btn ghost" title="Remove the location" onClick={() => removeLocation(l.id, l.name)}>
+                  <button className="icon-btn ghost" title={t('Remove the location')} onClick={() => removeLocation(l.id, l.name)}>
                     <Trash2 size={12} />
                   </button>
                 </span>
@@ -498,18 +500,18 @@ export function Outputs() {
                   <span className="grow">
                     <span>{c.name}</span>
                     <small>
-                      {formatLabel(c)} · {destCount(c)} destination{destCount(c) === 1 ? '' : 's'}
+                      {formatLabel(c)} · {tn(destCount(c), '{n} destination', '{n} destinations')}
                     </small>
                   </span>
                 </button>
               ))}
               <button className="oc-channel add" onClick={() => addChannel(l.id)}>
-                <Plus size={13} /> Add a channel
+                <Plus size={13} /> {t('Add a channel')}
               </button>
             </div>
           );
         })}
-        <p className="lib-nav-hint">A location groups the channels of one place: a studio, a truck, the web desk… Each channel is an independent playout.</p>
+        <p className="lib-nav-hint">{t('A location groups the channels of one place: a studio, a truck, the web desk… Each channel is an independent playout.')}</p>
       </aside>
 
       {ch && (
@@ -521,19 +523,19 @@ export function Outputs() {
                 <span className="chip">{locations.find((l) => l.id === (ch.location || locations[0].id))?.name}</span>
               </div>
               <span className="muted small">
-                {formatLabel(ch)} · {projectName(liveCh?.projectId) ? `plays “${projectName(liveCh?.projectId)}”` : 'no project loaded'} · {allDests.length} destinations
+                {formatLabel(ch)} · {projectName(liveCh?.projectId) ? t('plays “{name}”', { name: projectName(liveCh?.projectId)! }) : t('no project loaded')} · {tn(allDests.length, '{n} destination', '{n} destinations')}
               </span>
             </div>
             <div className="spacer" />
             <div className="oc-tools">
-              <button className="oc-tool" onClick={addPicture} title="Add a picture (another size or ratio of the same program)">
-                <ImageIcon size={15} color={KIND.picture.color} /> Picture
+              <button className="oc-tool" onClick={addPicture} title={t('Add a picture (another size or ratio of the same program)')}>
+                <ImageIcon size={15} color={KIND.picture.color} /> {t('Picture')}
               </button>
               {(['html5', 'sdi', 'st2110', 'ndi'] as DestKind[]).map((k) => {
                 const Icon = KIND[k].icon;
                 return (
-                  <button key={k} className="oc-tool" onClick={() => addDest(k)} title={`Add a ${KIND[k].label} destination to “${pics.find((p) => p.id === targetPicture)?.name}”`}>
-                    <Icon size={15} color={KIND[k].color} /> {KIND[k].label}
+                  <button key={k} className="oc-tool" onClick={() => addDest(k)} title={t('Add a {kind} destination to “{picture}”', { kind: t(KIND[k].label), picture: pics.find((p) => p.id === targetPicture)?.name ?? '' })}>
+                    <Icon size={15} color={KIND[k].color} /> {t(KIND[k].label)}
                   </button>
                 );
               })}
@@ -544,13 +546,13 @@ export function Outputs() {
             <div {...cv.viewport} className={`oc-canvas ${cv.viewport.className}`} onPointerDown={(e) => (setAddMenu(null), cv.viewport.onPointerDown(e))}>
               <div ref={planeRef} data-canvas-void className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height, ...cv.spaceStyle }} onPointerDown={() => setAddMenu(null)}>
                 <span className="oc-col" style={{ left: COL.program }}>
-                  Source
+                  {t('Source')}
                 </span>
                 <span className="oc-col" style={{ left: COL.picture }}>
-                  Pictures
+                  {t('Pictures')}
                 </span>
                 <span className="oc-col" style={{ left: COL.dest }}>
-                  Destinations
+                  {t('Destinations')}
                 </span>
                 <svg className="oc-wires" width={width} height={height} aria-hidden="true">
                   {edges.map((e) => {
@@ -584,7 +586,7 @@ export function Outputs() {
                           <Icon size={15} />
                         </span>
                         <span className="grow">
-                          <small>{k.label}</small>
+                          <small>{t(k.label)}</small>
                           <strong>{n.title}</strong>
                         </span>
                       </div>
@@ -595,17 +597,17 @@ export function Outputs() {
                       </div>
                       {n.kind === 'picture' && <span className="oc-port in" />}
                       {n.kind !== 'program' && n.kind !== 'picture' && (
-                        <span className="oc-port in grab" title="Drag to another picture to feed this output from it" onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
+                        <span className="oc-port in grab" title={t('Drag to another picture to feed this output from it')} onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
                       )}
                       {n.kind === 'program' && <span className="oc-port out" />}
-                      {n.kind === 'picture' && <span className="oc-port out grab" title="Drag to an output to feed it, or into the empty canvas to add one" onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
+                      {n.kind === 'picture' && <span className="oc-port out grab" title={t('Drag to an output to feed it, or into the empty canvas to add one')} onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
                       <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setWidth(n.id, w))} />
                     </div>
                   );
                 })}
                 {addMenu && (
                   <div className="menu oc-add-menu" style={{ left: addMenu.x, top: addMenu.y }} onPointerDown={(e) => e.stopPropagation()}>
-                    <div className="menu-label">Add an output</div>
+                    <div className="menu-label">{t('Add an output')}</div>
                     {(['html5', 'sdi', 'st2110', 'ndi'] as DestKind[]).map((k) => {
                       const Icon = KIND[k].icon;
                       return (
@@ -616,7 +618,7 @@ export function Outputs() {
                             setAddMenu(null);
                           }}
                         >
-                          <Icon size={14} color={KIND[k].color} /> {KIND[k].label}
+                          <Icon size={14} color={KIND[k].color} /> {t(KIND[k].label)}
                         </button>
                       );
                     })}
@@ -631,11 +633,11 @@ export function Outputs() {
                 <div className="oc-ins-head" style={{ ['--k' as string]: KIND[selNode.kind].color }}>
                   <span className="oc-swatch" />
                   <div className="grow">
-                    <small>{KIND[selNode.kind].label}</small>
+                    <small>{t(KIND[selNode.kind].label)}</small>
                     <strong>{selNode.title}</strong>
                   </div>
                   {(selDest || (selPic && selPic.id !== 'main')) && (
-                    <button className="icon-btn ghost" title="Remove" onClick={removeSelected}>
+                    <button className="icon-btn ghost" title={t('Remove')} onClick={removeSelected}>
                       <Trash2 size={15} />
                     </button>
                   )}
@@ -644,10 +646,10 @@ export function Outputs() {
 
               {selNode?.kind === 'program' && (
                 <>
-                  <Field label="Name">
+                  <Field label={t('Name')}>
                     <input value={ch.name} onChange={(e) => editCh((c) => void (c.name = e.target.value))} />
                   </Field>
-                  <Field label="Location">
+                  <Field label={t('Location')}>
                     <select value={ch.location || locations[0].id} onChange={(e) => edit((c) => void ((c.locations = c.locations?.length ? c.locations : [...locations]), (c.channels[chIndex].location = e.target.value)))}>
                       {locations.map((l) => (
                         <option key={l.id} value={l.id}>
@@ -656,7 +658,7 @@ export function Outputs() {
                       ))}
                     </select>
                   </Field>
-                  <Field label="Video format" hint="Every picture and destination of the channel runs at this rate.">
+                  <Field label={t('Video format')} hint={t('Every picture and destination of the channel runs at this rate.')}>
                     <select
                       value={VIDEO_FORMATS.findIndex((f) => f.width === ch.width && f.height === ch.height && f.rate.num * ch.frameRate.den === ch.frameRate.num * f.rate.den)}
                       onChange={(e) =>
@@ -680,16 +682,16 @@ export function Outputs() {
                     </select>
                   </Field>
                   {liveCh && (
-                    <Field label="Project on air" hint="Takes effect at once (not with Apply).">
+                    <Field label={t('Project on air')} hint={t('Takes effect at once (not with Apply).')}>
                       <select
                         value={liveCh.projectId ?? ''}
                         onChange={async (e) => {
                           const onAir = Object.keys(liveState[ch.id]?.state.layers ?? {}).length;
-                          if (onAir && !(await confirmDialog({ title: 'Load another project?', message: `The ${onAir} graphics on air on ${ch.name} are cleared.`, confirm: 'Load', danger: true }))) return;
+                          if (onAir && !(await confirmDialog({ title: t('Load another project?'), message: tn(onAir, 'The {n} graphic on air on {channel} is cleared.', 'The {n} graphics on air on {channel} are cleared.', { channel: ch.name }), confirm: t('Load'), danger: true }))) return;
                           await loadOnChannel(ch.id, e.target.value || null);
                         }}
                       >
-                        <option value="">— no project —</option>
+                        <option value="">{t('— no project —')}</option>
                         {projects.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}
@@ -698,10 +700,10 @@ export function Outputs() {
                       </select>
                     </Field>
                   )}
-                  <Hint>The playout of this channel: what the operator takes goes to every picture and destination wired to it.</Hint>
+                  <Hint>{t('The playout of this channel: what the operator takes goes to every picture and destination wired to it.')}</Hint>
                   {cfg.channels.length > 1 && (
                     <button className="btn small danger" onClick={removeChannel}>
-                      <Trash2 size={13} /> Remove the channel
+                      <Trash2 size={13} /> {t('Remove the channel')}
                     </button>
                   )}
                 </>
@@ -710,15 +712,13 @@ export function Outputs() {
               {selPic && (
                 <>
                   {selPic.id === 'main' ? (
-                    <Hint>
-                      The channel's main picture, {selPic.width}×{selPic.height} (its video format).
-                    </Hint>
+                    <Hint>{t("The channel's main picture, {size} (its video format).", { size: `${selPic.width}×${selPic.height}` })}</Hint>
                   ) : (
                     <>
-                      <Field label="Name">
+                      <Field label={t('Name')}>
                         <input value={selPic.name} onChange={(e) => editCh((c) => void (c.renditions!.find((r) => r.id === selPic.id)!.name = e.target.value))} />
                       </Field>
-                      <Field label="Size">
+                      <Field label={t('Size')}>
                         <select
                           value={PICTURE_PRESETS.findIndex((p) => p.width === selPic.width && p.height === selPic.height)}
                           onChange={(e) =>
@@ -729,25 +729,25 @@ export function Outputs() {
                             })
                           }
                         >
-                          <option value={-1}>Custom</option>
+                          <option value={-1}>{t('Custom')}</option>
                           {PICTURE_PRESETS.map((p, i) => (
                             <option key={p.id} value={i}>
-                              {p.name} · {p.width}×{p.height}
+                              {t(p.name)} · {p.width}×{p.height}
                             </option>
                           ))}
                         </select>
                       </Field>
                       <div className="oc-pair">
-                        <Field label="Width">
+                        <Field label={t('Width')}>
                           <input type="number" min={16} max={7680} value={selPic.width} onChange={(e) => editCh((c) => void (c.renditions!.find((x) => x.id === selPic.id)!.width = +e.target.value))} />
                         </Field>
-                        <Field label="Height">
+                        <Field label={t('Height')}>
                           <input type="number" min={16} max={7680} value={selPic.height} onChange={(e) => editCh((c) => void (c.renditions!.find((x) => x.id === selPic.id)!.height = +e.target.value))} />
                         </Field>
                       </div>
                     </>
                   )}
-                  <Hint>One take drives every picture. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit.</Hint>
+                  <Hint>{t("One take drives every picture. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit.")}</Hint>
                 </>
               )}
 
@@ -757,31 +757,31 @@ export function Outputs() {
                   const url = outputUrl(ch.id, selDest.picture, o.background);
                   return (
                     <>
-                      <Field label="Name">
+                      <Field label={t('Name')}>
                         <input value={o.name} onChange={(e) => editDest<Html5Output>((d) => void (d.name = e.target.value))} />
                       </Field>
-                      <Field label="Background">
+                      <Field label={t('Background')}>
                         <select value={o.background} onChange={(e) => editDest<Html5Output>((d) => void (d.background = e.target.value))}>
                           {BACKGROUNDS.map((b) => (
                             <option key={b.value} value={b.value}>
-                              {b.label}
+                              {t(b.label)}
                             </option>
                           ))}
                         </select>
                       </Field>
                       <div className="set-field">
-                        <span className="set-label">Web link</span>
+                        <span className="set-label">{t('Web link')}</span>
                         <div className="oc-link">
                           <code>{url}</code>
-                          <button className="icon-btn" title="Copy" onClick={() => void copy(url)}>
+                          <button className="icon-btn" title={t('Copy')} onClick={() => void copy(url)}>
                             {copied === url ? <Check size={14} /> : <Copy size={14} />}
                           </button>
-                          <a className="icon-btn" title="Open" href={url} target="_blank" rel="noreferrer">
+                          <a className="icon-btn" title={t('Open')} href={url} target="_blank" rel="noreferrer">
                             <ExternalLink size={14} />
                           </a>
                         </div>
                       </div>
-                      <Hint>{cfg.publicOutputs ? 'A web page playing the graphics live: browser source in OBS, vMix, CasparCG, a web player or a screen. No login needed.' : 'A web page playing the graphics live. Output pages need a login (Settings › Public output pages).'}</Hint>
+                      <Hint>{cfg.publicOutputs ? t('A web page playing the graphics live: browser source in OBS, vMix, CasparCG, a web player or a screen. No login needed.') : t('A web page playing the graphics live. Output pages need a login (Settings › Public output pages).')}</Hint>
                     </>
                   );
                 })()}
@@ -792,24 +792,24 @@ export function Outputs() {
                   const signal = o.fillOnly ? 'fill' : o.externalKey ? 'external' : 'internal';
                   return (
                     <>
-                      <Field label="Name">
+                      <Field label={t('Name')}>
                         <input value={o.name} onChange={(e) => editDest<SdiOutput>((d) => void (d.name = e.target.value))} />
                       </Field>
-                      <Field label="DeckLink device" hint="Index as listed by Blackmagic Desktop Video (0 = first).">
+                      <Field label={t('DeckLink device')} hint={t('Index as listed by Blackmagic Desktop Video (0 = first).')}>
                         <input type="number" min={0} value={o.device} onChange={(e) => editDest<SdiOutput>((d) => void (d.device = Math.max(0, +e.target.value)))} />
                       </Field>
-                      <Field label="Signal">
+                      <Field label={t('Signal')}>
                         <select value={signal} onChange={(e) => editDest<SdiOutput>((d) => void ((d.fillOnly = e.target.value === 'fill'), (d.externalKey = e.target.value !== 'internal')))}>
-                          <option value="external">Fill + Key (external keyer, 2 SDI)</option>
-                          <option value="internal">Internal keyer (over the card's SDI input)</option>
-                          <option value="fill">Fill only</option>
+                          <option value="external">{t('Fill + Key (external keyer, 2 SDI)')}</option>
+                          <option value="internal">{t("Internal keyer (over the card's SDI input)")}</option>
+                          <option value="fill">{t('Fill only')}</option>
                         </select>
                       </Field>
                       <label className="check">
                         <input type="checkbox" checked={!!o.genlock} onChange={(e) => editDest<SdiOutput>((d) => void (d.genlock = e.target.checked))} />
-                        Genlock to the card's reference input
+                        {t("Genlock to the card's reference input")}
                       </label>
-                      <Hint>Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.</Hint>
+                      <Hint>{t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.')}</Hint>
                     </>
                   );
                 })()}
@@ -824,21 +824,21 @@ export function Outputs() {
                   const sdp = (k: 'fill' | 'key') => `/api/channels/${encodeURIComponent(ch.id)}/outputs/${encodeURIComponent(o.id)}/${k}.sdp`;
                   return (
                     <>
-                      <Field label="Name">
+                      <Field label={t('Name')}>
                         <input value={o.name} onChange={(e) => editDest<St2110Output>((d) => void (d.name = e.target.value))} />
                       </Field>
-                      <Field label="Encoding">
+                      <Field label={t('Encoding')}>
                         <select value={enc} onChange={(e) => editDest<St2110Output>((d) => void ((d.encoding = e.target.value as St2110Output['encoding']), e.target.value === 'fillKey' && !d.key && (d.key = joinAddr(fip.replace(/\d+$/, (x) => String(+x + 1)), fport))))}>
                           {ENCODINGS.map((x) => (
                             <option key={x.value} value={x.value}>
-                              {x.label}
+                              {t(x.label)}
                             </option>
                           ))}
                         </select>
                       </Field>
-                      <Field label="Network interface">
+                      <Field label={t('Network interface')}>
                         <select value={o.interface ?? ''} onChange={(e) => editDest<St2110Output>((d) => void (d.interface = e.target.value || null))}>
-                          <option value="">System default</option>
+                          <option value="">{t('System default')}</option>
                           {info.interfaces.map((n) => (
                             <option key={n.ip} value={n.ip}>
                               {n.name} — {n.ip}
@@ -847,10 +847,10 @@ export function Outputs() {
                         </select>
                       </Field>
                       <div className="oc-pair">
-                        <Field label={two ? 'Fill — IP' : 'Stream — IP'}>
+                        <Field label={two ? 'Fill — IP' : t('Stream — IP')}>
                           <input value={fip} placeholder="239.100.1.1" onChange={(e) => editDest<St2110Output>((d) => void (d.fill = joinAddr(e.target.value, fport)))} />
                         </Field>
-                        <Field label="Port">
+                        <Field label={t('Port')}>
                           <input type="number" value={fport} onChange={(e) => editDest<St2110Output>((d) => void (d.fill = joinAddr(fip, e.target.value)))} />
                         </Field>
                       </div>
@@ -858,14 +858,14 @@ export function Outputs() {
                         <>
                           <label className="check">
                             <input type="checkbox" checked={!!o.key} onChange={(e) => editDest<St2110Output>((d) => void (d.key = e.target.checked ? joinAddr(fip.replace(/\d+$/, (x) => String(+x + 1)), fport) : null))} />
-                            Send the key stream
+                            {t('Send the key stream')}
                           </label>
                           {o.key && (
                             <div className="oc-pair">
                               <Field label="Key — IP">
                                 <input value={kip} onChange={(e) => editDest<St2110Output>((d) => void (d.key = joinAddr(e.target.value, kport)))} />
                               </Field>
-                              <Field label="Port">
+                              <Field label={t('Port')}>
                                 <input type="number" value={kport} onChange={(e) => editDest<St2110Output>((d) => void (d.key = joinAddr(kip, e.target.value)))} />
                               </Field>
                             </div>
@@ -876,7 +876,7 @@ export function Outputs() {
                         <Field label="TTL">
                           <input type="number" min={1} max={255} value={o.ttl} onChange={(e) => editDest<St2110Output>((d) => void (d.ttl = +e.target.value))} />
                         </Field>
-                        <Field label="Payload type">
+                        <Field label={t('Payload type')}>
                           <input type="number" min={96} max={127} value={o.payloadType} onChange={(e) => editDest<St2110Output>((d) => void (d.payloadType = +e.target.value))} />
                         </Field>
                       </div>
@@ -888,10 +888,10 @@ export function Outputs() {
                             {two && o.key && <a href={sdp('key')}>key.sdp</a>}
                           </span>
                         ) : (
-                          <span className="muted small">Apply to generate the SDP files.</span>
+                          <span className="muted small">{t('Apply to generate the SDP files.')}</span>
                         )}
                       </div>
-                      <Hint>{two ? 'Two ST 2110-20 streams, what most vision mixers and keyers expect. RTP timing follows the system clock: keep this server PTP-disciplined.' : 'One stream carrying the alpha, for receivers that read this sampling (check your mixer accepts it). RTP timing follows the system clock: keep this server PTP-disciplined.'}</Hint>
+                      <Hint>{two ? t('Two ST 2110-20 streams, what most vision mixers and keyers expect. RTP timing follows the system clock: keep this server PTP-disciplined.') : t('One stream carrying the alpha, for receivers that read this sampling (check your mixer accepts it). RTP timing follows the system clock: keep this server PTP-disciplined.')}</Hint>
                     </>
                   );
                 })()}
@@ -901,20 +901,20 @@ export function Outputs() {
                   const o = selDest.value as NdiOutput;
                   return (
                     <>
-                      <Field label="Source name" hint="Receivers see it as “SERVER (name)”.">
+                      <Field label={t('Source name')} hint={t('Receivers see it as “SERVER (name)”.')}>
                         <input value={o.name} onChange={(e) => editDest<NdiOutput>((d) => void (d.name = e.target.value))} />
                       </Field>
-                      <Field label="Groups" hint="Comma-separated; empty = public.">
+                      <Field label={t('Groups')} hint={t('Comma-separated; empty = public.')}>
                         <input value={o.groups} placeholder="public" onChange={(e) => editDest<NdiOutput>((d) => void (d.groups = e.target.value))} />
                       </Field>
                       <label className="check">
                         <input type="checkbox" checked={o.alpha} onChange={(e) => editDest<NdiOutput>((d) => void (d.alpha = e.target.checked))} />
-                        Send the alpha channel
+                        {t('Send the alpha channel')}
                       </label>
-                      <Field label="NDI runtime (all NDI outputs)" hint="Leave empty to use the NDI runtime installed with Strata. Only to force another libndi.">
+                      <Field label={t('NDI runtime (all NDI outputs)')} hint={t('Leave empty to use the NDI runtime installed with Strata. Only to force another libndi.')}>
                         <input value={cfg.ndiLibrary ?? ''} placeholder={info.os === 'macos' ? '/usr/local/lib/libndi.dylib' : info.os === 'windows' ? 'C:\\Program Files\\NDI\\…\\Processing.NDI.Lib.x64.dll' : '/usr/lib/libndi.so.6'} onChange={(e) => edit((c) => void (c.ndiLibrary = e.target.value))} />
                       </Field>
-                      <Hint>Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). The NDI runtime comes with the Strata installers (macOS, Windows).</Hint>
+                      <Hint>{t('Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). The NDI runtime comes with the Strata installers (macOS, Windows).')}</Hint>
                     </>
                   );
                 })()}
@@ -927,7 +927,7 @@ export function Outputs() {
               )}
               {selDest && status[ch.id]?.[selDest.value.id]?.detail && status[ch.id][selDest.value.id].detail !== destStatus(selDest).text && (
                 <details className="oc-detail">
-                  <summary>Details</summary>
+                  <summary>{t('Details')}</summary>
                   <code>{status[ch.id][selDest.value.id].detail}</code>
                 </details>
               )}
@@ -937,13 +937,13 @@ export function Outputs() {
       )}
 
       <div className={`save-bar ${dirty ? 'show' : ''}`}>
-        <span>Unapplied output changes. Applying restarts the outputs of every channel.</span>
+        <span>{t('Unapplied output changes. Applying restarts the outputs of every channel.')}</span>
         <div className="spacer" />
         <button className="btn" onClick={() => setCfg(structuredClone(info.config))}>
-          Discard
+          {t('Discard')}
         </button>
         <button className="btn primary" disabled={saving} onClick={apply}>
-          <Save size={14} /> {saving ? 'Applying…' : 'Apply'}
+          <Save size={14} /> {saving ? t('Applying…') : t('Apply')}
         </button>
       </div>
     </div>
@@ -953,7 +953,7 @@ export function Outputs() {
 function destTitle(d: Dest): string {
   switch (d.kind) {
     case 'html5':
-      return (d.value as Html5Output).name || 'Web page';
+      return (d.value as Html5Output).name || t('Web page');
     case 'st2110':
       return d.value.name;
     default:
@@ -965,20 +965,21 @@ function destSub(d: Dest, ch: ChannelConfig): string {
   switch (d.kind) {
     case 'html5': {
       const o = d.value as Html5Output;
-      return `/output/${ch.id}${d.picture === 'main' ? '' : `/${d.picture}`}\n${BACKGROUNDS.find((b) => b.value === o.background)?.label ?? o.background}`;
+      const bg = BACKGROUNDS.find((b) => b.value === o.background);
+      return `/output/${ch.id}${d.picture === 'main' ? '' : `/${d.picture}`}\n${bg ? t(bg.label) : o.background}`;
     }
     case 'sdi': {
       const o = d.value as SdiOutput;
-      return `DeckLink #${o.device}\n${o.fillOnly ? 'Fill only' : o.externalKey ? 'Fill + Key' : 'Internal keyer'}${o.genlock ? ' · genlock' : ''}`;
+      return `DeckLink #${o.device}\n${o.fillOnly ? t('Fill only') : o.externalKey ? 'Fill + Key' : t('Internal keyer')}${o.genlock ? ' · genlock' : ''}`;
     }
     case 'st2110': {
       const o = d.value as St2110Output;
       const enc = o.encoding ?? 'fillKey';
-      return enc === 'fillKey' ? `${o.fill}${o.key ? `\nkey ${o.key}` : '\nno key'}` : `${enc === 'rgba' ? 'RGBA' : 'YCbCrA'}\n${o.fill}`;
+      return enc === 'fillKey' ? `${o.fill}\n${o.key ? `key ${o.key}` : t('no key')}` : `${enc === 'rgba' ? 'RGBA' : 'YCbCrA'}\n${o.fill}`;
     }
     case 'ndi': {
       const o = d.value as NdiOutput;
-      return `${o.groups || 'public'}\n${o.alpha ? 'with alpha' : 'no alpha'}`;
+      return `${o.groups || 'public'}\n${o.alpha ? t('with alpha') : t('no alpha')}`;
     }
   }
 }

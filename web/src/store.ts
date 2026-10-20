@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { setLang, t } from './i18n';
+import { lang, pickedByHand, setLang, t } from './i18n';
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
@@ -181,7 +181,11 @@ export const useApp = create<AppStore>((set, get) => {
 
     async login(username, password) {
       const r = await api<{ user: User }>('POST', '/api/auth/login', { username, password });
-      setLang(r.user.lang);
+      // A language picked on the login page becomes the user's.
+      if (pickedByHand() && r.user.lang !== lang()) {
+        r.user.lang = lang();
+        void api('PUT', '/api/me/lang', { lang: r.user.lang }).catch(() => {});
+      } else setLang(r.user.lang);
       set({ auth: { ...get().auth!, user: r.user } });
       socket?.close();
     },
@@ -283,7 +287,7 @@ export const useApp = create<AppStore>((set, get) => {
         const full = { ...get().full, [id]: p };
         set({ full, ...select(get().projectId, full) });
       } catch (e) {
-        get().toast(`Cannot open the project: ${errText(e)}`, 'error');
+        get().toast(t('Cannot open the project: {error}', { error: errText(e) }), 'error');
       }
     },
 
@@ -305,14 +309,14 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
 
-    async saveTemplate(t) {
+    async saveTemplate(tpl) {
       const pid = get().projectId;
       if (!pid) return false;
       try {
-        await api('PUT', `/api/projects/${encodeURIComponent(pid)}/templates/${encodeURIComponent(t.id)}`, t);
+        await api('PUT', `/api/projects/${encodeURIComponent(pid)}/templates/${encodeURIComponent(tpl.id)}`, tpl);
         return true;
       } catch (e) {
-        get().toast(`Save failed: ${errText(e)}`, 'error');
+        get().toast(t('Save failed: {error}', { error: errText(e) }), 'error');
         return false;
       }
     },
@@ -339,7 +343,7 @@ export const useApp = create<AppStore>((set, get) => {
           const back = { ...get().full, [p.id]: { ...cur, rundown: before } };
           set({ full: back, ...select(p.id, back) });
         }
-        get().toast(`Save failed: ${errText(e)}`, 'error');
+        get().toast(t('Save failed: {error}', { error: errText(e) }), 'error');
       }
     },
 
@@ -393,7 +397,7 @@ export async function uploadAsset(file: File, projectId?: string | null, onProgr
   const xhr = new XMLHttpRequest();
   const done = new Promise<string>((resolve, reject) => {
     xhr.onload = () => (xhr.status < 300 ? resolve((JSON.parse(xhr.responseText) as MediaFile).src) : reject(new Error(xhr.responseText || xhr.statusText)));
-    xhr.onerror = () => reject(new Error('Upload failed'));
+    xhr.onerror = () => reject(new Error(t('Upload failed')));
   });
   xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
   xhr.open('PUT', url);

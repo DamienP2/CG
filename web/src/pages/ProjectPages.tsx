@@ -5,6 +5,7 @@ import { navigate } from '../router';
 import { api, useApp } from '../store';
 import { FormatButtons } from '../designer/ProjectPanel';
 import { confirmDialog } from '../ui/dialogs';
+import { t } from '../i18n';
 
 type ProjectMeta = {
   id: string;
@@ -42,7 +43,7 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
         height: format.height,
         frameRate: format.rate,
       });
-      toast('Project saved');
+      toast(t('Project saved'));
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -51,8 +52,8 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
   };
   const remove = async () => {
     const used = channels.filter((c) => c.projectId === project.id).map((c) => c.name);
-    const warn = used.length ? ` It is loaded on ${used.join(', ')} and will be unloaded.` : '';
-    if (!(await confirmDialog({ title: `Delete the project “${project.name}”?`, message: `This cannot be undone.${warn}`, confirm: 'Delete', danger: true }))) return;
+    const message = used.length ? t('This cannot be undone. It is loaded on {channels} and will be unloaded.', { channels: used.join(', ') }) : t('This cannot be undone.');
+    if (!(await confirmDialog({ title: t('Delete the project “{name}”?', { name: project.name }), message, confirm: t('Delete'), danger: true }))) return;
     try {
       await api('DELETE', url);
       window.close();
@@ -67,32 +68,32 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
       <div className="settings-inner narrow">
         <div className="settings-head">
           <div>
-            <h1>Project settings</h1>
-            <p className="muted">Name, description and the format the templates are designed in.</p>
+            <h1>{t('Project settings')}</h1>
+            <p className="muted">{t('Name, description and the format the templates are designed in.')}</p>
           </div>
         </div>
         <form className="set-card" onSubmit={save}>
           <header>
             <SettingsIcon size={16} />
-            <h2>General</h2>
+            <h2>{t('General')}</h2>
           </header>
           <div className="set-body">
             <label className="set-field">
-              <span className="set-label">Name</span>
+              <span className="set-label">{t('Name')}</span>
               <input value={name} onChange={(e) => setName(e.target.value)} />
             </label>
             <label className="set-field">
-              <span className="set-label">Description</span>
-              <input value={description} placeholder="What this project is for" onChange={(e) => setDescription(e.target.value)} />
+              <span className="set-label">{t('Description')}</span>
+              <input value={description} placeholder={t('What this project is for')} onChange={(e) => setDescription(e.target.value)} />
             </label>
             <div className="set-field">
-              <span className="set-label">Design format</span>
+              <span className="set-label">{t('Design format')}</span>
               <FormatButtons width={format.width} height={format.height} rate={format.rate} onSize={(width, height) => setFormat({ ...format, width, height })} onRate={(rate) => setFormat({ ...format, rate })} />
-              <span className="set-hint">The original format of the templates. Changing it does not move or rescale existing layers; channels in another format scale the graphics to fit.</span>
+              <span className="set-hint">{t('The original format of the templates. Changing it does not move or rescale existing layers; channels in another format scale the graphics to fit.')}</span>
             </div>
             <div className="row end">
               <button className="btn primary" disabled={busy || !dirty || !name.trim()}>
-                <Save size={14} /> Save
+                <Save size={14} /> {t('Save')}
               </button>
             </div>
           </div>
@@ -100,16 +101,16 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
         <section className="set-card">
           <header>
             <Download size={16} />
-            <h2>Export and delete</h2>
+            <h2>{t('Export and delete')}</h2>
           </header>
           <div className="set-body">
             <div className="row">
               <a className="btn" href={`${url}/export`}>
-                <Download size={14} /> Export (.pulsecg.json)
+                <Download size={14} /> {t('Export (.pulsecg.json)')}
               </a>
               <div className="spacer" />
               <button type="button" className="btn danger" onClick={remove}>
-                <Trash2 size={14} /> Delete project
+                <Trash2 size={14} /> {t('Delete project')}
               </button>
             </div>
           </div>

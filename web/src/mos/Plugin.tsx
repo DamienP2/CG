@@ -7,6 +7,7 @@ import { Scene, Viewport } from '../engine/Scene';
 import type { Data, Project, ProjectSummary, Template } from '../engine/types';
 import { FieldInput } from '../operator/Operator';
 import { api, setApiKey, thumbnailUrl } from '../store';
+import { t } from '../i18n';
 
 /*
  * HTML5 MOS plugin (MOS 2.8.5): runs inside the newsroom system (Saga, iNews,
@@ -123,7 +124,7 @@ export function MosPlugin() {
         setProjects(ps);
         setProjectId((cur) => cur || (ps.some((p) => p.id === i.projectId) ? i.projectId : (ps[0]?.id ?? '')));
       })
-      .catch((e) => setError(key ? `Cannot reach Strata: ${(e as Error).message}` : 'Add ?key=pcg_… (an API key) to the plugin URL.'));
+      .catch((e) => setError(key ? t('Cannot reach Strata: {error}', { error: (e as Error).message }) : t('Add ?key=pcg_… (an API key) to the plugin URL.')));
     // Editing an existing item: the newsroom system sends it to us.
     const onMessage = (ev: MessageEvent) => {
       if (typeof ev.data !== 'string' || !ev.data.includes('ncsItem')) return;
@@ -180,7 +181,7 @@ export function MosPlugin() {
   };
 
   if (error) return <div className="mos-plugin mos-error">{error}</div>;
-  if (!info) return <div className="mos-plugin loading">Connecting…</div>;
+  if (!info) return <div className="mos-plugin loading">{t('Connecting…')}</div>;
   return (
     <div className="mos-plugin">
       <header>
@@ -195,10 +196,10 @@ export function MosPlugin() {
         </select>
       </header>
       <div className="mos-templates">
-        {project?.templates.map((t) => (
-          <button key={t.id} className={t.id === templateId ? 'on' : ''} onClick={() => setTemplateId(t.id)}>
-            <img src={`${thumbnailUrl(project.id, t)}&key=${encodeURIComponent(key ?? '')}`} alt="" loading="lazy" />
-            <span>{t.name}</span>
+        {project?.templates.map((tpl) => (
+          <button key={tpl.id} className={tpl.id === templateId ? 'on' : ''} onClick={() => setTemplateId(tpl.id)}>
+            <img src={`${thumbnailUrl(project.id, tpl)}&key=${encodeURIComponent(key ?? '')}`} alt="" loading="lazy" />
+            <span>{tpl.name}</span>
           </button>
         ))}
       </div>
@@ -206,7 +207,7 @@ export function MosPlugin() {
         <div className="mos-editor">
           <Preview project={project} template={template} data={data} />
           <label className="form-row">
-            <span>Item name in the rundown</span>
+            <span>{t('Item name in the rundown')}</span>
             <input
               value={shownSlug}
               onChange={(e) => {
@@ -230,15 +231,15 @@ export function MosPlugin() {
                 e.dataTransfer.setData('text', `<mos><ncsItem>${xml}</ncsItem></mos>`);
                 e.dataTransfer.setData('text/plain', `<mos><ncsItem>${xml}</ncsItem></mos>`);
               }}
-              title="Drag into the story"
+              title={t('Drag into the story')}
             >
-              <GripVertical size={14} /> Drag into the story
+              <GripVertical size={14} /> {t('Drag into the story')}
             </span>
             <button className="btn primary" onClick={send}>
-              <Send size={14} /> {itemId ? 'Update the item' : 'Add to the story'}
+              <Send size={14} /> {itemId ? t('Update the item') : t('Add to the story')}
             </button>
           </div>
-          {sent && <p className="hint">Sent to the newsroom system.</p>}
+          {sent && <p className="hint">{t('Sent to the newsroom system.')}</p>}
         </div>
       )}
     </div>
