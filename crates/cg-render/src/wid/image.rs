@@ -137,6 +137,19 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     };
     let c: &Config = c;
     let fit_now = fit(c, *legacy);
+    // A live input: its latest picture, nothing until it has one.
+    let live = if c.input.trim().is_empty() {
+        None
+    } else {
+        match d.rd.live_picture(c.input.trim()) {
+            Some(p) => Some(p),
+            None => return true,
+        }
+    };
+    // A Video with nothing chosen yet shows nothing on air.
+    if c.video && live.is_none() && c.frames.is_empty() && src.trim().is_empty() {
+        return true;
+    }
     // The source: a frame of the sequence, or the picture.
     let wanted = if c.frames.is_empty() {
         d.r.image_src
@@ -157,7 +170,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     // Missing: the fallback picture (cover, no crop or colour), else the slate.
     let mut missing = false;
     let mut source = wanted.trim().to_string();
-    if source.is_empty() || d.image_size(&source).is_none() {
+    if live.is_none() && (source.is_empty() || d.image_size(&source).is_none()) {
         missing = true;
         source = interpolate_text(&c.fallback, d.data).trim().to_string();
         if source.is_empty() || d.image_size(&source).is_none() {
@@ -176,10 +189,14 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let opacity = d.opacity;
     let tf = d.tf;
     let mut cache = TINTED.lock().unwrap_or_else(|e| e.into_inner());
-    let Some(img) = d.rd.image(&source) else {
+    let img: &Pixmap = if let Some(p) = &live {
+        p
+    } else if let Some(i) = d.rd.image(&source) {
+        i
+    } else {
         return true;
     };
-    let img: &Pixmap = if mode == Colorize::None {
+    let img: &Pixmap = if mode == Colorize::None || live.is_some() {
         img
     } else {
         let map = cache.get_or_insert_with(HashMap::new);

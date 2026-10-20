@@ -5,6 +5,7 @@ mod config;
 mod datasources;
 mod demos;
 mod engine;
+mod inputs;
 mod library;
 mod locks;
 mod media;
@@ -359,6 +360,8 @@ pub async fn serve(
     let data_hub = Arc::new(datasources::Hub::load(&data_dir));
     let locks = Arc::new(locks::Locks::default());
     let output_status = Arc::new(state::OutputStatus::default());
+    // Live inputs keep running across engine restarts.
+    let inputs = Arc::new(inputs::Inputs::default());
     if auth.needs_setup() {
         tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
     }
@@ -422,12 +425,19 @@ pub async fn serve(
             locks: locks.clone(),
             edits: Default::default(),
             output_status: output_status.clone(),
+            inputs: inputs.clone(),
             config,
             bind,
             started_at,
             restart: Notify::new(),
             closing,
         });
+        shared.inputs.apply(&shared.config.inputs);
+        shared
+            .renderer
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .set_live(shared.inputs.clone());
         let mut engine = engine::start(&shared);
         engine.push(tokio::spawn(mos::serve(shared.clone())));
         engine.push(tokio::spawn(datasources::run(shared.clone())));
@@ -435,7 +445,9 @@ pub async fn serve(
         let app = api::router()
             .route("/fonts/{name}", get(web::font))
             .merge(premiere::router())
-            .nest_service("/assets", ServeDir::new(data_dir.join("assets")));
+            .nest_service("/assets", ServeDir::new(data_dir.join("assets")))
+            // HLS stream outputs (index.m3u8 and its segments).
+            .nest_service("/hls", ServeDir::new(data_dir.join("hls")));
         let app = match &args.web_dir {
             Some(dir) => {
                 let index = dir.join("index.html");

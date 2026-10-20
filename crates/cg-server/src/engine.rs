@@ -8,6 +8,7 @@ use cg_core::{ChannelState, Project};
 use cg_output::ndi::NdiSender;
 use cg_output::sdi::DeckLinkOutput;
 use cg_output::st2110::St2110Sender;
+use cg_output::stream::StreamSender;
 use cg_output::{OutputError, OutputSink};
 use cg_render::{OutputFormat, Renderer};
 use tokio::time::{interval, MissedTickBehavior};
@@ -25,8 +26,10 @@ struct Sink {
 fn open_outputs(
     cfg: &ChannelConfig,
     outputs: &crate::config::OutputsConfig,
+    size: (u32, u32),
     period: Duration,
     status: &OutputStatus,
+    hls_root: &std::path::Path,
 ) -> Vec<Sink> {
     let mut sinks = Vec::new();
     let mut opened =
@@ -60,6 +63,12 @@ fn open_outputs(
     for o in &outputs.ndi {
         let r = NdiSender::open(o.clone(), rate).map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "NDI", r);
+    }
+    for o in &outputs.streams {
+        let hls = (o.protocol == cg_output::stream::Protocol::Hls).then(|| hls_root.join(&o.id));
+        let r = StreamSender::open(o.clone(), size.0, size.1, rate, hls)
+            .map(|s| Box::new(s) as Box<dyn OutputSink>);
+        opened(&o.id, &o.name, "stream", r);
     }
     if let Some(path) = cg_output::ndi::loaded_path() {
         for o in &outputs.ndi {
@@ -106,7 +115,15 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
     // outputs, so the clock never blocks and each output gets its own size.
     let mut render_txs = Vec::new();
     for (id, width, height, outputs) in cfg.pictures() {
-        let sinks = open_outputs(cfg, outputs, period, &state.output_status);
+        let hls = state.hls_dir().join(&cfg.id).join(id);
+        let sinks = open_outputs(
+            cfg,
+            outputs,
+            (width, height),
+            period,
+            &state.output_status,
+            &hls,
+        );
         if sinks.is_empty() {
             continue;
         }
@@ -118,7 +135,12 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
             .name(format!("cg-render-{}-{id}", cfg.id))
             .spawn({
                 let (status, channel) = (state.output_status.clone(), cfg.id.clone());
-                move || render_loop(Renderer::new(assets), out, tz, rx, sinks, status, channel)
+                let live = state.inputs.clone();
+                move || {
+                    let mut r = Renderer::new(assets);
+                    r.set_live(live);
+                    render_loop(r, out, tz, rx, sinks, status, channel)
+                }
             })
             .expect("spawn render thread");
         render_txs.push(tx);

@@ -38,11 +38,65 @@ export interface Html5Output {
   background: string;
 }
 
+export type StreamProtocol = 'srt' | 'udp' | 'rtmp' | 'hls';
+
+/** An SRT, UDP, RTMP or HLS stream, encoded by ffmpeg (crates/cg-output/src/stream.rs). */
+export interface StreamOutput {
+  id: string;
+  name: string;
+  protocol: StreamProtocol;
+  /** `srt://host:port`, `udp://239.1.1.1:5000`, `rtmp://server/app/key` (none for HLS). */
+  url: string;
+  /** SRT: wait for the receivers to call (listener). */
+  listen: boolean;
+  /** Video bit rate, kbit/s (8000 by default). */
+  bitrate: number;
+  codec: 'h264' | 'hevc';
+  /** Streams carry no alpha: the graphics are laid over this colour. */
+  background: string;
+  /** A silent stereo track (RTMP platforms usually need one). */
+  audio: boolean;
+}
+
 export interface OutputsConfig {
   st2110: St2110Output[];
   sdi: SdiOutput[];
   ndi?: NdiOutput[];
   html5?: Html5Output[];
+  streams?: StreamOutput[];
+}
+
+export type InputKind = 'srt' | 'udp' | 'rtmp' | 'hls' | 'rtsp' | 'url' | 'ndi' | 'sdi';
+
+/** A live video input (crates/cg-server/src/inputs.rs). */
+export interface InputConfig {
+  id: string;
+  name: string;
+  kind: InputKind;
+  url: string;
+  /** SRT / RTMP: wait for the sender to connect. */
+  listen: boolean;
+  /** NDI: the source name ("HOST (name)"). */
+  ndiSource: string;
+  /** SDI: DeckLink device index. */
+  device: number;
+  /** Streams are decoded at this size (the picture fitted inside) and rate. */
+  width: number;
+  height: number;
+  fps: number;
+}
+
+/** `GET /api/inputs`. */
+export interface InputInfo {
+  id: string;
+  name: string;
+  kind: InputKind;
+  /** A picture came in the last 2 s. */
+  live: boolean;
+  message: string;
+  width: number;
+  height: number;
+  frames: number;
 }
 
 export interface Rendition {
@@ -80,6 +134,8 @@ export interface ServerConfig {
   locations?: Location[];
   channels: ChannelConfig[];
   mos: MosConfig;
+  /** Live video inputs. */
+  inputs?: InputConfig[];
 }
 
 export interface SystemInfo {

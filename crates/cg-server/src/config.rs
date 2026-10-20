@@ -8,6 +8,7 @@ use cg_core::FrameRate;
 use cg_output::ndi::NdiConfig;
 use cg_output::sdi::SdiConfig;
 use cg_output::st2110::St2110Config;
+use cg_output::stream::StreamConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -22,6 +23,9 @@ pub struct OutputsConfig {
     /// Web links to the picture (`/output/<channel>/<picture>`).
     #[serde(default)]
     pub html5: Vec<Html5Config>,
+    /// SRT, UDP, RTMP and HLS streams (encoded by ffmpeg).
+    #[serde(default)]
+    pub streams: Vec<StreamConfig>,
 }
 
 impl OutputsConfig {
@@ -51,6 +55,9 @@ impl OutputsConfig {
         self.html5
             .iter_mut()
             .for_each(|o| fill("html5", &mut o.id, taken));
+        self.streams
+            .iter_mut()
+            .for_each(|o| fill("stream", &mut o.id, taken));
     }
 
     /// Ids of the destinations, in order.
@@ -61,6 +68,7 @@ impl OutputsConfig {
             .chain(self.sdi.iter().map(|o| o.id.as_str()))
             .chain(self.ndi.iter().map(|o| o.id.as_str()))
             .chain(self.html5.iter().map(|o| o.id.as_str()))
+            .chain(self.streams.iter().map(|o| o.id.as_str()))
     }
 }
 
@@ -231,6 +239,9 @@ pub struct ServerConfig {
     pub channels: Vec<ChannelConfig>,
     #[serde(default)]
     pub mos: MosConfig,
+    /// Live video inputs (streams, NDI, SDI) shown by the Video widget.
+    #[serde(default)]
+    pub inputs: Vec<crate::inputs::InputConfig>,
     /// Pre-0.2 single-channel outputs, moved into the first channel on load.
     #[serde(default, skip_serializing)]
     outputs: Option<OutputsConfig>,
@@ -255,6 +266,7 @@ impl Default for ServerConfig {
             locations: Vec::new(),
             channels: Vec::new(),
             mos: MosConfig::default(),
+            inputs: Vec::new(),
             outputs: None,
         }
     }
@@ -322,6 +334,18 @@ impl ServerConfig {
         }
         for ch in &mut self.channels {
             ch.ensure_ids();
+        }
+        // Inputs: `input-1`, `input-2`…, unique.
+        let mut taken = HashSet::new();
+        for i in &mut self.inputs {
+            if i.id.is_empty() || !taken.insert(i.id.clone()) {
+                let mut n = 1;
+                while taken.contains(&format!("input-{n}")) {
+                    n += 1;
+                }
+                i.id = format!("input-{n}");
+                taken.insert(i.id.clone());
+            }
         }
         if self.locations.is_empty() {
             self.locations.push(Location {

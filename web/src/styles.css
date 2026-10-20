@@ -9710,6 +9710,71 @@ body.cv-moving * {
   background: var(--panel-3);
   color: var(--text);
 }
+/* Video source: file row and live input preview. */
+.video-pick {
+  color: var(--text);
+  padding-left: 8px;
+}
+.video-pick:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+.video-pick svg {
+  flex: none;
+  color: var(--text-3);
+}
+.video-live {
+  position: relative;
+  margin: 2px 0 6px;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--line);
+  display: grid;
+  place-items: center;
+}
+.video-live img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.video-live > span {
+  color: #ffffff80;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.video-live em {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: #000000a6;
+  color: #ffffffcc;
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.video-live em i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #8a8fa3;
+}
+.video-live em.ok i {
+  background: #2ecc71;
+  box-shadow: 0 0 6px #2ecc71;
+}
 /* Picture library */
 .lib-scrim {
   position: fixed;
@@ -12348,4 +12413,15 @@ a.lib-nav-item {
 .pp-field.color .pp-clear:hover {
   background: var(--panel-3);
   color: var(--text);
+}
+.lib-im video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.lib-im .lib-icon {
+  display: block;
+  margin: 18% auto 0;
+  color: var(--accent-2);
 }

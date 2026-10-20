@@ -3,6 +3,8 @@ import { RichKeys, runs as richRuns, typedKeys } from './rich';
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
 import { Boundary } from '../ui/Boundary';
+import { Sparkles } from 'lucide-react';
+import { t } from '../i18n';
 import { withSettings } from './settings';
 import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
@@ -369,9 +371,21 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
       {kids.map((k) => (
         <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ))}
+      {interactive && layer.type === 'group' && layer.lottie !== undefined && !kids.length && <LottiePlaceholder />}
     </div>
   );
 });
+
+/** A Lottie layer with no file yet, in the Designer only (nothing goes on air). */
+function LottiePlaceholder() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', alignContent: 'center', gap: 10, border: '4px dashed rgba(255,255,255,.35)', borderRadius: 8, background: 'rgba(12,14,22,.45)', color: 'rgba(255,255,255,.7)', font: '600 26px Inter, sans-serif', textAlign: 'center', padding: 16 }}>
+      <Sparkles size={44} />
+      <div>{t('Animation (Lottie)')}</div>
+      <div style={{ font: '500 18px Inter, sans-serif', opacity: 0.7 }}>{t('Choose a .json, .lottie or .zip file on the right')}</div>
+    </div>
+  );
+}
 
 export function childrenMap(layers: Layer[], includeHidden = false): Map<string | null, Layer[]> {
   const ids = new Set(layers.map((l) => l.id));

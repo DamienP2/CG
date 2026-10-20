@@ -36,6 +36,10 @@ pub fn router() -> Router<Shared> {
             axum::routing::post(put_sequence).layer(DefaultBodyLimit::max(MAX_UPLOAD)),
         )
         .route(
+            "/api/projects/{id}/sequence-from",
+            axum::routing::post(post_sequence_from),
+        )
+        .route(
             "/api/projects/{id}/media/{name}",
             put(put_project)
                 .delete(delete_project)
@@ -259,8 +263,8 @@ fn video_frames(bytes: &[u8], ext: &str, fps: f64) -> Result<Vec<Vec<u8>>, Strin
     let run = || -> Result<Vec<Vec<u8>>, String> {
         let input = dir.join(format!("in.{ext}"));
         std::fs::write(&input, bytes).map_err(|e| e.to_string())?;
-        let out = std::process::Command::new("ffmpeg")
-            .args(["-v", "error", "-nostdin", "-i"])
+        let out = cg_output::ffmpeg::command()
+            .arg("-i")
             .arg(&input)
             .args([
                 "-t",
@@ -305,8 +309,49 @@ async fn put_sequence(
     Path((id, name)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> ApiResult<Json<Sequence>> {
-    visible_project(&s, &me, &id).await?;
-    require(can_upload(&me))?;
+    sequence(&s, &me, &id, &name, body).await
+}
+
+#[derive(Deserialize)]
+struct SequenceFrom {
+    /// A video or animation already in the assets (`/assets/…`).
+    src: String,
+}
+
+/// A video already in the shared assets or the project's, split into frames.
+async fn post_sequence_from(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(q): Json<SequenceFrom>,
+) -> ApiResult<Json<Sequence>> {
+    let prefix = project_prefix(&id);
+    let (dir, name) = if let Some(n) = q.src.strip_prefix(&prefix) {
+        (project_dir(&s, &id), n.to_string())
+    } else if let Some(n) = q.src.strip_prefix("/assets/").filter(|n| !n.contains('/')) {
+        (s.assets_dir(), n.to_string())
+    } else {
+        return Err(bad("not a file of this project or of the shared assets"));
+    };
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.starts_with('.') {
+        return Err(bad("invalid file name"));
+    }
+    let body = tokio::fs::read(dir.join(&name))
+        .await
+        .map_err(|_| not_found("file"))?;
+    sequence(&s, &me, &id, &name, body.into()).await
+}
+
+async fn sequence(
+    s: &Shared,
+    me: &crate::auth::User,
+    id: &str,
+    name: &str,
+    body: axum::body::Bytes,
+) -> ApiResult<Json<Sequence>> {
+    let (s, id, name) = (s.clone(), id.to_string(), name.to_string());
+    visible_project(&s, me, &id).await?;
+    require(can_upload(me))?;
     // The frames' base name: the file's, cleaned.
     let stem: String = name
         .rsplit_once('.')
@@ -331,7 +376,7 @@ async fn put_sequence(
         .map(|(_, e)| e.to_ascii_lowercase())
         .unwrap_or_default();
     // A video plays at the project's rate: one picture per frame.
-    let project_fps = visible_project(&s, &me, &id)
+    let project_fps = visible_project(&s, me, &id)
         .await?
         .frame_rate
         .as_f64()

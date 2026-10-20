@@ -67,7 +67,7 @@ Ces commandes agissent sur le dossier de données du service s'il existe (sinon 
 
 ### Réglages, chaînes et sorties vidéo
 
-Le serveur se règle dans la page **Settings** (Général, Réseau, Mises à jour, Système), les chaînes et leurs sorties dans la page **Outputs** (`/outputs`, réservées aux admins). Tout est enregistré dans `config.json`, dans le dossier de données ; *Apply* redémarre les sorties sans redémarrer le service :
+Le serveur se règle dans la page **Settings** (Général, Réseau, Mises à jour, Système), les chaînes, leurs sorties et les entrées vidéo dans la page **Flux vidéo** (`/outputs`, réservée aux admins). Tout est enregistré dans `config.json`, dans le dossier de données ; *Apply* redémarre les sorties sans redémarrer le service :
 
 ```json
 {
@@ -85,10 +85,15 @@ Le serveur se règle dans la page **Settings** (Général, Réseau, Mises à jou
         "html5": [{ "id": "html5-1", "name": "Web page", "background": "" }],
         "st2110": [{ "id": "st2110-1", "name": "CG1", "encoding": "fillKey", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
         "sdi": [{ "id": "sdi-1", "name": "CG1-SDI", "device": 0, "externalKey": true, "fillOnly": false, "genlock": true }],
-        "ndi": [{ "id": "ndi-1", "name": "PULSE NEWS", "groups": "", "alpha": true }]
+        "ndi": [{ "id": "ndi-1", "name": "PULSE NEWS", "groups": "", "alpha": true }],
+        "streams": [{ "id": "stream-1", "name": "Web", "protocol": "srt", "url": "srt://0.0.0.0:9000", "listen": true, "bitrate": 8000, "codec": "h264", "background": "#000000", "audio": true }]
       },
       "renditions": [{ "id": "vertical", "name": "Vertical 9:16", "width": 1080, "height": 1920, "outputs": { "st2110": [], "sdi": [], "ndi": [{ "id": "ndi-2", "name": "PULSE NEWS 9:16", "groups": "", "alpha": true }] } }]
     }
+  ],
+  "inputs": [
+    { "id": "input-1", "name": "Caméra 1", "kind": "srt", "url": "srt://0.0.0.0:10000", "listen": true, "width": 1920, "height": 1080, "fps": 25 },
+    { "id": "input-2", "name": "Régie", "kind": "ndi", "ndiSource": "REGIE (Program)" }
   ]
 }
 ```
@@ -98,7 +103,7 @@ Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/<id de la sorti
 ## Utilisation
 
 ### Projets
-Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. La page d'accueil a les onglets **Projects**, **Assets**, **Data**, **Outputs**, **MOS**, **Users**, **API** et **Settings** (*Outputs*, *MOS*, *Users* et *Settings* pour les admins ; *Data* pour les designers). Chacun suit la même mise en page : une liste à gauche, la page à droite. La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
+Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. La page d'accueil a les onglets **Projects**, **Assets**, **Data**, **Flux vidéo** (Video streams), **MOS**, **Users**, **API** et **Settings** (*Flux vidéo*, *MOS*, *Users* et *Settings* pour les admins ; *Data* pour les designers). Chacun suit la même mise en page : une liste à gauche, la page à droite. La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
 
 Les projets se rangent dans des **dossiers** (colonne de gauche : créer, renommer, supprimer un dossier ; glisser une carte sur un dossier, ou *… > Move to*). Supprimer un dossier ne supprime pas ses projets. Recherche et tri par nom ou nombre de templates.
 
@@ -112,15 +117,24 @@ Deux bibliothèques : les **ressources partagées** (onglet *Assets* de l'accuei
 ### Langue de l'interface
 Le sélecteur **FR | EN** à côté du nom de l'utilisateur (en haut à droite, et sur la page de connexion) change la langue de toute l'interface. Chaque utilisateur garde sa langue sur le serveur (`PUT /api/me/lang`) ; tant qu'il n'en a pas choisi, c'est celle du navigateur. Ce qui passe à l'antenne (textes des templates, formats d'heure…) ne dépend pas de la langue de l'interface. Les textes français sont dans `web/src/i18n/fr/`, et `node web/scripts/i18n-check.mjs` liste ceux qui manquent.
 
-### Sorties vidéo (page Outputs)
+### Flux vidéo : sorties et entrées (page Flux vidéo)
+La page a deux modes, **SORTIES** et **ENTRÉES**.
+
+#### Sorties
 Une **chaîne** est un programme indépendant : son format vidéo, sa propre horloge de playout, ses graphiques à l'antenne. Les chaînes se rangent par **lieu** (un studio, un car, la cellule web…) dans la colonne de gauche. On charge un projet sur une chaîne. Un projet conçu dans un autre format est mis à l'échelle (letterbox), et ses animations gardent leur durée, par exemple un projet 25p sur une chaîne 50p.
 
-Chaque chaîne se règle sur un **canvas de nodes** : *Program* (la chaîne) → *Pictures* (l'image principale et d'autres tailles du même programme, 9:16, 1:1…) → *Destinations*. On ajoute des nodes avec les boutons du haut, ou en tirant un fil depuis la sortie d'une *Picture* jusque dans le vide (un menu propose HTML5, SDI, ST 2110 ou NDI). Les fils se tirent à la souris : de la sortie d'une Picture vers une destination pour l'alimenter, ou de l'entrée d'une destination vers une autre Picture. On déplace les nodes (positions gardées par navigateur), on sélectionne un node pour le régler à droite, puis *Apply*. Chaque node affiche son état (en marche, ou pourquoi il ne tourne pas).
+Chaque chaîne se règle sur un **canvas de nodes** : *Program* (la chaîne) → *Pictures* (l'image principale et d'autres tailles du même programme, 9:16, 1:1…) → *Destinations*. On ajoute des nodes avec les boutons du haut, ou en tirant un fil depuis la sortie d'une *Picture* jusque dans le vide (un menu propose HTML5, SDI, ST 2110, NDI ou Stream). Les fils se tirent à la souris : de la sortie d'une Picture vers une destination pour l'alimenter, ou de l'entrée d'une destination vers une autre Picture. On déplace les nodes (positions gardées par navigateur), on sélectionne un node pour le régler à droite, puis *Apply*. Chaque node affiche son état (en marche, ou pourquoi il ne tourne pas).
 
 - **HTML5** : lien web `/output/<chaîne>[/<picture>]` (fond transparent, noir ou vert), pour OBS, vMix, CasparCG, un lecteur web ou un écran.
 - **SDI** : carte Blackmagic DeckLink, Fill + Key (keyer externe), keyer interne ou Fill seul, genlock. Nécessite Desktop Video et un serveur compilé avec la fonction `decklink`.
 - **ST 2110** : Fill + Key (deux flux ST 2110-20 YCbCr 4:2:2 10 bits + KEY), RGBA (un flux 4:4:4:4 8 bits) ou YCbCrA (un flux 4:2:2:4 10 bits) ; interface réseau, multicast, TTL, SDP. Le serveur doit être discipliné en PTP.
 - **NDI** : nom de source, groupes, avec ou sans alpha. Le runtime NDI est installé avec Strata (installeurs macOS et Windows : `lib/libndi.dylib` à côté du serveur sur macOS, `Processing.NDI.Lib.x64.dll` sur Windows) et utilisé directement. Le champ *NDI runtime* d'un node NDI (ou `NDI_LIB_PATH`) force une autre bibliothèque si besoin. Les paquets Linux, statiques, n'ont pas de sortie NDI. NDI® est une marque déposée de Vizrt NDI AB (https://ndi.video) ; le runtime est redistribué selon la licence du NDI SDK. Le détail de l'état de la sortie liste les emplacements essayés.
+- **Stream** (SRT, UDP, RTMP, HLS) : l'image est posée sur une couleur de fond (ces formats n'ont pas d'alpha) et encodée en H.264 (ou HEVC) par ffmpeg, à débit choisi, avec une piste audio AAC muette si on le souhaite (la plupart des plateformes RTMP l'exigent). SRT en *caller* ou en *listener* (`srt://0.0.0.0:9000`), UDP en unicast ou multicast (MPEG-TS), RTMP / RTMPS (YouTube, Twitch, Facebook…), HLS servi par Strata sur `/hls/<chaîne>/<picture>/<sortie>/index.m3u8`. Si ffmpeg s'arrête (récepteur parti, réseau coupé), il est relancé après 2 s et la raison s'affiche sur le node.
+
+#### Entrées
+Les **entrées en direct** sont des vidéos qui arrivent sur le serveur, pour le widget **Vidéo** des templates : **SRT** (caller ou listener), **UDP** (unicast ou multicast), **RTMP** (Strata écoute, l'encodeur pousse), **HLS**, **RTSP**, toute **URL** que lit ffmpeg, et **NDI** (source choisie dans la liste du réseau, *Chercher les sources*). Chaque entrée est décodée à la taille et à la cadence choisies ; seule la dernière image est gardée, le moteur la dessine sur chaque sortie. La page montre une vignette en direct de chaque entrée, son état (réception, attente de l'émetteur, erreur) et le nombre d'images reçues. Une entrée qui tombe se reconnecte seule. Les entrées SDI demandent une carte DeckLink et ne sont pas encore prises en charge.
+
+ffmpeg est nécessaire pour les sorties Stream, les entrées (sauf NDI) et la conversion des vidéos : le serveur prend `FFMPEG_PATH`, sinon un `ffmpeg` placé à côté du serveur (ou dans `bin/`), sinon celui du `PATH`.
 
 ### Formats multiples (16:9, 9:16, 1:1…)
 Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et un 9:16 pour les réseaux sociaux.
@@ -165,13 +179,15 @@ L'onglet **Users** liste les comptes en cartes, filtrées par rôle à gauche. P
 - **Widgets** (bouton **+** de la timeline) : ils sont rendus à l'identique en HTML5 et par le moteur Rust, animables (position, opacité, crop…), et leurs réglages peuvent être reliés aux données (canevas *Data*) :
   - **Formes** : rectangle (*quad*), polygone, ellipse, plume (tracé libre), avec dégradés ;
   - **Texte** : une ligne, multiligne, défilement horizontal (ticker) ou vertical (générique), styles par mot (gras, couleur…) ;
-  - **Image** (et séquences GIF / APNG / vidéo image par image) ;
-  - **Chrono** (minuteur, chronomètre, compte à rebours, horloge, avec déclencheur à zéro) ;
+  - **Image** (et séquences GIF / APNG) ;
+  - **Vidéo** : posée tout de suite avec un emplacement réservé ; à droite, on choisit soit un **fichier** dans les ressources (fenêtre de la bibliothèque, import possible ; la vidéo est jouée image par image, alpha conservé, une minute au plus), soit une **entrée en direct** de la page Flux vidéo, avec son aperçu et son état ;
+  - **Animation (Lottie)** : posée avec un emplacement réservé ; le fichier (`.json`, `.lottie`, `.zip`) se choisit à droite et devient des calques ajustés au cadre ;
+  - **Chrono** (minuteur, chronomètre, compte à rebours, horloge, avec déclencheur à zéro) ; dans *Style*, l'aspect **Chiffres** ou **Horloge analogique** (cadran, graduations, chiffres, aiguilles, trotteuse fluide ou par saut ; les anciennes horloges analogiques sont converties) ;
   - **Tableau** (classements, résultats, couleurs par ligne venant des données) ;
   - **Bandeau défilant**, **Générique**, **Machine à écrire** ;
   - **Compteur animé**, **Barre de progression** (qui peut suivre un autre widget) ;
   - **Graphique** (barres, lignes, camembert…), **Carte**, **QR code**, **Tableau des scores** ;
-  - **Page web** (URL ou HTML ; seule la sortie HTML5 l'affiche).
+  - **Iframe** (URL ou HTML ; seule la sortie HTML5 l'affiche). Les sites qui refusent d'être affichés dans une autre page passent par le relais du serveur (`/api/web/proxy`, option *Via le serveur*, activée par défaut) : seules les adresses publiques sont relayées, et la page est isolée (sandbox).
 - **Scène** : sélection, déplacement, poignées de redimensionnement, zones de sécurité, fond studio, transparent ou noir.
 - **Panneau de droite, Properties** (à la manière d'After Effects) : groupes repliables *Transform* (Position, Scale, Dimensions, Anchor, Rotation, Opacity), *Contents* (couleurs, contour, rayon, typographie, cadrage d'image) et *Reveal mask*. Chaque ligne a ◀ ◆ ▶ (keyframe précédente / à la tête de lecture / suivante), le bouton d'animation (allumé quand la propriété est animée) et ses champs X / Y avec leur unité. Le cadenas de *Scale* garde les proportions (aussi dans la timeline).
 - **Panneau de gauche, sous les templates** : l'onglet du calque sélectionné montre ce qu'il affiche (texte et variables `{{clé}}`, réglages du widget, image) et les propriétés pilotées par une variable (*Expose a property…*) ; l'onglet *Variables* liste les variables du template (ce que l'opérateur remplit, ou ce qu'une source de données alimente).

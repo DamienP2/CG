@@ -822,4 +822,13 @@ export const widgets: Record<string, string> = {
   'On the HTML5 outputs only.': 'Sur les sorties HTML5 seulement.',
   'Web page: HTML5 outputs and previews only (not SDI, NDI, ST 2110).': 'Page web : sorties HTML5 et aperçus seulement (pas SDI, NDI, ST 2110).',
   'The address must start with http:// or https://.': 'L’adresse doit commencer par http:// ou https://.',
+  'Live input': 'Entrée en direct',
+  'This input does not exist any more': 'Cette entrée n’existe plus',
+  'Choose a file or a live input on the right': 'Choisissez un fichier ou une entrée en direct à droite',
+  'No live input yet: add one in Video streams (main page).': 'Pas encore d’entrée en direct : ajoutez-en une dans Flux vidéo (page principale).',
+  '(missing: {id})': '(introuvable : {id})',
+  'Live inputs are set in Video streams (main page). The engine draws their latest picture on every output.': 'Les entrées en direct se règlent dans Flux vidéo (page principale). Le moteur dessine leur dernière image sur chaque sortie.',
+  'Choose a video…': 'Choisir une vidéo…',
+  'the video is played as pictures (alpha kept), at most a minute': 'la vidéo est jouée en images (alpha conservé), une minute au plus',
+  'Choose a video': 'Choisir une vidéo',
 };

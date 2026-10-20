@@ -246,6 +246,7 @@ export const home: Record<string, string> = {
   'User name': 'Nom d’utilisateur',
   'Version {from} failed to start: {to} was restored automatically': 'La version {from} n’a pas démarré : {to} a été remise automatiquement',
   'Videos': 'Vidéos',
+  'Video streams': 'Flux vidéo',
   'Web app': 'Application web',
   'Welcome! Create the administrator account. You can add designers and operators afterwards.': 'Bienvenue ! Créez le compte administrateur. Vous pourrez ajouter designers et opérateurs ensuite.',
   'What uses it — e.g. Companion control room A': 'Ce qui l’utilise, p. ex. Companion régie A',

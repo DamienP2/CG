@@ -114,6 +114,13 @@ pub struct Config {
     pub play_mode: PlayMode,
     pub loops: u32,
     pub start: Start,
+    /// A Video layer (the Video widget): a video file played as frames, or
+    /// a live input.
+    pub video: bool,
+    /// The video file the frames come from (asset path), to show its name.
+    pub clip: String,
+    /// A live video input (cg-server inputs) shown instead ("" = none).
+    pub input: String,
 }
 
 impl Default for Config {
@@ -133,6 +140,9 @@ impl Default for Config {
             play_mode: PlayMode::Loop,
             loops: 3,
             start: Start::In,
+            video: false,
+            clip: String::new(),
+            input: String::new(),
         }
     }
 }

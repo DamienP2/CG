@@ -3,7 +3,9 @@
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { api, useApp } from '../store';
-import { Image } from 'lucide-react';
+import { Film, Image, Radio } from 'lucide-react';
+import { AssetLibrary } from '../designer/AssetPicker';
+import { inputMessage, useInputs, useLiveFrame } from '../engine/liveInputs';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
@@ -35,6 +37,12 @@ export interface Config {
   playMode?: 'loop' | 'once' | 'count';
   loops?: number;
   start?: 'in' | 'manual';
+  /** A Video layer (the Video widget): a video file played as frames, or a live input. */
+  video?: boolean;
+  /** The video file the frames come from. */
+  clip?: string;
+  /** A live video input shown instead ('' = none). */
+  input?: string;
 }
 
 /** Operator state of a sequence started by hand (wall-clock ms). */
@@ -48,7 +56,7 @@ type Fit = 'contain' | 'cover' | 'stretch' | 'original' | 'tile';
 type Rect = [number, number, number, number];
 type ImgLayer = Config & { id: string; src: string; fit: 'contain' | 'cover' | 'stretch'; props: Record<string, unknown> };
 
-const D = { tileScale: 100, focal: { x: 0.5, y: 0.5 }, crop: { l: 0, t: 0, r: 0, b: 0 }, mask: 'none' as const, radius: 28, colorize: 'none' as const, tint: '#ff3b5c', fallback: '', frames: [] as string[], fps: 12, playMode: 'loop' as const, loops: 3, start: 'in' as const };
+const D = { tileScale: 100, focal: { x: 0.5, y: 0.5 }, crop: { l: 0, t: 0, r: 0, b: 0 }, mask: 'none' as const, radius: 28, colorize: 'none' as const, tint: '#ff3b5c', fallback: '', frames: [] as string[], fps: 12, playMode: 'loop' as const, loops: 3, start: 'in' as const, video: false, clip: '', input: '' };
 const cfg = (c: Config) => withDefaults(D, c);
 const fitOf = (l: ImgLayer): Fit => l.fitMode ?? l.fit ?? 'contain';
 
@@ -222,13 +230,31 @@ function resolve(l: ImgLayer, data: Data, idx: number) {
   return { src: fb, st: status(fb), missing: true };
 }
 
+/** What the Designer shows in a Video with nothing to play (nothing goes on air). */
+function VideoPlaceholder({ icon, title, sub }: { icon: ReactNode; title: string; sub?: string }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', alignContent: 'center', gap: 10, border: '4px dashed rgba(255,255,255,.35)', borderRadius: 8, background: 'rgba(12,14,22,.45)', color: 'rgba(255,255,255,.7)', font: '600 26px Inter, sans-serif', textAlign: 'center', padding: 16 }}>
+      {icon}
+      <div>{title}</div>
+      {sub && <div style={{ font: '500 18px Inter, sans-serif', opacity: 0.7 }}>{sub}</div>}
+    </div>
+  );
+}
+
 function ImageView({ layer, r, w, h, data, time, state, designer }: { layer: ImgLayer; r: Record<string, unknown>; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown; designer?: boolean }) {
   useStore();
   const k = cfg(layer);
+  const live = useLiveFrame(k.input.trim());
+  const inputs = useInputs();
   // Every frame of a sequence decoded once, up front: cycling never stutters.
   useEffect(() => k.frames.forEach((f) => load(interpolateText(f, data).trim())), [k.frames, data]);
   const sq = seqInfo(layer, state as State, time.nowMs, time.ageSecs);
-  const { src, st, missing } = resolve(layer, data, sq.idx);
+  if (k.input.trim() && !(live.url && live.size)) {
+    const info = inputs.find((i) => i.id === k.input.trim());
+    return designer ? <VideoPlaceholder icon={<Radio size={44} />} title={info ? info.name : t('Live input')} sub={info ? (inputMessage(info.message) || t('No signal')) : t('This input does not exist any more')} /> : null;
+  }
+  if (k.video && !k.input.trim() && !k.frames.length && !layer.src.trim()) return designer ? <VideoPlaceholder icon={<Film size={44} />} title={t('Video')} sub={t('Choose a file or a live input on the right')} /> : null;
+  const { src, st, missing } = k.input.trim() && live.url && live.size ? { src: live.url, st: { s: 'ok' as const, size: live.size }, missing: false } : resolve(layer, data, sq.idx);
   const view = designer ? (ui.view.get(layer.id) ?? 'program') : 'program';
   const [F, radius] = frameRect(layer, w, h);
   const sw = num(r.strokeWidth as never);
@@ -333,7 +359,7 @@ export default defineWidget({
   create: () => ({ src: '', fit: 'contain', props: { width: 800, height: 560, stroke: [1, 1, 1, 1], strokeWidth: 0 } }),
   ownsLook: true,
   content: ['src'],
-  live: (l) => (l.frames?.length ?? 0) > 0,
+  live: (l) => (l.frames?.length ?? 0) > 0 || !!l.input,
   Render: ({ layer, r, w, h, data, time, state, designer }) => <ImageView layer={layer as unknown as ImgLayer} r={r as never} w={w} h={h} data={data} time={time} state={state} designer={designer} />,
   Inspector: ({ layer, data, edit }) => {
     useStore();
@@ -347,13 +373,19 @@ export default defineWidget({
     const stroke = num(l.props.strokeWidth as never) > 0;
     return (
       <>
-        <Section id="image-source" title={t('Picture')}>
-          <PictureRow />
-          <Row expose="fallback" exposeValue={k.fallback} label={t('Fallback')}>
-            <AssetPicker value={k.fallback} title={t('Choose the fallback picture')} placeholder={t('None')} onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
-          </Row>
-        </Section>
-        <Sequence k={k} ed={ed} />
+        {k.video ? (
+          <VideoSource k={k} ed={ed} />
+        ) : (
+          <>
+            <Section id="image-source" title={t('Picture')}>
+              <PictureRow />
+              <Row expose="fallback" exposeValue={k.fallback} label={t('Fallback')}>
+                <AssetPicker value={k.fallback} title={t('Choose the fallback picture')} placeholder={t('None')} onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
+              </Row>
+            </Section>
+            <Sequence k={k} ed={ed} />
+          </>
+        )}
         <Section id="image-fit" title={t('Fit & crop')}>
           <Seg
             expose="fit"
@@ -539,7 +571,8 @@ export default defineWidget({
     const out: Warning[] = [];
     const wanted = wantedSrc(l, data, 0);
     const r = resolve(l, data, 0);
-    if (r.missing) {
+    // A video shows its own placeholder until a file or an input is chosen.
+    if (r.missing && !k.input && !(k.video && !wanted)) {
       const slate = r.st.s === 'missing';
       const also = !!k.fallback && slate;
       const v = { file: wanted, fallback: slate ? k.fallback : r.src };
@@ -615,30 +648,128 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
       </Row>
       {n > 0 && (
         <>
-          <Num label={t('Speed')} path="fps" value={k.fps} min={0.1} max={120} step={1} unit="fps" />
-          <Seg
-            label={t('Play')}
-            path="playMode"
-            value={k.playMode}
-            options={[
-              ['loop', t('Loop')],
-              ['once', t('Once')],
-              ['count', t('Times')],
-            ]}
-          />
-          {k.playMode === 'count' && <Num label={t('Times')} path="loops" value={k.loops} min={1} max={999} />}
-          <Seg
-            label={t('Start')}
-            path="start"
-            value={k.start}
-            options={[
-              ['in', t('At the In')],
-              ['manual', t('By the operator')],
-            ]}
-          />
+          <Playback k={k} />
           <Btns list={[{ label: t('Remove the animation'), cls: 'ghost', onClick: () => ed((x) => void (x.frames = [])) }]} />
         </>
       )}
+    </Section>
+  );
+}
+
+/** How a sequence or a video file plays. */
+function Playback({ k }: { k: ReturnType<typeof cfg> }) {
+  return (
+    <>
+      <Num label={t('Speed')} path="fps" value={k.fps} min={0.1} max={120} step={1} unit="fps" />
+      <Seg
+        label={t('Play')}
+        path="playMode"
+        value={k.playMode}
+        options={[
+          ['loop', t('Loop')],
+          ['once', t('Once')],
+          ['count', t('Times')],
+        ]}
+      />
+      {k.playMode === 'count' && <Num label={t('Times')} path="loops" value={k.loops} min={1} max={999} />}
+      <Seg
+        label={t('Start')}
+        path="start"
+        value={k.start}
+        options={[
+          ['in', t('At the In')],
+          ['manual', t('By the operator')],
+        ]}
+      />
+    </>
+  );
+}
+
+const fileName = (src: string) => decodeURIComponent(src.split('?')[0].split('/').pop() || src);
+
+/** The Video widget's source: a file of the assets (played as frames) or a live input. */
+function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer) => void, key?: string) => void }) {
+  const inputs = useInputs();
+  const pid = useApp((s) => s.project?.id);
+  const toast = useApp((s) => s.toast);
+  const [lib, setLib] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const input = k.input.trim();
+  const live = useLiveFrame(input);
+  const info = inputs.find((i) => i.id === input);
+  const choose = async (src: string) => {
+    setLib(false);
+    if (!pid) return;
+    setBusy(true);
+    try {
+      const r = await api<{ frames: string[]; fps: number }>('POST', `/api/projects/${encodeURIComponent(pid)}/sequence-from`, { src });
+      ed((x) => {
+        x.frames = r.frames;
+        x.fps = Math.round(r.fps * 100) / 100;
+        x.clip = src;
+        x.src = '';
+        x.input = undefined;
+        if (!x.playMode) x.playMode = 'once';
+      });
+      toast(tn(r.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: Math.round(r.fps * 10) / 10 }), 'info');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section id="video-source" title={t('Video')}>
+      <Seg
+        label={t('Source')}
+        value={input ? 'input' : 'file'}
+        onChange={(v) => {
+          if (v === 'file') return ed((x) => void (x.input = undefined));
+          if (!inputs.length) return toast(t('No live input yet: add one in Video streams (main page).'), 'error');
+          ed((x) => void (x.input = inputs[0].id));
+        }}
+        options={[
+          ['file', t('File')],
+          ['input', t('Live input')],
+        ]}
+      />
+      {input ? (
+        <>
+          <Row label={t('Input')}>
+            <select value={input} onChange={(e) => ed((x) => void (x.input = e.target.value))}>
+              {!info && <option value={input}>{t('(missing: {id})', { id: input })}</option>}
+              {inputs.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} · {i.kind.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <div className="video-live">
+            {live.url ? <img src={live.url} alt="" /> : <span>{t('No signal')}</span>}
+            <em className={info?.live ? 'ok' : ''}>
+              <i /> {info ? inputMessage(info.message) : t('This input does not exist any more')}
+            </em>
+          </div>
+          <Note>{t('Live inputs are set in Video streams (main page). The engine draws their latest picture on every output.')}</Note>
+        </>
+      ) : (
+        <>
+          <Row label={t('File')}>
+            <button type="button" className="pick video-pick" disabled={busy} onClick={() => setLib(true)} title={k.clip || undefined}>
+              <Film size={14} />
+              <span className={`pick-nm ${k.clip ? '' : 'ph'}`}>{busy ? t('Converting…') : k.clip ? fileName(k.clip) : t('Choose a video…')}</span>
+            </button>
+          </Row>
+          {k.frames.length > 0 && (
+            <>
+              <Note>{tn(k.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: k.fps })} · {t('the video is played as pictures (alpha kept), at most a minute')}</Note>
+              <Playback k={k} />
+            </>
+          )}
+        </>
+      )}
+      {lib && <AssetLibrary kind="video" title={t('Choose a video')} value={k.clip} onClose={() => setLib(false)} onChoose={(src) => void choose(src)} />}
     </Section>
   );
 }

@@ -407,6 +407,12 @@ export function Designer() {
       ...patch,
     } as Layer;
     if (name) l.name = name;
+    // Video and Lottie start as a 16:9 box in the middle, until their file is chosen.
+    if ((l.type === 'image' && l.video) || (l.type === 'group' && l.lottie !== undefined)) {
+      const w = Math.round(size.width * 0.5);
+      const h = Math.round((w * 9) / 16);
+      l.props = { ...l.props, x: Math.round((size.width - w) / 2), y: Math.round((size.height - h) / 2), width: w, height: h };
+    }
     update((t) => {
       t.layers.push(l);
       // A table without a data set: the operator types its rows.

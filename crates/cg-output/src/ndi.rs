@@ -345,6 +345,207 @@ impl Drop for NdiSender {
     }
 }
 
+// ------------------------------------------------------------- receive --
+
+#[repr(C)]
+struct Source {
+    p_ndi_name: *const c_char,
+    p_url_address: *const c_char,
+}
+
+#[repr(C)]
+struct FindCreate {
+    show_local_sources: bool,
+    p_groups: *const c_char,
+    p_extra_ips: *const c_char,
+}
+
+#[repr(C)]
+struct RecvCreateV3 {
+    source_to_connect_to: Source,
+    color_format: i32,
+    bandwidth: i32,
+    allow_video_fields: bool,
+    p_ndi_recv_name: *const c_char,
+}
+
+const RECV_COLOR_RGBX_RGBA: i32 = 2;
+const RECV_BANDWIDTH_HIGHEST: i32 = 100;
+const FRAME_TYPE_VIDEO: i32 = 1;
+const FRAME_TYPE_ERROR: i32 = 4;
+
+/// The receiving side of the runtime (looked up once the runtime is loaded).
+struct RecvLib {
+    find_create: unsafe extern "C" fn(*const FindCreate) -> Instance,
+    find_wait: unsafe extern "C" fn(Instance, u32) -> bool,
+    find_sources: unsafe extern "C" fn(Instance, *mut u32) -> *const Source,
+    find_destroy: unsafe extern "C" fn(Instance),
+    recv_create: unsafe extern "C" fn(*const RecvCreateV3) -> Instance,
+    recv_capture:
+        unsafe extern "C" fn(Instance, *mut VideoFrameV2, *mut c_void, *mut c_void, u32) -> i32,
+    recv_free_video: unsafe extern "C" fn(Instance, *const VideoFrameV2),
+    recv_destroy: unsafe extern "C" fn(Instance),
+}
+
+unsafe impl Send for RecvLib {}
+unsafe impl Sync for RecvLib {}
+
+fn recv_lib() -> Result<&'static RecvLib, String> {
+    static RECV: OnceLock<Result<RecvLib, String>> = OnceLock::new();
+    let lib = lib().map_err(|e| e.to_string())?;
+    RECV.get_or_init(|| unsafe {
+        let l = &lib._lib;
+        let why = |e: libloading::Error| format!("this NDI runtime cannot receive ({e})");
+        Ok(RecvLib {
+            find_create: *l.get(b"NDIlib_find_create_v2\0").map_err(why)?,
+            find_wait: *l.get(b"NDIlib_find_wait_for_sources\0").map_err(why)?,
+            find_sources: *l.get(b"NDIlib_find_get_current_sources\0").map_err(why)?,
+            find_destroy: *l.get(b"NDIlib_find_destroy\0").map_err(why)?,
+            recv_create: *l.get(b"NDIlib_recv_create_v3\0").map_err(why)?,
+            recv_capture: *l.get(b"NDIlib_recv_capture_v2\0").map_err(why)?,
+            recv_free_video: *l.get(b"NDIlib_recv_free_video_v2\0").map_err(why)?,
+            recv_destroy: *l.get(b"NDIlib_recv_destroy\0").map_err(why)?,
+        })
+    })
+    .as_ref()
+    .map_err(|e| e.clone())
+}
+
+/// The NDI sources seen on the network within `wait_ms`.
+pub fn sources(wait_ms: u32) -> Result<Vec<String>, String> {
+    let r = recv_lib()?;
+    let create = FindCreate {
+        show_local_sources: true,
+        p_groups: std::ptr::null(),
+        p_extra_ips: std::ptr::null(),
+    };
+    // SAFETY: plain C calls on an instance created and destroyed here.
+    unsafe {
+        let find = (r.find_create)(&create);
+        if find.is_null() {
+            return Err("NDI cannot look for sources".into());
+        }
+        (r.find_wait)(find, wait_ms);
+        let mut n = 0u32;
+        let list = (r.find_sources)(find, &mut n);
+        let mut out = Vec::new();
+        for i in 0..n as usize {
+            let s = &*list.add(i);
+            if !s.p_ndi_name.is_null() {
+                out.push(
+                    std::ffi::CStr::from_ptr(s.p_ndi_name)
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+        (r.find_destroy)(find);
+        out.sort();
+        Ok(out)
+    }
+}
+
+/// A picture received over NDI: straight-alpha RGBA rows of `stride` bytes.
+pub struct Received<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub stride: usize,
+    pub alpha: bool,
+    pub data: &'a [u8],
+}
+
+/// Receives the video of one NDI source.
+pub struct NdiReceiver {
+    lib: &'static RecvLib,
+    instance: Instance,
+}
+
+// Used by the input thread that owns it only.
+unsafe impl Send for NdiReceiver {}
+
+impl NdiReceiver {
+    pub fn open(source: &str) -> Result<Self, String> {
+        let lib = recv_lib()?;
+        let name = CString::new(source).map_err(|_| "invalid NDI source name".to_string())?;
+        let recv_name = CString::new("Strata").unwrap_or_default();
+        let create = RecvCreateV3 {
+            source_to_connect_to: Source {
+                p_ndi_name: name.as_ptr(),
+                p_url_address: std::ptr::null(),
+            },
+            color_format: RECV_COLOR_RGBX_RGBA,
+            bandwidth: RECV_BANDWIDTH_HIGHEST,
+            allow_video_fields: false,
+            p_ndi_recv_name: recv_name.as_ptr(),
+        };
+        // SAFETY: the strings outlive the call; NDI copies them.
+        let instance = unsafe { (lib.recv_create)(&create) };
+        if instance.is_null() {
+            return Err("NDI could not create the receiver".into());
+        }
+        Ok(Self { lib, instance })
+    }
+
+    /// Waits up to `timeout_ms` for a picture and hands it to `f`. Ok(false):
+    /// nothing came; Err: the connection failed.
+    pub fn capture(&mut self, timeout_ms: u32, f: impl FnOnce(Received)) -> Result<bool, String> {
+        let mut v = VideoFrameV2 {
+            xres: 0,
+            yres: 0,
+            four_cc: 0,
+            frame_rate_n: 0,
+            frame_rate_d: 0,
+            picture_aspect_ratio: 0.0,
+            frame_format_type: 0,
+            timecode: 0,
+            p_data: std::ptr::null(),
+            line_stride_in_bytes: 0,
+            p_metadata: std::ptr::null(),
+            timestamp: 0,
+        };
+        // SAFETY: the frame is freed with the runtime's own function after use.
+        unsafe {
+            let kind = (self.lib.recv_capture)(
+                self.instance,
+                &mut v,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                timeout_ms,
+            );
+            if kind == FRAME_TYPE_ERROR {
+                return Err("the NDI connection was lost".into());
+            }
+            if kind != FRAME_TYPE_VIDEO {
+                return Ok(false);
+            }
+            let ok = !v.p_data.is_null()
+                && v.xres > 0
+                && v.yres > 0
+                && (v.four_cc == FOURCC_RGBA || v.four_cc == FOURCC_RGBX);
+            if ok {
+                let stride = v.line_stride_in_bytes.max(v.xres * 4) as usize;
+                let data = std::slice::from_raw_parts(v.p_data, stride * v.yres as usize);
+                f(Received {
+                    width: v.xres as u32,
+                    height: v.yres as u32,
+                    stride,
+                    alpha: v.four_cc == FOURCC_RGBA,
+                    data,
+                });
+            }
+            (self.lib.recv_free_video)(self.instance, &v);
+            Ok(ok)
+        }
+    }
+}
+
+impl Drop for NdiReceiver {
+    fn drop(&mut self) {
+        // SAFETY: created by this receiver, destroyed once.
+        unsafe { (self.lib.recv_destroy)(self.instance) };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

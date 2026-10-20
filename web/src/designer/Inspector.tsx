@@ -1,9 +1,10 @@
 import { Boundary } from '../ui/Boundary';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick } from '../ui/FontPick';
-import { AssetPicker } from './AssetPicker';
+import { AssetLibrary, AssetPicker } from './AssetPicker';
+import { loadLottieAsset } from './lottie';
 import { fieldUsed } from '../engine/settings';
-import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
+import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Sparkles, Unlink } from 'lucide-react';
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
@@ -889,9 +890,42 @@ function LayerGeneral({ layer }: { layer: Layer }) {
           {t('Start manually (the operator presses ▶)')}
         </label>
       )}
-      {layer.type === 'group' && <p className="hint">{t('A group holds layers; its properties apply to all of them.')}</p>}
+      {layer.type === 'group' && layer.lottie !== undefined && <LottieSource layer={layer} />}
+      {layer.type === 'group' && layer.lottie === undefined && <p className="hint">{t('A group holds layers; its properties apply to all of them.')}</p>}
       {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{t(LABELS[layer.type])}</p>}
     </div>
+  );
+}
+
+/** The file of a Lottie layer: chosen in the assets (or uploaded there), converted into its layers. */
+function LottieSource({ layer }: { layer: Layer }) {
+  const [lib, setLib] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const toast = useApp((s) => s.toast);
+  const file = layer.type === 'group' ? (layer.lottie ?? '') : '';
+  const choose = async (src: string) => {
+    setLib(false);
+    setBusy(true);
+    try {
+      await loadLottieAsset(layer.id, src);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <div className="row">
+        <span className="prop-label">{t('File')}</span>
+        <button type="button" className="pick video-pick" disabled={busy} onClick={() => setLib(true)} title={file || undefined}>
+          <Sparkles size={14} />
+          <span className={`pick-nm ${file ? '' : 'ph'}`}>{busy ? t('Converting…') : file ? decodeURIComponent(file.split('/').pop() || file) : t('Choose a Lottie file…')}</span>
+        </button>
+      </div>
+      <p className="hint">{t('A Lottie / Bodymovin file (.json, .lottie, .zip) becomes layers inside this one, fitted to its box: both renderers draw them. Choosing another file replaces them.')}</p>
+      {lib && <AssetLibrary kind="lottie" title={t('Choose a Lottie animation')} value={file} onClose={() => setLib(false)} onChoose={(src) => void choose(src)} />}
+    </>
   );
 }
 

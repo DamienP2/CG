@@ -5,10 +5,12 @@
 //! the web engine, which is what OBS / vMix / CasparCG browser sources expect.
 
 pub mod colorspace;
+pub mod ffmpeg;
 pub mod mov;
 pub mod ndi;
 pub mod sdi;
 pub mod st2110;
+pub mod stream;
 
 use cg_render::Frame;
 

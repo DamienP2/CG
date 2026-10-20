@@ -41,10 +41,9 @@ import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Mar
 import { NumberField } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
-import { descendants, duplicateLayers, findLayer, makeLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
-import { api, importAfterEffects, useApp } from '../store';
+import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
-import { ICONS, moveLayer, type DropPos } from './LayersPanel';
+import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
 import { t, tc, tn } from '../i18n';
 
@@ -361,7 +360,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const animated = PROPS.filter((p) => layer.tracks[p]?.length);
     const open = expanded[layer.id];
     const isSel = selected.includes(layer.id);
-    const Icon = ICONS[layer.type];
+    const Icon = layerIcon(layer);
     const dropCls = drop?.id === layer.id ? `drop-${drop.pos}` : '';
     labels.push(
       <div
@@ -919,15 +918,16 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
       window.removeEventListener('resize', close);
     };
   }, [open]);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [want, setWant] = useState<'video' | 'lottie' | null>(null);
-  const [busy, setBusy] = useState(false);
   const pick = (it: Menu) => {
-    if (it.action) {
+    // Video and Lottie are placed at once; their file is chosen on the right.
+    if (it.action === 'video') {
       setOpen(null);
-      setWant(it.action);
-      // The file dialog after the menu closes.
-      setTimeout(() => fileRef.current?.click());
+      onAdd('image', { video: true, fit: 'contain', src: '' }, t('Video'));
+      return;
+    }
+    if (it.action === 'lottie') {
+      setOpen(null);
+      onAdd('group', { lottie: '', clip: true }, t('Animation (Lottie)'));
       return;
     }
     if (it.type) {
@@ -982,60 +982,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
           </div>
         </div>
       )}
-      <input
-        ref={fileRef}
-        type="file"
-        hidden
-        accept={want === 'video' ? 'video/*,.mov,.mxf,.mkv' : '.json,.zip,.lottie'}
-        onChange={async (e) => {
-          const f = e.target.files?.[0];
-          e.target.value = '';
-          if (!f || !want) return;
-          setBusy(true);
-          try {
-            if (want === 'video') await addVideo(f, onAdd);
-            else await addLottie(f);
-          } catch (err) {
-            useApp.getState().toast(err instanceof Error ? err.message : String(err), 'error');
-          } finally {
-            setBusy(false);
-            setWant(null);
-          }
-        }}
-      />
-      {busy && <span className="add-busy">{want === 'video' ? t('Reading the video…') : t('Converting…')}</span>}
     </div>
   );
 }
 
-/** A video: split into frames by the server (alpha kept), played by an Image layer. */
-async function addVideo(f: File, onAdd: AddLayer) {
-  const pid = useApp.getState().project?.id;
-  if (!pid) return;
-  const r = await api<{ frames: string[]; fps: number; width: number; height: number }>('POST', `/api/projects/${encodeURIComponent(pid)}/sequence/${encodeURIComponent(f.name)}`, f);
-  const p = useApp.getState().project!;
-  // Its own size, smaller when bigger than the frame.
-  const k = Math.min(1, (p.width * 0.8) / Math.max(1, r.width), (p.height * 0.8) / Math.max(1, r.height));
-  const w = Math.round((r.width || 640) * k);
-  const h = Math.round((r.height || 360) * k);
-  onAdd('image', { src: r.frames[0], fit: 'contain', frames: r.frames, fps: r.fps, playMode: 'once', start: 'in', props: { x: Math.round((p.width - w) / 2), y: Math.round((p.height - h) / 2), width: w, height: h } }, f.name.replace(/\.[^.]+$/, ''));
-  useApp.getState().toast(t('{n} frames ({secs} s): play once, from the In (Image > Animation)', { n: r.frames.length, secs: (r.frames.length / r.fps).toFixed(1) }), 'info');
-}
-
-/** A Lottie animation: converted, its layers put into the open template in a group. */
-async function addLottie(f: File) {
-  const pid = useApp.getState().project?.id;
-  if (!pid) return;
-  const { template: imp, warnings } = await importAfterEffects(pid, f, true);
-  const ids = new Map(imp.layers.map((l) => [l.id, newId()] as [string, string]));
-  const group = { ...makeLayer('group', 1920, 1080, null), name: imp.name } as Layer;
-  useDesigner.getState().update((t) => {
-    t.layers.push(group);
-    for (const l of imp.layers) t.layers.push({ ...structuredClone(l), id: ids.get(l.id)!, parent: l.parent && ids.has(l.parent) ? ids.get(l.parent)! : group.id } as Layer);
-    // Long enough for the animation.
-    if (imp.duration > t.duration) t.duration = imp.duration;
-    for (const fl of imp.fields) if (!t.fields.some((x) => x.key === fl.key)) t.fields.push(fl);
-  });
-  useDesigner.getState().select([group.id]);
-  useApp.getState().toast(warnings.length ? t('“{name}” added — not converted: {warnings}', { name: imp.name, warnings: warnings.join('; ') }) : tn(imp.layers.length, '“{name}” added ({n} layer)', '“{name}” added ({n} layers)', { name: imp.name }), 'info');
-}

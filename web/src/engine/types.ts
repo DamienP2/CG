@@ -36,7 +36,7 @@ export interface FontStyle {
 export type ClockMode = 'time' | 'countdown' | 'elapsed' | 'timer';
 
 export type LayerKind =
-  | { type: 'group'; clip?: boolean }
+  | { type: 'group'; clip?: boolean; /** A Lottie animation placed by the Lottie widget: its file ('' = not chosen yet). */ lottie?: string }
   | ({ type: 'rect' } & import('../widgets/quad').Config)
   | ({ type: 'ellipse' } & import('../widgets/ellipse').Config)
   | (({

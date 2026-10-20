@@ -223,6 +223,8 @@ pub struct AppState {
     pub edits: tokio::sync::Mutex<()>,
     /// Whether each video output runs, by channel and output id.
     pub output_status: Arc<OutputStatus>,
+    /// Live video inputs (kept across engine restarts).
+    pub inputs: Arc<crate::inputs::Inputs>,
     /// Settings this engine cycle was started with.
     pub config: ServerConfig,
     /// Address actually bound by this cycle.
@@ -299,6 +301,11 @@ impl AppState {
     /// Tells the clients that a list changed (see [`Event::Changed`]).
     pub fn changed(&self, what: impl Into<String>) {
         let _ = self.events.send(Event::Changed { what: what.into() });
+    }
+
+    /// Where the HLS stream outputs write (served at `/hls/…`).
+    pub fn hls_dir(&self) -> PathBuf {
+        self.data_dir.join("hls")
     }
 
     pub fn assets_dir(&self) -> PathBuf {

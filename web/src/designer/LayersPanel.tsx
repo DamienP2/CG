@@ -1,5 +1,5 @@
-import { Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Type } from 'lucide-react';
-import type { LayerType, Template } from '../engine/types';
+import { Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Type, Video } from 'lucide-react';
+import type { Layer, LayerType, Template } from '../engine/types';
 import { descendants, findLayer } from './designerStore';
 import { num, propValue } from '../engine/evaluate';
 
@@ -29,6 +29,9 @@ export const ICONS: Record<LayerType, typeof Square> = {
   scoreboard: Trophy,
   web: Globe,
 };
+
+/** A layer's icon: Video and Lottie layers are an image and a group underneath. */
+export const layerIcon = (l: Layer) => (l.type === 'image' && l.video ? Video : l.type === 'group' && l.lottie !== undefined ? Sparkles : ICONS[l.type]);
 
 export type DropPos = 'above' | 'below' | 'into';
 

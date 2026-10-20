@@ -13,6 +13,7 @@ mod wid;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use cg_core::anim::{interpolate_text, resolve_layer, Data, ResolvedLayer};
@@ -38,6 +39,53 @@ pub fn qr_modules(content: &str) -> Option<(usize, Vec<bool>)> {
             .map(|c| c == qrcode::Color::Dark)
             .collect(),
     ))
+}
+
+/// A picture as JPEG (previews of the live inputs), at most `max_width` wide.
+pub fn jpeg(pm: &Pixmap, max_width: u32, quality: u8) -> Option<Vec<u8>> {
+    let (w, h) = (pm.width(), pm.height());
+    let k = (max_width as f32 / w.max(1) as f32).min(1.0);
+    let (tw, th) = (
+        ((w as f32 * k).round() as u32).max(1),
+        ((h as f32 * k).round() as u32).max(1),
+    );
+    let small;
+    let src = if k < 1.0 {
+        let mut out = Pixmap::new(tw, th)?;
+        out.draw_pixmap(
+            0,
+            0,
+            pm.as_ref(),
+            &PixmapPaint {
+                quality: tiny_skia::FilterQuality::Bilinear,
+                ..Default::default()
+            },
+            Transform::from_scale(k, k),
+            None,
+        );
+        small = out;
+        &small
+    } else {
+        pm
+    };
+    // Over black, without alpha.
+    let rgb: Vec<u8> = src
+        .data()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .flat_map(|p| [p[0], p[1], p[2]])
+        .collect();
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality)
+        .encode(
+            &rgb,
+            src.width(),
+            src.height(),
+            image::ExtendedColorType::Rgb8,
+        )
+        .ok()?;
+    Some(out)
 }
 
 /// A rendered video frame, RGBA 8-bit **premultiplied** alpha.
@@ -70,11 +118,18 @@ impl Frame {
     }
 }
 
+/// The pictures of the live video inputs (cg-server), for the Video widget.
+pub trait LiveInputs: Send + Sync {
+    /// The latest picture of an input (premultiplied RGBA), if it has one.
+    fn picture(&self, id: &str) -> Option<Arc<Pixmap>>;
+}
+
 pub struct Renderer {
     fonts: FontStore,
     font_generation: u64,
     assets_dir: PathBuf,
     images: HashMap<String, Option<Pixmap>>,
+    live: Option<Arc<dyn LiveInputs>>,
 }
 
 struct Ctx<'a> {
@@ -129,7 +184,18 @@ impl Renderer {
             font_generation: text::font_generation(),
             assets_dir,
             images: HashMap::new(),
+            live: None,
         }
+    }
+
+    /// Where the Video widget finds the pictures of the live inputs.
+    pub fn set_live(&mut self, live: Arc<dyn LiveInputs>) {
+        self.live = Some(live);
+    }
+
+    /// The latest picture of a live input.
+    pub fn live_picture(&self, id: &str) -> Option<Arc<Pixmap>> {
+        self.live.as_ref()?.picture(id)
     }
 
     /// Picks up fonts added since the renderer was created.

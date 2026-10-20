@@ -2,7 +2,7 @@
 // library (project and shared pictures, search, upload, drop) as a grid.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Upload, X } from 'lucide-react';
+import { Search, Sparkles, Upload, X } from 'lucide-react';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
 import { t } from '../i18n';
 
@@ -47,7 +47,20 @@ export function AssetPicker({ value, onChange, placeholder = t('Choose a picture
 
 type Tab = 'project' | 'shared';
 
-function AssetLibrary({ title, value, onClose, onChoose }: { title: string; value: string; onClose: () => void; onChoose: (src: string) => void }) {
+/** What a library lists: pictures, videos (and animated GIFs), or Lottie files. */
+export type LibraryKind = 'image' | 'video' | 'lottie';
+
+const KIND: Record<LibraryKind, { keep: (m: MediaFile) => boolean; accept: string; upload: (f: File) => boolean }> = {
+  image: { keep: (m) => m.kind === 'image', accept: 'image/*', upload: (f) => f.type.startsWith('image/') },
+  video: {
+    keep: (m) => m.kind === 'video' || /\.(gif|apng)$/i.test(m.name),
+    accept: 'video/*,.mov,.mxf,.mkv,.gif,.apng',
+    upload: (f) => f.type.startsWith('video/') || /\.(mov|mxf|mkv|mp4|webm|gif|apng)$/i.test(f.name),
+  },
+  lottie: { keep: (m) => /\.(json|lottie|zip)$/i.test(m.name), accept: '.json,.lottie,.zip', upload: (f) => /\.(json|lottie|zip)$/i.test(f.name) },
+};
+
+export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }: { title: string; value: string; onClose: () => void; onChoose: (src: string) => void; kind?: LibraryKind }) {
   const projectId = useApp((s) => s.projectId);
   const toast = useApp((s) => s.toast);
   const [lists, setLists] = useState<Record<Tab, MediaFile[]>>({ project: [], shared: [] });
@@ -60,7 +73,7 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
   const [, bump] = useState(0);
 
   const refresh = () => {
-    const images = (l: MediaFile[]) => l.filter((m) => m.kind === 'image').sort((a, b) => b.modified - a.modified);
+    const images = (l: MediaFile[]) => l.filter(KIND[kind].keep).sort((a, b) => b.modified - a.modified);
     if (projectId)
       api<MediaFile[]>('GET', mediaUrl(projectId))
         .then((l) => setLists((x) => ({ ...x, project: images(l) })))
@@ -69,7 +82,7 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
       .then((l) => setLists((x) => ({ ...x, shared: images(l) })))
       .catch(() => {});
   };
-  useEffect(refresh, [projectId]);
+  useEffect(refresh, [projectId, kind]);
   // Open on the tab that holds the current picture.
   useEffect(() => {
     if (value && lists.shared.some((m) => m.src === value) && !lists.project.some((m) => m.src === value)) setTab('shared');
@@ -87,7 +100,7 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
   }, [sel, onClose, onChoose]);
 
   const upload = async (files: FileList | File[]) => {
-    const imgs = [...files].filter((f) => f.type.startsWith('image/'));
+    const imgs = [...files].filter(KIND[kind].upload);
     if (!imgs.length) return;
     setBusy((n) => n + imgs.length);
     let last = '';
@@ -136,7 +149,7 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
             <Upload size={13} /> {busy ? t('Uploading…') : t('Upload')}
             <input
               type="file"
-              accept="image/*"
+              accept={KIND[kind].accept}
               multiple
               hidden
               onChange={(e) => {
@@ -167,18 +180,35 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
               {list.map((m) => (
                 <button key={m.src} className={`lib-card ${sel === m.src ? 'on' : ''}`} onClick={() => setSel(m.src)} onDoubleClick={() => onChoose(m.src)} title={m.name}>
                   <div className="lib-im">
-                    <img
-                      src={m.src}
-                      alt=""
-                      loading="lazy"
-                      onLoad={(e) => {
-                        const i = e.currentTarget;
-                        if (!sizes.current.has(m.src)) {
-                          sizes.current.set(m.src, `${i.naturalWidth}×${i.naturalHeight}`);
-                          bump((n) => n + 1);
-                        }
-                      }}
-                    />
+                    {kind === 'lottie' ? (
+                      <Sparkles size={28} className="lib-icon" />
+                    ) : m.kind === 'video' ? (
+                      <video
+                        src={`${m.src}#t=0.5`}
+                        muted
+                        preload="metadata"
+                        onLoadedMetadata={(e) => {
+                          const v = e.currentTarget;
+                          if (!sizes.current.has(m.src)) {
+                            sizes.current.set(m.src, `${v.videoWidth}×${v.videoHeight} · ${Math.round(v.duration)} s`);
+                            bump((n) => n + 1);
+                          }
+                        }}
+                      />
+                    ) : (
+                      <img
+                        src={m.src}
+                        alt=""
+                        loading="lazy"
+                        onLoad={(e) => {
+                          const i = e.currentTarget;
+                          if (!sizes.current.has(m.src)) {
+                            sizes.current.set(m.src, `${i.naturalWidth}×${i.naturalHeight}`);
+                            bump((n) => n + 1);
+                          }
+                        }}
+                      />
+                    )}
                   </div>
                   <div className="lib-meta">
                     <b>{m.name}</b>
@@ -188,12 +218,28 @@ function AssetLibrary({ title, value, onClose, onChoose }: { title: string; valu
               ))}
             </div>
           ) : (
-            <div className="lib-empty">{q ? t('No picture matches.') : tab === 'project' ? t('No pictures in this project yet: upload or drop some here.') : t('No shared pictures yet.')}</div>
+            <div className="lib-empty">
+              {kind === 'video'
+                ? q
+                  ? t('No video matches.')
+                  : tab === 'project'
+                    ? t('No videos in this project yet: upload or drop some here.')
+                    : t('No shared videos yet.')
+                : kind === 'lottie'
+                  ? q
+                    ? t('No file matches.')
+                    : t('No Lottie file here yet: upload or drop a .json, .lottie or .zip.')
+                  : q
+                    ? t('No picture matches.')
+                    : tab === 'project'
+                      ? t('No pictures in this project yet: upload or drop some here.')
+                      : t('No shared pictures yet.')}
+            </div>
           )}
-          <div className="lib-drop">{projectId ? t('Drop pictures here: they go to the project') : t('Drop pictures here: they go to the shared library')}</div>
+          <div className="lib-drop">{kind !== 'image' ? (projectId ? t('Drop files here: they go to the project') : t('Drop files here: they go to the shared library')) : projectId ? t('Drop pictures here: they go to the project') : t('Drop pictures here: they go to the shared library')}</div>
         </div>
         <div className="lib-f">
-          <span className="lib-sel">{selected ? `${selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : t('Double-click a picture to choose it')}</span>
+          <span className="lib-sel">{selected ? `${selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : kind === 'image' ? t('Double-click a picture to choose it') : t('Double-click a file to choose it')}</span>
           <button className="btn ghost" onClick={onClose}>
             {t('Cancel')}
           </button>
