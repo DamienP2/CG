@@ -686,6 +686,11 @@ code {
 .safe-area.title {
   border-color: rgba(255, 210, 80, 0.2);
 }
+.ghost-box {
+  position: absolute;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  pointer-events: none;
+}
 .sel-box {
   position: absolute;
   border: 1.5px solid var(--accent);
@@ -2379,12 +2384,36 @@ code {
   background: var(--accent);
   transition: width 0.2s;
 }
+.topbar-sep {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--line-2);
+}
+/* The open project: a chip, apart from the product name. */
 .project-title {
-  font-weight: 600;
-  max-width: 260px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 280px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-weight: 500;
+  font-size: 13px;
+}
+.project-title svg {
+  flex: none;
+  color: var(--accent-2);
+}
+.project-title span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text);
 }
 .library-inner.narrow,
 .settings-inner.narrow {
@@ -3233,7 +3262,7 @@ select.small {
   background: var(--panel-2);
   border: 1px solid var(--line);
 }
-.format-bar button {
+.format-bar > button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -3246,11 +3275,11 @@ select.small {
   cursor: pointer;
   white-space: nowrap;
 }
-.format-bar button.on {
+.format-bar > button.on {
   background: var(--accent);
   color: var(--on-accent);
 }
-.format-bar button:hover:not(.on) {
+.format-bar > button:hover:not(.on) {
   background: var(--panel-3);
 }
 .format-bar .tool-link.danger:hover {
@@ -8183,7 +8212,6 @@ body.cv-moving * {
   border-bottom: 1px solid var(--line);
 }
 .tpl-publish-row .publish .btn {
-  width: 100%;
   justify-content: center;
 }
 /* Data tables: column types and pictures. */
@@ -10049,4 +10077,196 @@ body.cv-moving * {
   top: 6px;
   width: auto;
   pointer-events: none;
+}
+/* Template properties: flat, no accordion. */
+.tpl-props {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px 12px;
+}
+.tpl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.tpl-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.tpl-zones-edit {
+  width: 22px;
+  height: 22px;
+}
+.tpl-zones {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.tpl-zones button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.tpl-zones button:last-child {
+  border-bottom: none;
+}
+.tpl-zones button:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+.tpl-zones button.on {
+  background: color-mix(in srgb, var(--z) 14%, var(--panel-2));
+  color: var(--text);
+  font-weight: 600;
+}
+.tpl-zones button svg {
+  color: var(--z);
+}
+.tpl-zone-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tpl-zone-layer {
+  font: 10.5px var(--mono);
+  color: var(--text-3);
+}
+/* Publish: a discreet status line with a quiet button. */
+.publish-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.publish-draft {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--warn);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.publish-draft::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.publish-line .publish-btn {
+  flex: none;
+  height: 24px;
+  padding: 0 9px;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line-2));
+  background: transparent;
+  color: var(--accent-2);
+  font-size: 11.5px;
+}
+.publish-line .publish-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.tpl-publish-row .publish-state,
+.pjp-publish .publish-state {
+  font-size: 11.5px;
+}
+/* Publish confirmation. */
+.publish-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.publish-confirm p {
+  margin: 0;
+}
+.publish-list,
+.publish-onair ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.publish-list li {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.publish-onair {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--live-soft);
+  border: 1px solid color-mix(in srgb, var(--live) 40%, transparent);
+}
+.publish-onair b {
+  font-size: 12px;
+  color: var(--live);
+}
+.publish-onair li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+}
+.publish-onair .live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+}
+.template-item.selected .tpl-name {
+  cursor: text;
+  border-radius: 4px;
+}
+.template-item.selected .tpl-name:hover {
+  box-shadow: 0 0 0 1px var(--line-2);
+  background: var(--panel-3);
+}
+.tpl-rename {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  margin-left: -6px;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.gm-switch {
+  justify-content: space-between;
+  width: 100%;
+  flex-direction: row-reverse;
+  font-size: 12.5px;
+  color: var(--text);
 }

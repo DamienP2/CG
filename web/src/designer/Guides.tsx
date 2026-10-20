@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, EyeOff, Magnet, Move, Plus, Ruler, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, Move, Plus, Ruler, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { newId } from '../engine/evaluate';
@@ -272,14 +272,14 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
           <RulerBar axis="y" length={height} scale={scale} onGuide={(e) => dragGuide(e, 'vertical', -1)} />
           {g.vertical.map((v, i) =>
             v >= 0 && v <= 1 ? (
-              <div key={`v${i}`} className="guide v" style={{ left: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'vertical', i)}>
+              <div key={`v${i}`} className="guide v" style={{ left: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'vertical', i)} onDoubleClick={() => setG({ ...g, vertical: g.vertical.filter((_, k) => k !== i) })} title="Drag to move · double-click to remove">
                 <span>{Math.round(v * width)}</span>
               </div>
             ) : null,
           )}
           {g.horizontal.map((v, i) =>
             v >= 0 && v <= 1 ? (
-              <div key={`h${i}`} className="guide h" style={{ top: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'horizontal', i)}>
+              <div key={`h${i}`} className="guide h" style={{ top: `${v * 100}%` }} onPointerDown={(e) => dragGuide(e, 'horizontal', i)} onDoubleClick={() => setG({ ...g, horizontal: g.horizontal.filter((_, k) => k !== i) })} title="Drag to move · double-click to remove">
                 <span>{Math.round(v * height)}</span>
               </div>
             ) : null,
@@ -395,23 +395,14 @@ export function SplitButton({ icon, label, on, onToggle, title, children, width 
 }
 
 /** Toolbar: rulers and guides (show / hide), snapping. */
-export function GuidesMenu({ project }: { project: Project }) {
+export function GuidesMenu() {
   const view = useGuidesView();
-  const [g, setG] = useProjectGuides(project);
   return (
-    <SplitButton icon={<Ruler size={13} />} label="Guides" on={view.guides} onToggle={() => view.set({ guides: !view.guides })} title="rulers and guides">
-      <label className="zm-toggle">
+    <SplitButton icon={<Ruler size={13} />} label="Guides" on={view.guides} onToggle={() => view.set({ guides: !view.guides })} title="rulers and guides" width={200}>
+      <label className="switch gm-switch">
         <input type="checkbox" checked={view.snap} onChange={(e) => view.set({ snap: e.target.checked })} />
-        <Magnet size={12} /> Snap to guides, edges and areas (Alt to skip)
+        Snap to guides
       </label>
-      {g.vertical.length + g.horizontal.length > 0 ? (
-        <button className="btn small" onClick={() => setG({ ...g, vertical: [], horizontal: [] })}>
-          Remove the {g.vertical.length + g.horizontal.length} guides
-        </button>
-      ) : (
-        <p className="hint">No guide yet.</p>
-      )}
-      <p className="hint">Drag a guide out of a ruler (Shift: 10 px steps); drag it back onto the ruler to remove it.</p>
     </SplitButton>
   );
 }

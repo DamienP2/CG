@@ -1,7 +1,7 @@
 import { Check, Lock, RotateCcw, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { draftOf, publishState } from '../engine/drafts';
-import type { Project } from '../engine/types';
+import type { ChannelState, Project } from '../engine/types';
 import { api, clientId, lockEvents, useApp, type EditLock } from '../store';
 import { useDesigner } from './designerStore';
 import { confirmDialog } from '../ui/dialogs';
@@ -125,10 +125,66 @@ export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock
   );
 }
 
-/** Publishes one template (its latest edits first when it is open). */
+/** Templates of `ids` on air now in a channel of the project: "name · channel". */
+async function onAir(project: Project, ids: string[]): Promise<string[]> {
+  const channels = useApp.getState().channels.filter((c) => c.projectId === project.id);
+  const name = (id: string) => project.templates.find((t) => t.id === id)?.name ?? id;
+  const out: string[] = [];
+  await Promise.all(
+    channels.map(async (c) => {
+      try {
+        const st = await api<ChannelState>('GET', `/api/channels/${encodeURIComponent(c.id)}/state`);
+        for (const p of Object.values(st.layers ?? {})) if (ids.includes(p.templateId)) out.push(`${name(p.templateId)} · ${c.name}`);
+      } catch {
+        /* channel not visible to this user */
+      }
+    }),
+  );
+  return out;
+}
+
+/** Asks before publishing: it is immediate, and graphics on air change at once. */
+async function confirmPublish(project: Project, ids: string[]): Promise<boolean> {
+  const live = await onAir(project, ids);
+  const names = ids.map((id) => project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id);
+  return confirmDialog({
+    title: ids.length > 1 ? `Publish ${ids.length} templates?` : `Publish “${names[0]}”?`,
+    message: (
+      <div className="publish-confirm">
+        <p>The Operator uses the new version immediately.</p>
+        {ids.length > 1 && (
+          <ul className="publish-list">
+            {names.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        )}
+        {live.length ? (
+          <div className="publish-onair">
+            <b>On air now: {live.length > 1 ? 'they change' : 'it changes'} on screen at once</b>
+            <ul>
+              {live.map((n) => (
+                <li key={n}>
+                  <span className="live-dot" /> {n}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="muted">{ids.length > 1 ? 'None of them is on air.' : 'It is not on air.'}</p>
+        )}
+      </div>
+    ),
+    confirm: 'Publish',
+    danger: live.length > 0,
+  });
+}
+
+/** Publishes one template (its latest edits first when it is open), after confirmation. */
 export async function publishTemplate(project: Project, id: string) {
   const { saveTemplate, toast } = useApp.getState();
   const st = useDesigner.getState();
+  if (!(await confirmPublish(project, [id]))) return;
   try {
     if (st.base?.id === id) await saveTemplate(st.base);
     const r = await api<{ revision: number }>('POST', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(id)}/publish`);
@@ -139,29 +195,30 @@ export async function publishTemplate(project: Project, id: string) {
   }
 }
 
-/** Publish of one template, in its properties: the same look as the project's. */
+/** Publish of one template, in its properties: a discreet status line with its button. */
 export function TemplatePublish({ project, id, readOnly }: { project: Project; id: string; readOnly: boolean }) {
   const [busy, setBusy] = useState(false);
   const { published, draft } = publishState(project, id);
   if (published && !draft)
     return (
       <span className="publish-state" title="The Operator uses this template as it is here">
-        <Check size={13} /> Live in the Operator · v{published.revision || 1}
+        <Check size={12} /> In the Operator · v{published.revision || 1}
       </span>
     );
   return (
-    <div className="publish">
+    <div className="publish publish-line">
+      <span className="publish-draft">{published ? 'Changes not in the Operator' : 'New · not in the Operator'}</span>
       <button
-        className="btn small primary"
+        className="btn small publish-btn"
         disabled={busy || readOnly}
-        title={published ? `The Operator uses v${published.revision || 1}` : 'New: the Operator does not see it yet'}
+        title={published ? `The Operator uses v${published.revision || 1}` : 'The Operator does not see it yet'}
         onClick={async () => {
           setBusy(true);
           await publishTemplate(project, id);
           setBusy(false);
         }}
       >
-        <Upload size={13} /> {busy ? 'Publishing…' : published ? 'Publish this template to Operator' : 'Publish this new template to Operator'}
+        <Upload size={12} /> {busy ? 'Publishing…' : 'Publish'}
       </button>
     </div>
   );
@@ -176,10 +233,11 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
   if (!changed.length)
     return (
       <span className="publish-state" title="The Operator uses the templates as they are here">
-        <Check size={13} /> All live in the Operator
+        <Check size={12} /> All in the Operator
       </span>
     );
   const publish = async () => {
+    if (!(await confirmPublish(project, changed.map((t) => t.id)))) return;
     setBusy(true);
     try {
       const st = useDesigner.getState();
@@ -193,9 +251,12 @@ export function ProjectPublish({ project, readOnly }: { project: Project; readOn
     }
   };
   return (
-    <div className="publish">
-      <button className="btn small primary" disabled={busy || readOnly} title={`Not yet in the Operator: ${changed.map((t) => `${t.name}${isNew(t.id) ? ' (new)' : ''}`).join(', ')}`} onClick={publish}>
-        <Upload size={13} /> {busy ? 'Publishing…' : `Publish ${changed.length} change${changed.length > 1 ? 's' : ''} to Operator`}
+    <div className="publish publish-line">
+      <span className="publish-draft">
+        {changed.length} change{changed.length > 1 ? 's' : ''} not in the Operator
+      </span>
+      <button className="btn small publish-btn" disabled={busy || readOnly} title={`Not yet in the Operator: ${changed.map((t) => `${t.name}${isNew(t.id) ? ' (new)' : ''}`).join(', ')}`} onClick={publish}>
+        <Upload size={12} /> {busy ? 'Publishing…' : 'Publish all'}
       </button>
     </div>
   );

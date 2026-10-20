@@ -1,7 +1,7 @@
 import { Boundary } from '../ui/Boundary';
 import { AssetPicker } from './AssetPicker';
 import { fieldUsed } from '../engine/settings';
-import { Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
+import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Unlink } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
@@ -1284,31 +1284,35 @@ function TemplateInspector({ template }: { template: Template }) {
         <TextInput value={template.name} commitOnBlur onChange={(v) => update((t) => void (t.name = v))} />
       </div>
       {project && (
-        <div className="tpl-publish-row pjp-publish">
+        <div className="tpl-publish-row">
           <TemplatePublish project={project} id={template.id} readOnly={false} />
         </div>
       )}
-      <Group id="tpl-general" title="General">
-        <div className="pp-general tpl-general">
-          <Row label="Duration">
-            <DurationField frames={template.duration} rate={rate} onChange={(v) => update((t) => void (t.duration = v), 'duration')} />
-          </Row>
-          <Row label="Zone">
-            <div className="zone-pick">
-              {sorted.map((z) => (
-                <button key={z.id} className={template.zone === z.id ? 'on' : ''} style={{ ['--z' as string]: z.color }} onClick={() => update((t) => void (t.zone = z.id))}>
-                  <span className="zone-dot" />
-                  {z.name}
-                </button>
-              ))}
-              {!zones.some((z) => z.id === template.zone) && <span className="muted small">No zone</span>}
-              <button className="zone-edit" title="Edit the zones" onClick={() => setZonesOpen(true)}>
-                <Settings2 size={13} />
-              </button>
-            </div>
-          </Row>
+      <div className="tpl-props">
+        <div className="tpl-field">
+          <span className="tpl-label">Duration</span>
+          <DurationField frames={template.duration} rate={rate} onChange={(v) => update((t) => void (t.duration = v), 'duration')} />
         </div>
-      </Group>
+        <div className="tpl-field">
+          <span className="tpl-label">
+            Zone
+            <button className="icon-btn ghost tpl-zones-edit" title="Edit the zones" onClick={() => setZonesOpen(true)}>
+              <Settings2 size={13} />
+            </button>
+          </span>
+          <div className="tpl-zones" role="radiogroup">
+            {sorted.map((z) => (
+              <button key={z.id} role="radio" aria-checked={template.zone === z.id} className={template.zone === z.id ? 'on' : ''} style={{ ['--z' as string]: z.color }} onClick={() => update((t) => void (t.zone = z.id))}>
+                <span className="zone-dot" />
+                <span className="tpl-zone-name">{z.name}</span>
+                <span className="tpl-zone-layer">L{z.layer}</span>
+                {template.zone === z.id && <Check size={13} />}
+              </button>
+            ))}
+            {!zones.length && <span className="muted small">No zone yet</span>}
+          </div>
+        </div>
+      </div>
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
     </>
   );

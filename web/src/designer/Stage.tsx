@@ -35,6 +35,8 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   const sceneRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
   const [boxes, setBoxes] = useState<Box[]>([]);
+  // The other layers: a faint frame, so the template's layout reads at a glance.
+  const [ghosts, setGhosts] = useState<Box[]>([]);
   const widgetRun = useDesigner((s) => s.widgetRun);
   const widgetState = useDesigner((s) => s.widgetState);
   const running = Object.values(widgetRun).some((r) => r.pausedAge === undefined);
@@ -63,6 +65,16 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     const root = sceneRef.current;
     if (!root) return;
     const origin = root.getBoundingClientRect();
+    const box = (id: string, el: Element): Box => {
+      const r = el.getBoundingClientRect();
+      return { id, left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height };
+    };
+    setGhosts(
+      [...root.querySelectorAll<HTMLElement>('[data-layer-id]')]
+        .filter((el) => !selected.includes(el.dataset.layerId!))
+        .map((el) => box(el.dataset.layerId!, el))
+        .filter((b) => b.width > 0 && b.height > 0),
+    );
     setBoxes(
       selected.flatMap((id) => {
         const el = root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
@@ -203,6 +215,9 @@ export function Stage({ project: _project, size, showZones, background }: { proj
           </div>
           <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
           {showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
+          {ghosts.map((b) => (
+            <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
+          ))}
           {boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
               {selected.length === 1 && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}

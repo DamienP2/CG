@@ -220,7 +220,9 @@ const BG_LABELS = {
 } as const;
 
 function TemplateList({ project }: { project: Project }) {
-  const { template, load, format } = useDesigner();
+  const { template, load, format, update } = useDesigner();
+  // The template whose name is being edited (a click on the open template's name).
+  const [renaming, setRenaming] = useState<string | null>(null);
   const { saveTemplate, deleteTemplate, toast } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -272,7 +274,38 @@ function TemplateList({ project }: { project: Project }) {
           <div key={t.id} className={`template-item ${template?.id === t.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== t.id && load(t))}>
             <img src={thumbnailUrl(project.id, t, format, true)} alt="" loading="lazy" />
             <span className="tpl-text">
-              <span>{t.name}</span>
+              {renaming === t.id && template?.id === t.id ? (
+                <input
+                  className="tpl-rename"
+                  autoFocus
+                  defaultValue={template.name}
+                  onClick={(e) => e.stopPropagation()}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') setRenaming(null);
+                  }}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (renaming && v && v !== template.name) update((x) => void (x.name = v));
+                    setRenaming(null);
+                  }}
+                />
+              ) : (
+                <span
+                  className="tpl-name"
+                  title={template?.id === t.id ? 'Click to rename' : undefined}
+                  onClick={(e) => {
+                    // The open template: rename it. Another one: open it first.
+                    if (template?.id !== t.id) return;
+                    e.stopPropagation();
+                    setRenaming(t.id);
+                  }}
+                >
+                  {t.name}
+                </span>
+              )}
               {(() => {
                 const z = project.zones.find((z) => z.id === t.zone);
                 return z ? (
@@ -402,7 +435,7 @@ export function Designer() {
             </>
           )}
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
-          <GuidesMenu project={project} />
+          <GuidesMenu />
           <SafeMenu project={project} />
           <button className="btn small bg-toggle" title={`Stage background: ${BG_LABELS[background]} (click to change)`} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
