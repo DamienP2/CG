@@ -52,6 +52,11 @@ pub struct Col {
     /// Its own text (None = the text of all the rows).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub txt: Option<Typo>,
+    /// Around the value ("pts", "%").
+    pub prefix: String,
+    pub suffix: String,
+    /// Pictures of a picture column.
+    pub img: Pic,
 }
 
 impl Default for Col {
@@ -67,6 +72,9 @@ impl Default for Col {
             on: true,
             mark: String::new(),
             txt: None,
+            prefix: String::new(),
+            suffix: String::new(),
+            img: Pic::default(),
         }
     }
 }
@@ -498,8 +506,14 @@ impl Default for Borders {
 pub struct Cond {
     pub neg: bool,
     pub neg_color: String,
+    /// The first rows marked ("top"), how many, and their accent bar.
     pub top3: bool,
     pub top3_color: String,
+    pub top_n: u32,
+    pub top_bar: bool,
+    /// The bar on the left of the highlighted row.
+    pub hl_bar: bool,
+    pub hl_bar_color: String,
 }
 
 impl Default for Cond {
@@ -509,6 +523,58 @@ impl Default for Cond {
             neg_color: "#ff6b81".into(),
             top3: false,
             top3_color: "#facc15".into(),
+            top_n: 3,
+            top_bar: true,
+            hl_bar: true,
+            hl_bar_color: "#ffffff".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PicFit {
+    #[default]
+    Contain,
+    Cover,
+    Stretch,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PicMask {
+    #[default]
+    None,
+    Rounded,
+    Circle,
+}
+
+/// How a picture column draws its pictures (like the Image widget).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Pic {
+    pub fit: PicFit,
+    /// Height, % of the row.
+    pub size: f32,
+    /// Width, % of the cell (Cover / Stretch).
+    pub width: f32,
+    pub mask: PicMask,
+    pub radius: f32,
+    pub opacity: f32,
+    /// Shown when the cell is empty.
+    pub fallback: String,
+}
+
+impl Default for Pic {
+    fn default() -> Self {
+        Self {
+            fit: PicFit::Contain,
+            size: 50.0,
+            width: 80.0,
+            mask: PicMask::None,
+            radius: 8.0,
+            opacity: 100.0,
+            fallback: String::new(),
         }
     }
 }
@@ -643,6 +709,17 @@ pub struct Config {
     pub title_color: String,
     /// Header row height, px (0 = 85 % of a row).
     pub head_h: f32,
+    /// The title bar's gradient, alignment and side margin.
+    pub title_from: String,
+    pub title_to: String,
+    pub title_align: Align,
+    pub title_pad: f32,
+    /// Header alignment (None = each column's).
+    pub head_align: Option<Align>,
+    /// Corners of the cells, px.
+    pub radius: f32,
+    /// Colour of the page dots.
+    pub indicator_color: String,
 }
 
 impl Default for Config {
@@ -685,6 +762,13 @@ impl Default for Config {
             title_bg: String::new(),
             title_color: "#ffffff".into(),
             head_h: 0.0,
+            title_from: "#ff3b5c".into(),
+            title_to: "#7c5cff".into(),
+            title_align: Align::Left,
+            title_pad: 24.0,
+            head_align: None,
+            radius: 0.0,
+            indicator_color: "#ff3b5c".into(),
         }
     }
 }
@@ -930,6 +1014,9 @@ pub fn rank_col() -> Col {
         on: true,
         mark: String::new(),
         txt: None,
+        prefix: String::new(),
+        suffix: String::new(),
+        img: Pic::default(),
     }
 }
 
@@ -1056,10 +1143,15 @@ pub fn cell_text(col: &MCol, row: &MRow) -> String {
         None => row.rank.to_string(),
         Some(i) => {
             let v = row.r.get(i).cloned().unwrap_or_default();
-            if col.col.kind == ColKind::Number {
+            let v = if col.col.kind == ColKind::Number {
                 fmt_num(&v, &col.col.fmt)
             } else {
                 v
+            };
+            if col.col.kind == ColKind::Image || v.trim().is_empty() {
+                v
+            } else {
+                format!("{}{v}{}", col.col.prefix, col.col.suffix)
             }
         }
     }
@@ -1295,7 +1387,7 @@ mod tests {
     fn layer(c: Config) -> Layer {
         let mut l: Layer =
             serde_json::from_str(r#"{"id":"t","name":"T","type":"table","props":{}}"#).unwrap();
-        l.kind = LayerKind::Table { x: c };
+        l.kind = LayerKind::Table { x: Box::new(c) };
         l
     }
     fn sample(n: usize) -> Config {
@@ -1355,7 +1447,7 @@ mod tests {
         let LayerKind::Table { x } = l.kind else {
             panic!()
         };
-        assert_eq!(x, Config::default());
+        assert_eq!(*x, Config::default());
     }
 
     #[test]

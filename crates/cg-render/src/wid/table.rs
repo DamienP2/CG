@@ -427,7 +427,7 @@ fn row_look(c: &Config, st: &State, row: &MRow) -> RowLook {
             top3: false,
         };
     }
-    if c.cf.top3 && row.rank <= 3 {
+    if c.cf.top3 && row.rank <= c.cf.top_n.max(1) as usize {
         return RowLook {
             bg: h(&c.st.top3.bg),
             color: h(&c.st.top3.color),
@@ -550,8 +550,8 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                 Point::from_xy(0.0, 0.0),
                 Point::from_xy(d.w, 0.0),
                 vec![
-                    GradientStop::new(0.0, tiny_skia::Color::from_rgba8(0xff, 0x3b, 0x5c, 255)),
-                    GradientStop::new(1.0, tiny_skia::Color::from_rgba8(0x7c, 0x5c, 0xff, 255)),
+                    GradientStop::new(0.0, super::text::paint::sk(Draw::hex(&c.title_from), 1.0)),
+                    GradientStop::new(1.0, super::text::paint::sk(Draw::hex(&c.title_to), 1.0)),
                 ],
                 SpreadMode::Pad,
                 Transform::identity(),
@@ -571,8 +571,8 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             d,
             &tt,
             &c.title.text,
-            TextAlign::Left,
-            (24.0, 0.0, d.w - 48.0, title_h),
+            align_of(c.title_align),
+            (c.title_pad, 0.0, d.w - 2.0 * c.title_pad, title_h),
         ) {
             d.fill(&p, Draw::hex(&c.title_color), FillRule::Winding, bm);
         }
@@ -581,13 +581,22 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     if show_head {
         let ht = header_text(&c);
         for (j, mc) in m.cols.iter().enumerate() {
-            rect(d, xs[j], yy, ws[j], hh, 0.0, Draw::hex(&c.st.header.bg), bm);
+            rect(
+                d,
+                xs[j],
+                yy,
+                ws[j],
+                hh,
+                c.radius,
+                Draw::hex(&c.st.header.bg),
+                bm,
+            );
             lines(d, xs[j], yy, ws[j], hh, false, j > 0, bm);
             if let Some(p) = text_path(
                 d,
                 &ht,
                 &mc.col.label,
-                align_of(mc.col.align),
+                align_of(c.head_align.unwrap_or(mc.col.align)),
                 (xs[j] + pad, yy, ws[j] - 2.0 * pad, hh),
             ) {
                 d.fill(&p, Draw::hex(&c.st.header.color), FillRule::Winding, bm);
@@ -707,16 +716,23 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                     color = Draw::hex(&c.cell.color);
                 }
                 let x = xs[j];
-                rect(d, x, ry, w, rh, 0.0, bg, rm);
+                rect(d, x, ry, w, rh, c.radius, bg, rm);
                 lines(d, x, ry, w, rh, i > 0 || show_head || c.title.on, j > 0, rm);
-                if j == 0 && look.top3 {
+                if j == 0 && look.top3 && c.cf.top_bar {
                     rect(d, x, ry, 8.0, rh, 0.0, Draw::hex(&c.cf.top3_color), rm);
                 }
-                if j == 0 && look.hl {
-                    rect(d, x, ry, 8.0, rh, 0.0, Color::WHITE, rm);
+                if j == 0 && look.hl && c.cf.hl_bar {
+                    rect(d, x, ry, 8.0, rh, 0.0, Draw::hex(&c.cf.hl_bar_color), rm);
                 }
                 if kind == ColKind::Image {
-                    draw_picture(d, &txt, x + w / 2.0, ry + rh / 2.0, (rh * 0.5).round(), rm);
+                    cell_picture(
+                        d,
+                        &txt,
+                        &mc.col.img,
+                        align,
+                        (x + pad, ry, w - 2.0 * pad, rh),
+                        rm,
+                    );
                     continue;
                 }
                 // A colour swatch before the text (a colour column of the data).
@@ -783,13 +799,13 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         rect(d, d.w - bw, bw, bw, total_h - 2.0 * bw, 0.0, col, bm);
     }
     if c.indicator && pages > 1 && !scroll && !m.rows.is_empty() {
-        indicator(d, page, pages, total_h + 14.0, bm);
+        indicator(d, page, pages, total_h + 14.0, &c.indicator_color, bm);
     }
     true
 }
 
 /// The "● ● 2 / 4" pill under the table, right aligned.
-fn indicator(d: &mut Draw, page: usize, pages: usize, top: f32, m: Option<&Mask>) {
+fn indicator(d: &mut Draw, page: usize, pages: usize, top: f32, color: &str, m: Option<&Mask>) {
     let Some(f) = d.font(FAMILY, 800) else {
         return;
     };
@@ -816,7 +832,7 @@ fn indicator(d: &mut Draw, page: usize, pages: usize, top: f32, m: Option<&Mask>
     for i in 0..pages {
         let dw = if i == page { 30.0 } else { 12.0 };
         let col = if i == page {
-            Draw::hex("#ff3b5c")
+            Draw::hex(color)
         } else {
             with_alpha(Color::WHITE, 0.35)
         };
@@ -835,6 +851,114 @@ fn indicator(d: &mut Draw, page: usize, pages: usize, top: f32, m: Option<&Mask>
     ) {
         d.fill(&p, Color::WHITE, FillRule::Winding, m);
     }
+}
+
+/// A picture in its cell (x, y, w, h), set like the Image widget: fit, size, shape, opacity,
+/// a fallback when the cell is empty. Mirrors `CellPicture` of web/src/widgets/table.tsx.
+fn cell_picture(
+    d: &mut Draw,
+    v: &str,
+    p: &cg_core::wid::table::Pic,
+    align: Align,
+    (x, y, w, h): (f32, f32, f32, f32),
+    m: Option<&Mask>,
+) {
+    use cg_core::wid::table::{PicFit, PicMask};
+    let v = if v.trim().is_empty() {
+        p.fallback.trim()
+    } else {
+        v.trim()
+    };
+    if v.is_empty() || w <= 1.0 {
+        return;
+    }
+    let bh = (h * p.size.clamp(5.0, 100.0) / 100.0).round();
+    let img = if v.starts_with('/') || v.contains('.') {
+        d.image_size(v)
+    } else {
+        None
+    };
+    let mut bw = match (p.mask, p.fit, img) {
+        (PicMask::Circle, _, _) => bh,
+        (_, PicFit::Contain, Some((iw, ih))) => iw as f32 * bh / ih.max(1) as f32,
+        (_, PicFit::Contain, None) => bh * 1.5,
+        _ => w * p.width.clamp(5.0, 100.0) / 100.0,
+    };
+    bw = bw.min(w);
+    let bx = match align {
+        Align::Left => x,
+        Align::Center => x + (w - bw) / 2.0,
+        Align::Right => x + w - bw,
+    };
+    let by = y + (h - bh) / 2.0;
+    let r = match p.mask {
+        PicMask::None => 0.0,
+        PicMask::Rounded => p.radius,
+        PicMask::Circle => bh / 2.0,
+    };
+    // The shape, inside the clip already given.
+    let shape = rrect(bx, by, bw, bh, r).and_then(|path| {
+        let mut mk = Mask::new(d.pm.width(), d.pm.height())?;
+        mk.fill_path(&path, FillRule::Winding, true, d.tf);
+        if let Some(parent) = m.or(d.mask) {
+            for (a, b) in mk.data_mut().iter_mut().zip(parent.data()) {
+                *a = ((*a as u16 * *b as u16 + 127) / 255) as u8;
+            }
+        }
+        Some(mk)
+    });
+    let op0 = d.opacity;
+    d.opacity *= (p.opacity / 100.0).clamp(0.0, 1.0);
+    if let Some((iw, ih)) = img {
+        let (iw, ih) = (iw.max(1) as f32, ih.max(1) as f32);
+        let (sx, sy) = match p.fit {
+            PicFit::Contain => {
+                let s = (bw / iw).min(bh / ih);
+                (s, s)
+            }
+            PicFit::Cover => {
+                let s = (bw / iw).max(bh / ih);
+                (s, s)
+            }
+            PicFit::Stretch => (bw / iw, bh / ih),
+        };
+        let tf = Transform::from_row(
+            sx,
+            0.0,
+            0.0,
+            sy,
+            bx + (bw - iw * sx) / 2.0,
+            by + (bh - ih * sy) / 2.0,
+        );
+        d.image(v, tf, 1.0, shape.as_ref().or(m));
+    } else {
+        rect(
+            d,
+            bx,
+            by,
+            bw,
+            bh,
+            r.max(bh * 0.1),
+            Draw::hex("#334155"),
+            shape.as_ref().or(m),
+        );
+        let code: String = v.chars().take(3).collect::<String>().to_uppercase();
+        if let Some(f) = d.font(FAMILY, 700) {
+            if let Some(path) = Draw::text_path(
+                &f,
+                &code,
+                bh * 0.35,
+                0.0,
+                TextAlign::Center,
+                VerticalAlign::Middle,
+                (bx, by, bw, bh),
+                tx::LINE_HEIGHT,
+            ) {
+                d.fill(&path, Draw::hex("#cbd5e1"), FillRule::Winding, m);
+            }
+        }
+    }
+    d.opacity = op0;
 }
 
 /// A picture cell: an asset path is drawn at height `h`, a code as a grey chip.

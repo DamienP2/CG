@@ -13,6 +13,7 @@ import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { TableEditor } from '../widgets/table-editor';
+import { exposeRows } from '../widgets/table-rows';
 import { GuidesMenu, SafeMenu, SplitButton, useGuidesView } from './Guides';
 import { ProjectHistory, ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
@@ -392,7 +393,11 @@ export function Designer() {
       ...patch,
     } as Layer;
     if (name) l.name = name;
-    update((t) => void t.layers.push(l));
+    update((t) => {
+      t.layers.push(l);
+      // A table without a data set: the operator types its rows.
+      if (type === 'table') exposeRows(t, findLayer(t, l.id)!);
+    });
     select([l.id]);
   };
 

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import { rowKey, type Command, type Field, type Layer, type Marker, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
@@ -19,6 +19,7 @@ import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dat
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { TableRowsInput } from '../widgets/table-rows';
 import { Splitter, useLayout } from '../ui/Splitter';
 
 /*
@@ -69,6 +70,8 @@ export function FieldInput({ field, value, onChange }: { field: Field; value: st
       );
     case 'image':
       return <AssetPicker value={value} onChange={onChange} />;
+    case 'table':
+      return <TableRowsInput value={value} onChange={onChange} />;
     default:
       return <TextInput value={value} onChange={onChange} />;
   }
@@ -221,7 +224,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     if (!item) return;
     takeItem(item);
     // Select the next item of the playlist (a graphic with rows stays: its next row).
-    if (template?.datasets?.length) return;
+    if (template && usedDatasets(template).length) return;
     const idx = items.findIndex((r) => r.id === item.id);
     if (idx >= 0 && idx < items.length - 1) setCued(items[idx + 1].id);
   };
@@ -261,7 +264,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const itemZone = item ? zoneOf(item) : undefined;
   const fps = project.frameRate.num / project.frameRate.den || 1;
   // The data part only when the graphic reads data (a source or a data set).
-  const hasData = !!template && (!!template.datasets?.length || template.fields.some((f) => f.binding?.source));
+  const hasData = !!template && (!!usedDatasets(template).length || template.fields.some((f) => f.binding?.source));
 
   return (
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
@@ -443,7 +446,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                           const live = f.binding && readMode !== 'manual';
                           return (
                             <div key={f.key}>
-                              <Row label={label}>
+                              <Row label={f.kind === 'table' ? undefined : label}>
                                 {live ? (
                                   <span className="opx-bound" title={`${bindingLabel(f.binding!)} · ${sourceName(f.binding!.source)}, read ${readMode === 'live' ? 'live' : 'on take'}`}>
                                     {boundDraft[f.key] ?? draft[f.key] ?? '…'}
@@ -467,7 +470,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       .map((w) => (
                         <FitWarning key={w.layer.id} w={w} named />
                       ))}
-                    {template.datasets?.map((ds) => (
+                    {usedDatasets(template).map((ds) => (
                       <DataSetHand key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
                     ))}
                   </div>
@@ -497,7 +500,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       }}
                     />
                     <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
-                      {template.datasets?.map((ds, i) => (
+                      {usedDatasets(template).map((ds, i) => (
                         <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={i === 0} />
                       ))}
                     </DataBlock>
@@ -827,7 +830,7 @@ function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }:
       <div className="opx-data-title">Data</div>
       {children}
       {!used.length ? (
-        !template.datasets?.length && <p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
+        !usedDatasets(template).length && <p className="opx-hint">No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).</p>
       ) : (
         <>
           {used.map((s) => (
@@ -939,7 +942,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           <CircleStop size={14} /> Out
         </button>
       </div>
-      {!!t.datasets?.length && <AirRows sets={t.datasets} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
+      {!!usedDatasets(t).length && <AirRows sets={usedDatasets(t)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {t.layers
         .filter((l) => l.visible && (widgetOf(l.type)?.Operator || widgetOf(l.type)?.warnings))
         .map((l) => (
@@ -975,7 +978,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           ))}
         </div>
       )}
-      {!timed.length && !triggers.length && !t.datasets?.length && !t.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">This graphic has no internal controls.</p>}
+      {!timed.length && !triggers.length && !usedDatasets(t).length && !t.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">This graphic has no internal controls.</p>}
     </div>
   );
 }

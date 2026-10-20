@@ -3,6 +3,7 @@
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
 import { Pencil, Table } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useTableEditor } from './table-editor-store';
@@ -24,6 +25,9 @@ export interface Col {
   mark?: string;
   /** Its own text (unset = the text of all the rows). */
   txt?: Typo;
+  prefix?: string;
+  suffix?: string;
+  img?: Pic;
 }
 /** Typography of a level of the table; unset = the level's default (mirrors `Typo` of the Rust module). */
 export interface Typo {
@@ -73,7 +77,7 @@ export interface Config {
   st?: { header?: Pair; hcol?: Pair; odd?: Pair; even?: Pair; hl?: Pair; top3?: Pair; tableBg?: string };
   cell?: { on?: boolean; row?: number; col?: number; bg?: string; color?: string };
   borders?: { outer?: Line; innerH?: Line; innerV?: Line };
-  cf?: { neg?: boolean; negColor?: string; top3?: boolean; top3Color?: string };
+  cf?: { neg?: boolean; negColor?: string; top3?: boolean; top3Color?: string; topN?: number; topBar?: boolean; hlBar?: boolean; hlBarColor?: string };
   sortCol?: string;
   sortDir?: 'desc' | 'asc';
   perPage?: number;
@@ -93,6 +97,25 @@ export interface Config {
   titleColor?: string;
   /** 0 = 85 % of a row. */
   headH?: number;
+  titleFrom?: string;
+  titleTo?: string;
+  titleAlign?: 'left' | 'center' | 'right';
+  titlePad?: number;
+  /** Unset = each column's alignment. */
+  headAlign?: 'left' | 'center' | 'right' | null;
+  /** Corners of the cells, px. */
+  radius?: number;
+  indicatorColor?: string;
+}
+/** How a picture column draws its pictures (like the Image widget; mirrors `Pic`). */
+export interface Pic {
+  fit?: 'contain' | 'cover' | 'stretch';
+  size?: number;
+  width?: number;
+  mask?: 'none' | 'rounded' | 'circle';
+  radius?: number;
+  opacity?: number;
+  fallback?: string;
 }
 
 /** Mirrors `State` of the Rust module. */
@@ -109,7 +132,7 @@ export interface State {
 // ------------------------------------------------------------ defaults --
 const P = (bg: string, color: string) => ({ bg, color });
 export const DST = { header: P('#7c5cff', '#ffffff'), hcol: P('#232a4d', '#ffffff'), odd: P('#141a33', '#ffffff'), even: P('#1c2344', '#ffffff'), hl: P('#ff3b5c', '#ffffff'), top3: P('#2c2717', '#fff4cc'), tableBg: '#060812d9' };
-const DCOL: Required<Omit<Col, 'txt'>> & { txt?: Typo } = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '' };
+const DCOL: Required<Omit<Col, 'txt' | 'img'>> & { txt?: Typo; img?: Pic } = { src: '', label: '', type: 'text', align: 'left', w: 100, pct: 10, fmt: '0', on: true, mark: '', prefix: '', suffix: '' };
 export function cfg(c: Config) {
   const st = c.st ?? {};
   const b = c.borders ?? {};
@@ -134,7 +157,7 @@ export function cfg(c: Config) {
     st: { header: { ...DST.header, ...st.header }, hcol: { ...DST.hcol, ...st.hcol }, odd: { ...DST.odd, ...st.odd }, even: { ...DST.even, ...st.even }, hl: { ...DST.hl, ...st.hl }, top3: { ...DST.top3, ...st.top3 }, tableBg: st.tableBg ?? DST.tableBg },
     cell: { on: false, row: 1, col: 1, bg: '#facc15', color: '#111111', ...c.cell },
     borders: { outer: { on: false, width: 4, color: '#ffffff', ...b.outer }, innerH: { on: true, width: 1, color: '#ffffff14', ...b.innerH }, innerV: { on: false, width: 1, color: '#ffffff1f', ...b.innerV } },
-    cf: { neg: true, negColor: '#ff6b81', top3: false, top3Color: '#facc15', ...c.cf },
+    cf: { neg: true, negColor: '#ff6b81', top3: false, top3Color: '#facc15', topN: 3, topBar: true, hlBar: true, hlBarColor: '#ffffff', ...c.cf },
     sortCol: c.sortCol ?? '',
     sortDir: c.sortDir ?? 'desc',
     perPage: Math.max(1, c.perPage ?? 7),
@@ -151,6 +174,13 @@ export function cfg(c: Config) {
     titleBg: c.titleBg ?? '',
     titleColor: c.titleColor ?? '#ffffff',
     headH: c.headH ?? 0,
+    titleFrom: c.titleFrom ?? '#ff3b5c',
+    titleTo: c.titleTo ?? '#7c5cff',
+    titleAlign: c.titleAlign ?? 'left',
+    titlePad: c.titlePad ?? 24,
+    headAlign: c.headAlign ?? null,
+    radius: c.radius ?? 0,
+    indicatorColor: c.indicatorColor ?? '#ff3b5c',
   };
 }
 
@@ -245,7 +275,7 @@ export interface MRow {
   key: string;
   rank: number;
 }
-const RANK: typeof DCOL = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true, mark: '' };
+const RANK: typeof DCOL = { src: '', label: '#', type: 'number', align: 'center', w: 80, pct: 7, fmt: '0', on: true, mark: '', prefix: '', suffix: '' };
 export function model(k: K, data: Data) {
   const g = gridOf(k, data);
   const head = (g[0] ?? []).map((h) => String(h ?? '').trim());
@@ -282,7 +312,11 @@ export function model(k: K, data: Data) {
 }
 type M = ReturnType<typeof model>;
 export const pageCount = (k: K, m: M) => Math.max(1, Math.ceil(m.rows.length / k.perPage));
-export const cellText = (c: MCol, row: MRow) => (c.i === undefined ? String(row.rank) : c.col.type === 'number' ? fmtNum(row.r[c.i] ?? '', c.col.fmt) : String(row.r[c.i] ?? ''));
+export function cellText(c: MCol, row: MRow): string {
+  if (c.i === undefined) return String(row.rank);
+  const v = c.col.type === 'number' ? fmtNum(row.r[c.i] ?? '', c.col.fmt) : String(row.r[c.i] ?? '');
+  return c.col.type === 'image' || !v.trim() ? v : `${c.col.prefix ?? ''}${v}${c.col.suffix ?? ''}`;
+}
 function mergeOf(k: K, m: M, row: MRow): [number, number, string] | undefined {
   const g = k.merges.find((x) => x.on && +x.row === row.rank);
   if (!g) return;
@@ -343,6 +377,30 @@ export function widths(k: K, m: M, W: number, size: number): number[] {
   return nat.map((w, i) => (isText[i] ? (w * rest) / textNat : w));
 }
 
+/** A picture in its cell, set like the Image widget (mirrors cell_picture of cg-render table.rs). */
+export function CellPicture({ v, p = {}, align, box: [x, y, w, h] }: { v: string; p?: Pic; align: 'left' | 'center' | 'right'; box: [number, number, number, number] }) {
+  const [nat, setNat] = useState<[number, number] | null>(null);
+  const s = (v.trim() || p.fallback?.trim() || '').trim();
+  const isImg = s.startsWith('/') || s.includes('.');
+  useEffect(() => {
+    if (!isImg) return setNat(null);
+    const im = new Image();
+    im.onload = () => setNat([im.naturalWidth, im.naturalHeight]);
+    im.src = s;
+  }, [s, isImg]);
+  if (!s || w <= 1) return null;
+  const fit = p.fit ?? 'contain';
+  const mask = p.mask ?? 'none';
+  const bh = Math.round((h * Math.min(100, Math.max(5, p.size ?? 50))) / 100);
+  let bw = mask === 'circle' ? bh : fit === 'contain' ? (nat && isImg ? (nat[0] * bh) / Math.max(1, nat[1]) : bh * 1.5) : (w * Math.min(100, Math.max(5, p.width ?? 80))) / 100;
+  bw = Math.min(bw, w);
+  const bx = align === 'left' ? x : align === 'right' ? x + w - bw : x + (w - bw) / 2;
+  const r = mask === 'rounded' ? (p.radius ?? 8) : mask === 'circle' ? bh / 2 : 0;
+  const style: React.CSSProperties = { position: 'absolute', left: bx, top: y + (h - bh) / 2, width: bw, height: bh, borderRadius: Math.min(r, bw / 2, bh / 2), overflow: 'hidden', opacity: Math.min(1, Math.max(0, (p.opacity ?? 100) / 100)) };
+  if (isImg) return <img src={s} alt="" draggable={false} style={{ ...style, objectFit: fit === 'stretch' ? 'fill' : fit, display: 'block' }} />;
+  return <div style={{ ...style, borderRadius: Math.max(r, bh * 0.1), background: '#334155', color: '#cbd5e1', display: 'grid', placeItems: 'center', font: `700 ${bh * 0.35}px Inter, sans-serif` }}>{s.slice(0, 3).toUpperCase()}</div>;
+}
+
 /** A picture cell: an asset path, else a grey chip with the code. */
 export function Picture({ v, cx, cy, h }: { v: string; cx: number; cy: number; h: number }) {
   const s = v.trim();
@@ -393,17 +451,17 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
   out.push(<div key="bg" style={{ position: 'absolute', left: 0, top: 0, width: w, height: totalH, background: hex(k.st.tableBg) }} />);
   let yy = 0;
   if (k.title.on) {
-    out.push(<div key="title" style={{ position: 'absolute', left: 0, top: 0, width: w, height: TH, background: k.titleBg.trim() ? hex(k.titleBg) : 'linear-gradient(90deg,#ff3b5c,#7c5cff)' }} />);
-    out.push(<TextCell key="tt" t={titleText(k)} text={k.title.text} align="left" box={[24, 0, w - 48, TH]} color={hex(k.titleColor)} />);
+    out.push(<div key="title" style={{ position: 'absolute', left: 0, top: 0, width: w, height: TH, background: k.titleBg.trim() ? hex(k.titleBg) : `linear-gradient(90deg,${hex(k.titleFrom)},${hex(k.titleTo)})` }} />);
+    out.push(<TextCell key="tt" t={titleText(k)} text={k.title.text} align={k.titleAlign} box={[k.titlePad, 0, w - 2 * k.titlePad, TH]} color={hex(k.titleColor)} />);
     yy += TH + gap;
   }
   if (showHead) {
     const top = yy;
     const headT = headerText(k);
     m.cols.forEach((c, j) => {
-      out.push(<div key={`h${j}`} style={{ position: 'absolute', left: xs[j], top, width: ws[j], height: hh, background: hex(k.st.header.bg) }} />);
+      out.push(<div key={`h${j}`} style={{ position: 'absolute', left: xs[j], top, width: ws[j], height: hh, background: hex(k.st.header.bg), borderRadius: k.radius }} />);
       out.push(<span key={`hl${j}`}>{lines(false, j > 0, xs[j], top, ws[j], hh, `h${j}`)}</span>);
-      out.push(<TextCell key={`ht${j}`} t={headT} text={c.col.label} align={c.col.align} box={[xs[j] + pad, top, ws[j] - 2 * pad, hh]} color={hex(k.st.header.color)} />);
+      out.push(<TextCell key={`ht${j}`} t={headT} text={c.col.label} align={k.headAlign ?? c.col.align} box={[xs[j] + pad, top, ws[j] - 2 * pad, hh]} color={hex(k.st.header.color)} />);
     });
     yy += hh + gap;
   }
@@ -432,7 +490,7 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
         if (opacity <= 0.001) return;
       }
       const hl = !!row.key && row.key === st.hl;
-      const top3 = !hl && k.cf.top3 && row.rank <= 3;
+      const top3 = !hl && k.cf.top3 && row.rank <= Math.max(1, k.cf.topN);
       const base = hl ? k.st.hl : top3 ? k.st.top3 : row.rank % 2 ? k.st.odd : k.st.even;
       const merge = mergeOf(k, m, row);
       let skipTo = 0;
@@ -456,10 +514,10 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
         if (c.i === undefined && top3) color = k.cf.top3Color;
         if (k.cell.on && +k.cell.row === row.rank && +k.cell.col === j + 1) ((bg = k.cell.bg), (color = k.cell.color));
         const x = xs[j];
-        cells.push(<div key={`b${j}`} style={{ position: 'absolute', left: x, top: 0, width: cw, height: rh, background: hex(bg) }} />);
+        cells.push(<div key={`b${j}`} style={{ position: 'absolute', left: x, top: 0, width: cw, height: rh, background: hex(bg), borderRadius: k.radius }} />);
         cells.push(<span key={`l${j}`}>{lines(i > 0 || showHead || k.title.on, j > 0, x, 0, cw, rh, `c${j}`)}</span>);
-        if (j === 0 && top3) cells.push(<div key="t3" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(k.cf.top3Color) }} />);
-        if (j === 0 && hl) cells.push(<div key="hl" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: '#fff' }} />);
+        if (j === 0 && top3 && k.cf.topBar) cells.push(<div key="t3" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(k.cf.top3Color) }} />);
+        if (j === 0 && hl && k.cf.hlBar) cells.push(<div key="hl" style={{ position: 'absolute', left: x, top: 0, width: 8, height: rh, background: hex(k.cf.hlBarColor) }} />);
         // A colour swatch before the text (a colour column of the data).
         let tx0 = x + pad;
         const mi = type === 'text' && c.col.mark ? m.head.indexOf(c.col.mark) : -1;
@@ -469,7 +527,7 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
           cells.push(<div key={`m${j}`} style={{ position: 'absolute', left: tx0, top: (rh - s) / 2, width: s, height: s, borderRadius: s * 0.2, background: hex(mv) }} />);
           tx0 += s * 1.6;
         }
-        if (type === 'image') cells.push(<Picture key={`p${j}`} v={txt} cx={x + cw / 2} cy={rh / 2} h={Math.round(rh * 0.5)} />);
+        if (type === 'image') cells.push(<CellPicture key={`p${j}`} v={txt} p={c.col.img} align={align} box={[x + pad, 0, cw - 2 * pad, rh]} />);
         else {
           const t = merge && merge[0] === j ? { ...rowsT } : { ...colTs[j] };
           const kw = hl ? k.kw.hl : top3 ? k.kw.top3 : row.rank % 2 ? k.kw.odd : k.kw.even;
@@ -494,7 +552,7 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
     out.push(
       <div key="ind" style={{ position: 'absolute', right: 0, top: totalH + 14, display: 'flex', alignItems: 'center', gap: 8, font: `800 24px ${'Inter, sans-serif'}`, lineHeight: 1.2, color: '#fff', background: 'rgba(11,13,24,.8)', padding: '8px 16px', borderRadius: 24, whiteSpace: 'nowrap' }}>
         {Array.from({ length: pages }, (_, i) => (
-          <i key={i} style={{ width: i === page ? 30 : 12, height: 12, borderRadius: 6, background: i === page ? '#ff3b5c' : 'rgba(255,255,255,.35)', display: 'inline-block' }} />
+          <i key={i} style={{ width: i === page ? 30 : 12, height: 12, borderRadius: 6, background: i === page ? hex(k.indicatorColor) : 'rgba(255,255,255,.35)', display: 'inline-block' }} />
         ))}
         <span style={{ marginLeft: 6 }}>
           {page + 1} / {pages}

@@ -140,7 +140,7 @@ export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | {
 /** Marker model of templates made by this version (see Template.markerModel). */
 export const MARKER_MODEL = 2;
 
-export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean';
+export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean' | 'table';
 
 export interface Field {
   key: string;
@@ -209,6 +209,20 @@ export const tableKey = (key: string) => `${key}__table`;
 export const linesKey = (key: string) => `${key}__lines`;
 export const oneKey = (key: string) => `${key}__one`;
 export const columnKey = (key: string, column: string) => `${key}_${column.replace(/[^A-Za-z0-9]/g, '_')}`;
+
+const usedCache = new WeakMap<object, DataSet[]>();
+/** The data sets the graphic really reads: a key of theirs (row, column, all rows) appears in its layers,
+ * variables or logic. A data set node left in the Data canvas, wired to nothing, is not shown to the Operator. */
+export function usedDatasets(t: Pick<Template, 'datasets' | 'layers' | 'fields' | 'logic'>): DataSet[] {
+  const sets = t.datasets ?? [];
+  if (!sets.length) return sets;
+  const hit = usedCache.get(t);
+  if (hit) return hit;
+  const text = JSON.stringify([t.layers, t.fields, t.logic ?? null]);
+  const out = sets.filter((d) => text.includes(`${d.key}_`));
+  usedCache.set(t, out);
+  return out;
+}
 
 /** A node of the Data canvas graph: a source's list, a step, or a data set. */
 export type FlowNode = { id: string; x: number; y: number } & ({ type: 'source'; source: string; list: string } | DataStep | { type: 'dataset'; key: string; name: string; change: RowChange });

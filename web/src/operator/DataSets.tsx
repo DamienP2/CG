@@ -13,6 +13,7 @@ import { pipeline, useData, type Stage } from "../data/dataStore";
 import { Cell } from "../designer/DataCanvas";
 import { holdFrame } from "../engine/evaluate";
 import {
+  usedDatasets,
   columnKey,
   linesKey,
   oneKey,
@@ -471,7 +472,7 @@ export function DataSetHand({
       <span className="opx-label">
         <span>
           <PenLine size={12} /> Values by hand
-          {template.datasets && template.datasets.length > 1
+          {usedDatasets(template).length > 1
             ? ` · ${ds.name}`
             : ""}
         </span>

@@ -16,18 +16,16 @@ import { Btns, Bound, Content, getPath, GridEditor, Note, Num, Row, Section, Seg
 import { cfg, colText, ColorPickRow, DST, FMTS, headerH, headerText, model, rowsText, TableRender, titleH, titleText, widths, type Col, type Config } from './table';
 import { colFor } from './table-build';
 import { useTableEditor } from './table-editor-store';
+import { exposeRows, unexposeRows } from './table-rows';
 import type { CellText } from './table-text';
 
 type TL = Layer & Config;
-type Kind = 'odd' | 'even' | 'hl' | 'top3' | 'hcol';
-type Sel = { k: 'table' } | { k: 'title' } | { k: 'header' } | { k: 'rows' } | { k: 'kind'; id: Kind } | { k: 'rank' } | { k: 'col'; i: number };
-const KIND_NAMES: Record<Kind, string> = { odd: 'Odd rows', even: 'Even rows', hl: 'Highlighted row', top3: 'Top 3', hcol: 'Header column' };
+type Sel = { k: 'table' } | { k: 'title' } | { k: 'header' } | { k: 'rows' } | { k: 'rank' } | { k: 'col'; i: number };
 const TYPE_ABBR: Record<string, string> = { text: 'txt', number: 'num', image: 'pic' };
 type Edit = (fn: (l: TL) => void, key?: string) => void;
 type Set = (path: string, v: unknown, coalesce?: boolean) => void;
 type K = ReturnType<typeof cfg>;
 type Live = ReturnType<typeof model>;
-const sumOf = (t: CellText) => `${t.family.split(' ')[0]} ${t.weight} · ${Math.round(t.size)}`;
 
 /** The editor of the Table being edited, if any (mounted once by the Designer). */
 export function TableEditor() {
@@ -64,7 +62,7 @@ function sampleGrid(cols: Col[]): string[][] {
 function Editor({ layer, template, data, onClose }: { layer: TL; template: Template; data: Data; onClose: () => void }) {
   const { update, undo, redo, past, future } = useDesigner();
   const frame = useDesigner((s) => s.frame);
-  const [sel, setSel] = useState<Sel>({ k: 'rows' });
+  const [sel, setSel] = useState<Sel>({ k: 'table' });
   const k = cfg(layer);
   const live = model(k, data);
   const [sample, setSample] = useState(() => !live.rows.length && k.cols.length > 0);
@@ -97,6 +95,18 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
   const ds = dsKey ? template.datasets?.find((d) => d.key === dsKey) : undefined;
   const source = ds ? `${ds.name} · ${live.rows.length} rows` : k.link.trim() ? `Linked data · ${live.rows.length} rows` : `Rows by hand · ${live.rows.length}`;
   const add = () => addCol(edit, ensureCols, live, setSel);
+  // Rows typed by the operator (a table without a data set).
+  const linked = /\{\{\w+\}\}/.test(k.link);
+  const opRows = { show: !linked, on: !!layer.settingBindings?.grid, toggle: () => update((t) => (layer.settingBindings?.grid ? unexposeRows : exposeRows)(t, findLayer(t, layer.id)!)) };
+  // The rows typed here are also where the Operator starts from.
+  const setGrid = (g: string[][]) =>
+    update((t) => {
+      const l = findLayer(t, layer.id) as TL;
+      l.grid = g;
+      const key = l.settingBindings?.grid;
+      const f = key ? t.fields.find((x) => x.key === key) : undefined;
+      if (f) f.default = JSON.stringify(g);
+    }, `grid-${layer.id}`);
 
   return (
     <div className="logic-editor te-full" role="dialog" aria-label={`Table editor: ${layer.name}`}>
@@ -123,11 +133,11 @@ function Editor({ layer, template, data, onClose }: { layer: TL; template: Templ
       <div className="te-body">
         <Bound obj={layer} set={set} data={data}>
           <aside className="te-left">
-            <Structure k={k} cols={cols} live={live} size={size} sel={sel} setSel={setSel} selectCol={selectCol} edit={edit} ensureCols={ensureCols} add={add} />
+            <Structure k={k} cols={cols} live={live} opRows={opRows} sel={sel} setSel={setSel} selectCol={selectCol} edit={edit} ensureCols={ensureCols} add={add} />
           </aside>
           <TableCanvas layer={shown} template={template} data={data} frame={frame} sel={sel} setSel={setSel} selectCol={selectCol} page={page} setPage={setPage} edit={edit} ensureCols={ensureCols} add={add} />
           <aside className="te-right">
-            <Settings layer={layer} k={k} live={live} size={size} sel={sel} setSel={setSel} edit={edit} set={set} dsName={ds?.name} />
+            <Settings layer={layer} k={k} live={live} size={size} setGrid={setGrid} sel={sel} setSel={setSel} edit={edit} set={set} dsName={ds?.name} />
           </aside>
         </Bound>
       </div>
@@ -149,29 +159,15 @@ function addCol(edit: Edit, ensureCols: (l: TL) => void, live: Live, setSel: (s:
 }
 
 // ------------------------------------------------------------ left --
-function Structure({ k, cols, live, size, sel, setSel, selectCol, edit, ensureCols, add }: { k: K; cols: K['cols']; live: Live; size: number; sel: Sel; setSel: (s: Sel) => void; selectCol: (i: number) => void; edit: Edit; ensureCols: (l: TL) => void; add: () => void }) {
+function Structure({ k, cols, live, opRows, sel, setSel, selectCol, edit, ensureCols, add }: { k: K; cols: K['cols']; live: Live; opRows: { show: boolean; on: boolean; toggle: () => void }; sel: Sel; setSel: (s: Sel) => void; selectCol: (i: number) => void; edit: Edit; ensureCols: (l: TL) => void; add: () => void }) {
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
   const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
-  const is = (s: Sel) => JSON.stringify(s) === JSON.stringify(sel);
-  const tog = (label: string, on: boolean, fn: (l: TL, v: boolean) => void) => (
-    <button className={`te-tog ${on ? 'on' : ''}`} onClick={() => edit((l) => fn(l, !on))}>
+  const tog = (label: string, on: boolean, fn: (l: TL, v: boolean) => void, title?: string) => (
+    <button className={`te-tog ${on ? 'on' : ''}`} title={title} onClick={() => edit((l) => fn(l, !on))}>
       <span>{label}</span>
       <i />
     </button>
   );
-  const item = (s: Sel, name: string, right: ReactNode) => (
-    <button className={`te-item ${is(s) ? 'on' : ''}`} onClick={() => setSel(s)}>
-      <span className="te-nm">{name}</span>
-      {right}
-    </button>
-  );
-  const pair = (a: string, b: string) => (
-    <span className="te-pair">
-      <i style={{ background: a }} />
-      <i style={{ background: b }} />
-    </span>
-  );
-  const lv = (t: CellText) => <span className="te-lv">{sumOf(t)}</span>;
   const move = (from: number, to: number) => {
     if (from === to) return;
     edit((l) => {
@@ -182,41 +178,16 @@ function Structure({ k, cols, live, size, sel, setSel, selectCol, edit, ensureCo
     if (sel.k === 'col' && sel.i === from) setSel({ k: 'col', i: to });
   };
   const unmapped = k.cols.length ? live.unmapped : [];
+  const firstNum = cols.find((c) => c.on && c.type === 'number')?.src ?? cols[0]?.src ?? '';
   return (
     <>
-      <div className="te-sec">
-        <span className="te-lbl">Table</span>
-        {item({ k: 'table' }, 'Pages, animation, sort', null)}
-        {tog('Title bar', k.title.on, (l, v) => void (l.title = { ...l.title, on: v }))}
-        {tog('Header row', k.headerRow, (l, v) => void (l.headerRow = v))}
-        {tog('Rank column', k.showRank, (l, v) => void (l.showRank = v))}
-        {tog('Header column', k.headerColOn, (l, v) => {
-          l.headerColOn = v;
-          if (v && !l.headerCol) l.headerCol = cols.find((c) => c.type === 'text')?.src ?? '';
-        })}
-      </div>
-      <div className="te-sec">
-        <span className="te-lbl">Title &amp; header</span>
-        {k.title.on && item({ k: 'title' }, 'Title bar', lv(titleText(k)))}
-        {k.headerRow && item({ k: 'header' }, 'Header row', lv(headerText(k)))}
-        {!k.title.on && !k.headerRow && <p className="te-hint">Turn on the title bar or the header row above.</p>}
-      </div>
-      <div className="te-sec">
-        <span className="te-lbl">Rows</span>
-        {item({ k: 'rows' }, 'All rows', lv(rowsText(k, size)))}
-        {item({ k: 'kind', id: 'odd' }, 'Odd rows', pair(k.st.odd.bg, k.st.odd.color))}
-        {item({ k: 'kind', id: 'even' }, 'Even rows', zebra ? pair(k.st.even.bg, k.st.even.color) : <span className="te-ty">as odd</span>)}
-        {item({ k: 'kind', id: 'hl' }, 'Highlighted row', pair(k.st.hl.bg, k.st.hl.color))}
-        {item({ k: 'kind', id: 'top3' }, 'Top 3', k.cf.top3 ? pair(k.st.top3.bg, k.cf.top3Color) : <span className="te-ty">off</span>)}
-        {k.headerColOn && item({ k: 'kind', id: 'hcol' }, 'Header column', pair(k.st.hcol.bg, k.st.hcol.color))}
-      </div>
       <div className="te-sec">
         <span className="te-lbl">Columns</span>
         {k.showRank && (
           <button className={`te-item ${sel.k === 'rank' ? 'on' : ''}`} onClick={() => setSel({ k: 'rank' })}>
             <span className="te-grip" />
             <span className="te-nm"># Rank</span>
-            <span className={`te-aa ${k.txt.rank ? 'own' : ''}`} title={k.txt.rank ? 'Its own text' : 'Text of All rows'}>
+            <span className={`te-aa ${k.txt.rank ? 'own' : ''}`} title={k.txt.rank ? 'Its own text' : 'Text of the rows'}>
               Aa
             </span>
             <span className="te-ty">auto</span>
@@ -254,9 +225,11 @@ function Structure({ k, cols, live, size, sel, setSel, selectCol, edit, ensureCo
                 <GripVertical size={12} />
               </span>
               <span className="te-nm">{c.label || c.src || '—'}</span>
-              <span className={`te-aa ${c.txt ? 'own' : ''}`} title={c.txt ? 'Its own text' : 'Text of All rows'}>
-                Aa
-              </span>
+              {c.type !== 'image' && (
+                <span className={`te-aa ${c.txt ? 'own' : ''}`} title={c.txt ? 'Its own text' : 'Text of the rows'}>
+                  Aa
+                </span>
+              )}
               {missing ? (
                 <span className="te-warn" title={`'${c.src}' is not in the data`}>
                   <TriangleAlert size={12} />
@@ -301,6 +274,36 @@ function Structure({ k, cols, live, size, sel, setSel, selectCol, edit, ensureCo
         <button className="te-add" onClick={add}>
           <Plus size={12} /> Column
         </button>
+      </div>
+      <div className="te-sec">
+        <span className="te-lbl">Display</span>
+        {tog('Title bar', k.title.on, (l, v) => void (l.title = { ...l.title, on: v }))}
+        {tog('Header row', k.headerRow, (l, v) => void (l.headerRow = v))}
+        {tog('Rank column', k.showRank, (l, v) => void (l.showRank = v))}
+        {tog('Header column', k.headerColOn, (l, v) => {
+          l.headerColOn = v;
+          if (v && !l.headerCol) l.headerCol = cols.find((c) => c.type === 'text')?.src ?? '';
+        })}
+        {tog('Page dots', k.indicator, (l, v) => void (l.indicator = v), 'Under the table, when there are several pages')}
+      </div>
+      <div className="te-sec">
+        <span className="te-lbl">Options</span>
+        {opRows.show && (
+          <button className={`te-tog ${opRows.on ? 'on' : ''}`} title="The operator types the rows or imports a CSV in the Operator" onClick={opRows.toggle}>
+            <span>Rows typed in the Operator</span>
+            <i />
+          </button>
+        )}
+        {tog('Odd / even rows differ', zebra, (l, v) => void (l.st = { ...l.st, even: v ? { ...(k.st.odd.bg === DST.even.bg ? DST.odd : DST.even), color: k.st.odd.color } : { ...k.st.odd } }))}
+        {tog('Top rows', k.cf.top3, (l, v) => void (l.cf = { ...l.cf, top3: v }), 'The first rows marked; how many in the rows settings')}
+        {tog('Highlight marker', k.cf.hlBar, (l, v) => void (l.cf = { ...l.cf, hlBar: v }), 'A bar on the row the operator highlights')}
+        {tog('Negatives in colour', k.cf.neg, (l, v) => void (l.cf = { ...l.cf, neg: v }))}
+        {tog('Sort', !!k.sortCol, (l, v) => void (l.sortCol = v ? firstNum : ''))}
+        {tog('Rows come in animated', k.cascade.on, (l, v) => void (l.cascade = { ...l.cascade, on: v }))}
+        {tog('Lines between rows', k.borders.innerH.on, (l, v) => void (l.borders = { ...l.borders, innerH: { ...k.borders.innerH, on: v } }))}
+        {tog('Lines between columns', k.borders.innerV.on, (l, v) => void (l.borders = { ...l.borders, innerV: { ...k.borders.innerV, on: v } }))}
+        {tog('Outer border', k.borders.outer.on, (l, v) => void (l.borders = { ...l.borders, outer: { ...k.borders.outer, on: v } }))}
+        {tog('Scroll instead of pages', k.pageMode === 'scroll', (l, v) => void (l.pageMode = v ? 'scroll' : 'pages'))}
       </div>
     </>
   );
@@ -357,7 +360,6 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
     return k.cols.length ? k.cols.findIndex((c) => c.on && c.src === mc.col.src) : m.head.filter(Boolean).indexOf(mc.col.src);
   };
   const selJ = sel.k === 'col' ? m.cols.findIndex((_, j) => colIndex(j) === sel.i) : sel.k === 'rank' ? m.cols.findIndex((c) => c.i === undefined) : -1;
-  const kindOf = (rank: number): Kind => (k.cf.top3 && rank <= 3 ? 'top3' : rank % 2 ? 'odd' : 'even');
   const pickCol = (j: number) => {
     if (m.cols[j]?.i === undefined) setSel({ k: 'rank' });
     else if (colIndex(j) >= 0) selectCol(colIndex(j));
@@ -462,26 +464,17 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
             <TableRender layer={layer} r={r as never} w={W} data={data} time={{ nowMs: Date.now(), ageSecs: 60 }} state={{ page: pg }} />
           </div>
           {k.title.on && Z({ x: 0, y: 0, w: W, h: TH, cls: `title ${sel.k === 'title' ? 'on' : ''}`, title: 'Title bar', onClick: () => setSel({ k: 'title' }) })}
-          {list.map((row, i) => {
-            const kind = kindOf(row.rank);
-            const on = sel.k === 'rows' || (sel.k === 'kind' && sel.id === kind);
-            return <div key={i}>{Z({ x: 0, y: bodyY + i * step, w: W, h: k.rowH, cls: `row ${on ? 'on' : ''}`, title: `All rows · ${KIND_NAMES[kind]}`, onClick: () => setSel({ k: 'rows' }) })}</div>;
-          })}
+          {list.map((_, i) => (
+            <div key={i}>{Z({ x: 0, y: bodyY + i * step, w: W, h: k.rowH, cls: `row ${sel.k === 'rows' ? 'on' : ''}`, title: 'Rows', onClick: () => setSel({ k: 'rows' }) })}</div>
+          ))}
           {selJ >= 0 && Z({ x: xs[selJ], y: 0, w: ws[selJ], h: totalH, cls: 'colsel' })}
-          {showHead && (
-            <>
-              {Z({ x: 0, y: headY, w: W, h: hh, cls: `headband ${sel.k === 'header' ? 'on' : ''}` })}
-              {m.cols.map((c, j) => (
-                <div key={j}>{Z({ x: xs[j], y: headY, w: ws[j], h: hh, cls: `head ${j === selJ ? 'on' : ''}`, title: c.i === undefined ? 'Rank column' : `Column ${c.col.label || c.col.src}`, onClick: () => pickCol(j) })}</div>
-              ))}
-            </>
-          )}
-          {!showHead &&
-            m.cols.map((c, j) => (
-              <div key={`c${j}`} className={`te-zone chead ${j === selJ ? 'on' : ''}`} style={{ left: xs[j] * s, top: -24, width: ws[j] * s, height: 18 }} onClick={(e) => (e.stopPropagation(), pickCol(j))}>
-                <span>{c.i === undefined ? '#' : c.col.label || c.col.src}</span>
-              </div>
-            ))}
+          {showHead && Z({ x: 0, y: headY, w: W, h: hh, cls: `head ${sel.k === 'header' ? 'on' : ''}`, title: 'Header row', onClick: () => setSel({ k: 'header' }) })}
+          {/* Column tabs above the table: a click selects the column. */}
+          {m.cols.map((c, j) => (
+            <div key={`c${j}`} className={`te-zone chead ${j === selJ ? 'on' : ''}`} title={c.i === undefined ? 'Rank column' : `Column ${c.col.label || c.col.src}`} style={{ left: xs[j] * s, top: -28, width: ws[j] * s, height: 20 }} onClick={(e) => (e.stopPropagation(), pickCol(j))}>
+              <span>{c.i === undefined ? '#' : c.col.label || c.col.src}</span>
+            </div>
+          ))}
           {/* Quick-edit handles */}
           {m.cols.map((c, j) =>
             j < m.cols.length - 1 && c.i !== undefined && m.cols[j + 1].i !== undefined ? <div key={`rz${j}`} className="te-cw" title="Column width" style={{ left: (xs[j] + ws[j] + k.gap / 2) * s - 3, top: (showHead ? headY + hh / 2 : bodyY + k.rowH / 2) * s - 14 }} onPointerDown={(e) => resize(e, j)} onClick={(e) => e.stopPropagation()} /> : null,
@@ -501,7 +494,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
           </div>
           <button
             className="te-plus"
-            style={{ left: W * s - 26, top: -36 }}
+            style={{ left: W * s + 8, top: -31 }}
             title="Add a column"
             onClick={(e) => {
               e.stopPropagation();
@@ -662,10 +655,16 @@ function Colours({ path }: { path: string }) {
   );
 }
 
-function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { layer: TL; k: K; live: Live; size: number; sel: Sel; setSel: (s: Sel) => void; edit: Edit; set: Set; dsName?: string }) {
+function Settings({ layer, k, live, size, setGrid, sel, setSel, edit, set, dsName }: { layer: TL; k: K; live: Live; size: number; setGrid: (g: string[][]) => void; sel: Sel; setSel: (s: Sel) => void; edit: Edit; set: Set; dsName?: string }) {
   const head = live.head.filter(Boolean);
   const colOpts: [string, string][] = k.cols.map((c) => [c.src, c.label || c.src]);
   const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
+  const wOpts: [number, string][] = [[0, 'Like the rows'], ...[400, 500, 600, 700, 800, 900].map((w) => [w, WEIGHT_NAMES[w]] as [number, string])];
+  const ALIGN: [string, string][] = [
+    ['left', 'Left'],
+    ['center', 'Centre'],
+    ['right', 'Right'],
+  ];
   const title = (badge: string, name: string, extra?: ReactNode) => (
     <div className="te-selname">
       <span className="te-badge">{badge}</span>
@@ -675,14 +674,15 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
   );
   const toRows = (
     <button className="te-link" onClick={() => setSel({ k: 'rows' })}>
-      Edit All rows →
+      Edit the rows' text →
     </button>
   );
 
   if (sel.k === 'title') {
+    const grad = !k.titleBg.trim();
     return (
       <div className="te-form">
-        {title('Title & header', 'Title bar')}
+        {title('Title', 'Title bar')}
         <Section id="te-ti-content" title="Content">
           <Content label="Text" path="title.text" value={k.title.text} />
         </Section>
@@ -690,18 +690,27 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
         <Section id="te-ti-col" title="Colours">
           <Seg
             label="Background"
-            value={k.titleBg.trim() ? 'solid' : 'grad'}
-            onChange={(v) => set('titleBg', v === 'solid' ? '#7c5cff' : '')}
+            value={grad ? 'grad' : 'solid'}
+            onChange={(v) => set('titleBg', v === 'solid' ? k.titleTo : '')}
             options={[
               ['grad', 'Gradient'],
               ['solid', 'Solid'],
             ]}
           />
-          {!!k.titleBg.trim() && <ColorPickRow label="Colour" path="titleBg" value={k.titleBg} />}
+          {grad ? (
+            <>
+              <ColorPickRow label="From" path="titleFrom" value={k.titleFrom} />
+              <ColorPickRow label="To" path="titleTo" value={k.titleTo} />
+            </>
+          ) : (
+            <ColorPickRow label="Colour" path="titleBg" value={k.titleBg} />
+          )}
           <ColorPickRow label="Text" path="titleColor" value={k.titleColor} />
         </Section>
-        <Section id="te-ti-size" title="Size">
+        <Section id="te-ti-layout" title="Layout">
           <Num label="Height" path="titleH" value={k.titleH} min={20} max={300} unit="px" />
+          <Seg label="Align" path="titleAlign" value={k.titleAlign} options={ALIGN} />
+          <Num label="Side margin" path="titlePad" value={k.titlePad} min={0} max={300} unit="px" />
         </Section>
       </div>
     );
@@ -709,103 +718,88 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
   if (sel.k === 'header') {
     return (
       <div className="te-form">
-        {title('Title & header', 'Header row')}
+        {title('Header', 'Header row')}
         <TextSections id="hd" path="txt.header" t={headerText(k)} />
         <Section id="te-hd-col" title="Colours">
           <Colours path="st.header" />
         </Section>
-        <Section id="te-hd-size" title="Size">
+        <Section id="te-hd-layout" title="Layout">
           <Num label="Height" expose="headH" exposeValue={headerH(k)} value={headerH(k)} min={16} max={300} unit="px" onChange={(v) => set('headH', v, true)} />
+          <Seg label="Align" value={k.headAlign ?? 'cols'} onChange={(v) => set('headAlign', v === 'cols' ? null : v)} options={[['cols', 'Columns'], ...ALIGN]} />
+          {k.pageMode === 'pages' && <Toggle label="Each page" path="repeatHeader" value={k.repeatHeader} text="Repeat on every page" />}
         </Section>
-        {k.pageMode === 'pages' && (
-          <Section id="te-hd-pages" title="On every page">
-            <Toggle label="Repeat" path="repeatHeader" value={k.repeatHeader} text="Repeat on every page" />
-          </Section>
-        )}
       </div>
     );
   }
   if (sel.k === 'rows') {
     return (
       <div className="te-form">
-        {title('Rows', 'All rows')}
-        <p className="te-hint pad">The text of every row. Odd, even, highlighted and top 3 rows only change their colours and weight.</p>
+        {title('Rows', 'All the rows')}
         <TextSections id="rw" path="txt.rows" t={rowsText(k, size)} />
-        <Section id="te-rw-size" title="Size & spacing">
-          <Num label="Row height" path="rowH" value={k.rowH} min={30} max={300} unit="px" />
-          <Num label="Padding" path="pad" value={k.pad} min={0} max={200} unit="px" />
-          <Num label="Gap" path="gap" value={k.gap} min={0} max={100} unit="px" />
+        <Section id="te-rw-col" title={zebra ? 'Odd rows' : 'Colours'}>
+          <Colours path="st.odd" />
+          <Select label="Weight" path="kw.odd" value={k.kw.odd ?? 0} options={wOpts} />
         </Section>
-        <Section id="te-rw-num" title="Numbers" closed>
-          <Toggle label="Negative" path="cf.neg" value={k.cf.neg} text="In their own colour" />
-          {k.cf.neg && <ColorPickRow label="Colour" path="cf.negColor" value={k.cf.negColor} />}
-        </Section>
-        <Section id="te-rw-lines" title="Lines between rows" closed>
-          <Toggle label="Shown" path="borders.innerH.on" value={k.borders.innerH.on} />
-          {k.borders.innerH.on && (
-            <>
-              <Num label="Width" path="borders.innerH.width" value={k.borders.innerH.width} min={1} max={50} unit="px" />
-              <ColorPickRow label="Colour" path="borders.innerH.color" value={k.borders.innerH.color} />
-            </>
-          )}
-        </Section>
-      </div>
-    );
-  }
-  if (sel.k === 'kind') {
-    const id = sel.id;
-    if (id === 'hcol') {
-      return (
-        <div className="te-form">
-          {title('Rows', 'Header column')}
-          <Section id="te-hc" title="Column">
-            <Toggle label="Shown" path="headerColOn" value={k.headerColOn} />
-            <Select label="Column" path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />
-          </Section>
-          <Section id="te-hc-col" title="Colours">
-            <Colours path="st.hcol" />
-          </Section>
-        </div>
-      );
-    }
-    const active = (id !== 'even' || zebra) && (id !== 'top3' || k.cf.top3);
-    const wOpts: [number, string][] = [[0, 'Like All rows'], ...[400, 500, 600, 700, 800, 900].map((w) => [w, WEIGHT_NAMES[w]] as [number, string])];
-    return (
-      <div className="te-form">
-        {title('Rows', KIND_NAMES[id])}
-        <Section id={`te-k-${id}-col`} title="Colours">
-          {id === 'even' && <Toggle label="Zebra" value={zebra} text="Different from odd rows" onChange={(v) => set('st.even', v ? { ...(k.st.odd.bg === DST.even.bg ? DST.odd : DST.even), color: k.st.odd.color } : { ...k.st.odd })} />}
-          {id === 'top3' && <Toggle label="Shown" path="cf.top3" value={k.cf.top3} text="Mark the first 3 rows" />}
-          {active ? (
-            <>
-              <Colours path={`st.${id}`} />
-              {id === 'top3' && <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />}
-            </>
-          ) : (
-            <Note>{id === 'even' ? 'Even rows use the colours of the odd rows.' : 'Off.'}</Note>
-          )}
-        </Section>
-        {active && (
-          <Section id={`te-k-${id}-text`} title="Text">
-            <Select label="Weight" path={`kw.${id}`} value={k.kw[id] ?? 0} options={wOpts} />
-            <Note>Font, size and the rest come from All rows. {toRows}</Note>
+        {zebra && (
+          <Section id="te-rw-even" title="Even rows">
+            <Colours path="st.even" />
+            <Select label="Weight" path="kw.even" value={k.kw.even ?? 0} options={wOpts} />
           </Section>
         )}
-        {id === 'hl' && <p className="te-hint pad">The operator picks the row in the Operator.</p>}
+        {k.cf.top3 && (
+          <Section id="te-rw-top" title="Top rows">
+            <Num label="How many" path="cf.topN" value={k.cf.topN} min={1} max={50} />
+            <Colours path="st.top3" />
+            <Toggle label="Accent bar" path="cf.topBar" value={k.cf.topBar} text="On the left" />
+            <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />
+            <Select label="Weight" path="kw.top3" value={k.kw.top3 ?? 0} options={wOpts} />
+          </Section>
+        )}
+        <Section id="te-rw-hl" title="Highlighted row" closed>
+          <Colours path="st.hl" />
+          {k.cf.hlBar && <ColorPickRow label="Marker" path="cf.hlBarColor" value={k.cf.hlBarColor} />}
+          <Select label="Weight" path="kw.hl" value={k.kw.hl ?? 0} options={wOpts} />
+          <Note>The operator picks the row in the Operator.</Note>
+        </Section>
+        {k.headerColOn && (
+          <Section id="te-rw-hcol" title="Header column">
+            <Select label="Column" path="headerCol" value={k.headerCol} options={colOpts.length ? colOpts : [['', '—']]} />
+            <Colours path="st.hcol" />
+          </Section>
+        )}
+        <Section id="te-rw-size" title="Size & spacing">
+          <Num label="Row height" path="rowH" value={k.rowH} min={20} max={300} unit="px" />
+          <Num label="Padding" path="pad" value={k.pad} min={0} max={200} unit="px" />
+          <Num label="Gap" path="gap" value={k.gap} min={0} max={100} unit="px" />
+          <Num label="Corners" path="radius" value={k.radius} min={0} max={100} unit="px" />
+        </Section>
+        {k.cf.neg && (
+          <Section id="te-rw-num" title="Negative numbers" closed>
+            <ColorPickRow label="Colour" path="cf.negColor" value={k.cf.negColor} />
+          </Section>
+        )}
+        {k.borders.innerH.on && (
+          <Section id="te-rw-lines" title="Lines between rows" closed>
+            <Num label="Width" path="borders.innerH.width" value={k.borders.innerH.width} min={1} max={50} unit="px" />
+            <ColorPickRow label="Colour" path="borders.innerH.color" value={k.borders.innerH.color} />
+          </Section>
+        )}
       </div>
     );
   }
   if (sel.k === 'rank' || sel.k === 'col') {
     const rank = sel.k === 'rank';
-    const c = rank ? undefined : k.cols[sel.i];
+    const i = rank ? -1 : sel.i;
+    const c = rank ? undefined : k.cols[i];
     if (!rank && !c) return <Note>Select a column.</Note>;
-    const p = rank ? 'txt.rank' : `cols.${(sel as { i: number }).i}.txt`;
+    const p = rank ? 'txt.rank' : `cols.${i}.txt`;
     const own = rank ? k.txt.rank : c!.txt;
     const t = colText(k, rank ? { col: { type: 'number' } as never } : { col: c as never, i: 0 }, size);
-    const i = rank ? -1 : (sel as { i: number }).i;
     const cp = `cols.${i}`;
-    const srcs = [...new Set([...head, c?.src ?? ''])].filter(Boolean).map((h) => [h, h] as [string, string]);
+    const srcs = [...new Set([...head, c?.src ?? ''])].filter(Boolean);
     const sorted = !!c && k.sortCol === c.src;
+    const pic = c?.type === 'image';
+    const img = { fit: 'contain', size: 50, width: 80, mask: 'none', radius: 8, opacity: 100, fallback: '', ...c?.img };
     return (
       <div className="te-form">
         {title(
@@ -831,14 +825,12 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
         )}
         {rank ? (
           <Section id="te-rank" title="Column">
-            <Note>The position of each row once sorted (1, 2, 3…).</Note>
-            <Toggle label="Top 3" path="cf.top3" value={k.cf.top3} text="Accent on the first 3" />
-            {k.cf.top3 && <ColorPickRow label="Accent" path="cf.top3Color" value={k.cf.top3Color} />}
+            <Note>The position of each row once sorted (1, 2, 3…). Top rows show it in their accent colour.</Note>
           </Section>
         ) : (
           <Section id="te-col" title="Column">
             <Row label="Data">
-              <Dropdown value={c!.src} options={srcs.length ? srcs.map(([v, l]) => ({ value: v, label: l })) : [{ value: '', label: '—' }]} onChange={(v) => set(`${cp}.src`, v)} />
+              <Dropdown value={c!.src} options={srcs.length ? srcs.map((v) => ({ value: v, label: v })) : [{ value: '', label: '—' }]} onChange={(v) => set(`${cp}.src`, v)} />
             </Row>
             <Text label="Header" path={`${cp}.label`} value={c!.label} />
             <Seg
@@ -852,16 +844,7 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
                 ['image', 'Picture'],
               ]}
             />
-            <Seg
-              label="Align"
-              path={`${cp}.align`}
-              value={c!.align}
-              options={[
-                ['left', 'Left'],
-                ['center', 'Centre'],
-                ['right', 'Right'],
-              ]}
-            />
+            <Seg label="Align" path={`${cp}.align`} value={c!.align} options={ALIGN} />
             {k.widthMode === 'auto' ? (
               <Seg
                 label="Width"
@@ -877,6 +860,12 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
               <Num label="Width" path={`${cp}.${k.widthMode === 'fixed' ? 'w' : 'pct'}`} value={k.widthMode === 'fixed' ? c!.w : c!.pct} min={0} unit={k.widthMode === 'fixed' ? 'px' : '%'} />
             )}
             {c!.type === 'number' && <Seg label="Format" path={`${cp}.fmt`} value={c!.fmt} options={FMTS} />}
+            {!pic && (
+              <>
+                <Text label="Before" path={`${cp}.prefix`} value={c!.prefix ?? ''} placeholder="e.g. €" />
+                <Text label="After" path={`${cp}.suffix`} value={c!.suffix ?? ''} placeholder="e.g. pts" />
+              </>
+            )}
             {c!.type === 'text' && (
               <Row label="Colour mark">
                 <Dropdown value={c!.mark} options={[{ value: '', label: 'None' }, ...head.filter((h) => h !== c!.src).map((h) => ({ value: h, label: `From ${h}` }))]} onChange={(v) => set(`${cp}.mark`, v)} />
@@ -896,31 +885,67 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
             )}
           </Section>
         )}
-        <Section id="te-col-text" title="Text">
-          <Seg
-            label="Uses"
-            value={own ? 'own' : 'rows'}
-            onChange={(v) => edit((l) => (v === 'own' ? setPath(l, p, {}) : rank ? void (l.txt = { ...l.txt, rank: undefined }) : void delete l.cols![i].txt))}
-            options={[
-              ['rows', 'All rows text'],
-              ['own', 'Its own text'],
-            ]}
-          />
-          {own ? (
-            <TypoRows path={p} t={t} />
-          ) : (
-            <div className="te-inherit">
-              <span>
-                <b>{t.family}</b> {WEIGHT_NAMES[t.weight] ?? t.weight} · {Math.round(t.size)} px
-              </span>
-              {toRows}
-            </div>
-          )}
-        </Section>
-        {own && (
-          <Section id="te-col-lines" title="Lines & too long text">
-            <LinesRows path={p} t={t} />
-          </Section>
+        {pic ? (
+          <>
+            <Section id="te-pic-fit" title="Picture">
+              <Seg
+                label="Fit"
+                path={`${cp}.img.fit`}
+                value={img.fit}
+                options={[
+                  ['contain', 'Contain'],
+                  ['cover', 'Cover'],
+                  ['stretch', 'Stretch'],
+                ]}
+              />
+              <Num label="Height" path={`${cp}.img.size`} value={img.size} min={5} max={100} unit="%" />
+              {img.fit !== 'contain' && img.mask !== 'circle' && <Num label="Width" path={`${cp}.img.width`} value={img.width} min={5} max={100} unit="%" />}
+              <Num label="Opacity" path={`${cp}.img.opacity`} value={img.opacity} min={0} max={100} unit="%" />
+              <Content label="If empty" path={`${cp}.img.fallback`} value={img.fallback} placeholder="/assets/… picture" />
+            </Section>
+            <Section id="te-pic-shape" title="Shape">
+              <Seg
+                label="Mask"
+                path={`${cp}.img.mask`}
+                value={img.mask}
+                options={[
+                  ['none', 'None'],
+                  ['rounded', 'Rounded'],
+                  ['circle', 'Circle'],
+                ]}
+              />
+              {img.mask === 'rounded' && <Num label="Radius" path={`${cp}.img.radius`} value={img.radius} min={0} max={500} unit="px" />}
+            </Section>
+          </>
+        ) : (
+          <>
+            <Section id="te-col-text" title="Text">
+              <Seg
+                label="Uses"
+                value={own ? 'own' : 'rows'}
+                onChange={(v) => edit((l) => (v === 'own' ? setPath(l, p, {}) : rank ? void (l.txt = { ...l.txt, rank: undefined }) : void delete l.cols![i].txt))}
+                options={[
+                  ['rows', 'The rows’ text'],
+                  ['own', 'Its own text'],
+                ]}
+              />
+              {own ? (
+                <TypoRows path={p} t={t} />
+              ) : (
+                <div className="te-inherit">
+                  <span>
+                    <b>{t.family}</b> {WEIGHT_NAMES[t.weight] ?? t.weight} · {Math.round(t.size)} px
+                  </span>
+                  {toRows}
+                </div>
+              )}
+            </Section>
+            {own && (
+              <Section id="te-col-lines" title="Lines & too long text">
+                <LinesRows path={p} t={t} />
+              </Section>
+            )}
+          </>
         )}
       </div>
     );
@@ -931,39 +956,28 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
       {title('Table', layer.name)}
       <Section id="te-pages" title="Pages">
         <Num label="Rows per page" path="perPage" value={k.perPage} min={1} max={99} />
-        <Seg
-          label="More rows"
-          path="pageMode"
-          value={k.pageMode}
-          options={[
-            ['pages', 'Pages'],
-            ['scroll', 'Scroll'],
-          ]}
-        />
-        {k.pageMode === 'pages' ? <Toggle label="Page dots" path="indicator" value={k.indicator} text="Under the table" /> : <Num label="Speed" path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />}
+        {k.pageMode === 'scroll' && <Num label="Scroll speed" path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />}
+        {k.pageMode === 'pages' && k.indicator && <ColorPickRow label="Page dots" path="indicatorColor" value={k.indicatorColor} />}
       </Section>
-      <Section id="te-cascade" title="Rows come in">
-        <Seg
-          label="Style"
-          value={k.cascade.on ? k.cascade.style : 'none'}
-          onChange={(v) => edit((l) => void (l.cascade = v === 'none' ? { ...l.cascade, on: false } : { ...l.cascade, on: true, style: v as 'slide' }))}
-          options={[
-            ['slide', 'Slide'],
-            ['fade', 'Fade'],
-            ['flip', 'Flip'],
-            ['none', 'None'],
-          ]}
-        />
-        {k.cascade.on && (
-          <>
-            <Num label="Offset" path="cascade.offset" value={k.cascade.offset} min={0} max={5000} step={5} unit="ms" />
-            <Num label="Duration" path="cascade.dur" value={k.cascade.dur} min={10} max={5000} step={10} unit="ms" />
-          </>
-        )}
-      </Section>
-      <Section id="te-sort" title="Sort" closed>
-        <Select label="Column" path="sortCol" value={k.sortCol} options={[['', 'As received'], ...colOpts]} />
-        {!!k.sortCol && (
+      {k.cascade.on && (
+        <Section id="te-cascade" title="Rows come in">
+          <Seg
+            label="Style"
+            path="cascade.style"
+            value={k.cascade.style}
+            options={[
+              ['slide', 'Slide'],
+              ['fade', 'Fade'],
+              ['flip', 'Flip'],
+            ]}
+          />
+          <Num label="Offset" path="cascade.offset" value={k.cascade.offset} min={0} max={5000} step={5} unit="ms" />
+          <Num label="Duration" path="cascade.dur" value={k.cascade.dur} min={10} max={5000} step={10} unit="ms" />
+        </Section>
+      )}
+      {!!k.sortCol && (
+        <Section id="te-sort" title="Sort">
+          <Select label="Column" path="sortCol" value={k.sortCol} options={colOpts.length ? colOpts : [[k.sortCol, k.sortCol]]} />
           <Seg
             label="Order"
             path="sortDir"
@@ -973,8 +987,8 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
               ['asc', 'Smallest first'],
             ]}
           />
-        )}
-      </Section>
+        </Section>
+      )}
       <Section id="te-source" title="Source" closed>
         {/\{\{\w+\}\}/.test(k.link) ? (
           <>
@@ -989,9 +1003,12 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
           <>
             <Content label="Rows" path="link" placeholder="{{key}}" />
             {!k.link.trim() && (
-              <div className="te-grid">
-                <GridEditor path="grid" header csv />
-              </div>
+              <>
+                <div className="te-grid">
+                  <GridEditor value={k.grid} onChange={setGrid} header csv />
+                </div>
+                {layer.settingBindings?.grid && <Note>The Operator starts from these rows; the operator can type others or import a CSV.</Note>}
+              </>
             )}
           </>
         )}
@@ -1011,33 +1028,32 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
       <Section id="te-bg" title="Background" closed>
         <ColorPickRow label="Colour" path="st.tableBg" value={k.st.tableBg} />
       </Section>
-      <Section id="te-borders" title="Borders" closed>
-        {(
-          [
-            ['outer', 'Outer'],
-            ['innerV', 'Between columns'],
-          ] as const
-        ).map(([b, lab]) => (
-          <div key={b}>
-            <Toggle label={lab} path={`borders.${b}.on`} value={k.borders[b].on} />
-            {k.borders[b].on && (
-              <>
-                <Num label="Width" path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={50} unit="px" />
-                <ColorPickRow label="Colour" path={`borders.${b}.color`} value={k.borders[b].color} />
-              </>
-            )}
-          </div>
-        ))}
-      </Section>
+      {(k.borders.outer.on || k.borders.innerV.on) && (
+        <Section id="te-borders" title="Borders" closed>
+          {(
+            [
+              ['outer', 'Outer'],
+              ['innerV', 'Between columns'],
+            ] as const
+          )
+            .filter(([b]) => k.borders[b].on)
+            .map(([b, lab]) => (
+              <div key={b}>
+                <Num label={`${lab} width`} path={`borders.${b}.width`} value={k.borders[b].width} min={1} max={50} unit="px" />
+                <ColorPickRow label={`${lab} colour`} path={`borders.${b}.color`} value={k.borders[b].color} />
+              </div>
+            ))}
+        </Section>
+      )}
       <Section id="te-merges" title="Merged cells" closed>
         <Btns list={[{ label: k.merges.length ? '+ Merge' : 'Merge cells', cls: 'ghost', onClick: () => set('merges', [...k.merges, { on: true, row: 2, col: 1, span: 2, text: '' }]) }]} />
-        {k.merges.map((g, i) => (
-          <div key={i} className="te-merge">
-            <Num label="Row" path={`merges.${i}.row`} value={g.row} min={1} />
-            <Num label="From column" path={`merges.${i}.col`} value={g.col} min={1} />
-            <Num label="Cells" path={`merges.${i}.span`} value={g.span} min={2} />
-            <Text label="Text" path={`merges.${i}.text`} value={g.text} placeholder="Keep the first cell" />
-            <Btns list={[{ label: 'Remove', cls: 'ghost', onClick: () => set('merges', k.merges.filter((_, x) => x !== i)) }]} />
+        {k.merges.map((g, x) => (
+          <div key={x} className="te-merge">
+            <Num label="Row" path={`merges.${x}.row`} value={g.row} min={1} />
+            <Num label="From column" path={`merges.${x}.col`} value={g.col} min={1} />
+            <Num label="Cells" path={`merges.${x}.span`} value={g.span} min={2} />
+            <Text label="Text" path={`merges.${x}.text`} value={g.text} placeholder="Keep the first cell" />
+            <Btns list={[{ label: 'Remove', cls: 'ghost', onClick: () => set('merges', k.merges.filter((_, q) => q !== x)) }]} />
           </div>
         ))}
       </Section>
@@ -1066,4 +1082,3 @@ function Settings({ layer, k, live, size, sel, setSel, edit, set, dsName }: { la
     </div>
   );
 }
-

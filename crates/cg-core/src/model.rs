@@ -556,7 +556,7 @@ pub enum LayerKind {
     Table {
         /// Settings of the spec widget (`wid::table`).
         #[serde(flatten)]
-        x: crate::wid::table::Config,
+        x: Box<crate::wid::table::Config>,
     },
     /// Structured credits: roll, crawl or pages.
     #[serde(rename_all = "camelCase")]
@@ -880,6 +880,8 @@ pub enum FieldKind {
     Image,
     /// On / off ("true" / "false"; 1 / 0 for a number property).
     Boolean,
+    /// Rows of a table typed or imported by the operator (JSON `[[header…], [cells…], …]`).
+    Table,
 }
 
 /// A data input exposed to the operator (Singular "control node" / Flowics input).

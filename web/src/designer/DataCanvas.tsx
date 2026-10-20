@@ -136,6 +136,7 @@ const FIELD_KINDS: { value: FieldKind; label: string }[] = [
   { value: 'color', label: 'Color' },
   { value: 'image', label: 'Picture' },
   { value: 'boolean', label: 'On / off' },
+  { value: 'table', label: 'Table rows' },
 ];
 
 const CONDITIONS: { op: CondOp; label: string; value: boolean }[] = [
