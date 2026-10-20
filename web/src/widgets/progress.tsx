@@ -1,10 +1,16 @@
 // Progress bar: linear (horizontal / vertical), ring, segmented — settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/progress.rs; values and actions in crates/cg-core/src/wid/progress.rs.
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useContext, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { SceneLayers } from '../engine/sceneLayers';
+import { TimeContext } from '../engine/Scene';
+import * as T from './timer-fmt';
+import { display as counterDisplay, partsOf } from './counter';
+import { useDesigner } from '../designer/designerStore';
+import { Dropdown } from '../ui/Dropdown';
 import { SlidersHorizontal } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
-import type { Data } from '../engine/types';
+import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
@@ -12,7 +18,9 @@ import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, Row,
 export interface Config {
   shape?: 'linear' | 'ring' | 'segments';
   orient?: 'h' | 'v';
-  input?: 'value' | 'percent';
+  input?: 'value' | 'percent' | 'follow';
+  /** Layer id of the widget followed (input follow). */
+  follow?: string;
   min?: string;
   step?: number;
   unit?: string;
@@ -46,7 +54,8 @@ type L = LayerOf<'progress'>;
 const D = {
   shape: 'linear' as NonNullable<Config['shape']>,
   orient: 'h' as 'h' | 'v',
-  input: 'value' as 'value' | 'percent',
+  input: 'value' as 'value' | 'percent' | 'follow',
+  follow: '',
   min: '',
   step: 5,
   unit: '',
@@ -91,10 +100,30 @@ const EASE = {
   back: (k: number) => 1 + 2.70158 * Math.pow(k - 1, 3) + 1.70158 * Math.pow(k - 1, 2),
 };
 
-export function effOf(l: L, data: Data) {
+/** The value of the widget followed now and its natural end (mirror of progress::followed). */
+export function followed(layers: Layer[], c: { input: string; follow: string }, widgetState: ((id: string) => unknown) | undefined, data: Data, now: number, ageSecs: number, tz: string): [number, number | null] | null {
+  if (c.input !== 'follow') return null;
+  const l = layers.find((x) => x.id === c.follow);
+  if (!l) return null;
+  const st = widgetState?.(l.id);
+  if (l.type === 'clock') {
+    const e = T.eff(l as never, data);
+    const v = T.value(e, T.run(e, st as never, now, ageSecs * 1000, tz), now, tz);
+    if (!v) return null;
+    const secs = v.v / 1000;
+    if (e.mode === 'countdown') return [v.over ? 0 : Math.max(0, secs), e.cdTime ? null : e.duration / 1000];
+    if (e.mode === 'stopwatch') return [secs, e.c.swLimitOn ? e.c.swLimit / 1000 : null];
+    return null;
+  }
+  if (l.type === 'counter') return [counterDisplay(partsOf(l as never), (st ?? {}) as never, data, now, ageSecs, null)[0], null];
+  return null;
+}
+
+export function effOf(l: L, data: Data, follow?: [number, number | null] | null) {
   const c = cfg(l);
-  const [lo, hi] = c.input === 'percent' ? [0, 100] : [numOf(c.min, data), numOf(l.max, data)];
-  const base = numOf(l.value, data);
+  const [lo, hi] =
+    c.input === 'percent' ? [0, 100] : c.input === 'follow' ? [numOf(c.min, data), follow?.[1] != null && !(l.max ?? '').trim() ? follow[1] : numOf(l.max, data)] : [numOf(c.min, data), numOf(l.max, data)];
+  const base = c.input === 'follow' ? (follow?.[0] ?? 0) : numOf(l.value, data);
   const capped = (v: number) => (hi > lo ? clamp(v, lo, hi) : hi < lo ? clamp(v, hi, lo) : v);
   const ease = (k: number) => (EASE[c.easing] ?? EASE.out)(clamp(k, 0, 1));
   const shown = (st: State | undefined, now: number, age: number) => {
@@ -145,7 +174,9 @@ function labelText(e: ReturnType<typeof effOf>, v: number, f: number) {
 let seq = 0;
 function View({ layer, r, w, h, data, nowMs, ageSecs, state }: { layer: L; r: Resolved; w: number; h: number; data: Data; nowMs: number; ageSecs: number; state: unknown }) {
   const [id] = useState(() => `pg${++seq}`);
-  const e = effOf(layer, data);
+  const layers = useContext(SceneLayers);
+  const time = useContext(TimeContext);
+  const e = effOf(layer, data, followed(layers, cfg(layer), time.widgetState, data, nowMs, ageSecs, time.defaultTz ?? ''));
   const c = e.c;
   const v = e.shown(state as State | undefined, nowMs, ageSecs);
   const [f] = e.frac(v);
@@ -371,9 +402,20 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
           options={[
             ['value', 'Min / max'],
             ['percent', '%'],
+            ['follow', 'Follow', 'The value of a timer or a counter of the graphic'],
           ]}
         />
-        <Content label="Value" path="value" value="" placeholder="64" />
+        {c.input === 'follow' ? (
+          <FollowPick value={c.follow} onChange={(v) => edit((l) => void ((l as never as { follow: string }).follow = v))} />
+        ) : (
+          <Content label="Value" path="value" value="" placeholder="64" />
+        )}
+        {c.input === 'follow' && (
+          <>
+            <Content label="Min" path="min" value="" placeholder="0" />
+            <Content label="Max" path="max" value="" placeholder="Its duration / limit" />
+          </>
+        )}
         {c.input === 'value' && (
           <>
             <Content label="Min" path="min" value="" placeholder="0" />
@@ -719,3 +761,16 @@ export default defineWidget({
   Operator: ({ layer, state, data, act, item, time }) => <Operator layer={layer} state={state} data={data} act={act} item={item} time={time} />,
   warnings: (l, { data, state }) => warnings(l, data, state),
 });
+
+/** The timer or counter of the graphic a progress follows. */
+function FollowPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const layers = useDesigner((s) => s.template?.layers ?? []);
+  const opts = layers
+    .filter((l) => l.type === 'counter' || (l.type === 'clock' && ['countdown', 'stopwatch'].includes(T.eff(l as never, {}).mode)))
+    .map((l) => ({ value: l.id, label: `${l.name} · ${l.type === 'counter' ? 'counter' : T.eff(l as never, {}).mode}` }));
+  return (
+    <Row label="Follows">
+      <Dropdown value={value} options={[{ value: '', label: opts.length ? 'Choose…' : 'No timer or counter in this graphic' }, ...opts]} onChange={onChange} />
+    </Row>
+  );
+}

@@ -707,7 +707,8 @@ export default defineWidget({
         )}
         <Select label="Highlight row" value={st.hl ?? ''} options={[['', '— none —'], ...m.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])]} onChange={(v) => act('highlight', { row: v })} />
         {st.hl && <Btns list={[{ label: 'Clear highlight', cls: 'ghost', onClick: () => act('highlight', { row: '' }) }]} />}
-        <Note>{k.link.trim() ? 'Source: linked data — an update keeps the page if it still exists.' : 'Source: manual grid.'}</Note>
+        {k.link.trim() && <Btns list={[{ label: 'Reload data', cls: 'ghost', onClick: () => act('reload') }]} />}
+        <Note>{k.link.trim() ? 'Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.' : 'Source: manual grid.'}</Note>
       </>
     );
   },

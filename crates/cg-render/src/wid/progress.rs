@@ -6,7 +6,7 @@
 
 use ab_glyph::FontArc;
 use cg_core::wid::progress::{
-    eff, frac, CircleDir, Dir, LabelPos, Orient, SegPartial, Shape, State,
+    eff_with, frac, CircleDir, Dir, LabelPos, Orient, SegPartial, Shape, State,
 };
 use cg_core::{Color, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -196,7 +196,7 @@ fn circle(cx: f32, cy: f32, r: f32) -> Option<Path> {
 }
 
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
-    let Some(e) = eff(d.layer, d.data) else {
+    let Some(e) = eff_with(d.layer, d.data, d.follow) else {
         return false;
     };
     let c = e.c;

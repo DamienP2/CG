@@ -61,6 +61,8 @@ pub(crate) struct Draw<'a, 'b> {
     pub lang: &'a str,
     /// A Text's styled parts (bold, colour…), none when it has one style.
     pub runs: Option<Vec<cg_core::rich::Run>>,
+    /// A Progress following another widget: its value and natural end.
+    pub follow: Option<(f64, Option<f64>)>,
 }
 
 impl Draw<'_, '_> {

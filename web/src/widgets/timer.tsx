@@ -579,6 +579,8 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
               ['out', 'Hide'],
             ]}
           />
+          <Text label="Then trigger" path="zeroTrigger" value="" placeholder="e.g. next (none)" />
+          {!!c.zeroTrigger?.trim() && <Note>At zero, every graphic on air paused on the trigger “{c.zeroTrigger.trim()}” plays on.</Note>}
           {c.atZero === 'overrun' && (
             <>
               <ColorPick label="Overrun text" path="overColor" value="#ff3b5c" />
@@ -728,7 +730,7 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
         <div style={box}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontWeight: 600, fontSize: 12 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: LIGHT.ok, boxShadow: `0 0 0 4px ${LIGHT.ok}33, 0 0 10px ${LIGHT.ok}` }} />
-            <span>Server clock · synced (offset applied){e.c.fine ? ` · fine offset ${e.c.fine > 0 ? '+' : ''}${e.c.fine} ${e.c.fineUnit === 'f' ? 'fr' : 's'}` : ''}</span>
+            <span>Server clock (the engine's system time){e.c.fine ? ` · fine offset ${e.c.fine > 0 ? '+' : ''}${e.c.fine} ${e.c.fineUnit === 'f' ? 'fr' : 's'}` : ''}</span>
           </div>
           <div style={{ ...big, fontSize: 30 }}>{txt}</div>
         </div>

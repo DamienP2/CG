@@ -104,6 +104,69 @@ pub struct ChannelRt {
     pub config: ChannelConfig,
     pub project_id: RwLock<Option<String>>,
     pub state: RwLock<ChannelState>,
+    /// Changed since it was last saved to disk.
+    pub dirty: std::sync::atomic::AtomicBool,
+}
+
+/// What a channel has on air, kept on disk so a restart (or a crash) puts
+/// it back: graphics, their data, running timers (timestamps).
+#[derive(Serialize, Deserialize)]
+struct OnAir {
+    project_id: Option<String>,
+    state: ChannelState,
+}
+
+fn on_air_path(data_dir: &std::path::Path, channel: &str) -> PathBuf {
+    let safe: String = channel
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    data_dir.join("on-air").join(format!("{safe}.json"))
+}
+
+/// What the channel had on air with this project, when the engine stopped.
+pub fn load_on_air(
+    data_dir: &std::path::Path,
+    channel: &str,
+    project: Option<&str>,
+) -> ChannelState {
+    std::fs::read(on_air_path(data_dir, channel))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<OnAir>(&b).ok())
+        .filter(|o| o.project_id.as_deref() == project)
+        .map(|o| o.state)
+        .unwrap_or_default()
+}
+
+/// Saves what the channel has on air (written aside, then renamed).
+pub fn save_on_air(
+    data_dir: &std::path::Path,
+    channel: &str,
+    project: Option<String>,
+    state: ChannelState,
+) {
+    let path = on_air_path(data_dir, channel);
+    let res = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(path.parent().expect("in a folder"))?;
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec(&OnAir {
+                project_id: project,
+                state,
+            })?,
+        )?;
+        std::fs::rename(tmp, &path)
+    })();
+    if let Err(e) = res {
+        tracing::warn!("cannot save what {channel} has on air: {e}");
+    }
 }
 
 impl ChannelRt {
@@ -350,6 +413,7 @@ impl AppState {
     }
 
     pub async fn broadcast_channel(&self, ch: &ChannelRt) {
+        ch.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         let state = ch.state.read().await.clone();
         let _ = self.events.send(Event::Channel {
             channel_id: ch.config.id.clone(),
@@ -395,6 +459,27 @@ impl AppState {
                         // At most a day: no overflow, and never "manual for ever" by accident.
                         let ms = (secs.min(86_400.0) * 1000.0) as i64;
                         *v = format!("until:{}", now_ms().saturating_add(ms));
+                    }
+                }
+            }
+            // A widget's "reload": its graphic's sources are read again now.
+            if let Command::Act {
+                zone, layer, op, ..
+            } = &cmd
+            {
+                if op == "reload" {
+                    let at = layer.or_else(|| {
+                        zone.as_deref()
+                            .and_then(|z| project.zone(z))
+                            .map(|z| z.layer)
+                    });
+                    if let Some(t) = at
+                        .and_then(|l| st.layers.get(&l))
+                        .and_then(|it| project.template(&it.template_id))
+                    {
+                        for src in cg_core::datapath::sources(t) {
+                            self.data.refresh(src);
+                        }
                     }
                 }
             }

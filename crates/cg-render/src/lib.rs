@@ -7,6 +7,7 @@
 // Drawing functions take the canvas, the box, the style and the time: many arguments by nature.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+pub mod sequence;
 mod text;
 mod wid;
 
@@ -472,6 +473,21 @@ impl Renderer {
                 state,
                 lang: ctx.lang,
                 runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
+                follow: match &r.layer.kind {
+                    LayerKind::Progress { x: c, .. } => {
+                        let none = Default::default();
+                        cg_core::wid::progress::followed(
+                            &ctx.template.layers,
+                            c,
+                            ctx.item.map_or(&none, |i| &i.widgets),
+                            ctx.data,
+                            time.now_ms,
+                            time.age_secs,
+                            time.default_tz,
+                        )
+                    }
+                    _ => None,
+                },
             };
             if wid::draw(&mut d) {
                 return;
@@ -1187,7 +1203,11 @@ fn load_image(assets_dir: &Path, src: &str) -> Option<Pixmap> {
     if name.contains("..") {
         return None;
     }
-    let img = image::open(assets_dir.join(name)).ok()?.to_rgba8();
+    let path = assets_dir.join(name);
+    if name.to_ascii_lowercase().ends_with(".svg") {
+        return load_svg(&path);
+    }
+    let img = image::open(path).ok()?.to_rgba8();
     let (w, h) = img.dimensions();
     let mut data = img.into_raw();
     for px in data.as_chunks_mut::<4>().0 {
@@ -1197,6 +1217,22 @@ fn load_image(assets_dir: &Path, src: &str) -> Option<Pixmap> {
         }
     }
     Pixmap::from_vec(data, tiny_skia::IntSize::from_wh(w, h)?)
+}
+
+/// An SVG drawn into a picture (2048 px on its long side: sharp when scaled
+/// down, as logos are).
+fn load_svg(path: &Path) -> Option<Pixmap> {
+    let data = std::fs::read(path).ok()?;
+    let tree = resvg::usvg::Tree::from_data(&data, &resvg::usvg::Options::default()).ok()?;
+    let size = tree.size();
+    let k = 2048.0 / size.width().max(size.height()).max(1.0);
+    let (w, h) = (
+        (size.width() * k).round().max(1.0) as u32,
+        (size.height() * k).round().max(1.0) as u32,
+    );
+    let mut pm = Pixmap::new(w, h)?;
+    resvg::render(&tree, Transform::from_scale(k, k), &mut pm.as_mut());
+    Some(pm)
 }
 
 /// Same convention as the web renderer: position is the top-left of the box
@@ -1328,6 +1364,22 @@ mod tests {
         // Top-left zone: 4 %..28 % x 5 %..19 % of the frame.
         assert!(alpha(200, 100) > 0);
         assert_eq!(alpha(1500, 800), 0);
+    }
+
+    #[test]
+    fn svg_pictures_are_drawn() {
+        let dir = std::env::temp_dir().join("cg-render-svg-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("dot.svg"),
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="20"><rect width="10" height="20" fill="#00ff00"/></svg>"##,
+        )
+        .unwrap();
+        let pm = load_svg(&dir.join("dot.svg")).expect("drawn");
+        assert_eq!((pm.width(), pm.height()), (1024, 2048));
+        let p = pm.pixel(500, 1000).unwrap();
+        assert_eq!((p.red(), p.green(), p.blue(), p.alpha()), (0, 255, 0, 255));
+        assert!(load_image(&dir, "/assets/dot.svg").is_some());
     }
 
     #[test]

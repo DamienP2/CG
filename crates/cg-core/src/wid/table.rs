@@ -1301,7 +1301,8 @@ fn go(st: &mut State, pages: usize, p: i64, now: i64) {
 
 /// Applies an operator action (`op`, with its `args`) to the state.
 /// next · prev · go {page: 1…} · auto {seconds} · pause · resume · stop ·
-/// highlight {row: key or rank, "" = none}.
+/// highlight {row: key or rank, "" = none} · reload (the rows come in
+/// again; the server reads the sources again).
 pub fn act(
     layer: &Layer,
     st: &mut State,
@@ -1316,6 +1317,10 @@ pub fn act(
     let (cur, _) = current_page(st, pages, now);
     let scroll = c.page_mode == PageMode::Scroll;
     match op {
+        "reload" => {
+            st.page_at = now;
+            return Ok(());
+        }
         "next" | "prev" | "go" if scroll => {
             return Err("continuous scroll: no pages".into());
         }

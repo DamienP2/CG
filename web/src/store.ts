@@ -125,13 +125,15 @@ export const clientId = typeof crypto !== 'undefined' && 'randomUUID' in crypto 
 
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'X-Pulse-Client': clientId };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // A file goes as it is; anything else as JSON.
+  const raw = typeof Blob !== 'undefined' && body instanceof Blob;
+  if (body !== undefined) headers['Content-Type'] = raw ? (body as Blob).type || 'application/octet-stream' : 'application/json';
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
   const res = await fetch(path, {
     method,
     credentials: 'same-origin',
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : raw ? (body as Blob) : JSON.stringify(body),
   });
   if (res.status === 401 && !path.startsWith('/api/auth/')) {
     // Session expired: back to the login page.

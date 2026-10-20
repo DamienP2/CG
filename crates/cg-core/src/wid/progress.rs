@@ -36,6 +36,9 @@ pub enum Input {
     #[default]
     Value,
     Percent,
+    /// The value of another widget of the graphic (`follow`): a countdown's
+    /// seconds left, a stopwatch's seconds, a counter's value.
+    Follow,
 }
 
 /// Linear fill: from the start (left / bottom), the end, or the centre.
@@ -118,6 +121,8 @@ pub struct Config {
     pub shape: Shape,
     pub orient: Orient,
     pub input: Input,
+    /// Layer id of the widget followed (input Follow).
+    pub follow: String,
     /// Text, `{{key}}` allowed ("" = 0).
     pub min: String,
     /// Operator + / − step.
@@ -153,6 +158,7 @@ impl Default for Config {
             shape: Shape::Linear,
             orient: Orient::H,
             input: Input::Value,
+            follow: String::new(),
             min: String::new(),
             step: 5.0,
             unit: String::new(),
@@ -233,7 +239,63 @@ pub struct Eff<'a> {
     pub track: &'a str,
 }
 
+/// The value of the widget a progress follows now, and its natural end (a
+/// countdown's duration, a stopwatch's limit), from the graphic's layers and
+/// the operator's widget states.
+pub fn followed(
+    layers: &[Layer],
+    c: &Config,
+    widgets: &std::collections::BTreeMap<String, serde_json::Value>,
+    data: &Data,
+    now: i64,
+    age_secs: f64,
+    tz: &str,
+) -> Option<(f64, Option<f64>)> {
+    use super::{counter, timer};
+    if c.input != Input::Follow {
+        return None;
+    }
+    let l = layers.iter().find(|l| l.id == c.follow)?;
+    let state = || {
+        widgets
+            .get(&l.id)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    };
+    if let Some(e) = timer::eff(l, data) {
+        let st: timer::State = serde_json::from_value(state()).unwrap_or_default();
+        let r = timer::run(&e, &st, now, (age_secs * 1000.0) as i64, tz);
+        let v = timer::value(&e, &r, now, tz)?;
+        let secs = v.v as f64 / 1000.0;
+        return match e.mode {
+            timer::TimerMode::Countdown => Some((
+                if v.over { 0.0 } else { secs.max(0.0) },
+                (!e.cd_time).then_some(e.duration as f64 / 1000.0),
+            )),
+            timer::TimerMode::Stopwatch => Some((
+                secs,
+                e.c.sw_limit_on.then_some(e.c.sw_limit as f64 / 1000.0),
+            )),
+            _ => None,
+        };
+    }
+    if let Some(p) = counter::parts(l) {
+        let st: counter::State = serde_json::from_value(state()).unwrap_or_default();
+        return Some((counter::display(&p, &st, data, now, age_secs, None).0, None));
+    }
+    None
+}
+
 pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
+    eff_with(layer, data, None)
+}
+
+/// [`eff`] with the followed widget's value (input Follow).
+pub fn eff_with<'a>(
+    layer: &'a Layer,
+    data: &Data,
+    follow: Option<(f64, Option<f64>)>,
+) -> Option<Eff<'a>> {
     let LayerKind::Progress {
         value,
         max,
@@ -247,12 +309,24 @@ pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
     let (lo, hi) = match c.input {
         Input::Percent => (0.0, 100.0),
         Input::Value => (number(&c.min, data), number(max, data)),
+        // The followed widget's own end unless a max is set.
+        Input::Follow => (
+            number(&c.min, data),
+            match follow.and_then(|f| f.1) {
+                Some(end) if max.trim().is_empty() => end,
+                _ => number(max, data),
+            },
+        ),
     };
     Some(Eff {
         c,
         lo,
         hi,
-        base: number(value, data),
+        base: match (c.input, follow) {
+            (Input::Follow, Some((v, _))) => v,
+            (Input::Follow, None) => 0.0,
+            _ => number(value, data),
+        },
         duration: *duration,
         track,
     })
@@ -413,6 +487,26 @@ mod tests {
 
     fn layer(json: &str) -> Layer {
         serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn a_progress_follows_a_countdown() {
+        let cd = layer(
+            r#"{"id":"cd","name":"C","type":"clock","mode":"timer","format":"mm:ss","timerMode":"countdown","cdDuration":10000,"startMode":"auto","props":{}}"#,
+        );
+        let p = layer(
+            r##"{"id":"p","name":"P","type":"progress","value":"","max":"","duration":0,"track":"#ffffff33","input":"follow","follow":"cd","props":{}}"##,
+        );
+        let LayerKind::Progress { x: c, .. } = &p.kind else {
+            panic!()
+        };
+        let layers = [cd, p.clone()];
+        let now = 1_700_000_000_000;
+        let f = followed(&layers, c, &BTreeMap::new(), &Data::new(), now, 4.0, "").unwrap();
+        assert_eq!(f, (6.0, Some(10.0)));
+        let e = eff_with(&p, &Data::new(), Some(f)).unwrap();
+        assert_eq!((e.lo, e.hi, e.base), (0.0, 10.0, 6.0));
+        assert!((frac(&e, e.base).0 - 0.6).abs() < 1e-9);
     }
 
     #[test]

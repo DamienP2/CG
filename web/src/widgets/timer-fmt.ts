@@ -44,6 +44,8 @@ export interface Config {
   am?: string;
   pm?: string;
   source?: string;
+  /** A countdown at zero fires this trigger ('' = none). */
+  zeroTrigger?: string;
   fine?: number;
   fineUnit?: 's' | 'f';
   cities?: boolean;
@@ -102,6 +104,7 @@ export const DEF = {
   am: 'AM',
   pm: 'PM',
   source: 'system',
+  zeroTrigger: '',
   fine: 0,
   fineUnit: 's' as 's' | 'f',
   cities: false,

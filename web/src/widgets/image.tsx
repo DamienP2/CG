@@ -1,12 +1,13 @@
 // Image: fits (incl. original size and tile), focal point, crop, rounded / circle mask, stroke,
 // colorize, fallback picture when the source is missing.
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
-import { useEffect, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { api, useApp } from '../store';
 import { Image } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Num, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
 
 export interface Crop {
   l: number;
@@ -351,6 +352,7 @@ export default defineWidget({
             <AssetPicker value={k.fallback} title="Choose the fallback picture" placeholder="None" onChange={(v) => ed((x) => void (x.fallback = v || undefined))} />
           </Row>
         </Section>
+        <Sequence k={k} ed={ed} />
         <Section id="image-fit" title="Fit & crop">
           <Seg
             expose="fit"
@@ -466,6 +468,27 @@ export default defineWidget({
     );
   },
 
+  // A sequence started by hand: the operator plays it.
+  Operator: ({ layer, state, act }) => {
+    const k = cfg(layer as unknown as ImgLayer);
+    if (!k.frames.length) return null;
+    const st = (state ?? {}) as State;
+    return (
+      <>
+        <Btns
+          list={[
+            { label: st.playing ? 'Pause' : 'Play', cls: st.playing ? '' : 'violet', onClick: () => act(st.playing ? 'pause' : 'play') },
+            { label: 'Restart', cls: 'ghost', onClick: () => act('restart') },
+          ]}
+        />
+        <Note>
+          {k.frames.length} frames at {k.fps} fps · {k.playMode === 'loop' ? 'loops' : k.playMode === 'once' ? 'plays once' : `plays ${k.loops} times`}
+          {k.start === 'in' ? ' · starts at the In' : ''}
+        </Note>
+      </>
+    );
+  },
+
   Overlay: ({ layer, w, h, scale, edit }) => {
     useStore();
     const l = layer as unknown as ImgLayer;
@@ -530,3 +553,79 @@ export default defineWidget({
     return out;
   },
 });
+
+/** Animated sequence: frames played instead of the picture (an animated GIF / APNG is split into frames). */
+function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer) => void, key?: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const pid = useApp((s) => s.project?.id);
+  const toast = useApp((s) => s.toast);
+  const importFile = async (f: File) => {
+    if (!pid) return;
+    setBusy(true);
+    try {
+      const r = await api<{ frames: string[]; fps: number }>('POST', `/api/projects/${encodeURIComponent(pid)}/sequence/${encodeURIComponent(f.name)}`, f);
+      ed((x) => {
+        x.frames = r.frames;
+        x.fps = Math.round(r.fps * 100) / 100;
+      });
+      toast(`${r.frames.length} frames at ${Math.round(r.fps * 10) / 10} fps`, 'info');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const n = k.frames.length;
+  return (
+    <Section id="image-anim" title={n ? `Animation · ${n} frames` : 'Animation'} closed={!n}>
+      <Row label="Import">
+        <label className={`btn small ${busy ? 'disabled' : ''}`} title="An animated GIF or PNG (APNG): split into frames in the project's media">
+          {busy ? 'Splitting…' : 'Animated GIF / PNG…'}
+          <input type="file" accept="image/gif,image/png,image/apng" hidden disabled={busy} onChange={(e) => (e.target.files?.[0] && void importFile(e.target.files[0]), (e.target.value = ''))} />
+        </label>
+      </Row>
+      {n > 0 && (
+        <div className="seq-frames">
+          {k.frames.map((f, i) => (
+            <span key={i} className="seq-frame" title={f}>
+              <img src={f} alt="" loading="lazy" />
+              <i>{i + 1}</i>
+              <button title="Remove this frame" onClick={() => ed((x) => void (x.frames = cfg(x).frames.filter((_, j) => j !== i)))}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <Row label="Add a frame">
+        <AssetPicker value="" placeholder="Choose a picture…" title="Add a frame at the end" onChange={(v) => v && ed((x) => void (x.frames = [...cfg(x).frames, v]))} />
+      </Row>
+      {n > 0 && (
+        <>
+          <Num label="Speed" path="fps" value={k.fps} min={0.1} max={120} step={1} unit="fps" />
+          <Seg
+            label="Play"
+            path="playMode"
+            value={k.playMode}
+            options={[
+              ['loop', 'Loop'],
+              ['once', 'Once'],
+              ['count', 'Times'],
+            ]}
+          />
+          {k.playMode === 'count' && <Num label="Times" path="loops" value={k.loops} min={1} max={999} />}
+          <Seg
+            label="Start"
+            path="start"
+            value={k.start}
+            options={[
+              ['in', 'At the In'],
+              ['manual', 'By the operator'],
+            ]}
+          />
+          <Btns list={[{ label: 'Remove the animation', cls: 'ghost', onClick: () => ed((x) => void (x.frames = [])) }]} />
+        </>
+      )}
+    </Section>
+  );
+}

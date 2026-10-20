@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
 import { Area, Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
@@ -39,6 +40,8 @@ export interface Config {
   duration?: number;
   pxs?: number;
   optimised?: boolean;
+  /** Frames per second of the optimised speed (the project's). */
+  fps?: number;
   maxPxs?: number;
   cardDur?: number;
   start?: 'off' | 'on';
@@ -78,6 +81,7 @@ export function cfg(c: Config) {
     duration: c.duration ?? 40,
     pxs: c.pxs ?? 120,
     optimised: c.optimised ?? false,
+    fps: c.fps && c.fps >= 1 ? c.fps : 25,
     maxPxs: c.maxPxs ?? 260,
     cardDur: c.cardDur ?? 4,
     start: c.start ?? 'on',
@@ -314,11 +318,11 @@ export function nominal(k: K, x: number) {
   if (k.mode === 'pages') return 1 / (Math.max(0.3, k.cardDur) * x);
   return Math.max(1, k.pxs) / x;
 }
-const optim = (k: K, v: number) => (k.optimised && k.mode !== 'pages' ? Math.max(1, Math.round(v / 25)) * 25 : v);
+const optim = (k: K, v: number) => (k.optimised && k.mode !== 'pages' ? Math.max(1, Math.round(v / k.fps)) * k.fps : v);
 export function progress(k: K, st: State, x: number, now: number, age: number) {
   const rate = st.rate ?? nominal(k, x);
   const [base, dt] = !st.started ? [0, Math.max(0, age)] : st.running ? [st.base ?? 0, Math.max(0, now - (st.anchor ?? 0)) / 1000] : [st.base ?? 0, 0];
-  const adv = k.optimised && k.mode !== 'pages' && x > 0 ? ((optim(k, rate * x) / 25) * Math.floor(dt / 0.04)) / x : rate * dt;
+  const adv = k.optimised && k.mode !== 'pages' && x > 0 ? ((optim(k, rate * x) / k.fps) * Math.floor(dt * k.fps)) / x : rate * dt;
   return clamp(base + adv, 0, 1);
 }
 function realRate(k: K, st: State, x: number) {
@@ -503,7 +507,7 @@ function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Wa
   if (k.mode !== 'pages') {
     const v = optim(k, (live && st.rate ? st.rate : nominal(k, g.x)) * g.x);
     if (v > k.maxPxs) out.push({ level: 'error', text: `Speed ${v.toFixed(0)} px/s is above the readable threshold (${k.maxPxs} px/s): at least ${Math.ceil(g.x / k.maxPxs)} s needed.`, op: true });
-    if (k.optimised) out.push({ level: 'info', text: `Optimised speed: ${Math.round(v / 25)} px/frame (${v.toFixed(0)} px/s), the duration follows: ${fmtDur(g.x / Math.max(1, v))}.` });
+    if (k.optimised) out.push({ level: 'info', text: `Optimised speed: ${Math.round(v / k.fps)} px/frame at ${+k.fps.toFixed(2)} fps (${v.toFixed(0)} px/s), the duration follows: ${fmtDur(g.x / Math.max(1, v))}.` });
   } else {
     const per = 1 / Math.max(1e-6, (live && st.rate ? st.rate : nominal(k, g.x)) * Math.max(1, g.x));
     if (per < 1.5) out.push({ level: 'error', text: `${per.toFixed(1)} s per card is too short to read (min 1.5 s).`, op: true });
@@ -680,7 +684,19 @@ export default defineWidget({
               />
               {k.speedMode === 'duration' ? <Num label="Duration" path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label="Speed" path="pxs" value={k.pxs} min={1} max={5000} unit="px/s" />}
               <Num label="Max speed" path="maxPxs" value={k.maxPxs} min={10} max={5000} step={10} unit="px/s" />
-              <Toggle label="Whole px" path="optimised" value={k.optimised} />
+              <Toggle
+                label="Whole px"
+                value={k.optimised}
+                text="per frame"
+                onChange={(v) =>
+                  edit((l) => {
+                    (l as Config).optimised = v;
+                    // At the project's frame rate.
+                    const fr = useApp.getState().project?.frameRate;
+                    if (v && fr) (l as Config).fps = fr.num / fr.den;
+                  })
+                }
+              />
             </>
           )}
           <Seg

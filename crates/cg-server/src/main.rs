@@ -400,8 +400,10 @@ pub async fn serve(
                 c.id.clone(),
                 Arc::new(ChannelRt {
                     config: c.clone(),
+                    // What it had on air before the restart.
+                    state: RwLock::new(state::load_on_air(&data_dir, &c.id, pid.as_deref())),
                     project_id: RwLock::new(pid),
-                    state: RwLock::new(Default::default()),
+                    dirty: Default::default(),
                 }),
             );
         }

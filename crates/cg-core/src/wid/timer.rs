@@ -252,6 +252,9 @@ pub struct Config {
     pub pm: String,
     /// Time source: only "system" (the server clock) exists.
     pub source: String,
+    /// A countdown at zero fires this trigger (pauses waiting for it play
+    /// on, in every graphic on air); "" = none.
+    pub zero_trigger: String,
     pub fine: f64,
     pub fine_unit: FineUnit,
     pub cities: bool,
@@ -311,6 +314,7 @@ impl Default for Config {
             am: "AM".into(),
             pm: "PM".into(),
             source: "system".into(),
+            zero_trigger: String::new(),
             fine: 0.0,
             fine_unit: FineUnit::S,
             cities: false,
@@ -362,6 +366,9 @@ pub struct State {
     pub split: Option<Split>,
     /// New target set by the operator (countdown to a time).
     pub target_ms: Option<i64>,
+    /// The zero its trigger was fired for (each zero fires once).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fired: Option<i64>,
 }
 
 // ------------------------------------------------------------ resolved --
@@ -894,6 +901,7 @@ fn now_run(e: &Eff, st: &State, ctx: &ActCtx) -> State {
         adj: r.adj,
         split: r.split,
         target_ms: r.target_ms,
+        fired: st.fired,
     };
     let now = ctx.now_ms;
     // A stop at the limit / a frozen zero becomes a real pause, so the next
@@ -920,6 +928,31 @@ fn now_run(e: &Eff, st: &State, ctx: &ActCtx) -> State {
         }
     }
     s
+}
+
+/// The trigger a countdown fires now: its name and the zero it is for,
+/// when it is at zero and has not fired for that zero yet.
+pub fn due_trigger(
+    layer: &Layer,
+    st: &State,
+    data: &Data,
+    now: i64,
+    age_ms: i64,
+    default_tz: &str,
+) -> Option<(String, i64)> {
+    let e = eff(layer, data)?;
+    let name = e.c.zero_trigger.trim();
+    if name.is_empty() || e.mode != TimerMode::Countdown {
+        return None;
+    }
+    let r = run(&e, st, now, age_ms, default_tz);
+    if !r.started(&e) {
+        return None;
+    }
+    let v = value(&e, &r, now, default_tz)?;
+    // Without its instant, the start stands for this run (never fires again each frame).
+    let at = v.zero_at.or(r.started_at).unwrap_or(0);
+    (v.zero && st.fired != Some(at)).then(|| (name.to_string(), at))
 }
 
 fn resume(s: &mut State, now: i64) {
@@ -1231,6 +1264,28 @@ mod tests {
             r#"{"id":"a","name":"C","type":"clock","mode":"elapsed","format":"mm:ss:FF","timerMode":"stopwatch","startMode":"auto","props":{}}"#,
         );
         assert_eq!(text(&l, &State::default(), T0, 1_960), "00:01:24");
+    }
+
+    #[test]
+    fn a_countdown_at_zero_fires_its_trigger_once() {
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"timer","format":"mm:ss","timerMode":"countdown","cdDuration":5000,"startMode":"auto","zeroTrigger":"next","props":{}}"#,
+        );
+        let d = data();
+        let mut st = State::default();
+        assert!(due_trigger(&l, &st, &d, T0, 1000, "").is_none(), "not yet");
+        let (name, at) = due_trigger(&l, &st, &d, T0, 6000, "").expect("at zero");
+        assert_eq!(name, "next");
+        st.fired = Some(at);
+        assert!(
+            due_trigger(&l, &st, &d, T0 + 1000, 7000, "").is_none(),
+            "once"
+        );
+        // No trigger set: nothing.
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"timer","format":"mm:ss","timerMode":"countdown","cdDuration":5000,"startMode":"auto","props":{}}"#,
+        );
+        assert!(due_trigger(&l, &State::default(), &d, T0, 6000, "").is_none());
     }
 
     #[test]

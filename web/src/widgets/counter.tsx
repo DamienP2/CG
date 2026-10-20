@@ -245,7 +245,7 @@ export function format(f: Fmt, v: number): string {
 }
 const intDigits = (v: number, d: number) => Math.abs(v).toFixed(d).split('.')[0].length;
 
-interface Parts {
+export interface Parts {
   c: K;
   from: string;
   to: string;
@@ -254,7 +254,7 @@ interface Parts {
   prefix: string;
   suffix: string;
 }
-const partsOf = (l: CLayer): Parts => {
+export const partsOf = (l: CLayer): Parts => {
   const c = cfg(l);
   return { c, from: l.from, to: l.to, duration: l.duration, fmt: { decimals: l.decimals, grouping: l.grouping, locale: c.locale, plus: c.plus, compact: c.compact }, prefix: l.prefix, suffix: l.suffix };
 };

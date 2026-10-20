@@ -911,6 +911,41 @@ impl ChannelState {
         changed.then_some(ids)
     }
 
+    /// Countdowns reaching zero with a trigger set: the triggers to fire
+    /// (each zero fires once; the widget's state remembers it).
+    pub fn zero_triggers(&mut self, project: &Project, default_tz: &str) -> Vec<String> {
+        let now = now_ms();
+        let fps = project.frame_rate.as_f64().max(1.0);
+        let mut out = Vec::new();
+        for item in self.layers.values_mut() {
+            if matches!(item.phase, Phase::Out | Phase::OutHold) {
+                continue;
+            }
+            let Some(t) = project.template(&item.template_id) else {
+                continue;
+            };
+            for l in &t.layers {
+                let st: crate::wid::timer::State = item
+                    .widgets
+                    .get(&l.id)
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                let age_ms = (item.age / fps * 1000.0) as i64;
+                if let Some((name, at)) =
+                    crate::wid::timer::due_trigger(l, &st, &item.data, now, age_ms, default_tz)
+                {
+                    let mut st = st;
+                    st.fired = Some(at);
+                    if let Ok(v) = serde_json::to_value(&st) {
+                        item.widgets.insert(l.id.clone(), v);
+                    }
+                    out.push(name);
+                }
+            }
+        }
+        out
+    }
+
     /// Data sets going on by themselves: the next row once the graphic has
     /// held on air (on the on-air marker, after its in animation) for the
     /// data set's seconds. Returns true when a row changed.

@@ -166,8 +166,9 @@ pub struct Config {
     /// Seconds.
     pub duration: f64,
     pub pxs: f64,
-    /// Whole px per frame (25 fps).
+    /// Whole px per frame, at `fps` frames per second (the project's).
     pub optimised: bool,
+    pub fps: f64,
     /// Readable maximum, px/s (Designer warning).
     pub max_pxs: f64,
     pub card_dur: f64,
@@ -199,6 +200,7 @@ impl Default for Config {
             duration: 40.0,
             pxs: 120.0,
             optimised: false,
+            fps: 25.0,
             max_pxs: 260.0,
             card_dur: 4.0,
             start: Start::On,
@@ -728,10 +730,19 @@ pub fn nominal(c: &Config, x: f32) -> f64 {
     }
 }
 
-/// Optimised speed: a whole number of px per frame at 25 fps.
+/// Frames per second of the optimised speed.
+fn fps(c: &Config) -> f64 {
+    if c.fps.is_finite() && c.fps >= 1.0 {
+        c.fps
+    } else {
+        25.0
+    }
+}
+
+/// Optimised speed: a whole number of px per frame.
 pub fn optim(c: &Config, px_s: f64) -> f64 {
     if c.optimised && c.mode != Mode::Pages {
-        (px_s / 25.0).round().max(1.0) * 25.0
+        (px_s / fps(c)).round().max(1.0) * fps(c)
     } else {
         px_s
     }
@@ -764,7 +775,7 @@ pub fn progress(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> f
     };
     let adv = if c.optimised && c.mode != Mode::Pages && x > 0.0 {
         let v = optim(c, rate * x as f64);
-        (v / 25.0) * (dt / 0.04).floor() / x as f64
+        (v / fps(c)) * (dt * fps(c)).floor() / x as f64
     } else {
         rate * dt
     };

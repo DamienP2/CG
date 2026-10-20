@@ -11,9 +11,9 @@ import { col, cssColor, interpolateText, num, propValue, transformText, type Res
 import type { Data, Layer, Template, TextOverflow } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
-import { fitLines, graphemes, type FitLines } from '../engine/textFit';
+import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
+import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -490,8 +490,18 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
                 ['hyphen', 'Hyphenation'],
               ]}
             />
+            {k.breakMode === 'hyphen' && <Select label="Language" path="lang" value={k.lang} options={[['', 'Project language'], ...HYPHEN_LANGS]} />}
           </>
         )}
+        <Seg
+          label="Direction"
+          path="dir"
+          value={k.dir}
+          options={[
+            ['ltr', 'Left to right'],
+            ['rtl', 'Right to left', 'Arabic, Hebrew…'],
+          ]}
+        />
         <Seg expose="overflow" exposeValue={mode} label="Behaviour" value={mode} onChange={(v) => edit((l) => void (l.overflow = v === 'fit' ? undefined : v))} options={OVERFLOWS} />
         {mode === 'fit' && (
           <>

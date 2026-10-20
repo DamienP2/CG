@@ -126,11 +126,12 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
 
     let channel_fps = cfg.frame_rate.as_f64().max(1.0);
     let mut ticker = interval(period);
+    let mut saved_at = std::time::Instant::now();
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         ticker.tick().await;
         let pid = ch.project_id.read().await.clone();
-        let project = match pid {
+        let project = match pid.clone() {
             Some(id) => state.project(&id).await,
             None => None,
         };
@@ -155,6 +156,11 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
                     }
                     changed = true;
                 }
+                // Countdowns at zero firing their trigger.
+                for name in st.zero_triggers(p, &state.config.timezone) {
+                    let _ = st.apply(p, cg_core::playout::Command::Trigger { name });
+                    changed = true;
+                }
                 // Rows going on by themselves, values set by hand for a time:
                 // the data is read again for them.
                 let rows = st.auto_rows(p);
@@ -168,6 +174,18 @@ async fn run_channel(state: Shared, ch: Arc<ChannelRt>) {
         };
         if changed {
             state.broadcast_channel(&ch).await;
+        }
+        // What is on air, on disk at most once a second (a restart puts it back).
+        if saved_at.elapsed() >= std::time::Duration::from_secs(1)
+            && ch.dirty.swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            saved_at = std::time::Instant::now();
+            let (dir, id, snap) = (
+                state.data_dir.clone(),
+                ch.config.id.clone(),
+                snapshot.clone(),
+            );
+            tokio::task::spawn_blocking(move || crate::state::save_on_air(&dir, &id, pid, snap));
         }
         // Drop the frame if a renderer is late rather than queueing latency.
         for tx in &render_txs {

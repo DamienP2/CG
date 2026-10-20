@@ -32,6 +32,10 @@ pub fn router() -> Router<Shared> {
         )
         .route("/api/projects/{id}/media", get(list_project))
         .route(
+            "/api/projects/{id}/sequence/{name}",
+            axum::routing::post(put_sequence).layer(DefaultBodyLimit::max(MAX_UPLOAD)),
+        )
+        .route(
             "/api/projects/{id}/media/{name}",
             put(put_project)
                 .delete(delete_project)
@@ -231,6 +235,64 @@ async fn put_project(
     let r = store(&s, &project_dir(&s, &id), &project_prefix(&id), &name, body).await?;
     s.changed(format!("media:{id}"));
     Ok(r)
+}
+
+/// An animated GIF / APNG split into PNG frames in the project's media
+/// (`<name>-000.png`…), for an Image sequence: its frames and frame rate.
+#[derive(Serialize)]
+struct Sequence {
+    frames: Vec<String>,
+    fps: f32,
+}
+
+async fn put_sequence(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, name)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> ApiResult<Json<Sequence>> {
+    visible_project(&s, &me, &id).await?;
+    require(can_upload(&me))?;
+    // The frames' base name: the file's, cleaned.
+    let stem: String = name
+        .rsplit_once('.')
+        .map_or(name.as_str(), |(a, _)| a)
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(60)
+        .collect();
+    let stem = if stem.is_empty() {
+        "sequence".to_string()
+    } else {
+        stem
+    };
+    let (pngs, fps) = tokio::task::spawn_blocking(move || cg_render::sequence::split(&body))
+        .await
+        .map_err(internal)?
+        .map_err(bad)?;
+    let dir = project_dir(&s, &id);
+    tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
+    let prefix = project_prefix(&id);
+    let mut frames = Vec::with_capacity(pngs.len());
+    for (i, png) in pngs.iter().enumerate() {
+        let file = format!("{stem}-{i:03}.png");
+        tokio::fs::write(dir.join(&file), png)
+            .await
+            .map_err(internal)?;
+        frames.push(format!("{prefix}{file}"));
+    }
+    s.renderer
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .invalidate_assets();
+    s.changed(format!("media:{id}"));
+    Ok(Json(Sequence { frames, fps }))
 }
 
 async fn delete_project(

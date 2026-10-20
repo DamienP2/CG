@@ -1,3 +1,4 @@
+import { SceneLayers } from './sceneLayers';
 import { RichKeys, runs as richRuns, typedKeys } from './rich';
 // HTML5 renderer: same conventions as crates/cg-render (box at x/y in parent
 // space, rotate/scale around the anchor, crop as a reveal mask).
@@ -428,11 +429,13 @@ export const Scene = memo(function Scene({ template, frame, data, interactive }:
   const rich = useMemo(() => typedKeys(template), [template.fields]);
   return (
     <RichKeys.Provider value={rich}>
+      <SceneLayers.Provider value={template.layers}>
       <LogicContext.Provider value={logic}>
         {(childrenOf.get(null) ?? []).map((l) => (
           <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
         ))}
       </LogicContext.Provider>
+      </SceneLayers.Provider>
     </RichKeys.Provider>
   );
 });
