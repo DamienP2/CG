@@ -127,7 +127,7 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'outputs' | 'users' | 'settings' | 'apiDocs' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'users' | 'settings' | 'apiDocs' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata';
@@ -144,6 +144,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         <div className="tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
           {tab('media', '/media', <Images size={14} />, 'Assets')}
+          {can.design(user) && tab('data', '/data', <Database size={14} />, 'Data')}
           {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, 'Outputs')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
           {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
@@ -154,6 +155,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
       <div className="content">
         {route.page === 'projects' && <Projects />}
         {route.page === 'media' && <MediaLibrary />}
+        {route.page === 'data' && <DataPage />}
         {route.page === 'outputs' && <Outputs />}
         {route.page === 'settings' && <Settings />}
         {route.page === 'users' && <Users />}
@@ -213,7 +215,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   if (!known) page = <div className="loading">This project does not exist or you cannot access it.</div>;
   else if (!ready) page = <div className="loading">Opening the project…</div>;
   else if (sub === 'designer') page = <Designer key={project.id} />;
-  else if (sub === 'data') page = <DataPage />;
+  else if (sub === 'data') page = <DataPage key={projectId} projectId={projectId} />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
   else if (sub === 'settings') page = <ProjectSettings project={summary ?? { ...project, description: project.description ?? '' }} />;
   else {

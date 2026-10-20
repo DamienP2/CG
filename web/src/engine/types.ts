@@ -264,6 +264,8 @@ export type DataSourceKind = { type: 'json'; url: string; headers?: Record<strin
 export type DataSource = DataSourceKind & {
   id: string;
   name: string;
+  /** The project it belongs to; unset = shared by every project (main menu > Data). */
+  project?: string;
   /** Seconds between fetches. */
   interval: number;
   enabled: boolean;

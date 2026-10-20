@@ -6,6 +6,7 @@ export type Route =
   | { page: 'users' }
   | { page: 'media' }
   | { page: 'outputs' }
+  | { page: 'data' }
   | { page: 'settings' }
   | { page: 'apiDocs' }
   | {
@@ -46,6 +47,8 @@ export function parseRoute(path = location.pathname): Route {
       return { page: 'media' };
     case 'outputs':
       return { page: 'outputs' };
+    case 'data':
+      return { page: 'data' };
     case 'mos':
       return second === 'plugin' ? { page: 'mosPlugin' } : { page: 'projects' };
     case 'embed':

@@ -1931,7 +1931,28 @@
        }
       }
      }
-    }
+    },
+    "parameters": [
+     {
+      "name": "project",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "description": "Only this project's connectors and the shared ones."
+     },
+     {
+      "name": "shared",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean"
+      },
+      "description": "Only the shared connectors."
+     }
+    ],
+    "description": "Shared connectors and those of the projects you can see."
    },
    "post": {
     "tags": [
@@ -3648,6 +3669,10 @@
      "error": {
       "type": "string",
       "readOnly": true
+     },
+     "project": {
+      "type": "string",
+      "description": "The project it belongs to (its Connectors page); absent = shared by every project (the Data page of the main menu). Set when created, never changed."
      }
     }
    },

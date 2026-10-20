@@ -11838,3 +11838,48 @@ body.cv-moving * {
   margin-left: 6px;
   white-space: nowrap;
 }
+
+/* Connectors of a project: the shared ones below its own. */
+.data-sep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 12px 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.data-sep span {
+  flex: 1;
+}
+.data-sep .link-btn {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.data-item.shared strong::after {
+  content: 'shared';
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.dc-pal-sub {
+  margin: 6px 4px 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}

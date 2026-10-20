@@ -21,6 +21,10 @@ pub const MAX_BYTES: u64 = 8 * 1024 * 1024;
 pub struct Source {
     pub id: String,
     pub name: String,
+    /// The project it belongs to; none = shared by every project (the Data
+    /// page of the main menu).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
     #[serde(flatten)]
     pub kind: Kind,
     /// Seconds between two fetches (fetched sources).

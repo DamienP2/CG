@@ -2,9 +2,9 @@ import { Link2, Link2Off, ListTree, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Data, Field, FieldBinding, Template } from '../engine/types';
 import { navigate } from '../router';
-import { api } from '../store';
+import { api, useApp } from '../store';
 import { JsonTree } from './JsonTree';
-import { readBinding, useData, useSources } from './dataStore';
+import { readBinding, useData, useProjectSources } from './dataStore';
 
 /** The first `[n]` of a path, for the "every item" / "operator picks" shortcuts. */
 const FIRST_INDEX = /\[(-?\d+)\]/;
@@ -26,7 +26,8 @@ export function BindingEditor({
   onChange: (b: FieldBinding | null) => void;
   onAddField: (f: Field) => void;
 }) {
-  const sources = useSources();
+  // This project's sources and the shared ones.
+  const sources = useProjectSources(useApp((s) => s.project?.id));
   const b = field.binding;
   const version = useData((s) => (b ? (s.versions[b.source] ?? 0) : 0));
   const [value, setValue] = useState<string | null>(null);
@@ -73,11 +74,11 @@ export function BindingEditor({
       </div>
       {!sources.length && (
         <p className="hint">
-          No data source yet:{' '}
+          No data source yet: create one in Connectors (this project) or in the main menu,{' '}
           <a href="/data" onClick={(e) => (e.preventDefault(), navigate('/data'))}>
-            create one in Data
-          </a>
-          .
+            Data
+          </a>{' '}
+          (shared).
         </p>
       )}
       <div className="row">

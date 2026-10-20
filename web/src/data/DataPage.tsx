@@ -5,6 +5,7 @@ import { api, can, useApp } from '../store';
 import { JsonTree } from './JsonTree';
 import { useData, useSources } from './dataStore';
 import { confirmDialog } from '../ui/dialogs';
+import { navigate } from '../router';
 
 const KINDS: { type: DataSource['type']; label: string; hint: string; icon: typeof Database }[] = [
   { type: 'json', label: 'JSON API', hint: 'Any web service answering JSON (scores, weather, elections…)', icon: Braces },
@@ -14,10 +15,11 @@ const KINDS: { type: DataSource['type']; label: string; hint: string; icon: type
   { type: 'push', label: 'Push (API / file)', hint: 'Automation or a person sends the values (JSON, CSV or XML)', icon: Webhook },
 ];
 
-const blank = (type: DataSource['type']): DataSource =>
+const blank = (type: DataSource['type'], project?: string | null): DataSource =>
   ({
     id: '',
     name: '',
+    ...(project ? { project } : {}),
     interval: 30,
     enabled: true,
     ...(type === 'push' ? { type, format: 'json' } : type === 'csv' ? { type, url: '', header: true } : { type, url: '' }),
@@ -29,14 +31,20 @@ const ago = (ms?: number | null) => {
   return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : new Date(ms).toLocaleString();
 };
 
-/** Data connectors: where live values come from. */
-export function DataPage() {
-  const sources = useSources();
+/**
+ * Data connectors: where live values come from. In a project (`projectId`):
+ * its own connectors, the shared ones listed below; in the main menu: the
+ * connectors shared by every project.
+ */
+export function DataPage({ projectId = null }: { projectId?: string | null }) {
+  const all = useSources();
+  const sources = all.filter((s) => (projectId ? s.project === projectId : !s.project));
+  const shared = projectId ? all.filter((s) => !s.project) : [];
   const user = useApp((s) => s.auth?.user);
   const edit = can.design(user);
   const [sel, setSel] = useState<string | null>(null);
   const [draft, setDraft] = useState<DataSource | null>(null);
-  const current = sources.find((s) => s.id === sel) ?? null;
+  const current = [...sources, ...shared].find((s) => s.id === sel) ?? null;
   useEffect(() => {
     if (!sel && sources.length && !draft) setSel(sources[0].id);
   }, [sources, sel, draft]);
@@ -46,7 +54,7 @@ export function DataPage() {
       <aside className="data-list">
         <header>
           <Database size={15} />
-          <h2>Data sources</h2>
+          <h2>{projectId ? 'Data sources' : 'Shared data sources'}</h2>
           <div className="spacer" />
           {edit && (
             <button
@@ -54,7 +62,7 @@ export function DataPage() {
               title="New data source"
               onClick={() => {
                 setSel(null);
-                setDraft(blank('json'));
+                setDraft(blank('json', projectId));
               }}
             >
               <Plus size={15} />
@@ -81,13 +89,42 @@ export function DataPage() {
             </button>
           );
         })}
-        {!sources.length && !draft && <p className="muted small pad">No data source yet. Connect a JSON API, a Google Sheet, an RSS feed… then bind template fields to it in the Designer.</p>}
+        {!sources.length && !draft && (
+          <p className="muted small pad">
+            {projectId ? 'No data source in this project yet. Connect a JSON API, a Google Sheet, an RSS feed… then bind template fields to it in the Designer.' : 'No shared data source yet. The sources here are offered in every project (Data canvas), next to its own.'}
+          </p>
+        )}
+        {projectId && (
+          <>
+            <div className="data-sep">
+              <span>Shared by every project</span>
+              <button className="link-btn" title="Manage the shared sources (main menu > Data)" onClick={() => navigate('/data')}>
+                Manage
+              </button>
+            </div>
+            {shared.map((s) => {
+              const K = KINDS.find((k) => k.type === s.type)!;
+              return (
+                <button key={s.id} className={`data-item shared ${sel === s.id && !draft ? 'selected' : ''}`} onClick={() => (setDraft(null), setSel(s.id))}>
+                  <K.icon size={14} />
+                  <span>
+                    <strong>{s.name}</strong>
+                    <em>{s.error ? s.error : `${K.label} · shared`}</em>
+                  </span>
+                  <i className={`status-dot ${s.error ? 'err' : s.updatedAt ? 'ok' : 'idle'}`} />
+                </button>
+              );
+            })}
+            {!shared.length && <p className="muted small pad">None. Shared sources are created in the main menu, Data.</p>}
+          </>
+        )}
       </aside>
       <main className="data-main">
         {draft ? (
           <SourceEditor key="new" source={draft} isNew editable={edit} onSaved={(id) => (setDraft(null), setSel(id))} onCancel={() => setDraft(null)} />
         ) : current ? (
-          <SourceEditor key={current.id} source={current} info={current} editable={edit} onSaved={() => {}} onDeleted={() => setSel(null)} />
+          // A shared source is changed in the main menu's Data page.
+          <SourceEditor key={current.id} source={current} info={current} editable={edit && (!projectId || current.project === projectId)} onSaved={() => {}} onDeleted={() => setSel(null)} />
         ) : (
           <div className="data-empty">
             <Database size={28} />

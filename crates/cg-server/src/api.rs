@@ -664,6 +664,20 @@ async fn delete_project(
         return Err(not_found("project"));
     }
     let _ = tokio::fs::remove_dir_all(crate::media::project_dir(&s, &id)).await;
+    // Its own data connectors go with it (the shared ones stay).
+    let own: Vec<String> = s
+        .data
+        .list()
+        .into_iter()
+        .filter(|x| x.source.project.as_deref() == Some(id.as_str()))
+        .map(|x| x.source.id)
+        .collect();
+    for sid in &own {
+        let _ = s.data.delete(sid);
+    }
+    if !own.is_empty() {
+        s.changed("sources");
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1842,11 +1856,42 @@ async fn mos_status(
 
 use crate::datasources::{Source, SourceInfo};
 
+#[derive(Deserialize, Default)]
+struct SourcesQuery {
+    /// A project's own connectors and the shared ones.
+    #[serde(default)]
+    project: Option<String>,
+    /// Only the shared connectors.
+    #[serde(default)]
+    shared: bool,
+}
+
+/// Connectors the user can see: shared ones, and those of the projects they see.
 async fn list_sources(
     State(s): State<Shared>,
-    CurrentUser(_me): CurrentUser,
+    CurrentUser(me): CurrentUser,
+    Query(q): Query<SourcesQuery>,
 ) -> Json<Vec<SourceInfo>> {
-    Json(s.data.list())
+    Json(
+        s.data
+            .list()
+            .into_iter()
+            .filter(|x| match (&x.source.project, &q.project) {
+                (None, _) => true,
+                (Some(_), _) if q.shared => false,
+                (Some(p), Some(want)) => p == want && me.sees_project(p),
+                (Some(p), None) => me.sees_project(p),
+            })
+            .collect(),
+    )
+}
+
+/// May `me` change this connector: a project's, its designers; a shared one, those who create projects.
+fn may_edit_source(me: &crate::auth::User, project: &Option<String>) -> ApiResult<()> {
+    match project {
+        Some(p) => require(me.sees_project(p) && me.can_design(p)),
+        None => require(me.can_create_projects()),
+    }
 }
 
 fn check_source(src: &mut Source) -> ApiResult<()> {
@@ -1863,7 +1908,12 @@ async fn create_source(
     CurrentUser(me): CurrentUser,
     Json(mut src): Json<Source>,
 ) -> ApiResult<Json<SourceInfo>> {
-    require(me.can_create_projects())?;
+    may_edit_source(&me, &src.project)?;
+    if let Some(p) = &src.project {
+        if s.project(p).await.is_none() {
+            return Err(not_found("project"));
+        }
+    }
     check_source(&mut src)?;
     if !valid_id(&src.id) || s.data.get(&src.id).is_some() {
         src.id = cg_core::new_id();
@@ -1887,11 +1937,11 @@ async fn put_source(
     Path(id): Path<String>,
     Json(mut src): Json<Source>,
 ) -> ApiResult<StatusCode> {
-    require(me.can_create_projects())?;
+    let old = s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    may_edit_source(&me, &old.project)?;
     check_source(&mut src)?;
-    if s.data.get(&id).is_none() {
-        return Err(not_found("data source"));
-    }
+    // It stays where it was (shared, or its project's).
+    src.project = old.project;
     src.id = id.clone();
     s.data.put(src).map_err(internal)?;
     s.data.refresh(&id);
@@ -1904,7 +1954,8 @@ async fn delete_source(
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
-    require(me.can_create_projects())?;
+    let old = s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    may_edit_source(&me, &old.project)?;
     if !s.data.delete(&id).map_err(internal)? {
         return Err(not_found("data source"));
     }
@@ -1912,12 +1963,21 @@ async fn delete_source(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// A connector the user may see (a project's: those who see the project).
+fn visible_source(s: &Shared, me: &crate::auth::User, id: &str) -> ApiResult<Source> {
+    let src = s.data.get(id).ok_or_else(|| not_found("data source"))?;
+    match &src.project {
+        Some(p) if !me.sees_project(p) => Err(not_found("data source")),
+        _ => Ok(src),
+    }
+}
+
 async fn source_value(
     State(s): State<Shared>,
-    CurrentUser(_me): CurrentUser,
+    CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    visible_source(&s, &me, &id)?;
     Ok(Json(s.data.value(&id).unwrap_or(serde_json::Value::Null)))
 }
 
@@ -1929,7 +1989,7 @@ async fn push_value(
     body: Bytes,
 ) -> ApiResult<StatusCode> {
     require(me.role != Role::Viewer)?;
-    let src = s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    let src = visible_source(&s, &me, &id)?;
     let crate::datasources::Kind::Push { format } = src.kind else {
         return Err(bad(
             "this source fetches its data itself; only push sources take values",
@@ -1943,10 +2003,10 @@ async fn push_value(
 
 async fn refresh_source(
     State(s): State<Shared>,
-    CurrentUser(_me): CurrentUser,
+    CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
-    s.data.get(&id).ok_or_else(|| not_found("data source"))?;
+    visible_source(&s, &me, &id)?;
     s.data.refresh(&id);
     Ok(StatusCode::NO_CONTENT)
 }

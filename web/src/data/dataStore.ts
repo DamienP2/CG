@@ -32,13 +32,19 @@ export const useData = create<DataState>((set, get) => ({
   },
 }));
 
-/** Sources, loaded on first use. */
+/** Sources, loaded on first use: the shared ones and those of the projects the user sees. */
 export function useSources() {
   const { sources, loaded, load } = useData();
   useEffect(() => {
     if (!loaded) void load().catch(() => {});
   }, [loaded, load]);
   return sources;
+}
+
+/** The sources a project can use: its own and the shared ones (shared last). */
+export function useProjectSources(projectId: string | null | undefined) {
+  const all = useSources();
+  return [...all.filter((s) => projectId && s.project === projectId), ...all.filter((s) => !s.project)];
 }
 
 export async function lookup(source: string, path: string, data: Data, filters?: DataFilter[], sort?: DataSort): Promise<string | null> {

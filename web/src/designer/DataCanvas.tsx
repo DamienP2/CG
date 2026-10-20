@@ -2,13 +2,13 @@ import { widgetOf } from '../widgets';
 import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { isTable, pipeline, useBoundData, useData, useSources, type Stage } from '../data/dataStore';
+import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
-import { api } from '../store';
+import { api, useApp } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
-import { navigate } from '../router';
+import { navigate, projectPath } from '../router';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
@@ -308,7 +308,10 @@ export function DataCanvas() {
 
 function Canvas({ template, onClose }: { template: Template; onClose: () => void }) {
   const { update, previewData, frame } = useDesigner();
+  const projectId = useApp((s) => s.project?.id);
+  // Lookups by id: every source; the palette: this project's and the shared ones.
   const sources = useSources();
+  const offered = useProjectSources(projectId);
   const bound = useBoundData(template, previewData);
   const values = useMemo(() => ({ ...previewData, ...bound }), [previewData, bound]);
   const cv = useCanvasView(`data.${template.id}`);
@@ -730,22 +733,25 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           </button>
 
           <div className="dc-pal-title">Data sources</div>
-          {sources.map((s) => (
-            <button key={s.id} className="kind-source" onPointerDown={(e) => fromPalette(e, s.name, addSource(s.id))}>
-              <Database size={14} />
-              <span>
-                <strong>{s.name}</strong>
-                <em>{s.type.toUpperCase()}</em>
-              </span>
-            </button>
+          {offered.map((s, i) => (
+            <span key={s.id} style={{ display: 'contents' }}>
+              {!s.project && (i === 0 || offered[i - 1].project) && <div className="dc-pal-sub">Shared</div>}
+              <button className="kind-source" onPointerDown={(e) => fromPalette(e, s.name, addSource(s.id))}>
+                <Database size={14} />
+                <span>
+                  <strong>{s.name}</strong>
+                  <em>{s.type.toUpperCase()}</em>
+                </span>
+              </button>
+            </span>
           ))}
-          {!sources.length && (
+          {!offered.length && (
             <p className="hint">
               No source yet:{' '}
-              <a href="/data" onClick={(e) => (e.preventDefault(), navigate('/data'))}>
-                add one in Data
-              </a>
-              .
+              <a href="#" onClick={(e) => (e.preventDefault(), projectId && navigate(projectPath(projectId, 'data')))}>
+                add one in Connectors
+              </a>{' '}
+              (this project) or in the main menu, Data (shared).
             </p>
           )}
 
