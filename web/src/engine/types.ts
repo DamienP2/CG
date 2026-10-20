@@ -514,6 +514,8 @@ export interface User {
   projects: string[] | null;
   channels: string[] | null;
   disabled: boolean;
+  /** Language of the interface ("en", "fr"); empty = the browser's. */
+  lang?: string;
 }
 
 /** Layer types whose text is styled with a FontStyle. */

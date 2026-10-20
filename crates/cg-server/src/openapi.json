@@ -167,6 +167,48 @@
     }
    }
   },
+  "/api/me/lang": {
+   "put": {
+    "tags": [
+     "Authentication"
+    ],
+    "summary": "Set my interface language",
+    "description": "Every user keeps the language of their interface (\"en\" or \"fr\").",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "lang"
+        ],
+        "properties": {
+         "lang": {
+          "type": "string",
+          "enum": [
+           "en",
+           "fr"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The user",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/User"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/auth/setup": {
    "post": {
     "tags": [
@@ -2859,6 +2901,10 @@
      },
      "disabled": {
       "type": "boolean"
+     },
+     "lang": {
+      "type": "string",
+      "description": "Language of the interface (\"en\", \"fr\"); empty = the browser's."
      }
     }
    },

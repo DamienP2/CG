@@ -1,11 +1,13 @@
-import { BookOpen, Database, FolderOpen, Images, MonitorPlay, LogOut, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Braces, Database, FolderOpen, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Logo } from './ui/Logo';
 import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
 import { Operator } from './operator/Operator';
 import { Output } from './output/Output';
-import { ApiDocs } from './pages/ApiDocs';
+import { ApiPage } from './pages/ApiPage';
+import { MosPage } from './mos/MosPage';
+import { LANGS, setLang, t, useLang, type Lang } from './i18n';
 import { Login } from './pages/Login';
 import { MosPlugin } from './mos/Plugin';
 import { EmbedPreview } from './embed/Preview';
@@ -17,7 +19,7 @@ import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
 import { ProjectSettings } from './pages/ProjectPages';
 import { Settings } from './settings/Settings';
-import { can, useApp } from './store';
+import { api, can, useApp } from './store';
 
 const LAST_PROJECT = 'pulse.lastProject';
 const LAST_CHANNEL = 'pulse.lastChannel';
@@ -57,6 +59,8 @@ export function App() {
 function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin' | 'embedPreview' }> }) {
   const { auth, init, connect, projects, channels, toasts } = useApp();
   const user = auth?.user;
+  // Every text is drawn again in the new language.
+  const lang = useLang((s) => s.lang);
 
   useEffect(() => void init(), [init]);
   useEffect(() => {
@@ -66,7 +70,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -79,12 +83,12 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
     }
   }, [route, user, projects, channels]);
 
-  if (!auth) return <div className="loading">Connecting…</div>;
-  if (!user) return <Login />;
+  if (!auth) return <div className="loading">{t('Connecting…')}</div>;
+  if (!user) return <Login key={lang} />;
 
   return (
-    <div className="app">
-      {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">Opening…</div> : <Home route={route} />}
+    <div className="app" key={lang}>
+      {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">{t('Opening…')}</div> : <Home route={route} />}
       <DialogHost />
       <div className="toasts">
         {toasts.map((t) => (
@@ -106,19 +110,39 @@ function Brand() {
   );
 }
 
+/** FR | EN: kept for the user on the server. */
+function LangSwitch() {
+  const lang = useLang((s) => s.lang);
+  const pick = (l: Lang) => {
+    if (l === lang) return;
+    setLang(l);
+    const { auth, toast } = useApp.getState();
+    if (!auth?.user) return;
+    useApp.setState({ auth: { ...auth, user: { ...auth.user, lang: l } } });
+    api('PUT', '/api/me/lang', { lang: l }).catch((e) => toast((e as Error).message, 'error'));
+  };
+  return (
+    <div className="lang-switch" role="group" aria-label={t('Language')}>
+      {LANGS.map((l) => (
+        <button key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => pick(l.id)}>
+          {l.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function UserMenu() {
   const { auth, connected, logout } = useApp();
   const user = auth!.user!;
   return (
     <>
-      <span className={`conn ${connected ? 'ok' : 'ko'}`} title={connected ? 'Connected to engine' : 'Reconnecting…'} />
-      <div className="user-menu" title={`${user.username} · ${user.role}`}>
+      <span className={`conn ${connected ? 'ok' : 'ko'}`} title={connected ? t('Connected to engine') : t('Reconnecting…')} />
+      <div className="user-menu" title={`${user.username} · ${t(user.role)}`}>
         <span className="avatar">{(user.displayName || user.username).slice(0, 1).toUpperCase()}</span>
         <span className="user-name">{user.displayName || user.username}</span>
-        <a className="icon-btn ghost" title="API documentation" href="/api-docs" onClick={(e) => (e.preventDefault(), navigate('/api-docs'))}>
-          <BookOpen size={14} />
-        </a>
-        <button className="icon-btn ghost" title="Sign out" onClick={logout}>
+        <LangSwitch />
+        <button className="icon-btn ghost" title={t('Sign out')} onClick={logout}>
           <LogOut size={14} />
         </button>
       </div>
@@ -127,7 +151,7 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'users' | 'settings' | 'apiDocs' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'mos' | 'users' | 'api' | 'settings' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata';
@@ -142,12 +166,14 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
       <nav className="topbar">
         <Brand />
         <div className="tabs">
-          {tab('projects', '/projects', <FolderOpen size={14} />, 'Projects')}
-          {tab('media', '/media', <Images size={14} />, 'Assets')}
-          {can.design(user) && tab('data', '/data', <Database size={14} />, 'Data')}
-          {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, 'Outputs')}
-          {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, 'Users')}
-          {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, 'Settings')}
+          {tab('projects', '/projects', <FolderOpen size={14} />, t('Projects'))}
+          {tab('media', '/media', <Images size={14} />, t('Assets'))}
+          {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
+          {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, t('Outputs'))}
+          {can.admin(user) && tab('mos', '/mos', <Newspaper size={14} />, 'MOS')}
+          {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, t('Users'))}
+          {tab('api', '/api-docs', <Braces size={14} />, 'API')}
+          {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, t('Settings'))}
         </div>
         <div className="spacer" />
         <UserMenu />
@@ -158,8 +184,9 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         {route.page === 'data' && <DataPage />}
         {route.page === 'outputs' && <Outputs />}
         {route.page === 'settings' && <Settings />}
+        {route.page === 'mos' && <MosPage />}
         {route.page === 'users' && <Users />}
-        {route.page === 'apiDocs' && <ApiDocs />}
+        {route.page === 'api' && <ApiPage />}
       </div>
     </>
   );
@@ -212,8 +239,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   const ready = project && project.id === projectId;
 
   let page: React.ReactNode;
-  if (!known) page = <div className="loading">This project does not exist or you cannot access it.</div>;
-  else if (!ready) page = <div className="loading">Opening the project…</div>;
+  if (!known) page = <div className="loading">{t('This project does not exist or you cannot access it.')}</div>;
+  else if (!ready) page = <div className="loading">{t('Opening the project…')}</div>;
   else if (sub === 'designer') page = <Designer key={project.id} />;
   else if (sub === 'data') page = <DataPage key={projectId} projectId={projectId} />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
@@ -230,15 +257,15 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         <Brand />
         <span className="topbar-sep" aria-hidden />
         <span className="project-title" title={summary?.description || undefined}>
-          <small>Project</small>
+          <small>{t('Project')}</small>
           <span>{summary?.name ?? project?.name ?? '…'}</span>
         </span>
         <div className="tabs">
-          {tab('designer', <PenTool size={14} />, 'Designer')}
-          {tab('operator', <Radio size={14} />, 'Operator')}
-          {tab('data', <Database size={14} />, 'Connectors')}
-          {tab('media', <Images size={14} />, 'Assets')}
-          {tab('settings', <SettingsIcon size={14} />, 'Settings')}
+          {tab('designer', <PenTool size={14} />, t('Designer'))}
+          {tab('operator', <Radio size={14} />, t('Operator'))}
+          {tab('data', <Database size={14} />, t('Connectors'))}
+          {tab('media', <Images size={14} />, t('Assets'))}
+          {tab('settings', <SettingsIcon size={14} />, t('Settings'))}
         </div>
         <div className="spacer" />
         {/* Filled by the page (the Designer's undo, redo and history). */}
@@ -250,7 +277,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         )}
         {sub === 'operator' && operated && operated.projectId === projectId && (
           <span className={`air-indicator ${onAir ? 'live' : ''}`} title={operated.name}>
-            <Tv size={13} /> {onAir ? `${onAir} on air` : 'Off air'}
+            <Tv size={13} /> {onAir ? t('{n} on air', { n: onAir }) : t('Off air')}
           </span>
         )}
         <UserMenu />

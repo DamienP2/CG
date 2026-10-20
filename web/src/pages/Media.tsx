@@ -1,13 +1,15 @@
-import { Check, Copy, Download, File, FileAudio, Film, Image as ImageIcon, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
+import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { loadFonts, useFonts } from '../engine/fonts';
+import { locale, t, tn } from '../i18n';
+import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
 
 type Kind = MediaFile['kind'];
 
 const KINDS: { kind: Kind | 'all'; label: string; icon: typeof File }[] = [
-  { kind: 'all', label: 'All', icon: File },
+  { kind: 'all', label: 'All files', icon: LayoutGrid },
   { kind: 'image', label: 'Images', icon: ImageIcon },
   { kind: 'video', label: 'Videos', icon: Film },
   { kind: 'audio', label: 'Audio', icon: FileAudio },
@@ -24,7 +26,7 @@ async function uploadFonts(files: File[], toast: (m: string, k?: 'info' | 'error
     try {
       const res = await fetch(`/api/fonts/${encodeURIComponent(name)}`, { method: 'PUT', body: file, credentials: 'same-origin' });
       if (!res.ok) throw new Error(await res.text());
-      toast(`Font ${file.name} added`, 'info');
+      toast(t('Font {name} added', { name: file.name }), 'info');
     } catch (e) {
       toast(`${file.name}: ${(e as Error).message}`, 'error');
     }
@@ -37,12 +39,12 @@ function FontsPanel({ canEdit }: { canEdit: boolean }) {
   const families = useFonts((s) => s.families);
   const toast = useApp((s) => s.toast);
   const groups: [string, string, typeof families][] = [
-    ['Uploaded', 'Added here, for every project', families.filter((f) => f.source === 'uploaded')],
-    ['Built in', 'Shipped with Strata', families.filter((f) => f.source === 'bundled')],
-    ['Server', 'Installed on the machine', families.filter((f) => f.source === 'system')],
+    [t('Uploaded'), t('Added here, for every project'), families.filter((f) => f.source === 'uploaded')],
+    [t('Built in'), t('Shipped with Strata'), families.filter((f) => f.source === 'bundled')],
+    [t('Server'), t('Installed on the machine'), families.filter((f) => f.source === 'system')],
   ];
   const remove = async (file: string, family: string) => {
-    if (!(await confirmDialog({ title: `Remove ${family} (${file})?`, message: 'Texts using it fall back to Inter.', confirm: 'Remove', danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Remove {family} ({file})?', { family, file }), message: t('Texts using it fall back to Inter.'), confirm: t('Remove'), danger: true }))) return;
     try {
       await api('DELETE', `/api/fonts/${encodeURIComponent(file)}`);
       await loadFonts();
@@ -52,12 +54,6 @@ function FontsPanel({ canEdit }: { canEdit: boolean }) {
   };
   return (
     <div className="fonts-panel">
-      {canEdit && (
-        <label className="btn small fonts-add">
-          <Upload size={13} /> Add fonts (.ttf, .otf, .woff)
-          <input type="file" multiple hidden accept=".ttf,.otf,.woff,.woff2,.ttc" onChange={(e) => e.target.files && void uploadFonts([...e.target.files], toast)} />
-        </label>
-      )}
       {groups
         .filter(([, , l]) => l.length)
         .map(([title, hint, list]) => (
@@ -75,7 +71,7 @@ function FontsPanel({ canEdit }: { canEdit: boolean }) {
                   <span className="spacer" />
                   {canEdit &&
                     (f.files ?? []).map((file) => (
-                      <button key={file} className="icon-btn danger" title={`Remove ${file}`} onClick={() => void remove(file, f.family)}>
+                      <button key={file} className="icon-btn danger" title={t('Remove {file}', { file })} onClick={() => void remove(file, f.family)}>
                         <Trash2 size={13} />
                       </button>
                     ))}
@@ -97,7 +93,7 @@ export function formatSize(n: number) {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-const formatDate = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const formatDate = (ms: number) => new Date(ms).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
 
 type Upload = { name: string; progress: number; error?: string };
 
@@ -117,6 +113,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   }, [families.length]);
   const [kind, setKind] = useState<Kind | 'all'>('all');
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<'name' | 'date' | 'size'>('name');
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [dragging, setDragging] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -139,14 +136,14 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     // Fonts are global: they go to the server's fonts, never to a project.
     const fonts = [...list].filter((f) => FONT_FILE.test(f.name));
     if (fonts.length) {
-      if (projectId) toast('Fonts are shared by every project: add them in Assets (top bar).', 'error');
+      if (projectId) toast(t('Fonts are shared by every project: add them in Assets (main page).'), 'error');
       else await uploadFonts(fonts, toast);
     }
     const todo = [...list].filter((f) => !FONT_FILE.test(f.name));
     if (!todo.length) return;
     const existing = new Set(files?.map((f) => f.name));
     const replaced = todo.filter((f) => existing.has(mediaName(f.name))).map((f) => mediaName(f.name));
-    if (replaced.length && !(await confirmDialog({ title: `Replace ${replaced.join(', ')}?`, message: `Templates using ${replaced.length > 1 ? 'them' : 'it'} show the new file.`, confirm: 'Replace' }))) return;
+    if (replaced.length && !(await confirmDialog({ title: t('Replace {names}?', { names: replaced.join(', ') }), message: tn(replaced.length, 'Templates using it show the new file.', 'Templates using them show the new files.'), confirm: t('Replace') }))) return;
     setUploads((u) => [...u, ...todo.map((f) => ({ name: f.name, progress: 0 }))]);
     await Promise.all(
       todo.map(async (f) => {
@@ -163,7 +160,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   };
 
   const remove = async (m: MediaFile) => {
-    if (!(await confirmDialog({ title: `Delete “${m.name}”?`, message: 'Templates that use it will show nothing in its place.', confirm: 'Delete', danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Delete “{name}”?', { name: m.name }), message: t('Templates that use it will show nothing in its place.'), confirm: t('Delete'), danger: true }))) return;
     try {
       await api('DELETE', `${url}/${encodeURIComponent(m.name)}`);
       setFiles((l) => l?.filter((x) => x.src !== m.src) ?? null);
@@ -188,11 +185,36 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     return c;
   }, [files]);
   const total = useMemo(() => (files ?? []).reduce((n, f) => n + f.size, 0), [files]);
-  const shown = (files ?? []).filter((f) => (kind === 'all' || f.kind === kind) && f.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const q = query.trim().toLowerCase();
+  const shown = (files ?? [])
+    .filter((f) => (kind === 'all' || f.kind === kind) && f.name.toLowerCase().includes(q))
+    .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || a.name.localeCompare(b.name));
+  const fonts = !projectId && kind === 'font';
+  const label = KINDS.find((k) => k.kind === kind)?.label ?? 'All files';
+
+  const nav = (
+    <>
+      <NavSection>{projectId ? t('This project') : t('Library')}</NavSection>
+      {KINDS.filter((k) => k.kind !== 'font').map(({ kind: k, label: l, icon: Icon }) => (
+        <NavItem key={k} on={kind === k} icon={<Icon size={15} />} label={t(l)} count={counts[k] ?? 0} className={k !== 'all' && !counts[k] ? 'dim' : ''} onClick={() => setKind(k)} />
+      ))}
+      {!projectId && (
+        <>
+          <NavSection>{t('Typography')}</NavSection>
+          <NavItem on={kind === 'font'} icon={<Type size={15} />} label={t('Fonts')} count={families.length} onClick={() => setKind('font')} />
+        </>
+      )}
+      <div className="lib-nav-foot">
+        <HardDrive size={13} /> {files ? `${tn(files.length, '{n} file', '{n} files')} · ${formatSize(total)}` : '…'}
+        <span className="muted">{projectId ? t('Fonts are shared: see Assets on the main page.') : t('Every project can use these files.')}</span>
+      </div>
+    </>
+  );
 
   return (
-    <div
-      className={`library media-page ${dragging ? 'dragging' : ''}`}
+    <SidePage
+      nav={nav}
+      className={`media-page ${dragging ? 'dragging' : ''}`}
       onDragEnter={(e) => {
         if (!canUpload || !e.dataTransfer.types.includes('Files')) return;
         depth.current++;
@@ -211,123 +233,122 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         setDragging(false);
         if (canUpload) void upload(e.dataTransfer.files);
       }}
+      after={
+        dragging && (
+          <div className="drop-overlay">
+            <UploadCloud size={42} />
+            <strong>{projectId ? t('Drop to upload to this project') : t('Drop to upload to the shared assets')}</strong>
+          </div>
+        )
+      }
     >
-      <div className="library-inner">
-        <div className="settings-head">
-          <div>
-            <h1>{projectId ? 'Assets' : 'Shared assets'}</h1>
-            <p className="muted">
-              {projectId ? 'Images, videos and files of this project. Fonts are shared: see Assets in the top bar.' : 'Images, videos, files and fonts every project can use.'} {files ? `${files.length} file${files.length === 1 ? '' : 's'} · ${formatSize(total)}` : ''}
-            </p>
-          </div>
-          <div className="spacer" />
-          {canUpload && (
-            <label className="btn primary">
-              <Upload size={14} /> Upload
-              <input type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />
-            </label>
-          )}
-        </div>
+      <PageHead
+        title={fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Assets') : t('Shared assets')) : t(label)}
+        sub={fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : `${tn(shown.length, '{n} file', '{n} files')} · ${projectId ? t('images, videos and files of this project') : t('images, videos and files every project can use')}`}
+      >
+        {canUpload && (
+          <label className="btn primary">
+            <Upload size={14} /> {fonts ? t('Add fonts') : t('Upload')}
+            <input type="file" multiple hidden accept={fonts ? '.ttf,.otf,.woff,.woff2,.ttc' : undefined} onChange={(e) => e.target.files && void upload(e.target.files)} />
+          </label>
+        )}
+      </PageHead>
 
+      {!fonts && (
         <div className="media-toolbar">
-          <div className="seg">
-            {KINDS.filter((k) => k.kind === 'all' || (k.kind === 'font' ? !projectId : counts[k.kind])).map(({ kind: k, label, icon: Icon }) => (
-              <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>
-                <Icon size={13} /> {label} <span className="count">{k === 'font' ? families.length : (counts[k] ?? 0)}</span>
-              </button>
-            ))}
-          </div>
-          <div className="spacer" />
           <label className="search">
             <Search size={14} />
-            <input value={query} placeholder="Search files" onChange={(e) => setQuery(e.target.value)} />
+            <input value={query} placeholder={t('Search files')} onChange={(e) => setQuery(e.target.value)} />
           </label>
-        </div>
-
-        {uploads.length > 0 && (
-          <div className="uploads">
-            {uploads.map((u) => (
-              <div key={u.name} className={`upload-row ${u.error ? 'error' : ''}`}>
-                <span className="grow">{u.name}</span>
-                {u.error ? (
-                  <>
-                    <span className="small">{u.error}</span>
-                    <button className="btn small" onClick={() => setUploads((l) => l.filter((x) => x.name !== u.name))}>
-                      Dismiss
-                    </button>
-                  </>
-                ) : (
-                  <div className="bar">
-                    <div style={{ width: `${Math.round(u.progress * 100)}%` }} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {kind === 'font' && !projectId ? (
-          <FontsPanel canEdit={canDelete} />
-        ) : files && files.length === 0 ? (
-          <label className={`media-empty ${canUpload ? '' : 'static'}`}>
-            <UploadCloud size={36} />
-            <strong>No media yet</strong>
-            <span className="muted">{canUpload ? 'Drop files here or click to upload: images, videos, audio, fonts…' : 'Nothing has been uploaded.'}</span>
-            {canUpload && <input type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />}
+          <div className="spacer" />
+          <label className="sort">
+            {t('Sort')}
+            <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+              <option value="name">{t('Name')}</option>
+              <option value="date">{t('Newest')}</option>
+              <option value="size">{t('Size')}</option>
+            </select>
           </label>
-        ) : (
-          <div className="media-grid">
-            {shown.map((m) => {
-              const Icon = ICON[m.kind];
-              return (
-                <div key={m.src} className="media-tile" title={m.src}>
-                  <div className="media-preview">
-                    {m.kind === 'image' ? (
-                      <img src={`${m.src}?v=${m.modified}`} alt="" loading="lazy" />
-                    ) : m.kind === 'video' ? (
-                      <>
-                        <Icon size={30} />
-                        <video src={`${m.src}?v=${m.modified}#t=0.5`} muted preload="metadata" onError={(e) => (e.currentTarget.style.display = 'none')} onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} />
-                      </>
-                    ) : (
-                      <Icon size={30} />
-                    )}
-                    <span className={`media-kind ${m.kind}`}>
-                      <Icon size={11} /> {m.name.split('.').pop()?.toUpperCase()}
-                    </span>
-                    <div className="media-actions">
-                      <button className="icon-btn" title="Copy the URL" onClick={() => void copy(m)}>
-                        {copied === m.src ? <Check size={14} /> : <Copy size={14} />}
-                      </button>
-                      <a className="icon-btn" title="Download" href={m.src} download={m.name}>
-                        <Download size={14} />
-                      </a>
-                      {canDelete && (
-                        <button className="icon-btn danger" title="Delete" onClick={() => void remove(m)}>
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="media-info">
-                    <strong>{m.name}</strong>
-                    <span className="muted small">
-                      {formatSize(m.size)} · {formatDate(m.modified)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-            {files && !shown.length && <p className="muted">No file matches.</p>}
-          </div>
-        )}
-      </div>
-      {dragging && (
-        <div className="drop-overlay">
-          <UploadCloud size={42} />
-          <strong>Drop to upload to {projectId ? 'this project' : 'the shared assets'}</strong>
         </div>
       )}
-    </div>
+
+      {uploads.length > 0 && (
+        <div className="uploads">
+          {uploads.map((u) => (
+            <div key={u.name} className={`upload-row ${u.error ? 'error' : ''}`}>
+              <span className="grow">{u.name}</span>
+              {u.error ? (
+                <>
+                  <span className="small">{u.error}</span>
+                  <button className="btn small" onClick={() => setUploads((l) => l.filter((x) => x.name !== u.name))}>
+                    {t('Dismiss')}
+                  </button>
+                </>
+              ) : (
+                <div className="bar">
+                  <div style={{ width: `${Math.round(u.progress * 100)}%` }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {fonts ? (
+        <FontsPanel canEdit={canDelete} />
+      ) : files && files.length === 0 ? (
+        <label className={`media-empty ${canUpload ? '' : 'static'}`}>
+          <UploadCloud size={36} />
+          <strong>{t('No media yet')}</strong>
+          <span className="muted">{canUpload ? t('Drop files here or click to upload: images, videos, audio, fonts…') : t('Nothing has been uploaded.')}</span>
+          {canUpload && <input type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files)} />}
+        </label>
+      ) : (
+        <div className="media-grid">
+          {shown.map((m) => {
+            const Icon = ICON[m.kind];
+            return (
+              <div key={m.src} className="media-tile" title={m.src}>
+                <div className="media-preview">
+                  {m.kind === 'image' ? (
+                    <img src={`${m.src}?v=${m.modified}`} alt="" loading="lazy" />
+                  ) : m.kind === 'video' ? (
+                    <>
+                      <Icon size={30} />
+                      <video src={`${m.src}?v=${m.modified}#t=0.5`} muted preload="metadata" onError={(e) => (e.currentTarget.style.display = 'none')} onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} />
+                    </>
+                  ) : (
+                    <Icon size={30} />
+                  )}
+                  <span className={`media-kind ${m.kind}`}>
+                    <Icon size={11} /> {m.name.split('.').pop()?.toUpperCase()}
+                  </span>
+                  <div className="media-actions">
+                    <button className="icon-btn" title={t('Copy the URL')} onClick={() => void copy(m)}>
+                      {copied === m.src ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                    <a className="icon-btn" title={t('Download')} href={m.src} download={m.name}>
+                      <Download size={14} />
+                    </a>
+                    {canDelete && (
+                      <button className="icon-btn danger" title={t('Delete')} onClick={() => void remove(m)}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="media-info">
+                  <strong>{m.name}</strong>
+                  <span className="muted small">
+                    {formatSize(m.size)} · {formatDate(m.modified)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {files && !shown.length && <p className="muted">{t('No file matches.')}</p>}
+        </div>
+      )}
+    </SidePage>
   );
 }

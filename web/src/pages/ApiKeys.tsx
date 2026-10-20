@@ -1,10 +1,11 @@
 import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { User } from '../engine/types';
-import { api, useApp } from '../store';
+import { locale, t } from '../i18n';
+import { api, can, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 
-interface ApiKey {
+export interface ApiKey {
   id: string;
   name: string;
   userId: string;
@@ -13,19 +14,21 @@ interface ApiKey {
   lastUsed: number | null;
 }
 
-const when = (ms: number | null) => (ms ? new Date(ms).toLocaleString() : 'never');
+const when = (ms: number | null) => (ms ? new Date(ms).toLocaleString(locale()) : t('never'));
 
 /** Permanent keys for automation; the secret is shown once. */
-export function ApiKeys({ users }: { users: User[] }) {
+export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }) {
   const { auth, toast } = useApp();
   const me = auth?.user;
-  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const admin = can.admin(me);
+  const [users, setUsers] = useState<User[]>([]);
   const [name, setName] = useState('');
   const [owner, setOwner] = useState(me?.id ?? '');
   const [secret, setSecret] = useState<{ name: string; value: string } | null>(null);
-  const load = () => api<ApiKey[]>('GET', '/api/keys').then(setKeys).catch(() => {});
-  useEffect(() => void load(), []);
-  const userName = (id: string) => users.find((u) => u.id === id)?.username ?? id;
+  useEffect(() => {
+    if (admin) api<User[]>('GET', '/api/users').then(setUsers).catch(() => {});
+  }, [admin]);
+  const userName = (id: string) => (id === me?.id ? me.username : (users.find((u) => u.id === id)?.username ?? id));
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,111 +36,98 @@ export function ApiKeys({ users }: { users: User[] }) {
       const r = await api<{ key: ApiKey; secret: string }>('POST', '/api/keys', { name, userId: owner || undefined });
       setSecret({ name: r.key.name, value: r.secret });
       setName('');
-      load();
+      reload();
     } catch (err) {
       toast((err as Error).message, 'error');
     }
   };
+  const canCreate = !!me && me.role !== 'viewer';
 
   return (
-    <section className="set-card">
-      <header>
-        <KeyRound size={16} />
-        <h2>API keys</h2>
-        <div className="spacer" />
-        <a className="btn small" href="/premiere/strata-premiere.zip" title="The Premiere Pro panel, set to this server (it updates itself from it)">
-          Premiere panel
-        </a>
-        <a className="btn small" href="/api-docs">
-          API documentation
-        </a>
-      </header>
-      <div className="set-body">
-        <p className="hint">
-          For automation (Companion / Stream Deck, newsroom systems, scripts): send <code>Authorization: Bearer pcg_…</code>. A key acts with the rights of its user — create a dedicated operator account scoped to
-          the right channels for each system.
-        </p>
-        {secret && (
-          <div className="key-secret">
-            <strong>Key “{secret.name}” created — copy it now, it will not be shown again:</strong>
-            <div className="row">
-              <code>{secret.value}</code>
-              <button
-                className="btn small"
-                onClick={() => {
-                  navigator.clipboard?.writeText(secret.value);
-                  toast('Copied', 'info');
-                }}
-              >
-                <Copy size={13} /> Copy
-              </button>
-              <button className="btn small" onClick={() => setSecret(null)}>
-                Done
-              </button>
-            </div>
+    <>
+      <p className="hint">
+        {t('For automation (Companion / Stream Deck, newsroom systems, scripts): send')} <code>Authorization: Bearer pcg_…</code>.{' '}
+        {t('A key acts with the rights of its user — create a dedicated operator account scoped to the right channels for each system.')}
+      </p>
+      {secret && (
+        <div className="key-secret">
+          <strong>{t('Key “{name}” created — copy it now, it will not be shown again:', { name: secret.name })}</strong>
+          <div className="row">
+            <code>{secret.value}</code>
+            <button
+              className="btn small"
+              onClick={() =>
+                navigator.clipboard
+                  ?.writeText(secret.value)
+                  .then(() => toast(t('Copied'), 'info'))
+                  .catch(() => toast(secret.value))
+              }
+            >
+              <Copy size={13} /> {t('Copy')}
+            </button>
+            <button className="btn small" onClick={() => setSecret(null)}>
+              {t('Done')}
+            </button>
           </div>
-        )}
-        <form className="row key-form" onSubmit={create}>
-          <input value={name} placeholder="What uses it — e.g. Companion régie A" onChange={(e) => setName(e.target.value)} />
-          <select value={owner} onChange={(e) => setOwner(e.target.value)} title="The key acts as this user">
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                as {u.username} ({u.role})
-              </option>
-            ))}
-          </select>
+        </div>
+      )}
+      {canCreate && (
+        <form className="key-form" onSubmit={create}>
+          <KeyRound size={16} className="key-form-icon" />
+          <input value={name} placeholder={t('What uses it — e.g. Companion control room A')} onChange={(e) => setName(e.target.value)} />
+          {admin && (
+            <select value={owner} onChange={(e) => setOwner(e.target.value)} title={t('The key acts as this user')}>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {t('as {user} ({role})', { user: u.username, role: t(u.role) })}
+                </option>
+              ))}
+            </select>
+          )}
           <button className="btn primary" disabled={!name.trim()}>
-            <Plus size={14} /> Create key
+            <Plus size={14} /> {t('Create key')}
           </button>
         </form>
-        <table className="user-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Key</th>
-              <th>Acts as</th>
-              <th>Created</th>
-              <th>Last used</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id}>
-                <td>
-                  <strong>{k.name}</strong>
-                </td>
-                <td>
-                  <code>{k.prefix}…</code>
-                </td>
-                <td>{userName(k.userId)}</td>
-                <td className="muted">{when(k.createdAt)}</td>
-                <td className="muted">{when(k.lastUsed)}</td>
-                <td className="row-actions">
-                  <button
-                    className="icon-btn ghost"
-                    title="Revoke"
-                    onClick={async () => {
-                      if (!(await confirmDialog({ title: `Revoke the key “${k.name}”?`, message: 'Systems using it stop working at once.', confirm: 'Revoke', danger: true }))) return;
-                      await api('DELETE', `/api/keys/${encodeURIComponent(k.id)}`).catch((e) => toast((e as Error).message, 'error'));
-                      load();
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {keys.length === 0 && (
-              <tr>
-                <td colSpan={6} className="muted">
-                  No API key yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
+      )}
+      {keys.length ? (
+        <div className="key-grid">
+          {keys.map((k) => (
+            <div key={k.id} className="key-card">
+              <div className="key-card-head">
+                <span className="key-icon">
+                  <KeyRound size={15} />
+                </span>
+                <strong>{k.name}</strong>
+                <button
+                  className="icon-btn ghost"
+                  title={t('Revoke')}
+                  onClick={async () => {
+                    if (!(await confirmDialog({ title: t('Revoke the key “{name}”?', { name: k.name }), message: t('Systems using it stop working at once.'), confirm: t('Revoke'), danger: true }))) return;
+                    await api('DELETE', `/api/keys/${encodeURIComponent(k.id)}`).catch((e) => toast((e as Error).message, 'error'));
+                    reload();
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <code className="key-prefix">{k.prefix}…</code>
+              <dl>
+                <dt>{t('Acts as')}</dt>
+                <dd>{userName(k.userId)}</dd>
+                <dt>{t('Created')}</dt>
+                <dd>{when(k.createdAt)}</dd>
+                <dt>{t('Last used')}</dt>
+                <dd className={k.lastUsed ? '' : 'muted'}>{when(k.lastUsed)}</dd>
+              </dl>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty big">
+          <KeyRound size={22} />
+          <p>{t('No API key yet.')}</p>
+        </div>
+      )}
+    </>
   );
 }

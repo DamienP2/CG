@@ -1,5 +1,5 @@
 import type { FrameRate } from '../engine/types';
-import type { MosConfig } from '../settings/Mos';
+import type { MosConfig } from '../mos/MosPage';
 
 /** Mirrors crates/cg-server/src/config.rs and crates/cg-output. */
 

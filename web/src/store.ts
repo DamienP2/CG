@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { setLang, t } from './i18n';
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
@@ -168,15 +169,19 @@ export const useApp = create<AppStore>((set, get) => {
 
     async init() {
       try {
-        set({ auth: await api<AuthState>('GET', '/api/auth/state') });
+        const auth = await api<AuthState>('GET', '/api/auth/state');
+        // The user's language before anything is drawn.
+        setLang(auth.user?.lang);
+        set({ auth });
       } catch (e) {
-        get().toast(`Cannot reach the server: ${errText(e)}`, 'error');
+        get().toast(t('Cannot reach the server: {error}', { error: errText(e) }), 'error');
         setTimeout(() => get().init(), 2000);
       }
     },
 
     async login(username, password) {
       const r = await api<{ user: User }>('POST', '/api/auth/login', { username, password });
+      setLang(r.user.lang);
       set({ auth: { ...get().auth!, user: r.user } });
       socket?.close();
     },

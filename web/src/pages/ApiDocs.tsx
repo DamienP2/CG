@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '../i18n';
 
 /* Minimal OpenAPI 3.1 reader for /api/openapi.json (no external viewer:
    servers are often offline). */
@@ -7,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 type Schema = { $ref?: string; type?: string | string[]; properties?: Record<string, Schema>; items?: Schema; enum?: string[]; description?: string; example?: unknown; additionalProperties?: Schema | boolean; oneOf?: Schema[]; required?: string[]; format?: string; deprecated?: boolean };
 type Param = { name: string; in: string; required?: boolean; description?: string; schema?: Schema };
 type Op = { tags?: string[]; summary?: string; description?: string; parameters?: Param[]; requestBody?: { content: Record<string, { schema: Schema }> }; responses: Record<string, { description: string; content?: Record<string, { schema: Schema }> }>; security?: unknown[] };
-type Spec = { info: { title: string; version: string; description: string }; tags: { name: string }[]; paths: Record<string, Record<string, Op | Param[]>>; components: { schemas: Record<string, Schema> } };
+export type Spec = { info: { title: string; version: string; description: string }; tags: { name: string }[]; paths: Record<string, Record<string, Op | Param[]>>; components: { schemas: Record<string, Schema> } };
 
 const METHODS = ['get', 'post', 'put', 'delete'];
 
@@ -64,14 +65,14 @@ function Operation({ method, path, op, spec }: { method: string; path: string; o
         <span className={`method m-${method}`}>{method.toUpperCase()}</span>
         <code className="api-path">{path}</code>
         <span className="api-summary">{op.summary}</span>
-        {op.security && op.security.length === 0 ? <span className="badge">public</span> : <Lock size={12} className="muted" />}
+        {op.security && op.security.length === 0 ? <span className="badge">{t('public')}</span> : <Lock size={12} className="muted" />}
       </button>
       {open && (
         <div className="api-op-body">
           {op.description && <p className="api-desc">{op.description}</p>}
           {!!op.parameters?.length && (
             <>
-              <h4>Parameters</h4>
+              <h4>{t('Parameters')}</h4>
               <table>
                 <tbody>
                   {op.parameters.map((p) => (
@@ -92,12 +93,12 @@ function Operation({ method, path, op, spec }: { method: string; path: string; o
           {body && (
             <>
               <h4>
-                Body <span className="muted">{body[0]}</span>
+                {t('Body')} <span className="muted">{body[0]}</span>
               </h4>
               <SchemaView schema={body[1].schema} spec={spec} />
             </>
           )}
-          <h4>Responses</h4>
+          <h4>{t('Responses')}</h4>
           {Object.entries(op.responses).map(([code, r]) => {
             const c = r.content && Object.entries(r.content)[0];
             return (
@@ -113,7 +114,10 @@ function Operation({ method, path, op, spec }: { method: string; path: string; o
   );
 }
 
-export function ApiDocs() {
+export type ApiOp = { method: string; path: string; op: Op };
+
+/** The API description, with its operations by tag. */
+export function useApiSpec() {
   const [spec, setSpec] = useState<Spec | null>(null);
   useEffect(() => {
     fetch('/api/openapi.json')
@@ -122,7 +126,7 @@ export function ApiDocs() {
       .catch(() => {});
   }, []);
   const byTag = useMemo(() => {
-    const m = new Map<string, { method: string; path: string; op: Op }[]>();
+    const m = new Map<string, ApiOp[]>();
     if (!spec) return m;
     for (const [path, item] of Object.entries(spec.paths)) {
       for (const method of METHODS) {
@@ -135,34 +139,38 @@ export function ApiDocs() {
     }
     return m;
   }, [spec]);
-  if (!spec) return <div className="loading">Loading the API description…</div>;
+  return { spec, byTag };
+}
+
+const md = (para: string) =>
+  para
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+/** The introduction of the API (authentication, conventions). */
+export function ApiOverview({ spec }: { spec: Spec }) {
   return (
-    <div className="library">
-      <div className="library-inner api-docs">
-        <div className="settings-head">
-          <div>
-            <h1>
-              {spec.info.title} <span className="badge">{spec.info.version}</span>
-            </h1>
-            <p className="muted">
-              OpenAPI 3.1: <a href="/api/openapi.json">/api/openapi.json</a> — import it into Postman, Insomnia or a code generator.
-            </p>
-          </div>
-        </div>
-        <div className="api-intro">
-          {spec.info.description.split('\n\n').map((para, i) => (
-            <p key={i} dangerouslySetInnerHTML={{ __html: para.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*(.+?)\*/g, '<em>$1</em>') }} />
-          ))}
-        </div>
-        {spec.tags.map((t) => (
-          <section key={t.name} className="api-tag">
-            <h2>{t.name}</h2>
-            {(byTag.get(t.name) ?? []).map((o) => (
-              <Operation key={o.method + o.path} {...o} spec={spec} />
-            ))}
-          </section>
+    <div className="api-docs">
+      <div className="api-intro">
+        {spec.info.description.split('\n\n').map((para, i) => (
+          <p key={i} dangerouslySetInnerHTML={{ __html: md(para) }} />
         ))}
       </div>
     </div>
+  );
+}
+
+/** The operations of one tag. */
+export function ApiTag({ spec, name, ops }: { spec: Spec; name?: string; ops: ApiOp[] }) {
+  return (
+    <section className="api-tag api-docs">
+      {name && <h2>{name}</h2>}
+      {ops.map((o) => (
+        <Operation key={o.method + o.path} {...o} spec={spec} />
+      ))}
+    </section>
   );
 }

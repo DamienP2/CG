@@ -1,10 +1,12 @@
 import { FormatButtons } from '../designer/ProjectPanel';
-import { Copy, Database, GraduationCap, Download, Folder, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
+import { Check, CheckSquare, Copy, Database, GraduationCap, Download, Folder, FolderInput, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
 import { projectPath, projectTab, type ProjectPage } from '../router';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { t, tn } from '../i18n';
+import { NavItem, NavSection } from './SidePage';
 
 export const FORMATS: {
   label: string;
@@ -51,7 +53,7 @@ const fps = (r: FrameRate) => +(r.num / r.den).toFixed(2);
 
 function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?: string; onClose: () => void }) {
   const toast = useApp((s) => s.toast);
-  const [name, setName] = useState(from ? `${from.name} copy` : '');
+  const [name, setName] = useState(from ? t('{name} copy', { name: from.name }) : '');
   const [description, setDescription] = useState(from?.description ?? '');
   const [size, setSize] = useState({ width: 1920, height: 1080 });
   const [rate, setRate] = useState<FrameRate>({ num: 50, den: 1 });
@@ -97,32 +99,32 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
     <div className="modal-back" onPointerDown={onClose}>
       <form className="modal" onSubmit={create} onPointerDown={(e) => e.stopPropagation()}>
         <header>
-          <h2>{from ? `Duplicate “${from.name}”` : 'New project'}</h2>
+          <h2>{from ? t('Duplicate “{name}”', { name: from.name }) : t('New project')}</h2>
           <button type="button" className="icon-btn ghost" onClick={onClose}>
             <X size={16} />
           </button>
         </header>
         <label className="set-field">
-          <span className="set-label">Name</span>
-          <input autoFocus value={name} placeholder="Evening news, Match day…" onChange={(e) => setName(e.target.value)} />
+          <span className="set-label">{t('Name')}</span>
+          <input autoFocus value={name} placeholder={t('Evening news, Match day…')} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="set-field">
-          <span className="set-label">Description</span>
+          <span className="set-label">{t('Description')}</span>
           <input value={description} onChange={(e) => setDescription(e.target.value)} />
         </label>
         {!from && (
           <div className="set-field">
-            <span className="set-label">Design format</span>
+            <span className="set-label">{t('Design format')}</span>
             <FormatButtons width={size.width} height={size.height} rate={rate} onSize={(width, height) => setSize({ width, height })} onRate={setRate} />
-            <span className="set-hint">Channels in another format scale the graphics to fit.</span>
+            <span className="set-hint">{t('Channels in another format scale the graphics to fit.')}</span>
           </div>
         )}
         <footer>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="btn primary" disabled={busy || !name.trim()}>
-            <Plus size={14} /> {from ? 'Duplicate' : 'Create'}
+            <Plus size={14} /> {from ? t('Duplicate') : t('Create')}
           </button>
         </footer>
       </form>
@@ -155,7 +157,7 @@ function DemoBank({ onClose }: { onClose: () => void }) {
     setBusy(d.id);
     try {
       const p = await api<ProjectSummary>('POST', `/api/demos/${encodeURIComponent(d.id)}`);
-      toast(`“${p.name}” added to your projects`, 'info');
+      toast(t('“{name}” added to your projects', { name: p.name }), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
@@ -167,20 +169,20 @@ function DemoBank({ onClose }: { onClose: () => void }) {
       <div className="modal wide demo-bank" onPointerDown={(e) => e.stopPropagation()}>
         <header>
           <GraduationCap size={18} />
-          <h2>Demo projects</h2>
+          <h2>{t('Demo projects')}</h2>
           <div className="spacer" />
-          <button className="icon-btn ghost" title="Close" onClick={onClose}>
+          <button className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
-        <p className="hint">From a single lower third to a multi-format live show: each one shows features you can reuse. Add a copy, open it in the Designer and take its graphics in the Operator.</p>
+        <p className="hint">{t('From a single lower third to a multi-format live show: each one shows features you can reuse. Add a copy, open it in the Designer and take its graphics in the Operator.')}</p>
         <div className="demo-grid">
-          {demos === null && <p className="muted">Loading…</p>}
+          {demos === null && <p className="muted">{t('Loading…')}</p>}
           {demos?.map((d, i) => (
             <div key={d.id} className="demo-card">
               <div className="demo-top">
                 <span className="demo-num">{String(i + 1).padStart(2, '0')}</span>
-                <span className="demo-level" title={`Level ${d.level} of 5`}>
+                <span className="demo-level" title={t('Level {n} of 5', { n: d.level })}>
                   {[1, 2, 3, 4, 5].map((n) => (
                     <span key={n} className={n <= d.level ? 'on' : ''} />
                   ))}
@@ -194,7 +196,7 @@ function DemoBank({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               <button className="btn primary small" disabled={busy !== null} onClick={() => create(d)}>
-                <Plus size={13} /> {busy === d.id ? 'Adding…' : 'Add to my projects'}
+                <Plus size={13} /> {busy === d.id ? t('Adding…') : t('Add to my projects')}
               </button>
             </div>
           ))}
@@ -215,6 +217,10 @@ export function Projects() {
   const [sort, setSort] = useState<Sort>('name');
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  // Projects picked for an action on all of them (delete, move).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!menu) return;
@@ -226,26 +232,64 @@ export function Projects() {
   useEffect(() => {
     if (view.kind === 'folder' && !folders.folders.includes(view.name)) setView({ kind: 'all' });
   }, [folders, view]);
+  // Projects deleted meanwhile leave the selection.
+  useEffect(() => {
+    setSelected((sel) => {
+      const ids = new Set(projects.map((p) => p.id));
+      return [...sel].every((id) => ids.has(id)) ? sel : new Set([...sel].filter((id) => ids.has(id)));
+    });
+  }, [projects]);
 
   const folderOf = (id: string) => (folders.folders.includes(folders.assign[id]) ? folders.assign[id] : null);
   const inView = (p: ProjectSummary) => (view.kind === 'all' ? true : view.kind === 'unfiled' ? !folderOf(p.id) : folderOf(p.id) === view.name);
   const q = query.trim().toLowerCase();
   const shown = projects.filter((p) => inView(p) && (!q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))).sort((a, b) => (sort === 'templates' ? b.templates - a.templates : 0) || a.name.localeCompare(b.name));
   const count = (f: string | null) => projects.filter((p) => folderOf(p.id) === f).length;
+  const picked = projects.filter((p) => selected.has(p.id));
+  const selecting = selected.size > 0;
 
-  const moveTo = (id: string, folder: string | null) => {
-    const assign = { ...folders.assign };
-    if (folder) assign[id] = folder;
-    else delete assign[id];
-    void saveFolders({ ...folders, assign });
+  // Esc empties the selection, Ctrl/Cmd+A takes every project shown.
+  useEffect(() => {
+    if (!design) return;
+    const key = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]');
+      if (typing || document.querySelector('.modal-back')) return;
+      if (e.key === 'Escape' && selected.size) setSelected(new Set());
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setSelected(new Set(shown.map((p) => p.id)));
+      }
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  });
+
+  /** Click on a project's box: one more, one less, or (Shift) all the ones between. */
+  const toggle = (id: string, range: boolean) => {
+    const next = new Set(selected);
+    if (range && anchor && anchor !== id) {
+      const ids = shown.map((p) => p.id);
+      const [a, b] = [ids.indexOf(anchor), ids.indexOf(id)].sort((x, y) => x - y);
+      if (a >= 0) for (const x of ids.slice(a, b + 1)) next.add(x);
+      else next.add(id);
+    } else if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+    setAnchor(id);
   };
+
+  const moveAll = (ids: string[], folder: string | null, list = folders.folders) => {
+    const assign = { ...folders.assign };
+    for (const id of ids) {
+      if (folder) assign[id] = folder;
+      else delete assign[id];
+    }
+    void saveFolders({ folders: list, assign });
+  };
+  const moveTo = (id: string, folder: string | null) => moveAll([id], folder);
+  const askFolder = () => promptDialog({ title: t('New folder'), label: t('Name'), placeholder: t('Sport, News, Elections…'), confirm: t('Create') });
   const newFolder = async () => {
-    const name = await promptDialog({
-      title: 'New folder',
-      label: 'Name',
-      placeholder: 'Sport, News, Elections…',
-      confirm: 'Create',
-    });
+    const name = await askFolder();
     if (!name) return;
     if (folders.folders.includes(name)) return setView({ kind: 'folder', name });
     void saveFolders({
@@ -254,15 +298,31 @@ export function Projects() {
     });
     setView({ kind: 'folder', name });
   };
-  const renameFolder = async (old: string) => {
+  /** A new folder with the selected projects in it. */
+  const newFolderWithSelection = async () => {
     const name = await promptDialog({
-      title: 'Rename the folder',
-      label: 'Name',
-      value: old,
-      confirm: 'Rename',
+      title: tn(selected.size, 'New folder for {n} project', 'New folder for {n} projects'),
+      label: t('Name'),
+      placeholder: t('Sport, News, Elections…'),
+      confirm: t('Create and move'),
     });
+    if (!name) return;
+    const list = folders.folders.includes(name) ? folders.folders : [...folders.folders, name].sort((a, b) => a.localeCompare(b));
+    moveAll([...selected], name, list);
+    toast(tn(selected.size, '{n} project moved to “{folder}”', '{n} projects moved to “{folder}”', { folder: name }), 'info');
+    setSelected(new Set());
+    setView({ kind: 'folder', name });
+  };
+  const moveSelection = (folder: string | null) => {
+    moveAll([...selected], folder);
+    toast(folder ? tn(selected.size, '{n} project moved to “{folder}”', '{n} projects moved to “{folder}”', { folder }) : tn(selected.size, '{n} project moved to the top level', '{n} projects moved to the top level'), 'info');
+    setSelected(new Set());
+    setMenu(null);
+  };
+  const renameFolder = async (old: string) => {
+    const name = await promptDialog({ title: t('Rename the folder'), label: t('Name'), value: old, confirm: t('Rename') });
     if (!name || name === old) return;
-    if (folders.folders.includes(name)) return toast(`A folder “${name}” already exists`, 'error');
+    if (folders.folders.includes(name)) return toast(t('A folder “{name}” already exists', { name }), 'error');
     const assign = Object.fromEntries(Object.entries(folders.assign).map(([p, f]) => [p, f === old ? name : f]));
     void saveFolders({
       folders: folders.folders.map((f) => (f === old ? name : f)).sort((a, b) => a.localeCompare(b)),
@@ -274,9 +334,9 @@ export function Projects() {
     const n = count(name);
     if (
       !(await confirmDialog({
-        title: `Delete the folder “${name}”?`,
-        message: n ? `Its ${n} project${n > 1 ? 's go' : ' goes'} back to the top level (they are not deleted).` : undefined,
-        confirm: 'Delete',
+        title: t('Delete the folder “{name}”?', { name }),
+        message: n ? tn(n, 'Its project goes back to the top level (it is not deleted).', 'Its {n} projects go back to the top level (they are not deleted).') : undefined,
+        confirm: t('Delete'),
         danger: true,
       }))
     )
@@ -293,27 +353,53 @@ export function Projects() {
     try {
       const p = await api<ProjectSummary>('POST', '/api/projects/import', JSON.parse(await file.text()));
       if (view.kind === 'folder') moveTo(p.id, view.name);
-      toast(`Imported “${p.name}”`);
+      toast(t('Imported “{name}”', { name: p.name }));
     } catch (e) {
-      toast(`Import failed: ${(e as Error).message}`, 'error');
+      toast(t('Import failed: {error}', { error: (e as Error).message }), 'error');
     }
   };
-  const remove = async (p: ProjectSummary) => {
-    const used = channels.filter((c) => c.projectId === p.id).map((c) => c.name);
-    const warn = used.length ? ` It is loaded on ${used.join(', ')} and will be unloaded.` : '';
+  /** Deletes projects after one question (with the channels they are loaded on). */
+  const removeAll = async (list: ProjectSummary[]) => {
+    if (!list.length) return;
+    const used = channels.filter((c) => list.some((p) => p.id === c.projectId)).map((c) => c.name);
+    const warn = used.length ? ` ${t('Loaded on {channels}: they will be unloaded.', { channels: used.join(', ') })}` : '';
+    const templates = list.reduce((n, p) => n + p.templates, 0);
     if (
       !(await confirmDialog({
-        title: `Delete the project “${p.name}”?`,
-        message: `Its ${p.templates} templates and its media are deleted. This cannot be undone.${warn}`,
-        confirm: 'Delete',
+        title: list.length === 1 ? t('Delete the project “{name}”?', { name: list[0].name }) : tn(list.length, 'Delete {n} project?', 'Delete {n} projects?'),
+        message: (
+          <>
+            {list.length > 1 && (
+              <span className="dialog-list">
+                {list.slice(0, 8).map((p) => (
+                  <span key={p.id}>{p.name}</span>
+                ))}
+                {list.length > 8 && <span className="muted">{t('and {n} more', { n: list.length - 8 })}</span>}
+              </span>
+            )}
+            {tn(templates, 'Their template and their media are deleted.', 'Their {n} templates and their media are deleted.')} {t('This cannot be undone.')}
+            {warn}
+          </>
+        ),
+        confirm: t('Delete'),
         danger: true,
       }))
     )
       return;
-    await api('DELETE', `/api/projects/${encodeURIComponent(p.id)}`).catch((e) => toast((e as Error).message, 'error'));
+    setBusy(true);
+    let failed = 0;
+    for (const p of list) {
+      await api('DELETE', `/api/projects/${encodeURIComponent(p.id)}`).catch((e) => {
+        failed++;
+        toast(`${p.name}: ${(e as Error).message}`, 'error');
+      });
+    }
+    setBusy(false);
+    setSelected(new Set());
+    if (list.length > 1) toast(tn(list.length - failed, '{n} project deleted', '{n} projects deleted'), 'info');
   };
 
-  // Drop target: a folder (name), or the top level (null).
+  // Drop target: a folder (name), or the top level (null). A selected project carries the whole selection.
   const drop = (target: string | null) => ({
     onDragOver: (e: React.DragEvent) => {
       if (!design || !e.dataTransfer.types.includes('application/x-pulse-project')) return;
@@ -322,39 +408,49 @@ export function Projects() {
     },
     onDragLeave: () => setDropOn(null),
     onDrop: (e: React.DragEvent) => {
-      const id = e.dataTransfer.getData('application/x-pulse-project');
+      const ids = e.dataTransfer.getData('application/x-pulse-project').split('\n').filter(Boolean);
       setDropOn(null);
-      if (id) moveTo(id, target);
+      if (!ids.length) return;
+      moveAll(ids, target);
+      if (ids.length > 1) setSelected(new Set());
     },
   });
 
-  const title = view.kind === 'all' ? 'All projects' : view.kind === 'unfiled' ? 'Not in a folder' : view.name;
+  const title = view.kind === 'all' ? t('All projects') : view.kind === 'unfiled' ? t('Not in a folder') : view.name;
   const navItem = (key: string, v: View, icon: React.ReactNode, label: string, n: number, target?: string | null, actions?: React.ReactNode) => {
     const on = view.kind === v.kind && (v.kind !== 'folder' || (view.kind === 'folder' && view.name === v.name));
     return (
-      <div key={key} className={`lib-nav-item ${on ? 'on' : ''} ${target !== undefined && dropOn === (target ?? '') ? 'drop' : ''}`} onClick={() => setView(v)} {...(target !== undefined ? drop(target) : {})}>
-        {icon}
-        <span className="grow">{label}</span>
-        {actions}
-        <span className="count">{n}</span>
-      </div>
+      <NavItem
+        key={key}
+        on={on}
+        className={target !== undefined && dropOn === (target ?? '') ? 'drop' : ''}
+        icon={icon}
+        label={label}
+        count={n}
+        actions={actions}
+        onClick={() => setView(v)}
+        {...(target !== undefined ? drop(target) : {})}
+      />
     );
   };
 
   return (
     <div className="projects-page">
       <aside className="lib-nav">
-        <div className="lib-nav-section">Library</div>
-        {navItem('all', { kind: 'all' }, <LayoutGrid size={15} />, 'All projects', projects.length)}
-        {navItem('unfiled', { kind: 'unfiled' }, <Inbox size={15} />, 'Not in a folder', count(null), null)}
-        <div className="lib-nav-section">
-          <span className="grow">Folders</span>
-          {design && (
-            <button className="icon-btn ghost" title="New folder" onClick={newFolder}>
-              <FolderPlus size={14} />
-            </button>
-          )}
-        </div>
+        <NavSection>{t('Library')}</NavSection>
+        {navItem('all', { kind: 'all' }, <LayoutGrid size={15} />, t('All projects'), projects.length)}
+        {navItem('unfiled', { kind: 'unfiled' }, <Inbox size={15} />, t('Not in a folder'), count(null), null)}
+        <NavSection
+          actions={
+            design && (
+              <button className="icon-btn ghost" title={t('New folder')} onClick={newFolder}>
+                <FolderPlus size={14} />
+              </button>
+            )
+          }
+        >
+          {t('Folders')}
+        </NavSection>
         {folders.folders.map((f) =>
           navItem(
             `f-${f}`,
@@ -365,17 +461,17 @@ export function Projects() {
             f,
             design && (
               <span className="lib-nav-actions">
-                <button className="icon-btn ghost" title="Rename" onClick={(e) => (e.stopPropagation(), renameFolder(f))}>
+                <button className="icon-btn ghost" title={t('Rename')} onClick={(e) => (e.stopPropagation(), renameFolder(f))}>
                   <Pencil size={12} />
                 </button>
-                <button className="icon-btn ghost" title="Delete the folder" onClick={(e) => (e.stopPropagation(), deleteFolder(f))}>
+                <button className="icon-btn ghost" title={t('Delete the folder')} onClick={(e) => (e.stopPropagation(), deleteFolder(f))}>
                   <Trash2 size={12} />
                 </button>
               </span>
             ),
           ),
         )}
-        {!folders.folders.length && <p className="lib-nav-hint">{design ? 'Create folders to sort your shows, then drag projects onto them.' : 'No folder.'}</p>}
+        {!folders.folders.length && <p className="lib-nav-hint">{design ? t('Create folders to sort your shows, then drag projects onto them.') : t('No folder.')}</p>}
       </aside>
 
       <main className="library">
@@ -384,48 +480,96 @@ export function Projects() {
             <div>
               <h1>{title}</h1>
               <p className="muted">
-                {shown.length} project{shown.length === 1 ? '' : 's'} · each one opens in its own browser tab
+                {tn(shown.length, '{n} project', '{n} projects')} · {t('each one opens in its own browser tab')}
               </p>
             </div>
             <div className="spacer" />
             {design && (
               <>
-                <button className="btn" title="Ten ready-made projects, from simple to complete" onClick={() => setDemos(true)}>
-                  <GraduationCap size={14} /> Demo projects
+                <button className="btn" title={t('Ten ready-made projects, from simple to complete')} onClick={() => setDemos(true)}>
+                  <GraduationCap size={14} /> {t('Demo projects')}
                 </button>
-                <label className="btn" title="Import a .pulsecg.json file">
-                  <Upload size={14} /> Import
+                <label className="btn" title={t('Import a .pulsecg.json file')}>
+                  <Upload size={14} /> {t('Import')}
                   <input type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
                 </label>
                 <button className="btn primary" onClick={() => setDialog({})}>
-                  <Plus size={14} /> New project
+                  <Plus size={14} /> {t('New project')}
                 </button>
               </>
             )}
           </div>
 
-          <div className="media-toolbar">
-            <label className="search">
-              <Search size={14} />
-              <input value={query} placeholder="Search projects" onChange={(e) => setQuery(e.target.value)} />
-            </label>
-            <div className="spacer" />
-            <label className="sort">
-              Sort
-              <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-                <option value="name">Name</option>
-                <option value="templates">Templates</option>
-              </select>
-            </label>
-          </div>
+          {selecting ? (
+            <div className="bulk-bar" onPointerDown={(e) => e.stopPropagation()}>
+              <button className="icon-btn ghost" title={t('Clear the selection (Esc)')} onClick={() => setSelected(new Set())}>
+                <X size={15} />
+              </button>
+              <strong>{tn(selected.size, '{n} project selected', '{n} projects selected')}</strong>
+              {selected.size < shown.length && (
+                <button className="btn small ghost" onClick={() => setSelected(new Set(shown.map((p) => p.id)))}>
+                  <CheckSquare size={13} /> {t('Select all ({n})', { n: shown.length })}
+                </button>
+              )}
+              <div className="spacer" />
+              <div className="menu-wrap">
+                <button className="btn small" disabled={busy} onClick={() => setMenu(menu === '@bulk' ? null : '@bulk')}>
+                  <FolderInput size={13} /> {t('Move to')}
+                </button>
+                {menu === '@bulk' && (
+                  <div className="menu project-menu right">
+                    <button onClick={() => moveSelection(null)}>
+                      <Inbox size={13} /> {t('Top level')}
+                    </button>
+                    {folders.folders.map((f) => (
+                      <button key={f} onClick={() => moveSelection(f)}>
+                        <Folder size={13} /> {f}
+                      </button>
+                    ))}
+                    <div className="menu-sep" />
+                    <button onClick={() => (setMenu(null), void newFolderWithSelection())}>
+                      <FolderPlus size={13} /> {t('New folder…')}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button className="btn small" disabled={busy} onClick={() => void newFolderWithSelection()}>
+                <FolderPlus size={13} /> {t('New folder with them')}
+              </button>
+              <button className="btn small danger" disabled={busy} onClick={() => void removeAll(picked)}>
+                <Trash2 size={13} /> {busy ? t('Deleting…') : t('Delete')}
+              </button>
+            </div>
+          ) : (
+            <div className="media-toolbar">
+              <label className="search">
+                <Search size={14} />
+                <input value={query} placeholder={t('Search projects')} onChange={(e) => setQuery(e.target.value)} />
+              </label>
+              <div className="spacer" />
+              {design && shown.length > 0 && (
+                <button className="btn small ghost" title={t('Pick projects to delete or move them together (Ctrl+A: all)')} onClick={() => setSelected(new Set(shown.map((p) => p.id)))}>
+                  <CheckSquare size={13} /> {t('Select')}
+                </button>
+              )}
+              <label className="sort">
+                {t('Sort')}
+                <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+                  <option value="name">{t('Name')}</option>
+                  <option value="templates">{t('Templates')}</option>
+                </select>
+              </label>
+            </div>
+          )}
 
-          <div className="project-grid">
+          <div className={`project-grid ${selecting ? 'selecting' : ''}`}>
             {shown.map((p) => {
               const on = channels.filter((c) => c.projectId === p.id);
               const folder = folderOf(p.id);
+              const isOn = selected.has(p.id);
               const link = (sub: ProjectPage, icon: React.ReactNode, label: string, show = true) =>
                 show && (
-                  <a className="project-link" href={projectPath(p.id, sub)} target={projectTab(p.id)} title={`Open the ${label.toLowerCase()} in the project's tab`}>
+                  <a className="project-link" href={projectPath(p.id, sub)} target={projectTab(p.id)} title={t('Open the {page} in the project’s tab', { page: label.toLowerCase() })}>
                     {icon}
                     <span>{label}</span>
                   </a>
@@ -434,43 +578,66 @@ export function Projects() {
               return (
                 <div
                   key={p.id}
-                  className="project-card"
+                  className={`project-card ${isOn ? 'picked' : ''}`}
                   draggable={design}
                   onDragStart={(e) => {
-                    e.dataTransfer.setData('application/x-pulse-project', p.id);
+                    const ids = isOn ? [...selected] : [p.id];
+                    e.dataTransfer.setData('application/x-pulse-project', ids.join('\n'));
                     e.dataTransfer.effectAllowed = 'move';
                   }}
                 >
-                  <a className="project-cover" href={projectPath(p.id, design ? 'designer' : 'operator')} target={projectTab(p.id)} draggable={false} style={{ aspectRatio: String(Math.max(16 / 9, ratio)) }}>
+                  <a
+                    className="project-cover"
+                    href={projectPath(p.id, design ? 'designer' : 'operator')}
+                    target={projectTab(p.id)}
+                    draggable={false}
+                    style={{ aspectRatio: String(Math.max(16 / 9, ratio)) }}
+                    onClick={(e) => {
+                      // While picking, a click on a project picks it.
+                      if (!selecting) return;
+                      e.preventDefault();
+                      toggle(p.id, e.shiftKey);
+                    }}
+                  >
                     {p.cover ? (
                       <img src={`/api/projects/${encodeURIComponent(p.id)}/templates/${encodeURIComponent(p.cover)}/thumbnail.png?v=${p.templates}-${p.rundown}`} alt="" loading="lazy" draggable={false} style={{ aspectRatio: String(ratio) }} />
                     ) : (
-                      <span className="project-cover-empty">No template yet</span>
+                      <span className="project-cover-empty">{t('No template yet')}</span>
                     )}
                     <span className="project-badge">
                       <span className="ratio" style={ratio >= 1 ? { width: 14, height: 14 / ratio } : { width: 14 * ratio, height: 14 }} />
                       {p.width}×{p.height} · {fps(p.frameRate)}p
                     </span>
                     {on.length > 0 && (
-                      <span className="project-channel" title="Loaded on">
+                      <span className="project-channel" title={t('Loaded on')}>
                         <MonitorPlay size={11} /> {on.map((c) => c.name).join(', ')}
                       </span>
                     )}
                   </a>
+                  {design && (
+                    <button
+                      className={`project-check ${isOn ? 'on' : ''}`}
+                      title={isOn ? t('Unselect') : t('Select (Shift: all the projects between)')}
+                      aria-pressed={isOn}
+                      onClick={(e) => toggle(p.id, e.shiftKey)}
+                    >
+                      {isOn && <Check size={13} strokeWidth={3} />}
+                    </button>
+                  )}
                   <div className="project-body">
                     <div className="project-head">
                       <strong>{p.name}</strong>
                       <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
-                        <button className="icon-btn ghost" title="More" onClick={() => setMenu(menu === p.id ? null : p.id)}>
+                        <button className="icon-btn ghost" title={t('More')} onClick={() => setMenu(menu === p.id ? null : p.id)}>
                           <MoreHorizontal size={16} />
                         </button>
                         {menu === p.id && (
                           <div className="menu project-menu">
                             {design && (
                               <>
-                                <div className="menu-label">Move to</div>
+                                <div className="menu-label">{t('Move to')}</div>
                                 <button disabled={!folder} onClick={() => (moveTo(p.id, null), setMenu(null))}>
-                                  <Inbox size={13} /> Top level
+                                  <Inbox size={13} /> {t('Top level')}
                                 </button>
                                 {folders.folders.map((f) => (
                                   <button key={f} disabled={folder === f} onClick={() => (moveTo(p.id, f), setMenu(null))}>
@@ -479,27 +646,26 @@ export function Projects() {
                                 ))}
                                 <div className="menu-sep" />
                                 <button onClick={() => (setDialog({ from: p }), setMenu(null))}>
-                                  <Copy size={13} /> Duplicate
+                                  <Copy size={13} /> {t('Duplicate')}
                                 </button>
                               </>
                             )}
                             <a href={`/api/projects/${encodeURIComponent(p.id)}/export`} onClick={() => setMenu(null)}>
-                              <Download size={13} /> Export
+                              <Download size={13} /> {t('Export')}
                             </a>
                             {design && (
-                              <button className="danger" onClick={() => (remove(p), setMenu(null))}>
-                                <Trash2 size={13} /> Delete
+                              <button className="danger" onClick={() => (void removeAll([p]), setMenu(null))}>
+                                <Trash2 size={13} /> {t('Delete')}
                               </button>
                             )}
                           </div>
                         )}
                       </div>
                     </div>
-                    <p className="project-desc">{p.description || <span className="muted">No description</span>}</p>
+                    <p className="project-desc">{p.description || <span className="muted">{t('No description')}</span>}</p>
                     <div className="project-meta">
                       <span>
-                        <Layers size={12} /> {p.templates} template
-                        {p.templates === 1 ? '' : 's'}
+                        <Layers size={12} /> {tn(p.templates, '{n} template', '{n} templates')}
                       </span>
                       {folder && view.kind !== 'folder' && (
                         <span>
@@ -509,25 +675,25 @@ export function Projects() {
                     </div>
                   </div>
                   <div className="project-links">
-                    {link('designer', <PenTool size={15} />, 'Designer', design)}
-                    {link('operator', <Radio size={15} />, 'Operator', can.operate(user))}
-                    {link('data', <Database size={15} />, 'Data', design)}
-                    {link('media', <Images size={15} />, 'Assets', can.operate(user))}
-                    {link('settings', <SettingsIcon size={15} />, 'Settings', design)}
+                    {link('designer', <PenTool size={15} />, t('Designer'), design)}
+                    {link('operator', <Radio size={15} />, t('Operator'), can.operate(user))}
+                    {link('data', <Database size={15} />, t('Data'), design)}
+                    {link('media', <Images size={15} />, t('Assets'), can.operate(user))}
+                    {link('settings', <SettingsIcon size={15} />, t('Settings'), design)}
                   </div>
                 </div>
               );
             })}
-            {design && view.kind !== 'unfiled' && !q && (
+            {design && view.kind !== 'unfiled' && !q && !selecting && (
               <button className="project-new" onClick={() => setDialog({})}>
                 <Plus size={22} />
-                <span>New project{view.kind === 'folder' ? ` in ${view.name}` : ''}</span>
+                <span>{view.kind === 'folder' ? t('New project in {folder}', { folder: view.name }) : t('New project')}</span>
               </button>
             )}
             {shown.length === 0 && (q || !design) && (
               <div className="empty big">
                 <Radio size={22} />
-                <p>{q ? 'No project matches.' : 'No project here.'}</p>
+                <p>{q ? t('No project matches.') : t('No project here.')}</p>
               </div>
             )}
           </div>

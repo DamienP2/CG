@@ -2,6 +2,7 @@ import { CloudDownload, History, KeyRound, RefreshCw, RotateCcw, Upload } from '
 import { useEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
+import { locale, t } from '../i18n';
 
 interface Release {
   version: string;
@@ -41,7 +42,7 @@ export const isNewer = (a: string, b: string) => {
 
 const ago = (ms: number) => {
   const s = Math.round((Date.now() - ms) / 1000);
-  return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(ms).toLocaleDateString();
+  return s < 60 ? t('just now') : s < 3600 ? t('{n} min ago', { n: Math.round(s / 60) }) : s < 86400 ? t('{n} h ago', { n: Math.round(s / 3600) }) : new Date(ms).toLocaleDateString(locale());
 };
 
 /** Over-the-air updates: GitHub releases or an uploaded package, with rollback. */
@@ -82,7 +83,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         const v = ((await r.json()) as { version: string }).version;
         if (v !== waiting) {
           clearInterval(h);
-          toast(`Strata ${v} is running`, 'info');
+          toast(t('Strata {version} is running', { version: v }), 'info');
           setTimeout(() => location.reload(), 600);
         }
       } catch {
@@ -91,7 +92,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
       if (Date.now() - started > 120_000) {
         clearInterval(h);
         setWaiting(null);
-        toast('The server did not come back within 2 minutes: check its logs.', 'error');
+        toast(t('The server did not come back within 2 minutes: check its logs.'), 'error');
       }
     }, 1000);
     return () => clearInterval(h);
@@ -101,7 +102,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
   const { status } = info;
   const latest = status.latest;
   const newer = latest && isNewer(latest.version, info.current);
-  const restartNote = 'The engine restarts: graphics on air are cleared and outputs stop for a few seconds.';
+  const restartNote = t('The engine restarts: graphics on air are cleared and outputs stop for a few seconds.');
 
   const check = async () => {
     try {
@@ -112,7 +113,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     load();
   };
   const install = async () => {
-    if (!latest || !(await confirmDialog({ title: `Install Strata ${latest.version}?`, message: restartNote, confirm: 'Install' }))) return;
+    if (!latest || !(await confirmDialog({ title: t('Install Strata {version}?', { version: latest.version }), message: restartNote, confirm: t('Install') }))) return;
     await api('POST', '/api/system/update/install').catch((e) => toast((e as Error).message, 'error'));
     load();
     // The status poll turns into the "waiting for restart" poll.
@@ -128,12 +129,12 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     }, 700);
   };
   const upload = async (file: File) => {
-    if (!(await confirmDialog({ title: `Install the package “${file.name}”?`, message: restartNote, confirm: 'Install' }))) return;
+    if (!(await confirmDialog({ title: t('Install the package “{name}”?', { name: file.name }), message: restartNote, confirm: t('Install') }))) return;
     try {
       const res = await fetch(`/api/system/update/upload?allowOlder=${allowOlder}`, { method: 'POST', body: file, credentials: 'same-origin' });
       if (!res.ok) throw new Error(await res.text());
       const { version } = (await res.json()) as { version: string };
-      toast(`Installing ${version}…`, 'info');
+      toast(t('Installing {version}…', { version }), 'info');
       setWaiting(info.current);
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -141,7 +142,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     }
   };
   const rollback = async () => {
-    if (!info.previous || !(await confirmDialog({ title: `Go back to version ${info.previous}?`, message: restartNote, confirm: 'Roll back', danger: true }))) return;
+    if (!info.previous || !(await confirmDialog({ title: t('Go back to version {version}?', { version: info.previous }), message: restartNote, confirm: t('Roll back'), danger: true }))) return;
     try {
       await api('POST', '/api/system/update/rollback');
       setWaiting(info.current);
@@ -153,7 +154,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     try {
       await api('PUT', '/api/system/update/settings', { repo, autoCheck: patch.autoCheck ?? info.autoCheck, token: patch.token ?? null });
       setToken('');
-      toast('Update settings saved', 'info');
+      toast(t('Update settings saved'), 'info');
       load();
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -163,23 +164,23 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
   return (
     <Card
       icon={<CloudDownload size={16} />}
-      title="Updates"
+      title={t('Updates')}
       actions={
         <button className="btn small" disabled={!!busy || !!waiting} onClick={check}>
-          <RefreshCw size={13} /> Check now
+          <RefreshCw size={13} /> {t('Check now')}
         </button>
       }
     >
       <div className="update-head">
         <div>
-          <span className="set-label">Installed</span>
+          <span className="set-label">{t('Installed')}</span>
           <strong className="update-version">{info.current}</strong>
           <span className="muted small">{info.platform}</span>
         </div>
         <div className="update-latest">
           {waiting ? (
             <span className="update-busy">
-              <RefreshCw size={14} className="spin" /> Restarting on the new version…
+              <RefreshCw size={14} className="spin" /> {t('Restarting on the new version…')}
             </span>
           ) : busy ? (
             <span className="update-busy">
@@ -192,76 +193,82 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
             newer ? (
               <>
                 <span>
-                  Version <strong>{latest.version}</strong> is available{latest.publishedAt && ` (${new Date(latest.publishedAt).toLocaleDateString()})`}.
+                  {t('Version')} <strong>{latest.version}</strong> {t('is available')}
+                  {latest.publishedAt && ` (${new Date(latest.publishedAt).toLocaleDateString(locale())})`}.
                 </span>
                 <button className="btn primary" onClick={install}>
-                  <CloudDownload size={14} /> Install {latest.version}
+                  <CloudDownload size={14} /> {t('Install {version}', { version: latest.version })}
                 </button>
               </>
             ) : (
-              <span className="muted">Up to date — latest release {latest.version}{status.lastCheck ? `, checked ${ago(status.lastCheck)}` : ''}.</span>
+              <span className="muted">
+                {t('Up to date — latest release {version}', { version: latest.version })}
+                {status.lastCheck ? `, ${t('checked {when}', { when: ago(status.lastCheck) })}` : ''}.
+              </span>
             )
           ) : (
-            <span className="muted">Not checked yet.</span>
+            <span className="muted">{t('Not checked yet.')}</span>
           )}
         </div>
       </div>
       {newer && latest?.notes && !waiting && (
         <details className="update-notes">
-          <summary>What's new in {latest.version}</summary>
+          <summary>{t('What’s new in {version}', { version: latest.version })}</summary>
           <pre>{latest.notes}</pre>
         </details>
       )}
       {info.history && (
         <p className="hint">
-          <History size={12} /> {info.history.outcome === 'restored automatically' ? `Version ${info.history.from} failed to start: ${info.history.to} was restored automatically` : `${info.history.from} → ${info.history.to} (${info.history.outcome})`}, {ago(info.history.at)}.
+          <History size={12} /> {info.history.outcome === 'restored automatically' ? t('Version {from} failed to start: {to} was restored automatically', { from: info.history.from, to: info.history.to }) : `${info.history.from} → ${info.history.to} (${t(info.history.outcome)})`}, {ago(info.history.at)}.
         </p>
       )}
 
       <div className="set-grid">
         <label className="set-field">
-          <span className="set-label">GitHub repository</span>
+          <span className="set-label">{t('GitHub repository')}</span>
           <input value={repo} onChange={(e) => setRepo(e.target.value)} onBlur={() => repo !== info.repo && saveSettings({})} placeholder="owner/name" />
-          <span className="set-hint">Releases are downloaded from here.</span>
+          <span className="set-hint">{t('Releases are downloaded from here.')}</span>
         </label>
         <label className="set-field">
-          <span className="set-label">Access token {info.hasToken && <span className="badge">saved</span>}</span>
+          <span className="set-label">
+            {t('Access token')} {info.hasToken && <span className="badge">{t('saved')}</span>}
+          </span>
           <div className="row">
-            <input type="password" value={token} placeholder={info.hasToken ? '••••••••  (leave empty to keep)' : 'github_pat_…'} autoComplete="off" onChange={(e) => setToken(e.target.value)} />
-            <button className="btn small" disabled={!token} onClick={() => saveSettings({ token })} title="Save the token">
+            <input type="password" value={token} placeholder={info.hasToken ? `••••••••  (${t('leave empty to keep')})` : 'github_pat_…'} autoComplete="off" onChange={(e) => setToken(e.target.value)} />
+            <button className="btn small" disabled={!token} onClick={() => saveSettings({ token })} title={t('Save the token')}>
               <KeyRound size={13} />
             </button>
             {info.hasToken && (
-              <button className="btn small" onClick={() => saveSettings({ token: '' })} title="Remove the token">
+              <button className="btn small" onClick={() => saveSettings({ token: '' })} title={t('Remove the token')}>
                 ✕
               </button>
             )}
           </div>
-          <span className="set-hint">Private repository: a fine-grained token with read-only “Contents” on it. Kept on the server, never shown again.</span>
+          <span className="set-hint">{t('Private repository: a fine-grained token with read-only “Contents” on it. Kept on the server, never shown again.')}</span>
         </label>
         <label className="set-field">
-          <span className="set-label">Automatic check</span>
+          <span className="set-label">{t('Automatic check')}</span>
           <label className="check">
             <input type="checkbox" checked={info.autoCheck} onChange={(e) => saveSettings({ autoCheck: e.target.checked })} />
-            Look for new versions every 6 hours
+            {t('Look for new versions every 6 hours')}
           </label>
-          <span className="set-hint">Installing always stays a manual decision.</span>
+          <span className="set-hint">{t('Installing always stays a manual decision.')}</span>
         </label>
       </div>
 
       <div className="update-offline">
         <div>
-          <strong>Offline update</strong>
+          <strong>{t('Offline update')}</strong>
           <span className="muted small">
-            Upload the <code>pulse-cg-&lt;version&gt;-{info.platform}</code> archive from the release page — for servers without internet access.
+            {t('Upload the archive from the release page — for servers without internet access:')} <code>pulse-cg-&lt;version&gt;-{info.platform}</code>
           </span>
         </div>
         <label className="check small">
           <input type="checkbox" checked={allowOlder} onChange={(e) => setAllowOlder(e.target.checked)} />
-          Allow older versions
+          {t('Allow older versions')}
         </label>
         <button className="btn" disabled={!!busy || !!waiting} onClick={() => fileRef.current?.click()}>
-          <Upload size={14} /> Upload package
+          <Upload size={14} /> {t('Upload package')}
         </button>
         <input
           ref={fileRef}
@@ -275,12 +282,12 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
           }}
         />
         {info.previous && (
-          <button className="btn" disabled={!!busy || !!waiting} onClick={rollback} title="Put the previously installed version back">
-            <RotateCcw size={14} /> Back to {info.previous}
+          <button className="btn" disabled={!!busy || !!waiting} onClick={rollback} title={t('Put the previously installed version back')}>
+            <RotateCcw size={14} /> {t('Back to {version}', { version: info.previous })}
           </button>
         )}
       </div>
-      {!info.supervised && <p className="hint">This server runs in the foreground: it relaunches itself after an update.</p>}
+      {!info.supervised && <p className="hint">{t('This server runs in the foreground: it relaunches itself after an update.')}</p>}
     </Card>
   );
 }

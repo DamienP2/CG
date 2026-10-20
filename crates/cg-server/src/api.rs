@@ -28,6 +28,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/auth/setup", post(auth_setup))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
+        .route("/api/me/lang", put(put_my_lang))
         .route("/api/users", get(list_users).post(create_user))
         .route("/api/users/{id}", put(update_user).delete(delete_user))
         .route("/api/keys", get(list_keys).post(create_key))
@@ -293,6 +294,21 @@ async fn auth_logout(State(s): State<Shared>, headers: HeaderMap) -> Response {
 }
 
 // ----------------------------------------------------------------- users ----
+
+#[derive(Deserialize)]
+struct LangInput {
+    lang: String,
+}
+
+/// Any user keeps their own language of the interface.
+async fn put_my_lang(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(input): Json<LangInput>,
+) -> ApiResult<Json<PublicUser>> {
+    let u = s.auth.set_lang(&me.id, &input.lang).map_err(bad)?;
+    Ok(Json((&u).into()))
+}
 
 async fn list_users(
     State(s): State<Shared>,

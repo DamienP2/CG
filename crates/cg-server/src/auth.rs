@@ -18,6 +18,8 @@ use axum::http::{header, StatusCode};
 use serde::{Deserialize, Serialize};
 
 pub const COOKIE: &str = "cg_session";
+/// Languages of the interface.
+pub const LANGS: [&str; 2] = ["en", "fr"];
 const SESSION_TTL: Duration = Duration::from_secs(14 * 24 * 3600);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +51,9 @@ pub struct User {
     pub channels: Option<Vec<String>>,
     #[serde(default)]
     pub disabled: bool,
+    /// Language of the interface ("en", "fr"); empty = the browser's.
+    #[serde(default)]
+    pub lang: String,
     password_hash: String,
 }
 
@@ -63,6 +68,7 @@ pub struct PublicUser {
     pub projects: Option<Vec<String>>,
     pub channels: Option<Vec<String>>,
     pub disabled: bool,
+    pub lang: String,
 }
 
 impl From<&User> for PublicUser {
@@ -75,6 +81,7 @@ impl From<&User> for PublicUser {
             projects: u.projects.clone(),
             channels: u.channels.clone(),
             disabled: u.disabled,
+            lang: u.lang.clone(),
         }
     }
 }
@@ -345,6 +352,7 @@ impl Auth {
             projects: input.projects,
             channels: input.channels,
             disabled: input.disabled,
+            lang: String::new(),
             password_hash: hash_password(&input.password).map_err(|e| e.to_string())?,
         };
         list.push(user.clone());
@@ -385,6 +393,19 @@ impl Auth {
         if updated.disabled {
             self.drop_sessions_of(&updated.id);
         }
+        Ok(updated)
+    }
+
+    /// The language a user chose for the interface.
+    pub fn set_lang(&self, id: &str, lang: &str) -> Result<User, String> {
+        if !LANGS.contains(&lang) {
+            return Err(format!("unknown language `{lang}`"));
+        }
+        let mut list = self.users();
+        let u = list.iter_mut().find(|u| u.id == id).ok_or("no such user")?;
+        u.lang = lang.to_string();
+        let updated = u.clone();
+        self.save(list).map_err(|e| e.to_string())?;
         Ok(updated)
     }
 
@@ -701,9 +722,15 @@ mod tests {
         auth.delete(&op.id).unwrap();
         assert!(auth.user_for_token(&secret).is_none() && auth.api_keys().is_empty());
 
+        // Each user keeps the language of their interface.
+        assert_eq!(admin.lang, "");
+        assert_eq!(auth.set_lang(&admin.id, "fr").unwrap().lang, "fr");
+        assert!(auth.set_lang(&admin.id, "de").is_err());
+
         // The last admin cannot be removed; data survives a reload.
         assert!(auth.delete(&admin.id).is_err());
         assert_eq!(Auth::load(&dir).users().len(), 1);
+        assert_eq!(Auth::load(&dir).users()[0].lang, "fr");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
