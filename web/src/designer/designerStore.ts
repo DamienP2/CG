@@ -297,6 +297,7 @@ export const LABELS: Record<LayerType, string> = {
   chart: 'Chart',
   map: 'Map',
   scoreboard: 'Scoreboard',
+  web: 'Web page',
 };
 
 /** Widget presets offered in the toolbar menu (a type plus overrides). */

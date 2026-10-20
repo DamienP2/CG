@@ -1,4 +1,4 @@
-import { ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Type, Watch } from 'lucide-react';
+import { Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Square, Type, Watch } from 'lucide-react';
 import type { LayerType, Template } from '../engine/types';
 import { descendants, findLayer } from './designerStore';
 import { num, propValue } from '../engine/evaluate';
@@ -28,6 +28,7 @@ export const ICONS: Record<LayerType, typeof Square> = {
   chart: ChartColumn,
   map: MapIcon,
   scoreboard: Trophy,
+  web: Globe,
 };
 
 export type DropPos = 'above' | 'below' | 'into';

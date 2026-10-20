@@ -944,9 +944,14 @@ async fn discard_draft(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ImportQuery {
     #[serde(default)]
     name: Option<String>,
+    /// Only convert (its pictures are saved): the Designer puts its layers
+    /// into the open template.
+    #[serde(default)]
+    layers_only: bool,
 }
 
 #[derive(Serialize)]
@@ -1004,8 +1009,10 @@ async fn import_after_effects(
     if let Some(name) = q.name.filter(|n| !n.trim().is_empty()) {
         template.name = name.trim().to_string();
     }
-    p.save_draft(template.clone());
-    s.save_project(p).await.map_err(internal)?;
+    if !q.layers_only {
+        p.save_draft(template.clone());
+        s.save_project(p).await.map_err(internal)?;
+    }
     Ok(Json(ImportResult {
         template,
         warnings: out.imported.warnings,

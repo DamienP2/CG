@@ -74,6 +74,7 @@ export type LayerKind =
   | (({ type: 'typewriter'; text: string; speed: number; cursor: boolean } & FontStyle) & import('../widgets/typewriter').Config)
   | { type: 'slideshow'; images: string; interval: number; fade: number; fit: ImageFit }
   | ({ type: 'qrCode'; data: string; background: string } & import('../widgets/qrcode').Config)
+  | ({ type: 'web' } & import('../widgets/web').Config)
   | ({ type: 'barChart'; text: string; percent: boolean; duration: number; track: string; textColor: string } & FontStyle)
   | ({ type: 'polygon' } & import('../widgets/polygon').Config)
   | ({ type: 'pen' } & import('../widgets/pen').Config)

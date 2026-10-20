@@ -1842,6 +1842,15 @@
        "type": "string"
       },
       "description": "Template name (default: the composition name)."
+     },
+     {
+      "name": "layersOnly",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean"
+      },
+      "description": "Only convert (its pictures are saved, no template is created): the result's layers go into an open template."
      }
     ],
     "requestBody": {

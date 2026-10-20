@@ -520,6 +520,12 @@ pub enum LayerKind {
         #[serde(flatten)]
         x: crate::wid::qrcode::Config,
     },
+    /// A web page or HTML (shown by browsers only: HTML5 outputs, previews).
+    #[serde(rename_all = "camelCase")]
+    Web {
+        #[serde(flatten)]
+        x: crate::wid::web::Config,
+    },
     /// Horizontal bar chart / poll: one "Label: value" per line.
     #[serde(rename_all = "camelCase")]
     BarChart {

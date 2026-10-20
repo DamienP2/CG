@@ -238,6 +238,8 @@ pub(crate) fn draw(d: &mut Draw) -> bool {
         "map" => map::draw(d, &state(&raw)),
         "qrcode" => qrcode::draw(d, &state(&raw)),
         "scoreboard" => scoreboard::draw(d, &state(&raw)),
+        // No browser here: its box stays empty on these outputs.
+        "web" => true,
         _ => false,
     }
 }

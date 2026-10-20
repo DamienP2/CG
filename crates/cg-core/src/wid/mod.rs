@@ -24,6 +24,7 @@ pub mod text;
 pub mod ticker;
 pub mod timer;
 pub mod typewriter;
+pub mod web;
 
 use serde_json::Value;
 
@@ -61,6 +62,7 @@ pub fn widget_id(kind: &LayerKind) -> Option<&'static str> {
         LayerKind::Map { .. } => "map",
         LayerKind::QrCode { .. } => "qrcode",
         LayerKind::Scoreboard { .. } => "scoreboard",
+        LayerKind::Web { .. } => "web",
         _ => return None,
     })
 }
@@ -99,6 +101,7 @@ pub fn act(
         LayerKind::Map { .. } => go!(map),
         LayerKind::QrCode { .. } => go!(qrcode),
         LayerKind::Scoreboard { .. } => go!(scoreboard),
+        LayerKind::Web { .. } => go!(web),
         _ => Err("this layer has no operator actions".into()),
     }
 }

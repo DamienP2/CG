@@ -17,10 +17,11 @@ import progress from './progress';
 import chart from './chart';
 import map from './map';
 import qrcode from './qrcode';
+import web from './web';
 import scoreboard from './scoreboard';
 
 /** In the order of the spec. */
-export const WIDGET_LIST: WidgetDef[] = [quad, polygon, ellipse, text, image, pen, timer, table, ticker, credits, typewriter, counter, progress, chart, map, qrcode, scoreboard] as unknown as WidgetDef[];
+export const WIDGET_LIST: WidgetDef[] = [quad, polygon, ellipse, text, image, pen, timer, table, ticker, credits, typewriter, counter, progress, chart, map, qrcode, scoreboard, web] as unknown as WidgetDef[];
 
 /** By layer type. */
 export const WIDGETS: Partial<Record<LayerType, WidgetDef>> = Object.fromEntries(WIDGET_LIST.map((w) => [w.type, w]));

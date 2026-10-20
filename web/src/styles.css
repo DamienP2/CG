@@ -11832,3 +11832,9 @@ body.cv-moving * {
 .seq-frame:hover button {
   opacity: 1;
 }
+.add-busy {
+  font-size: 11px;
+  color: var(--accent-2);
+  margin-left: 6px;
+  white-space: nowrap;
+}

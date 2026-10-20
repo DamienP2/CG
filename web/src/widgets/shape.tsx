@@ -5,7 +5,7 @@ import { col, cssColor, interpolateText, num, propValue, type Resolved } from '.
 import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow, AssetPicker } from '../designer/Inspector';
 import { useEffect, useState } from 'react';
-import { ColorPick, getPath, hex, Num, Row, Section, Seg, Toggle, useBound } from './kit';
+import { ColorPick, getPath, hex, Num, Row, Section, Seg, Toggle, useBound, ListEditor } from './kit';
 
 export type FillKind = 'none' | 'solid' | 'linear' | 'radial' | 'image';
 export type ImageFill = 'contain' | 'cover' | 'stretch' | 'tile';
@@ -14,6 +14,8 @@ export interface FillStyle {
   /** Second colour of a gradient. */
   color2?: string;
   angle?: number;
+  /** Colours between the fill (0 %) and color2 (100 %). */
+  stops?: { at?: number; color?: string }[];
   image?: string;
   fit?: ImageFill;
 }
@@ -24,7 +26,17 @@ export interface StrokeStyle {
   cap?: 'butt' | 'round' | 'square';
 }
 export type FillRule = 'nonzero' | 'evenodd';
-export const FILL: Required<FillStyle> = { kind: 'solid', color2: '#ff3b5c', angle: 90, image: '', fit: 'cover' };
+export const FILL: Required<FillStyle> = { kind: 'solid', color2: '#ff3b5c', angle: 90, stops: [], image: '', fit: 'cover' };
+/** The gradient's stops in order (mirror of FillStyle::gradient). */
+const gradientStops = (f: Required<FillStyle>, c1: string) =>
+  [
+    { at: 0, color: c1 },
+    ...f.stops
+      .filter((s) => Number.isFinite(s.at ?? 50))
+      .map((s) => ({ at: Math.min(1, Math.max(0, (s.at ?? 50) / 100)), color: hex(s.color ?? '#ffffff') }))
+      .sort((a, b) => a.at - b.at),
+    { at: 1, color: hex(f.color2) },
+  ].map((s, i) => <stop key={i} offset={s.at} stopColor={s.color} />);
 export const STROKE: Required<StrokeStyle> = { position: 'inside', dash: 'solid', join: 'miter', cap: 'butt' };
 
 export type Pt = [number, number];
@@ -80,7 +92,6 @@ export function ShapeSvg({ d, w, h, r, fill, stroke, rule = 'nonzero', data }: {
   const f = { ...FILL, ...fill };
   const st = { ...STROKE, ...stroke };
   const c1 = cssColor(col(r.fill));
-  const c2 = hex(f.color2);
   const sw = num(r.strokeWidth);
   let defs = null;
   let paint = c1;
@@ -91,16 +102,14 @@ export function ShapeSvg({ d, w, h, r, fill, stroke, rule = 'nonzero', data }: {
     const len = (w * Math.abs(dx) + h * Math.abs(dy)) * 2;
     defs = (
       <linearGradient id={`${id}f`} gradientUnits="userSpaceOnUse" x1={w / 2 - dx * len} y1={h / 2 - dy * len} x2={w / 2 + dx * len} y2={h / 2 + dy * len}>
-        <stop offset="0" stopColor={c1} />
-        <stop offset="1" stopColor={c2} />
+        {gradientStops(f, c1)}
       </linearGradient>
     );
     paint = `url(#${id}f)`;
   } else if (f.kind === 'radial') {
     defs = (
       <radialGradient id={`${id}f`} gradientUnits="userSpaceOnUse" cx={w / 2} cy={h / 2} r={Math.hypot(w, h) / 2}>
-        <stop offset="0" stopColor={c1} />
-        <stop offset="1" stopColor={c2} />
+        {gradientStops(f, c1)}
       </radialGradient>
     );
     paint = `url(#${id}f)`;
@@ -306,7 +315,22 @@ export function StrokeRows({ layer, caps, joins = true, position, capDefault = S
 }
 
 function GradientTo() {
-  return <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />;
+  return (
+    <>
+      <ColorPick label="To" path="fillStyle.color2" value={FILL.color2} />
+      <ListEditor
+        label="Between"
+        path="fillStyle.stops"
+        value={[]}
+        fields={[
+          { key: 'color', color: true, w: 44 },
+          { key: 'at', num: true, placeholder: '%', w: 60 },
+        ]}
+        add={() => ({ at: 50, color: '#ffffff' })}
+        addLabel="Colour"
+      />
+    </>
+  );
 }
 
 /** Picture of an image fill (from the media library). */

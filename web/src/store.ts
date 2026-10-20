@@ -399,9 +399,9 @@ export async function uploadAsset(file: File, projectId?: string | null, onProgr
 }
 
 /** Imports an After Effects composition (Bodymovin / LottieFiles export) as a new template. */
-export async function importAfterEffects(projectId: string, file: File): Promise<{ template: Template; warnings: string[] }> {
+export async function importAfterEffects(projectId: string, file: File, layersOnly = false): Promise<{ template: Template; warnings: string[] }> {
   const name = file.name.replace(/\.(json|zip|lottie|mogrt)$/i, '');
-  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/import/after-effects?name=${encodeURIComponent(name)}`, {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/import/after-effects?name=${encodeURIComponent(name)}${layersOnly ? '&layersOnly=true' : ''}`, {
     method: 'POST',
     body: file,
     credentials: 'same-origin',

@@ -12,7 +12,7 @@ import {
   FolderPlus,
   PenTool,
   Pentagon,
-  Globe,
+  Watch,
   Image,
   Lock,
   Minus,
@@ -42,7 +42,8 @@ import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Mar
 import { NumberField } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
-import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
+import { descendants, duplicateLayers, findLayer, makeLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
+import { api, importAfterEffects, useApp } from '../store';
 import { PROP_LABELS } from './Inspector';
 import { ICONS, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
@@ -883,7 +884,7 @@ type MenuItem = {
 };
 
 /** The + menu: one list of widgets, in this order. */
-const MENU: { type?: LayerType; label: string; soon?: typeof Video }[] = [
+const MENU: { type?: LayerType; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string }[] = [
   { type: 'ticker', label: 'Ticker' },
   { type: 'credits', label: 'Credits' },
   { type: 'clock', label: 'Timer' },
@@ -894,16 +895,19 @@ const MENU: { type?: LayerType; label: string; soon?: typeof Video }[] = [
   { type: 'progress', label: 'Progress bar' },
   { type: 'map', label: 'Map' },
   { type: 'qrCode', label: 'QR code' },
-  { label: 'Video', soon: Video },
-  { label: 'Web page', soon: Globe },
-  { label: 'Iframe', soon: Code },
-  { label: 'Animation (Lottie)', soon: Sparkles },
+  { label: 'Video', soon: Video, action: 'video', hint: 'A video file (mp4, mov, webm…; alpha kept) played as frames, at most a minute' },
+  { type: 'web', label: 'Web page', hint: 'A web address (HTML5 outputs)' },
+  { type: 'web', label: 'Iframe', soon: Code, hint: 'Your HTML code (HTML5 outputs)', patch: { source: 'html', html: '<div style="font:700 64px sans-serif;color:#fff">Hello</div>' } },
+  { label: 'Animation (Lottie)', soon: Sparkles, action: 'lottie', hint: 'A Lottie / Bodymovin file (.json, .zip, .lottie) added as layers' },
   { type: 'scoreboard', label: 'Scoreboard' },
+  { label: 'Analog clock', soon: Watch, preset: 'analogClock', hint: 'Face with hands' },
+  { label: 'Rotator', soon: Repeat, preset: 'rotator', hint: 'Lines one after another' },
 ];
-const menu = (): MenuItem[] =>
+type Menu = MenuItem & { action?: 'video' | 'lottie' };
+const menu = (): Menu[] =>
   MENU.map((m) => {
     const w = m.type ? WIDGET_LIST.find((x) => x.type === m.type) : undefined;
-    return { label: m.label, icon: w?.icon ?? m.soon ?? Square, type: w?.type, soon: !w };
+    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch: m.patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset };
   });
 
 function AddMenu({ onAdd }: { onAdd: AddLayer }) {
@@ -918,7 +922,17 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
       window.removeEventListener('resize', close);
     };
   }, [open]);
-  const pick = (it: MenuItem) => {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [want, setWant] = useState<'video' | 'lottie' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pick = (it: Menu) => {
+    if (it.action) {
+      setOpen(null);
+      setWant(it.action);
+      // The file dialog after the menu closes.
+      setTimeout(() => fileRef.current?.click());
+      return;
+    }
     if (it.type) {
       setOpen(null);
       onAdd(it.type, it.patch, it.label);
@@ -971,6 +985,60 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
           </div>
         </div>
       )}
+      <input
+        ref={fileRef}
+        type="file"
+        hidden
+        accept={want === 'video' ? 'video/*,.mov,.mxf,.mkv' : '.json,.zip,.lottie'}
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f || !want) return;
+          setBusy(true);
+          try {
+            if (want === 'video') await addVideo(f, onAdd);
+            else await addLottie(f);
+          } catch (err) {
+            useApp.getState().toast(err instanceof Error ? err.message : String(err), 'error');
+          } finally {
+            setBusy(false);
+            setWant(null);
+          }
+        }}
+      />
+      {busy && <span className="add-busy">{want === 'video' ? 'Reading the video…' : 'Converting…'}</span>}
     </div>
   );
+}
+
+/** A video: split into frames by the server (alpha kept), played by an Image layer. */
+async function addVideo(f: File, onAdd: AddLayer) {
+  const pid = useApp.getState().project?.id;
+  if (!pid) return;
+  const r = await api<{ frames: string[]; fps: number; width: number; height: number }>('POST', `/api/projects/${encodeURIComponent(pid)}/sequence/${encodeURIComponent(f.name)}`, f);
+  const p = useApp.getState().project!;
+  // Its own size, smaller when bigger than the frame.
+  const k = Math.min(1, (p.width * 0.8) / Math.max(1, r.width), (p.height * 0.8) / Math.max(1, r.height));
+  const w = Math.round((r.width || 640) * k);
+  const h = Math.round((r.height || 360) * k);
+  onAdd('image', { src: r.frames[0], fit: 'contain', frames: r.frames, fps: r.fps, playMode: 'once', start: 'in', props: { x: Math.round((p.width - w) / 2), y: Math.round((p.height - h) / 2), width: w, height: h } }, f.name.replace(/\.[^.]+$/, ''));
+  useApp.getState().toast(`${r.frames.length} frames (${(r.frames.length / r.fps).toFixed(1)} s): play once, from the In (Image > Animation)`, 'info');
+}
+
+/** A Lottie animation: converted, its layers put into the open template in a group. */
+async function addLottie(f: File) {
+  const pid = useApp.getState().project?.id;
+  if (!pid) return;
+  const { template: imp, warnings } = await importAfterEffects(pid, f, true);
+  const ids = new Map(imp.layers.map((l) => [l.id, newId()] as [string, string]));
+  const group = { ...makeLayer('group', 1920, 1080, null), name: imp.name } as Layer;
+  useDesigner.getState().update((t) => {
+    t.layers.push(group);
+    for (const l of imp.layers) t.layers.push({ ...structuredClone(l), id: ids.get(l.id)!, parent: l.parent && ids.has(l.parent) ? ids.get(l.parent)! : group.id } as Layer);
+    // Long enough for the animation.
+    if (imp.duration > t.duration) t.duration = imp.duration;
+    for (const fl of imp.fields) if (!t.fields.some((x) => x.key === fl.key)) t.fields.push(fl);
+  });
+  useDesigner.getState().select([group.id]);
+  useApp.getState().toast(warnings.length ? `“${imp.name}” added — not converted: ${warnings.join('; ')}` : `“${imp.name}” added (${imp.layers.length} layers)`, 'info');
 }

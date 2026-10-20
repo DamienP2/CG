@@ -243,6 +243,60 @@ async fn put_project(
 struct Sequence {
     frames: Vec<String>,
     fps: f32,
+    /// Size of the pictures.
+    width: u32,
+    height: u32,
+}
+
+const VIDEO: [&str; 7] = ["mp4", "mov", "m4v", "webm", "mkv", "avi", "mxf"];
+/// At most a minute of video in a sequence.
+const VIDEO_SECONDS: u32 = 60;
+
+/// A video split into PNG frames (alpha kept) at `fps`, with ffmpeg.
+fn video_frames(bytes: &[u8], ext: &str, fps: f64) -> Result<Vec<Vec<u8>>, String> {
+    let dir = std::env::temp_dir().join(format!("cg-video-{}", cg_core::new_id()));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let run = || -> Result<Vec<Vec<u8>>, String> {
+        let input = dir.join(format!("in.{ext}"));
+        std::fs::write(&input, bytes).map_err(|e| e.to_string())?;
+        let out = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-nostdin", "-i"])
+            .arg(&input)
+            .args([
+                "-t",
+                &VIDEO_SECONDS.to_string(),
+                "-an",
+                "-vf",
+                &format!("fps={fps}"),
+                "-pix_fmt",
+                "rgba",
+            ])
+            .arg(dir.join("f-%05d.png"))
+            .output()
+            .map_err(|e| format!("ffmpeg is needed for videos on this server ({e})"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "this video cannot be read: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        let mut names: Vec<_> = std::fs::read_dir(&dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().to_string()))
+            .filter(|n| n.starts_with("f-") && n.ends_with(".png"))
+            .collect();
+        names.sort();
+        names
+            .iter()
+            .map(|n| std::fs::read(dir.join(n)).map_err(|e| e.to_string()))
+            .collect()
+    };
+    let r = run();
+    let _ = std::fs::remove_dir_all(&dir);
+    match r {
+        Ok(f) if f.is_empty() => Err("no picture in this video".into()),
+        r => r,
+    }
 }
 
 async fn put_sequence(
@@ -272,16 +326,36 @@ async fn put_sequence(
     } else {
         stem
     };
-    let (pngs, fps) = tokio::task::spawn_blocking(move || cg_render::sequence::split(&body))
-        .await
-        .map_err(internal)?
-        .map_err(bad)?;
+    let ext = name
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    // A video plays at the project's rate: one picture per frame.
+    let project_fps = visible_project(&s, &me, &id)
+        .await?
+        .frame_rate
+        .as_f64()
+        .clamp(1.0, 120.0);
+    let (pngs, fps) = tokio::task::spawn_blocking(move || {
+        if VIDEO.contains(&ext.as_str()) {
+            video_frames(&body, &ext, project_fps).map(|f| (f, project_fps as f32))
+        } else {
+            cg_render::sequence::split(&body)
+        }
+    })
+    .await
+    .map_err(internal)?
+    .map_err(bad)?;
+    let (width, height) = pngs
+        .first()
+        .and_then(|p| cg_render::sequence::size(p))
+        .unwrap_or((0, 0));
     let dir = project_dir(&s, &id);
     tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
     let prefix = project_prefix(&id);
     let mut frames = Vec::with_capacity(pngs.len());
     for (i, png) in pngs.iter().enumerate() {
-        let file = format!("{stem}-{i:03}.png");
+        let file = format!("{stem}-{i:04}.png");
         tokio::fs::write(dir.join(&file), png)
             .await
             .map_err(internal)?;
@@ -292,7 +366,12 @@ async fn put_sequence(
         .unwrap_or_else(|e| e.into_inner())
         .invalidate_assets();
     s.changed(format!("media:{id}"));
-    Ok(Json(Sequence { frames, fps }))
+    Ok(Json(Sequence {
+        frames,
+        fps,
+        width,
+        height,
+    }))
 }
 
 async fn delete_project(

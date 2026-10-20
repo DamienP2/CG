@@ -57,6 +57,15 @@ pub fn split(bytes: &[u8]) -> Result<(Vec<Vec<u8>>, f32), String> {
     Ok((out, fps))
 }
 
+/// Width and height of a picture file.
+pub fn size(bytes: &[u8]) -> Option<(u32, u32)> {
+    image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

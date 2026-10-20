@@ -40,6 +40,9 @@ pub struct FillStyle {
     pub color2: String,
     /// Linear gradient direction, degrees (90 = left to right, like CSS).
     pub angle: f32,
+    /// Colours between `fill` (0 %) and `color2` (100 %) of a gradient.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub stops: Vec<GradientStop>,
     /// Picture of an image fill (asset path).
     pub image: String,
     pub fit: ImageFill,
@@ -51,9 +54,45 @@ impl Default for FillStyle {
             kind: FillKind::Solid,
             color2: "#ff3b5c".into(),
             angle: 90.0,
+            stops: Vec::new(),
             image: String::new(),
             fit: ImageFill::Cover,
         }
+    }
+}
+
+/// A colour inside a gradient, at `at` % of its length.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GradientStop {
+    pub at: f32,
+    pub color: String,
+}
+
+impl Default for GradientStop {
+    fn default() -> Self {
+        Self {
+            at: 50.0,
+            color: "#ffffff".into(),
+        }
+    }
+}
+
+impl FillStyle {
+    /// The colours of the gradient in order: (position 0..1, `#hex` or None
+    /// for the `fill` colour at 0).
+    pub fn gradient(&self) -> Vec<(f32, Option<&str>)> {
+        let mut mid: Vec<_> = self
+            .stops
+            .iter()
+            .filter(|s| s.at.is_finite())
+            .map(|s| ((s.at / 100.0).clamp(0.0, 1.0), Some(s.color.as_str())))
+            .collect();
+        mid.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut out = vec![(0.0, None)];
+        out.extend(mid);
+        out.push((1.0, Some(self.color2.as_str())));
+        out
     }
 }
 
@@ -210,6 +249,26 @@ pub fn svg_path(cmds: &[Cmd]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gradient_stops_in_order() {
+        let f: FillStyle = serde_json::from_str(
+            r##"{"kind":"linear","color2":"#0000ff","stops":[{"at":75,"color":"#00ff00"},{"at":25,"color":"#ff0000"},{"at":150,"color":"#ffffff"}]}"##,
+        )
+        .unwrap();
+        assert_eq!(
+            f.gradient(),
+            vec![
+                (0.0, None),
+                (0.25, Some("#ff0000")),
+                (0.75, Some("#00ff00")),
+                (1.0, Some("#ffffff")),
+                (1.0, Some("#0000ff"))
+            ]
+        );
+        // Older shapes: two colours.
+        assert_eq!(FillStyle::default().gradient().len(), 2);
+    }
 
     #[test]
     fn radius_is_capped() {

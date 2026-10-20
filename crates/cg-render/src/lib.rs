@@ -941,7 +941,8 @@ impl Renderer {
             | LayerKind::Credits { .. }
             | LayerKind::Chart { .. }
             | LayerKind::Map { .. }
-            | LayerKind::Scoreboard { .. } => {}
+            | LayerKind::Scoreboard { .. }
+            | LayerKind::Web { .. } => {}
             LayerKind::QrCode {
                 data, background, ..
             } => {
