@@ -29,7 +29,9 @@
     <Property Id="ARPPRODUCTICON" Value="PulseCG.ico" />
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="PulseCG" />
+      <Directory Id="INSTALLFOLDER" Name="PulseCG">
+        <Directory Id="BinFolder" Name="bin" />
+      </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="MenuFolder" Name="Strata" />
@@ -80,6 +82,15 @@
       </Component>
       <Component Id="NdiNotice">
         <File Id="NdiNoticeTxt" Source="$(var.NdiDir)\NDI-NOTICE.txt" KeyPath="yes" />
+      </Component>
+      <?endif ?>
+      <?ifdef FfmpegDir ?>
+      <!-- ffmpeg (packaging/ffmpeg/fetch.sh): streams in and out, video conversion. -->
+      <Component Id="Ffmpeg" Directory="BinFolder">
+        <File Id="FfmpegExe" Source="$(var.FfmpegDir)\ffmpeg.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="FfmpegNotice" Directory="BinFolder">
+        <File Id="FfmpegNoticeTxt" Source="$(var.FfmpegDir)\FFMPEG-NOTICE.txt" KeyPath="yes" />
       </Component>
       <?endif ?>
       <Component Id="StartMenu" Directory="MenuFolder">

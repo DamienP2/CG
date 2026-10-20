@@ -223,12 +223,19 @@ pub fn args(
 
 /// The premultiplied RGBA picture over `bg`, as RGB.
 pub fn over_background(frame: &Frame, bg: [u8; 3], out: &mut Vec<u8>) {
-    out.clear();
-    out.reserve(frame.data.len() / 4 * 3);
-    for p in frame.data.as_chunks::<4>().0 {
-        let inv = 255 - p[3] as u32;
-        for i in 0..3 {
-            out.push((p[i] as u32 + (bg[i] as u32 * inv + 127) / 255).min(255) as u8);
+    let px = frame.data.as_chunks::<4>().0;
+    out.resize(px.len() * 3, 0);
+    for (p, o) in px.iter().zip(out.as_chunks_mut::<3>().0) {
+        match p[3] {
+            // Most of a graphics picture: nothing, or opaque.
+            0 => *o = bg,
+            255 => *o = [p[0], p[1], p[2]],
+            a => {
+                let inv = 255 - a as u32;
+                for i in 0..3 {
+                    o[i] = (p[i] as u32 + (bg[i] as u32 * inv + 127) / 255).min(255) as u8;
+                }
+            }
         }
     }
 }
@@ -246,6 +253,8 @@ fn hex_rgb(s: &str) -> [u8; 3] {
 pub struct StreamSender {
     config: StreamConfig,
     tx: Option<SyncSender<Vec<u8>>>,
+    /// Buffers ffmpeg is done with, used again (no 6 MB allocation a frame).
+    spare: Receiver<Vec<u8>>,
     error: Arc<Mutex<Option<String>>>,
     bg: [u8; 3],
     worker: Option<std::thread::JoinHandle<()>>,
@@ -280,19 +289,21 @@ impl StreamSender {
                 OutputError::Unsupported(format!("ffmpeg is needed for stream outputs ({e})"))
             })?;
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(2);
+        let (back, spare) = mpsc::sync_channel::<Vec<u8>>(3);
         let error = Arc::new(Mutex::new(None));
         let child = Slot::default();
         let worker = std::thread::Builder::new()
             .name(format!("cg-stream-{}", config.id))
             .spawn({
                 let (error, name, slot) = (error.clone(), config.name.clone(), child.clone());
-                move || run(args, rx, error, name, slot)
+                move || run(args, rx, back, error, name, slot)
             })?;
         tracing::info!(name = config.name, protocol = ?config.protocol, "stream output started");
         Ok(Self {
             bg: hex_rgb(&config.background),
             config,
             tx: Some(tx),
+            spare,
             error,
             worker: Some(worker),
             child,
@@ -304,6 +315,7 @@ impl StreamSender {
 fn run(
     args: Vec<String>,
     rx: Receiver<Vec<u8>>,
+    back: SyncSender<Vec<u8>>,
     error: Arc<Mutex<Option<String>>>,
     name: String,
     slot: Slot,
@@ -363,6 +375,7 @@ fn run(
                     if stdin.write_all(&buf).is_err() {
                         break false;
                     }
+                    let _ = back.try_send(buf);
                 }
                 Err(_) => break true,
             }
@@ -416,14 +429,14 @@ impl OutputSink for StreamSender {
         &self.config.name
     }
 
-    fn push(&mut self, frame: &Frame) -> Result<(), OutputError> {
+    fn push(&mut self, frame: &Arc<Frame>, _at: std::time::SystemTime) -> Result<(), OutputError> {
         if let Some(e) = self.error.lock().unwrap_or_else(|p| p.into_inner()).clone() {
             return Err(OutputError::Unsupported(e));
         }
         let Some(tx) = &self.tx else {
             return Err(OutputError::Closed);
         };
-        let mut buf = Vec::new();
+        let mut buf = self.spare.try_recv().unwrap_or_default();
         over_background(frame, self.bg, &mut buf);
         match tx.try_send(buf) {
             Ok(()) => Ok(()),
@@ -431,6 +444,14 @@ impl OutputSink for StreamSender {
             Err(TrySendError::Full(_)) => Err(OutputError::Dropped),
             Err(TrySendError::Disconnected(_)) => Err(OutputError::Closed),
         }
+    }
+
+    fn process(&self) -> Option<u32> {
+        self.child
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .map(|c| c.id())
     }
 }
 
@@ -504,15 +525,16 @@ mod tests {
     #[test]
     fn graphics_over_the_background() {
         let f = Frame {
-            width: 2,
+            width: 3,
             height: 1,
-            // Half-transparent red (premultiplied), then nothing.
-            data: vec![128, 0, 0, 128, 0, 0, 0, 0],
+            // Half-transparent red (premultiplied), nothing, opaque grey.
+            data: vec![128, 0, 0, 128, 0, 0, 0, 0, 9, 9, 9, 255],
             captured_at: std::time::SystemTime::now(),
         };
-        let mut out = Vec::new();
+        // A used buffer of another size comes back right.
+        let mut out = vec![7; 20];
         over_background(&f, [0, 0, 255], &mut out);
-        assert_eq!(out, vec![128, 0, 127, 0, 0, 255]);
+        assert_eq!(out, vec![128, 0, 127, 0, 0, 255, 9, 9, 9]);
     }
 
     /// A listener nobody called does not read its pictures: closing the
@@ -531,8 +553,9 @@ mod tests {
             data: vec![0; 320 * 180 * 4],
             captured_at: std::time::SystemTime::now(),
         };
+        let f = Arc::new(f);
         for _ in 0..50 {
-            let _ = s.push(&f);
+            let _ = s.push(&f, std::time::SystemTime::now());
             std::thread::sleep(Duration::from_millis(10));
         }
         let t = std::time::Instant::now();

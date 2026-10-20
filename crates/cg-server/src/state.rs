@@ -225,6 +225,8 @@ pub struct AppState {
     pub output_status: Arc<OutputStatus>,
     /// Live video inputs (kept across engine restarts).
     pub inputs: Arc<crate::inputs::Inputs>,
+    /// Load of the machine, the channels, outputs and inputs (kept across engine restarts).
+    pub perf: Arc<crate::perf::Perf>,
     /// Settings this engine cycle was started with.
     pub config: ServerConfig,
     /// Address actually bound by this cycle.

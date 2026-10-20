@@ -12,7 +12,7 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use cg_render::Frame;
 use serde::{Deserialize, Serialize};
@@ -263,7 +263,7 @@ fn open_socket(cfg: &St2110Config) -> std::io::Result<UdpSocket> {
 
 /// One stream = one socket + one pacing thread.
 struct Stream {
-    tx: SyncSender<Arc<Frame>>,
+    tx: SyncSender<(Arc<Frame>, SystemTime)>,
 }
 
 pub struct St2110Sender {
@@ -276,7 +276,7 @@ impl St2110Sender {
         let mut essences = Vec::new();
         for (dest, essence) in config.streams() {
             let socket = open_socket(&config).map_err(OutputError::Io)?;
-            let (tx, rx) = sync_channel::<Arc<Frame>>(2);
+            let (tx, rx) = sync_channel::<(Arc<Frame>, SystemTime)>(2);
             let (name, pt) = (config.name.clone(), config.payload_type);
             std::thread::Builder::new()
                 .name(format!("st2110-{}-{}", config.name, essence.label()))
@@ -299,13 +299,13 @@ fn run(
     dest: SocketAddrV4,
     essence: Essence,
     pt: u8,
-    rx: Receiver<Arc<Frame>>,
+    rx: Receiver<(Arc<Frame>, SystemTime)>,
     period: Duration,
 ) {
     let mut seq = 0u32;
     let (mut packets, mut line) = (Packets::default(), Vec::new());
     let (mut frames, mut stats_at) = (0u32, Instant::now());
-    while let Ok(frame) = rx.recv() {
+    while let Ok((frame, at)) = rx.recv() {
         let start = Instant::now();
         frames += 1;
         if stats_at.elapsed() >= Duration::from_secs(5) {
@@ -319,7 +319,7 @@ fn run(
         }
         // Fill and key threads derive the same timestamp from the frame's
         // capture time so receivers can pair them.
-        let ts = (frame_time(&frame).as_secs_f64() * RTP_CLOCK) as u64 as u32;
+        let ts = (frame_time(at).as_secs_f64() * RTP_CLOCK) as u64 as u32;
         packetize_into(&frame, essence, pt, &mut seq, ts, &mut packets, &mut line);
         // Pace across what is left of ~90% of the frame period.
         let budget = period.mul_f64(0.9).saturating_sub(start.elapsed());
@@ -339,11 +339,8 @@ fn run(
     tracing::info!(name, stream = essence.label(), "ST 2110 sender stopped");
 }
 
-fn frame_time(frame: &Frame) -> Duration {
-    frame
-        .captured_at
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
+fn frame_time(at: SystemTime) -> Duration {
+    at.duration_since(UNIX_EPOCH).unwrap_or_default()
 }
 
 impl OutputSink for St2110Sender {
@@ -351,11 +348,10 @@ impl OutputSink for St2110Sender {
         &self.config.name
     }
 
-    fn push(&mut self, frame: &Frame) -> Result<(), OutputError> {
-        let frame = Arc::new(frame.clone());
+    fn push(&mut self, frame: &Arc<Frame>, at: SystemTime) -> Result<(), OutputError> {
         let mut result = Ok(());
         for e in &self.essences {
-            match e.tx.try_send(frame.clone()) {
+            match e.tx.try_send((frame.clone(), at)) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => result = Err(OutputError::Dropped),
                 Err(TrySendError::Disconnected(_)) => return Err(OutputError::Closed),

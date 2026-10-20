@@ -8,9 +8,11 @@ mod engine;
 mod inputs;
 mod library;
 mod locks;
+mod logs;
 mod media;
 mod mos;
 mod paths;
+mod perf;
 mod premiere;
 mod render;
 mod service;
@@ -229,7 +231,7 @@ enum ServiceCmd {
 fn init_logging(log_file: Option<PathBuf>) {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "info,tower_http=warn".into());
-    let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    let path = log_file.clone();
     let file = log_file.and_then(|p| {
         std::fs::create_dir_all(p.parent()?).ok()?;
         std::fs::OpenOptions::new()
@@ -238,10 +240,31 @@ fn init_logging(log_file: Option<PathBuf>) {
             .open(p)
             .ok()
     });
-    match file {
-        Some(f) => builder.with_ansi(false).with_writer(Mutex::new(f)).init(),
-        None => builder.with_ansi(std::io::stdout().is_terminal()).init(),
+    if let (Some(_), Some(p)) = (&file, path) {
+        let _ = logs::FILE.set(p);
     }
+    use tracing_subscriber::prelude::*;
+    let (to_file, to_stdout) = match file {
+        Some(f) => (
+            Some(
+                tracing_subscriber::fmt::layer()
+                    .with_ansi(false)
+                    .with_writer(Mutex::new(f)),
+            ),
+            None,
+        ),
+        None => (
+            None,
+            Some(tracing_subscriber::fmt::layer().with_ansi(std::io::stdout().is_terminal())),
+        ),
+    };
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(to_file)
+        .with(to_stdout)
+        // The recent log, for the Performance page.
+        .with(logs::Ring)
+        .init();
 }
 
 fn main() -> anyhow::Result<()> {
@@ -362,6 +385,8 @@ pub async fn serve(
     let output_status = Arc::new(state::OutputStatus::default());
     // Live inputs keep running across engine restarts.
     let inputs = Arc::new(inputs::Inputs::default());
+    let perf = Arc::new(perf::Perf::default());
+    perf::spawn_sampler(perf.clone(), inputs.clone());
     if auth.needs_setup() {
         tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
     }
@@ -426,6 +451,7 @@ pub async fn serve(
             edits: Default::default(),
             output_status: output_status.clone(),
             inputs: inputs.clone(),
+            perf: perf.clone(),
             config,
             bind,
             started_at,
@@ -438,9 +464,11 @@ pub async fn serve(
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .set_live(shared.inputs.clone());
-        let mut engine = engine::start(&shared);
-        engine.push(tokio::spawn(mos::serve(shared.clone())));
-        engine.push(tokio::spawn(datasources::run(shared.clone())));
+        let channels = engine::start(&shared);
+        let engine = vec![
+            tokio::spawn(mos::serve(shared.clone())),
+            tokio::spawn(datasources::run(shared.clone())),
+        ];
 
         let app = api::router()
             .route("/fonts/{name}", get(web::font))
@@ -474,6 +502,18 @@ pub async fn serve(
             let _ = cycle.closing.send(true);
         })
         .await?;
+        // Channels stop by themselves once `closing` is set, closing their
+        // outputs (ports and NDI names the next cycle may open again).
+        for h in channels {
+            let abort = h.abort_handle();
+            if tokio::time::timeout(std::time::Duration::from_secs(5), h)
+                .await
+                .is_err()
+            {
+                tracing::warn!("a channel took too long to stop");
+                abort.abort();
+            }
+        }
         for h in &engine {
             h.abort();
         }

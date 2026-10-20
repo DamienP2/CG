@@ -7,17 +7,20 @@
 //!   outputs use).
 //! - SDI inputs need DeckLink support, which this server is built without.
 //!
-//! Each input keeps only its latest picture: the renderers draw it at their
-//! own pace, the previews (`/api/inputs/<id>/live.mjpeg`) send it as JPEG.
+//! Pictures off a network come unevenly (bursts, gaps). Each one is given a
+//! time to be shown, `buffer` frames after it came and at least one frame
+//! after the previous one: the renderers, drawing at their own pace, get an
+//! even motion back, at the cost of that much delay. The previews
+//! (`/api/inputs/<id>/live.mjpeg`) send the newest picture as JPEG.
 //! Inputs keep running across engine restarts; saving the settings only
 //! restarts the ones that changed.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::Read;
 use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tiny_skia::{IntSize, Pixmap};
@@ -65,6 +68,17 @@ pub struct InputConfig {
     pub height: u32,
     #[serde(default = "default_fps")]
     pub fps: u32,
+    /// Smoothing, in frames of delay (0: shown as soon as they come).
+    #[serde(default = "default_buffer")]
+    pub buffer: u32,
+    /// Streams: decode on the graphics card when ffmpeg can (it falls back
+    /// to the processor).
+    #[serde(default)]
+    pub hw_decode: bool,
+}
+
+fn default_buffer() -> u32 {
+    2
 }
 
 fn default_width() -> u32 {
@@ -135,6 +149,9 @@ impl InputConfig {
             InputKind::Ndi | InputKind::Sdi => return Err("not a stream".into()),
         }
         let (w, h) = (self.width.clamp(16, 7680), self.height.clamp(16, 4320));
+        if self.hw_decode {
+            a.extend(["-hwaccel", "auto"].map(String::from));
+        }
         a.extend(["-i".into(), url, "-an".into(), "-vf".into()]);
         a.push(format!(
             "fps={},scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0",
@@ -159,11 +176,25 @@ pub struct InputStatus {
     pub frames: u64,
 }
 
+/// Pictures waiting for their time, and the one on show.
+#[derive(Default)]
+struct Paced {
+    queue: VecDeque<(Instant, Arc<Pixmap>)>,
+    shown: Option<Arc<Pixmap>>,
+    last_due: Option<Instant>,
+}
+
 /// One running input.
 struct Live {
     config: InputConfig,
+    /// The newest picture (previews, status).
     picture: RwLock<Option<Arc<Pixmap>>>,
+    paced: Mutex<Paced>,
+    /// Picture buffers done with, used again.
+    pool: Mutex<Vec<Vec<u8>>>,
     received: AtomicU64,
+    /// Thrown away: too many waiting.
+    dropped: AtomicU64,
     last_at: Mutex<Option<std::time::Instant>>,
     message: Mutex<String>,
     stop: AtomicBool,
@@ -175,10 +206,84 @@ impl Live {
     fn say(&self, m: impl Into<String>) {
         *self.message.lock().unwrap_or_else(|p| p.into_inner()) = m.into();
     }
+    fn period(&self) -> Duration {
+        Duration::from_secs_f64(1.0 / self.config.fps.clamp(1, 120) as f64)
+    }
+
     fn put(&self, pm: Pixmap) {
-        *self.picture.write().unwrap_or_else(|p| p.into_inner()) = Some(Arc::new(pm));
+        let now = Instant::now();
+        let pm = Arc::new(pm);
+        *self.picture.write().unwrap_or_else(|p| p.into_inner()) = Some(pm.clone());
         self.received.fetch_add(1, Ordering::Relaxed);
-        *self.last_at.lock().unwrap_or_else(|p| p.into_inner()) = Some(std::time::Instant::now());
+        *self.last_at.lock().unwrap_or_else(|p| p.into_inner()) = Some(now);
+        let (period, frames) = (self.period(), self.config.buffer.min(10));
+        let delay = period * frames;
+        let mut p = self.paced.lock().unwrap_or_else(|p| p.into_inner());
+        // Time goes on even when nothing draws this input.
+        self.advance(&mut p, now);
+        let mut due = now + delay;
+        if frames > 0 {
+            // At least a frame after the previous one: bursts spread out.
+            if let Some(next) = p.last_due.map(|d| d + period) {
+                due = due.max(next);
+            }
+            // Further and further behind (a sender faster than its rate):
+            // start again from now.
+            if due > now + delay + period * 3 {
+                due = now + delay;
+                let n = p.queue.len() as u64;
+                p.queue.clear();
+                self.dropped.fetch_add(n, Ordering::Relaxed);
+            }
+        }
+        p.last_due = Some(due);
+        p.queue.push_back((due, pm));
+        while p.queue.len() > frames as usize + 3 {
+            if let Some((_, old)) = p.queue.pop_front() {
+                self.recycle(old);
+            }
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// The picture to show now.
+    fn current(&self) -> Option<Arc<Pixmap>> {
+        let mut p = self.paced.lock().unwrap_or_else(|p| p.into_inner());
+        self.advance(&mut p, Instant::now());
+        p.shown.clone()
+    }
+
+    /// Shows the pictures whose time has come.
+    fn advance(&self, p: &mut Paced, now: Instant) {
+        while p.queue.front().is_some_and(|(due, _)| *due <= now) {
+            let Some((_, pm)) = p.queue.pop_front() else {
+                break;
+            };
+            if let Some(old) = p.shown.replace(pm) {
+                self.recycle(old);
+            }
+        }
+    }
+
+    /// Keeps the buffer of a picture nobody holds any more.
+    fn recycle(&self, pm: Arc<Pixmap>) {
+        if let Ok(pm) = Arc::try_unwrap(pm) {
+            let mut pool = self.pool.lock().unwrap_or_else(|p| p.into_inner());
+            if pool.len() < 4 {
+                pool.push(pm.take());
+            }
+        }
+    }
+
+    /// A buffer for the next picture.
+    fn buffer(&self, size: usize) -> Vec<u8> {
+        let mut pool = self.pool.lock().unwrap_or_else(|p| p.into_inner());
+        while let Some(b) = pool.pop() {
+            if b.len() == size {
+                return b;
+            }
+        }
+        vec![0u8; size]
     }
     fn stopped(&self) -> bool {
         self.stop.load(Ordering::Relaxed)
@@ -231,7 +336,10 @@ impl Inputs {
             let live = Arc::new(Live {
                 config: c.clone(),
                 picture: RwLock::new(None),
+                paced: Mutex::new(Paced::default()),
+                pool: Mutex::new(Vec::new()),
                 received: AtomicU64::new(0),
+                dropped: AtomicU64::new(0),
                 last_at: Mutex::new(None),
                 message: Mutex::new("Starting…".into()),
                 stop: AtomicBool::new(false),
@@ -276,6 +384,24 @@ impl Inputs {
             .collect()
     }
 
+    /// What the load sampler counts.
+    pub fn counts(&self) -> Vec<crate::perf::InputCounts> {
+        let map = self.live.read().unwrap_or_else(|p| p.into_inner());
+        map.values()
+            .map(|l| crate::perf::InputCounts {
+                id: l.config.id.clone(),
+                received: l.received.load(Ordering::Relaxed),
+                dropped: l.dropped.load(Ordering::Relaxed),
+                pid: l
+                    .child
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .as_ref()
+                    .map(|c| c.id()),
+            })
+            .collect()
+    }
+
     /// Pictures received so far (changes when a new one comes).
     pub fn received(&self, id: &str) -> Option<u64> {
         let map = self.live.read().unwrap_or_else(|p| p.into_inner());
@@ -298,12 +424,7 @@ impl cg_render::LiveInputs for Inputs {
             .unwrap_or_else(|p| p.into_inner())
             .get(id)?
             .clone();
-        let pic = live
-            .picture
-            .read()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone();
-        pic
+        live.current()
     }
 }
 
@@ -514,7 +635,7 @@ fn run_stream(l: &Live) {
         if let Some(out) = out.as_mut() {
             let mut first = true;
             loop {
-                let mut buf = vec![0u8; size];
+                let mut buf = l.buffer(size);
                 if out.read_exact(&mut buf).is_err() || l.stopped() {
                     break;
                 }
@@ -621,7 +742,74 @@ mod tests {
             width: 1280,
             height: 720,
             fps: 25,
+            buffer: 2,
+            hw_decode: false,
         }
+    }
+
+    fn live(fps: u32, buffer: u32) -> Live {
+        let mut config = input(InputKind::Udp, "udp://127.0.0.1:1", false);
+        (config.fps, config.buffer) = (fps, buffer);
+        Live {
+            config,
+            picture: RwLock::new(None),
+            paced: Mutex::new(Paced::default()),
+            pool: Mutex::new(Vec::new()),
+            received: AtomicU64::new(0),
+            dropped: AtomicU64::new(0),
+            last_at: Mutex::new(None),
+            message: Mutex::new(String::new()),
+            stop: AtomicBool::new(false),
+            child: Mutex::new(None),
+        }
+    }
+
+    fn pic(w: u32) -> Pixmap {
+        Pixmap::new(w, 1).unwrap()
+    }
+
+    /// Three pictures arriving at once come out one frame apart, after the buffer.
+    #[test]
+    fn a_burst_is_spread_out() {
+        let l = live(20, 2); // 50 ms frames, 100 ms buffer
+        for w in 1..=3 {
+            l.put(pic(w));
+        }
+        assert!(l.current().is_none());
+        std::thread::sleep(Duration::from_millis(110));
+        assert_eq!(l.current().unwrap().width(), 1);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(l.current().unwrap().width(), 2);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(l.current().unwrap().width(), 3);
+        // Nothing new: the last one stays.
+        std::thread::sleep(Duration::from_millis(60));
+        assert_eq!(l.current().unwrap().width(), 3);
+        assert_eq!(l.dropped.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn no_buffer_shows_at_once_and_too_many_are_dropped() {
+        let l = live(25, 0);
+        l.put(pic(1));
+        assert_eq!(l.current().unwrap().width(), 1);
+        let l = live(25, 1);
+        for w in 1..=8 {
+            l.put(pic(w));
+        }
+        // At most buffer + 3 wait.
+        assert_eq!(l.dropped.load(Ordering::Relaxed), 4);
+    }
+
+    /// Pictures at their rate, nothing drawing them: none is thrown away.
+    #[test]
+    fn an_input_nobody_shows_drops_nothing() {
+        let l = live(50, 2);
+        for w in 1..=12 {
+            l.put(pic(w));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(l.dropped.load(Ordering::Relaxed), 0);
     }
 
     #[test]
@@ -710,7 +898,16 @@ mod tests {
         let _ = send.kill();
         let _ = send.wait();
         assert!(got, "no picture: {:?}", hub.status());
-        let pic = cg_render::LiveInputs::picture(&hub, "in-1").unwrap();
+        // Shown after the smoothing buffer.
+        let mut pic = None;
+        for _ in 0..50 {
+            pic = cg_render::LiveInputs::picture(&hub, "in-1");
+            if pic.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let pic = pic.unwrap();
         assert_eq!((pic.width(), pic.height()), (320, 180));
         assert!(hub.status()[0].message.starts_with("Receiving"));
     }
@@ -752,10 +949,10 @@ mod tests {
         )
         .unwrap();
         // Transparent graphics over the blue background.
-        let frame = cg_render::Frame::blank(320, 180);
+        let frame = Arc::new(cg_render::Frame::blank(320, 180));
         let mut got = false;
         for _ in 0..200 {
-            let _ = out.push(&frame);
+            let _ = out.push(&frame, std::time::SystemTime::now());
             std::thread::sleep(Duration::from_millis(40));
             if hub.received("in-1").unwrap_or(0) > 5 {
                 got = true;

@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { formatFor, inFormat } from '../engine/formats';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { hasLiveWidgets, Scene } from '../engine/Scene';
 import { layerAgeFrames } from '../engine/widgets';
 import { areaClip, zoneArea } from '../engine/zones';
-import type { Project, Template } from '../engine/types';
+import type { PlayoutItem, Project, Template } from '../engine/types';
 import type { Live } from '../store';
 
 /**
@@ -20,10 +20,24 @@ export function Program({ project, live, width, height }: { project: Project; li
   const now = useTicker(
     items.some(([, item]) => {
       const t = templates.get(item.templateId);
-      return !!t && hasLiveWidgets(t);
+      return moving(item) || (!!t && hasLiveWidgets(t));
     }),
   );
   const fps = project.frameRate.num / project.frameRate.den || 1;
+  // Frames shown last, by playout layer: never step back when a state
+  // arrives a little behind what was extrapolated.
+  const shown = useRef(new Map<string, { templateId: string; frame: number }>());
+  // The server sends a state per tick while timelines move, over a network
+  // that delivers them unevenly: the picture moves on at the display rate
+  // from the last state instead, as far as its target.
+  const since = Math.max(0, now - (live?.at ?? now)) / 1000;
+  const frameOf = (layer: string, item: PlayoutItem) => {
+    let f = advancing(item) ? Math.min(item.target, item.frame + since * fps) : item.frame;
+    const last = shown.current.get(layer);
+    if (last && last.templateId === item.templateId && advancing(item) && f < last.frame && last.frame - f < 3) f = Math.min(item.target, last.frame);
+    shown.current.set(layer, { templateId: item.templateId, frame: f });
+    return f;
+  };
   const scale = Math.min(width / format.width, height / format.height);
   const zoneOf = (layer: number) => {
     const z = project.zones.find((x) => x.layer === layer);
@@ -45,16 +59,18 @@ export function Program({ project, live, width, height }: { project: Project; li
         const t = templates.get(item.templateId);
         if (!t) return null;
         // The server only sends states when timelines move: extrapolate time on air.
-        const age = (item.age ?? 0) / fps + Math.max(0, now - (live?.at ?? now)) / 1000;
+        const age = (item.age ?? 0) / fps + since;
+        const frame = frameOf(layer, item);
+        const fade = item.fade ? Math.min(item.fade.length, item.fade.frame + since * fps) : null;
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
             <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
-              <Scene template={t} frame={item.frame} data={item.data} />
+              <Scene template={t} frame={frame} data={item.data} />
               {/* A row or an Update fading: the old values above, fading out. */}
-              {item.fade && item.fade.frame < item.fade.length && (
-                <div style={{ position: 'absolute', inset: 0, opacity: Math.max(0, 1 - item.fade.frame / Math.max(1, item.fade.length)) }}>
-                  <Scene template={t} frame={item.frame} data={item.fade.data} />
+              {item.fade && fade !== null && fade < item.fade.length && (
+                <div style={{ position: 'absolute', inset: 0, opacity: Math.max(0, 1 - fade / Math.max(1, item.fade.length)) }}>
+                  <Scene template={t} frame={frame} data={item.fade.data} />
                 </div>
               )}
             </LiveTime>
@@ -64,3 +80,8 @@ export function Program({ project, live, width, height }: { project: Project; li
     </div>
   );
 }
+
+/** A timeline on its way to its target (not held at a stop). */
+const advancing = (item: PlayoutItem) => item.phase !== 'holding' && item.phase !== 'outHold' && item.frame < item.target;
+/** Something moves: the timeline, or a fade. */
+const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length);

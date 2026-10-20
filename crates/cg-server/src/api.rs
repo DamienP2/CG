@@ -113,6 +113,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/health", get(health))
         .route("/api/qr", get(qr))
         .route("/api/system", get(get_system))
+        .route("/api/system/metrics", get(crate::perf::metrics))
+        .route("/api/system/logs", get(crate::perf::logs))
+        .route("/api/system/logs/download", get(crate::perf::logs_download))
         .route("/api/system/config", put(put_system_config))
         .route("/api/outputs/status", get(outputs_status))
         .route("/api/system/restart", post(post_restart))
@@ -2291,6 +2294,9 @@ async fn update_upload(
     let version = tokio::task::spawn_blocking(move || {
         let r = crate::update::extract_binary(&body)
             .and_then(|b| crate::update::install(&dir, &b, q.allow_older));
+        if r.is_ok() {
+            crate::update::add_ffmpeg(&body);
+        }
         if let Err(e) = &r {
             crate::update::fail(e);
         }

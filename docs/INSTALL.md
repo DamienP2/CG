@@ -122,6 +122,47 @@ cg-server service uninstall
 cg-server service install --bind 0.0.0.0:8080 --data-dir <dossier>
 ```
 
+## ffmpeg (flux vidéo, entrées, vidéos)
+
+Les sorties **Stream** (SRT, UDP, RTMP, HLS), les **entrées en direct** (sauf NDI) et la conversion des vidéos passent par **ffmpeg**. Les installateurs et les archives l'embarquent dans `bin/` à côté du serveur (`C:\Program Files\PulseCG\bin\ffmpeg.exe`, `/usr/local/pulse-cg/bin/ffmpeg`, `/opt/pulse-cg/bin/ffmpeg`). Une installation antérieure le reçoit avec sa prochaine mise à jour par le web.
+
+Le serveur cherche ffmpeg dans cet ordre : la variable `FFMPEG_PATH`, `ffmpeg` ou `bin/ffmpeg` à côté de `cg-server`, puis le `PATH`. Il le relit à chaque lancement : inutile de redémarrer, cliquez sur *Appliquer* dans **Flux vidéo** (les entrées réessayent seules).
+
+Il faut un ffmpeg avec **libx264** (et libx265 pour le HEVC) et les protocoles **srt** et **rtmp**. Pour vérifier :
+```bash
+ffmpeg -hide_banner -protocols | grep -E "^ +(srt|rtmp)$"
+ffmpeg -hide_banner -encoders  | grep -E "libx264|libx265"
+```
+
+### Installer ffmpeg à la main sur macOS
+
+Le service launchd ne voit pas le `PATH` de votre session (ni `/opt/homebrew/bin`) : placez ffmpeg dans `/usr/local/pulse-cg/bin/`.
+
+**Avec Homebrew** :
+```bash
+brew install ffmpeg
+ffmpeg -hide_banner -protocols | grep -w srt || brew install ffmpeg-full   # s'il manque SRT
+sudo mkdir -p /usr/local/pulse-cg/bin
+sudo ln -sf "$(command -v ffmpeg)" /usr/local/pulse-cg/bin/ffmpeg
+```
+(`ffmpeg-full` est installé à part : remplacez alors `$(command -v ffmpeg)` par `$(brew --prefix ffmpeg-full)/bin/ffmpeg`.)
+
+**Sans Homebrew** : téléchargez un ffmpeg statique pour macOS, par exemple sur https://ffmpeg.martin-riedl.de (*arm64* pour Apple Silicon, *amd64* pour Intel, version *release*), puis :
+```bash
+cd ~/Downloads && unzip ffmpeg.zip
+sudo mkdir -p /usr/local/pulse-cg/bin
+sudo mv ffmpeg /usr/local/pulse-cg/bin/ffmpeg
+sudo chmod 755 /usr/local/pulse-cg/bin/ffmpeg
+sudo xattr -d com.apple.quarantine /usr/local/pulse-cg/bin/ffmpeg 2>/dev/null
+/usr/local/pulse-cg/bin/ffmpeg -version | head -1
+```
+
+### Linux et Windows à la main
+- Linux : `sudo apt install ffmpeg` (ou un binaire statique dans `/opt/pulse-cg/bin/ffmpeg`).
+- Windows : un build « gpl » de https://github.com/BtbN/FFmpeg-Builds/releases, et son `ffmpeg.exe` copié dans `C:\Program Files\PulseCG\bin\`.
+
+ffmpeg est un programme séparé, sous licence GPL pour ces builds (voir `bin/FFMPEG-NOTICE.txt`).
+
 ## Lancer sans installer
 
 ```

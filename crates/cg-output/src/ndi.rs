@@ -311,7 +311,7 @@ impl OutputSink for NdiSender {
         &self.config.name
     }
 
-    fn push(&mut self, frame: &Frame) -> Result<(), OutputError> {
+    fn push(&mut self, frame: &Arc<Frame>, _at: std::time::SystemTime) -> Result<(), OutputError> {
         let buf = Arc::make_mut(&mut self.buf);
         unpremultiply(&frame.data, buf, self.config.alpha);
         let video = VideoFrameV2 {

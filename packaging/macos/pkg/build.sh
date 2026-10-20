@@ -53,6 +53,16 @@ else
   echo "warning: no NDI runtime to bundle (NDI_DIR)"
 fi
 
+# ffmpeg (packaging/ffmpeg/fetch.sh): streams in and out, video conversion.
+if [ -n "${FFMPEG_DIR:-}" ] && [ -f "$FFMPEG_DIR/ffmpeg" ]; then
+  mkdir -p "$PAYLOAD/bin"
+  cp "$FFMPEG_DIR"/* "$PAYLOAD/bin/"
+  chmod 0755 "$PAYLOAD/bin/ffmpeg"
+  echo "bundling ffmpeg"
+else
+  echo "warning: no ffmpeg to bundle (FFMPEG_DIR)"
+fi
+
 APPS="$WORK/root/Applications/Strata"
 mkdir -p "$APPS"
 make_app "Strata" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
@@ -66,6 +76,7 @@ if [ -n "${MACOS_APP_IDENTITY:-}" ]; then
   sign() { codesign --force --options runtime --timestamp --sign "$MACOS_APP_IDENTITY" "$@"; }
   # Same team as the server, so the hardened runtime loads it.
   [ -f "$PAYLOAD/lib/libndi.dylib" ] && sign "$PAYLOAD/lib/libndi.dylib"
+  [ -f "$PAYLOAD/bin/ffmpeg" ] && sign "$PAYLOAD/bin/ffmpeg"
   sign "$PAYLOAD/cg-server"
   sign "$APPS/Strata.app"
   sign "$APPS/Uninstall Strata.app"

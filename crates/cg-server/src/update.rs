@@ -449,7 +449,9 @@ pub fn install_latest(data_dir: &Path) -> Result<()> {
     let res = (|| {
         let archive = download(&s, &release)?;
         let binary = extract_binary(&archive)?;
-        install(data_dir, &binary, false)
+        let v = install(data_dir, &binary, false)?;
+        add_ffmpeg(&archive);
+        Ok(v)
     })();
     match res {
         Ok(v) => {
@@ -466,34 +468,44 @@ pub fn install_latest(data_dir: &Path) -> Result<()> {
 
 // ------------------------------------------------------------- packages ----
 
-/// `cg-server` from a release archive (`.tar.gz` / `.zip`) or a bare binary.
-pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
-    let is_exe = |name: &str| Path::new(name).file_name().and_then(|n| n.to_str()) == Some(EXE);
+/// A file of a release archive (`.tar.gz` / `.zip`); None when it is not one.
+fn from_archive(bytes: &[u8], want: impl Fn(&str) -> bool) -> Result<Option<Option<Vec<u8>>>> {
     if bytes.starts_with(&[0x1f, 0x8b]) {
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
         for entry in archive.entries().context("not a valid .tar.gz")? {
             let mut entry = entry?;
             let path = entry.path()?.to_string_lossy().into_owned();
-            if is_exe(&path) {
+            if want(&path) {
                 let mut out = Vec::new();
                 entry.read_to_end(&mut out)?;
-                return Ok(out);
+                return Ok(Some(Some(out)));
             }
         }
-        bail!("no {EXE} in this archive");
+        return Ok(Some(None));
     }
     if bytes.starts_with(b"PK") {
         let mut zip =
             zip::ZipArchive::new(std::io::Cursor::new(bytes)).context("not a valid .zip")?;
         for i in 0..zip.len() {
             let mut f = zip.by_index(i)?;
-            if f.name().is_ok_and(|n| is_exe(&n)) {
+            if f.name().is_ok_and(|n| want(&n)) {
                 let mut out = Vec::new();
                 f.read_to_end(&mut out)?;
-                return Ok(out);
+                return Ok(Some(Some(out)));
             }
         }
-        bail!("no {EXE} in this archive");
+        return Ok(Some(None));
+    }
+    Ok(None)
+}
+
+/// `cg-server` from a release archive (`.tar.gz` / `.zip`) or a bare binary.
+pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
+    let is_exe = |name: &str| Path::new(name).file_name().and_then(|n| n.to_str()) == Some(EXE);
+    match from_archive(bytes, is_exe)? {
+        Some(Some(b)) => return Ok(b),
+        Some(None) => bail!("no {EXE} in this archive"),
+        None => {}
     }
     // ELF, Mach-O (thin or universal) or PE.
     let magic = [
@@ -506,6 +518,47 @@ pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
         return Ok(bytes.to_vec());
     }
     bail!("unknown package: upload the pulse-cg-<version>-{PLATFORM} archive (.tar.gz or .zip)")
+}
+
+const FFMPEG: &str = if cfg!(windows) {
+    "ffmpeg.exe"
+} else {
+    "ffmpeg"
+};
+
+/// Installs the ffmpeg a release archive carries (`bin/ffmpeg`) when the
+/// server has none next to it yet: installs from before it was bundled get
+/// it with their next update. Best effort.
+pub fn add_ffmpeg(bytes: &[u8]) {
+    let Ok(exe) = exe_path() else {
+        return;
+    };
+    let Some(bin) = exe.parent().map(|d| d.join("bin")) else {
+        return;
+    };
+    let dest = bin.join(FFMPEG);
+    if dest.exists() {
+        return;
+    }
+    let want = |n: &str| n.replace('\\', "/").ends_with(&format!("bin/{FFMPEG}"));
+    let Ok(Some(Some(data))) = from_archive(bytes, want) else {
+        return;
+    };
+    let staged = bin.join(format!("{FFMPEG}.new"));
+    let r = std::fs::create_dir_all(&bin)
+        .and_then(|()| std::fs::write(&staged, &data))
+        .and_then(|()| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))?;
+            }
+            std::fs::rename(&staged, &dest)
+        });
+    match r {
+        Ok(()) => tracing::info!(path = %dest.display(), "ffmpeg installed with the update"),
+        Err(e) => tracing::warn!("cannot install the bundled ffmpeg: {e}"),
+    }
 }
 
 /// Version printed by `<binary> --version` ("cg-server 0.3.0").
@@ -801,9 +854,14 @@ mod tests {
         };
         add(format!("pulse-cg-9.9.9-{PLATFORM}/README.md"), b"hello");
         add(format!("pulse-cg-9.9.9-{PLATFORM}/{EXE}"), body);
+        add(format!("pulse-cg-9.9.9-{PLATFORM}/bin/{FFMPEG}"), b"ffmpeg");
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         std::io::Write::write_all(&mut gz, &tar.into_inner().unwrap()).unwrap();
-        assert_eq!(extract_binary(&gz.finish().unwrap()).unwrap(), body);
+        let archive = gz.finish().unwrap();
+        assert_eq!(extract_binary(&archive).unwrap(), body);
+        // The bundled ffmpeg is found too (not taken for the server).
+        let ff = from_archive(&archive, |n| n.ends_with(&format!("bin/{FFMPEG}"))).unwrap();
+        assert_eq!(ff, Some(Some(b"ffmpeg".to_vec())));
         assert!(extract_binary(b"not a package").is_err());
     }
 }

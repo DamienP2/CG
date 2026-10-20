@@ -74,7 +74,11 @@ impl OutputSink for DeckLinkOutput {
         &self.config.name
     }
 
-    fn push(&mut self, frame: &Frame) -> Result<(), OutputError> {
+    fn push(
+        &mut self,
+        frame: &std::sync::Arc<Frame>,
+        _at: std::time::SystemTime,
+    ) -> Result<(), OutputError> {
         let mut buf = std::mem::take(&mut self.bgra);
         Self::to_bgra(frame, &mut buf);
         self.bgra = buf;

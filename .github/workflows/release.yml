@@ -72,6 +72,9 @@ jobs:
         if: matrix.pkg != 'linux'
         shell: bash
         run: packaging/ndi/fetch-runtime.sh ${{ matrix.pkg }} dist/ndi
+      - name: ffmpeg
+        shell: bash
+        run: packaging/ffmpeg/fetch.sh ${{ matrix.platform }} dist/ffmpeg
       - name: Package
         shell: bash
         run: |
@@ -87,6 +90,10 @@ jobs:
           # NDI runtime next to the server (lib/ on macOS).
           if [ -d dist/ndi ] && ls dist/ndi/libndi.dylib dist/ndi/*.dll >/dev/null 2>&1; then
             if [ "${{ matrix.pkg }}" = macos ]; then mkdir -p "dist/$NAME/lib" && cp dist/ndi/* "dist/$NAME/lib/"; else cp dist/ndi/* "dist/$NAME/"; fi
+          fi
+          # ffmpeg in bin/ next to the server.
+          if ls dist/ffmpeg/ffmpeg dist/ffmpeg/ffmpeg.exe >/dev/null 2>&1; then
+            mkdir -p "dist/$NAME/bin" && cp dist/ffmpeg/* "dist/$NAME/bin/"
           fi
           cd dist
           if [ "${{ matrix.pkg }}" = windows ]; then
@@ -105,6 +112,7 @@ jobs:
           export PATH="$PATH:$HOME/.dotnet/tools"
           wix extension add --global WixToolset.Util.wixext/5.0.2 WixToolset.Firewall.wixext/5.0.2
           NDI=(); [ -f dist/ndi/Processing.NDI.Lib.x64.dll ] && NDI=(-d NdiDir=dist/ndi)
+          [ -f dist/ffmpeg/ffmpeg.exe ] && NDI+=(-d FfmpegDir=dist/ffmpeg)
           wix build packaging/windows/msi/pulse-cg.wxs -arch x64 \
             -ext WixToolset.Util.wixext -ext WixToolset.Firewall.wixext \
             -d Version="$VERSION" -d BinDir="target/${{ matrix.target }}/release" -d DocsDir=. "${NDI[@]}" \
@@ -166,9 +174,12 @@ jobs:
           rm certs.p12
       - name: NDI runtime
         run: packaging/ndi/fetch-runtime.sh macos dist/ndi
+      - name: ffmpeg (universal)
+        run: packaging/ffmpeg/fetch.sh macos dist/ffmpeg
       - name: Build installer package
         env:
           NDI_DIR: dist/ndi
+          FFMPEG_DIR: dist/ffmpeg
           MACOS_APP_IDENTITY: ${{ secrets.MACOS_APP_IDENTITY }}
           MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
         run: |
@@ -176,7 +187,7 @@ jobs:
           [ "$GITHUB_REF_TYPE" = tag ] && VERSION=${GITHUB_REF_NAME#v}
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
           packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/Strata-$SUFFIX-macos-universal.pkg"
-          pkgutil --payload-files dist/*.pkg | grep -E "Applications|cg-server$"
+          pkgutil --payload-files dist/*.pkg | grep -E "Applications|cg-server$|bin/ffmpeg$"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
       - name: Notarize

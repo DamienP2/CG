@@ -17,8 +17,10 @@ pub fn path() -> PathBuf {
     } else {
         "ffmpeg"
     };
+    // The real place of the server (not a /usr/local/bin link to it).
     if let Some(dir) = std::env::current_exe()
         .ok()
+        .and_then(|e| std::fs::canonicalize(&e).ok().or(Some(e)))
         .and_then(|e| e.parent().map(|d| d.to_path_buf()))
     {
         for p in [dir.join(name), dir.join("bin").join(name)] {

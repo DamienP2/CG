@@ -12,6 +12,9 @@ pub mod sdi;
 pub mod st2110;
 pub mod stream;
 
+use std::sync::Arc;
+use std::time::SystemTime;
+
 use cg_render::Frame;
 
 #[derive(Debug, thiserror::Error)]
@@ -29,5 +32,11 @@ pub enum OutputError {
 /// Anything that consumes rendered frames at the channel frame rate.
 pub trait OutputSink: Send {
     fn name(&self) -> &str;
-    fn push(&mut self, frame: &Frame) -> Result<(), OutputError>;
+    /// One frame per tick of the channel clock; `at` is that tick (the same
+    /// frame comes again, with a later `at`, when the next one is late).
+    fn push(&mut self, frame: &Arc<Frame>, at: SystemTime) -> Result<(), OutputError>;
+    /// The process doing the work, when it is another one (ffmpeg), for its load.
+    fn process(&self) -> Option<u32> {
+        None
+    }
 }

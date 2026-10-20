@@ -13,6 +13,8 @@ fi
 install -d "$PREFIX"
 install -m 0755 "$HERE/cg-server" "$PREFIX/cg-server"
 cp "$HERE"/*.md "$HERE"/OFL.txt "$PREFIX/" 2>/dev/null || true
+# ffmpeg shipped with the package (streams, inputs, video conversion).
+if [ -d "$HERE/bin" ]; then install -d "$PREFIX/bin" && cp "$HERE"/bin/* "$PREFIX/bin/" && chmod 0755 "$PREFIX/bin/ffmpeg"; fi
 ln -sf "$PREFIX/cg-server" /usr/local/bin/cg-server
 
 "$PREFIX/cg-server" service install "$@"
