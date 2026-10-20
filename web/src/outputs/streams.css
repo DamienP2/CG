@@ -294,3 +294,12 @@
 .oc-pair.vs-pair {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
+
+/* ---- live rates (perf/perf.css: .vs-fps, .vs-perf) ---- */
+.oc-node-status .oc-status-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

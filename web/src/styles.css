@@ -12425,3 +12425,23 @@ a.lib-nav-item {
   margin: 18% auto 0;
   color: var(--accent-2);
 }
+
+/* ---------- top bars on narrower screens: the tabs other than the open one show their icon only ---------- */
+@media (max-width: 1500px) {
+  .topbar {
+    gap: 14px;
+  }
+  .topbar .tabs button {
+    padding: 5px 10px;
+  }
+}
+@media (max-width: 1400px) {
+  .home-tabs button:not(.on) .tab-label {
+    display: none;
+  }
+}
+@media (max-width: 1180px) {
+  .project-tabs button:not(.on) .tab-label {
+    display: none;
+  }
+}

@@ -4,6 +4,9 @@ import { api } from '../store';
 import { t, tn } from '../i18n';
 import { inputMessage as messageText } from '../engine/liveInputs';
 import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
+import { useMetrics, type InputMetrics } from '../engine/metrics';
+import { coresLabel, fps as fpsText, fpsTone, inputTone, num } from '../perf/format';
+import '../perf/perf.css';
 
 /*
  * The INPUTS mode of the Video streams page: live video coming into the
@@ -36,6 +39,8 @@ const SIZES = [
   { width: 3840, height: 2160 },
 ];
 const RATES = [25, 30, 50, 60];
+/** Smoothing buffer, in frames. */
+const BUFFERS = [0, 1, 2, 3, 5];
 
 /** Previews streaming at once: a browser opens ~6 connections per server over HTTP/1.1. */
 const MAX_PREVIEWS = 4;
@@ -88,6 +93,8 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
   const [sel, setSel] = useState<string | null>(null);
   const [status, setStatus] = useState<InputInfo[]>([]);
   const [ndi, setNdi] = useState<{ busy: boolean; sources: string[]; error?: string }>({ busy: false, sources: [] });
+  const metrics = useMetrics();
+  const rates = (id: string) => metrics?.inputs.find((x) => x.id === id);
 
   useEffect(() => {
     let alive = true;
@@ -135,7 +142,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
     const urls = [...inputs.map((i) => i.url), ...cfg.channels.flatMap((ch) => [ch.outputs, ...(ch.renditions ?? []).map((r) => r.outputs)].flatMap((o) => (o.streams ?? []).map((s) => s.url)))];
     let port = 10000;
     while (urls.some((u) => new RegExp(`:${port}(?:[/?]|$)`).test(u))) port++;
-    edit((c) => void (c.inputs ??= []).push({ id, name: t('Input {n}', { n }), kind: 'srt', url: `srt://0.0.0.0:${port}`, listen: true, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25 }));
+    edit((c) => void (c.inputs ??= []).push({ id, name: t('Input {n}', { n }), kind: 'srt', url: `srt://0.0.0.0:${port}`, listen: true, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false }));
     setSel(id);
   };
 
@@ -186,6 +193,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 <span>{i.name || i.id}</span>
                 <small title={st.text}>{st.text}</small>
               </span>
+              <Rate m={rates(i.id)} />
               <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
                 {badgeOf(i.kind)}
               </span>
@@ -240,6 +248,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                       <span className="vs-tile-status" title={st.text}>
                         <span className={`oc-dot ${st.tone}`} />
                         <span className="grow">{st.text}</span>
+                        <Rate m={rates(i.id)} full />
                         <span className="vs-res">{st.info?.width ? `${st.info.width}×${st.info.height}` : '—'}</span>
                       </span>
                     </button>
@@ -254,6 +263,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
               <Inspector
                 input={current}
                 state={stateOf(current)}
+                rates={rates(current.id)}
                 streaming={streaming.has(current.id)}
                 editInput={editInput}
                 setKind={setKind}
@@ -274,6 +284,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
 function Inspector({
   input: i,
   state,
+  rates,
   streaming,
   editInput,
   setKind,
@@ -283,6 +294,7 @@ function Inspector({
 }: {
   input: InputConfig;
   state: { tone: Tone; text: string; live: boolean; info?: InputInfo };
+  rates?: InputMetrics;
   streaming: boolean;
   editInput: (fn: (i: InputConfig) => void) => void;
   setKind: (k: InputKind) => void;
@@ -313,6 +325,24 @@ function Inspector({
         <span className="grow">{state.text}</span>
         {!!state.info?.frames && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
       </div>
+      {rates && (
+        <div className="vs-perf">
+          <div>
+            <small>{t('Received')}</small>
+            <strong className={`tone-${rates.live ? fpsTone(rates.fps, rates.nominal) : 'idle'}`}>
+              {fpsText(rates.fps)} / {fpsText(rates.nominal)} fps
+            </strong>
+          </div>
+          <div>
+            <small>{t('Dropped (10 s)')}</small>
+            <strong className={rates.dropped ? 'tone-warn' : ''}>{num(rates.dropped)}</strong>
+          </div>
+          <div>
+            <small>CPU</small>
+            <strong>{coresLabel(rates.cpu)}</strong>
+          </div>
+        </div>
+      )}
 
       <Field label={t('Name')} hint={t('How the Video widget lists it.')}>
         <input value={i.name} onChange={(e) => editInput((x) => void (x.name = e.target.value))} />
@@ -430,6 +460,28 @@ function Inspector({
         </>
       )}
 
+      <Field label={t('Smoothing buffer')} hint={t('Absorbs network jitter: each frame adds one frame of delay.')}>
+        <select value={i.buffer ?? 2} onChange={(e) => editInput((x) => void (x.buffer = +e.target.value))}>
+          {!BUFFERS.includes(i.buffer ?? 2) && <option value={i.buffer}>{tn(i.buffer, '{n} frame', '{n} frames')}</option>}
+          {BUFFERS.map((b) => (
+            <option key={b} value={b}>
+              {b === 0 ? t('0 (lowest latency)') : tn(b, '{n} frame', '{n} frames')}
+              {b > 0 && isStream(i.kind) && i.fps > 0 ? ` · ${Math.round((b * 1000) / i.fps)} ms` : ''}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {isStream(i.kind) && (
+        <div className="set-field">
+          <label className="check">
+            <input type="checkbox" checked={!!i.hwDecode} onChange={(e) => editInput((x) => void (x.hwDecode = e.target.checked))} />
+            {t('Hardware decoding (GPU)')}
+          </label>
+          <span className="set-hint">{t('Frees the processor. When the machine has no GPU decoder for this stream, ffmpeg falls back to the processor.')}</span>
+        </div>
+      )}
+
       <button className="btn small danger" onClick={remove}>
         <Trash2 size={13} /> {t('Remove the input')}
       </button>
@@ -468,4 +520,18 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 function Hint({ children }: { children: React.ReactNode }) {
   return <p className="oc-hint">{children}</p>;
+}
+
+/** Pictures received per second against the decoded rate, and those thrown away. */
+function Rate({ m, full }: { m?: InputMetrics; full?: boolean }) {
+  if (!m || !m.live) return null;
+  const tone = inputTone(m);
+  const title = m.dropped ? `${t('{fps} of {nominal} fps received', { fps: fpsText(m.fps), nominal: fpsText(m.nominal) })} · ${tn(m.dropped, '{n} picture thrown away (10 s)', '{n} pictures thrown away (10 s)')}` : t('{fps} of {nominal} fps received', { fps: fpsText(m.fps), nominal: fpsText(m.nominal) });
+  return (
+    <span className={`vs-fps tone-${tone}`} title={title}>
+      {fpsText(m.fps)}/{fpsText(m.nominal)}
+      {full && ' fps'}
+      {full && m.dropped > 0 && ` · −${num(m.dropped)}`}
+    </span>
+  );
 }

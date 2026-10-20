@@ -6,7 +6,10 @@ import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { t, tn } from '../i18n';
 import { InputsMode } from './Inputs';
+import { useMetrics, type OutputMetrics } from '../engine/metrics';
+import { coresLabel, fps as fpsText, fpsTone, num, outputTone, pct, pictureTone } from '../perf/format';
 import './streams.css';
+import '../perf/perf.css';
 
 /*
  * Video outputs as a node canvas: each channel (an independent playout) feeds
@@ -158,6 +161,7 @@ export function Outputs() {
   const [wire, setWire] = useState<{ from: string; moving?: string; x: number; y: number } | null>(null);
   const [addMenu, setAddMenu] = useState<{ picture: string; x: number; y: number } | null>(null);
   const [mode, setModeState] = useState<Mode>(readMode);
+  const metrics = useMetrics();
   const setMode = (m: Mode) => {
     setModeState(m);
     try {
@@ -262,8 +266,20 @@ export function Outputs() {
   };
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name;
   const liveCh = live.find((c) => c.id === ch?.id);
+  // Live rates of this channel (what the server measures).
+  const chMetrics = metrics?.channels.find((c) => c.id === ch?.id);
+  const outMetrics = (id: string): OutputMetrics | undefined => chMetrics?.pictures.flatMap((p) => p.outputs).find((o) => o.id === id);
+  const rateChip = (id: string): GNode['chip'] => {
+    if (!chMetrics) return undefined;
+    if (id.startsWith('pic:')) {
+      const p = chMetrics.pictures.find((x) => x.id === id.slice(4));
+      return p && { text: `${fpsText(p.fps)} fps · ${pct(p.load)}`, tone: pictureTone(p, chMetrics.rate), title: t('Frames rendered per second · render time, % of the frame time') };
+    }
+    const o = outMetrics(id);
+    return o && { text: `${fpsText(o.fps)} fps`, tone: outputTone(o, chMetrics.rate), title: o.dropped ? t('{n} frames dropped in the last 10 s', { n: o.dropped }) : t('Frames sent per second') };
+  };
 
-  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; badge?: string };
+  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; badge?: string; chip?: { text: string; tone: string; title: string } };
   const nodes: GNode[] = ch
     ? [
         {
@@ -274,10 +290,10 @@ export function Outputs() {
           tone: liveCh ? 'ok' : 'idle',
           status: liveCh ? t('Running') : t('Not applied yet'),
         },
-        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: p.name, sub: `${p.width}×${p.height}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations') })),
+        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: p.name, sub: `${p.width}×${p.height}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
         ...allDests.map((d) => {
           const st = destStatus(d);
-          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch), tone: st.tone, status: st.text, badge: d.kind === 'stream' ? protocolLabel((d.value as StreamOutput).protocol) : undefined };
+          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch), tone: st.tone, status: st.text, badge: d.kind === 'stream' ? protocolLabel((d.value as StreamOutput).protocol) : undefined, chip: d.kind === 'html5' ? undefined : rateChip(d.value.id) };
         }),
       ]
     : [];
@@ -661,9 +677,16 @@ export function Outputs() {
                             {n.badge && <span className="vs-badge">{n.badge}</span>}
                           </div>
                           <div className="oc-node-sub">{n.sub}</div>
-                          <div className="oc-node-status" title={n.status}>
+                          <div className="oc-node-status">
                             <span className={`oc-dot ${n.tone}`} />
-                            <span>{n.status}</span>
+                            <span className="oc-status-text" title={n.status}>
+                              {n.status}
+                            </span>
+                            {n.chip && (
+                              <span className={`vs-fps tone-${n.chip.tone}`} title={n.chip.title}>
+                                {n.chip.text}
+                              </span>
+                            )}
                           </div>
                           {n.kind === 'picture' && <span className="oc-port in" />}
                           {n.kind !== 'program' && n.kind !== 'picture' && (
@@ -1094,6 +1117,31 @@ export function Outputs() {
                       {destStatus(selDest).text}
                     </div>
                   )}
+                  {selDest &&
+                    selDest.kind !== 'html5' &&
+                    chMetrics &&
+                    (() => {
+                      const o = outMetrics(selDest.value.id);
+                      if (!o) return null;
+                      return (
+                        <div className="vs-perf">
+                          <div>
+                            <small>FPS</small>
+                            <strong className={`tone-${o.ok ? fpsTone(o.fps, chMetrics.rate) : 'bad'}`}>
+                              {fpsText(o.fps)} / {fpsText(chMetrics.rate)}
+                            </strong>
+                          </div>
+                          <div>
+                            <small>{t('Dropped (10 s)')}</small>
+                            <strong className={o.dropped ? 'tone-warn' : ''}>{num(o.dropped)}</strong>
+                          </div>
+                          <div>
+                            <small>CPU</small>
+                            <strong>{coresLabel(o.cpu)}</strong>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   {selDest && status[ch.id]?.[selDest.value.id]?.detail && status[ch.id][selDest.value.id].detail !== destStatus(selDest).text && (
                     <details className="oc-detail">
                       <summary>{t('Details')}</summary>

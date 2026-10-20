@@ -379,4 +379,18 @@ export const operator: Record<string, string> = {
   'Cannot open the project: {error}': 'Impossible d’ouvrir le projet : {error}',
   'Save failed: {error}': 'Échec de l’enregistrement : {error}',
   'Upload failed': 'Échec de l’import',
+  // Live rates (Video streams page)
+  'Received': 'Reçues',
+  'Dropped (10 s)': 'Perdues (10 s)',
+  'Smoothing buffer': 'Tampon de lissage',
+  'Absorbs network jitter: each frame adds one frame of delay.': 'Absorbe la gigue du réseau : chaque image ajoute une image de retard.',
+  '0 (lowest latency)': '0 (latence minimale)',
+  'Hardware decoding (GPU)': 'Décodage matériel (GPU)',
+  'Frees the processor. When the machine has no GPU decoder for this stream, ffmpeg falls back to the processor.': 'Soulage le processeur. Si la machine n’a pas de décodeur GPU pour ce flux, ffmpeg décode avec le processeur.',
+  '{fps} of {nominal} fps received': '{fps} i/s reçues sur {nominal}',
+  '{n} picture thrown away (10 s)': '{n} image jetée (10 s)',
+  '{n} pictures thrown away (10 s)': '{n} images jetées (10 s)',
+  'Frames rendered per second · render time, % of the frame time': 'Images rendues par seconde · temps de rendu, en % du temps d’image',
+  '{n} frames dropped in the last 10 s': '{n} images perdues ces 10 dernières secondes',
+  'Frames sent per second': 'Images envoyées par seconde',
 };

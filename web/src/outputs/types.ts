@@ -84,6 +84,10 @@ export interface InputConfig {
   width: number;
   height: number;
   fps: number;
+  /** Smoothing buffer, in frames (2 by default; 0 = lowest latency). */
+  buffer: number;
+  /** Streams: decode on the GPU when the machine has a decoder (ffmpeg falls back to the processor). */
+  hwDecode: boolean;
 }
 
 /** `GET /api/inputs`. */

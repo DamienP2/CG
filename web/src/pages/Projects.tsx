@@ -7,6 +7,9 @@ import { projectPath, projectTab, type ProjectPage } from '../router';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { t, tn } from '../i18n';
 import { NavItem, NavSection } from './SidePage';
+import { useMetrics, type ChannelMetrics } from '../engine/metrics';
+import { Bar } from '../perf/bits';
+import { fps as fpsText, fpsTone, pct, slowest, worstTone } from '../perf/format';
 
 export const FORMATS: {
   label: string;
@@ -208,6 +211,7 @@ function DemoBank({ onClose }: { onClose: () => void }) {
 
 export function Projects() {
   const { projects, channels, auth, toast, folders, saveFolders } = useApp();
+  const metrics = useMetrics();
   const user = auth?.user;
   const design = can.design(user);
   const [dialog, setDialog] = useState<{ from?: ProjectSummary } | null>(null);
@@ -611,10 +615,14 @@ export function Projects() {
                       <span className="ratio" style={ratio >= 1 ? { width: 14, height: 14 / ratio } : { width: 14 * ratio, height: 14 }} />
                       {p.width}×{p.height} · {fps(p.frameRate)}p
                     </span>
-                    {on.length > 0 && (
-                      <span className="project-channel" title={t('Loaded on')}>
-                        <MonitorPlay size={11} /> {on.map((c) => c.name).join(', ')}
-                      </span>
+                    {metrics && metrics.channels.some((c) => c.projectId === p.id) ? (
+                      <ProjectAir chans={metrics.channels.filter((c) => c.projectId === p.id)} />
+                    ) : (
+                      on.length > 0 && (
+                        <span className="project-channel" title={t('Loaded on')}>
+                          <MonitorPlay size={11} /> {on.map((c) => c.name).join(', ')}
+                        </span>
+                      )
                     )}
                   </a>
                   {design && (
@@ -705,5 +713,40 @@ export function Projects() {
       {demos && <DemoBank onClose={() => setDemos(false)} />}
       {dialog && <NewProject from={dialog.from} folder={view.kind === 'folder' ? view.name : undefined} onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+/**
+ * The channels playing a project, over its cover: on air (or only loaded),
+ * the frame rate of its slowest picture and the highest render load.
+ */
+function ProjectAir({ chans }: { chans: ChannelMetrics[] }) {
+  const onAir = chans.reduce((n, c) => n + c.onAir, 0);
+  const load = Math.max(0, ...chans.map((c) => c.load));
+  const slow = slowest(chans);
+  const loadTone = load >= 85 ? 'bad' : load >= 60 ? 'warn' : 'ok';
+  const rateTone = slow ? fpsTone(slow.fps, slow.rate) : 'idle';
+  const tone = worstTone(loadTone, rateTone);
+  return (
+    <span
+      className={`project-air tone-${tone} ${onAir ? 'live' : ''}`}
+      style={{ ['--load' as string]: `${Math.min(100, load)}%` }}
+      title={t('Frame rate of the slowest picture · render time, % of the frame time')}
+    >
+      <span className="project-air-state">{onAir ? t('On air') : t('Loaded')}</span>
+      <span className="project-air-names">
+        <MonitorPlay size={11} />
+        <span>{chans.map((c) => c.name).join(', ')}</span>
+      </span>
+      {slow && (
+        <span className={`project-air-fps tone-${rateTone}`}>
+          {fpsText(slow.fps)}/{fpsText(slow.rate)} fps
+        </span>
+      )}
+      <span className={`project-air-load tone-${loadTone}`}>
+        <Bar value={load} tone={loadTone} />
+        {pct(load)}
+      </span>
+    </span>
   );
 }

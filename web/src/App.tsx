@@ -1,4 +1,4 @@
-import { Braces, Database, FolderOpen, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Braces, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Logo } from './ui/Logo';
 import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
@@ -14,6 +14,8 @@ import { EmbedPreview } from './embed/Preview';
 import { Projects } from './pages/Projects';
 import { MediaLibrary } from './pages/Media';
 import { Outputs } from './outputs/Outputs';
+import { Performance } from './perf/Performance';
+import { LoadMeter } from './ui/LoadMeter';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
@@ -70,7 +72,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -151,31 +153,33 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'mos' | 'users' | 'api' | 'settings' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'performance' | 'mos' | 'users' | 'api' | 'settings' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata';
   }, []);
   const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
-    <button className={route.page === page ? 'on' : ''} onClick={() => navigate(path)}>
-      {icon} {label}
+    <button className={route.page === page ? 'on' : ''} title={label} onClick={() => navigate(path)}>
+      {icon} <span className="tab-label">{label}</span>
     </button>
   );
   return (
     <>
       <nav className="topbar">
         <Brand />
-        <div className="tabs">
+        <div className="tabs home-tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, t('Projects'))}
           {tab('media', '/media', <Images size={14} />, t('Assets'))}
           {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
           {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams'))}
+          {can.admin(user) && tab('performance', '/performance', <Gauge size={14} />, t('Performance'))}
           {can.admin(user) && tab('mos', '/mos', <Newspaper size={14} />, 'MOS')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, t('Users'))}
           {tab('api', '/api-docs', <Braces size={14} />, 'API')}
           {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, t('Settings'))}
         </div>
         <div className="spacer" />
+        <LoadMeter />
         <UserMenu />
       </nav>
       <div className="content">
@@ -183,6 +187,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         {route.page === 'media' && <MediaLibrary />}
         {route.page === 'data' && <DataPage />}
         {route.page === 'outputs' && <Outputs />}
+        {route.page === 'performance' && <Performance />}
         {route.page === 'settings' && <Settings />}
         {route.page === 'mos' && <MosPage />}
         {route.page === 'users' && <Users />}
@@ -232,8 +237,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   const onAir = operated ? Object.keys(live[operated.id]?.state.layers ?? {}).length : 0;
   const tab = (s: ProjectPage, icon: React.ReactNode, label: string) =>
     allowed(s) && (
-      <button className={sub === s ? 'on' : ''} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
-        {icon} {label}
+      <button className={sub === s ? 'on' : ''} title={label} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
+        {icon} <span className="tab-label">{label}</span>
       </button>
     );
   const ready = project && project.id === projectId;
@@ -260,7 +265,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           <small>{t('Project')}</small>
           <span>{summary?.name ?? project?.name ?? '…'}</span>
         </span>
-        <div className="tabs">
+        <div className="tabs project-tabs">
           {tab('designer', <PenTool size={14} />, t('Designer'))}
           {tab('operator', <Radio size={14} />, t('Operator'))}
           {tab('data', <Database size={14} />, t('Connectors'))}
@@ -280,6 +285,8 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
             <Tv size={13} /> {onAir ? t('{n} on air', { n: onAir }) : t('Off air')}
           </span>
         )}
+        {/* The project's own tab: the Performance page opens in another one. */}
+        <LoadMeter projectId={projectId} newTab />
         <UserMenu />
       </nav>
       <div className="content">{page}</div>
