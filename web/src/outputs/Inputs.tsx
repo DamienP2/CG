@@ -2,7 +2,7 @@ import { Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
-import { inputMessage as messageText } from '../engine/liveInputs';
+import { inputMessage as messageText, useLiveFrame } from '../engine/liveInputs';
 import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
 import { useMetrics, type InputMetrics } from '../engine/metrics';
 import { coresLabel, fps as fpsText, fpsTone, inputTone, num } from '../perf/format';
@@ -60,9 +60,6 @@ const RATES = [25, 30, 50, 60];
 /** Smoothing buffer, in frames. */
 const BUFFERS = [0, 1, 2, 3, 5];
 
-/** Previews streaming at once: a browser opens ~6 connections per server over HTTP/1.1. */
-const MAX_PREVIEWS = 4;
-const previewUrl = (id: string) => `/api/inputs/${encodeURIComponent(id)}/live.mjpeg?w=480`;
 
 function placeholder(c: Pick<InputConfig, 'kind' | 'listen'>): string {
   switch (c.kind) {
@@ -144,13 +141,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
     if (info.live) return { tone: 'ok', text: messageText(info.message) || t('Receiving'), live: true, info };
     return { tone: WAITING.test(info.message) ? 'idle' : 'warn', text: messageText(info.message), live: false, info };
   };
-  // The selected input streams first, then the others while there is room.
-  const streaming = new Set(
-    [current, ...inputs.filter((i) => i !== current)]
-      .filter((i): i is InputConfig => !!i && stateOf(i).live)
-      .slice(0, MAX_PREVIEWS)
-      .map((i) => i.id),
-  );
 
   const editInput = (fn: (i: InputConfig) => void) =>
     edit((c) => {
@@ -263,7 +253,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                   const st = stateOf(i);
                   return (
                     <button key={i.id} className={`vs-tile ${i.id === current?.id ? 'sel' : ''}`} onClick={() => setSel(i.id)}>
-                      <Preview id={i.id} live={st.live} streaming={streaming.has(i.id)} />
+                      <Preview id={i.id} live={st.live} />
                       <span className="vs-tile-head">
                         <strong>{i.name || i.id}</strong>
                         <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
@@ -289,7 +279,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 input={current}
                 state={stateOf(current)}
                 rates={rates(current.id)}
-                streaming={streaming.has(current.id)}
                 editInput={editInput}
                 setKind={setKind}
                 remove={remove}
@@ -310,7 +299,6 @@ function Inspector({
   input: i,
   state,
   rates,
-  streaming,
   editInput,
   setKind,
   remove,
@@ -320,7 +308,6 @@ function Inspector({
   input: InputConfig;
   state: { tone: Tone; text: string; live: boolean; info?: InputInfo };
   rates?: InputMetrics;
-  streaming: boolean;
   editInput: (fn: (i: InputConfig) => void) => void;
   setKind: (k: InputKind) => void;
   remove: () => void;
@@ -343,7 +330,7 @@ function Inspector({
       </div>
 
       <div className="vs-big">
-        <Preview id={i.id} live={state.live} streaming={streaming} />
+        <Preview id={i.id} live={state.live} />
       </div>
       <div className={`oc-state ${state.tone}`}>
         <span className={`oc-dot ${state.tone}`} />
@@ -523,18 +510,16 @@ function Inspector({
 }
 
 /** The live picture (Motion JPEG), or "No signal". */
-function Preview({ id, live, streaming }: { id: string; live: boolean; streaming: boolean }) {
-  const [broken, setBroken] = useState(false);
-  useEffect(() => setBroken(false), [id, live]);
-  const show = live && streaming && !broken;
+/** The newest picture, five times a second; the last one stays, dimmed, when the signal goes. */
+function Preview({ id, live }: { id: string; live: boolean }) {
+  const pic = useLiveFrame(id, 'tile');
   return (
-    <span className="vs-preview">
-      {show ? (
-        <img src={previewUrl(id)} alt="" draggable={false} onError={() => setBroken(true)} />
-      ) : (
+    <span className={`vs-preview ${live ? '' : 'stale'}`}>
+      {pic.url && <img src={pic.url} alt="" draggable={false} />}
+      {(!live || !pic.url) && (
         <span className="vs-nosignal">
           <VideoOff size={20} />
-          {live ? t('Select to watch') : t('No signal')}
+          {live ? t('Waiting for a picture…') : t('No signal')}
         </span>
       )}
     </span>

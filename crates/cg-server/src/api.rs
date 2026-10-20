@@ -32,6 +32,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/web/proxy", get(crate::webproxy::proxy))
         .route("/api/inputs", get(crate::inputs::list))
         .route("/api/inputs/ndi-sources", get(crate::inputs::ndi_sources))
+        .route(
+            "/api/inputs/{id}/snapshot.jpg",
+            get(crate::inputs::snapshot),
+        )
         .route("/api/inputs/{id}/live.mjpeg", get(crate::inputs::mjpeg))
         .route("/api/users", get(list_users).post(create_user))
         .route("/api/users/{id}", put(update_user).delete(delete_user))

@@ -10,6 +10,7 @@
 //!   roadmap for tighter pacing at UHD rates.
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -269,23 +270,30 @@ struct Stream {
 pub struct St2110Sender {
     essences: Vec<Stream>,
     config: St2110Config,
+    /// µs its threads spent packetizing and sending (not pacing).
+    busy_us: Arc<AtomicU64>,
 }
 
 impl St2110Sender {
     pub fn start(config: St2110Config, frame_period: Duration) -> Result<Self, OutputError> {
         let mut essences = Vec::new();
+        let busy_us = Arc::new(AtomicU64::new(0));
         for (dest, essence) in config.streams() {
             let socket = open_socket(&config).map_err(OutputError::Io)?;
             let (tx, rx) = sync_channel::<(Arc<Frame>, SystemTime)>(2);
-            let (name, pt) = (config.name.clone(), config.payload_type);
+            let (name, pt, busy) = (config.name.clone(), config.payload_type, busy_us.clone());
             std::thread::Builder::new()
                 .name(format!("st2110-{}-{}", config.name, essence.label()))
-                .spawn(move || run(name, socket, dest, essence, pt, rx, frame_period))
+                .spawn(move || run(name, socket, dest, essence, pt, rx, frame_period, &busy))
                 .map_err(OutputError::Io)?;
             essences.push(Stream { tx });
         }
         tracing::info!(fill = %config.fill, key = ?config.key, encoding = ?config.encoding, "ST 2110-20 sender started");
-        Ok(Self { essences, config })
+        Ok(Self {
+            essences,
+            config,
+            busy_us,
+        })
     }
 
     pub fn config(&self) -> &St2110Config {
@@ -293,6 +301,7 @@ impl St2110Sender {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run(
     name: String,
     socket: UdpSocket,
@@ -301,6 +310,7 @@ fn run(
     pt: u8,
     rx: Receiver<(Arc<Frame>, SystemTime)>,
     period: Duration,
+    busy: &AtomicU64,
 ) {
     let mut seq = 0u32;
     let (mut packets, mut line) = (Packets::default(), Vec::new());
@@ -325,6 +335,7 @@ fn run(
         let budget = period.mul_f64(0.9).saturating_sub(start.elapsed());
         let send_start = Instant::now();
         let n = packets.len();
+        let mut paced = Duration::ZERO;
         for (i, p) in packets.iter().enumerate() {
             let _ = socket.send_to(p, dest);
             if i % 64 == 63 {
@@ -332,9 +343,12 @@ fn run(
                 let elapsed = send_start.elapsed();
                 if due > elapsed {
                     std::thread::sleep(due - elapsed);
+                    paced += due - elapsed;
                 }
             }
         }
+        let worked = start.elapsed().saturating_sub(paced);
+        busy.fetch_add(worked.as_micros() as u64, Ordering::Relaxed);
     }
     tracing::info!(name, stream = essence.label(), "ST 2110 sender stopped");
 }
@@ -346,6 +360,10 @@ fn frame_time(at: SystemTime) -> Duration {
 impl OutputSink for St2110Sender {
     fn name(&self) -> &str {
         &self.config.name
+    }
+
+    fn work_time(&self) -> Option<Duration> {
+        Some(Duration::from_micros(self.busy_us.load(Ordering::Relaxed)))
     }
 
     fn push(&mut self, frame: &Arc<Frame>, at: SystemTime) -> Result<(), OutputError> {

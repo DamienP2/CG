@@ -525,6 +525,8 @@ pub async fn serve(
         }
         tracing::info!("restarting the engine with the new settings");
     }
+    // Their ffmpeg stops with them (the load sampler still holds them).
+    inputs.stop();
     tracing::info!("stopped");
     Ok(())
 }

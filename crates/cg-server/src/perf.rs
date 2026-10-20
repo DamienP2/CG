@@ -54,6 +54,7 @@ impl PictureStats {
             dropped: AtomicU64::new(0),
             busy_us: AtomicU64::new(0),
             pid: AtomicU32::new(0),
+            work_us: AtomicU64::new(0),
         });
         lock(&self.outputs).push(s.clone());
         s
@@ -70,6 +71,8 @@ pub struct SinkStats {
     busy_us: AtomicU64,
     /// Its ffmpeg (0: none).
     pid: AtomicU32,
+    /// µs its own threads worked (outputs that send from threads of their own).
+    work_us: AtomicU64,
 }
 
 impl SinkStats {
@@ -85,6 +88,10 @@ impl SinkStats {
     }
     pub fn dropped(&self) {
         self.dropped.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn set_work(&self, total: Duration) {
+        self.work_us
+            .store(total.as_micros() as u64, Ordering::Relaxed);
     }
     pub fn set_process(&self, pid: Option<u32>) {
         self.pid.store(pid.unwrap_or(0), Ordering::Relaxed);
@@ -326,7 +333,9 @@ impl Perf {
                         .total(o.sent.load(Ordering::Relaxed));
                     let busy = tr
                         .get(format!("{ok}#us"))
-                        .total(o.busy_us.load(Ordering::Relaxed));
+                        .total(o.busy_us.load(Ordering::Relaxed))
+                        + tr.get(format!("{ok}#work"))
+                            .total(o.work_us.load(Ordering::Relaxed));
                     tr.get(format!("{ok}#drop"))
                         .total(o.dropped.load(Ordering::Relaxed));
                     let drop10 = tr.get(format!("{ok}#drop")).sum();
@@ -716,9 +725,9 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
             let r = sm.pictures.get(&key).cloned().unwrap_or_default();
             let load = r.ms / frame_ms * 100.0;
             load_max = load_max.max(load);
-            let px = ps.width as f64 * ps.height as f64 * rate;
             // Rendering an empty channel says little about rendering graphics.
-            costs[0].add((on_air > 0).then_some(r.cpu), px);
+            let rendered = ps.width as f64 * ps.height as f64 * r.fps;
+            costs[0].add((on_air > 0 && r.fps >= 1.0).then_some(r.cpu), rendered);
             let vars = |extra: (&'static str, Value)| -> [(&'static str, Value); 3] {
                 [
                     ("channel", c.name.clone().into()),
@@ -748,8 +757,9 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
                     .cloned()
                     .unwrap_or_default();
                 if let Some(i) = cost(&mut costs, o.kind) {
-                    // ST 2110 sends from threads of its own: not measured here.
-                    costs[i].add((o.kind != "st2110").then_some(rr.cpu), px);
+                    // Per frame actually sent: one that cannot keep up costs more than it shows.
+                    let sent = ps.width as f64 * ps.height as f64 * rr.fps;
+                    costs[i].add((rr.fps >= 1.0).then_some(rr.cpu), sent);
                 }
                 let st = status.get(&c.id).and_then(|m| m.get(&o.id));
                 if visible && rr.count10 > 0.0 {
@@ -813,7 +823,10 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
         match i.kind {
             InputKind::Ndi => in_ndi.add(None, px),
             InputKind::Sdi => {}
-            _ => in_stream.add(live.then_some(r.cpu), px),
+            _ => in_stream.add(
+                (live && r.fps >= 1.0).then_some(r.cpu),
+                i.width as f64 * i.height as f64 * r.fps,
+            ),
         }
         if live && r.fps > 0.0 && r.fps < nominal * 0.9 {
             warnings.push(Warning::new(

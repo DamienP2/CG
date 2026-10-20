@@ -228,6 +228,9 @@ fn output_loop(
         if looked.elapsed() >= Duration::from_secs(1) {
             looked = Instant::now();
             stats.set_process(sink.process());
+            if let Some(w) = sink.work_time() {
+                stats.set_work(w);
+            }
         }
     }
 }

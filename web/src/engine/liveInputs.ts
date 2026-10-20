@@ -1,8 +1,11 @@
 // Live video inputs (crates/cg-server/src/inputs.rs) for the Video widget:
-// their list and status, and their pictures. A page opens one Motion JPEG
-// stream per input, shared by every layer, preview and monitor showing it
-// (browsers allow few connections per server), and closes it when nothing
-// shows the input any more.
+// their list and status, and their pictures, shared by everything on the
+// page showing the same input, and stopped when nothing shows it any more.
+// - HTML5 outputs (and the Operator's program) read a Motion JPEG stream:
+//   every picture, smoothly;
+// - the Designer and the Video streams page ask for the newest picture a
+//   few times a second: short requests that get through any proxy and never
+//   hold one of the few connections a browser opens to a server.
 import { useEffect, useSyncExternalStore } from 'react';
 import { t } from '../i18n';
 
@@ -89,25 +92,54 @@ interface Feed {
 }
 const feeds = new Map<string, Feed>();
 
+/** stream: every picture (on air); preview: 10 a second, large; tile: 5 a second, small. */
+export type FeedKind = 'stream' | 'preview' | 'tile';
+
 /** Stops a feed nothing shows (after a moment: a layer moving in the tree mounts again at once). */
-function release(id: string, feed: Feed, delay: number) {
+function release(key: string, feed: Feed, delay: number) {
   setTimeout(() => {
-    if (feed.users > 0 || feeds.get(id) !== feed) return;
+    if (feed.users > 0 || feeds.get(key) !== feed) return;
     feed.abort.abort();
     if (feed.snap.url) URL.revokeObjectURL(feed.snap.url);
-    feeds.delete(id);
+    feeds.delete(key);
   }, delay);
 }
 
-function feedFor(id: string): Feed {
-  let f = feeds.get(id);
+function feedFor(id: string, kind: FeedKind): Feed {
+  const key = `${kind}:${id}`;
+  let f = feeds.get(key);
   if (!f) {
     f = { users: 0, snap: { url: null, size: null }, abort: new AbortController(), subs: new Set() };
-    feeds.set(id, f);
-    void run(id, f);
-    release(id, f, 5000);
+    feeds.set(key, f);
+    void (kind === 'stream' ? run(id, f) : poll(id, f, kind === 'tile' ? 480 : 1280, kind === 'tile' ? 200 : 100));
+    release(key, f, 5000);
   }
   return f;
+}
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+/** Asks for the newest picture every `period` ms (the server answers 204 when there is none newer). */
+async function poll(id: string, feed: Feed, width: number, period: number) {
+  let after: string | null = null;
+  while (!feed.abort.signal.aborted) {
+    const t0 = performance.now();
+    try {
+      const r: Response = await fetch(`/api/inputs/${encodeURIComponent(id)}/snapshot.jpg?w=${width}${after ? `&after=${after}` : ''}`, { credentials: 'same-origin', signal: feed.abort.signal, cache: 'no-store' });
+      if (r.status === 200) {
+        after = r.headers.get('x-frame');
+        show(feed, await r.blob());
+      } else if (!r.ok) {
+        await sleep(2000);
+      }
+    } catch {
+      if (feed.abort.signal.aborted) return;
+      await sleep(1500);
+    }
+    // A hidden tab asks once a second.
+    const wait = (document.hidden ? 1000 : period) - (performance.now() - t0);
+    if (wait > 0) await sleep(wait);
+  }
 }
 
 const enc = new TextEncoder();
@@ -179,22 +211,22 @@ const none = { url: null as string | null, size: null as [number, number] | null
 const noop = () => {};
 
 /** The latest picture of an input (none for "") and its size. */
-export function useLiveFrame(id: string): { url: string | null; size: [number, number] | null } {
+export function useLiveFrame(id: string, kind: FeedKind = 'preview'): { url: string | null; size: [number, number] | null } {
   useEffect(() => {
     if (!id) return;
-    const feed = feedFor(id);
+    const feed = feedFor(id, kind);
     feed.users++;
     return () => {
-      if (--feed.users === 0) release(id, feed, 2000);
+      if (--feed.users === 0) release(`${kind}:${id}`, feed, 2000);
     };
-  }, [id]);
+  }, [id, kind]);
   return useSyncExternalStore(
     (cb) => {
       if (!id) return noop;
-      const f = feedFor(id);
+      const f = feedFor(id, kind);
       f.subs.add(cb);
       return () => f.subs.delete(cb);
     },
-    () => (id ? feedFor(id).snap : none),
+    () => (id ? feedFor(id, kind).snap : none),
   );
 }

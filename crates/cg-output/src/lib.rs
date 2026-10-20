@@ -39,4 +39,9 @@ pub trait OutputSink: Send {
     fn process(&self) -> Option<u32> {
         None
     }
+    /// Time its own threads have worked so far (not counting waits), for
+    /// outputs that send from threads of their own.
+    fn work_time(&self) -> Option<std::time::Duration> {
+        None
+    }
 }

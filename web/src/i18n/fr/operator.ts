@@ -356,6 +356,7 @@ export const operator: Record<string, string> = {
   'The picture is fitted inside the decoded size. Stream inputs are decoded by ffmpeg, which must be installed on the server.': 'L’image est ajustée dans la taille décodée. Les flux en entrée sont décodés par ffmpeg, qui doit être installé sur le serveur.',
   'Remove the input': 'Retirer l’entrée',
   'Select to watch': 'Sélectionner pour voir',
+  'Waiting for a picture…': 'En attente d’une image…',
   'No signal': 'Pas de signal',
   // MOS plugin (journalists)
   'Cannot reach Strata: {error}': 'Strata injoignable : {error}',
@@ -393,4 +394,19 @@ export const operator: Record<string, string> = {
   'Frames rendered per second · render time, % of the frame time': 'Images rendues par seconde · temps de rendu, en % du temps d’image',
   '{n} frames dropped in the last 10 s': '{n} images perdues ces 10 dernières secondes',
   'Frames sent per second': 'Images envoyées par seconde',
+  // SRT / RTMP modes (Video streams page)
+  'Caller': 'Appelant (caller)',
+  'Listener': 'Écoute (listener)',
+  'Pull': 'Tirer (pull)',
+  'Listen': 'Écoute (listen)',
+  'short|Caller': 'Caller',
+  'short|Listener': 'Listener',
+  'short|Pull': 'Pull',
+  'short|Listen': 'Listen',
+  'Strata connects to the sender, which must be listening.': 'Strata se connecte à l’émetteur, qui doit être en écoute.',
+  'Strata waits for the sender to connect.': 'Strata attend que l’émetteur se connecte.',
+  'Strata pulls the stream from a server.': 'Strata tire le flux depuis un serveur.',
+  'The encoder pushes the stream to Strata.': 'L’encodeur pousse le flux vers Strata.',
+  'Strata connects to the receiver, which must be listening.': 'Strata se connecte au récepteur, qui doit être en écoute.',
+  'Strata waits for the receivers to connect.': 'Strata attend que les récepteurs se connectent.',
 };

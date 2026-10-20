@@ -408,6 +408,18 @@ impl Inputs {
         map.get(id).map(|l| l.received.load(Ordering::Relaxed))
     }
 
+    /// The newest picture and its number (previews: not delayed by the smoothing).
+    pub fn latest(&self, id: &str) -> Option<(u64, Arc<Pixmap>)> {
+        let map = self.live.read().unwrap_or_else(|p| p.into_inner());
+        let l = map.get(id)?;
+        let pic = l
+            .picture
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()?;
+        Some((l.received.load(Ordering::Relaxed), pic))
+    }
+
     pub fn exists(&self, id: &str) -> bool {
         self.live
             .read()
@@ -428,11 +440,18 @@ impl cg_render::LiveInputs for Inputs {
     }
 }
 
-impl Drop for Inputs {
-    fn drop(&mut self) {
+impl Inputs {
+    /// Stops every input (the server stops).
+    pub fn stop(&self) {
         for l in self.live.read().unwrap_or_else(|p| p.into_inner()).values() {
             l.halt();
         }
+    }
+}
+
+impl Drop for Inputs {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -505,6 +524,70 @@ pub struct PreviewQuery {
     w: Option<u32>,
 }
 
+#[derive(Deserialize)]
+pub struct SnapshotQuery {
+    #[serde(default)]
+    w: Option<u32>,
+    /// The number of the picture the page has: 204 while there is no newer one.
+    #[serde(default)]
+    after: Option<u64>,
+}
+
+/// `GET /api/inputs/<id>/snapshot.jpg?w=480&after=<n>`: the newest picture
+/// as JPEG (`X-Frame`: its number), 204 when there is none or nothing newer.
+/// The previews ask a few times a second: short requests, unlike a stream,
+/// get through any proxy and never hold one of the browser's connections.
+pub async fn snapshot(
+    State(s): State<Shared>,
+    MaybeUser(me): MaybeUser,
+    UrlPath(id): UrlPath<String>,
+    Query(q): Query<SnapshotQuery>,
+) -> Response {
+    if me.is_none() && !s.config.public_outputs {
+        return (StatusCode::UNAUTHORIZED, "sign in").into_response();
+    }
+    if !s.inputs.exists(&id) {
+        return not_found("input").into_response();
+    }
+    let none = |n: Option<u64>| {
+        let mut r = (
+            StatusCode::NO_CONTENT,
+            [(header::CACHE_CONTROL, "no-store")],
+        )
+            .into_response();
+        if let Some(n) = n.and_then(|n| n.to_string().parse().ok()) {
+            r.headers_mut().insert("x-frame", n);
+        }
+        r
+    };
+    let Some((n, pic)) = s.inputs.latest(&id) else {
+        return none(None);
+    };
+    if q.after == Some(n) {
+        return none(Some(n));
+    }
+    let width = q.w.unwrap_or(480).clamp(64, 1920);
+    let jpeg = tokio::task::spawn_blocking(move || cg_render::jpeg(&pic, width, 75))
+        .await
+        .ok()
+        .flatten();
+    let Some(jpeg) = jpeg else {
+        return none(None);
+    };
+    let mut r = (
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        jpeg,
+    )
+        .into_response();
+    if let Ok(v) = n.to_string().parse() {
+        r.headers_mut().insert("x-frame", v);
+    }
+    r
+}
+
 /// `GET /api/inputs/<id>/live.mjpeg`: the input as Motion JPEG, for the
 /// previews and the HTML5 outputs (public like them when they are).
 pub async fn mjpeg(
@@ -533,7 +616,8 @@ pub async fn mjpeg(
             loop {
                 let n = hub.received(&id)?;
                 if Some(n) != last || waited >= 2000 {
-                    let pic = cg_render::LiveInputs::picture(hub.as_ref(), &id);
+                    // The newest picture: a preview is not delayed by the smoothing.
+                    let pic = hub.latest(&id).map(|(_, p)| p);
                     let jpeg = match pic {
                         Some(p) => {
                             tokio::task::spawn_blocking(move || cg_render::jpeg(&p, width, 78))

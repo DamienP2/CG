@@ -155,6 +155,10 @@
   background: #000;
   overflow: hidden;
 }
+.vs-preview.stale img {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
 .vs-preview img {
   position: absolute;
   inset: 0;
@@ -176,6 +180,11 @@
   text-transform: uppercase;
   color: #4b5070;
   background: repeating-linear-gradient(135deg, #0b0d14 0 12px, #0e1019 12px 24px);
+}
+/* The last picture stays under the label when the signal goes. */
+.vs-preview img + .vs-nosignal {
+  background: rgba(8, 10, 16, 0.45);
+  color: #c9cde0;
 }
 .vs-tile-head {
   display: flex;

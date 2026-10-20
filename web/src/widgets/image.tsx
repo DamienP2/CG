@@ -244,7 +244,8 @@ function VideoPlaceholder({ icon, title, sub }: { icon: ReactNode; title: string
 function ImageView({ layer, r, w, h, data, time, state, designer }: { layer: ImgLayer; r: Record<string, unknown>; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown; designer?: boolean }) {
   useStore();
   const k = cfg(layer);
-  const live = useLiveFrame(k.input.trim());
+  // On air every picture; in the Designer a lighter preview.
+  const live = useLiveFrame(k.input.trim(), designer ? 'preview' : 'stream');
   const inputs = useInputs();
   // Every frame of a sequence decoded once, up front: cycling never stutters.
   useEffect(() => k.frames.forEach((f) => load(interpolateText(f, data).trim())), [k.frames, data]);
