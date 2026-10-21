@@ -1432,6 +1432,9 @@ async fn channel_command(
 struct ItemBody {
     #[serde(default)]
     data: Option<BTreeMap<String, String>>,
+    /// `update`: the new values cross-fade in (half a second) instead of a cut.
+    #[serde(default)]
+    fade: bool,
 }
 
 /// Plays a rundown item of the project loaded on the channel, by id: what a
@@ -1460,6 +1463,7 @@ async fn item_command(
         .find(|r| r.id == item || r.name.eq_ignore_ascii_case(&item))
         .ok_or_else(|| not_found("rundown item"))?;
     let zone = project.item_zone(it).map(|z| z.id.clone());
+    let fade = body.as_ref().is_some_and(|b| b.0.fade);
     let data = body.and_then(|b| b.0.data);
     let cmd = match action.as_str() {
         "take" => {
@@ -1479,7 +1483,7 @@ async fn item_command(
             zone,
             layer: None,
             data: data.unwrap_or_else(|| it.data.clone()),
-            fade: false,
+            fade,
         },
         "clear" => Command::Clear { zone, layer: None },
         _ => {

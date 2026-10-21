@@ -66,13 +66,25 @@ export function Program({ project, live, width, height }: { project: Project; li
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
             <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
-              <Scene template={t} frame={frame} data={item.data} />
-              {/* A row or an Update fading: the old values above, fading out. */}
-              {item.fade && fade !== null && fade < item.fade.length && (
-                <div style={{ position: 'absolute', inset: 0, opacity: Math.max(0, 1 - fade / Math.max(1, item.fade.length)) }}>
-                  <Scene template={t} frame={frame} data={item.fade.data} />
-                </div>
-              )}
+              {/*
+               * A row or an Update fading: the graphic with the new values fades in while the one with
+               * the old values fades out, added up (plus-lighter): what both cover stays opaque.
+               */}
+              {(() => {
+                const k = item.fade && fade !== null && fade < item.fade.length ? Math.min(1, Math.max(0, fade / Math.max(1, item.fade.length))) : 1;
+                return (
+                  <div style={{ position: 'absolute', inset: 0, ...(k < 1 ? { isolation: 'isolate' as const } : {}) }}>
+                    <div style={k < 1 ? { position: 'absolute', inset: 0, opacity: k } : { position: 'absolute', inset: 0 }}>
+                      <Scene template={t} frame={frame} data={item.data} />
+                    </div>
+                    {k < 1 && item.fade && (
+                      <div style={{ position: 'absolute', inset: 0, opacity: 1 - k, mixBlendMode: 'plus-lighter' }}>
+                        <Scene template={t} frame={frame} data={item.fade.data} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </LiveTime>
           </div>
         );

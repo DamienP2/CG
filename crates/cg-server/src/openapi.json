@@ -1105,6 +1105,10 @@
         "properties": {
          "data": {
           "$ref": "#/components/schemas/Data"
+         },
+         "fade": {
+          "type": "boolean",
+          "description": "`update`: the new values cross-fade in (half a second) instead of a cut."
          }
         }
        }

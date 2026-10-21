@@ -71,7 +71,8 @@ interface AppStore {
   command: (cmd: Command, channelId?: string) => void;
   loadOnChannel: (channelId: string, projectId: string | null) => Promise<void>;
   /** False when not saved (already toasted). */
-  saveTemplate: (t: Template) => Promise<boolean>;
+  /** Saved in `projectId` (default: the open project). */
+  saveTemplate: (t: Template, projectId?: string) => Promise<boolean>;
   deleteTemplate: (id: string) => Promise<void>;
   saveRundown: (r: RundownItem[]) => Promise<void>;
   saveZones: (z: Zone[]) => Promise<boolean>;
@@ -309,8 +310,8 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
 
-    async saveTemplate(tpl) {
-      const pid = get().projectId;
+    async saveTemplate(tpl, projectId) {
+      const pid = projectId ?? get().projectId;
       if (!pid) return false;
       try {
         await api('PUT', `/api/projects/${encodeURIComponent(pid)}/templates/${encodeURIComponent(tpl.id)}`, tpl);

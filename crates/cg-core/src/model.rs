@@ -1858,6 +1858,12 @@ impl Project {
             changed |= t.normalize_markers();
             changed |= t.upgrade_layers();
         }
+        // "Hold anyway" is gone: those graphics now wait for the operator.
+        for r in self.rundown.iter_mut().filter(|r| r.hold) {
+            r.hold = false;
+            r.auto_secs = None;
+            changed = true;
+        }
         for i in 0..self.rundown.len() {
             if self.zone(&self.rundown[i].zone).is_some() {
                 continue;

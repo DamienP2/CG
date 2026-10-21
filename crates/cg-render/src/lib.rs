@@ -351,9 +351,9 @@ impl Renderer {
         let portrait = dh > dw;
         for (layer, item) in &state.layers {
             if let Some(t) = project.template(&item.template_id) {
-                let t = t.in_format(format);
+                let laid = t.in_format(format);
                 // Settings the Operator was given (mask, font, logo…).
-                let t = t.with_settings(&item.data);
+                let t = laid.with_settings(&item.data);
                 // Only what is inside the zone shows on air.
                 let zone_mask = project
                     .zone_at(*layer)
@@ -384,16 +384,59 @@ impl Renderer {
                     fps,
                     lang: &project.language,
                 };
-                self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref());
-                // A data set row change: the old values fade out above.
-                if let Some(f) = &item.fade {
-                    let logic = self.logic_values(&t, item.frame, &f.data);
-                    let old = Ctx {
-                        data: &f.data,
-                        logic,
-                        ..ctx
-                    };
-                    self.draw_children(&mut pm, &old, None, root, f.opacity(), zone_mask.as_ref());
+                match item.fade.as_ref().filter(|f| f.opacity() > 0.0) {
+                    None => self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref()),
+                    // A cross-fade (Update, data set row): the graphic with
+                    // the old values and with the new ones, each drawn
+                    // whole, then mixed (old × k + new × (1 − k)): what both
+                    // cover stays opaque, the rest fades in or out.
+                    Some(f) => {
+                        let k = f.opacity();
+                        let (w, h) = (pm.width(), pm.height());
+                        let mut new = Pixmap::new(w, h).expect("valid size");
+                        self.draw_children(&mut new, &ctx, None, root, 1.0, zone_mask.as_ref());
+                        let t_old = laid.with_settings(&f.data);
+                        let logic = self.logic_values(&t_old, item.frame, &f.data);
+                        let old_ctx = Ctx {
+                            template: &t_old,
+                            data: &f.data,
+                            logic,
+                            ..ctx
+                        };
+                        let mut old = Pixmap::new(w, h).expect("valid size");
+                        self.draw_children(&mut old, &old_ctx, None, root, 1.0, zone_mask.as_ref());
+                        let mut mix = Pixmap::new(w, h).expect("valid size");
+                        let paint = |opacity: f32, blend_mode| PixmapPaint {
+                            opacity,
+                            blend_mode,
+                            ..Default::default()
+                        };
+                        let id = Transform::identity();
+                        mix.draw_pixmap(
+                            0,
+                            0,
+                            new.as_ref(),
+                            &paint(1.0 - k, tiny_skia::BlendMode::SourceOver),
+                            id,
+                            None,
+                        );
+                        mix.draw_pixmap(
+                            0,
+                            0,
+                            old.as_ref(),
+                            &paint(k, tiny_skia::BlendMode::Plus),
+                            id,
+                            None,
+                        );
+                        pm.draw_pixmap(
+                            0,
+                            0,
+                            mix.as_ref(),
+                            &paint(1.0, tiny_skia::BlendMode::SourceOver),
+                            id,
+                            None,
+                        );
+                    }
                 }
             }
         }

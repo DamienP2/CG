@@ -1643,6 +1643,23 @@ mod tests {
     }
 
     #[test]
+    fn hold_anyway_becomes_operator() {
+        let mut p = crate::sample::demo_project();
+        assert!(!p.ensure_zones());
+        p.rundown[0].hold = true;
+        p.rundown[0].auto_secs = Some(8.0);
+        p.rundown[1].auto_secs = Some(5.0);
+        assert!(p.ensure_zones());
+        assert!(!p.rundown[0].hold);
+        assert_eq!(
+            p.rundown[0].auto_secs, None,
+            "the operator takes the next one"
+        );
+        assert_eq!(p.rundown[1].auto_secs, Some(5.0), "others keep their time");
+        assert!(!p.ensure_zones());
+    }
+
+    #[test]
     fn widget_clocks() {
         let mut p = crate::sample::demo_project();
         let ticker = p.template("ticker").unwrap().clone();

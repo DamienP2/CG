@@ -88,34 +88,39 @@ function useLeaveUnpublished(project: Project | null) {
   }, [changed, id]);
 }
 
+/** The project the Designer's open template belongs to (the store outlives the Designer). */
+let designedProject: string | null = null;
+
 function useAutosave() {
   // Saves the draft after the user's edits (not when a template is opened).
   const edits = useDesigner((s) => s.edits);
   const saveTemplate = useApp((s) => s.saveTemplate);
   const [state, setState] = useState<'saved' | 'pending'>('saved');
-  // Edits waiting to be saved, per template: switching template or leaving never drops one.
-  const pending = useRef(new Map<string, Template>());
+  // Edits waiting to be saved, per project and template: switching template, project or leaving never drops one,
+  // and an edit is saved in the project it was made in, whatever project is open by then.
+  const pending = useRef(new Map<string, { project: string; template: Template }>());
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flush = useRef(async () => {});
   flush.current = async () => {
     clearTimeout(timer.current);
     const list = [...pending.current.values()];
     pending.current.clear();
-    for (const t of list) await saveTemplate(t);
+    for (const p of list) await saveTemplate(p.template, p.project);
     setState('saved');
   };
   useEffect(() => {
     if (!edits) return;
     const { base, readOnly } = useDesigner.getState();
-    if (!base || readOnly) return;
+    const project = designedProject ?? useApp.getState().projectId;
+    if (!base || readOnly || !project) return;
     setState('pending');
-    pending.current.set(base.id, base);
+    pending.current.set(`${project}/${base.id}`, { project, template: base });
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush.current(), 500);
   }, [edits, saveTemplate]);
   // Leaving the Designer: saved now.
   useEffect(() => () => void flush.current(), []);
-  return state;
+  return { state, flush: () => flush.current() };
 }
 
 function useShortcuts() {
@@ -390,20 +395,25 @@ export function Designer() {
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
   useShortcuts();
-  const saveState = useAutosave();
+  const { state: saveState, flush: flushSaves } = useAutosave();
   useLeaveUnpublished(project);
   const lock = useEditLock(project, template?.id);
 
-  // Opening another project: start on its first template.
+  // Opening another project: the edits of the one before are saved (in it), then it starts afresh —
+  // never on the template and layers of the one before, even when their ids match (copied projects).
+  // Back to the same project (from the Operator…): the open template stays.
   const openedFor = useRef<string | null>(null);
   useEffect(() => {
     if (!project) return;
     if (openedFor.current !== project.id) {
       openedFor.current = project.id;
+      const same = designedProject === project.id;
+      if (!same) void flushSaves();
+      designedProject = project.id;
       // A project opens on the overview: every zone and template; with a
       // single template (a new project), on that template.
       const all = designTemplates(project);
-      if (!template || !all.some((t) => t.id === template.id)) load(all.length === 1 ? all[0] : null);
+      if (!same || !template || !all.some((t) => t.id === template.id)) load(all.length === 1 ? all[0] : null);
     }
   }, [project, template, load]);
 

@@ -77,7 +77,10 @@ export function layerHasProp(l: Layer, p: Prop): boolean {
   const look = l.type !== 'image' && l.type !== 'slideshow' && !widgetOf(l.type)?.ownsLook;
   if (p === 'fill') return look;
   if (p === 'cornerRadius') return look && ['rect', 'group', 'progress'].includes(l.type);
-  return look && !['progress', 'qrCode'].includes(l.type);
+  if (p === 'stroke' || p === 'strokeWidth') return look && !['progress', 'qrCode'].includes(l.type);
+  // The arcs of a circle (Ellipse widget).
+  if (p === 'arcStart' || p === 'arcEnd' || p === 'innerRadius') return l.type === 'ellipse';
+  return false;
 }
 
 /** Which copied property goes to which property of a row: the same ones, or a row of the same kind (Fill → Stroke). */
