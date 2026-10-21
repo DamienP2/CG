@@ -223,10 +223,15 @@ export function autoLayout(nodes: LayoutNode[], edges: LayoutEdge[], opts: Layou
   const anchorY = opts.anchorY ?? 20;
   const lead = (it: Item) => Math.min(anchorY, hOf(it) / 2);
   const anchor = (it: Item) => y.get(it)! + lead(it);
+  // Long wires are drawn straight from end to end: their lanes weigh more than the nodes
+  // in the way, and a node lines up with its long wires before its other neighbours.
+  const weight = (it: Item) => (it.node >= 0 ? 1 : 8);
   /** Moves a column towards where its neighbours want it, keeping its order and gaps (pool-adjacent blocks). */
   const straighten = (c: Item[], side: Map<Item, Item[]>) => {
     const want = c.map((it) => {
-      const nb = side.get(it) ?? [];
+      const all = side.get(it) ?? [];
+      const lanes = all.filter((x) => x.node < 0);
+      const nb = lanes.length ? lanes : all;
       if (!nb.length) return y.get(it)!;
       const m = nb.map(anchor).sort((a, b) => a - b);
       const mid = (m[(m.length - 1) >> 1] + m[m.length >> 1]) / 2;
@@ -239,14 +244,15 @@ export function autoLayout(nodes: LayoutNode[], edges: LayoutEdge[], opts: Layou
       offs.push(off);
       off += hOf(it) + gapY;
     }
-    type Block = { from: number; to: number; sum: number; t: number };
+    type Block = { from: number; to: number; sum: number; w: number; t: number };
     const blocks: Block[] = [];
-    c.forEach((_, k) => {
-      let b: Block = { from: k, to: k, sum: want[k] - offs[k], t: want[k] - offs[k] };
+    c.forEach((it, k) => {
+      const w = weight(it);
+      let b: Block = { from: k, to: k, sum: (want[k] - offs[k]) * w, w, t: want[k] - offs[k] };
       while (blocks.length && blocks[blocks.length - 1].t >= b.t) {
         const p = blocks.pop()!;
         const sum = p.sum + b.sum;
-        b = { from: p.from, to: b.to, sum, t: sum / (b.to - p.from + 1) };
+        b = { from: p.from, to: b.to, sum, w: p.w + b.w, t: sum / (p.w + b.w) };
       }
       blocks.push(b);
     });
