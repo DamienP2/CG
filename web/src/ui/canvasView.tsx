@@ -1,4 +1,4 @@
-import { Maximize, Minus, Plus } from 'lucide-react';
+import { LayoutGrid, Maximize, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 
@@ -9,6 +9,8 @@ import { t } from '../i18n';
  *   wheel, two-finger scroll (trackpad)             pan
  *   Space + drag, middle button, drag on the void   pan (hand)
  *   Fit                                             every node in view
+ *   Arrange (with opts.onArrange)                   the nodes laid out again, then Fit
+ *                                                   (see autoLayout.ts)
  * Positions given to the canvas (toWorld) are in the space's coordinates,
  * whatever the zoom.
  */
@@ -35,7 +37,14 @@ function loadView(key: string): View | null {
 /** True for a mouse wheel notch (zoom), false for a trackpad scroll (pan). */
 const isMouseWheel = (e: WheelEvent) => e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
 
-export function useCanvasView(key: string, nodeSelector = '.logic-node') {
+export interface CanvasViewOptions {
+  /** Shows an Arrange button next to Fit: moves the nodes (autoLayout), the view then fits them. */
+  onArrange?: () => void;
+}
+
+export function useCanvasView(key: string, nodeSelector = '.logic-node', opts: CanvasViewOptions = {}) {
+  const onArrangeRef = useRef(opts.onArrange);
+  onArrangeRef.current = opts.onArrange;
   const ref = useRef<HTMLDivElement | null>(null);
   // The viewport can appear after the first render (a page still loading).
   const [el, setEl] = useState<HTMLDivElement | null>(null);
@@ -114,6 +123,12 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node') {
     const zoom = clamp(Math.min(1, (el.clientWidth - pad * 2) / (x1 - x0), (el.clientHeight - pad * 2) / (y1 - y0)));
     setView({ zoom, x: (el.clientWidth - (x1 - x0) * zoom) / 2 - x0 * zoom, y: Math.max(pad, (el.clientHeight - (y1 - y0) * zoom) / 2) - y0 * zoom });
   }, [nodeSelector, setView]);
+
+  /** Arranges the nodes, then fits them once they are drawn where they went. */
+  const arrange = useCallback(() => {
+    onArrangeRef.current?.();
+    requestAnimationFrame(() => requestAnimationFrame(fit));
+  }, [fit]);
 
   // First opening: everything in view.
   useEffect(() => {
@@ -215,6 +230,7 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node') {
     toWorld,
     visible,
     fit,
+    arrange,
     resize,
     /** Props of the viewport element. */
     viewport: {
@@ -226,11 +242,11 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node') {
     },
     /** Style of the space inside it (the nodes and the wires). */
     spaceStyle: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, transformOrigin: '0 0' } as React.CSSProperties,
-    controls: <CanvasControls zoom={view.zoom} onZoom={(f) => zoomAt(f)} onFit={fit} />,
+    controls: <CanvasControls zoom={view.zoom} onZoom={(f) => zoomAt(f)} onFit={fit} onArrange={opts.onArrange ? arrange : undefined} />,
   };
 }
 
-function CanvasControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (factor: number) => void; onFit: () => void }) {
+function CanvasControls({ zoom, onZoom, onFit, onArrange }: { zoom: number; onZoom: (factor: number) => void; onFit: () => void; onArrange?: () => void }) {
   return (
     <div className="cv-controls" onPointerDown={(e) => e.stopPropagation()}>
       <button title={t('Zoom out')} onClick={() => onZoom(1 / 1.2)}>
@@ -243,6 +259,11 @@ function CanvasControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (factor
       <button title={t('Fit: every node in view')} onClick={onFit}>
         <Maximize size={13} /> {t('Fit')}
       </button>
+      {onArrange && (
+        <button title={t('Auto-arrange: lay the nodes out from left to right')} onClick={onArrange}>
+          <LayoutGrid size={13} /> {t('Arrange')}
+        </button>
+      )}
     </div>
   );
 }

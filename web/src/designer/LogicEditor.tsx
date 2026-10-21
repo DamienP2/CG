@@ -6,6 +6,7 @@ import { COLOR_PROPS, PROPS, TEXT_LIKE, type Cmp, type Layer, type Logic, type L
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { NumberField } from '../ui/fields';
+import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
@@ -208,7 +209,7 @@ export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'conditi
 
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const { template, update, frame, previewData } = useDesigner();
-  const cv = useCanvasView(`logic.${template?.id ?? ''}`);
+  const cv = useCanvasView(`logic.${template?.id ?? ''}`, '.logic-node', { onArrange: () => arrange() });
   // Node widths, per browser.
   const sizesKey = `pulse.logicSizes.${template?.id ?? ''}`;
   const [sizes, setSizesState] = useState<Record<string, number>>(() => {
@@ -256,6 +257,20 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     }, key);
 
   const canvasPoint = cv.toWorld;
+
+  /** Lays the nodes out from left to right (one step to undo): inputs left, the properties they set right. */
+  const arrange = () => {
+    const size = measureNodes(cv.ref.current);
+    const at = autoLayout(
+      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: n.type === 'target' ? ('end' as const) : undefined })),
+      logic.edges,
+      { tightSources: true },
+    );
+    useDesigner.setState({ lastCoalesce: null });
+    edit((l) => {
+      for (const n of l.nodes) if (at[n.id]) Object.assign(n, at[n.id]);
+    });
+  };
 
   const add = (type: LogicNode['type']) => {
     const v = cv.visible();
@@ -372,7 +387,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
             {logic.nodes.map((n) => {
               const k = kindOf(n);
               return (
-                <div key={n.id} className={`logic-node kind-${n.type} cat-${k.cat} ${selected === n.id ? 'sel' : ''}`} style={{ left: n.x, top: n.y, width: widthOf(n) }} onPointerDown={(e) => (e.stopPropagation(), dragNode(e, n))}>
+                <div key={n.id} data-node-id={n.id} className={`logic-node kind-${n.type} cat-${k.cat} ${selected === n.id ? 'sel' : ''}`} style={{ left: n.x, top: n.y, width: widthOf(n) }} onPointerDown={(e) => (e.stopPropagation(), dragNode(e, n))}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <k.icon size={12} />
                     <span>{t(k.label)}</span>

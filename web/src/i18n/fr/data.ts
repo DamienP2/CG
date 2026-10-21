@@ -18,6 +18,8 @@ export const data: Record<string, string> = {
   'Shift + wheel or pinch to zoom · wheel or Space + drag to move': 'Shift + molette ou pincement pour zoomer · molette ou Espace + glisser pour se déplacer',
   'Fit: every node in view': 'Ajuster : tous les nœuds visibles',
   'Fit': 'Ajuster',
+  'Auto-arrange: lay the nodes out from left to right': 'Réorganiser : disposer les nœuds de gauche à droite',
+  'Arrange': 'Réorganiser',
   'Resize': 'Redimensionner',
   '{family} (missing)': '{family} (manquante)',
   'Thin': 'Fin',

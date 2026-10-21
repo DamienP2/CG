@@ -9,6 +9,7 @@ import { api, useApp } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate, projectPath } from '../router';
+import { autoLayout, measureNodes, type LayoutEdge } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
@@ -315,7 +316,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const offered = useProjectSources(projectId);
   const bound = useBoundData(template, previewData);
   const values = useMemo(() => ({ ...previewData, ...bound }), [previewData, bound]);
-  const cv = useCanvasView(`data.${template.id}`);
+  const cv = useCanvasView(`data.${template.id}`, '.logic-node', { onArrange: () => arrange() });
   const [layout, setLayoutState] = useState<Layout>(() => loadLayout(template.id));
   const [drag, setDrag] = useState<{ wire: Wire; x: number; y: number } | null>(null);
   const [ghost, setGhost] = useState<{ label: string; x: number; y: number } | null>(null);
@@ -451,6 +452,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   // Data set columns: where their ports are (the node reports its columns).
   const columnPorts = new Map<string, Pt>();
+  // The data set node each of those keys comes from.
+  const columnNode = new Map<string, string>();
   for (const n of flow.nodes)
     if (n.type === 'dataset') {
       // All the rows first (for tables, credits…), then each column of the current row.
@@ -458,6 +461,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       columnPorts.set(tableKey(n.key), at(0));
       columnPorts.set(linesKey(n.key), at(0));
       (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), at(i + 1)));
+      for (const k of [tableKey(n.key), linesKey(n.key), ...(dsColumns[n.id] ?? []).map((c) => columnKey(n.key, c))]) columnNode.set(k, n.id);
     }
   /** Where a value wired by key starts: a variable, or a data set column. */
   const keyOut = (key: string): Pt | null => (nodePos.has(`f:${key}`) ? outOf(`f:${key}`, widthOf(`f:${key}`, W.field)) : (columnPorts.get(key) ?? null));
@@ -465,11 +469,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   // ---- Wires of the template.
   const wires: { d: string; title: string; onClick: () => void; data?: boolean; edge?: number }[] = [];
+  // The same wires node to node, for Arrange.
+  const links: LayoutEdge[] = [];
   flow.edges.forEach((e, i) => {
     const a = flow.nodes.find((n) => n.id === e.from);
     if (!a) return;
     const to = e.to.startsWith('field:') ? (nodePos.has(`f:${e.to.slice(6)}`) ? inOf(`f:${e.to.slice(6)}`) : null) : nodePos.has(e.to) ? inOf(e.to) : null;
     if (!to) return;
+    links.push({ from: a.id, to: e.to.startsWith('field:') ? `f:${e.to.slice(6)}` : e.to });
     wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: t('Data (click to remove · drop a Filter, Sort or Transform on it)'), onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
   });
   for (const l of template.layers)
@@ -479,7 +486,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       const content = contentOf(l).includes(port);
       const setting = port.startsWith('s:') ? port.slice(2) : null;
       const keys = content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]].filter((k): k is string => !!k && wiredKey(k));
-      for (const key of keys)
+      for (const key of keys) {
+        links.push({ from: nodePos.has(`f:${key}`) ? `f:${key}` : (columnNode.get(key) ?? ''), to: `l:${l.id}` });
         wires.push({
           d: curve(keyOut(key)!, to),
           data: columnPorts.has(key),
@@ -492,8 +500,29 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               else delete x.bindings[port as Prop];
             }),
         });
+      }
     }
   const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
+
+  /**
+   * Lays the nodes out from left to right: sources first, the layers last,
+   * the steps, data sets and variables in between where their wires go.
+   */
+  const arrange = () => {
+    const size = measureNodes(cv.ref.current);
+    const all = [...flow.nodes.map((n) => n.id), ...shownFields.map((f) => `f:${f.key}`), ...template.layers.map((l) => `l:${l.id}`)];
+    const at = autoLayout(
+      all.map((id) => ({ id, ...(size[id] ?? { w: W.step, h: 160 }), side: id.startsWith('l:') ? ('end' as const) : flow.nodes.some((n) => n.id === id && n.type === 'source') ? ('start' as const) : undefined })),
+      links,
+      { tightSources: true },
+    );
+    useDesigner.setState({ lastCoalesce: null });
+    if (flow.nodes.some((n) => at[n.id]))
+      editFlow((f) => {
+        for (const n of f.nodes) if (at[n.id]) Object.assign(n, at[n.id]);
+      });
+    setLayout((l) => ({ ...l, pos: { ...l.pos, ...Object.fromEntries(all.filter((id) => /^[fl]:/.test(id) && at[id]).map((id) => [id, at[id]])) } }));
+  };
 
   // ---- Wiring with the mouse.
   const point = cv.toWorld;
@@ -800,7 +829,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 const s = sources.find((x) => x.id === n.source);
                 const used = flow.edges.some((e) => e.from === n.id);
                 return (
-                  <div key={n.id} className={`logic-node dc-node kind-source ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
+                  <div key={n.id} data-node-id={n.id} className={`logic-node dc-node kind-source ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                     <div className="ln-head" style={{ height: HEAD }}>
                       <Database size={12} />
                       <span>{s?.name ?? t('Missing: {source}', { source: n.source })}</span>
@@ -822,7 +851,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               if (n.type === 'dataset') {
                 const into = flow.edges.find((e) => e.to === n.id)?.from;
                 return (
-                  <div key={n.id} className="logic-node dc-node kind-dataset" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
+                  <div key={n.id} data-node-id={n.id} className="logic-node dc-node kind-dataset" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                     <div className="ln-head" style={{ height: HEAD }}>
                       <span className="port in" data-flow={n.id} title={t('Drop a source or a step here')} />
                       <Rows3 size={12} />
@@ -845,7 +874,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               }
               const k = STEP[n.type];
               return (
-                <div key={n.id} className={`logic-node dc-node kind-${n.type} ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.step) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
+                <div key={n.id} data-node-id={n.id} className={`logic-node dc-node kind-${n.type} ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.step) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <span className="port in" data-flow={n.id} title={t('Drop a source or a step here')} />
                     <k.icon size={12} />
@@ -870,7 +899,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               const fed = flow.edges.some((e) => e.to === `field:${f.key}`);
               const legacy = f.binding && !isTable(f.binding) && !fed;
               return (
-                <div key={f.key} className="logic-node dc-node kind-field" style={{ left: p.x, top: p.y, ...sizeStyle(`f:${f.key}`, W.field) }} onPointerDown={(e) => dragNode(e, `f:${f.key}`, 'layout')}>
+                <div key={f.key} data-node-id={`f:${f.key}`} className="logic-node dc-node kind-field" style={{ left: p.x, top: p.y, ...sizeStyle(`f:${f.key}`, W.field) }} onPointerDown={(e) => dragNode(e, `f:${f.key}`, 'layout')}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <span className="port in" data-field={f.key} title={t('Drop a source or a step here')} />
                     <Variable size={12} />
@@ -936,7 +965,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               const r = resolved.get(l.id);
               const hidden = portsOf(l).filter((x) => !ports(l).includes(x)).length;
               return (
-                <div key={l.id} data-node={`l:${l.id}`} className="logic-node dc-node kind-layer" style={{ left: p.x, top: p.y, width: widthOf(`l:${l.id}`, W.layer) }} onPointerDown={(e) => dragNode(e, `l:${l.id}`, 'layout')}>
+                <div key={l.id} data-node={`l:${l.id}`} data-node-id={`l:${l.id}`} className="logic-node dc-node kind-layer" style={{ left: p.x, top: p.y, width: widthOf(`l:${l.id}`, W.layer) }} onPointerDown={(e) => dragNode(e, `l:${l.id}`, 'layout')}>
                   <div className="ln-head" style={{ height: HEAD }}>
                     <Icon size={12} />
                     <span>{l.name}</span>
