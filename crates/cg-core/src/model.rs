@@ -134,10 +134,15 @@ pub enum Prop {
     CropRight,
     CropTop,
     CropBottom,
+    /// Ellipse: start and end angles (degrees) and inner radius (%) of the
+    /// portion; unset, the ellipse's own settings (`start`, `end`, `inner`).
+    ArcStart,
+    ArcEnd,
+    InnerRadius,
 }
 
 impl Prop {
-    pub const ALL: [Prop; 20] = [
+    pub const ALL: [Prop; 23] = [
         Prop::X,
         Prop::Y,
         Prop::Width,
@@ -158,6 +163,9 @@ impl Prop {
         Prop::CropRight,
         Prop::CropTop,
         Prop::CropBottom,
+        Prop::ArcStart,
+        Prop::ArcEnd,
+        Prop::InnerRadius,
     ];
 
     pub fn is_color(self) -> bool {

@@ -10,9 +10,9 @@ import { linesKey, oneKey, rowKey, usedDatasets, type Command, type Field, type 
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
-import { LiveTime } from '../engine/LiveTime';
+import { LiveTime, useTicker } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
-import { api, can, thumbnailUrl, useApp } from '../store';
+import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { Row } from '../widgets/kit';
@@ -23,7 +23,7 @@ import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dat
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { TableRowsInput } from '../widgets/table-rows';
+import { TableRowsField } from './TableRowsField';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { t, tc, tn } from '../i18n';
 
@@ -78,7 +78,7 @@ export function FieldInput({ field, value, onChange, rich }: { field: Field; val
     case 'image':
       return <AssetPicker value={value} onChange={onChange} />;
     case 'table':
-      return <TableRowsInput value={value} onChange={onChange} />;
+      return <TableRowsField value={value} onChange={onChange} />;
     default:
       return <TextInput value={value} onChange={onChange} />;
   }
@@ -152,6 +152,8 @@ const READ_MODES: { id: ReadMode; label: string; hint: string }[] = [
   { id: 'live', label: 'Live', hint: 'On take, then every time the source changes, also on air' },
 ];
 const INTERVALS = [2, 5, 10, 30, 60, 300];
+/** Auto next of a new graphic: the next one after this time on air. */
+const AUTO_SECS = 5;
 
 /** Tooltip of the mini timeline of a graphic on air, by phase (translated where shown). */
 const PHASE_TITLES: Record<Phase, string> = {
@@ -389,7 +391,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               onClose={() => setAdding(false)}
               onPick={(t) => {
                 const z = project.zones.find((x) => x.id === t.zone);
-                const it: RundownItem = { id: newId(), name: t.name, templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t) };
+                const it: RundownItem = { id: newId(), name: t.name, templateId: t.id, zone: t.zone, playlist: activeList, layer: z?.layer ?? 0, data: defaultData(t), autoSecs: AUTO_SECS };
                 saveRundown([...rundown, it]);
                 setCued(it.id);
                 setAdding(false);
@@ -459,10 +461,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             {!items.length && <p className="opx-hint">{t('Empty playlist: add graphics from your templates with +.')}</p>}
           </div>
           <footer className="opx-foot">
-            <button className="opx-btn big red" disabled={!nextTarget || !operate} onClick={take} title={t('F1 / Enter: takes {name}', { name: nextTarget?.name ?? t('the next graphic') })}>
-              <SkipForward size={15} fill="currentColor" /> Next
-              {nextTarget && <span className="opx-next-name">{nextTarget.name}</span>}
-            </button>
+            <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate} onTake={take} />
             <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title={t('F12: everything out at once')}>
               {t('Clear all')}
             </button>
@@ -611,6 +610,53 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/** An auto next on its way: the graphic on air, the one it takes, and when (client clock, ms). */
+function pendingAutoNext(project: Project, live: Live | undefined): { from: RundownItem; to: RundownItem | undefined; at: number; secs: number } | null {
+  if (!live) return null;
+  const fps = project.frameRate.num / project.frameRate.den || 1;
+  let best: { from: RundownItem; to: RundownItem | undefined; at: number; secs: number } | null = null;
+  for (const p of Object.values(live.state.layers) as (PlayoutItem & { advanced?: boolean })[]) {
+    if (p.advanced || p.phase === 'out' || p.phase === 'outHold' || !p.rundownId) continue;
+    const r = project.rundown.find((x) => x.id === p.rundownId);
+    if (!r || r.autoSecs === undefined) continue;
+    const list = project.playlists.find((x) => x.id === r.playlist && x.autoNext);
+    if (!list) continue;
+    // As the server: the graphics of the playlist (an empty template is not part of it).
+    const items = project.rundown.filter((x) => x.playlist === r.playlist && (x.id === r.id || !!project.templates.find((t) => t.id === x.templateId)?.layers.some((l) => l.visible !== false)));
+    const i = items.findIndex((x) => x.id === r.id);
+    const to = items[i + 1] ?? (list.loop ? items[0] : undefined);
+    const at = live.at + (Math.max(0, r.autoSecs) - (p.age ?? 0) / fps) * 1000;
+    if (!best || at < best.at) best = { from: r, to, at, secs: r.autoSecs };
+  }
+  return best;
+}
+
+/** NEXT: takes the cued graphic; with an auto next on its way, its countdown (and what it takes). */
+function NextButton({ project, live, target, disabled, onTake }: { project: Project; live: Live | undefined; target: RundownItem | undefined; disabled: boolean; onTake: () => void }) {
+  const auto = pendingAutoNext(project, live);
+  const now = useTicker(!!auto);
+  const left = auto ? Math.max(0, (auto.at - now) / 1000) : 0;
+  if (auto) {
+    const done = auto.secs > 0 ? Math.min(1, Math.max(0, 1 - left / auto.secs)) : 1;
+    return (
+      <button className="opx-btn big red opx-next-auto" disabled={disabled} onClick={onTake} title={t('F1 / Enter: takes {name}', { name: target?.name ?? t('the next graphic') })}>
+        <span className="opx-next-fill" style={{ width: `${done * 100}%` }} />
+        <span className="opx-next-top">
+          <b className="opx-next-n">{Math.ceil(left - 1e-3)}</b>
+          <span>{t('s · Next')}</span>
+        </span>
+        <span className="opx-next-sub">{auto.to ? t('Auto: {name}', { name: auto.to.name }) : t('Auto: out')}</span>
+      </button>
+    );
+  }
+  return (
+    <button className="opx-btn big red" disabled={disabled} onClick={onTake} title={t('F1 / Enter: takes {name}', { name: target?.name ?? t('the next graphic') })}>
+      <SkipForward size={15} fill="currentColor" /> Next
+      {target && <span className="opx-next-name">{target.name}</span>}
+    </button>
   );
 }
 
@@ -846,13 +892,12 @@ function GraphicRow(props: {
           {props.cue && <b className="opx-cue" title={t('NEXT takes this graphic')}>CUE</b>}
           <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? t('no zone')} · {tpl?.name ?? t('missing template')}
           {props.autoNext && item.autoSecs !== undefined && <span className="opx-auto"> · {t('next {n} s', { n: item.autoSecs })}</span>}
-          {item.hold && <span className="opx-hold"> · {t('hold')}</span>}
         </span>
         <MiniTimeline template={tpl} air={air} />
       </span>
       {props.editable && (
         <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
-          <button title={t('Auto next of this graphic: its time on air, hold anyway')} className={item.autoSecs !== undefined || item.hold ? 'on' : ''} onClick={(e) => setAutoAt(autoAt ? null : e.currentTarget.getBoundingClientRect())}>
+          <button title={t('Auto next of this graphic: its time on air')} className={item.autoSecs !== undefined ? 'on' : ''} onClick={(e) => setAutoAt(autoAt ? null : e.currentTarget.getBoundingClientRect())}>
             <Timer size={13} />
           </button>
           <button title={t('Duplicate')} onClick={props.onDuplicate}>
@@ -868,7 +913,7 @@ function GraphicRow(props: {
   );
 }
 
-/** Auto next settings of one graphic: its time on air before the next one, hold anyway. */
+/** Auto next settings of one graphic: its time on air before the next one, or the operator takes it. */
 function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at: DOMRect; onChange: (patch: Partial<RundownItem>) => void; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -895,10 +940,10 @@ function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at
       <div className="me-field">
         <span>{t('Next')}</span>
         <div className="seg">
-          <button className={!auto ? 'on' : ''} title={t('The operator takes the next graphic')} onClick={() => onChange({ autoSecs: undefined })}>
+          <button className={!auto ? 'on' : ''} title={t('The operator takes the next graphic')} onClick={() => onChange({ autoSecs: undefined, hold: undefined })}>
             {t('Operator')}
           </button>
-          <button className={auto ? 'on' : ''} title={t('The next graphic is taken after this time on air')} onClick={() => onChange({ autoSecs: item.autoSecs ?? 10 })}>
+          <button className={auto ? 'on' : ''} title={t('The next graphic is taken after this time on air')} onClick={() => onChange({ autoSecs: item.autoSecs ?? AUTO_SECS, hold: undefined })}>
             {t('After')}
           </button>
         </div>
@@ -906,15 +951,9 @@ function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at
       {auto && (
         <label className="me-field">
           <span>{t('On air for')}</span>
-          <NumberField value={item.autoSecs ?? 10} min={0} step={1} suffix="s" onChange={(v) => onChange({ autoSecs: Math.max(0, v) })} />
+          <NumberField value={item.autoSecs ?? AUTO_SECS} min={0} step={1} suffix="s" onChange={(v) => onChange({ autoSecs: Math.max(0, v), hold: undefined })} />
         </label>
       )}
-      <div className="me-field">
-        <span>{t('Hold anyway')}</span>
-        <button className={`wk-tog ${item.hold ? 'on' : ''}`} title={t('Stays on air when the next graphic is taken')} onClick={() => onChange({ hold: !item.hold || undefined })}>
-          <i />
-        </button>
-      </div>
     </div>,
     document.body,
   );

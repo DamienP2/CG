@@ -93,7 +93,7 @@ const CROP: PropSpec[] = [
   },
 ];
 
-export const PROP_LABELS: Record<Prop, string> = Object.fromEntries([...TRANSFORM, ...STYLE, ...TEXT, ...CROP.map((c) => ({ ...c, label: `Crop ${c.label}` })), { prop: 'fill', label: 'Fill' }, { prop: 'stroke', label: 'Stroke' }].map((s) => [s.prop, s.label])) as Record<Prop, string>;
+export const PROP_LABELS: Record<Prop, string> = Object.fromEntries([...TRANSFORM, ...STYLE, ...TEXT, ...CROP.map((c) => ({ ...c, label: `Crop ${c.label}` })), { prop: 'fill', label: 'Fill' }, { prop: 'stroke', label: 'Stroke' }, { prop: 'arcStart', label: 'Start' }, { prop: 'arcEnd', label: 'End' }, { prop: 'innerRadius', label: 'Inner radius' }].map((s) => [s.prop, s.label])) as Record<Prop, string>;
 
 export function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (

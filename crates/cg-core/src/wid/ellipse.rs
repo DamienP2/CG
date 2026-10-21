@@ -62,13 +62,40 @@ impl Default for Config {
     }
 }
 
+/// The portion's angles and inner radius: the settings, or the values of
+/// the animatable properties (`Prop::ArcStart`, `ArcEnd`, `InnerRadius`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Span {
+    /// Degrees, 0 = 12 o'clock, clockwise.
+    pub start: f32,
+    /// Degrees; past 360 wraps round.
+    pub end: f32,
+    /// Inner radius, %.
+    pub inner: f32,
+}
+
+impl Span {
+    pub fn of(c: &Config) -> Self {
+        Self {
+            start: c.start,
+            end: c.end,
+            inner: c.inner,
+        }
+    }
+
+    /// Sweep in degrees: 0 = nothing, 360 = full ellipse.
+    pub fn sweep(&self) -> f32 {
+        let mut d = self.end - self.start;
+        if d < 0.0 {
+            d += 360.0;
+        }
+        d.clamp(0.0, 360.0)
+    }
+}
+
 /// Sweep in degrees: 0 = nothing, 360 = full ellipse.
 pub fn sweep(c: &Config) -> f32 {
-    let mut d = c.end - c.start;
-    if d < 0.0 {
-        d += 360.0;
-    }
-    d.clamp(0.0, 360.0)
+    Span::of(c).sweep()
 }
 
 /// Point at angle `a` (degrees) of the ellipse (cx, cy, rx, ry).
@@ -104,60 +131,66 @@ pub fn arc_to(out: &mut Vec<Cmd>, (cx, cy, rx, ry): (f32, f32, f32, f32), a0: f3
 
 /// The outline and whether it is closed; None = nothing to draw.
 pub fn outline(c: &Config, w: f32, h: f32) -> Option<(Vec<Cmd>, bool)> {
+    outline_span(c.portion, Span::of(c), w, h)
+}
+
+/// The outline of `portion` between the angles of `span`.
+pub fn outline_span(portion: Portion, span: Span, w: f32, h: f32) -> Option<(Vec<Cmd>, bool)> {
     let (cx, cy, rx, ry) = (w / 2.0, h / 2.0, w / 2.0, h / 2.0);
-    let sw = sweep(c);
-    if sw <= 0.01 || rx <= 0.0 || ry <= 0.0 {
+    let sw = span.sweep();
+    if !sw.is_finite() || sw <= 0.01 || rx <= 0.0 || ry <= 0.0 {
         return None;
     }
-    let k = c.inner.clamp(0.0, 100.0) / 100.0;
-    let ring = c.portion == Portion::Sector && k > 0.0;
+    let start = span.start;
+    let k = span.inner.clamp(0.0, 100.0) / 100.0;
+    let ring = portion == Portion::Sector && k > 0.0;
     if ring && k >= 1.0 {
         return None;
     }
     let e = (cx, cy, rx, ry);
     let ei = (cx, cy, rx * k, ry * k);
     let mut out = Vec::new();
-    let a = pt(cx, cy, rx, ry, c.start);
+    let a = pt(cx, cy, rx, ry, start);
     if sw >= 360.0 {
         // A closed path from the start angle: no seam.
         out.push(Cmd::Move(a[0], a[1]));
-        arc_to(&mut out, e, c.start, c.start + 360.0);
+        arc_to(&mut out, e, start, start + 360.0);
         out.push(Cmd::Close);
         if ring {
             // The hole the other way round: empty with either fill rule.
-            let b = pt(cx, cy, rx * k, ry * k, c.start);
+            let b = pt(cx, cy, rx * k, ry * k, start);
             out.push(Cmd::Move(b[0], b[1]));
-            arc_to(&mut out, ei, c.start, c.start - 360.0);
+            arc_to(&mut out, ei, start, start - 360.0);
             out.push(Cmd::Close);
         }
         return Some((out, true));
     }
-    let end = c.start + sw;
-    match c.portion {
+    let end = start + sw;
+    match portion {
         Portion::Arc => {
             out.push(Cmd::Move(a[0], a[1]));
-            arc_to(&mut out, e, c.start, end);
+            arc_to(&mut out, e, start, end);
             Some((out, false))
         }
         Portion::Chord => {
             out.push(Cmd::Move(a[0], a[1]));
-            arc_to(&mut out, e, c.start, end);
+            arc_to(&mut out, e, start, end);
             out.push(Cmd::Close);
             Some((out, true))
         }
         Portion::Sector if ring => {
             out.push(Cmd::Move(a[0], a[1]));
-            arc_to(&mut out, e, c.start, end);
+            arc_to(&mut out, e, start, end);
             let ib = pt(cx, cy, rx * k, ry * k, end);
             out.push(Cmd::Line(ib[0], ib[1]));
-            arc_to(&mut out, ei, end, c.start);
+            arc_to(&mut out, ei, end, start);
             out.push(Cmd::Close);
             Some((out, true))
         }
         Portion::Sector => {
             out.push(Cmd::Move(cx, cy));
             out.push(Cmd::Line(a[0], a[1]));
-            arc_to(&mut out, e, c.start, end);
+            arc_to(&mut out, e, start, end);
             out.push(Cmd::Close);
             Some((out, true))
         }

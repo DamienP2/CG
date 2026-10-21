@@ -11,7 +11,7 @@ export interface Keyframe {
   easing: Easing;
 }
 
-export const PROPS = ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fill', 'stroke', 'strokeWidth', 'cornerRadius', 'fontSize', 'letterSpacing', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom'] as const;
+export const PROPS = ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fill', 'stroke', 'strokeWidth', 'cornerRadius', 'fontSize', 'letterSpacing', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'arcStart', 'arcEnd', 'innerRadius'] as const;
 export type Prop = (typeof PROPS)[number];
 
 export const COLOR_PROPS: ReadonlySet<Prop> = new Set(['fill', 'stroke']);

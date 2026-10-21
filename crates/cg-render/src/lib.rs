@@ -1543,6 +1543,50 @@ mod tests {
     }
 
     #[test]
+    fn an_ellipse_arc_and_inner_radius_animate() {
+        let project = sample::demo_project();
+        // A ring (inner 50 % from its settings) whose end goes 0° → 360°
+        // over 10 frames, and whose inner radius goes to 0 at frame 20.
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "el", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "e", "name": "Ring", "type": "ellipse", "circle": true, "inner": 50.0,
+                "fillStyle": {"kind": "solid"},
+                "props": {"x": 0.0, "y": 0.0, "width": 400.0, "height": 400.0, "fill": [1.0, 0.0, 0.0, 1.0]},
+                "tracks": {
+                    "arcEnd": [
+                        {"frame": 0.0, "value": 0.0, "easing": {"type": "linear"}},
+                        {"frame": 10.0, "value": 360.0, "easing": {"type": "linear"}}
+                    ],
+                    "innerRadius": [
+                        {"frame": 10.0, "value": 50.0, "easing": {"type": "linear"}},
+                        {"frame": 20.0, "value": 0.0, "easing": {"type": "linear"}}
+                    ]
+                }
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let at = |r: &mut Renderer, frame: f64| {
+            let f = r.render_template(&project, &t, "main", frame, &Default::default());
+            move |x: u32, y: u32| f.data[((y * f.width + x) * 4 + 3) as usize]
+        };
+        // Frame 0: no sweep, nothing drawn.
+        let a = at(&mut r, 0.0);
+        assert_eq!(a(350, 200), 0);
+        // Frame 5: the right half of the ring (0° → 180°), not the left one.
+        let a = at(&mut r, 5.0);
+        assert_eq!(a(350, 200), 255);
+        assert_eq!(a(50, 200), 0);
+        // Inside the 50 % hole: empty.
+        assert_eq!(a(230, 200), 0);
+        // Frame 20: a full disc (no hole any more).
+        let a = at(&mut r, 20.0);
+        assert_eq!(a(50, 200), 255);
+        assert_eq!(a(230, 200), 255);
+    }
+
+    #[test]
     fn a_scrolling_text_comes_in_from_the_right_with_its_looks() {
         let project = sample::demo_project();
         let t: cg_core::Template = serde_json::from_value(serde_json::json!({

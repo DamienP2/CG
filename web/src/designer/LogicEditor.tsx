@@ -73,6 +73,7 @@ export function propsOf(l: Layer | undefined, numeric: boolean): Prop[] {
     if (p === 'cornerRadius') return l.type === 'rect' || l.type === 'group' || l.type === 'progress';
     if (p === 'fontSize' || p === 'letterSpacing') return TEXT_LIKE.has(l.type);
     if (p.startsWith('crop')) return l.type === 'image';
+    if (p === 'arcStart' || p === 'arcEnd' || p === 'innerRadius') return l.type === 'ellipse';
     return true;
   };
   return PROPS.filter((p) => has(p) && (!numeric || !COLOR_PROPS.has(p)));

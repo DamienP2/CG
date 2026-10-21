@@ -1,10 +1,15 @@
 // Ellipse: circle lock, portion (sector / arc / chord) between a start and an end angle, ring / donut.
 // Drawn as a path in layer pixels (never a scaled circle), so a flat ellipse keeps an even stroke.
 // Same picture as crates/cg-render/src/wid/ellipse.rs; geometry mirrors crates/cg-core/src/wid/ellipse.rs.
+// Start, End and Inner radius are animatable properties (arcStart, arcEnd, innerRadius); unset, the
+// settings below give them (older layers).
 import { useEffect } from 'react';
 import { Circle } from 'lucide-react';
-import { col, cssColor, num } from '../engine/evaluate';
-import { Bound, Btns, clamp, defineWidget, Handle, Num, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
+import { col, cssColor, num, propValue, type Resolved } from '../engine/evaluate';
+import type { Layer } from '../engine/types';
+import { GroupRow } from '../designer/Inspector';
+import { setProp, useDesigner } from '../designer/designerStore';
+import { Bound, Btns, clamp, defineWidget, Handle, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, ShapeSvg, StrokeRows, type FillStyle, type ShapeEdit, type StrokeStyle } from './shape';
 import { t } from '../i18n';
 
@@ -31,10 +36,28 @@ const strokeOf = (c: Config): StrokeStyle => ({ position: 'center', ...c.strokeS
 const DEG = Math.PI / 180;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
-/** Sweep in degrees: 0 = nothing, 360 = full ellipse. */
-export function sweep(c: Config) {
+/** The portion's angles and inner radius (mirrors Span). */
+export interface Span {
+  start: number;
+  end: number;
+  inner: number;
+}
+
+/** The span from the settings. */
+export const spanOf = (c: Config): Span => {
   const k = cfg(c);
-  let d = k.end - k.start;
+  return { start: k.start, end: k.end, inner: k.inner };
+};
+
+/** The span at a frame: the animated properties (resolved values). */
+export const spanAt = (r: Resolved): Span => ({ start: num(r.arcStart), end: num(r.arcEnd), inner: num(r.innerRadius) });
+
+/** The span of a layer at a frame of the Designer (no data). */
+const spanOfLayer = (l: Layer, frame: number): Span => ({ start: num(propValue(l, 'arcStart', frame)), end: num(propValue(l, 'arcEnd', frame)), inner: num(propValue(l, 'innerRadius', frame)) });
+
+/** Sweep in degrees: 0 = nothing, 360 = full ellipse. */
+export function sweep(s: Span) {
+  let d = s.end - s.start;
   if (d < 0) d += 360;
   return clamp(d, 0, 360);
 }
@@ -59,29 +82,30 @@ function arcTo(cx: number, cy: number, rx: number, ry: number, a0: number, a1: n
   return s;
 }
 
-/** The outline and whether it is closed; null = nothing to draw (mirrors outline). */
-export function outline(c: Config, w: number, h: number): { d: string; closed: boolean } | null {
+/** The outline and whether it is closed; null = nothing to draw (mirrors outline_span). */
+export function outline(c: Config, w: number, h: number, span: Span = spanOf(c)): { d: string; closed: boolean } | null {
   const k = cfg(c);
+  const a0 = span.start;
   const [cx, cy, rx, ry] = [w / 2, h / 2, w / 2, h / 2];
-  const sw = sweep(c);
-  if (sw <= 0.01 || rx <= 0 || ry <= 0) return null;
-  const q = clamp(k.inner, 0, 100) / 100;
+  const sw = sweep(span);
+  if (!Number.isFinite(sw) || sw <= 0.01 || rx <= 0 || ry <= 0) return null;
+  const q = clamp(span.inner, 0, 100) / 100;
   const ring = k.portion === 'sector' && q > 0;
   if (ring && q >= 1) return null;
   const M = (p: [number, number]) => `M${r3(p[0])} ${r3(p[1])}`;
-  const a = pt(cx, cy, rx, ry, k.start);
+  const a = pt(cx, cy, rx, ry, a0);
   if (sw >= 360) {
-    let d = M(a) + arcTo(cx, cy, rx, ry, k.start, k.start + 360) + 'Z';
-    if (ring) d += M(pt(cx, cy, rx * q, ry * q, k.start)) + arcTo(cx, cy, rx * q, ry * q, k.start, k.start - 360) + 'Z';
+    let d = M(a) + arcTo(cx, cy, rx, ry, a0, a0 + 360) + 'Z';
+    if (ring) d += M(pt(cx, cy, rx * q, ry * q, a0)) + arcTo(cx, cy, rx * q, ry * q, a0, a0 - 360) + 'Z';
     return { d, closed: true };
   }
-  const end = k.start + sw;
-  const arc = arcTo(cx, cy, rx, ry, k.start, end);
+  const end = a0 + sw;
+  const arc = arcTo(cx, cy, rx, ry, a0, end);
   if (k.portion === 'arc') return { d: M(a) + arc, closed: false };
   if (k.portion === 'chord') return { d: M(a) + arc + 'Z', closed: true };
   if (ring) {
     const ib = pt(cx, cy, rx * q, ry * q, end);
-    return { d: M(a) + arc + `L${r3(ib[0])} ${r3(ib[1])}` + arcTo(cx, cy, rx * q, ry * q, end, k.start) + 'Z', closed: true };
+    return { d: M(a) + arc + `L${r3(ib[0])} ${r3(ib[1])}` + arcTo(cx, cy, rx * q, ry * q, end, a0) + 'Z', closed: true };
   }
   return { d: `M${cx} ${cy}L${r3(a[0])} ${r3(a[1])}` + arc + 'Z', closed: true };
 }
@@ -114,7 +138,7 @@ export default defineWidget({
   create: () => ({ circle: true, strokeStyle: { position: 'inside' }, props: { width: 600, height: 600 } }),
   ownsLook: true,
   Render: ({ layer, r, w, h, data }) => {
-    const p = outline(layer, w, h);
+    const p = outline(layer, w, h, spanAt(r));
     if (!p) return null;
     const st = { ...strokeOf(layer) };
     if (!p.closed) {
@@ -130,6 +154,12 @@ export default defineWidget({
   },
   Inspector: ({ layer, edit }) => {
     const k = cfg(layer);
+    const frame = useDesigner((s) => s.frame);
+    const quick = (start: number, end: number) =>
+      edit((l) => {
+        setProp(l as Layer, 'arcStart', start, frame);
+        setProp(l as Layer, 'arcEnd', end, frame);
+      });
     return (
       <>
         <Section id="ellipse-shape" title={t('Shape')}>
@@ -145,14 +175,15 @@ export default defineWidget({
               })
             }
           />
-          <Num label={t('Start')} path="start" value={k.start} min={0} max={360} unit="°" />
-          <Num label={t('End')} path="end" value={k.end} min={0} max={720} unit="°" />
+          {/* Animatable (◆ puts them on the timeline). */}
+          <GroupRow layer={layer as Layer} spec={{ label: t('Start'), props: ['arcStart'], min: 0, max: 360, suffix: '°' }} />
+          <GroupRow layer={layer as Layer} spec={{ label: t('End'), props: ['arcEnd'], min: 0, max: 720, suffix: '°' }} />
           <Btns
             label={t('Quick')}
             list={[
-              { label: t('Full'), cls: 'ghost', onClick: () => edit((l) => void ((l.start = 0), (l.end = 360))) },
-              { label: t('Half'), cls: 'ghost', onClick: () => edit((l) => void ((l.start = 270), (l.end = 450))) },
-              { label: t('Quarter'), cls: 'ghost', onClick: () => edit((l) => void ((l.start = 0), (l.end = 90))) },
+              { label: t('Full'), cls: 'ghost', onClick: () => quick(0, 360) },
+              { label: t('Half'), cls: 'ghost', onClick: () => quick(270, 450) },
+              { label: t('Quarter'), cls: 'ghost', onClick: () => quick(0, 90) },
             ]}
           />
           <Seg
@@ -175,7 +206,7 @@ export default defineWidget({
               ['chord', t('Chord')],
             ]}
           />
-          {k.portion === 'sector' && <Num label={t('Inner radius')} path="inner" value={k.inner} min={0} max={100} unit="%" />}
+          {k.portion === 'sector' && <GroupRow layer={layer as Layer} spec={{ label: t('Inner radius'), props: ['innerRadius'], min: 0, max: 100, suffix: '%' }} />}
         </Section>
         {k.portion === 'arc' ? <ArcStroke layer={layer} /> : <Look layer={layer} edit={edit} />}
       </>
@@ -183,31 +214,34 @@ export default defineWidget({
   },
   Overlay: ({ layer, w, h, scale, edit }) => {
     const k = cfg(layer);
+    // The handles move the values at the playhead (a keyframe when animated).
+    const frame = useDesigner((s) => s.frame);
+    const sp = spanOfLayer(layer as Layer, frame);
     // Circle: the box stays square (also after a resize on the stage).
     useEffect(() => {
       if (k.circle && Math.abs(w - h) > 0.5) edit((l) => void (l.props.height = l.props.width), `circle-${layer.id}`);
     }, [k.circle, w, h, edit, layer.id]);
-    const sw = sweep(layer);
-    const q = clamp(k.inner, 0, 100) / 100;
+    const sw = sweep(sp);
+    const q = clamp(sp.inner, 0, 100) / 100;
     const ang = (x: number, y: number) => Math.round((Math.atan2((x - w / 2) / (w / 2), -(y - h / 2) / (h / 2)) / DEG + 360) % 360);
-    const a = pt(w / 2, h / 2, w / 2, h / 2, k.start);
-    const b = pt(w / 2, h / 2, w / 2, h / 2, k.start + sw);
-    const m = pt(w / 2, h / 2, (w / 2) * q, (h / 2) * q, k.start + sw / 2);
+    const a = pt(w / 2, h / 2, w / 2, h / 2, sp.start);
+    const b = pt(w / 2, h / 2, w / 2, h / 2, sp.start + sw);
+    const m = pt(w / 2, h / 2, (w / 2) * q, (h / 2) * q, sp.start + sw / 2);
     const apart = sw >= 360 || sw <= 0.01 ? 22 / scale : 0;
     return (
       <>
-        <Handle x={a[0]} y={a[1]} scale={scale} label={t('Start {angle}°', { angle: Math.round(k.start) })} onDrag={(x, y) => edit((l) => void (l.start = ang(x, y)), `estart-${layer.id}`)} />
+        <Handle x={a[0]} y={a[1]} scale={scale} label={t('Start {angle}°', { angle: Math.round(sp.start) })} onDrag={(x, y) => edit((l) => setProp(l as Layer, 'arcStart', ang(x, y), frame), `estart-${layer.id}`)} />
         <Handle
           x={b[0] + apart}
           y={b[1]}
           scale={scale}
-          label={t('End {angle}° · sweep {sweep}°', { angle: Math.round(k.end), sweep: Math.round(sw) })}
+          label={t('End {angle}° · sweep {sweep}°', { angle: Math.round(sp.end), sweep: Math.round(sw) })}
           onDrag={(x, y) =>
             edit((l) => {
               let e = ang(x, y);
-              const s = cfg(l).start;
+              const s = num(propValue(l as Layer, 'arcStart', frame));
               if (e <= s) e += 360; // the end always sweeps clockwise from the start
-              l.end = e;
+              setProp(l as Layer, 'arcEnd', e, frame);
             }, `eend-${layer.id}`)
           }
         />
@@ -216,11 +250,11 @@ export default defineWidget({
             x={m[0]}
             y={m[1]}
             scale={scale}
-            label={t('Inner radius {pct} %', { pct: Math.round(k.inner) })}
+            label={t('Inner radius {pct} %', { pct: Math.round(sp.inner) })}
             onDrag={(x, y) => {
               const dx = (x - w / 2) / (w / 2);
               const dy = (y - h / 2) / (h / 2);
-              edit((l) => void (l.inner = Math.round(clamp(Math.hypot(dx, dy) * 100, 0, 100))), `einner-${layer.id}`);
+              edit((l) => setProp(l as Layer, 'innerRadius', Math.round(clamp(Math.hypot(dx, dy) * 100, 0, 100)), frame), `einner-${layer.id}`);
             }}
           />
         )}
@@ -230,12 +264,13 @@ export default defineWidget({
   warnings: (layer, { r }) => {
     const k = cfg(layer);
     const out: Warning[] = [];
-    const sw = sweep(layer);
+    const sp = r ? spanAt(r) : spanOf(layer);
+    const sw = sweep(sp);
     const w = num(r?.width ?? layer.props.width ?? 0);
     const h = num(r?.height ?? layer.props.height ?? 0);
     const width = num(r?.strokeWidth ?? layer.props.strokeWidth ?? 0);
     if (sw <= 0.01) out.push({ level: 'info', text: t('Start and end are equal (0° of sweep): nothing is drawn.') });
-    if (k.portion === 'sector' && k.inner >= 100 && sw > 0.01) out.push({ level: 'warn', text: t('Inner radius at 100 %: the ring has no thickness, the shape is invisible.') });
+    if (k.portion === 'sector' && sp.inner >= 100 && sw > 0.01) out.push({ level: 'warn', text: t('Inner radius at 100 %: the ring has no thickness, the shape is invisible.') });
     if (k.portion !== 'arc' && layer.fillStyle?.kind === 'none' && !width) out.push({ level: 'warn', text: t('No fill and no stroke: the shape is invisible.') });
     const flat = Math.min(w, h) / Math.max(w, h, 1);
     if (flat < 0.12 && (width || k.portion === 'arc')) out.push({ level: 'ok', text: t('Very flat ellipse: the outline is computed in stage pixels, the stroke keeps the same thickness all round.') });

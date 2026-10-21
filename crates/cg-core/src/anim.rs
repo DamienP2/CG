@@ -20,7 +20,23 @@ pub fn default_value(prop: Prop) -> Value {
         FontSize => Value::Number(48.0),
         Fill => Value::Color(Color::WHITE),
         Stroke => Value::Color(Color::TRANSPARENT),
+        ArcStart | InnerRadius => Value::Number(0.0),
+        ArcEnd => Value::Number(360.0),
     }
+}
+
+/// Value of a property of `layer` when neither set nor animated: an
+/// ellipse's arc is its settings (older layers have them only there).
+pub fn layer_default(layer: &Layer, prop: Prop) -> Value {
+    if let LayerKind::Ellipse { x: c } = &layer.kind {
+        match prop {
+            Prop::ArcStart => return Value::Number(f64::from(c.start)),
+            Prop::ArcEnd => return Value::Number(f64::from(c.end)),
+            Prop::InnerRadius => return Value::Number(f64::from(c.inner)),
+            _ => {}
+        }
+    }
+    default_value(prop)
 }
 
 fn lerp_value(a: Value, b: Value, t: f64) -> Value {
@@ -164,7 +180,7 @@ pub fn resolve_layer<'a>(
                     .props
                     .get(&p)
                     .copied()
-                    .unwrap_or_else(|| default_value(p)),
+                    .unwrap_or_else(|| layer_default(layer, p)),
             };
             (p, v)
         })
@@ -244,6 +260,33 @@ mod tests {
         let track = vec![kf(0.0, 1.0, Easing::Hold), kf(10.0, 2.0, Easing::Linear)];
         assert_eq!(sample_track(&track, 9.9), Some(Value::Number(1.0)));
         assert_eq!(sample_track(&track, 10.0), Some(Value::Number(2.0)));
+    }
+
+    #[test]
+    fn an_ellipse_arc_defaults_to_its_settings() {
+        let mut layer: Layer = serde_json::from_str(
+            r#"{"id":"e","name":"e","type":"ellipse","start":90,"end":270,"inner":40}"#,
+        )
+        .unwrap();
+        let r = resolve_layer(&layer, 0.0, &Data::new(), 0.0);
+        assert_eq!(r.num(Prop::ArcStart), 90.0);
+        assert_eq!(r.num(Prop::ArcEnd), 270.0);
+        assert_eq!(r.num(Prop::InnerRadius), 40.0);
+        // A value set, then keyframes, win over the settings.
+        layer.props.insert(Prop::ArcStart, Value::Number(10.0));
+        layer.tracks.insert(
+            Prop::InnerRadius,
+            vec![kf(0.0, 0.0, Easing::Linear), kf(10.0, 80.0, Easing::Linear)],
+        );
+        let r = resolve_layer(&layer, 5.0, &Data::new(), 0.0);
+        assert_eq!(r.num(Prop::ArcStart), 10.0);
+        assert_eq!(r.num(Prop::InnerRadius), 40.0);
+        // Other layers: the plain defaults.
+        let rect: Layer = serde_json::from_str(r#"{"id":"a","name":"a","type":"rect"}"#).unwrap();
+        assert_eq!(
+            resolve_layer(&rect, 0.0, &Data::new(), 0.0).num(Prop::ArcEnd),
+            360.0
+        );
     }
 
     #[test]

@@ -177,6 +177,7 @@ function portsOf(l: Layer): string[] {
   if (l.type === 'rect' || l.type === 'group' || l.type === 'progress') props.push('cornerRadius');
   if (TEXT_LIKE.has(l.type)) props.push('fontSize', 'letterSpacing');
   if (l.type === 'image') props.push('cropLeft', 'cropRight', 'cropTop', 'cropBottom');
+  if (l.type === 'ellipse') props.push('arcStart', 'arcEnd', 'innerRadius');
   return props;
 }
 const isColor = (p: string) => p === 'fill' || p === 'stroke';

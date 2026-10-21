@@ -12591,6 +12591,14 @@ a.lib-nav-item {
 }
 
 /* Designer clipboard: copy / paste animation buttons and the rows' right-click menu (designer/clipboard.ts). */
+/* On a property row: shown on hover only (room for the values). */
+.tl-label.prop .tl-off.tl-anim {
+  display: none;
+  opacity: 1;
+}
+.tl-label.prop:hover .tl-off.tl-anim {
+  display: grid;
+}
 .tl-off.tl-anim:hover,
 .tl-label .row-actions button.tl-anim:hover {
   color: var(--accent-2);
@@ -12616,4 +12624,169 @@ a.lib-nav-item {
   font-style: normal;
   font-size: 11px;
   color: var(--text-3);
+}
+
+/* Operator · NEXT with an auto next on its way: its countdown, a bar filling the button. */
+.opx-foot .opx-btn.big.opx-next-auto {
+  position: relative;
+  overflow: hidden;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  height: 48px;
+  padding: 0 10px;
+}
+.opx-next-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+.opx-next-top,
+.opx-next-sub {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+}
+.opx-next-n {
+  font: 800 22px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.opx-next-sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.92;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Operator · lists of data rows: search and pages (8 at a time). */
+.opg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  flex: none;
+}
+.opg-search {
+  flex: 1;
+  min-width: 90px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px 0 8px;
+  border-radius: 5px;
+  background: var(--op-1, #151722);
+  border: 1px solid var(--line);
+  color: var(--text-3);
+}
+.opg-search:focus-within {
+  border-color: var(--accent);
+}
+.opg-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  padding: 0;
+}
+.opg-search button {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  padding: 2px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.opg-count {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.opg .opx-sq {
+  width: 26px;
+  height: 26px;
+}
+.opg .opx-sq:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Operator · rows of a Table typed by the operator. */
+.opt .opg {
+  padding: 0;
+}
+.opt-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.opt table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.opt th,
+.opt td {
+  padding: 2px;
+  border-bottom: 1px solid var(--line);
+}
+.opt thead th {
+  background: var(--op-2, #1c1f2c);
+}
+.opt input {
+  width: 100%;
+  min-width: 70px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 5px;
+  font-size: 12px;
+}
+.opt thead input {
+  font-weight: 700;
+}
+.opt input:hover {
+  border-color: var(--line);
+}
+.opt input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--op-1, #151722);
+}
+.opt-n {
+  width: 28px;
+  text-align: right;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  padding-right: 6px !important;
+}
+.opt-x {
+  width: 24px;
+}
+.opt-x button {
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 3px;
+}
+.opt-x button:hover {
+  color: var(--live);
 }

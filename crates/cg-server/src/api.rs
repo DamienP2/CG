@@ -546,13 +546,13 @@ async fn create_project(
     }
     check_format(p.width, p.height, p.frame_rate)?;
     if n.from.is_none() {
-        // A new project starts with one (draft) template to design.
+        // A new project starts with one template to design, already
+        // published: the operator sees it right away.
         let zone = p.zones.first().map(|z| z.id.clone()).unwrap_or_default();
-        p.drafts.push(cg_core::Template::blank(
-            "Template 1",
-            &zone,
-            p.frame_rate.as_f64(),
-        ));
+        let blank = cg_core::Template::blank("Template 1", &zone, p.frame_rate.as_f64());
+        let id = blank.id.clone();
+        p.drafts.push(blank);
+        p.publish(&id);
     }
     if let Some(src) = &n.from {
         // The copy gets its own media, and its templates point to them.

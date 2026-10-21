@@ -93,7 +93,20 @@ export const DEFAULTS: Record<Prop, Value> = {
   cropRight: 0,
   cropTop: 0,
   cropBottom: 0,
+  arcStart: 0,
+  arcEnd: 360,
+  innerRadius: 0,
 };
+
+/** Mirror of anim::layer_default: a property neither set nor animated; an ellipse's arc is its settings (older layers have them only there). */
+export function layerDefault(layer: Layer, p: Prop): Value {
+  if (layer.type === 'ellipse') {
+    if (p === 'arcStart') return layer.start ?? DEFAULTS.arcStart;
+    if (p === 'arcEnd') return layer.end ?? DEFAULTS.arcEnd;
+    if (p === 'innerRadius') return layer.inner ?? DEFAULTS.innerRadius;
+  }
+  return DEFAULTS[p];
+}
 
 function lerp(a: Value, b: Value, t: number): Value {
   if (typeof a === 'number' && typeof b === 'number') return a + (b - a) * t;
@@ -193,14 +206,14 @@ export function resolveLayer(layer: Layer, frame: number, data: Data, hold = 0):
     if (typeof bound === 'number' && typeof animated === 'number') {
       const atHold = sampleTrack(track, hold);
       out[p] = animated + bound - (typeof atHold === 'number' ? atHold : animated);
-    } else out[p] = bound ?? animated ?? layer.props?.[p] ?? DEFAULTS[p];
+    } else out[p] = bound ?? animated ?? layer.props?.[p] ?? layerDefault(layer, p);
   }
   return out;
 }
 
 /** Static or animated value of a property, without bindings (for editors). */
 export function propValue(layer: Layer, prop: Prop, frame: number): Value {
-  return sampleTrack(layer.tracks?.[prop], frame) ?? layer.props?.[prop] ?? DEFAULTS[prop];
+  return sampleTrack(layer.tracks?.[prop], frame) ?? layer.props?.[prop] ?? layerDefault(layer, prop);
 }
 
 export const num = (v: Value) => (typeof v === 'number' ? v : 0);
