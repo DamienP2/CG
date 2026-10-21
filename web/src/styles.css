@@ -352,6 +352,7 @@ code {
 .brand svg {
   display: block;
   flex: none;
+  overflow: visible;
 }
 .brand em {
   font-style: normal;
@@ -1802,27 +1803,34 @@ code {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 28px;
+  padding: 34px 30px 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
-  position: relative;
 }
-.login-card > .muted {
-  margin: -8px 0 4px;
+.login-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 22px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
 }
-.brand.big {
-  gap: 14px;
+.login-head .muted {
+  margin: 0;
+  font-size: 12.5px;
 }
-.brand.big .brand-name {
-  font-size: 26px;
+.brand.stacked {
+  flex-direction: column;
+  gap: 12px;
 }
-.brand.big .brand-rule {
-  height: 24px;
+.brand.stacked .brand-name {
+  font-size: 46px;
 }
-.brand.big .brand-sign {
-  gap: 7px;
+.brand.stacked .brand-sign {
+  gap: 8px;
 }
 .login-intro {
   display: flex;
@@ -12406,9 +12414,9 @@ a.lib-nav-item {
   color: var(--accent-2);
 }
 .login-lang {
-  position: absolute;
-  top: 14px;
-  right: 14px;
+  position: fixed;
+  top: 16px;
+  right: 16px;
 }
 /* A colour that can stay empty (kit ColorPick `none`). */
 .pp-none {

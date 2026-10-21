@@ -33,16 +33,18 @@ export function Login() {
 
   return (
     <div className="login-page">
+      <div className="lang-switch login-lang" role="group" aria-label={t('Language')}>
+        {LANGS.map((l) => (
+          <button type="button" key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => pickLang(l.id)}>
+            {l.label}
+          </button>
+        ))}
+      </div>
       <form className="login-card" onSubmit={submit}>
-        <Brand big />
-        {/* The server's own name, when it has one other than the product's. */}
-        {auth?.serverName && auth.serverName !== 'Strata' && <p className="muted">{auth.serverName}</p>}
-        <div className="lang-switch login-lang" role="group" aria-label={t('Language')}>
-          {LANGS.map((l) => (
-            <button type="button" key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => pickLang(l.id)}>
-              {l.label}
-            </button>
-          ))}
+        <div className="login-head">
+          <Brand stacked />
+          {/* The server's own name, when it has one other than the product's. */}
+          {auth?.serverName && auth.serverName !== 'Strata' && <p className="muted">{auth.serverName}</p>}
         </div>
         {firstRun ? (
           <div className="login-intro">

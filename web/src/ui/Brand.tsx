@@ -21,7 +21,7 @@ export function FigaroF({ height }: { height: number }) {
 /** "AudioVisuel", the two words joined on one baseline. */
 export function AudioVisuel({ height }: { height: number }) {
   return (
-    <svg className="brand-av" viewBox="0 67 756 100" width={(height * 756) / 100} height={height} aria-hidden="true">
+    <svg className="brand-av" viewBox="0 65.5 756 104" width={(height * 756) / 104} height={height} aria-hidden="true">
       <g fill="currentColor">
         {AUDIO.map((d, i) => (
           <path key={i} d={d} />
@@ -36,13 +36,13 @@ export function AudioVisuel({ height }: { height: number }) {
   );
 }
 
-/** Strata | F AudioVisuel. `big`: the login page. */
-export function Brand({ big = false }: { big?: boolean }) {
-  const k = big ? 1.35 : 1;
+/** Strata | F AudioVisuel (top bar). `stacked`: Strata above its signature (login page). */
+export function Brand({ stacked = false }: { stacked?: boolean }) {
+  const k = stacked ? 1.7 : 1;
   return (
-    <div className={`brand ${big ? 'big' : ''}`} aria-label="Strata, Le Figaro AudioVisuel">
+    <div className={`brand ${stacked ? 'stacked' : ''}`} aria-label="Strata, Le Figaro AudioVisuel">
       <span className="brand-name">Strata</span>
-      <span className="brand-rule" />
+      {!stacked && <span className="brand-rule" />}
       <span className="brand-sign">
         <FigaroF height={14 * k} />
         <AudioVisuel height={11 * k} />

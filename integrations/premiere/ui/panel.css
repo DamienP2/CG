@@ -74,8 +74,8 @@ textarea:focus {
   border-bottom: 1px solid var(--line);
 }
 .logo {
-  width: 22px;
-  height: 22px;
+  width: auto;
+  height: 20px;
   flex: none;
 }
 .head select {
