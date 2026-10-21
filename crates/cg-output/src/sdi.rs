@@ -54,8 +54,9 @@ pub struct SdiConfig {
     /// Fill only, no key.
     #[serde(default)]
     pub fill_only: bool,
-    /// Lock to the card's reference input: the channel then runs on the
-    /// card's frame clock (see [`OutputSink::frame_clock`]).
+    /// The card is wired to the house reference (genlock). A channel with
+    /// the DeckLink clock reference runs on the card's frame clock (see
+    /// [`OutputSink::frame_clock`]).
     #[serde(default)]
     pub genlock: bool,
 }
@@ -140,9 +141,9 @@ impl DeckLinkOutput {
             genlock = config.genlock,
             "DeckLink output started"
         );
-        let clock = config
-            .genlock
-            .then(|| Arc::new(CardClock(handle.clone())) as Arc<dyn FrameClock>);
+        // Offered always: a channel with the DeckLink reference follows it
+        // (locked to the house reference when one comes into the card).
+        let clock = Some(Arc::new(CardClock(handle.clone())) as Arc<dyn FrameClock>);
         let slot = Arc::new(Slot::default());
         let busy_us = Arc::new(AtomicU64::new(0));
         let thread = {

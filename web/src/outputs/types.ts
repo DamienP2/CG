@@ -150,6 +150,8 @@ export interface ChannelConfig {
   renderAhead?: number;
   /** Destinations wired to no format: kept, not started. */
   unwired?: OutputsConfig;
+  /** What the channel clock follows (none: the Hardware default). */
+  clock?: ClockReference | null;
 }
 
 export interface Location {
@@ -216,13 +218,48 @@ export interface St2110Flow {
   fill: string;
   key?: string | null;
   interface?: string | null;
+  /** SMPTE 2022-7: the same packets again on the blue network, to these destinations. */
+  blue?: string | null;
+  blueKey?: string | null;
+  /** Blue interface; none = the Media blue role. */
+  blueInterface?: string | null;
   ttl: number;
   payloadType: number;
+}
+
+/** Which network interface (by name) does what. "" = no particular one. */
+export interface NetworkRoles {
+  control: string;
+  ndi: string;
+  ndiDiscovery: string;
+  mediaRed: string;
+  mediaBlue: string;
+  ptp: string;
+}
+
+export type ClockReference = 'free' | 'ptp' | 'decklink';
+
+export interface SyncConfig {
+  reference: ClockReference;
+  ptpDomain: number;
+  taiOffset: number;
 }
 
 export interface HardwareConfig {
   sdi: { cards: SdiCard[]; outputs: SdiOutputDef[]; inputs: SdiInputDef[] };
   st2110: { flows: St2110Flow[] };
+  network?: NetworkRoles;
+  sync?: SyncConfig;
+}
+
+export const emptyNetwork = (): NetworkRoles => ({ control: '', ndi: '', ndiDiscovery: '', mediaRed: '', mediaBlue: '', ptp: '' });
+export const emptySync = (): SyncConfig => ({ reference: 'free', ptpDomain: 127, taiOffset: 37 });
+
+/** NTP / PTP status (crates/cg-server/src/sync.rs). */
+export interface SyncStatus {
+  ntp: { tool?: string | null; synced?: boolean | null; source?: string | null; offsetMs?: number | null };
+  ptp: { running: boolean; message?: string | null; domain: number; portState?: string | null; grandmaster?: string | null; offsetNs?: number | null; locked: boolean };
+  checkedAt: number;
 }
 
 export const emptyHardware = (): HardwareConfig => ({ sdi: { cards: [], outputs: [], inputs: [] }, st2110: { flows: [] } });
@@ -235,6 +272,11 @@ export interface HardwareInfo {
   st2110Receive: boolean;
   interfaces: { name: string; ip: string; loopback: boolean }[];
   os: string;
+  decklinkDevices?: string[];
+  decklinkError?: string | null;
+  sync?: SyncStatus | null;
+  /** The NDI network settings changed since the NDI runtime started. */
+  ndiRestart?: boolean;
 }
 
 export interface SystemInfo {

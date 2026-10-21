@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { emptyHardware, type HardwareConfig, type SdiCard, type SdiModel, type SdiMode, type SdiOutput, type SdiOutputDef, type ServerConfig, type St2110Flow, type St2110Output } from '../outputs/types';
+import { emptyHardware, emptyNetwork, emptySync, type ClockReference, type HardwareConfig, type SdiCard, type SdiModel, type SdiMode, type SdiOutput, type SdiOutputDef, type ServerConfig, type St2110Flow, type St2110Output } from '../outputs/types';
 
 /*
  * The video hardware of the server (Hardware page), shared with the Video
@@ -65,8 +65,15 @@ export const hardwareOf = (c: ServerConfig): HardwareConfig => {
   hw.sdi.inputs ??= [];
   hw.st2110 ??= { flows: [] };
   hw.st2110.flows ??= [];
+  // Always sent by the server; older ones lack them.
+  hw.network ??= emptyNetwork();
+  hw.sync ??= emptySync();
   return hw;
 };
+
+export const CLOCKS: ClockReference[] = ['free', 'ptp', 'decklink'];
+
+export const clockLabel = (r: ClockReference) => (r === 'ptp' ? 'PTP' : r === 'decklink' ? 'DeckLink (genlock)' : t('Free'));
 
 /** "Duo 2 · SDI 1 + 2". */
 export function sdiOutputLabel(hw: HardwareConfig, d: SdiOutputDef): string {

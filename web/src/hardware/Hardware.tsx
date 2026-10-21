@@ -1,13 +1,13 @@
-import { ArrowDownToLine, ArrowUpFromLine, CircleCheck, CircleX, CircuitBoard, Info, Network, Plus, Trash2, TriangleAlert, Tv } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, CircleCheck, CircleX, CircuitBoard, Clock, Info, Network, Plus, RefreshCw, Router, Trash2, TriangleAlert, Tv } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t, tc, tn } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
-import { Card, SaveBar } from '../settings/ui';
+import { Card, Field, SaveBar } from '../settings/ui';
 import { useServerConfig } from '../settings/serverConfig';
-import { joinAddr, splitAddr, type HardwareConfig, type HardwareInfo, type SdiCard, type SdiModel, type SdiMode, type ServerConfig, type St2110Flow } from '../outputs/types';
+import { joinAddr, splitAddr, type ClockReference, type HardwareConfig, type HardwareInfo, type NetworkRoles, type SdiCard, type SdiModel, type SdiMode, type ServerConfig, type St2110Flow } from '../outputs/types';
 import { api, can, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
-import { ENCODINGS, MODES, SDI_MODELS, deviceOf, dropUsers, hardwareOf, modelOf, portsOf, roleOf, syncUsers, usersOf, type PortCap, type Role } from './model';
+import { CLOCKS, ENCODINGS, MODES, SDI_MODELS, clockLabel, deviceOf, dropUsers, hardwareOf, modelOf, portsOf, roleOf, syncUsers, usersOf, type PortCap, type Role } from './model';
 import './hardware.css';
 
 /*
@@ -17,7 +17,9 @@ import './hardware.css';
  * of the SDI outputs or ST 2110 flows declared here.
  */
 
-type Section = 'sdi' | 'st2110';
+type Section = 'sdi' | 'st2110' | 'network' | 'sync';
+const SECTIONS: Section[] = ['sdi', 'st2110', 'network', 'sync'];
+const sectionOf = (hash: string): Section => SECTIONS.find((s) => `#${s}` === hash) ?? 'sdi';
 
 /** Colours of the connector roles (SDI outputs are orange on Video streams, inputs violet). */
 const ROLE: Record<Role, { label: string; color: string }> = {
@@ -41,17 +43,19 @@ export function Hardware() {
   const toast = useApp((s) => s.toast);
   const { info, cfg, edit, dirty, saving, save, discard } = useServerConfig('hardware');
   const [det, setDet] = useState<HardwareInfo | null>(null);
-  const [section, setSection] = useState<Section>(() => (location.hash === '#st2110' ? 'st2110' : 'sdi'));
+  const [section, setSection] = useState<Section>(() => sectionOf(location.hash));
 
   useEffect(() => {
-    const follow = () => setSection(location.hash === '#st2110' ? 'st2110' : 'sdi');
+    const follow = () => setSection(sectionOf(location.hash));
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);
   }, []);
-  useEffect(() => {
+  const detect = () =>
     api<HardwareInfo>('GET', '/api/hardware')
       .then(setDet)
       .catch((e) => toast((e as Error).message, 'error'));
+  useEffect(() => {
+    void detect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -71,12 +75,13 @@ export function Hardware() {
     setSection(s);
     history.replaceState(null, '', `#${s}`);
   };
-  const outFlows = hw.st2110.flows.filter((f) => f.direction === 'output').length;
   const nav = (
     <>
       <NavSection>{t('Hardware')}</NavSection>
       <NavItem on={section === 'sdi'} icon={<Tv size={15} />} label={t('SDI (DeckLink)')} count={hw.sdi.cards.length} status={det ? (det.decklinkSupport ? 'ok' : 'warn') : undefined} onClick={() => go('sdi')} />
       <NavItem on={section === 'st2110'} icon={<Network size={15} />} label="ST 2110" count={hw.st2110.flows.length} onClick={() => go('st2110')} />
+      <NavItem on={section === 'network'} icon={<Router size={15} />} label={t('Network')} status={det?.ndiRestart ? 'warn' : undefined} onClick={() => go('network')} />
+      <NavItem on={section === 'sync'} icon={<Clock size={15} />} label={t('Synchronisation')} status={det?.sync ? syncDot(hw, cfg, det) : undefined} onClick={() => go('sync')} />
       <p className="lib-nav-hint">{t('Declared here, used in Video streams: an SDI or ST 2110 destination picks one of these outputs.')}</p>
       {det && (
         <div className="lib-nav-foot">
@@ -89,21 +94,47 @@ export function Hardware() {
 
   return (
     <SidePage nav={nav} className="hw-page">
-      <PageHead
-        title={section === 'sdi' ? t('SDI (DeckLink)') : 'ST 2110'}
-        sub={
-          section === 'sdi'
-            ? `${tn(hw.sdi.cards.length, '{n} card', '{n} cards')} · ${tn(hw.sdi.outputs.length, '{n} output', '{n} outputs')} · ${tn(hw.sdi.inputs.length, '{n} input', '{n} inputs')}`
-            : `${tn(outFlows, '{n} output flow', '{n} output flows')} · ${tn(hw.st2110.flows.length - outFlows, '{n} input flow', '{n} input flows')}`
-        }
-      />
-      {section === 'sdi' ? <SdiSection hw={hw} det={det} cfg={cfg} editHw={editHw} /> : <St2110Section hw={hw} det={det} cfg={cfg} editHw={editHw} />}
+      <PageHead title={TITLES[section]()} sub={subtitle(section, hw, cfg)} />
+      {section === 'sdi' && <SdiSection hw={hw} det={det} cfg={cfg} editHw={editHw} />}
+      {section === 'st2110' && <St2110Section hw={hw} det={det} cfg={cfg} editHw={editHw} />}
+      {section === 'network' && <NetworkSection hw={hw} det={det} editHw={editHw} />}
+      {section === 'sync' && <SyncSection hw={hw} det={det} cfg={cfg} editHw={editHw} onRefresh={() => void detect()} />}
       <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={discard} />
     </SidePage>
   );
 }
 
 type EditHw = (fn: (hw: HardwareConfig, c: ServerConfig) => void) => void;
+
+const TITLES: Record<Section, () => string> = {
+  sdi: () => t('SDI (DeckLink)'),
+  st2110: () => 'ST 2110',
+  network: () => t('Network'),
+  sync: () => t('Synchronisation'),
+};
+
+function subtitle(section: Section, hw: HardwareConfig, cfg: ServerConfig): string {
+  const outFlows = hw.st2110.flows.filter((f) => f.direction === 'output').length;
+  switch (section) {
+    case 'sdi':
+      return `${tn(hw.sdi.cards.length, '{n} card', '{n} cards')} · ${tn(hw.sdi.outputs.length, '{n} output', '{n} outputs')} · ${tn(hw.sdi.inputs.length, '{n} input', '{n} inputs')}`;
+    case 'st2110':
+      return `${tn(outFlows, '{n} output flow', '{n} output flows')} · ${tn(hw.st2110.flows.length - outFlows, '{n} input flow', '{n} input flows')}`;
+    case 'network':
+      return t('Which interface carries control, NDI and the ST 2110 media networks');
+    case 'sync':
+      return t('Default reference: {reference}', { reference: clockLabel(hw.sync!.reference) }) + (cfg.channels.some((c) => c.clock) ? ` · ${t('some channels choose their own')}` : '');
+  }
+}
+
+/** The references the channels use, resolved. */
+const referencesOf = (hw: HardwareConfig, cfg: ServerConfig) => new Set(cfg.channels.map((c) => c.clock ?? hw.sync!.reference));
+
+function syncDot(hw: HardwareConfig, cfg: ServerConfig, det: HardwareInfo): 'ok' | 'warn' {
+  const s = det.sync!;
+  if (referencesOf(hw, cfg).has('ptp') && !s.ptp.locked) return 'warn';
+  return s.ntp.synced === false ? 'warn' : 'ok';
+}
 
 /** Confirms the removal of something Video streams uses (its destinations and inputs go too). */
 async function confirmUsers(cfg: ServerConfig, id: string, what: string): Promise<boolean> {
@@ -134,12 +165,23 @@ function Detection({ det }: { det: HardwareInfo | null }) {
         {det.decklinkSupport ? <CircleCheck size={16} /> : <TriangleAlert size={16} />}
         <div>
           <strong>{det.decklinkSupport ? t('This server drives DeckLink cards') : t('This server is built without DeckLink support')}</strong>
-          <span>{det.decklinkSupport ? t('SDI outputs and inputs start with the engine.') : t('SDI outputs and inputs can be set up, but report “DeckLink support is not built” until a server with it is installed.')}</span>
+          <span>{det.decklinkSupport ? t('SDI outputs and inputs start with the engine.') : t('SDI outputs and inputs can be set up, but report “DeckLink support is not built” until a server with it is installed (Linux packages are built without it).')}</span>
         </div>
       </div>
-      <p className="hw-note">
-        <Info size={13} /> {t('Cards cannot be listed without the DeckLink SDK: declare yours below, with their model and device index.')}
-      </p>
+      {det.decklinkDevices && det.decklinkDevices.length > 0 ? (
+        <div className="hw-det-devices">
+          <span className="set-label">{t('Devices seen by the driver')}</span>
+          {det.decklinkDevices.map((d, i) => (
+            <span key={i} className="chip">
+              <code>{i}</code> {d}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="hw-note">
+          <Info size={13} /> {det.decklinkSupport && det.decklinkError ? det.decklinkError : t('Declare your cards below, with their model and device index (the order of Desktop Video).')}
+        </p>
+      )}
     </div>
   );
 }
@@ -566,7 +608,7 @@ function St2110Section({ hw, det, cfg, editHw }: { hw: HardwareConfig; det: Hard
             ))}
           </div>
         )}
-        <span className="set-hint">{t('ST 2110 needs a media network on its own interface, with PTP: keep this server PTP-disciplined (ptp4l + phc2sys on Linux).')}</span>
+        <span className="set-hint">{t('ST 2110 needs a media network on its own interface, with PTP: keep this server PTP-disciplined (ptp4l + phc2sys on Linux). The Media red and blue interfaces are set in Network.')}</span>
       </Card>
 
       <Card
@@ -627,7 +669,7 @@ function St2110Section({ hw, det, cfg, editHw }: { hw: HardwareConfig; det: Hard
                 <label className="set-field wide">
                   <span className="set-label">{t('Network interface')}</span>
                   <select value={f.interface ?? ''} onChange={(e) => editFlow(f.id, (x) => void (x.interface = e.target.value || null))}>
-                    <option value="">{t('System default')}</option>
+                    <option value="">{roleDefault(hw.network!.mediaRed, ifaces)}</option>
                     {f.interface && !ifaces.some((i) => i.ip === f.interface) && <option value={f.interface}>{f.interface}</option>}
                     {ifaces.map((i) => (
                       <option key={i.ip} value={i.ip}>
@@ -667,10 +709,278 @@ function St2110Section({ hw, det, cfg, editHw }: { hw: HardwareConfig; det: Hard
                   <input type="number" min={96} max={127} value={f.payloadType} onChange={(e) => editFlow(f.id, (x) => void (x.payloadType = Math.max(96, Math.min(127, Math.round(+e.target.value) || 96))))} />
                 </label>
               </div>
+              <label className="hw-check hw-blue-toggle">
+                <input
+                  type="checkbox"
+                  checked={!!f.blue}
+                  onChange={(e) =>
+                    editFlow(f.id, (x) => {
+                      if (!e.target.checked) return void (x.blue = x.blueKey = x.blueInterface = null);
+                      // Blue groups default to the next /16 of the red ones (239.100.x → 239.101.x).
+                      const shift = (a: string) => a.replace(/^(\d+)\.(\d+)\./, (_, a1, a2) => `${a1}.${Math.min(255, +a2 + 1)}.`);
+                      x.blue = shift(x.fill);
+                      x.blueKey = x.key ? shift(x.key) : null;
+                    })
+                  }
+                />
+                <span>{t('SMPTE 2022-7: also send on the blue network')}</span>
+              </label>
+              {f.blue && <BlueLeg f={f} two={two} ifaces={ifaces} blueRole={hw.network!.mediaBlue} editFlow={editFlow} />}
             </div>
           );
         })}
         <span className="set-hint">{t('Fill + Key: two ST 2110-20 streams, what most vision mixers and keyers expect. RGBA and YCbCrA carry the alpha in one stream, for receivers that read it.')}</span>
+      </Card>
+    </>
+  );
+}
+
+/** The label of "no interface chosen": the network role's one, when set. */
+function roleDefault(role: string, ifaces: HardwareInfo['interfaces']): string {
+  if (!role) return t('System default');
+  const ip = ifaces.find((i) => i.name === role)?.ip;
+  return t('Network role: {iface}', { iface: ip ? `${role} — ${ip}` : role });
+}
+
+function BlueLeg({ f, two, ifaces, blueRole, editFlow }: { f: St2110Flow; two: boolean; ifaces: HardwareInfo['interfaces']; blueRole: string; editFlow: (id: string, fn: (f: St2110Flow) => void) => void }) {
+  const [bip, bport] = splitAddr(f.blue);
+  const [bkip, bkport] = splitAddr(f.blueKey);
+  return (
+    <div className="hw-blue">
+      <label className="set-field wide">
+        <span className="set-label">{t('Blue interface')}</span>
+        <select value={f.blueInterface ?? ''} onChange={(e) => editFlow(f.id, (x) => void (x.blueInterface = e.target.value || null))}>
+          <option value="">{roleDefault(blueRole, ifaces)}</option>
+          {f.blueInterface && !ifaces.some((i) => i.ip === f.blueInterface) && <option value={f.blueInterface}>{f.blueInterface}</option>}
+          {ifaces.map((i) => (
+            <option key={i.ip} value={i.ip}>
+              {i.name} — {i.ip}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="set-field">
+        <span className="set-label">{two ? t('Blue fill — multicast') : t('Blue stream — multicast')}</span>
+        <input value={bip} placeholder="239.101.1.1" spellCheck={false} onChange={(e) => editFlow(f.id, (x) => void (x.blue = joinAddr(e.target.value, bport)))} />
+      </label>
+      <label className="set-field hw-num">
+        <span className="set-label">{t('Port')}</span>
+        <input type="number" min={1} max={65535} value={bport} onChange={(e) => editFlow(f.id, (x) => void (x.blue = joinAddr(bip, e.target.value)))} />
+      </label>
+      {two && (
+        <>
+          <label className="set-field">
+            <span className="set-label">{t('Blue key — multicast')}</span>
+            <input value={bkip} placeholder="239.101.1.2" spellCheck={false} onChange={(e) => editFlow(f.id, (x) => void (x.blueKey = e.target.value.trim() ? joinAddr(e.target.value, bkport || '5004') : null))} />
+          </label>
+          <label className="set-field hw-num">
+            <span className="set-label">{t('Port')}</span>
+            <input type="number" min={1} max={65535} value={bkport} disabled={!f.blueKey} onChange={(e) => editFlow(f.id, (x) => void (x.blueKey = joinAddr(bkip, e.target.value)))} />
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------- network ----
+
+const ROLES: { key: Exclude<keyof NetworkRoles, 'ndiDiscovery'>; label: string; hint: string; color: string }[] = [
+  { key: 'control', label: 'Control', hint: 'The web interface and the API listen on this one only (and on 127.0.0.1).', color: '#9aa3c7' },
+  { key: 'ndi', label: 'NDI', hint: 'NDI sends and looks for sources on this one only.', color: '#34d399' },
+  { key: 'mediaRed', label: 'Media red (ST 2110)', hint: 'Primary ST 2110 network: flows without an interface of their own go out here.', color: '#f87171' },
+  { key: 'mediaBlue', label: 'Media blue (ST 2110)', hint: 'Secondary network of SMPTE 2022-7 flows.', color: '#60a5fa' },
+  { key: 'ptp', label: 'PTP', hint: 'The interface ptp4l runs on (its clock disciplines the system clock).', color: '#fbbf24' },
+];
+
+function NetworkSection({ hw, det, editHw }: { hw: HardwareConfig; det: HardwareInfo | null; editHw: EditHw }) {
+  const net = hw.network!;
+  const ifaces = (det?.interfaces ?? []).filter((i) => !i.loopback);
+  const set = (k: keyof NetworkRoles, v: string) => editHw((h) => void (h.network![k] = v));
+  const same = net.mediaRed && net.mediaRed === net.mediaBlue;
+  return (
+    <>
+      {det?.ndiRestart && (
+        <p className="hw-note warn hw-banner">
+          <TriangleAlert size={14} /> {t('The NDI network settings changed: they apply when the server restarts (the NDI runtime reads them once).')}
+        </p>
+      )}
+      <Card icon={<Router size={16} />} title={t('Network roles')}>
+        <div className="hw-roles">
+          {ROLES.map((r) => {
+            const known = !net[r.key] || ifaces.some((i) => i.name === net[r.key]);
+            return (
+              <div key={r.key} className="hw-role">
+                <span className="hw-role-dot" style={{ background: r.color }} />
+                <div className="hw-role-text">
+                  <strong>{t(r.label)}</strong>
+                  <span>{t(r.hint)}</span>
+                </div>
+                <select value={net[r.key]} onChange={(e) => set(r.key, e.target.value)} aria-label={t(r.label)}>
+                  <option value="">{r.key === 'control' ? t('Every interface') : t('Not set')}</option>
+                  {!known && <option value={net[r.key]}>{t('{name} (not found)', { name: net[r.key] })}</option>}
+                  {ifaces.map((i) => (
+                    <option key={i.name} value={i.name}>
+                      {i.name} — {i.ip}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+        {same && (
+          <p className="hw-note warn">
+            <TriangleAlert size={13} /> {t('Red and blue must be two different interfaces.')}
+          </p>
+        )}
+        <Field label={t('NDI Discovery Server')} hint={t('Address of an NDI Discovery Server (several: comma separated). Empty: sources are found by mDNS on the NDI network.')}>
+          <input value={net.ndiDiscovery} placeholder="10.0.0.2" spellCheck={false} onChange={(e) => set('ndiDiscovery', e.target.value)} />
+        </Field>
+        <span className="set-hint">{t('Interfaces are named (eth1, en0…): the name stays when the address changes. Changing the control interface moves the web interface: open it again at the new address.')}</span>
+      </Card>
+
+      <Card icon={<Network size={16} />} title={t('Interfaces of this machine')}>
+        {!det ? (
+          <p className="muted small">{t('Detecting…')}</p>
+        ) : (
+          <div className="hw-ifaces">
+            {ifaces.map((i) => {
+              const roles = ROLES.filter((r) => net[r.key] === i.name);
+              return (
+                <div key={i.name + i.ip} className="hw-iface">
+                  <EthernetIcon />
+                  <strong>{i.name}</strong>
+                  <code>{i.ip}</code>
+                  <span className="hw-role-chips">
+                    {roles.length === 0 && <span className="muted small">{t('no role')}</span>}
+                    {roles.map((r) => (
+                      <span key={r.key} className="hw-role-chip" style={{ borderColor: r.color, color: r.color }}>
+                        {t(r.label)}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </>
+  );
+}
+
+// ----------------------------------------------------------------- sync ----
+
+const CLOCK_HINTS: Record<ClockReference, string> = {
+  free: 'Frames counted from when the channel starts, on the machine clock. Enough for NDI, streams and HTML5.',
+  ptp: 'Frames on the SMPTE ST 2059 grid of the system clock, disciplined by PTP (ptp4l + phc2sys): every device locked to the same grandmaster shows its frames at the same instants.',
+  decklink: 'The channel follows the frame boundaries of its first SDI destination, so the reference (genlock) wired to the card.',
+};
+
+function SyncSection({ hw, det, cfg, editHw, onRefresh }: { hw: HardwareConfig; det: HardwareInfo | null; cfg: ServerConfig; editHw: EditHw; onRefresh: () => void }) {
+  const sync = hw.sync!;
+  const st = det?.sync;
+  const used = referencesOf(hw, cfg);
+  const ntpState = !st || st.ntp.synced == null ? 'unknown' : st.ntp.synced ? 'ok' : 'bad';
+  const ptpState = !st ? 'unknown' : st.ptp.locked ? 'ok' : st.ptp.running ? 'bad' : used.has('ptp') ? 'bad' : 'unknown';
+  return (
+    <>
+      <Card
+        icon={<Clock size={16} />}
+        title={t('Status')}
+        actions={
+          <button className="btn small" onClick={onRefresh}>
+            <RefreshCw size={13} /> {t('Refresh')}
+          </button>
+        }
+      >
+        <div className="hw-detect">
+          <div className={`hw-det-item ${ntpState === 'ok' ? 'ok' : 'warn'}`}>
+            {ntpState === 'ok' ? <CircleCheck size={16} /> : ntpState === 'bad' ? <CircleX size={16} /> : <Info size={16} />}
+            <div>
+              <strong>{ntpState === 'ok' ? t('System clock synchronised (NTP)') : ntpState === 'bad' ? t('System clock not synchronised (NTP)') : t('NTP status unknown')}</strong>
+              <span>
+                {[st?.ntp.source && t('source {source}', { source: st.ntp.source }), st?.ntp.offsetMs != null && t('offset {ms} ms', { ms: st.ntp.offsetMs.toFixed(3) }), st?.ntp.tool && t('read with {tool}', { tool: st.ntp.tool })].filter(Boolean).join(' · ') ||
+                  t('Not readable on this system (macOS: needs administrator rights).')}
+              </span>
+            </div>
+          </div>
+          <div className={`hw-det-item ${ptpState === 'ok' ? 'ok' : 'warn'}`}>
+            {ptpState === 'ok' ? <CircleCheck size={16} /> : ptpState === 'bad' ? <CircleX size={16} /> : <Info size={16} />}
+            <div>
+              <strong>{st?.ptp.locked ? t('Locked to PTP (domain {domain})', { domain: st.ptp.domain }) : st?.ptp.running ? t('PTP not locked ({state})', { state: st.ptp.portState ?? '?' }) : t('No PTP')}</strong>
+              <span>
+                {st?.ptp.running
+                  ? [st.ptp.grandmaster && t('grandmaster {id}', { id: st.ptp.grandmaster }), st.ptp.offsetNs != null && t('offset {ns} ns', { ns: Math.round(st.ptp.offsetNs) })].filter(Boolean).join(' · ')
+                  : st?.ptp.message
+                    ? t(st.ptp.message)
+                    : t('Detecting…')}
+              </span>
+            </div>
+          </div>
+        </div>
+        <span className="set-hint">{t('Strata reads the clocks every 10 s; the operating system keeps them on time (chrony, w32time; linuxptp for PTP). Do not let NTP and phc2sys both set the same clock.')}</span>
+      </Card>
+
+      <Card icon={<Clock size={16} />} title={t('Clock reference')}>
+        <div className="seg hw-clock-seg">
+          {CLOCKS.map((r) => (
+            <button key={r} type="button" className={sync.reference === r ? 'on' : ''} onClick={() => editHw((h) => void (h.sync!.reference = r))}>
+              {clockLabel(r)}
+            </button>
+          ))}
+        </div>
+        <p className="hw-clock-hint">{t(CLOCK_HINTS[sync.reference])}</p>
+        <div className="hw-flow-grid">
+          <label className="set-field hw-num">
+            <span className="set-label">{t('PTP domain')}</span>
+            <input type="number" min={0} max={127} value={sync.ptpDomain} onChange={(e) => editHw((h) => void (h.sync!.ptpDomain = Math.max(0, Math.min(127, Math.round(+e.target.value) || 0))))} />
+          </label>
+          <label className="set-field hw-num">
+            <span className="set-label">{t('TAI − UTC (s)')}</span>
+            <input type="number" min={0} max={99} value={sync.taiOffset} onChange={(e) => editHw((h) => void (h.sync!.taiOffset = Math.max(0, Math.min(99, Math.round(+e.target.value) || 0))))} />
+          </label>
+        </div>
+        <span className="set-hint">{t('SMPTE ST 2059-2 uses PTP domain 127. TAI − UTC is 37 s since 2017: ST 2110 RTP timestamps count TAI.')}</span>
+      </Card>
+
+      <Card icon={<Tv size={16} />} title={t('Channels')}>
+        <div className="hw-table">
+          {cfg.channels.map((ch) => {
+            const sdi = [ch.outputs, ...(ch.renditions ?? []).map((r) => r.outputs)].some((o) => (o.sdi ?? []).some((d) => d.enabled !== false));
+            const ref = ch.clock ?? sync.reference;
+            return (
+              <div key={ch.id} className="hw-row sync">
+                <strong>{ch.name}</strong>
+                <span>
+                  {ref === 'decklink' && !sdi && (
+                    <span className="hw-note warn">
+                      <TriangleAlert size={13} /> {t('no SDI destination: runs free')}
+                    </span>
+                  )}
+                </span>
+                <select
+                  value={ch.clock ?? ''}
+                  aria-label={t('Clock reference')}
+                  onChange={(e) =>
+                    editHw((_, all) => {
+                      const c = all.channels.find((x) => x.id === ch.id)!;
+                      c.clock = (e.target.value || null) as ClockReference | null;
+                    })
+                  }
+                >
+                  <option value="">{t('Default ({reference})', { reference: clockLabel(sync.reference) })}</option>
+                  {CLOCKS.map((r) => (
+                    <option key={r} value={r}>
+                      {clockLabel(r)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
       </Card>
     </>
   );

@@ -2,7 +2,7 @@ import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, F
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { VIDEO_FORMATS, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
-import { ENCODINGS, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, usedHardware } from '../hardware/model';
+import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, usedHardware } from '../hardware/model';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -949,6 +949,16 @@ export function Outputs() {
                             <option key={n} value={n}>
                               {tn(n, '{n} frame', '{n} frames')}
                               {` · ${Math.round((n * 1000 * ch.frameRate.den) / ch.frameRate.num)} ms`}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label={t('Clock reference')} hint={t('What the channel clock follows. PTP: frames on the ST 2059 grid of the PTP-locked system clock. DeckLink: the genlock of its first SDI destination.')}>
+                        <select value={ch.clock ?? ''} onChange={(e) => editCh((c) => void (c.clock = (e.target.value || null) as ChannelConfig['clock']))}>
+                          <option value="">{t('Hardware default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'free') })}</option>
+                          {CLOCKS.map((r) => (
+                            <option key={r} value={r}>
+                              {clockLabel(r)}
                             </option>
                           ))}
                         </select>
