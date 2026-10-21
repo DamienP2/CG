@@ -95,5 +95,13 @@ déclenchements programmés). Strata indique si elle est synchronisée :
 ## DeckLink
 
 Les cartes Blackmagic se pilotent avec le pilote **Desktop Video** installé
-sur la machine. Le genlock se règle par sortie SDI (Matériel › SDI) et la
-référence DeckLink des canaux suit cette sortie. Voir `crates/cg-output/src/sdi.rs`.
+sur la machine : Strata embarque les en-têtes du SDK (licence libre de
+Blackmagic) et charge la bibliothèque du pilote à l'ouverture d'une sortie
+ou d'une entrée. Un canal en référence **DeckLink** cale ses images sur les
+tops de sa première sortie SDI : la carte suit la référence (genlock)
+branchée sur son entrée REF, sinon son propre quartz. Si la carte ne donne
+plus de tops, le canal continue sur l'horloge de la machine.
+
+Les paquets Linux sont des binaires statiques (musl) qui ne peuvent pas
+charger le pilote : pour le SDI sous Linux, compilez le serveur pour glibc
+(`cargo build --release -p cg-server`). Voir `crates/cg-output/src/sdi.rs`.
