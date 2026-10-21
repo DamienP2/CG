@@ -1,8 +1,9 @@
 name: Release
 
 # Builds the release files: Strata for macOS (.dmg and .pkg), Windows (.msi)
-# and Ubuntu (server .tar.gz), and the Premiere Pro panel for macOS (.pkg)
-# and Windows (.msi). Servers update themselves from these same files.
+# and Ubuntu (server .tar.gz), the Premiere Pro panel for macOS (.pkg) and
+# Windows (.msi), and the update packages installed servers download
+# (pulse-cg-<version>-<platform>: the server alone).
 # Push a tag `v*` to publish a GitHub release, or run manually for artifacts.
 on:
   push:
@@ -93,6 +94,21 @@ jobs:
           fi
           ls -la "dist/$NAME" "dist/$NAME/bin" 2>/dev/null || true
           (cd dist && tar czf "$NAME.tar.gz" "$NAME")
+      # Update package: the server alone, what installed servers download
+      # to update themselves (named as every version looks for it).
+      - name: Update package
+        shell: bash
+        run: |
+          NAME=pulse-cg-$SUFFIX-${{ matrix.platform }}
+          mkdir -p "dist/update/$NAME"
+          EXT=""; [ "${{ matrix.pkg }}" = windows ] && EXT=.exe
+          cp "target/${{ matrix.target }}/release/cg-server$EXT" "dist/update/$NAME/"
+          cd dist/update
+          if [ "${{ matrix.pkg }}" = windows ]; then
+            7z a "../$NAME.zip" "$NAME" >/dev/null
+          else
+            tar czf "../$NAME.tar.gz" "$NAME"
+          fi
       - name: Windows installer (MSI)
         if: matrix.pkg == 'windows'
         shell: bash
@@ -111,6 +127,7 @@ jobs:
           name: pulse-cg-${{ matrix.name }}
           path: |
             dist/*.tar.gz
+            dist/*.zip
             dist/*.msi
 
   macos-installer:
@@ -190,12 +207,22 @@ jobs:
       # Disk image: keeps the custom icons on the download (after notarization).
       - name: Disk image
         run: packaging/macos/pkg/make-dmg.sh dist/Strata-$SUFFIX-macos-universal.pkg "$VERSION" "dist/Strata-$SUFFIX-macos-universal.dmg"
+      # Update packages (the server alone, per processor), as above.
+      - name: Update packages
+        run: |
+          for a in arm64:aarch64-apple-darwin x86_64:x86_64-apple-darwin; do
+            NAME=pulse-cg-$SUFFIX-macos-${a%%:*}
+            mkdir -p "dist/update/$NAME"
+            cp "target/${a#*:}/release/cg-server" "dist/update/$NAME/"
+            (cd dist/update && tar czf "../$NAME.tar.gz" "$NAME")
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: pulse-cg-macos-installer
           path: |
             dist/*.dmg
             dist/*.pkg
+            dist/*.tar.gz
 
   # The Premiere Pro panel: macOS package and Windows MSI, both per user.
   # Installed once: it then updates from the server.

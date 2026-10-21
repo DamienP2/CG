@@ -46,18 +46,18 @@ pub const PLATFORM: &str = if cfg!(all(target_os = "linux", target_arch = "aarch
 };
 
 /// The release files that carry this platform's server, by preference: the
-/// installer or server package of the release, then the archive older
-/// releases had.
+/// update package (the server alone, small), then the installer or server
+/// package of the release.
 pub const PACKAGES: &[&str] = if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-    &["-ubuntu-x64.tar.gz", "-linux-x86_64.tar.gz"]
+    &["-linux-x86_64.tar.gz", "-ubuntu-x64.tar.gz"]
 } else if cfg!(target_os = "linux") {
     &["-linux-arm64.tar.gz"]
 } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-    &["-macos-universal.pkg", "-macos-arm64.tar.gz"]
+    &["-macos-arm64.tar.gz", "-macos-universal.pkg"]
 } else if cfg!(target_os = "macos") {
-    &["-macos-universal.pkg", "-macos-x86_64.tar.gz"]
+    &["-macos-x86_64.tar.gz", "-macos-universal.pkg"]
 } else {
-    &["-windows-x64.msi", "-windows-x86_64.zip"]
+    &["-windows-x86_64.zip", "-windows-x64.msi"]
 };
 
 const EXE: &str = if cfg!(windows) {
@@ -270,7 +270,7 @@ pub fn info(data_dir: &Path) -> Info {
     Info {
         current: current_version(),
         platform: PLATFORM,
-        package: format!("Strata-<version>{}", PACKAGES[0]),
+        package: format!("pulse-cg-<version>{}", PACKAGES[0]),
         repo: s.repo,
         has_token: !s.token.is_empty(),
         auto_check: s.auto_check,
@@ -647,8 +647,8 @@ pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
         return Ok(bytes.to_vec());
     }
     bail!(
-        "unknown package: upload the Strata release file of this platform ({})",
-        PACKAGES[0].trim_start_matches('-')
+        "unknown package: upload the update package of this platform (pulse-cg-<version>{})",
+        PACKAGES[0]
     )
 }
 
@@ -1012,6 +1012,10 @@ mod tests {
             "Strata-9.9.9-windows-x64.msi",
             "Strata-Premiere-9.9.9-windows.msi",
             "Strata-9.9.9-ubuntu-x64.tar.gz",
+            "pulse-cg-9.9.9-linux-x86_64.tar.gz",
+            "pulse-cg-9.9.9-macos-arm64.tar.gz",
+            "pulse-cg-9.9.9-macos-x86_64.tar.gz",
+            "pulse-cg-9.9.9-windows-x86_64.zip",
         ];
         let assets = names
             .iter()
@@ -1019,6 +1023,22 @@ mod tests {
             .map(|(i, n)| asset(i as u64, n))
             .collect();
         let picked = pick_package(assets).map(|a| a.name);
+        // The update package of this platform, the small one.
+        assert_eq!(
+            picked,
+            Some(format!(
+                "pulse-cg-9.9.9-{PLATFORM}{}",
+                if cfg!(windows) { ".zip" } else { ".tar.gz" }
+            ))
+        );
+        // Without it, the installer (or the Ubuntu package).
+        let no_update = names
+            .iter()
+            .filter(|n| !n.starts_with("pulse-cg"))
+            .enumerate()
+            .map(|(i, n)| asset(i as u64, n))
+            .collect();
+        let picked = pick_package(no_update).map(|a| a.name);
         if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
             assert_eq!(picked.as_deref(), Some("Strata-9.9.9-ubuntu-x64.tar.gz"));
         } else if cfg!(target_os = "macos") {
