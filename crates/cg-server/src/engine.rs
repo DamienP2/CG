@@ -21,7 +21,7 @@ use cg_output::ndi::NdiSender;
 use cg_output::sdi::DeckLinkOutput;
 use cg_output::st2110::St2110Sender;
 use cg_output::stream::StreamSender;
-use cg_output::{OutputError, OutputSink};
+use cg_output::{FrameClock, OutputError, OutputSink};
 use cg_render::{Frame, OutputFormat, Renderer};
 
 use crate::config::ChannelConfig;
@@ -278,6 +278,8 @@ struct Picture {
     stats: Arc<PictureStats>,
     outputs: Vec<OutputThread>,
     renders: Vec<std::thread::JoinHandle<()>>,
+    /// The frame clock of its first output that has one (a DeckLink card).
+    card: Option<Arc<dyn FrameClock>>,
 }
 
 impl Picture {
@@ -395,6 +397,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
             .find(|r| r.id == id)
             .map_or("Main", |r| r.name.as_str());
         let stats = state.perf.picture(&cfg.id, id, name, width, height);
+        let card = opened.iter().find_map(|o| o.sink.frame_clock());
         let outputs = opened
             .into_iter()
             .map(|o| {
@@ -434,6 +437,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
             stats,
             outputs,
             renders,
+            card,
         });
     }
     pictures
@@ -526,16 +530,21 @@ fn clock(
         .config
         .clock
         .unwrap_or(state.config.hardware.sync.reference);
-    let mut pace = match reference {
-        ClockReference::Ptp => Pace::Grid(Grid::new(rate, state.config.hardware.sync.tai_offset)),
-        ClockReference::Decklink | ClockReference::Free => Pace::free(period),
+    let card = pictures.iter().find_map(|p| p.card.clone());
+    let mut pace = match (reference, card) {
+        (ClockReference::Ptp, _) => {
+            Pace::Grid(Grid::new(rate, state.config.hardware.sync.tai_offset))
+        }
+        (ClockReference::Decklink, Some(clock)) => Pace::card(clock, period),
+        (ClockReference::Decklink, None) => {
+            tracing::warn!(
+                channel = ch.config.name,
+                "no DeckLink output to follow: the channel runs on its own clock"
+            );
+            Pace::free(period)
+        }
+        (ClockReference::Free, _) => Pace::free(period),
     };
-    if reference == ClockReference::Decklink {
-        tracing::warn!(
-            channel = ch.config.name,
-            "no DeckLink output to follow: the channel runs on its own clock"
-        );
-    }
     stats.set_reference(reference, &ch.config.name);
     let mut n: u64 = 0;
     let mut saved_at = Instant::now();
@@ -543,6 +552,11 @@ fn clock(
         n += 1;
         let tick = pace.next();
         stats.ticked(tick.late);
+        if let Pace::Card { clock, .. } = &pace {
+            if n % 25 == 1 {
+                stats.set_locked(clock.locked());
+            }
+        }
         if tick.skipped > 0 {
             stats.skipped(tick.skipped);
             n += tick.skipped;
@@ -580,6 +594,15 @@ enum Pace {
     },
     /// On the frame grid of the PTP-disciplined system clock.
     Grid(Grid),
+    /// On the frame boundaries of a DeckLink output (its genlock); on its
+    /// own while the card does not tick.
+    Card {
+        clock: Arc<dyn FrameClock>,
+        period: Duration,
+        start: Instant,
+        wall: SystemTime,
+        last: Instant,
+    },
 }
 
 impl Pace {
@@ -592,9 +615,48 @@ impl Pace {
         }
     }
 
+    fn card(clock: Arc<dyn FrameClock>, period: Duration) -> Self {
+        let now = Instant::now();
+        Pace::Card {
+            clock,
+            period,
+            start: now,
+            wall: SystemTime::now(),
+            last: now,
+        }
+    }
+
     /// Waits for the next tick.
     fn next(&mut self) -> Tick {
         match self {
+            Pace::Card {
+                clock,
+                period,
+                start,
+                wall,
+                last,
+            } => {
+                let due = *last + *period;
+                if !clock.wait(*period * 2) {
+                    wait_until(due);
+                }
+                let now = Instant::now();
+                let gap = now - *last;
+                *last = now;
+                // The card ticks on its own reference: lateness is how far a
+                // tick strays from one period after the previous one.
+                let late = now.saturating_duration_since(due);
+                let skipped = if gap > *period * 2 {
+                    (gap.as_secs_f64() / period.as_secs_f64()) as u64 - 1
+                } else {
+                    0
+                };
+                Tick {
+                    at: *wall + (now - *start),
+                    late,
+                    skipped,
+                }
+            }
             Pace::Free {
                 start,
                 wall,
@@ -865,6 +927,7 @@ mod tests {
             stats,
             outputs: vec![out],
             renders: Vec::new(),
+            card: None,
         };
         // Frames of ticks 1, 2 and 4 (3 never came), each `width` wide = its tick.
         for t in [1u64, 2, 4] {
@@ -926,5 +989,53 @@ mod tests {
                 .unwrap_or_else(|e| e.duration());
             assert!(off < Duration::from_millis(15), "{off:?}");
         }
+    }
+
+    /// A card ticking every 10 ms, then stopping.
+    struct FakeCard {
+        ticks: Mutex<u32>,
+    }
+
+    impl FrameClock for FakeCard {
+        fn wait(&self, timeout: Duration) -> bool {
+            let mut t = lock(&self.ticks);
+            if *t == 0 {
+                std::thread::sleep(timeout);
+                return false;
+            }
+            *t -= 1;
+            std::thread::sleep(Duration::from_millis(10));
+            true
+        }
+        fn locked(&self) -> Option<bool> {
+            Some(true)
+        }
+    }
+
+    #[test]
+    fn a_card_drives_the_clock_and_its_absence_does_not_stop_it() {
+        let period = Duration::from_millis(200);
+        let mut pace = Pace::card(
+            Arc::new(FakeCard {
+                ticks: Mutex::new(3),
+            }),
+            period,
+        );
+        let start = Instant::now();
+        let mut last = SystemTime::UNIX_EPOCH;
+        for _ in 0..3 {
+            let t = pace.next();
+            assert!(t.at > last);
+            last = t.at;
+        }
+        // The card's own pace (10 ms), not the channel's (40 ms).
+        assert!(
+            start.elapsed() < Duration::from_millis(100),
+            "{:?}",
+            start.elapsed()
+        );
+        // The card stops: the clock goes on (late, as it waited for the card).
+        let t = pace.next();
+        assert!(t.at > last);
     }
 }

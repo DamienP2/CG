@@ -328,8 +328,14 @@
 }
 .hw-flow-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px minmax(0, 1fr) 90px 80px 100px;
+  grid-template-columns: minmax(0, 1fr) 90px minmax(0, 1fr) 90px 80px 110px;
   gap: 10px 12px;
+  align-items: end;
+}
+.hw-flow-grid .set-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hw-flow-grid .wide {
   grid-column: span 3;

@@ -640,7 +640,7 @@ function St2110Section({ hw, det, cfg, editHw }: { hw: HardwareConfig; det: Hard
                   <span className="set-label">{two ? t('Fill — multicast') : t('Stream — multicast')}</span>
                   <input value={fip} placeholder="239.100.1.1" spellCheck={false} onChange={(e) => editFlow(f.id, (x) => void (x.fill = joinAddr(e.target.value, fport)))} />
                 </label>
-                <label className="set-field port">
+                <label className="set-field hw-num">
                   <span className="set-label">{t('Port')}</span>
                   <input type="number" min={1} max={65535} value={fport} onChange={(e) => editFlow(f.id, (x) => void (x.fill = joinAddr(fip, e.target.value)))} />
                 </label>
@@ -650,7 +650,7 @@ function St2110Section({ hw, det, cfg, editHw }: { hw: HardwareConfig; det: Hard
                       <span className="set-label">{t('Key — multicast')}</span>
                       <input value={kip} placeholder={t('none')} spellCheck={false} onChange={(e) => editFlow(f.id, (x) => void (x.key = e.target.value.trim() ? joinAddr(e.target.value, kport || '5004') : null))} />
                     </label>
-                    <label className="set-field port">
+                    <label className="set-field hw-num">
                       <span className="set-label">{t('Port')}</span>
                       <input type="number" min={1} max={65535} value={kport} disabled={!f.key} onChange={(e) => editFlow(f.id, (x) => void (x.key = joinAddr(kip, e.target.value)))} />
                     </label>
@@ -658,11 +658,11 @@ function St2110Section({ hw, det, cfg, editHw }: { hw: HardwareConfig; det: Hard
                 ) : (
                   <span className="hw-flow-gap" />
                 )}
-                <label className="set-field port">
+                <label className="set-field hw-num">
                   <span className="set-label">TTL</span>
                   <input type="number" min={1} max={255} value={f.ttl} onChange={(e) => editFlow(f.id, (x) => void (x.ttl = Math.max(1, Math.min(255, Math.round(+e.target.value) || 1))))} />
                 </label>
-                <label className="set-field port">
+                <label className="set-field hw-num">
                   <span className="set-label">{t('Payload type')}</span>
                   <input type="number" min={96} max={127} value={f.payloadType} onChange={(e) => editFlow(f.id, (x) => void (x.payloadType = Math.max(96, Math.min(127, Math.round(+e.target.value) || 96))))} />
                 </label>

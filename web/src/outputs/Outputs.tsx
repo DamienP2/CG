@@ -875,7 +875,7 @@ export function Outputs() {
                         <small>{t(KIND[selNode.kind].label)}</small>
                         <strong>{selNode.title}</strong>
                       </div>
-                      {selDest && selDest.kind !== 'html5' && <OnSwitch on={isOn(selDest)} onChange={(v) => setOn(selDest.value.id, v)} label={isOn(selDest) ? t('On') : tc('output', 'Off')} />}
+                      {selDest && selDest.kind !== 'html5' && <OnSwitch on={isOn(selDest)} onChange={(v) => setOn(selDest.value.id, v)} label={isOn(selDest) ? tc('output', 'On') : tc('output', 'Off')} />}
                       {(selDest || (selPic && selPic.id !== 'main')) && (
                         <button className="icon-btn ghost" title={t('Remove')} onClick={removeSelected}>
                           <Trash2 size={15} />

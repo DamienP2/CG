@@ -357,7 +357,7 @@ function Inspector({
           <small>{t('Input')}</small>
           <strong>{i.name || i.id}</strong>
         </div>
-        <OnSwitch on={i.enabled !== false} onChange={setOn} label={i.enabled !== false ? t('On') : tc('output', 'Off')} />
+        <OnSwitch on={i.enabled !== false} onChange={setOn} label={i.enabled !== false ? tc('output', 'On') : tc('output', 'Off')} />
         <button className="icon-btn ghost" title={t('Remove')} onClick={remove}>
           <Trash2 size={15} />
         </button>

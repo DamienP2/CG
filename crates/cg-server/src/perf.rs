@@ -128,7 +128,6 @@ impl ClockStats {
     pub fn reference(&self) -> ClockReference {
         lock(&self.reference).0
     }
-    #[allow(dead_code)] // set by the DeckLink clock (in progress)
     pub fn set_locked(&self, locked: Option<bool>) {
         self.locked
             .store(locked.map_or(-1, i8::from), Ordering::Relaxed);

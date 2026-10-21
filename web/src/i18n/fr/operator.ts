@@ -461,4 +461,5 @@ export const operator: Record<string, string> = {
   'SDI input': 'Entrée SDI',
   'Remove the format “{name}”?': 'Retirer le format « {name} » ?',
   'Every format and destination of the channel runs at this rate.': 'Tous les formats et destinations du canal tournent à cette cadence.',
+  'output|On': 'Activée',
 };

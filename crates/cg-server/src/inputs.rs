@@ -395,9 +395,7 @@ impl Inputs {
                 .name(format!("cg-input-{}", c.id))
                 .spawn(move || match l.config.kind {
                     InputKind::Ndi => run_ndi(&l),
-                    InputKind::Sdi => {
-                        l.say("DeckLink support is not built into this server (`decklink` feature)")
-                    }
+                    InputKind::Sdi => run_sdi(&l),
                     InputKind::St2110 => l.say("Receiving ST 2110 is not available yet"),
                     _ => run_stream(&l),
                 });
@@ -881,6 +879,49 @@ fn run_ndi(l: &Live) {
         drop(rx);
         if !l.pause(Duration::from_secs(1)) {
             return;
+        }
+    }
+}
+
+/// An SDI input of a DeckLink card (opened in the input's size and rate;
+/// the card follows the incoming format when it can tell).
+fn run_sdi(l: &Live) {
+    let c = &l.config;
+    while !l.stopped() {
+        let mut card =
+            match cg_output::sdi::DeckLinkInput::open(c.device, c.width, c.height, (c.fps, 1)) {
+                Ok(card) => card,
+                Err(e) => {
+                    l.say(e);
+                    if !l.pause(Duration::from_secs(5)) {
+                        return;
+                    }
+                    continue;
+                }
+            };
+        l.say(format!("Waiting for a signal ({})…", card.mode_name()));
+        let (mut seq, mut shown) = (0u64, None);
+        let poll = Duration::from_secs_f64(0.25 / c.fps.max(1) as f64);
+        while !l.stopped() {
+            match card.take(&mut seq) {
+                Some((w, h, rgba)) => {
+                    if shown != Some((w, h)) {
+                        shown = Some((w, h));
+                        l.say(format!("Receiving {w}×{h} ({})", card.mode_name()));
+                    }
+                    if let Some(pm) = IntSize::from_wh(w, h).and_then(|s| Pixmap::from_vec(rgba, s))
+                    {
+                        l.put(pm);
+                    }
+                }
+                None => {
+                    if card.signal() == Some(false) && shown.is_some() {
+                        shown = None;
+                        l.say("No signal");
+                    }
+                    std::thread::sleep(poll);
+                }
+            }
         }
     }
 }

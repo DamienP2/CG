@@ -594,6 +594,10 @@ pub struct HardwareInfo {
     pub desktop_video_path: Option<String>,
     /// This server can drive DeckLink cards (built with the SDK).
     pub decklink_support: bool,
+    /// The DeckLink devices the driver lists (Desktop Video order).
+    pub decklink_devices: Vec<String>,
+    /// Why they cannot be listed.
+    pub decklink_error: Option<String>,
     /// This server receives ST 2110.
     pub st2110_receive: bool,
     pub interfaces: Vec<NetInterface>,
@@ -636,6 +640,7 @@ fn desktop_video_paths() -> Vec<std::path::PathBuf> {
 
 pub fn detect() -> HardwareInfo {
     let found = desktop_video_paths().into_iter().find(|p| p.exists());
+    let devices = cg_output::decklink::devices();
     let mut interfaces: Vec<NetInterface> = if_addrs::get_if_addrs()
         .unwrap_or_default()
         .into_iter()
@@ -651,6 +656,8 @@ pub fn detect() -> HardwareInfo {
         desktop_video: found.is_some(),
         desktop_video_path: found.map(|p| p.display().to_string()),
         decklink_support: cg_output::sdi::SUPPORTED,
+        decklink_devices: devices.clone().unwrap_or_default(),
+        decklink_error: devices.err(),
         st2110_receive: false,
         interfaces,
         os: std::env::consts::OS,
