@@ -32,6 +32,7 @@ typedef const char *dl_string;
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -56,6 +57,9 @@ namespace {
 const int64_t PREROLL = 3;
 // Pushes beyond this many frames ahead are dropped (the producer runs fast).
 const int64_t MAX_AHEAD = PREROLL + 2;
+// Fewer frames than this queued after a completion: the last one is
+// repeated (the producer stalled or runs late).
+const int64_t LOW_WATER = 2;
 // Output frame pool: preroll + headroom + frames in flight on the card.
 const int POOL = (int)MAX_AHEAD + 4;
 
@@ -236,20 +240,30 @@ class Output final : public IDeckLinkVideoOutputCallback {
                 }
             }
             if (mine) {
-                if (!stopping && result != bmdOutputFrameFlushed && outstanding <= 0 && mine == last) {
-                    // Nothing else queued: hold the picture (and keep the
-                    // clock ticking) by showing this frame again.
-                    repeat = mine;
-                    at = next * duration;
-                    next++;
-                    outstanding++;
-                } else {
-                    free_frames.push_back(mine);
+                free_frames.push_back(mine);
+            }
+            if (!stopping && result != bmdOutputFrameFlushed && outstanding < LOW_WATER && last &&
+                !free_frames.empty()) {
+                // The producer is behind: hold the picture (and keep the
+                // clock ticking) by queueing the last frame again, copied
+                // under the lock so no push can reuse its buffer meanwhile.
+                repeat = free_frames.back();
+                free_frames.pop_back();
+                if (repeat != last) {
+                    void *src = NULL, *dst = NULL;
+                    if (last->GetBytes(&src) == S_OK && repeat->GetBytes(&dst) == S_OK && src && dst) {
+                        std::memcpy(dst, src, (size_t)repeat->GetRowBytes() * (size_t)height);
+                    }
                 }
+                at = next * duration;
+                next++;
+                outstanding++;
+                last = repeat;
             }
         }
         cv.notify_all();
         if (repeat && out->ScheduleVideoFrame(repeat, at, duration, scale) != S_OK) {
+            // The slot stays empty (the next push re-syncs if needed).
             std::lock_guard<std::mutex> lk(m);
             outstanding--;
             free_frames.push_back(repeat);
@@ -265,14 +279,19 @@ class Output final : public IDeckLinkVideoOutputCallback {
         return S_OK;
     }
 
-    // Takes a free frame; NULL when all are in use.
+    // Takes a free frame, preferably not the last one scheduled (a repeat
+    // may copy from it); NULL when all are in use.
     IDeckLinkMutableVideoFrame *take_free() {
         std::lock_guard<std::mutex> lk(m);
         if (free_frames.empty()) {
             return NULL;
         }
-        IDeckLinkMutableVideoFrame *f = free_frames.back();
-        free_frames.pop_back();
+        size_t i = free_frames.size() - 1;
+        if (free_frames[i] == last && i > 0) {
+            i--;
+        }
+        IDeckLinkMutableVideoFrame *f = free_frames[i];
+        free_frames.erase(free_frames.begin() + (std::ptrdiff_t)i);
         return f;
     }
 
@@ -319,7 +338,6 @@ class Output final : public IDeckLinkVideoOutputCallback {
         }
         if (out->ScheduleVideoFrame(f, at, duration, scale) != S_OK) {
             std::lock_guard<std::mutex> lk(m);
-            next--;
             outstanding--;
             free_frames.push_back(f);
             return -1;

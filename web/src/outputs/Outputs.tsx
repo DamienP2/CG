@@ -534,7 +534,9 @@ export function Outputs() {
       appliedAt.current = Date.now();
       await api('PUT', '/api/system/config', cfg);
       toast(outputsDirty ? t('Outputs applied — the engine is restarting') : t('Inputs applied'), 'info');
-      setTimeout(() => load().catch(() => {}), 1500);
+      // The server may still be restarting: try again until it answers.
+      const reload = (tries: number) => void load().catch(() => tries > 0 && setTimeout(() => reload(tries - 1), 1000));
+      setTimeout(() => reload(15), 1500);
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {

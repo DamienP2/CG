@@ -171,10 +171,10 @@ impl DeckLinkOutput {
 /// RGBA → BGRA; `opaque`: alpha forced to 255 (fill only: the premultiplied
 /// fill is then the picture over black).
 fn swizzle(rgba: &[u8], out: &mut Vec<u8>, opaque: bool) {
-    out.clear();
-    out.reserve(rgba.len());
-    for px in rgba.as_chunks::<4>().0 {
-        out.extend_from_slice(&[px[2], px[1], px[0], if opaque { 255 } else { px[3] }]);
+    out.resize(rgba.len() / 4 * 4, 0);
+    let dst = out.as_chunks_mut::<4>().0;
+    for (d, s) in dst.iter_mut().zip(rgba.as_chunks::<4>().0) {
+        *d = [s[2], s[1], s[0], if opaque { 255 } else { s[3] }];
     }
 }
 
