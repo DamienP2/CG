@@ -43,6 +43,8 @@ export interface RenderProps<T extends LayerType = LayerType> {
   fps: number;
   /** Drawn in the Designer (guides such as a reserved width may show). */
   designer?: boolean;
+  /** The project's language, for the texts a widget writes itself (« Aucune donnée », periods…). */
+  lang?: string;
 }
 
 export interface InspectorProps<T extends LayerType = LayerType> {
@@ -107,6 +109,8 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   Operator?: (p: OperatorProps<T>) => ReactNode;
   /** The same controls on one row (the Operator's widget bar and On air panel): a small readout, icon buttons. */
   Compact?: (p: OperatorProps<T>) => ReactNode;
+  /** Advanced controls, unfolded under the compact row by its ⋯ button (same look as Compact). */
+  More?: (p: OperatorProps<T>) => ReactNode;
   /** It has controls with these settings (default: when it has Operator controls). */
   controls?: (l: LayerOf<T>, data: Data) => boolean;
   /** Orange handles over the selected layer in the Designer. */

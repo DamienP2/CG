@@ -12,5 +12,8 @@ import { home } from './home';
 import { operator } from './operator';
 import { widgets } from './widgets';
 import { widgetsData } from './widgetsData';
+import { widgetsA } from './widgetsA';
+import { widgetsB } from './widgetsB';
+import { widgetsC } from './widgetsC';
 
-export const fr: Record<string, string> = { ...common, ...home, ...designer, ...data, ...operator, ...widgets, ...widgetsData };
+export const fr: Record<string, string> = { ...common, ...home, ...designer, ...data, ...operator, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC };
