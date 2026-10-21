@@ -32,7 +32,7 @@ use sha2::{Digest, Sha256};
 pub const DEFAULT_REPO: &str = "DamienP2/CG";
 
 /// This build's platform (older release archives were named after it:
-/// `pulse-cg-<version>-<PLATFORM>.*`).
+/// `pulse-cg-<version>-<PLATFORM>.*`, now `Strata-<version>-<PLATFORM>.*`).
 pub const PLATFORM: &str = if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
     "linux-arm64"
 } else if cfg!(target_os = "linux") {
@@ -270,7 +270,7 @@ pub fn info(data_dir: &Path) -> Info {
     Info {
         current: current_version(),
         platform: PLATFORM,
-        package: format!("pulse-cg-<version>{}", PACKAGES[0]),
+        package: format!("Strata-<version>{}", PACKAGES[0]),
         repo: s.repo,
         has_token: !s.token.is_empty(),
         auto_check: s.auto_check,
@@ -647,7 +647,7 @@ pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
         return Ok(bytes.to_vec());
     }
     bail!(
-        "unknown package: upload the update package of this platform (pulse-cg-<version>{})",
+        "unknown package: upload the update package of this platform (Strata-<version>{})",
         PACKAGES[0]
     )
 }
@@ -1012,10 +1012,10 @@ mod tests {
             "Strata-9.9.9-windows-x64.msi",
             "Strata-Premiere-9.9.9-windows.msi",
             "Strata-9.9.9-ubuntu-x64.tar.gz",
-            "pulse-cg-9.9.9-linux-x86_64.tar.gz",
-            "pulse-cg-9.9.9-macos-arm64.tar.gz",
-            "pulse-cg-9.9.9-macos-x86_64.tar.gz",
-            "pulse-cg-9.9.9-windows-x86_64.zip",
+            "Strata-9.9.9-linux-x86_64.tar.gz",
+            "Strata-9.9.9-macos-arm64.tar.gz",
+            "Strata-9.9.9-macos-x86_64.tar.gz",
+            "Strata-9.9.9-windows-x86_64.zip",
         ];
         let assets = names
             .iter()
@@ -1027,14 +1027,14 @@ mod tests {
         assert_eq!(
             picked,
             Some(format!(
-                "pulse-cg-9.9.9-{PLATFORM}{}",
+                "Strata-9.9.9-{PLATFORM}{}",
                 if cfg!(windows) { ".zip" } else { ".tar.gz" }
             ))
         );
         // Without it, the installer (or the Ubuntu package).
         let no_update = names
             .iter()
-            .filter(|n| !n.starts_with("pulse-cg"))
+            .filter(|n| !n.contains(PACKAGES[0]))
             .enumerate()
             .map(|(i, n)| asset(i as u64, n))
             .collect();

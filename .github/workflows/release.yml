@@ -3,7 +3,7 @@ name: Release
 # Builds the release files: Strata for macOS (.dmg and .pkg), Windows (.msi)
 # and Ubuntu (server .tar.gz), the Premiere Pro panel for macOS (.pkg) and
 # Windows (.msi), and the update packages installed servers download
-# (pulse-cg-<version>-<platform>: the server alone).
+# (Strata-<version>-<platform>: the server alone).
 # Push a tag `v*` to publish a GitHub release, or run manually for artifacts.
 on:
   push:
@@ -99,7 +99,7 @@ jobs:
       - name: Update package
         shell: bash
         run: |
-          NAME=pulse-cg-$SUFFIX-${{ matrix.platform }}
+          NAME=Strata-$SUFFIX-${{ matrix.platform }}
           mkdir -p "dist/update/$NAME"
           EXT=""; [ "${{ matrix.pkg }}" = windows ] && EXT=.exe
           cp "target/${{ matrix.target }}/release/cg-server$EXT" "dist/update/$NAME/"
@@ -124,7 +124,7 @@ jobs:
             -o "dist/Strata-$SUFFIX-${{ matrix.name }}.msi"
       - uses: actions/upload-artifact@v4
         with:
-          name: pulse-cg-${{ matrix.name }}
+          name: strata-${{ matrix.name }}
           path: |
             dist/*.tar.gz
             dist/*.zip
@@ -211,14 +211,14 @@ jobs:
       - name: Update packages
         run: |
           for a in arm64:aarch64-apple-darwin x86_64:x86_64-apple-darwin; do
-            NAME=pulse-cg-$SUFFIX-macos-${a%%:*}
+            NAME=Strata-$SUFFIX-macos-${a%%:*}
             mkdir -p "dist/update/$NAME"
             cp "target/${a#*:}/release/cg-server" "dist/update/$NAME/"
             (cd dist/update && tar czf "../$NAME.tar.gz" "$NAME")
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: pulse-cg-macos-installer
+          name: strata-macos-installer
           path: |
             dist/*.dmg
             dist/*.pkg
@@ -262,7 +262,7 @@ jobs:
             -o "dist/Strata-Premiere-$SUFFIX-windows.msi"
       - uses: actions/upload-artifact@v4
         with:
-          name: pulse-cg-premiere-${{ runner.os }}
+          name: strata-premiere-${{ runner.os }}
           path: |
             dist/*.pkg
             dist/*.msi
@@ -274,7 +274,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: pulse-cg-*
+          pattern: strata-*
           merge-multiple: true
           path: dist
       - uses: softprops/action-gh-release@v2

@@ -82,7 +82,10 @@
   font: inherit;
   cursor: pointer;
 }
-.lm-trigger:hover,
+.lm-trigger.lm-static {
+  cursor: default;
+}
+.lm-trigger:not(.lm-static):hover,
 .lm-trigger.on {
   background: var(--panel-2);
   border-color: var(--line);

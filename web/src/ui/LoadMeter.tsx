@@ -5,6 +5,22 @@ import { t, tn } from '../i18n';
 import { navigate } from '../router';
 import { can, useApp } from '../store';
 import { Bar, Dot } from '../perf/bits';
+
+/** Just the usage of the whole machine (inside a project): no details, no link. */
+export function UsageMeter() {
+  const m = useMetrics();
+  const cpu = m?.machine.cpu ?? 0;
+  const tone = m ? loadTone(cpu) : 'idle';
+  return (
+    <div className="load-meter" role="meter" aria-label={t('Machine usage')} aria-valuenow={Math.round(cpu)} aria-valuemin={0} aria-valuemax={100}>
+      <span className="lm-trigger lm-static">
+        <span className="lm-label">CPU</span>
+        <Bar value={cpu} tone={tone} className="lm-bar" />
+        <span className={`lm-val tone-${tone}`}>{m ? pct(cpu) : '—'}</span>
+      </span>
+    </div>
+  );
+}
 import { bytes, channelTone, fps, fpsTone, memTone, pct, pictureTone, worstTone } from '../perf/format';
 
 /*

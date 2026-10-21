@@ -16,7 +16,7 @@ import { MediaLibrary } from './pages/Media';
 import { Outputs } from './outputs/Outputs';
 import { Performance } from './perf/Performance';
 import { Hardware } from './hardware/Hardware';
-import { LoadMeter } from './ui/LoadMeter';
+import { LoadMeter, UsageMeter } from './ui/LoadMeter';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
@@ -289,7 +289,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           </span>
         )}
         {/* The project's own tab: the Performance page opens in another one. */}
-        <LoadMeter projectId={projectId} newTab />
+        <UsageMeter />
         <UserMenu />
       </nav>
       <div className="content">{page}</div>
