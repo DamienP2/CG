@@ -1,4 +1,4 @@
-import { Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
+import { Cpu, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
@@ -7,6 +7,9 @@ import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
 import { useMetrics, type InputMetrics } from '../engine/metrics';
 import { coresLabel, fps as fpsText, fpsTone, inputTone, num } from '../perf/format';
 import '../perf/perf.css';
+import { deviceOf, hardwareOf } from '../hardware/model';
+import { navigate } from '../router';
+import { OnSwitch } from './OnSwitch';
 
 /*
  * The INPUTS mode of the Video streams page: live video coming into the
@@ -27,10 +30,18 @@ const KINDS: { value: InputKind; label: string; badge: string }[] = [
   { value: 'url', label: 'Address / file', badge: 'URL' },
   { value: 'ndi', label: 'NDI', badge: 'NDI' },
   { value: 'sdi', label: 'SDI', badge: 'SDI' },
+  { value: 'st2110', label: 'ST 2110', badge: 'ST 2110' },
 ];
 const badgeOf = (k: InputKind) => KINDS.find((x) => x.value === k)?.badge ?? k.toUpperCase();
 const SCHEMES: Partial<Record<InputKind, RegExp>> = { srt: /^srt:/i, udp: /^udp:/i, rtmp: /^rtmps?:/i, hls: /^https?:/i, rtsp: /^rtsps?:/i };
-const isStream = (k: InputKind) => k !== 'ndi' && k !== 'sdi';
+const isStream = (k: InputKind) => k !== 'ndi' && k !== 'sdi' && k !== 'st2110';
+/** Inputs that receive something Hardware declares. */
+const needsHardware = (k: InputKind) => k === 'sdi' || k === 'st2110';
+/** An SRT listener waits on a port; the others have an address. */
+const byPort = (c: Pick<InputConfig, 'kind' | 'listen'>) => c.kind === 'srt' && !!c.listen;
+const portOf = (c: Pick<InputConfig, 'url' | 'port'>) => c.port || +(/:(\d+)(?:[/?]|$)/.exec(c.url)?.[1] ?? 0) || 10000;
+/** SRT latencies offered, ms. */
+const LATENCIES = [20, 40, 80, 120, 200, 300, 500, 1000, 2000];
 const canListen = (k: InputKind) => k === 'srt' || k === 'rtmp';
 
 /** SRT: Strata calls the sender, or waits for it; RTMP: Strata pulls, or the encoder pushes. Labels translated where shown. */
@@ -51,13 +62,7 @@ const badgeText = (c: Pick<InputConfig, 'kind' | 'listen'>) => {
   return m ? `${badgeOf(c.kind)} · ${tc('short', m.label)}` : badgeOf(c.kind);
 };
 
-const SIZES = [
-  { width: 1920, height: 1080 },
-  { width: 1280, height: 720 },
-  { width: 3840, height: 2160 },
-];
-const RATES = [25, 30, 50, 60];
-/** Smoothing buffer, in frames. */
+/** Jitter buffer, in frames. */
 const BUFFERS = [0, 1, 2, 3, 5];
 
 
@@ -87,10 +92,9 @@ function modeDefault(c: Pick<InputConfig, 'kind' | 'listen' | 'url'>): string {
 
 function addressHint(c: InputConfig): string {
   const host = location.hostname;
-  const port = /:(\d+)(?:[/?]|$)/.exec(c.url)?.[1] ?? '9000';
   switch (c.kind) {
     case 'srt':
-      return c.listen ? t('Listener, e.g. srt://0.0.0.0:9000: the senders push to this server, srt://{host}:{port}.', { host, port }) : t("The sender's address, e.g. srt://host:9000 (it must be listening).");
+      return t("The sender's address, e.g. srt://host:9000 (it must be listening).");
     case 'udp':
       return t('udp://@239.1.1.1:5000 to join a multicast group, or udp://0.0.0.0:5000 for packets sent to this server.');
     case 'rtmp':
@@ -106,7 +110,7 @@ function addressHint(c: InputConfig): string {
 
 
 /** Waiting is not failing. */
-const WAITING = /^(Starting…|Waiting for the sender…|Connecting…|Connecting to .*…|Not started.*)$/;
+const WAITING = /^(Starting…|Waiting for the sender…|Connecting…|Connecting to .*…|Not started.*|Off)$/;
 
 type Tone = 'ok' | 'warn' | 'idle';
 
@@ -135,18 +139,25 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
   const current = inputs.find((i) => i.id === sel) ?? inputs[0];
   const savedOf = (id: string) => (saved.inputs ?? []).find((i) => i.id === id);
   const stateOf = (c: InputConfig): { tone: Tone; text: string; live: boolean; info?: InputInfo } => {
+    if (c.enabled === false) return { tone: 'idle', text: tc('output', 'Off'), live: false };
     const s = savedOf(c.id);
     const info = status.find((x) => x.id === c.id);
+    if (info?.message === 'Off') return { tone: 'idle', text: s && s.enabled !== false ? t('Not applied yet') : tc('output', 'Off'), live: false };
     if (!s || !info) return { tone: 'idle', text: s ? t('Starting…') : t('Not applied yet'), live: false };
     if (info.live) return { tone: 'ok', text: messageText(info.message) || t('Receiving'), live: true, info };
     return { tone: WAITING.test(info.message) ? 'idle' : 'warn', text: messageText(info.message), live: false, info };
   };
 
-  const editInput = (fn: (i: InputConfig) => void) =>
+  const editInput = (fn: (i: InputConfig) => void, id = current?.id) =>
     edit((c) => {
-      const i = (c.inputs ?? []).find((x) => x.id === current?.id);
+      const i = (c.inputs ?? []).find((x) => x.id === id);
       if (i) fn(i);
     });
+  const setOn = (id: string, on: boolean) => editInput((i) => void (i.enabled = on), id);
+  const hw = hardwareOf(cfg);
+  const inFlows = hw.st2110.flows.filter((f) => f.direction === 'input');
+  /** What Hardware declares for an input kind ([] for the other kinds). */
+  const hwChoices = (k: InputKind) => (k === 'sdi' ? hw.sdi.inputs.map((d) => ({ id: d.id, name: d.name })) : k === 'st2110' ? inFlows.map((f) => ({ id: f.id, name: f.name })) : []);
 
   const add = () => {
     const ids = new Set(inputs.map((i) => i.id));
@@ -157,7 +168,9 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
     const urls = [...inputs.map((i) => i.url), ...cfg.channels.flatMap((ch) => [ch.outputs, ...(ch.renditions ?? []).map((r) => r.outputs)].flatMap((o) => (o.streams ?? []).map((s) => s.url)))];
     let port = 10000;
     while (urls.some((u) => new RegExp(`:${port}(?:[/?]|$)`).test(u))) port++;
-    edit((c) => void (c.inputs ??= []).push({ id, name: t('Input {n}', { n }), kind: 'srt', url: `srt://0.0.0.0:${port}`, listen: true, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false }));
+    for (const i of inputs) if (byPort(i)) urls.push(`:${portOf(i)}`);
+    while (urls.some((u) => new RegExp(`:${port}(?:[/?]|$)`).test(u))) port++;
+    edit((c) => void (c.inputs ??= []).push({ id, name: t('Input {n}', { n }), kind: 'srt', url: '', port, latency: 120, listen: true, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false }));
     setSel(id);
   };
 
@@ -176,6 +189,17 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
       // An address of another protocol goes.
       const scheme = SCHEMES[k];
       if (scheme && !scheme.test(i.url.trim())) i.url = i.listen ? placeholder(i) : '';
+      if (byPort(i)) {
+        i.port = portOf(i);
+        i.url = '';
+      }
+      // SDI and ST 2110: the first input Hardware declares.
+      if (needsHardware(k)) {
+        i.hardware = hwChoices(k)[0]?.id ?? '';
+        const d = hw.sdi.inputs.find((x) => x.id === i.hardware);
+        const card = d && hw.sdi.cards.find((c) => c.id === d.card);
+        if (k === 'sdi' && d && card) i.device = deviceOf(card, d.connector);
+      } else delete i.hardware;
     });
 
   const findNdi = async () => {
@@ -202,7 +226,8 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
         {inputs.map((i) => {
           const st = stateOf(i);
           return (
-            <button key={i.id} className={`oc-channel vs-item ${i.id === current?.id ? 'on' : ''}`} onClick={() => setSel(i.id)}>
+            <div key={i.id} role="button" tabIndex={0} className={`oc-channel vs-item ${i.id === current?.id ? 'on' : ''} ${i.enabled === false ? 'off' : ''}`} onClick={() => setSel(i.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(i.id)}>
+              <OnSwitch on={i.enabled !== false} mini onChange={(v) => setOn(i.id, v)} />
               <span className={`oc-dot ${st.tone}`} />
               <span className="grow">
                 <span>{i.name || i.id}</span>
@@ -212,7 +237,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
               <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
                 {badgeText(i)}
               </span>
-            </button>
+            </div>
           );
         })}
         <button className="oc-channel vs-item add" onClick={add}>
@@ -252,9 +277,10 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 {inputs.map((i) => {
                   const st = stateOf(i);
                   return (
-                    <button key={i.id} className={`vs-tile ${i.id === current?.id ? 'sel' : ''}`} onClick={() => setSel(i.id)}>
+                    <div key={i.id} role="button" tabIndex={0} className={`vs-tile ${i.id === current?.id ? 'sel' : ''} ${i.enabled === false ? 'off' : ''}`} onClick={() => setSel(i.id)} onKeyDown={(e) => e.key === 'Enter' && setSel(i.id)}>
                       <Preview id={i.id} live={st.live} />
                       <span className="vs-tile-head">
+                        <OnSwitch on={i.enabled !== false} mini onChange={(v) => setOn(i.id, v)} />
                         <strong>{i.name || i.id}</strong>
                         <span className="vs-badge" style={{ ['--k' as string]: COLOR }}>
                           {badgeText(i)}
@@ -264,9 +290,9 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                         <span className={`oc-dot ${st.tone}`} />
                         <span className="grow">{st.text}</span>
                         <Rate m={rates(i.id)} full />
-                        <span className="vs-res">{st.info?.width ? `${st.info.width}×${st.info.height}` : '—'}</span>
+                        <span className="vs-res">{detected(st.info) || '—'}</span>
                       </span>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -280,6 +306,8 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 state={stateOf(current)}
                 rates={rates(current.id)}
                 editInput={editInput}
+                setOn={(v) => setOn(current.id, v)}
+                hwChoices={hwChoices}
                 setKind={setKind}
                 remove={remove}
                 ndi={ndi}
@@ -300,6 +328,8 @@ function Inspector({
   state,
   rates,
   editInput,
+  setOn,
+  hwChoices,
   setKind,
   remove,
   ndi,
@@ -309,13 +339,16 @@ function Inspector({
   state: { tone: Tone; text: string; live: boolean; info?: InputInfo };
   rates?: InputMetrics;
   editInput: (fn: (i: InputConfig) => void) => void;
+  setOn: (on: boolean) => void;
+  hwChoices: (k: InputKind) => { id: string; name: string }[];
   setKind: (k: InputKind) => void;
   remove: () => void;
   ndi: { busy: boolean; sources: string[]; error?: string };
   findNdi: () => void;
 }) {
-  const size = SIZES.findIndex((s) => s.width === i.width && s.height === i.height);
   const listId = `vs-ndi-${i.id}`;
+  const choices = hwChoices(i.kind);
+  const port = portOf(i);
   return (
     <>
       <div className="oc-ins-head" style={{ ['--k' as string]: COLOR }}>
@@ -324,19 +357,23 @@ function Inspector({
           <small>{t('Input')}</small>
           <strong>{i.name || i.id}</strong>
         </div>
+        <OnSwitch on={i.enabled !== false} onChange={setOn} label={i.enabled !== false ? t('On') : tc('output', 'Off')} />
         <button className="icon-btn ghost" title={t('Remove')} onClick={remove}>
           <Trash2 size={15} />
         </button>
       </div>
 
-      <div className="vs-big">
-        <Preview id={i.id} live={state.live} />
-      </div>
       <div className={`oc-state ${state.tone}`}>
         <span className={`oc-dot ${state.tone}`} />
         <span className="grow">{state.text}</span>
         {!!state.info?.frames && <span className="vs-res">{tn(state.info.frames, '{n} frame', '{n} frames')}</span>}
       </div>
+      {state.live && detected(state.info) && (
+        <div className="vs-detected">
+          <small>{t('Detected')}</small>
+          <strong>{detected(state.info)}</strong>
+        </div>
+      )}
       {rates && (
         <div className="vs-perf">
           <div>
@@ -361,11 +398,15 @@ function Inspector({
       </Field>
       <Field label={t('Type')}>
         <select value={i.kind} onChange={(e) => setKind(e.target.value as InputKind)}>
-          {KINDS.map((k) => (
-            <option key={k.value} value={k.value}>
-              {t(k.label)}
-            </option>
-          ))}
+          {KINDS.map((k) => {
+            const missing = needsHardware(k.value) && !hwChoices(k.value).length && k.value !== i.kind;
+            return (
+              <option key={k.value} value={k.value} disabled={missing}>
+                {t(k.label)}
+                {missing ? ` — ${k.value === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')}` : ''}
+              </option>
+            );
+          })}
         </select>
       </Field>
 
@@ -384,8 +425,14 @@ function Inspector({
                         if (!!x.listen === m.listen) return;
                         // An address still the default of the other mode follows.
                         const was = !x.url.trim() || x.url === placeholder(x) || x.url === modeDefault(x);
+                        const port = portOf(x);
                         x.listen = m.listen;
-                        if (was) x.url = modeDefault(x);
+                        if (byPort(x)) {
+                          // An SRT listener: a port, no address.
+                          x.port = port;
+                          x.url = '';
+                        } else if (x.kind === 'srt' && was) x.url = `srt://host:${port}`;
+                        else if (was) x.url = modeDefault(x);
                       })
                     }
                   >
@@ -395,9 +442,27 @@ function Inspector({
               </div>
             </Group>
           )}
-          <Field label={t('Address')} hint={addressHint(i)}>
-            <input value={i.url} placeholder={placeholder(i)} spellCheck={false} onChange={(e) => editInput((x) => void (x.url = e.target.value))} />
-          </Field>
+          {byPort(i) ? (
+            <Field label={t('Port')} hint={t('The sender calls srt://{host}:{port}.', { host: location.hostname, port })}>
+              <input type="number" min={1} max={65535} value={port} onChange={(e) => editInput((x) => void ((x.port = Math.max(1, Math.min(65535, Math.round(+e.target.value) || 0))), (x.url = '')))} />
+            </Field>
+          ) : (
+            <Field label={t('Address')} hint={addressHint(i)}>
+              <input value={i.url} placeholder={placeholder(i)} spellCheck={false} onChange={(e) => editInput((x) => void (x.url = e.target.value))} />
+            </Field>
+          )}
+          {i.kind === 'srt' && (
+            <Field label={t('Latency')} hint={t('SRT latency: the time allowed to recover lost packets (about 3–4× the network round trip).')}>
+              <select value={i.latency ?? 120} onChange={(e) => editInput((x) => void (x.latency = +e.target.value))}>
+                {!LATENCIES.includes(i.latency ?? 120) && <option value={i.latency}>{i.latency} ms</option>}
+                {LATENCIES.map((ms) => (
+                  <option key={ms} value={ms}>
+                    {ms} ms
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
         </>
       )}
 
@@ -431,75 +496,47 @@ function Inspector({
         </div>
       )}
 
-      {i.kind === 'sdi' && (
+      {needsHardware(i.kind) && (
         <>
-          <Field label={t('DeckLink device')} hint={t('Index as listed by Blackmagic Desktop Video (0 = first).')}>
-            <input type="number" min={0} value={i.device} onChange={(e) => editInput((x) => void (x.device = Math.max(0, Math.round(+e.target.value) || 0)))} />
+          <Field label={i.kind === 'sdi' ? t('SDI input') : t('ST 2110 flow')} hint={i.kind === 'sdi' ? t('The connectors declared in Hardware.') : t('The multicast addresses are set in Hardware.')}>
+            <select value={i.hardware ?? ''} onChange={(e) => editInput((x) => void (x.hardware = e.target.value))}>
+              {!choices.some((c) => c.id === i.hardware) && <option value="">{t('— choose —')}</option>}
+              {choices.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </Field>
-          <Hint>{t('SDI inputs need a server built with DeckLink support.')}</Hint>
+          <button type="button" className="btn small" onClick={() => navigate('/hardware')}>
+            <Cpu size={13} /> {t('Edit in Hardware')}
+          </button>
+          <Hint>{i.kind === 'sdi' ? t('SDI inputs need a server built with DeckLink support.') : t('Receiving ST 2110 is not available yet.')}</Hint>
         </>
       )}
 
-      {isStream(i.kind) && (
-        <>
-          <div className="oc-pair vs-pair">
-            <Field label={t('Decoded size')}>
-              <select
-                value={size}
-                onChange={(e) =>
-                  editInput((x) => {
-                    const s = SIZES[+e.target.value];
-                    if (s) Object.assign(x, s);
-                  })
-                }
-              >
-                {size < 0 && (
-                  <option value={-1} disabled>
-                    {i.width}×{i.height}
-                  </option>
-                )}
-                {SIZES.map((s, n) => (
-                  <option key={n} value={n}>
-                    {s.width}×{s.height}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('Frames per second')}>
-              <select value={i.fps} onChange={(e) => editInput((x) => void (x.fps = +e.target.value))}>
-                {!RATES.includes(i.fps) && <option value={i.fps}>{i.fps}</option>}
-                {RATES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <Hint>{t('The picture is fitted inside the decoded size. Stream inputs are decoded by ffmpeg, which must be installed on the server.')}</Hint>
-        </>
-      )}
-
-      <Field label={t('Smoothing buffer')} hint={t('Absorbs network jitter: each frame adds one frame of delay.')}>
+      <Field label={t('Jitter buffer')} hint={t('Absorbs network jitter: each frame adds one frame of delay.')}>
         <select value={i.buffer ?? 2} onChange={(e) => editInput((x) => void (x.buffer = +e.target.value))}>
           {!BUFFERS.includes(i.buffer ?? 2) && <option value={i.buffer}>{tn(i.buffer, '{n} frame', '{n} frames')}</option>}
           {BUFFERS.map((b) => (
             <option key={b} value={b}>
               {b === 0 ? t('0 (lowest latency)') : tn(b, '{n} frame', '{n} frames')}
-              {b > 0 && isStream(i.kind) && i.fps > 0 ? ` · ${Math.round((b * 1000) / i.fps)} ms` : ''}
+              {b > 0 && isStream(i.kind) && (state.info?.fps ?? 0) > 0 ? ` · ${Math.round((b * 1000) / state.info!.fps!)} ms` : ''}
             </option>
           ))}
         </select>
       </Field>
 
       {isStream(i.kind) && (
-        <div className="set-field">
-          <label className="check">
-            <input type="checkbox" checked={!!i.hwDecode} onChange={(e) => editInput((x) => void (x.hwDecode = e.target.checked))} />
-            {t('Hardware decoding (GPU)')}
-          </label>
-          <span className="set-hint">{t('Frees the processor. When the machine has no GPU decoder for this stream, ffmpeg falls back to the processor.')}</span>
-        </div>
+        <Group label={t('Decoding: GPU / CPU')} hint={i.hwDecode ? t('Frees the processor. When the machine has no GPU decoder for this stream, ffmpeg falls back to the processor.') : t('Decoded by the processor.')}>
+          <div className="seg vs-seg">
+            {[true, false].map((gpu) => (
+              <button key={String(gpu)} type="button" className={!!i.hwDecode === gpu ? 'on' : ''} onClick={() => editInput((x) => void (x.hwDecode = gpu))}>
+                {gpu ? 'GPU' : 'CPU'}
+              </button>
+            ))}
+          </div>
+        </Group>
       )}
 
       <button className="btn small danger" onClick={remove}>
@@ -509,7 +546,9 @@ function Inspector({
   );
 }
 
-/** The live picture (Motion JPEG), or "No signal". */
+/** "1920×1080 · 25 fps", as the server detects it. */
+const detected = (info?: InputInfo) => (info?.width ? `${info.width}×${info.height}${info.fps ? ` · ${fpsText(info.fps)} fps` : ''}` : '');
+
 /** The newest picture, five times a second; the last one stays, dimmed, when the signal goes. */
 function Preview({ id, live }: { id: string; live: boolean }) {
   const pic = useLiveFrame(id, 'tile');

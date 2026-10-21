@@ -120,6 +120,8 @@ export interface InputInfo {
   width: number;
   height: number;
   frames: number;
+  /** Frames a second of the source (streams: as detected). */
+  fps?: number;
 }
 
 export interface Rendition {
