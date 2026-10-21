@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import { rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
@@ -16,7 +16,9 @@ import { api, can, thumbnailUrl, useApp } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { Row } from '../widgets/kit';
-import { AirRows, DataSetHand, DataSetPanel } from './DataSets';
+import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, sourcePatch, steppedDatasets } from './DataSets';
+import { exposedFields, FedText, LayerProperties, OpSection, type FieldIO } from './Exposed';
+import { shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
@@ -88,13 +90,15 @@ export function FieldInput({ field, value, onChange, rich }: { field: Field; val
  */
 function updateData(t: Template, draft: Record<string, string>, read: ReadMode): Record<string, string> {
   const ds = usedDatasets(t).map((d) => d.key);
+  // A data set only feeding Texts: its chosen row (and all rows / one row) go with the other values.
+  const sent = new Set(usedDatasets(t).flatMap((d) => (datasetUse(t, d).source ? [rowKey(d.key), oneKey(d.key)] : [])));
   const bound = new Set(read === 'manual' ? [] : t.fields.filter((f) => f.binding?.source).map((f) => f.key));
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries({ ...defaultData(t), ...draft })) {
-    if (bound.has(k) || ds.some((d) => k.startsWith(`${d}__`))) continue;
+    if (bound.has(k) || (!sent.has(k) && ds.some((d) => k.startsWith(`${d}__`)))) continue;
     out[k] = v;
   }
-  return out;
+  return { ...out, ...sourcePatch(t) };
 }
 
 /** Fields grouped by layer ("Name · Vertical": group Name, label Vertical). */
@@ -268,7 +272,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
     return { ...(t ? defaultData(t) : {}), ...(r.id === item?.id ? draft : r.data) };
   };
   const takeItem = (r: RundownItem, extra?: Record<string, string>) => {
-    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: { ...dataOf(r), ...extra }, rundownId: r.id });
+    const tpl = project?.templates.find((x) => x.id === r.templateId);
+    command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: { ...dataOf(r), ...(tpl ? sourcePatch(tpl) : {}), ...extra }, rundownId: r.id });
     const z = zoneOf(r);
     if (z) setAirSel(z.id);
   };
@@ -495,38 +500,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
               <div className="opx-edit" style={{ gridTemplateColumns: hasData ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
                 <div className="opx-fields-col">
                   <div className="opx-fields">
-                    {fieldGroups(template.fields).map((g) => (
-                      <div key={g.title} className="opx-group">
-                        {g.title && <div className="opx-sub">{g.title}</div>}
-                        {g.fields.map(({ f, label }) => {
-                          const live = f.binding && readMode !== 'manual';
-                          return (
-                            <div key={f.key}>
-                              <Row label={f.kind === 'table' ? undefined : label}>
-                                {live ? (
-                                  <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
-                                    {boundDraft[f.key] ?? draft[f.key] ?? '…'}
-                                  </span>
-                                ) : (
-                                  <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => editDraft({ [f.key]: v })} />
-                                )}
-                              </Row>
-                              {fitWarnings
-                                .filter((w) => w.keys.includes(f.key))
-                                .map((w) => (
-                                  <FitWarning key={w.layer.id} w={w} />
-                                ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                    {fitWarnings
-                      .filter((w) => !w.keys.some((k) => template.fields.some((f) => f.key === k)))
-                      .map((w) => (
-                        <FitWarning key={w.layer.id} w={w} named />
-                      ))}
-                    {usedDatasets(template).map((ds) => (
+                    <ValuesPane template={template} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} fitWarnings={fitWarnings} onDraft={editDraft} />
+                    {steppedDatasets(template).map((ds) => (
                       <DataSetHand key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
                     ))}
                   </div>
@@ -557,9 +532,13 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       }}
                     />
                     <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
-                      {usedDatasets(template).map((ds, i) => (
-                        <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={i === 0} />
-                      ))}
+                      {usedDatasets(template).map((ds) =>
+                        datasetUse(template, ds).source ? (
+                          <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} sourceName={sourceName(ds.source)} onDraft={editDraft} />
+                        ) : (
+                          <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
+                        ),
+                      )}
                     </DataBlock>
                   </>
                 )}
@@ -677,6 +656,80 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * The left part of a graphic: its values (texts, pictures… and what the Texts
+ * fed by a data set show), then the properties exposed in the Designer, layer
+ * by layer, with the Designer's controls and sections.
+ */
+function ValuesPane({ template, draft, boundDraft, readMode, sourceName, previewData, fitWarnings, onDraft }: { template: Template; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; fitWarnings: TextWarning[]; onDraft: (patch: Record<string, string>) => void }) {
+  const { content, layers } = useMemo(() => exposedFields(template.fields, template.layers), [template.fields, template.layers]);
+  const live = (f: Field) => !!f.binding?.source && readMode !== 'manual';
+  const io: FieldIO = {
+    value: (f) => draft[f.key] ?? '',
+    set: (f, v) => onDraft({ [f.key]: v }),
+    fed: (f) => (live(f) ? (boundDraft[f.key] ?? draft[f.key] ?? '…') : null),
+  };
+  // The Texts a data set feeds (it is only their source): what they show, read only.
+  const fed: { layer: Layer; title: string }[] = [];
+  for (const ds of usedDatasets(template)) {
+    const use = datasetUse(template, ds);
+    if (!use.source) continue;
+    const row = Math.max(1, parseInt(draft[rowKey(ds.key)] ?? '1', 10) || 1);
+    const all = use.lines && draft[oneKey(ds.key)] !== '1' && !use.row;
+    for (const l of use.texts) if (!fed.some((x) => x.layer.id === l.id)) fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }) });
+  }
+  const fedIds = new Set(fed.map((x) => x.layer.id));
+  const keys = new Set(template.fields.map((f) => f.key));
+  return (
+    <>
+      {(content.length > 0 || fed.length > 0) && (
+        <OpSection title={t('Content')}>
+          {fieldGroups(content).map((g) => (
+            <div key={g.title} className="opx-group">
+              {g.title && <div className="opx-sub">{g.title}</div>}
+              {g.fields.map(({ f, label }) => (
+                <div key={f.key}>
+                  <Row label={f.kind === 'table' ? undefined : label}>
+                    {live(f) ? (
+                      <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
+                        {boundDraft[f.key] ?? draft[f.key] ?? '…'}
+                      </span>
+                    ) : (
+                      <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => onDraft({ [f.key]: v })} />
+                    )}
+                  </Row>
+                  {fitWarnings
+                    .filter((w) => w.keys.includes(f.key) && !fedIds.has(w.layer.id))
+                    .map((w) => (
+                      <FitWarning key={w.layer.id} w={w} />
+                    ))}
+                </div>
+              ))}
+            </div>
+          ))}
+          {fed.map(({ layer, title }) => (
+            <FedText key={layer.id} label={layer.name} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title}>
+              {fitWarnings
+                .filter((w) => w.layer.id === layer.id)
+                .map((w) => (
+                  <FitWarning key={w.layer.id} w={w} />
+                ))}
+            </FedText>
+          ))}
+        </OpSection>
+      )}
+      {layers.map((e) => (
+        <LayerProperties key={e.layer.id} entry={e} io={io} />
+      ))}
+      {fitWarnings
+        .filter((w) => !fedIds.has(w.layer.id) && !w.keys.some((k) => keys.has(k)))
+        .map((w) => (
+          <FitWarning key={w.layer.id} w={w} named />
+        ))}
+    </>
   );
 }
 
@@ -1111,7 +1164,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           <CircleStop size={14} /> Out
         </button>
       </div>
-      {!!usedDatasets(tpl).length && <AirRows sets={usedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
+      {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
         .filter((l) => l.visible && (widgetOf(l.type)?.Operator || widgetOf(l.type)?.warnings))
         .map((l) => (
@@ -1147,7 +1200,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           ))}
         </div>
       )}
-      {!timed.length && !triggers.length && !usedDatasets(tpl).length && !tpl.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">{t('This graphic has no internal controls.')}</p>}
+      {!timed.length && !triggers.length && !steppedDatasets(tpl).length && !tpl.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">{t('This graphic has no internal controls.')}</p>}
     </div>
   );
 }

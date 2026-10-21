@@ -1,4 +1,5 @@
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
@@ -21,12 +22,13 @@ import {
   type Command,
   type Data,
   type DataSet,
+  type Layer,
   type PlayoutItem,
   type RowChange,
   type Template,
 } from "../engine/types";
 import { useApp } from "../store";
-import { t } from "../i18n";
+import { t, tn } from "../i18n";
 
 /*
  * The data sets of a graphic in the Operator's Data block: its rows, the
@@ -112,6 +114,59 @@ function withAdded(
 
 const rowOf = (data: Data | undefined, ds: DataSet) =>
   Math.max(1, parseInt(data?.[rowKey(ds.key)] ?? "1", 10) || 1);
+/** Widgets that take a data set's whole table (they show its rows themselves). */
+const LIST_TAKERS = new Set(["table", "credits", "chart", "ticker"]);
+
+/**
+ * How a graphic uses a data set. `source`: only Texts (and simple values)
+ * read it: the data set is a source feeding them, without rows going on by
+ * themselves (no auto, loop or NEXT row). `row`: they read the columns of
+ * one chosen row; `lines`: a Text shows all the rows (one line each).
+ */
+export interface DatasetUse {
+  source: boolean;
+  row: boolean;
+  lines: boolean;
+  /** The Texts reading it. */
+  texts: Layer[];
+}
+const useCache = new WeakMap<object, Map<string, DatasetUse>>();
+export function datasetUse(t: Template, ds: DataSet): DatasetUse {
+  let m = useCache.get(t);
+  if (!m) useCache.set(t, (m = new Map()));
+  const hit = m.get(ds.key);
+  if (hit) return hit;
+  const readers = t.layers.filter((l) =>
+    JSON.stringify(l).includes(`${ds.key}_`),
+  );
+  const texts = readers.filter((l) => l.type === "text");
+  const json = JSON.stringify(readers);
+  const lines = texts.some(
+    (l) => l.type === "text" && l.text.includes(`{{${linesKey(ds.key)}}}`),
+  );
+  const row =
+    new RegExp(`${ds.key}_[A-Za-z0-9]`).test(json) ||
+    json.includes(rowKey(ds.key));
+  const out: DatasetUse = {
+    source: texts.length > 0 && !readers.some((l) => LIST_TAKERS.has(l.type)),
+    row,
+    lines,
+    texts,
+  };
+  m.set(ds.key, out);
+  return out;
+}
+/** The data sets stepped through by the operator (rows, auto, loop, NEXT row), not the ones only feeding Texts. */
+export const steppedDatasets = (t: Template) =>
+  usedDatasets(t).filter((d) => !datasetUse(t, d).source);
+/** What goes with a take of a graphic: the data sets feeding Texts never go on by themselves. */
+export function sourcePatch(t: Template): Data {
+  const out: Data = {};
+  for (const d of usedDatasets(t))
+    if (datasetUse(t, d).source) out[autoKey(d.key)] = "";
+  return out;
+}
+
 /** What a graphic on air shows, or comes back with (out › in). */
 export const shownData = (p: PlayoutItem) =>
   p.next && p.next.rundownId === p.rundownId ? p.next.data : p.data;
@@ -744,5 +799,148 @@ export function AirRows({
         );
       })}
     </>
+  );
+}
+
+/**
+ * A data set feeding Texts: only a source. The operator sees its rows and,
+ * when the Texts read one row (its columns), chooses that row; when a Text
+ * shows all the rows, it shows them all (or, as chosen, only one). No rows
+ * going on by themselves, no loop, no NEXT row: the chosen row goes on air
+ * with the take, or with Update, like the other values.
+ */
+export function DataSetSource({
+  ds,
+  template,
+  draft,
+  onAir,
+  operate,
+  sourceName,
+  onDraft,
+}: {
+  ds: DataSet;
+  template: Template;
+  draft: Data;
+  onAir: PlayoutItem | undefined;
+  operate: boolean;
+  sourceName: string;
+  onDraft: (patch: Data) => void;
+}) {
+  const stage = useDatasetRows(ds, draft);
+  const use = datasetUse(template, ds);
+  const live = onAir ? shownData(onAir) : undefined;
+  const added = parseAdded(draft[addedKey(ds.key)]);
+  const table = stage ? withAdded(stage, added) : null;
+  const total = table?.rows.length ?? 0;
+  const chosen = Math.min(rowOf(draft, ds), Math.max(total, 1));
+  const air = live ? Math.min(rowOf(live, ds), Math.max(total, 1)) : null;
+  const one = draft[oneKey(ds.key)] === "1";
+  // One row: the Texts read its columns, or the one showing the rows shows only one.
+  const picks = use.row || (use.lines && one);
+  const allOnly = use.lines && !one && !use.row;
+  const airOne = live?.[oneKey(ds.key)] === "1";
+  const pending =
+    !!live && ((picks && air !== chosen) || (use.lines && airOne !== one));
+  return (
+    <div className="ods ods-src">
+      <div className="ods-bar">
+        <Rows3 size={14} className="ods-icon" />
+        <strong>{ds.name}</strong>
+        <span className="muted small" title={t("Data source")}>
+          {sourceName}
+        </span>
+        <span className="spacer" />
+        {use.lines ? (
+          <div
+            className="opx-seg tiny"
+            title={t("What the text shows: every row, or the chosen one")}
+          >
+            <button
+              className={one ? "" : "on"}
+              onClick={() => onDraft({ [oneKey(ds.key)]: "" })}
+            >
+              {t("All rows")}
+            </button>
+            <button
+              className={one ? "on" : ""}
+              onClick={() => onDraft({ [oneKey(ds.key)]: "1" })}
+            >
+              {t("One row")}
+            </button>
+          </div>
+        ) : (
+          <span className="ods-mode">{t("One row")}</span>
+        )}
+      </div>
+      <p className="ods-say">
+        {allOnly
+          ? total
+            ? tn(total, "The text shows the only row.", "The text shows all {n} rows.")
+            : t("The text shows all the rows.")
+          : t("The text shows row {row}: click a row to choose another.", {
+              row: total ? chosen : "—",
+            })}
+        {pending &&
+          ` ${operate ? t("Update sends it on air.") : t("Not on air yet.")}`}
+      </p>
+      <div className="ods-rows">
+        {stage === undefined && (
+          <p className="opx-hint pad">{t("Loading the rows…")}</p>
+        )}
+        {stage === null && (
+          <p className="opx-hint pad">
+            {t("No data from {source} yet.", { source: sourceName })}
+          </p>
+        )}
+        {table && (
+          <table className={picks ? "picks" : "all"}>
+            <thead>
+              <tr>
+                <th />
+                <th>#</th>
+                {table.columns.map((c) => (
+                  <th key={c}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((r, i) => {
+                const n = i + 1;
+                const isChosen = picks && n === chosen;
+                const isAir = picks && air === n;
+                return (
+                  <tr
+                    key={i}
+                    className={isChosen ? "chosen" : isAir ? "air" : ""}
+                    onClick={
+                      picks
+                        ? () => onDraft({ [rowKey(ds.key)]: String(n) })
+                        : undefined
+                    }
+                    title={picks ? t("Click: the text shows this row") : undefined}
+                  >
+                    <td className="ods-tag">
+                      {isAir ? (
+                        <span className="ods-badge air">AIR</span>
+                      ) : isChosen ? (
+                        <span className="ods-badge chosen">
+                          <Check size={11} />
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="ods-n">{n}</td>
+                    {r.map((c, j) => (
+                      <td key={j}>
+                        <Cell v={c} />
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
   );
 }
