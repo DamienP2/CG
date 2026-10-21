@@ -156,6 +156,8 @@ pub struct Config {
     pub import_text: String,
     pub layout: Layout,
     pub align: Align,
+    /// One font for the whole credits (the channel's), Inter by default.
+    pub font: String,
     pub gutter: f32,
     pub section_gap: f32,
     pub line_gap: f32,
@@ -190,6 +192,7 @@ impl Default for Config {
             import_text: String::new(),
             layout: Layout::Two,
             align: Align::Center,
+            font: "Inter".into(),
             gutter: 40.0,
             section_gap: 70.0,
             line_gap: 10.0,
@@ -807,7 +810,8 @@ fn prop(layer: &Layer, p: crate::model::Prop, d: f64) -> f32 {
 
 /// Applies an operator action (`op`, with its `args`) to the state.
 /// start · pause · resume · reset · next (card) · remaining {seconds, travel?} ·
-/// adjust {seconds: ±} · endAt {time: "hh:mm[:ss]", tz?}.
+/// adjust {seconds: ±} · endAt {time: "hh:mm[:ss]", tz?} · finish {seconds?: 3}
+/// (to the end in a few seconds, from where it is).
 /// `travel`: px measured by the caller (a crawl's width needs fonts; else estimated).
 pub fn act(
     layer: &Layer,
@@ -923,6 +927,20 @@ pub fn act(
             let rem = remaining(c, st, x, now, age);
             set_remaining(st, rem + d)?;
         }
+        "finish" => {
+            if done {
+                return Ok(());
+            }
+            let r = args
+                .get("seconds")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(3.0)
+                .max(0.5);
+            let rem = remaining(c, st, x, now, age);
+            rebase(st);
+            st.running = true;
+            st.rate = Some(((1.0 - f) / r.min(rem.max(0.5))).max(1e-6));
+        }
         "endAt" => {
             let t = args
                 .get("time")
@@ -984,6 +1002,29 @@ mod tests {
             age_secs: 0.0,
             data: d,
         }
+    }
+
+    #[test]
+    fn finish_lands_in_a_few_seconds_from_where_it_is() {
+        let l = layer(Config {
+            entries: parse(TEXT),
+            duration: 60.0,
+            ..Config::default()
+        });
+        let d = Data::new();
+        let mut st = State::default();
+        let travel = serde_json::json!({"travel": 2000.0});
+        act(&l, &mut st, "start", &travel, &ctx(&d, 0)).unwrap();
+        act(&l, &mut st, "pause", &travel, &ctx(&d, 10_000)).unwrap();
+        act(&l, &mut st, "finish", &travel, &ctx(&d, 20_000)).unwrap();
+        let LayerKind::Credits { x: c } = &l.kind else {
+            panic!()
+        };
+        assert!(st.running);
+        assert!((remaining(c, &st, 2000.0, 20_000, 0.0) - 3.0).abs() < 1e-6);
+        assert!(progress(c, &st, 2000.0, 23_000, 0.0) >= 1.0 - 1e-9);
+        // The font of the whole credits: Inter unless set.
+        assert_eq!(Config::default().font, "Inter");
     }
 
     #[test]

@@ -77,11 +77,22 @@ pub(crate) fn stroke_of(st: &StrokeStyle, width: f32) -> Stroke {
 pub(crate) fn fill(d: &mut Draw, p: &Path, fs: &FillStyle, r: FillRule) {
     let (w, h) = (d.w.max(1.0), d.h.max(1.0));
     let c1 = d.color(Prop::Fill);
-    // From `fill` through the middle colours to `color2`.
+    // The second colour is animatable (`fill2`; unset, `color2`).
+    let c2 = d.color(Prop::Fill2);
+    // From `fill` through the middle colours to the second colour.
     let stops = |o: f32| {
-        fs.gradient()
-            .into_iter()
-            .map(|(at, c)| GradientStop::new(at, sk(c.map_or(c1, Draw::hex), o)))
+        let g = fs.gradient();
+        let last = g.len() - 1;
+        g.into_iter()
+            .enumerate()
+            .map(|(i, (at, c))| {
+                let c = if i == last {
+                    c2
+                } else {
+                    c.map_or(c1, Draw::hex)
+                };
+                GradientStop::new(at, sk(c, o))
+            })
             .collect::<Vec<_>>()
     };
     let shader = match fs.kind {

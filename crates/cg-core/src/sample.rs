@@ -33,6 +33,8 @@ fn layer(
         locked: false,
         manual_start: false,
         scale_lock: false,
+        lock_ratio: false,
+        drop_shadow: false,
         timeline: None,
         props: props.iter().copied().collect(),
         tracks: BTreeMap::new(),
@@ -82,7 +84,10 @@ pub fn lower_third() -> Template {
     let mut group = layer(
         "lt-group",
         "Lower third",
-        LayerKind::Group { clip: true },
+        LayerKind::Group {
+            clip: true,
+            lottie: None,
+        },
         None,
         &[
             (X, n(160.0)),
@@ -1069,6 +1074,7 @@ fn demo_project_layers() -> Project {
         playlists: Vec::new(),
         formats: Vec::new(),
         drafts: Vec::new(),
+        starter: None,
         templates: vec![
             lower_third(),
             score_bug(),

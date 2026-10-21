@@ -16,7 +16,7 @@ use cg_core::widgets::scroll_positions;
 use cg_core::{
     LayerKind, Prop, TextAlign, TextDecoration, TextOverflow, TextScroll, VerticalAlign,
 };
-use tiny_skia::{FillRule, Paint, PathBuilder, Stroke};
+use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
 
 use super::{rrect, Draw};
 use crate::text::{self as tx, FitOpts};
@@ -336,23 +336,28 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         .filter_map(|(c, pb)| Some((Draw::hex(&c), pb.finish()?)))
         .collect();
     let path = text_pb.finish();
-    if path.is_none() && colored.is_empty() {
-        draw_pictures(d, &chain, &pictures, size, sx, mask);
-        return true;
-    }
     // Shadow and strokes go around every part, whatever its colour.
     let all: Vec<&tiny_skia::Path> = path.iter().chain(colored.iter().map(|(_, p)| p)).collect();
     let sw = d.num(Prop::StrokeWidth);
     let stroke_col = d.color(Prop::Stroke);
     if c.shadow {
-        let st = if c.stroke_outside && sw > 0.0 {
-            sw * 2.0
-        } else {
-            0.0
+        // As the browser's drop shadow: under the stroke (outside or centred)
+        // and the colour emoji too.
+        let st = match (c.stroke_outside, sw > 0.0) {
+            (_, false) => 0.0,
+            (true, true) => sw * 2.0,
+            (false, true) => sw,
         };
-        paint::shadow(
+        let pics: Vec<_> = pictures
+            .iter()
+            .filter_map(|(g, x, baseline)| {
+                paint::picture_at(&chain, g, *x, *baseline, size, sx, Transform::identity())
+            })
+            .collect();
+        paint::shadow_with(
             d,
             &all,
+            &pics,
             st,
             Draw::hex(&c.shadow_color),
             c.shadow_x,
@@ -360,6 +365,10 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             c.shadow_blur,
             mask,
         );
+    }
+    if path.is_none() && colored.is_empty() {
+        draw_pictures(d, &chain, &pictures, size, sx, mask);
+        return true;
     }
     if c.stroke_outside && sw > 0.0 {
         let s = Stroke {
@@ -380,7 +389,8 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         (FillType::Gradient, Some(path)) => {
             if let Some(shader) = paint::gradient(
                 d.color(Prop::Fill),
-                Draw::hex(&c.color2),
+                // Animatable (`fill2`; unset, `color2`).
+                d.color(Prop::Fill2),
                 c.grad_angle,
                 d.w.max(1.0),
                 d.h.max(1.0),

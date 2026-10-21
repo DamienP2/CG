@@ -124,6 +124,12 @@ export interface InputInfo {
   fps?: number;
 }
 
+/** What a format shows while no project is loaded: a built-in design (drawn by the server) or its still picture. */
+export type SlateStyle = 'aurora' | 'bento' | 'gradient' | 'frame' | 'lines' | 'split' | 'custom';
+
+/** Not set (older settings): the still picture when there is one, else the first design (as the server). */
+export const slateStyleOf = (p: { slate?: string; slateStyle?: SlateStyle }): SlateStyle => p.slateStyle ?? (p.slate?.trim() ? 'custom' : 'aurora');
+
 export interface Rendition {
   id: string;
   name: string;
@@ -132,6 +138,7 @@ export interface Rendition {
   outputs: OutputsConfig;
   /** Still picture (`/assets/…`) its outputs show while no project is loaded ("" = none). */
   slate?: string;
+  slateStyle?: SlateStyle;
 }
 
 export interface ChannelConfig {
@@ -146,6 +153,7 @@ export interface ChannelConfig {
   location?: string;
   /** Still picture (`/assets/…`) the main format shows while no project is loaded ("" = none). */
   slate?: string;
+  slateStyle?: SlateStyle;
   /** Frames rendered ahead, each on its own thread (1–4, 2 by default). */
   renderAhead?: number;
   /** Destinations wired to no format: kept, not started. */

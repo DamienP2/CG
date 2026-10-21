@@ -201,6 +201,8 @@ pub(crate) struct Pt<'x, 'a, 'b> {
     /// Measure only (layout pass).
     pub dry: bool,
     pub alpha: f32,
+    /// Font family of the texts.
+    pub font: String,
     mask: Option<Mask>,
     stack: Vec<Option<Mask>>,
 }
@@ -212,6 +214,7 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
             d,
             dry,
             alpha: 1.0,
+            font: "Inter".into(),
             mask,
             stack: Vec::new(),
         }
@@ -369,14 +372,16 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
 
     /// Width of a line of text.
     pub fn tw(&mut self, s: &str, size: f32, weight: u16, ls: f32) -> f32 {
-        match self.d.font("Inter", weight) {
+        let family = self.font.clone();
+        match self.d.font(&family, weight) {
             Some(f) => Draw::text_width(&f, s, size, ls),
             None => s.chars().count() as f32 * size * 0.55,
         }
     }
 
     fn text_path(&mut self, s: &str, x: f32, cy: f32, o: T) -> Option<Path> {
-        let f = self.d.font("Inter", o.weight)?;
+        let family = self.font.clone();
+        let f = self.d.font(&family, o.weight)?;
         let w = Draw::text_width(&f, s, o.size, o.ls);
         let x0 = x - w * (o.anchor as f32 + 1.0) / 2.0;
         let p = Draw::text_path(

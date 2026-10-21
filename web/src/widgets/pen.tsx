@@ -1,13 +1,15 @@
 // Pen: a Bézier path edited on the stage; points and handles are fractions of the box.
-// The visible portion (start / end %) is what the In draws; arrows follow the visible tip.
+// The visible portion (start / end %, the animatable drawStart / drawEnd) is what the In draws,
+// over the pen's own duration after its delay; arrows follow the visible tip.
 // Same picture as crates/cg-render/src/wid/pen.rs; geometry mirrors crates/cg-core/src/wid/pen.rs.
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { PenTool } from 'lucide-react';
-import { col, cssColor, num } from '../engine/evaluate';
-import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
+import { col, cssColor, holdFrame, num, propValue } from '../engine/evaluate';
+import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
+import type { Layer } from '../engine/types';
 import { useApp } from '../store';
-import { Btns, Catcher, clamp, ColorPick, defineWidget, getPath, Handle, Num, Row, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
-import { FILL, ShapeSvg, STROKE, StrokeRows, type FillRule, type FillStyle, type StrokeStyle } from './shape';
+import { Btns, Catcher, clamp, defineWidget, getPath, Handle, Num, Row, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
+import { FILL, GradientTo, ShapeSvg, STROKE, StrokeRows, type FillRule, type FillStyle, type StrokeStyle } from './shape';
 import { t } from '../i18n';
 
 export interface PenPoint {
@@ -35,9 +37,14 @@ export interface Config {
   fillOn?: boolean;
   fillStyle?: FillStyle;
   fillRule?: FillRule;
+  /** Visible portion, %: the defaults of the animatable drawStart / drawEnd (older layers have only these). */
   vStart?: number;
   vEnd?: number;
   drawIn?: boolean;
+  /** How long the drawing lasts, s (unset = the template's In, 1 s without one). */
+  drawDuration?: number;
+  /** Time on air before it starts drawing, s. */
+  drawDelay?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -46,7 +53,7 @@ export interface State {}
 type Pt = [number, number];
 const P = (x: number, y: number, o: Partial<PenPoint> = {}): Required<PenPoint> => ({ x, y, ix: 0, iy: 0, ox: 0, oy: 0, type: 'corner', mode: 'symmetric', ...o });
 const DEFAULT_PTS = () => [P(0.05, 0.85, { type: 'curve', ox: 0.1, oy: -0.55 }), P(0.5, 0.5, { type: 'curve', ix: -0.14, iy: -0.2, ox: 0.14, oy: 0.2 }), P(0.94, 0.14, { type: 'curve', ix: -0.1, iy: 0.55 })];
-const D = { closed: false, fixedWidth: true, refW: 1100, refH: 560, arrowStart: 'none' as Arrow, arrowEnd: 'triangle' as Arrow, arrowSize: 3.5, fillOn: false, fillRule: 'nonzero' as FillRule, vStart: 0, vEnd: 100, drawIn: true };
+const D = { closed: false, fixedWidth: true, refW: 1100, refH: 560, arrowStart: 'none' as Arrow, arrowEnd: 'triangle' as Arrow, arrowSize: 3.5, fillOn: false, fillRule: 'nonzero' as FillRule, vStart: 0, vEnd: 100, drawIn: true, drawDelay: 0 };
 const cfg = (c: Config) => ({ ...withDefaults(D, c), points: (c.points ?? DEFAULT_PTS()).map((p) => ({ ...P(0, 0), ...p })) });
 const strokeOf = (c: Config) => ({ ...STROKE, cap: 'round' as const, join: 'round' as const, ...c.strokeStyle });
 const f4 = (v: number) => +v.toFixed(4);
@@ -121,19 +128,27 @@ export function strokeWidth(c: Config, base: number, w: number, h: number) {
 const ease = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 const easeOut = (k: number) => 1 - Math.pow(1 - k, 3);
 
-/** In / Out progress (mirrors progress): the In lasts the template's In (1 s without one). */
-function progress(frame: number, hold: number, fps: number, age: number): [number, number] {
+/** How long the drawing lasts, s: its own duration, else the template's In (1 s without one) (mirrors draw_secs). */
+function drawSecs(c: Config, hold: number, fps: number) {
+  const d = c.drawDuration;
+  if (d !== undefined && Number.isFinite(d) && d > 0) return d;
+  return hold > 0 ? hold / Math.max(1, fps) : 1;
+}
+
+/** In / Out progress (mirrors progress): the In draws over the pen's duration once its delay has passed. */
+function progress(c: Config, frame: number, hold: number, fps: number, age: number): [number, number] {
   fps = Math.max(1, fps);
-  const secs = hold > 0 ? hold / fps : 1;
-  const kIn = clamp(age / secs, 0, 1);
+  const secs = drawSecs(c, hold, fps);
+  const kIn = clamp((age - Math.max(0, cfg(c).drawDelay)) / secs, 0, 1);
   const kOut = frame > hold + 1e-6 ? clamp((frame - hold) / (secs * fps), 0, 1) : 0;
   return [kIn, kOut];
 }
 
-function portion(c: Config, [kIn, kOut]: [number, number]): [number, number, number] {
+/** The visible portion (start / end %: drawStart / drawEnd at this frame) with the In / Out, and the fill opacity (mirrors portion). */
+function portion(c: Config, start: number, end: number, [kIn, kOut]: [number, number]): [number, number, number] {
   const k = cfg(c);
-  let a = clamp(k.vStart, 0, 100);
-  let b = clamp(k.vEnd, 0, 100);
+  let a = clamp(start, 0, 100);
+  let b = clamp(end, 0, 100);
   if (!k.drawIn) return [a, b, 1];
   b = a + (b - a) * easeOut(kIn);
   a += (b - a) * ease(kOut);
@@ -278,7 +293,7 @@ function PointList({ layer, edit }: { layer: L; edit: Edit }) {
       l.points = ps;
     }, `pt-${layer.id}-${i}-${ax}`);
   return (
-    <Row expose="points" exposeValue={k.points} label={t('Points · {n}', { n: k.points.length })}>
+    <Row expose={false} label={t('Points · {n}', { n: k.points.length })}>
       <div className="wk-list">
         {k.points.map((p, i) => (
           <div key={i} className="wk-item" style={i === sel ? { background: 'rgba(124,92,255,.18)', borderRadius: 6 } : undefined}>
@@ -329,7 +344,7 @@ function FillSection({ layer }: { layer: L }) {
             ]}
           />
           {f.kind !== 'image' && f.kind !== 'none' && <ColorGroupRow layer={layer as never} prop="fill" label={f.kind === 'solid' ? t('Color') : t('From')} />}
-          {(f.kind === 'linear' || f.kind === 'radial') && <ColorPick label={t('To')} path="fillStyle.color2" value={FILL.color2} />}
+          {(f.kind === 'linear' || f.kind === 'radial') && <GradientTo layer={layer as never} />}
           {f.kind === 'linear' && <Num label={t('Angle')} path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
           {f.kind === 'image' && (
             <>
@@ -386,7 +401,7 @@ export default defineWidget({
     const k = cfg(layer);
     const segs = segments(layer, w, h);
     if (!segs.length) return null;
-    const [pa, pb, fillOp] = portion(layer, progress(frame, hold, fps, time.ageSecs));
+    const [pa, pb, fillOp] = portion(layer, num(r.drawStart), num(r.drawEnd), progress(layer, frame, hold, fps, time.ageSecs));
     const d = pathD(layer, w, h);
     const st = strokeOf(layer);
     const sw = strokeWidth(layer, num(r.strokeWidth), w, h);
@@ -435,8 +450,9 @@ export default defineWidget({
       </>
     );
   },
-  Inspector: ({ layer, edit }) => {
+  Inspector: ({ layer, template, edit }) => {
     useUi();
+    const fps = useApp((s) => (s.project ? s.project.frameRate.num / s.project.frameRate.den : 50));
     const k = cfg(layer);
     const ed = edit as unknown as Edit;
     const lay = layer as unknown as L;
@@ -462,8 +478,7 @@ export default defineWidget({
           {p && (
             <>
               <Seg
-                expose={`points.${sel}.type`}
-                exposeValue={p.type}
+                expose={false}
                 label={t('Point {n}', { n: sel + 1 })}
                 value={p.type}
                 onChange={(v) => ed((l) => setType(l, sel, v, w, h))}
@@ -474,8 +489,7 @@ export default defineWidget({
               />
               {p.type === 'curve' && (
                 <Seg
-                  expose={`points.${sel}.mode`}
-                  exposeValue={p.mode}
+                  expose={false}
                   label={t('Handles')}
                   value={p.mode}
                   onChange={(v) =>
@@ -526,13 +540,7 @@ export default defineWidget({
         <Section id="pen-stroke" title={t('Stroke')}>
           <StrokeRows layer={layer} caps capDefault="round" joinDefault="round" />
           <Toggle label={t('Fixed width')} path="fixedWidth" value={k.fixedWidth} />
-          {!k.fixedWidth && (
-            <>
-              <Num label={t('Ref. width')} path="refW" value={k.refW} min={1} max={10000} unit="px" />
-              <Num label={t('Ref. height')} path="refH" value={k.refH} min={1} max={10000} unit="px" />
-              <Btns list={[{ label: t('Use current size'), cls: 'ghost', title: t('Reference size = the box now'), onClick: () => ed((l) => void ((l.refW = Math.round(w)), (l.refH = Math.round(h)))) }]} />
-            </>
-          )}
+          {!k.fixedWidth && <Btns list={[{ label: t('Use current size'), cls: 'ghost', title: t('Reference size = the box now'), onClick: () => ed((l) => void ((l.refW = Math.round(w)), (l.refH = Math.round(h)))) }]} />}
         </Section>
         <Section id="pen-arrows" title={t('Arrows')}>
           <Seg label={t('Start')} path="arrowStart" value={k.arrowStart} options={ARROWS.map(([v, l]) => [v, t(l)] as [Arrow, string])} />
@@ -541,9 +549,16 @@ export default defineWidget({
         </Section>
         <FillSection layer={lay} />
         <Section id="pen-portion" title={t('Drawing')}>
-          <Num label={t('Start')} path="vStart" value={k.vStart} min={0} max={100} unit="%" />
-          <Num label={t('End')} path="vEnd" value={k.vEnd} min={0} max={100} unit="%" />
+          {/* Animatable (◆ puts them on the timeline). */}
+          <GroupRow layer={layer as Layer} spec={{ label: t('Start'), props: ['drawStart'], min: 0, max: 100, suffix: '%' }} />
+          <GroupRow layer={layer as Layer} spec={{ label: t('End'), props: ['drawEnd'], min: 0, max: 100, suffix: '%' }} />
           <Toggle label={t('Draw at In')} path="drawIn" value={k.drawIn} />
+          {k.drawIn && (
+            <>
+              <Num label={t('Duration')} path="drawDuration" value={+drawSecs(layer, holdFrame(template), fps).toFixed(2)} min={0.05} max={600} step={0.1} precision={1} unit="s" />
+              <Num label={t('Delay')} path="drawDelay" value={k.drawDelay} min={0} max={600} step={0.1} precision={1} unit="s" />
+            </>
+          )}
         </Section>
       </>
     );
@@ -630,11 +645,12 @@ export default defineWidget({
     const k = cfg(layer);
     const out: Warning[] = [];
     const n = k.points.length;
+    const [vs, ve] = [num(r?.drawStart ?? propValue(layer as Layer, 'drawStart', 0)), num(r?.drawEnd ?? propValue(layer as Layer, 'drawEnd', 0))];
     const width = num(r?.strokeWidth ?? layer.props.strokeWidth ?? 0);
     if (n === 0) out.push({ level: 'info', text: t('Empty path: choose Add points and click on the stage.') });
     if (n === 1) out.push({ level: 'warn', text: t('Path with a single point: nothing is drawn. Add at least one more point.') });
     if (!k.closed && k.fillOn) out.push({ level: 'info', text: t('Fill is ignored while the path is open.') });
-    if (k.vEnd <= k.vStart && n > 1) out.push({ level: 'warn', text: t('Visible portion: End ≤ Start, the stroke is hidden.') });
+    if (ve <= vs && n > 1) out.push({ level: 'warn', text: t('Visible portion: End ≤ Start, the stroke is hidden.') });
     if (!width && !(k.closed && k.fillOn) && n > 1) out.push({ level: 'warn', text: t('Width 0 and no fill: the path is invisible.') });
     return out;
   },

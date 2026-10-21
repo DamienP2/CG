@@ -105,3 +105,26 @@ pub fn act(
         _ => Err("this layer has no operator actions".into()),
     }
 }
+
+/// The graphic's data changed on air (`old` → `ctx.data`, by an Update, a
+/// data set row, a connector): widgets that keep what they show react (a
+/// chart freezes the data of the take or tweens to the new values). True
+/// when the layer's state changed.
+pub fn on_data(layer: &Layer, state: &mut Value, old: &Data, ctx: &ActCtx) -> bool {
+    match &layer.kind {
+        LayerKind::Chart { .. } => {
+            let mut st: chart::State = serde_json::from_value(state.clone()).unwrap_or_default();
+            if !chart::on_data(layer, &mut st, old, ctx) {
+                return false;
+            }
+            match serde_json::to_value(st) {
+                Ok(v) => {
+                    *state = v;
+                    true
+                }
+                Err(_) => false,
+            }
+        }
+        _ => false,
+    }
+}

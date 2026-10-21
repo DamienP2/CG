@@ -7,7 +7,7 @@ import { useApp } from '../store';
 import { num } from '../engine/evaluate';
 import { Btns, clamp, defineWidget, Handle, Num, Row, Section, Seg, Toggle, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, roundedPolygon, ShapeSvg, type FillRule, type FillStyle, type Pt, type StrokeStyle } from './shape';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
 
 export interface Config {
   mode?: 'regular' | 'triangle' | 'free';
@@ -42,19 +42,31 @@ const cfg = (c: Config) => ({ ...withDefaults(D, c), verts: c.verts ?? FREE_DEFA
 const DEG = Math.PI / 180;
 const f4 = (v: number) => +v.toFixed(4);
 
-/** Regular polygon or star inscribed in the box ellipse (mirrors regular_points). */
-function regularPts(c: Config, w: number, h: number): Pt[] {
+/** Regular polygon or star on the unit circle, and how it is fitted to the box: its edges touch the four sides (mirrors regular_frame). */
+function regularFrame(c: Config, w: number, h: number) {
   const k = cfg(c);
   const n = clamp(Math.round(k.sides), 3, 64);
   const count = k.star ? n * 2 : n;
   const inner = clamp(k.inner, 1, 100) / 100;
-  const out: Pt[] = [];
+  const unit: Pt[] = [];
   for (let i = 0; i < count; i++) {
     const a = (k.startAngle + (i * 360) / count) * DEG;
     const r = k.star && i % 2 ? inner : 1;
-    out.push([w / 2 + (Math.sin(a) * r * w) / 2, h / 2 - (Math.cos(a) * r * h) / 2]);
+    unit.push([Math.sin(a) * r, -Math.cos(a) * r]);
   }
-  return out;
+  const xs = unit.map((p) => p[0]);
+  const ys = unit.map((p) => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  // Scale of the unit circle and the place of its centre in the box.
+  const sx = x1 - x0 > 1e-6 ? w / (x1 - x0) : 0;
+  const sy = y1 - y0 > 1e-6 ? h / (y1 - y0) : 0;
+  return { unit, sx, sy, cx: sx ? -x0 * sx : w / 2, cy: sy ? -y0 * sy : h / 2 };
+}
+
+/** Regular polygon or star fitted to the box (mirrors regular_points). */
+function regularPts(c: Config, w: number, h: number): Pt[] {
+  const f = regularFrame(c, w, h);
+  return f.unit.map(([x, y]) => [f.cx + x * f.sx, f.cy + y * f.sy]);
 }
 
 /** Triangle presets (mirrors triangle_points). */
@@ -251,7 +263,7 @@ function VertexList({ layer, edit }: { layer: L; edit: Edit }) {
       l.verts = vs;
     }, `vert-${layer.id}-${i}-${ax}`);
   return (
-    <Row expose="verts" exposeValue={k.verts} label={t('Vertices')}>
+    <Row expose={false} label={t('Vertices')}>
       <div className="wk-list">
         {k.verts.map((v, i) => (
           <div key={i} className="wk-item" style={i === sel ? { background: 'rgba(124,92,255,.18)', borderRadius: 6 } : undefined}>
@@ -331,15 +343,15 @@ export default defineWidget({
             path="mode"
             value={k.mode}
             options={[
-              ['regular', t('Regular')],
+              ['regular', tc('polygon', 'Regular')],
               ['triangle', t('Triangle')],
               ['free', t('Free')],
             ]}
           />
           {k.mode === 'regular' && (
             <>
-              <Num label={t('Sides')} path="sides" value={k.sides} min={5} max={64} />
-              <Num label={t('Rotation')} path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
+              <Num label={t('Sides')} path="sides" value={k.sides} min={3} max={64} />
+              <Num label={t('Orientation')} path="startAngle" value={k.startAngle} min={0} max={360} unit="°" />
               <Toggle label={t('Star')} path="star" value={k.star} />
               {k.star && <Num label={t('Inner radius')} path="inner" value={k.inner} min={1} max={100} unit="%" />}
             </>
@@ -427,15 +439,19 @@ export default defineWidget({
       );
     if (k.mode === 'regular') {
       const pts = regularPts(layer, w, h);
+      // Handles in the shape's own frame (its centre and scale once fitted to the box).
+      const f = regularFrame(layer, w, h);
+      const local = (x: number, y: number): Pt => [f.sx ? (x - f.cx) / f.sx : 0, f.sy ? (y - f.cy) / f.sy : 0];
       return (
         <>
           <Handle
             x={pts[0][0]}
             y={pts[0][1]}
             scale={scale}
-            label={t('Start angle {angle}°', { angle: Math.round(k.startAngle) })}
+            label={t('Orientation {angle}°', { angle: Math.round(k.startAngle) })}
             onDrag={(x, y) => {
-              const a = Math.atan2((x - w / 2) / w, -(y - h / 2) / h) / DEG;
+              const [u, v] = local(x, y);
+              const a = Math.atan2(u, -v) / DEG;
               ed((l) => void (l.startAngle = Math.round((a + 360) % 360)), `pangle-${layer.id}`);
             }}
           />
@@ -445,11 +461,7 @@ export default defineWidget({
               y={pts[1][1]}
               scale={scale}
               label={t('Inner radius {pct} %', { pct: Math.round(k.inner) })}
-              onDrag={(x, y) => {
-                const dx = (x - w / 2) / (w / 2);
-                const dy = (y - h / 2) / (h / 2);
-                ed((l) => void (l.inner = Math.round(clamp(Math.hypot(dx, dy) * 100, 1, 100))), `pinner-${layer.id}`);
-              }}
+              onDrag={(x, y) => ed((l) => void (l.inner = Math.round(clamp(Math.hypot(...local(x, y)) * 100, 1, 100))), `pinner-${layer.id}`)}
             />
           )}
         </>

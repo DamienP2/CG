@@ -5,12 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use cg_core::{ChannelState, Command, Project, ReadMode};
+use cg_render::slate::SlateStyle;
 use cg_render::Renderer;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, watch, Notify, RwLock};
 
 use crate::auth::Auth;
-use crate::config::{ChannelConfig, ServerConfig};
+use crate::config::{slate_style, ChannelConfig, ServerConfig};
 use crate::library::{Library, ProjectSummary};
 
 /// Messages pushed to WebSocket clients (filtered per user by the session).
@@ -91,6 +92,8 @@ pub struct ChannelInfo {
     pub renditions: Vec<RenditionInfo>,
     /// Still picture shown while no project is loaded ("" = none).
     pub slate: String,
+    /// The design shown while no project is loaded.
+    pub slate_style: SlateStyle,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,6 +104,7 @@ pub struct RenditionInfo {
     pub width: u32,
     pub height: u32,
     pub slate: String,
+    pub slate_style: SlateStyle,
 }
 
 pub struct ChannelRt {
@@ -202,9 +206,11 @@ impl ChannelRt {
                     width: r.width,
                     height: r.height,
                     slate: r.slate.clone(),
+                    slate_style: slate_style(r.slate_style, &r.slate),
                 })
                 .collect(),
             slate: c.slate.clone(),
+            slate_style: slate_style(c.slate_style, &c.slate),
         }
     }
 }

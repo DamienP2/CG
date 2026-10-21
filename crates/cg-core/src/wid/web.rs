@@ -24,11 +24,15 @@ pub struct Config {
     pub source: Source,
     pub url: String,
     pub html: String,
-    /// Loaded again every N seconds (0 = never).
+    /// Loaded again every N seconds (0 = never), on the same wall-clock
+    /// beats (server time) in every browser; the new page loads hidden and
+    /// replaces the shown one once loaded (no blank frame).
     pub refresh: f64,
     /// Page zoom, %.
     pub zoom: f32,
-    /// The page's own background shows (else transparent where it is).
+    /// The page's own background (on white); off: the page is made
+    /// transparent (HTML code, or through the server: its root and body
+    /// backgrounds are cleared).
     pub opaque: bool,
     /// Fetched by the server, for the many sites that refuse to be shown
     /// in a frame (cg-server/src/webproxy.rs).

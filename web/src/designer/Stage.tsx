@@ -12,7 +12,7 @@ import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
 import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
-import { snapShift, snapTargets, StageGuides, useGuidesView, useProjectGuides } from './Guides';
+import { snapShift, snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
 import { t } from '../i18n';
 
 interface Box {
@@ -145,6 +145,16 @@ export function Stage({ project: _project, size, showZones, background }: { proj
             h = Math.max(1, r(s.h - dy));
             y = s.y + (s.h - h);
           }
+          // Width / height locked: the ratio stays (a corner follows the side moved the most).
+          if (l.lockRatio && s.w > 0 && s.h > 0) {
+            const k = s.w / s.h;
+            const horiz = /[ew]/.test(d.mode);
+            const vert = /[ns]/.test(d.mode);
+            if (horiz && (!vert || Math.abs(w - s.w) / s.w >= Math.abs(h - s.h) / s.h)) h = Math.max(1, Math.round(w / k));
+            else w = Math.max(1, Math.round(h * k));
+            if (d.mode.includes('w')) x = s.x + (s.w - w);
+            if (d.mode.includes('n')) y = s.y + (s.h - h);
+          }
           if (x !== s.x) setProp(l, 'x', x, st.frame);
           if (y !== s.y) setProp(l, 'y', y, st.frame);
           if (w !== s.w) setProp(l, 'width', w, st.frame);
@@ -216,16 +226,20 @@ export function Stage({ project: _project, size, showZones, background }: { proj
     if (l?.type === 'table' && !l.locked) useTableEditor.getState().open(l.id);
   };
 
-  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={background} showZones={showZones} wrapRef={wrapRef} now={now} fps={fps} />;
+  // Program, fill or key, for the whole stage (canvas toolbar).
+  const shown = stageViewStyle(view.stageView, background);
+  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={shown.background} filter={shown.filter} showZones={showZones} wrapRef={wrapRef} now={now} fps={fps} />;
 
   return (
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
-      <div className={`stage-frame bg-${background}`} onPointerDown={(e) => e.stopPropagation()}>
+      <div className={`stage-frame bg-${shown.background}`} onPointerDown={(e) => e.stopPropagation()}>
         <div ref={sceneRef} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} widgetState={(id) => widgetState[id]} fps={fps} lang={_project.language}>
-              <Scene template={template} frame={frame} data={data} interactive />
+            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} clocked={(l) => !!widgetRun[l.id]} widgetState={(id) => widgetState[id]} fps={fps} lang={_project.language || 'fr'}>
+              <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
+                <Scene template={template} frame={frame} data={data} interactive />
+              </div>
             </LiveTime>
           </Viewport>
           {/* What is outside the picture still shows, greyed (it is cut on air). */}
@@ -282,6 +296,7 @@ function Overview({
   format,
   scale,
   background,
+  filter,
   showZones,
   wrapRef,
   now,
@@ -292,6 +307,7 @@ function Overview({
   format: string;
   scale: number;
   background: string;
+  filter?: string;
   showZones: boolean;
   wrapRef: React.RefObject<HTMLDivElement | null>;
   now: number;
@@ -315,12 +331,12 @@ function Overview({
             if (t) load(t);
           }}
         >
-          <Viewport width={size.width} height={size.height} scale={scale}>
+          <Viewport width={size.width} height={size.height} scale={scale} style={{ filter }}>
             {templates.map((tpl) => {
               const z = zones.get(tpl.zone);
               return (
                 <div key={tpl.id} className="overview-tpl" data-template-id={tpl.id} title={t('{name} — click to open', { name: tpl.name })} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
-                  <OverviewScene template={tpl} format={format} now={now} fps={fps} lang={project.language} />
+                  <OverviewScene template={tpl} format={format} now={now} fps={fps} lang={project.language || 'fr'} />
                 </div>
               );
             })}

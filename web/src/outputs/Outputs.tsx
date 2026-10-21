@@ -1,7 +1,7 @@
 import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
-import { VIDEO_FORMATS, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
+import { VIDEO_FORMATS, slateStyleOf, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
 import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, usedHardware } from '../hardware/model';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
@@ -95,9 +95,37 @@ interface Picture {
   height: number;
   outputs: OutputsConfig;
   slate?: string;
+  slateStyle?: SlateStyle;
 }
 
-const pictures = (ch: ChannelConfig): Picture[] => [{ id: 'main', name: t('Main format'), width: ch.width, height: ch.height, outputs: ch.outputs, slate: ch.slate }, ...(ch.renditions ?? [])];
+const pictures = (ch: ChannelConfig): Picture[] => [{ id: 'main', name: t('Main format'), width: ch.width, height: ch.height, outputs: ch.outputs, slate: ch.slate, slateStyle: ch.slateStyle }, ...(ch.renditions ?? [])];
+
+/** What a format can show without project: the server's designs, then its own picture. */
+const SLATES: { id: SlateStyle; label: () => string }[] = [
+  { id: 'aurora', label: () => tc('slate', 'Aurora') },
+  { id: 'bento', label: () => tc('slate', 'Bento') },
+  { id: 'gradient', label: () => tc('slate', 'Vivid gradient') },
+  { id: 'frame', label: () => tc('slate', 'Frame') },
+  { id: 'lines', label: () => tc('slate', 'Lines') },
+  { id: 'split', label: () => tc('slate', 'Split') },
+  { id: 'custom', label: () => t('Custom picture') },
+];
+
+/** The slate's name ("" = nothing shown). */
+const slateName = (p: Picture) => {
+  const s = slateStyleOf(p);
+  return s === 'custom' ? (p.slate?.split('/').pop() ?? '') : SLATES.find((x) => x.id === s)!.label();
+};
+
+/** Size of a slate thumbnail (CSS pixels). */
+const thumbSize = (p: Picture) => {
+  const w = Math.min(84, Math.round((64 * p.width) / p.height));
+  return [w, Math.round((w * p.height) / p.width)] as const;
+};
+
+/** A slate drawn by the server for the settings being edited (not applied yet), `w` CSS pixels wide. */
+const slateThumb = (style: SlateStyle, ch: ChannelConfig, p: Picture, w: number) =>
+  `/api/slate.png?${new URLSearchParams({ style, channel: ch.name, width: `${p.width}`, height: `${p.height}`, num: `${ch.frameRate.num}`, den: `${ch.frameRate.den}`, w: `${w * 2}`, ...(style === 'custom' ? { image: p.slate ?? '' } : {}) })}`;
 
 /** `picture` is "" for a destination wired to no format. */
 type Dest = { kind: DestKind; picture: string; value: St2110Output | SdiOutput | NdiOutput | Html5Output | StreamOutput };
@@ -340,7 +368,7 @@ export function Outputs() {
           tone: liveCh ? 'ok' : 'idle',
           status: liveCh ? t('Running') : t('Not applied yet'),
         },
-        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${p.slate ? `\n${t('Without project: {name}', { name: p.slate.split('/').pop()! })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
+        ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${slateName(p) ? `\n${t('Without project: {name}', { name: slateName(p) })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
         ...allDests.map((d) => {
           const st = destStatus(d);
           return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch, hw), tone: st.tone, status: st.text, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : undefined, chip: d.kind === 'html5' || !d.picture ? undefined : rateChip(d.value.id), on: d.kind === 'html5' ? undefined : isOn(d), loose: !d.picture };
@@ -478,8 +506,13 @@ export function Outputs() {
     editCh((c) => {
       const target = picture === 'main' ? c : (c.renditions ?? []).find((r) => r.id === picture);
       if (!target) return;
-      if (src) target.slate = src;
+      if (src) Object.assign(target, { slate: src, slateStyle: 'custom' });
       else delete target.slate;
+    });
+  const setSlateStyle = (picture: string, style: SlateStyle) =>
+    editCh((c) => {
+      const target = picture === 'main' ? c : (c.renditions ?? []).find((r) => r.id === picture);
+      if (target) target.slateStyle = style;
     });
 
   const addLocation = async () => {
@@ -1013,26 +1046,54 @@ export function Outputs() {
                       )}
                       <div className="set-field">
                         <span className="set-label">{t('Still picture without project')}</span>
-                        <div className="oc-slate">
-                          <button type="button" className="oc-slate-thumb" title={t('Choose a picture')} onClick={() => setSlatePick(selPic.id)}>
-                            {selPic.slate ? <img src={selPic.slate} alt="" /> : <ImageOff size={18} />}
-                          </button>
-                          <div className="oc-slate-info">
-                            <span className="oc-slate-name" title={selPic.slate || undefined}>
-                              {selPic.slate ? selPic.slate.split('/').pop() : <span className="muted">{t('None: black')}</span>}
-                            </span>
-                            <span className="row">
-                              <button type="button" className="btn small" onClick={() => setSlatePick(selPic.id)}>
-                                {selPic.slate ? t('Change…') : t('Choose…')}
+                        <div className="easing-picks">
+                          {SLATES.map((sl) => {
+                            const on = slateStyleOf(selPic) === sl.id;
+                            const [tw, th] = thumbSize(selPic);
+                            return (
+                              <button
+                                key={sl.id}
+                                type="button"
+                                className={on ? 'on' : ''}
+                                title={sl.label()}
+                                aria-pressed={on}
+                                onClick={() => {
+                                  setSlateStyle(selPic.id, sl.id);
+                                  // No picture yet: choose one.
+                                  if (sl.id === 'custom' && !selPic.slate) setSlatePick(selPic.id);
+                                }}
+                              >
+                                {sl.id !== 'custom' || selPic.slate ? (
+                                  <img src={slateThumb(sl.id, ch, selPic, tw)} width={tw} height={th} alt="" />
+                                ) : (
+                                  <svg width={tw} height={th} aria-hidden="true">
+                                    <ImageOff x={(tw - 18) / 2} y={(th - 18) / 2} size={18} />
+                                  </svg>
+                                )}
+                                <span>{sl.label()}</span>
                               </button>
-                              {selPic.slate && (
-                                <button type="button" className="btn small ghost" onClick={() => setSlate(selPic.id, '')}>
-                                  {t('Clear')}
-                                </button>
-                              )}
-                            </span>
-                          </div>
+                            );
+                          })}
                         </div>
+                        {slateStyleOf(selPic) === 'custom' && (
+                          <div className="oc-slate">
+                            <div className="oc-slate-info">
+                              <span className="oc-slate-name" title={selPic.slate || undefined}>
+                                {selPic.slate ? selPic.slate.split('/').pop() : <span className="muted">{t('None: black')}</span>}
+                              </span>
+                              <span className="row">
+                                <button type="button" className="btn small" onClick={() => setSlatePick(selPic.id)}>
+                                  {selPic.slate ? t('Change…') : t('Choose…')}
+                                </button>
+                                {selPic.slate && (
+                                  <button type="button" className="btn small ghost" onClick={() => setSlate(selPic.id, '')}>
+                                    {t('Clear')}
+                                  </button>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         <span className="set-hint">{t("Shown full frame on this format's outputs while no project is loaded.")}</span>
                       </div>
                       <Hint>{t("One take drives every format. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit.")}</Hint>

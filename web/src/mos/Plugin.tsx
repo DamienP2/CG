@@ -90,7 +90,7 @@ function Preview({ project, template, data }: { project: Project; template: Temp
   return (
     <div ref={ref} className="mos-preview" style={{ aspectRatio: `${project.width} / ${project.height}` }}>
       <Viewport width={project.width} height={project.height} scale={scale}>
-        <LiveTime ageSecs={f / fps} clientNow={Date.now()}>
+        <LiveTime ageSecs={f / fps} clientNow={Date.now()} lang={project.language || 'fr'}>
           <Scene template={template} frame={f} data={data} />
         </LiveTime>
       </Viewport>

@@ -106,7 +106,7 @@ pub enum StartMode {
     Auto,
     /// At a time of day (server zone).
     At,
-    /// By the API / Stream Deck / GPI (`act` start).
+    /// Older layers: « External » behaved as Manual (and is read as it).
     Ext,
 }
 
@@ -353,7 +353,8 @@ impl Default for Config {
             timer_mode: None,
             face: Face::Digital,
             analog: Analog::default(),
-            tabular: false,
+            // Digits that do not move: fixed-width figures, widest value reserved.
+            tabular: true,
             zeros: Zeros::Pad,
             hours_auto: false,
             sep: ":".into(),
@@ -361,7 +362,7 @@ impl Default for Config {
             prefix: String::new(),
             suffix: String::new(),
             affix: Affix::default(),
-            reserve: false,
+            reserve: true,
             guide: true,
             fit: false,
             plate: Plate::default(),
@@ -481,7 +482,10 @@ pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
             manual_start: layer.manual_start,
             format: fmt,
             zone,
-            start: c.start_mode,
+            start: match c.start_mode {
+                StartMode::Ext => StartMode::Manual,
+                m => m,
+            },
             round_up: c.round_up.unwrap_or(true),
             at_zero: c.at_zero,
             cd_time: c.cd_target == CdTarget::Time,
@@ -1091,6 +1095,10 @@ pub fn act(
                 s.paused_total = 0;
             }
         }
+        // A countdown to a time keeps its top: no pause (it would move the end).
+        "pause" | "toggle" if tgt && s.paused_at.is_none() => {
+            return Err("A countdown to a time cannot pause: its end stays at the time set".into());
+        }
         "pause" => {
             if run(&e, &s, now, 0, "").started(&e) && s.paused_at.is_none() {
                 s.paused_at = Some(now);
@@ -1477,6 +1485,43 @@ mod tests {
             ),
             "J-3"
         );
+    }
+
+    #[test]
+    fn a_countdown_to_a_time_keeps_its_top_and_external_is_manual() {
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"countdown","format":"HH:mm:ss","timerMode":"countdown","cdTarget":"time","tDate":"2026-10-25","tTime":"20:00:00","tZone":"UTC","props":{}}"#,
+        );
+        let d = data();
+        let mut st = State::default();
+        // No pause: the end stays at 20:00 (± seconds still move it on purpose).
+        assert!(act(&l, &mut st, "pause", &serde_json::Value::Null, &ctx(T0, &d)).is_err());
+        assert!(act(
+            &l,
+            &mut st,
+            "toggle",
+            &serde_json::Value::Null,
+            &ctx(T0, &d)
+        )
+        .is_err());
+        assert_eq!(st, State::default());
+        act(
+            &l,
+            &mut st,
+            "adjust",
+            &serde_json::json!({"seconds": 10}),
+            &ctx(T0, &d),
+        )
+        .unwrap();
+        assert_eq!(st.adj, 10_000);
+        // « External » (older layers) waits like Manual.
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"elapsed","format":"mm:ss","timerMode":"stopwatch","startMode":"ext","props":{}}"#,
+        );
+        let e = eff(&l, &d).unwrap();
+        assert_eq!(e.start, StartMode::Manual);
+        // Digits that do not move, by default.
+        assert!(e.c.tabular && e.c.reserve);
     }
 
     #[test]

@@ -1,20 +1,18 @@
-// Ellipse: circle lock, portion (sector / arc / chord) between a start and an end angle, ring / donut.
+// Ellipse: portion (sector / arc / chord) between a start and an end angle, ring / donut (a circle: the Dimensions lock).
 // Drawn as a path in layer pixels (never a scaled circle), so a flat ellipse keeps an even stroke.
 // Same picture as crates/cg-render/src/wid/ellipse.rs; geometry mirrors crates/cg-core/src/wid/ellipse.rs.
 // Start, End and Inner radius are animatable properties (arcStart, arcEnd, innerRadius); unset, the
 // settings below give them (older layers).
-import { useEffect } from 'react';
 import { Circle } from 'lucide-react';
 import { col, cssColor, num, propValue, type Resolved } from '../engine/evaluate';
 import type { Layer } from '../engine/types';
 import { GroupRow } from '../designer/Inspector';
 import { setProp, useDesigner } from '../designer/designerStore';
-import { Bound, Btns, clamp, defineWidget, Handle, Section, Seg, Toggle, useBound, type Warning, withDefaults } from './kit';
+import { Bound, Btns, clamp, defineWidget, Handle, Section, Seg, useBound, type Warning, withDefaults } from './kit';
 import { FillStrokeSections, ShapeSvg, StrokeRows, type FillStyle, type ShapeEdit, type StrokeStyle } from './shape';
-import { t } from '../i18n';
+import { t, tc } from '../i18n';
 
 export interface Config {
-  circle?: boolean;
   /** Degrees, 0 = 12 o'clock, clockwise. */
   start?: number;
   /** Past 360 wraps round; 360° of sweep = full ellipse. */
@@ -30,8 +28,9 @@ export interface Config {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface State {}
 
-const D = { circle: false, start: 0, end: 360, portion: 'sector' as const, inner: 0 };
+const D = { start: 0, end: 360, portion: 'sector' as const, inner: 0 };
 const cfg = (c: Config) => withDefaults(D, c);
+/** Older ellipses: a centred stroke (also when only some of its style is set, as Rust reads it). */
 const strokeOf = (c: Config): StrokeStyle => ({ position: 'center', ...c.strokeStyle });
 const DEG = Math.PI / 180;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -119,12 +118,12 @@ function ArcStroke({ layer }: { layer: Parameters<typeof FillStrokeSections>[0][
   );
 }
 
-/** Fill / Stroke groups showing the centred stroke of older ellipses. */
-function Look({ layer, edit }: { layer: Parameters<typeof FillStrokeSections>[0]['layer'] & Config; edit: ShapeEdit }) {
+/** Fill / Stroke groups showing the centred stroke of older ellipses; Joins only when the outline has corners (a part, not the full ellipse or ring). */
+function Look({ layer, edit, corners }: { layer: Parameters<typeof FillStrokeSections>[0]['layer'] & Config; edit: ShapeEdit; corners: boolean }) {
   const b = useBound();
   return (
     <Bound obj={{ ...layer, strokeStyle: strokeOf(layer) }} set={b.set}>
-      <FillStrokeSections layer={layer} id="ellipse" edit={edit} />
+      <FillStrokeSections layer={layer} id="ellipse" edit={edit} joins={corners} />
     </Bound>
   );
 }
@@ -135,14 +134,15 @@ export default defineWidget({
   label: 'Ellipse',
   group: 'Shapes & tools',
   icon: Circle,
-  create: () => ({ circle: true, strokeStyle: { position: 'inside' }, props: { width: 600, height: 600 } }),
+  create: () => ({ lockRatio: true, strokeStyle: { position: 'inside' }, props: { width: 600, height: 600 } }),
   ownsLook: true,
   Render: ({ layer, r, w, h, data }) => {
     const p = outline(layer, w, h, spanAt(r));
     if (!p) return null;
     const st = { ...strokeOf(layer) };
     if (!p.closed) {
-      const sw = Math.max(1, num(r.strokeWidth));
+      const sw = num(r.strokeWidth);
+      if (sw <= 0) return null;
       const dash = st.dash === 'dashed' ? `${sw * 3} ${sw * 2}` : st.dash === 'dotted' ? `0.001 ${sw * 2}` : undefined;
       return (
         <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
@@ -163,23 +163,11 @@ export default defineWidget({
     return (
       <>
         <Section id="ellipse-shape" title={t('Shape')}>
-          <Toggle
-            expose="circle"
-            exposeValue={k.circle}
-            label={t('Circle')}
-            value={k.circle}
-            onChange={(v) =>
-              edit((l) => {
-                l.circle = v;
-                if (v) l.props.height = l.props.width;
-              })
-            }
-          />
           {/* Animatable (◆ puts them on the timeline). */}
           <GroupRow layer={layer as Layer} spec={{ label: t('Start'), props: ['arcStart'], min: 0, max: 360, suffix: '°' }} />
           <GroupRow layer={layer as Layer} spec={{ label: t('End'), props: ['arcEnd'], min: 0, max: 720, suffix: '°' }} />
           <Btns
-            label={t('Quick')}
+            label={tc('ellipse', 'Quick')}
             list={[
               { label: t('Full'), cls: 'ghost', onClick: () => quick(0, 360) },
               { label: t('Half'), cls: 'ghost', onClick: () => quick(270, 450) },
@@ -208,7 +196,7 @@ export default defineWidget({
           />
           {k.portion === 'sector' && <GroupRow layer={layer as Layer} spec={{ label: t('Inner radius'), props: ['innerRadius'], min: 0, max: 100, suffix: '%' }} />}
         </Section>
-        {k.portion === 'arc' ? <ArcStroke layer={layer} /> : <Look layer={layer} edit={edit} />}
+        {k.portion === 'arc' ? <ArcStroke layer={layer} /> : <Look layer={layer} edit={edit} corners={sweep(spanOfLayer(layer as Layer, frame)) < 360 || !!(layer.tracks.arcStart?.length || layer.tracks.arcEnd?.length)} />}
       </>
     );
   },
@@ -217,10 +205,6 @@ export default defineWidget({
     // The handles move the values at the playhead (a keyframe when animated).
     const frame = useDesigner((s) => s.frame);
     const sp = spanOfLayer(layer as Layer, frame);
-    // Circle: the box stays square (also after a resize on the stage).
-    useEffect(() => {
-      if (k.circle && Math.abs(w - h) > 0.5) edit((l) => void (l.props.height = l.props.width), `circle-${layer.id}`);
-    }, [k.circle, w, h, edit, layer.id]);
     const sw = sweep(sp);
     const q = clamp(sp.inner, 0, 100) / 100;
     const ang = (x: number, y: number) => Math.round((Math.atan2((x - w / 2) / (w / 2), -(y - h / 2) / (h / 2)) / DEG + 360) % 360);

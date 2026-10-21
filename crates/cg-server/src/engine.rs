@@ -22,6 +22,7 @@ use cg_output::sdi::DeckLinkOutput;
 use cg_output::st2110::St2110Sender;
 use cg_output::stream::StreamSender;
 use cg_output::{FrameClock, OutputError, OutputSink};
+use cg_render::slate::Slate;
 use cg_render::{Frame, OutputFormat, Renderer};
 
 use crate::config::ChannelConfig;
@@ -337,13 +338,13 @@ fn render_loop(
     mut renderer: Renderer,
     out: OutputFormat,
     tz: String,
-    slate: String,
+    slate: Option<Slate>,
     rx: Arc<Mutex<mpsc::Receiver<RenderJob>>>,
     done: Done,
     stats: Arc<PictureStats>,
 ) {
     crate::rt::prioritize(crate::rt::Work::Render);
-    // Nothing loaded: the slate (or nothing), the same frame every time.
+    // Nothing loaded: the slate (or nothing), drawn once, the same frame every time.
     let mut idle: Option<Arc<Frame>> = None;
     loop {
         let job = lock(&rx).recv();
@@ -355,10 +356,9 @@ fn render_loop(
             Some(p) => Arc::new(renderer.render_channel(&p, &channel, out, &tz)),
             None => idle
                 .get_or_insert_with(|| {
-                    Arc::new(if slate.trim().is_empty() {
-                        Frame::blank(out.width, out.height)
-                    } else {
-                        renderer.render_slate(slate.trim(), out)
+                    Arc::new(match &slate {
+                        Some(s) => renderer.render_idle(s, out),
+                        None => Frame::blank(out.width, out.height),
                     })
                 })
                 .clone(),
@@ -417,7 +417,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
                         let assets = state.assets_dir();
                         let out = OutputFormat { width, height };
                         let tz = state.config.timezone.clone();
-                        let slate = cfg.slate_of(id).to_string();
+                        let slate = cfg.slate_of(id);
                         let live = state.inputs.clone();
                         let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
                         move || {

@@ -140,7 +140,30 @@ pub fn is_timed(kind: &LayerKind) -> bool {
         | LayerKind::Typewriter { .. }
         | LayerKind::Slideshow { .. }
         | LayerKind::BarChart { .. } => true,
+        // A Lottie animation: the operator pauses, plays and restarts it
+        // (its layers then follow the group's clock, see `lottie_frame`).
+        LayerKind::Group { lottie, .. } => lottie.is_some(),
         _ => false,
+    }
+}
+
+impl PlayoutItem {
+    /// The frame the layers of a Lottie group are drawn at: the template's,
+    /// unless the operator controls the group (paused, played, restarted, or
+    /// waiting for a manual start): then its own clock, up to the on-air
+    /// point (the Out still plays the template's frames).
+    pub fn lottie_frame(&self, group: &Layer, frame: f64, hold: f64) -> f64 {
+        let LayerKind::Group {
+            lottie: Some(_), ..
+        } = &group.kind
+        else {
+            return frame;
+        };
+        let driven = self.clocks.contains_key(&group.id) || group.manual_start;
+        if !driven || frame > hold + 1e-6 {
+            return frame;
+        }
+        self.layer_age(group).min(hold)
     }
 }
 
@@ -431,6 +454,31 @@ fn begin_out(project: &Project, item: &mut PlayoutItem) -> bool {
     true
 }
 
+/// The data of a graphic on air changed (`old` → `item.data`): its widgets
+/// that keep what they show react (`wid::on_data`: a chart freezes the data
+/// of the take, or tweens to the new values).
+fn data_changed(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data) {
+    let Some(t) = project.template(&item.template_id) else {
+        return;
+    };
+    let fps = project.frame_rate.as_f64().max(1.0);
+    let ctx = crate::wid::ActCtx {
+        now_ms: now_ms(),
+        age_secs: item.age / fps,
+        data: &item.data,
+    };
+    for l in &t.layers {
+        let mut st = item
+            .widgets
+            .get(&l.id)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        if crate::wid::on_data(l, &mut st, old, &ctx) {
+            item.widgets.insert(l.id.clone(), st);
+        }
+    }
+}
+
 impl ChannelState {
     pub fn apply(&mut self, project: &Project, cmd: Command) -> Result<(), PlayoutError> {
         match cmd {
@@ -577,7 +625,11 @@ impl ChannelState {
                                 length: (fps * 0.5).round(),
                             });
                         }
-                        item.data.extend(data)
+                        let old = changed.then(|| item.data.clone());
+                        item.data.extend(data);
+                        if let Some(old) = old {
+                            data_changed(project, item, &old);
+                        }
                     }
                 }
             }
@@ -630,19 +682,23 @@ impl ChannelState {
                     }
                     RowChange::Fade => {
                         let fps = project.frame_rate.as_f64().max(1.0);
+                        let old = item.data.clone();
                         item.fade = Some(Fade {
-                            data: item.data.clone(),
+                            data: old.clone(),
                             frame: 0.0,
                             length: (fps * 0.5).round(),
                         });
                         item.data.insert(row.0, row.1);
                         item.data
                             .insert(ds.shown_key(), format!("{}", item.age.round()));
+                        data_changed(project, item, &old);
                     }
                     RowChange::Cut => {
+                        let old = item.data.clone();
                         item.data.insert(row.0, row.1);
                         item.data
                             .insert(ds.shown_key(), format!("{}", item.age.round()));
+                        data_changed(project, item, &old);
                     }
                 }
             }
@@ -1088,6 +1144,7 @@ mod tests {
             playlists: vec![],
             formats: vec![],
             drafts: vec![],
+            starter: None,
             zones: vec![crate::model::Zone {
                 id: "z".into(),
                 name: "Zone".into(),
@@ -1736,6 +1793,42 @@ mod tests {
         .unwrap();
         ch.tick(4.0);
         assert_eq!(item(&ch), 4.0);
+    }
+
+    #[test]
+    fn lottie_groups_follow_their_clock() {
+        let mut p = crate::sample::demo_project();
+        let t = p.templates.iter_mut().find(|t| t.id == "ticker").unwrap();
+        let group: Layer = serde_json::from_str(
+            r#"{"id":"lot","name":"Anim","type":"group","props":{},"lottie":"/assets/a.json"}"#,
+        )
+        .unwrap();
+        assert!(is_timed(&group.kind));
+        t.layers.push(group.clone());
+        let hold = t.hold_frame();
+        let mut ch = ChannelState::default();
+        ch.apply(&p, Command::take("ticker", "ticker")).unwrap();
+        let key = *ch.layers.keys().next().unwrap();
+        let at = |ch: &ChannelState, frame: f64| ch.layers[&key].lottie_frame(&group, frame, hold);
+        ch.tick(4.0);
+        // Not controlled: the template's frame.
+        assert_eq!(at(&ch, 4.0), 4.0);
+        ch.apply(
+            &p,
+            Command::Widget {
+                zone: None,
+                layer: Some(key),
+                target: "Anim".into(),
+                control: WidgetControl::Pause,
+            },
+        )
+        .unwrap();
+        ch.tick(6.0);
+        // Paused: frozen at 4 while the template plays on (or holds).
+        assert!(hold > 4.0);
+        assert_eq!(at(&ch, hold), 4.0);
+        // The Out plays the template's frames.
+        assert_eq!(at(&ch, hold + 5.0), hold + 5.0);
     }
 
     #[test]

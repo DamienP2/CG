@@ -3,8 +3,9 @@
 //! rotation, then the 3D tilt as a perspective), so both renderers agree.
 
 use cg_core::wid::map::{
-    hex_mix, project, route_line, route_progress, view_at, world, zone_fills, AttStyle, BaseStyle,
-    Config, Corner, Ll, MarkerIcon, Projection, State, View, ZoneMode,
+    attribution, hex_mix, place_name, project, route_line, route_progress, view_at, world,
+    zone_fills, AttStyle, BaseStyle, Config, Corner, Ll, MarkerIcon, Projection, State, View,
+    ZoneMode,
 };
 use cg_core::wid::shape::Cmd;
 use cg_core::{Color, LayerKind};
@@ -14,6 +15,8 @@ use super::Draw;
 
 const PI: f64 = std::f64::consts::PI;
 const D2R: f64 = PI / 180.0;
+/// Colour of the place « Aller à… » went to.
+const GOTO: &str = "#ffd200";
 
 /// The camera: world (X, Y) → layer pixels.
 pub(crate) struct Cam {
@@ -345,6 +348,7 @@ pub(crate) fn paint(
     w: f64,
     h: f64,
     debug: bool,
+    lang: &str,
 ) -> Vec<String> {
     let wd = world();
     let (v, _) = view_at(c, st, now, w);
@@ -402,52 +406,18 @@ pub(crate) fn paint(
             lines.push((0..=72).map(|i| [-180.0 + i as f64 * 5.0, la]).collect());
         }
         let refs: Vec<&[Ll]> = lines.iter().map(|l| l.as_slice()).collect();
-        let mut bc = col(&cl.border);
+        let mut bc = col(if cl.grid.trim().is_empty() {
+            &cl.border
+        } else {
+            &cl.grid
+        });
         bc.0[3] *= 0.22;
         p.stroke_c(&rings(pj, &cam, &refs, false, &offs), bc, 1.0, false, None);
     }
     // Land
     let land: Vec<&[Ll]> = wd.land.iter().map(|r| r.as_slice()).collect();
     let land_cmds = rings(pj, &cam, &land, true, &offs);
-    if c.style == BaseStyle::Satellite {
-        let y = |la: f64| project(pj, 0.0, la).1;
-        let (x1, y1) = cam.scr(cam.cx, y(82.0));
-        let (x2, y2) = cam.scr(cam.cx, y(-60.0));
-        let stops: Vec<(f32, Color)> = [
-            (0.0, "#e8ecef"),
-            (0.12, "#7b8a74"),
-            (0.22, "#2f4a2a"),
-            (0.32, cl.land.as_str()),
-            (0.42, "#8a7a4e"),
-            (0.5, "#c9a86a"),
-            (0.6, "#5f6b34"),
-            (0.68, "#1f4a23"),
-            (0.8, "#6f7a3e"),
-            (1.0, "#dfe5e8"),
-        ]
-        .iter()
-        .map(|&(o, s)| (o, col(s)))
-        .collect();
-        if v.zoom <= 7.0 {
-            p.fill_lin(&land_cmds, (f(x1), f(y1)), (f(x2), f(y2)), &stops);
-        } else {
-            // Close up the band is wider than the box: its colour at the centre.
-            let t = f(((cam.cy - y(82.0)) / (y(-60.0) - y(82.0))).clamp(0.0, 1.0));
-            let mut cc = stops[0].1;
-            for w2 in stops.windows(2) {
-                if t >= w2[0].0 && t <= w2[1].0 {
-                    cc = super::scoreboard::paint::mix(
-                        w2[0].1,
-                        w2[1].1,
-                        (t - w2[0].0) / (w2[1].0 - w2[0].0).max(1e-6),
-                    );
-                }
-            }
-            p.fill_c(&land_cmds, cc);
-        }
-    } else {
-        p.fill(&land_cmds, &cl.land);
-    }
+    p.fill(&land_cmds, &cl.land);
     p.stroke(&land_cmds, &hex_mix(&cl.land, "#ffffff", 0.18), 1.2, true);
     let lakes: Vec<&[Ll]> = wd.lakes.iter().map(|r| r.as_slice()).collect();
     p.fill(&rings(pj, &cam, &lakes, true, &offs), &cl.water);
@@ -463,8 +433,9 @@ pub(crate) fn paint(
         let a0 = p.alpha;
         let hl = st.highlight.as_str();
         let pulse = ((now.rem_euclid(1100)) as f64 / 1100.0 * 2.0 * PI).sin() * 0.5 + 0.5;
-        for r in &wd.regions {
-            let cmds = rings(pj, &cam, &[&r.ring], true, &offs);
+        for r in c.zones.level.list() {
+            let rr: Vec<&[Ll]> = r.rings.iter().map(|x| x.as_slice()).collect();
+            let cmds = rings(pj, &cam, &rr, true, &offs);
             let is = hl == r.id;
             p.alpha = a0
                 * c.zones.opacity.clamp(0.0, 1.0) as f32
@@ -478,9 +449,10 @@ pub(crate) fn paint(
                 p.stroke(&cmds, &cl.water, 1.6, true);
             }
         }
-        if let Some(r) = wd.regions.iter().find(|r| r.id == hl) {
+        if let Some(r) = c.zones.level.list().iter().find(|r| r.id == hl) {
             p.alpha = a0;
-            let cmds = rings(pj, &cam, &[&r.ring], true, &offs);
+            let rr: Vec<&[Ll]> = r.rings.iter().map(|x| x.as_slice()).collect();
+            let cmds = rings(pj, &cam, &rr, true, &offs);
             p.stroke(&cmds, "#ffffff", f(3.0 + 7.0 * pulse), true);
         }
         p.alpha = a0;
@@ -495,24 +467,21 @@ pub(crate) fn paint(
             Some((7.0, 4.0)),
         );
     }
-    if c.show_roads && v.zoom <= 10.5 {
-        let b: Vec<&[Ll]> = wd.roads.iter().map(|r| r.as_slice()).collect();
-        let mut rc = col(&cl.road);
-        rc.0[3] *= 0.85;
-        p.stroke_c(&rings(pj, &cam, &b, false, &offs), rc, 2.4, true, None);
-    }
-
-    // Paris detail (from zoom 9).
-    if v.zoom >= 9.0 {
+    // Paris detail (from zoom 9, when Paris is in view).
+    let ppm = cam.s / (40075016.7 * (48.87 * D2R).cos());
+    let (px, py) = {
+        let (x, y) = project(pj, 2.3522, 48.8566);
+        cam.scr(x, y)
+    };
+    let near = px > -30000.0 * ppm
+        && py > -30000.0 * ppm
+        && px < w + 30000.0 * ppm
+        && py < h + 30000.0 * ppm;
+    if v.zoom >= 9.0 && near {
         let dp = &wd.paris;
-        let ppm = cam.s / (40075016.7 * (48.87 * D2R).cos());
         let mw = |m: f64, min: f64| f((m * ppm).max(min));
         let one = |r: &[Ll], close: bool| rings(pj, &cam, &[r], close, &[0.0]);
-        let urban = if c.style == BaseStyle::Satellite {
-            "#5d5a52".to_string()
-        } else {
-            hex_mix(&cl.land, "#ffffff", 0.08)
-        };
+        let urban = hex_mix(&cl.land, "#ffffff", 0.08);
         let park = if c.style == BaseStyle::Mono {
             hex_mix(&cl.land, "#ffffff", 0.12)
         } else {
@@ -536,7 +505,7 @@ pub(crate) fn paint(
         );
         p.stroke(&one(&dp.seine, false), &cl.water, mw(130.0, 3.0), true);
         p.stroke(&one(&dp.canal, false), &cl.water, mw(32.0, 1.5), false);
-        if c.show_roads {
+        {
             let mut m: Vec<&[Ll]> = vec![dp.peri.as_slice()];
             m.extend(dp.motorways.iter().map(|r| r.as_slice()));
             let mut cmds = rings(pj, &cam, &m[..1], true, &[0.0]);
@@ -545,7 +514,7 @@ pub(crate) fn paint(
             let mut sh = col("#0b0f1d");
             sh.0[3] = 0.5;
             p.stroke_c(&cmds, sh, w + 3.0, true, None);
-            p.stroke(&cmds, &cl.road, w, true);
+            p.stroke(&cmds, &hex_mix(&cl.land, "#ffffff", 0.3), w, true);
         }
         let s = one(&dp.stands, true);
         p.fill(&s, stand);
@@ -728,10 +697,35 @@ pub(crate) fn paint(
             }
         }
     }
+    // « Aller à… »: the place, a dot and its name.
+    if let Some(g) = &st.goto {
+        let (x, y) = project(pj, g.lon, g.lat);
+        let (x, y) = cam.scr(wrap_x(x), y);
+        if in_view(x, y, 200.0) {
+            marker(p, MarkerIcon::Dot, GOTO, f(x), f(y), sz, now);
+            let fs = (c.mk_size * 0.62).round();
+            let name = place_name(c, &g.name, &g.name, lang).to_string();
+            let tw = p.tw(&name, f(fs), 800, 0.0) as f64 + 26.0;
+            cands.push(Cand {
+                pri: 10.0,
+                kind: 0,
+                name,
+                color: GOTO.into(),
+                x: x + c.mk_size * 0.62 + 6.0,
+                y: y - fs * 0.8,
+                w: tw,
+                h: fs * 1.6,
+                fs,
+                px: x,
+                py: y,
+            });
+        }
+    }
     let lb = &c.labels;
     if st.layer(c, "labels") {
         for pl in &wd.places {
-            let (name, lat, lon, imp, minz, kind) = (&pl.0, pl.1, pl.2, pl.3, pl.4, pl.5.as_str());
+            let (lat, lon, imp, minz, kind) = (pl.1, pl.2, pl.3, pl.4, pl.5.as_str());
+            let name = &place_name(c, &pl.0, &pl.6, lang).to_string();
             let city = kind == "city" || kind == "poi";
             if (city && !lb.cities) || (!city && !lb.countries) {
                 continue;
@@ -795,14 +789,13 @@ pub(crate) fn paint(
     let mut hidden = Vec::new();
     let pad = lb.pad;
     for (ci, cd) in cands.iter().enumerate() {
-        let hit = lb.collide
-            && placed.iter().any(|&j| {
-                let q = &cands[j];
-                cd.x < q.x + q.w + pad
-                    && cd.x + cd.w + pad > q.x
-                    && cd.y < q.y + q.h + pad
-                    && cd.y + cd.h + pad > q.y
-            });
+        let hit = placed.iter().any(|&j| {
+            let q = &cands[j];
+            cd.x < q.x + q.w + pad
+                && cd.x + cd.w + pad > q.x
+                && cd.y < q.y + q.h + pad
+                && cd.y + cd.h + pad > q.y
+        });
         let (x, y, cw, ch, fs) = (f(cd.x), f(cd.y), f(cd.w), f(cd.h), f(cd.fs));
         if hit {
             hidden.push(cd.name.clone());
@@ -868,22 +861,30 @@ pub(crate) fn paint(
 
     // Highlighted zone callout.
     if zone_on && !st.highlight.is_empty() {
-        if let Some(r) = wd.regions.iter().find(|r| r.id == st.highlight) {
+        if let Some(r) = c.zones.level.list().iter().find(|r| r.id == st.highlight) {
             let (x, y) = project(pj, r.lon, r.lat);
             let (x, y) = cam.scr(wrap_x(x), y);
             let z = zf.get(&r.id);
+            let no_data = if lang.starts_with("fr") {
+                "Aucune donnée"
+            } else {
+                "No data"
+            };
             let t2 = z
                 .map(|z| z.text.clone())
-                .unwrap_or_else(|| "no data".into());
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| no_data.into());
+            let en = if r.en.is_empty() { &r.name } else { &r.en };
+            let zname = place_name(c, en, &r.name, lang).to_string();
             let zc = z
                 .map(|z| z.color.clone())
                 .unwrap_or_else(|| "#ffffff".into());
-            let bw = p.tw(&r.name, 26.0, 800, 0.0).max(p.tw(&t2, 22.0, 700, 0.0)) + 36.0;
+            let bw = p.tw(&zname, 26.0, 800, 0.0).max(p.tw(&t2, 22.0, 700, 0.0)) + 36.0;
             let (bx, by) = (f(x) - bw / 2.0, f(y) - 120.0);
             let b = rrect(bx, by, bw, 84.0, 12.0);
             p.fill(&b, "#080a16eb");
             p.stroke(&b, &zc, 4.0, false);
-            p.text(&r.name, bx + 18.0, by + 26.6, "#ffffff", T::new(26.0, 800));
+            p.text(&zname, bx + 18.0, by + 26.6, "#ffffff", T::new(26.0, 800));
             let tc = if z.is_some() {
                 hex_mix(&zc, "#ffffff", 0.35)
             } else {
@@ -909,6 +910,8 @@ pub(crate) fn paint(
 
     // Legend
     let att = &c.attribution;
+    let (att_text, att_req) = attribution(c, st, v.zoom, lang);
+    let att_on = att.show || att_req;
     if zone_on && c.zones.legend {
         let z = &c.zones;
         let title = z.title.to_uppercase();
@@ -933,7 +936,7 @@ pub(crate) fn paint(
                 bh = 14.0 + 20.0 + 10.0 + 18.0 + 8.0 + 20.0 + 14.0;
             }
         }
-        let my = if z.legend_pos == att.pos && att.visible() {
+        let my = if z.legend_pos == att.pos && att_on {
             62.0
         } else {
             24.0
@@ -1001,9 +1004,9 @@ pub(crate) fn paint(
             }
         }
     }
-    // Attribution (kept when the licence requires it).
-    if att.visible() {
-        let text = att.provider.text();
+    // Attribution of the data drawn (kept when the licence requires it).
+    if att_on {
+        let text = att_text.as_str();
         let tw = p.tw(text, 15.0, 600, 0.0) as f64 + 20.0;
         let (ax, ay) = corner(att.pos, w, h, tw, 26.0, 16.0, 14.0);
         let (ax, ay) = (f(ax), f(ay));
@@ -1042,7 +1045,40 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let now = d.time.now_ms;
     let data = d.data;
     let (w, h) = (d.w as f64, d.h as f64);
+    let lang = d.lang.to_string();
     let mut p = Pt::new(d, false);
-    paint(&mut p, c, st, data, now, w, h, false);
+    paint(&mut p, c, st, data, now, w, h, false, &lang);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Renderer;
+
+    /// Pixels of a colour in the frame.
+    fn count(f: &crate::Frame, hit: impl Fn(&[u8]) -> bool) -> usize {
+        f.data.chunks(4).filter(|p| hit(p)).count()
+    }
+
+    #[test]
+    fn departements_zones_and_the_place_gone_to() {
+        let project = cg_core::sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "mp", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "m", "name": "Map", "type": "map",
+                "markers": [], "routes": [],
+                "layers": {"markers": false, "routes": false, "zones": true, "labels": false},
+                "zones": {"level": "deps", "mode": "category", "rows": [["Dep", "Party"], ["Finistère", "Red"], ["13", "Red"]],
+                          "categories": [{"name": "Red", "color": "#ff0000"}], "opacity": 1.0, "legend": false},
+                "props": {"x": 0.0, "y": 0.0, "width": 1600.0, "height": 840.0}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 10.0, &Default::default());
+        // Two departements in red (Finistère and Bouches-du-Rhône), the rest in land colour.
+        let red = count(&f, |p| p[0] > 230 && p[1] < 30 && p[2] < 30 && p[3] == 255);
+        assert!(red > 2000, "{red}");
+    }
 }

@@ -1,11 +1,12 @@
 // Chart: settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/chart.rs; layout mirrored in chart-layout.tsx; actions in crates/cg-core/src/wid/chart.rs.
 import { Dropdown } from '../ui/Dropdown';
-import { useEffect } from 'react';
-import { ChartColumn, ChevronLeft, ChevronRight, ChevronsRight, RefreshCw } from 'lucide-react';
+import { ChartColumn, ChevronLeft, ChevronRight, ChevronsRight, ListOrdered, RefreshCw, Star } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { t, tn } from '../i18n';
+import { useFonts } from '../engine/fonts';
+import { useApp } from '../store';
+import { t, tl, tn } from '../i18n';
 import { GroupRow } from '../designer/Inspector';
 import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
 import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Config as LConfig, type Out, type Prim, type State as LState } from './chart-layout';
@@ -47,15 +48,29 @@ const SAMPLES: Record<string, { data: string[][]; axis: { suffix: string; decima
 };
 
 /** Layout of the layer at a moment (both the stage and the warnings use it). */
-function run(layer: Config, data: Data, state: unknown, w: number, h: number, fs: number, ageMs: number, now: number): Out {
+function run(layer: Config, data: Data, state: unknown, w: number, h: number, fs: number, ageMs: number, now: number, lang: string): Out {
   const c0 = cfg(layer);
   const s = st(state);
   const grid = shownGrid(c0, s, data);
-  return layout({ cfg: withData(c0, data), st: s, grid, w, h, fs, ageMs, now });
+  return layout({ cfg: withData(c0, data), st: s, grid, w, h, fs, ageMs, now, lang });
 }
 
+/** The font families of the project (Assets), for the texts of the chart. */
+function FamilyPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const families = useFonts((s) => s.families);
+  const has = families.some((f) => f.family.toLowerCase() === value.toLowerCase());
+  return <Dropdown value={value} options={[...(has ? [] : [{ value, label: value }]), ...families.map((f) => ({ value: f.family, label: f.family, style: { fontFamily: `"${f.family}", Inter, sans-serif` } }))]} onChange={onChange} />;
+}
+
+/** Highlight choices: none, each series (several), each column / point / slice. */
+function hlOptions(c: ReturnType<typeof cfg>, P: ReturnType<typeof parse>): [string, string][] {
+  return [['none', t('None')], ...(c.chartType !== 'pie' && P.ser.length > 1 ? P.ser.map((x, j) => [`s${j}`, x] as [string, string]) : []), ...P.cats.map((x) => [`c${x.ri}`, x.name] as [string, string])];
+}
+const hlValue = (s: ReturnType<typeof st>) => (s.hl.kind === 'series' ? `s${s.hl.idx}` : s.hl.kind === 'category' ? `c${s.hl.idx}` : 'none');
+const hlArgs = (v: string) => (v === 'none' ? { kind: 'none' } : { kind: v[0] === 's' ? 'series' : 'category', idx: +v.slice(1) });
+
 let seq = 0;
-function Svg({ prims, w, h }: { prims: Prim[]; w: number; h: number }) {
+function Svg({ prims, w, h, font }: { prims: Prim[]; w: number; h: number; font: string }) {
   const id = `wch${(seq = (seq + 1) % 1e6)}`;
   const clips = new Map<string, number>();
   const clipOf = (c?: [number, number, number, number]) => {
@@ -105,7 +120,7 @@ function Svg({ prims, w, h }: { prims: Prim[]; w: number; h: number }) {
     );
   });
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: 'absolute', inset: 0, overflow: 'visible', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ position: 'absolute', inset: 0, overflow: 'visible', fontFamily: `"${font}", Inter, system-ui, sans-serif` }}>
       <defs>
         {[...clips].map(([k, n]) => {
           const [x, y, cw, ch] = k.split(',').map(Number);
@@ -133,9 +148,9 @@ export default defineWidget({
   ownsLook: true,
   live: () => true,
   content: ['csv', 'title.text'],
-  Render: ({ layer, r, w, h, data, time, state }) => {
-    const out = run(layer, data, state, w, h, num(r.fontSize), time.ageSecs * 1000, time.nowMs);
-    return <Svg prims={out.prims} w={w} h={h} />;
+  Render: ({ layer, r, w, h, data, time, state, lang }) => {
+    const out = run(layer, data, state, w, h, num(r.fontSize), time.ageSecs * 1000, time.nowMs, lang ?? 'fr');
+    return <Svg prims={out.prims} w={w} h={h} font={cfg(layer).font} />;
   },
   Inspector: ({ layer, data, edit }) => {
     const c = cfg(layer);
@@ -143,6 +158,8 @@ export default defineWidget({
     const type = c.chartType;
     const pct = type === 'columns' && c.colMode === 'percent';
     const labelsOn = c.labels.value || c.labels.pct || c.labels.name;
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const lang = useApp((s) => s.project?.language) || 'fr';
     return (
       <>
         <Section id="chart-data" title={t('Data')}>
@@ -191,6 +208,15 @@ export default defineWidget({
               ['zero', t('Zero')],
             ]}
           />
+          <Seg
+            label={t('On air')}
+            path="onAir"
+            value={c.onAir}
+            options={[
+              ['auto', t('Auto')],
+              ['reload', t('On Reload')],
+            ]}
+          />
         </Section>
         <Section id="chart-chart" title={t('Chart')}>
           <Seg
@@ -205,16 +231,27 @@ export default defineWidget({
             ]}
           />
           {type === 'columns' && (
-            <Seg
-              label={t('Columns')}
-              path="colMode"
-              value={c.colMode}
-              options={[
-                ['grouped', t('Grouped')],
-                ['stacked', t('Stacked')],
-                ['percent', '100 %'],
-              ]}
-            />
+            <>
+              <Seg
+                label={t('Columns')}
+                path="colMode"
+                value={c.colMode}
+                options={[
+                  ['grouped', t('Grouped')],
+                  ['stacked', t('Stacked')],
+                  ['percent', '100 %'],
+                ]}
+              />
+              <Seg
+                label={t('Orientation')}
+                path="orient"
+                value={c.orient}
+                options={[
+                  ['v', t('Vertical')],
+                  ['h', t('Horizontal')],
+                ]}
+              />
+            </>
           )}
           {type === 'areas' && (
             <Seg
@@ -274,7 +311,14 @@ export default defineWidget({
             )}
             <Num label={t('Ticks')} path="axis.ticks" value={c.axis.ticks} min={2} max={12} />
             <Toggle label={t('Grid')} path="axis.grid" value={c.axis.grid} />
-            <Toggle label={t('Vertical grid')} path="axis.vgrid" value={c.axis.vgrid} />
+            <Toggle label={type === 'columns' && c.orient === 'h' ? t('Grid between rows') : t('Vertical grid')} path="axis.vgrid" value={c.axis.vgrid} />
+            <Toggle label={t('Reference line')} path="refLine.on" value={c.refLine.on} />
+            {c.refLine.on && (
+              <>
+                <Num label={t('Value')} path="refLine.value" value={c.refLine.value} step={1} precision={2} />
+                <Text label={t('Label')} path="refLine.label" value={c.refLine.label} />
+              </>
+            )}
             <Text label={t('X title')} path="axis.xTitle" value={c.axis.xTitle} />
             <Text label={t('Y title')} path="axis.yTitle" value={c.axis.yTitle} />
           </Section>
@@ -288,6 +332,8 @@ export default defineWidget({
               [0, '0'],
               [1, '0.0'],
               [2, '0.00'],
+              [3, '0.000'],
+              [4, '0.0000'],
             ]}
           />
           <Text label={t('Prefix')} path="axis.prefix" value={c.axis.prefix} placeholder="$" />
@@ -362,15 +408,17 @@ export default defineWidget({
               <Toggle label={t('Value')} path="labels.value" value={c.labels.value} />
               <Toggle label={t('Percentage')} path="labels.pct" value={c.labels.pct} />
               <Toggle label={t('Name')} path="labels.name" value={c.labels.name} />
-              <Seg
-                label={t('Position')}
-                path="labels.pos"
-                value={c.labels.pos}
-                options={[
-                  ['inside', t('Inside')],
-                  ['outside', t('Outside')],
-                ]}
-              />
+              {type !== 'lines' && (
+                <Seg
+                  label={t('Position')}
+                  path="labels.pos"
+                  value={c.labels.pos}
+                  options={[
+                    ['inside', t('Inside')],
+                    ['outside', t('Outside')],
+                  ]}
+                />
+              )}
               <Seg
                 label={t('Overlap')}
                 path="labels.overlap"
@@ -386,6 +434,17 @@ export default defineWidget({
         </Section>
         <Section id="chart-layout" title={t('Layout')}>
           <GroupRow layer={layer} spec={{ label: t('Text size'), props: ['fontSize'], min: 8, suffix: 'px' }} />
+          <Row label={t('Font')}>
+            <FamilyPick value={c.font} onChange={(v) => edit((l) => void (l.font = v))} />
+          </Row>
+          <ColorPick label={t('Colour of the texts')} path="textColor" value={c.textColor || '#ffffff'} />
+          <Text label={tl(lang, 'No data')} path="texts.noData" value={c.texts.noData} placeholder={tl(lang, 'No data')} />
+          {type === 'pie' && (
+            <>
+              <Text label={tl(lang, 'Others')} path="texts.others" value={c.texts.others} placeholder={tl(lang, 'Others')} />
+              {c.pie.donut > 30 && c.pie.centerTotal && <Text label={tl(lang, 'Total')} path="texts.total" value={c.texts.total} placeholder={tl(lang, 'Total')} />}
+            </>
+          )}
           <Toggle
             expose="title.pos"
             exposeValue={c.title.pos}
@@ -456,8 +515,8 @@ export default defineWidget({
             options={[
               ['auto', t('Auto')],
               ['grow', t('Grow')],
-              ['draw', t('Draw')],
-              ['sweep', t('Sweep')],
+              ...(type === 'pie' ? [] : [['draw', t('Draw')] as const]),
+              ...(type === 'pie' ? [['sweep', t('Sweep')] as const] : []),
               ['fade', t('Fade')],
               ['none', t('Cut')],
             ]}
@@ -478,10 +537,10 @@ export default defineWidget({
           <Seg
             label={t('Reveal')}
             path="reveal"
-            value={c.reveal}
+            value={type === 'pie' && c.reveal === 'series' ? 'all' : c.reveal}
             options={[
               ['all', t('All')],
-              ['series', t('By series')],
+              ...(type === 'pie' ? [] : [['series', t('By series')] as const]),
               ['categories', type === 'pie' ? t('By slice') : t('By category')],
             ]}
           />
@@ -489,16 +548,18 @@ export default defineWidget({
       </>
     );
   },
-  // One row: the reveal step, back / next / all, reload the data.
+  // One row: new data waiting, the reveal step, back / next / all, reload the data.
   Compact: ({ layer, state, data, act }) => {
     const c = cfg(layer);
     const s = st(state);
     const P = parse(c, shownGrid(c, s, data));
     const n = steps(c, s, P);
     const step = Math.min(Math.max(1, s.step), n);
+    // The data on air waits for a Reload (kept since the take, by the server).
+    const pending = c.onAir === 'reload' && !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(resolveGrid(c, data));
     return (
       <OpRow
-        value={n ? `${step}/${n}` : undefined}
+        value={pending ? <span style={{ color: '#facc15' }}>● {t('New data')}</span> : n ? `${step}/${n}` : undefined}
         list={[
           !!n && { icon: ChevronLeft, title: t('Back'), disabled: step <= 1, onClick: () => act('prev') },
           !!n && { icon: ChevronRight, title: t('Next step'), tone: 'green', disabled: step >= n, onClick: () => act('next') },
@@ -508,15 +569,34 @@ export default defineWidget({
       />
     );
   },
+  // Under ⋯: highlight a series / a column / a slice, the reveal mode.
+  More: ({ layer, state, data, act }) => {
+    const c = cfg(layer);
+    const s = st(state);
+    const P = parse(c, shownGrid(c, s, data));
+    const mode = revealMode(c, s);
+    return (
+      <div className="wk-oprow">
+        <Star size={13} className="muted" />
+        <select className="opx-output" title={t('Put forward')} value={hlValue(s)} onChange={(e) => act('highlight', hlArgs(e.target.value))}>
+          {hlOptions(c, P).map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <ListOrdered size={13} className="muted" />
+        <select className="opx-output" title={t('Reveal')} value={mode} onChange={(e) => act('revealMode', { mode: e.target.value })}>
+          <option value="all">{t('All at once')}</option>
+          {c.chartType !== 'pie' && <option value="series">{t('Series by series')}</option>}
+          <option value="categories">{c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')}</option>
+        </select>
+      </div>
+    );
+  },
   Operator: ({ layer, state, data, act, item, time }) => {
     const c = cfg(layer);
     const s = st(state);
-    // On air: keep the values taken, so that later data updates tween on Reload.
-    const snap = !!item && !s.cur;
-    useEffect(() => {
-      if (snap) act('reload', { cut: true });
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [snap]);
     const P = parse(c, shownGrid(c, s, data));
     const live = resolveGrid(c, data);
     const pending = !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(live);
@@ -576,7 +656,7 @@ export default defineWidget({
               label={c.chartType === 'columns' ? t('Highlight column') : t('Highlight point')}
               list={hlBtns(
                 'category',
-                P.cats.slice(0, 14).map((x) => [x.ri, x.name]),
+                P.cats.map((x) => [x.ri, x.name]),
               )}
             />
           </>
@@ -585,7 +665,7 @@ export default defineWidget({
             label={t('Highlight slice')}
             list={hlBtns(
               'category',
-              P.cats.slice(0, 14).map((x) => [x.ri, x.name]),
+              P.cats.map((x) => [x.ri, x.name]),
             )}
           />
         )}
@@ -606,7 +686,7 @@ export default defineWidget({
     const P = parse(c, shownGrid(c, s, data));
     const w = num((r?.width ?? layer.props.width ?? 1460) as number);
     const h = num((r?.height ?? layer.props.height ?? 820) as number);
-    const o = run(layer, data, state, w, h, fsOf(r, layer), 1e9, Date.now() + 1e7);
+    const o = run(layer, data, state, w, h, fsOf(r, layer), 1e9, Date.now() + 1e7, useApp.getState().project?.language || 'fr');
     const out: Warning[] = [];
     if (c.chartType === 'pie') {
       if (o.pieNeg.length) out.push({ level: 'error', text: t('Negative value refused in a pie: {list} not drawn.', { list: o.pieNeg.map(([n, v]) => `${n} (${fmt(c, v)})`).join(', ') }), op: true });

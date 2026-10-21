@@ -1,9 +1,11 @@
 //! Map: a stylised offline vector map (no network, ever). The geometry
-//! (coarse world outlines, France regions, places, Paris detail) is
+//! (Natural Earth countries, coasts, borders and lakes; IGN regions and
+//! departements of France; labels; a gazetteer; Paris detail) is
 //! `map_world.json`, shared with the web renderer. Projections, key views
-//! with animated (fly) transitions, markers, great-circle routes drawn
-//! from their launch time, coloured zones from data, labels by priority,
-//! provider attribution.
+//! with animated (fly) transitions, « Aller à… » a place or coordinates,
+//! markers, great-circle routes drawn from their launch time, coloured
+//! zones (regions, departements or countries) from data, labels by
+//! priority in the project's language, the attribution of the data drawn.
 //! Drawn by `cg-render/src/wid/map.rs` and `web/src/widgets/map.tsx` (keep in sync).
 
 use std::collections::BTreeMap;
@@ -20,18 +22,51 @@ use crate::model::{Layer, LayerKind};
 /// `[lon, lat]` degrees.
 pub type Ll = [f64; 2];
 
-#[derive(Debug, Deserialize)]
-pub struct Region {
+/// A zone of the map (a region, a departement or a country): its id
+/// (region id, departement code, ISO 3166 alpha-3), names, label point,
+/// bounding box [west, south, east, north] and outline.
+#[derive(Debug)]
+pub struct Zone {
     pub id: String,
+    /// French name (and the English one of a country).
     pub name: String,
+    pub en: String,
+    /// Country: ISO alpha-2; region: INSEE code.
+    pub code: String,
     pub lon: f64,
     pub lat: f64,
-    pub ring: Vec<Ll>,
+    pub bbox: [f64; 4],
+    pub rings: Vec<Vec<Ll>>,
 }
 
-/// A place label: name, lat, lon, importance 1–10, min zoom, kind (city, poi, country, continent).
+/// A place label: English name, lat, lon, importance 1–10, min zoom, kind
+/// (city, poi, country, continent), French name.
 #[derive(Debug, Deserialize)]
-pub struct Place(pub String, pub f64, pub f64, pub f64, pub f64, pub String);
+pub struct Place(
+    pub String,
+    pub f64,
+    pub f64,
+    pub f64,
+    pub f64,
+    pub String,
+    pub String,
+);
+
+impl Place {
+    /// Its name in a language ("fr…" = French).
+    pub fn name(&self, lang: &str) -> &str {
+        if lang.starts_with("fr") {
+            &self.6
+        } else {
+            &self.0
+        }
+    }
+}
+
+/// A place « Aller à… » finds: name (French), other name (English, may
+/// be empty), lat, lon, kind (c city, k capital).
+#[derive(Debug, Deserialize)]
+pub struct Gaz(pub String, pub String, pub f64, pub f64, pub String);
 
 #[derive(Debug, Deserialize)]
 pub struct Paris {
@@ -50,21 +85,135 @@ pub struct Paris {
     pub circle: Vec<Ll>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct World {
     pub land: Vec<Vec<Ll>>,
     pub lakes: Vec<Vec<Ll>>,
     pub borders: Vec<Vec<Ll>>,
-    pub roads: Vec<Vec<Ll>>,
-    pub regions: Vec<Region>,
+    pub countries: Vec<Zone>,
+    pub regions: Vec<Zone>,
+    pub deps: Vec<Zone>,
     pub places: Vec<Place>,
+    pub gaz: Vec<Gaz>,
     pub paris: Paris,
 }
 
-/// The built-in map data (parsed once).
+/// Quantized, delta-encoded arcs ([x0, y0, dx1, dy1, …]) and their transform.
+#[derive(Deserialize)]
+struct RawArcs {
+    tf: [f64; 4],
+    arcs: Vec<Vec<i64>>,
+}
+
+impl RawArcs {
+    fn decode(&self) -> Vec<Vec<Ll>> {
+        let [sx, sy, tx, ty] = self.tf;
+        self.arcs
+            .iter()
+            .map(|a| {
+                let (mut x, mut y) = (0i64, 0i64);
+                a.chunks(2)
+                    .map(|p| {
+                        x += p[0];
+                        y += p[1];
+                        [x as f64 * sx + tx, y as f64 * sy + ty]
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+/// A ring (or line) of arc indexes: `~i` = arc i reversed; shared ends once.
+fn ring(refs: &[i64], arcs: &[Vec<Ll>]) -> Vec<Ll> {
+    let mut out: Vec<Ll> = Vec::new();
+    for &i in refs {
+        let (k, rev) = if i >= 0 {
+            (i as usize, false)
+        } else {
+            ((!i) as usize, true)
+        };
+        let Some(a) = arcs.get(k) else { continue };
+        let skip = usize::from(!out.is_empty());
+        if rev {
+            out.extend(a.iter().rev().skip(skip));
+        } else {
+            out.extend(a.iter().skip(skip));
+        }
+    }
+    out
+}
+
+#[derive(Deserialize)]
+struct RawZone {
+    id: String,
+    name: String,
+    #[serde(default)]
+    en: String,
+    #[serde(default)]
+    iso2: String,
+    #[serde(default)]
+    code: String,
+    lon: f64,
+    lat: f64,
+    #[serde(rename = "box")]
+    bbox: [f64; 4],
+    rings: Vec<Vec<i64>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawWorld {
+    world: RawArcs,
+    fr: RawArcs,
+    lake_arcs: RawArcs,
+    land: Vec<Vec<i64>>,
+    borders: Vec<Vec<i64>>,
+    lakes: Vec<Vec<i64>>,
+    countries: Vec<RawZone>,
+    regions: Vec<RawZone>,
+    deps: Vec<RawZone>,
+    places: Vec<Place>,
+    gaz: Vec<Gaz>,
+    paris: Paris,
+}
+
+/// The built-in map data (parsed and decoded once).
 pub fn world() -> &'static World {
     static W: OnceLock<World> = OnceLock::new();
-    W.get_or_init(|| serde_json::from_str(include_str!("map_world.json")).expect("map_world.json"))
+    W.get_or_init(|| {
+        let raw: RawWorld =
+            serde_json::from_str(include_str!("map_world.json")).expect("map_world.json");
+        let (wa, fa, la) = (raw.world.decode(), raw.fr.decode(), raw.lake_arcs.decode());
+        let rings = |list: &[Vec<i64>], arcs: &[Vec<Ll>]| -> Vec<Vec<Ll>> {
+            list.iter().map(|r| ring(r, arcs)).collect()
+        };
+        let zones = |list: Vec<RawZone>, arcs: &[Vec<Ll>]| -> Vec<Zone> {
+            list.into_iter()
+                .map(|z| Zone {
+                    rings: rings(&z.rings, arcs),
+                    id: z.id,
+                    name: z.name,
+                    en: z.en,
+                    code: if z.iso2.is_empty() { z.code } else { z.iso2 },
+                    lon: z.lon,
+                    lat: z.lat,
+                    bbox: z.bbox,
+                })
+                .collect()
+        };
+        World {
+            land: rings(&raw.land, &wa),
+            lakes: rings(&raw.lakes, &la),
+            borders: rings(&raw.borders, &wa),
+            countries: zones(raw.countries, &wa),
+            regions: zones(raw.regions, &fa),
+            deps: zones(raw.deps, &fa),
+            places: raw.places,
+            gaz: raw.gaz,
+            paris: raw.paris,
+        }
+    })
 }
 
 // ---------------------------------------------------------- projections --
@@ -180,7 +329,7 @@ pub enum BaseStyle {
     /// Clean vector.
     #[default]
     Vector,
-    /// Satellite-like: land coloured by latitude bands.
+    /// Old « Satellite » (only a gradient): drawn as Vector.
     Satellite,
     /// Monochrome.
     Mono,
@@ -192,7 +341,8 @@ pub struct Colors {
     pub water: String,
     pub land: String,
     pub border: String,
-    pub road: String,
+    /// Graticule (empty = the borders' colour).
+    pub grid: String,
 }
 
 impl Default for Colors {
@@ -201,7 +351,7 @@ impl Default for Colors {
             water: "#0b1a3a".into(),
             land: "#26365a".into(),
             border: "#9aa6d6".into(),
-            road: "#f5a524".into(),
+            grid: String::new(),
         }
     }
 }
@@ -623,9 +773,31 @@ fn row(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
+/// Which zones: French regions, departements, or countries.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ZoneLevel {
+    #[default]
+    Regions,
+    Deps,
+    Countries,
+}
+
+impl ZoneLevel {
+    pub fn list(self) -> &'static [Zone] {
+        let w = world();
+        match self {
+            ZoneLevel::Regions => &w.regions,
+            ZoneLevel::Deps => &w.deps,
+            ZoneLevel::Countries => &w.countries,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Zones {
+    pub level: ZoneLevel,
     pub mode: ZoneMode,
     /// Region | value | details…, first row = header. Cells may hold `{{key}}`.
     pub rows: Vec<Vec<String>>,
@@ -650,6 +822,7 @@ impl Default for Zones {
             color: col.into(),
         };
         Self {
+            level: ZoneLevel::Regions,
             mode: ZoneMode::Category,
             rows: vec![
                 row(&["Region", "Winner", "%"]),
@@ -698,7 +871,7 @@ pub struct Labels {
     /// Places less important than this are not shown (1–10).
     pub min_imp: f64,
     pub size: f64,
-    /// The less important of two overlapping labels is hidden.
+    /// Old setting, ignored: the less important of two overlapping labels is always hidden.
     pub collide: bool,
     pub pad: f64,
     /// Hidden labels drawn in red (Designer only).
@@ -719,37 +892,15 @@ impl Default for Labels {
     }
 }
 
+/// Old setting (a free choice of provider), ignored: the attribution names
+/// the data actually drawn ([`attribution`]).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Provider {
-    /// Strata vector data (own): no attribution required.
     #[default]
     Own,
-    /// OpenStreetMap (ODbL): attribution required.
     Osm,
-    /// Licensed satellite imagery: attribution required.
     Sat,
-}
-
-impl Provider {
-    pub fn name(self) -> &'static str {
-        match self {
-            Provider::Own => "Strata vector data (own)",
-            Provider::Osm => "OpenStreetMap (ODbL)",
-            Provider::Sat => "Satellite imagery (licensed)",
-        }
-    }
-    pub fn text(self) -> &'static str {
-        match self {
-            Provider::Own => "Map data: Strata",
-            Provider::Osm => "© OpenStreetMap contributors",
-            Provider::Sat => "Imagery © licensed provider",
-        }
-    }
-    /// The licence requires the attribution on screen.
-    pub fn required(self) -> bool {
-        self != Provider::Own
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -773,7 +924,7 @@ pub struct Attribution {
 impl Default for Attribution {
     fn default() -> Self {
         Self {
-            provider: Provider::Osm,
+            provider: Provider::Own,
             pos: Corner::Br,
             style: AttStyle::Dark,
             show: true,
@@ -781,11 +932,46 @@ impl Default for Attribution {
     }
 }
 
-impl Attribution {
-    /// Shown: asked, or required by the licence.
-    pub fn visible(&self) -> bool {
-        self.show || self.provider.required()
+/// The attribution of the data drawn, in the project's language, and
+/// whether its licence requires it on screen (IGN zones: Licence Ouverte).
+pub fn attribution(c: &Config, st: &State, zoom: f64, lang: &str) -> (String, bool) {
+    let ign = st.layer(c, "zones") && zoom <= 10.0 && c.zones.level != ZoneLevel::Countries;
+    let mut src = vec!["Natural Earth"];
+    if ign {
+        src.push("IGN");
     }
+    let head = if lang.starts_with("fr") {
+        "Données\u{a0}: "
+    } else {
+        "Data: "
+    };
+    (format!("{head}{}", src.join(", ")), ign)
+}
+
+/// A place name as shown: the Designer's renaming, else in the project's language.
+pub fn place_name<'a>(c: &'a Config, en: &'a str, fr: &'a str, lang: &str) -> &'a str {
+    let n = norm(en);
+    let nf = norm(fr);
+    if let Some(r) = c
+        .names
+        .iter()
+        .find(|r| !r.from.trim().is_empty() && (norm(&r.from) == n || norm(&r.from) == nf))
+    {
+        return &r.to;
+    }
+    if lang.starts_with("fr") {
+        fr
+    } else {
+        en
+    }
+}
+
+/// A place renamed in the Designer (original name → shown).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Rename {
+    pub from: String,
+    pub to: String,
 }
 
 /// Settings of the widget, flattened into the layer's JSON.
@@ -816,6 +1002,8 @@ pub struct Config {
     pub attribution: Attribution,
     /// Designer only: dragging on the stage pans the map.
     pub drag_pans: bool,
+    /// Places renamed (labels, zones).
+    pub names: Vec<Rename>,
 }
 
 impl Default for Config {
@@ -842,6 +1030,7 @@ impl Default for Config {
             labels: Labels::default(),
             attribution: Attribution::default(),
             drag_pans: false,
+            names: Vec::new(),
         }
     }
 }
@@ -863,8 +1052,21 @@ pub struct State {
     pub routes_on: BTreeMap<String, bool>,
     /// When each route was launched (Unix ms): drawn from then.
     pub routes: BTreeMap<String, i64>,
-    /// Highlighted zone (region id).
+    /// Highlighted zone (its id).
     pub highlight: String,
+    /// « Aller à… »: the place shown instead of a key view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goto: Option<Goto>,
+}
+
+/// A place the operator went to, and its view.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Goto {
+    pub name: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub zoom: f64,
 }
 
 impl State {
@@ -896,9 +1098,17 @@ fn start_index(c: &Config) -> Option<usize> {
 /// The view at `now` (ms) and the transition's progress (None = not moving).
 /// `box_w`: width of the layer (the fly's height depends on it).
 pub fn view_at(c: &Config, st: &State, now: i64, box_w: f64) -> (View, Option<f64>) {
-    let to = match st.cur.and_then(|i| c.views.get(i)) {
-        Some(k) => k.view(),
-        None => c.view.clamped(),
+    let to = match (&st.goto, st.cur.and_then(|i| c.views.get(i))) {
+        (Some(g), _) => View {
+            lat: g.lat,
+            lon: g.lon,
+            zoom: g.zoom,
+            rot: 0.0,
+            tilt: 0.0,
+        }
+        .clamped(),
+        (None, Some(k)) => k.view(),
+        (None, None) => c.view.clamped(),
     };
     let Some(from) = st.from else {
         return (to, None);
@@ -953,12 +1163,129 @@ pub fn interpolate(c: &Config, a: View, b: View, k: f64, box_w: f64) -> View {
 
 /// A place by name (cities, POIs and countries of the built-in labels).
 pub fn place(name: &str) -> Option<(f64, f64)> {
-    let n = name.trim().to_lowercase();
-    world()
-        .places
+    let n = norm(name);
+    if n.is_empty() {
+        return None;
+    }
+    let w = world();
+    w.places
         .iter()
-        .find(|p| p.5 != "continent" && p.0.to_lowercase() == n)
+        .find(|p| p.5 != "continent" && (norm(&p.0) == n || norm(&p.6) == n))
         .map(|p| (p.1, p.2))
+        .or_else(|| {
+            w.gaz
+                .iter()
+                .find(|g| norm(&g.0) == n || (!g.1.is_empty() && norm(&g.1) == n))
+                .map(|g| (g.2, g.3))
+        })
+}
+
+/// What « Aller à… » found: its name and where to look (a point and the
+/// zoom to see it, or a zone's box to fit).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Found {
+    pub name: String,
+    pub lat: f64,
+    pub lon: f64,
+    /// Zoom to use (a city, coordinates), or None: fit `bbox`.
+    pub zoom: Option<f64>,
+    pub bbox: [f64; 4],
+}
+
+/// Finds a place typed by the operator: « lat, lon », a country, a region,
+/// a departement (name or code), a city (French communes of 8 000
+/// inhabitants or more, prefectures, the world's large cities), a label.
+pub fn find_place(q: &str, lang: &str) -> Option<Found> {
+    let q = q.trim();
+    let parts: Vec<&str> = q
+        .split([',', ';', ' '])
+        .filter(|s| !s.trim().is_empty())
+        .collect();
+    if parts.len() == 2 {
+        if let (Ok(lat), Ok(lon)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
+            if valid_ll(lat, lon) {
+                return Some(Found {
+                    name: format!("{lat:.4}, {lon:.4}"),
+                    lat,
+                    lon,
+                    zoom: None,
+                    bbox: [lon, lat, lon, lat],
+                });
+            }
+            return None;
+        }
+    }
+    let n = norm(q);
+    if n.is_empty() {
+        return None;
+    }
+    let up = q.to_uppercase();
+    let w = world();
+    let zone = |z: &Zone| Found {
+        name: if lang.starts_with("fr") || z.en.is_empty() {
+            z.name.clone()
+        } else {
+            z.en.clone()
+        },
+        lat: z.lat,
+        lon: z.lon,
+        zoom: None,
+        bbox: z.bbox,
+    };
+    // Codes first (FR, FRA, 69, 2A), then names.
+    for list in [&w.countries, &w.deps] {
+        if let Some(z) = list
+            .iter()
+            .find(|z| z.id == up || (!z.code.is_empty() && z.code == up))
+        {
+            return Some(zone(z));
+        }
+    }
+    for list in [&w.countries, &w.regions, &w.deps] {
+        if let Some(z) = list
+            .iter()
+            .find(|z| norm(&z.name) == n || (!z.en.is_empty() && norm(&z.en) == n))
+        {
+            return Some(zone(z));
+        }
+    }
+    if let Some(g) = w
+        .gaz
+        .iter()
+        .find(|g| norm(&g.0) == n || (!g.1.is_empty() && norm(&g.1) == n))
+    {
+        return Some(Found {
+            name: if lang.starts_with("fr") || g.1.is_empty() {
+                g.0.clone()
+            } else {
+                g.1.clone()
+            },
+            lat: g.2,
+            lon: g.3,
+            zoom: Some(9.0),
+            bbox: [g.3, g.2, g.3, g.2],
+        });
+    }
+    w.places
+        .iter()
+        .find(|p| p.5 != "continent" && (norm(&p.0) == n || norm(&p.6) == n))
+        .map(|p| Found {
+            name: p.name(lang).to_string(),
+            lat: p.1,
+            lon: p.2,
+            zoom: Some(if p.5 == "poi" { 15.0 } else { 9.0 }),
+            bbox: [p.2, p.1, p.2, p.1],
+        })
+}
+
+/// The zoom showing a box [w, s, e, n] in 80 % of a w × h layer.
+pub fn fit_zoom(p: Projection, b: [f64; 4], w: f64, h: f64) -> f64 {
+    let (x0, y0) = project(p, b[0], b[3]);
+    let (x1, y1) = project(p, b[2], b[1]);
+    let (dx, dy) = ((x1 - x0).abs().max(1e-6), (y1 - y0).abs().max(1e-6));
+    ((0.8 * w / (dx * 256.0)).min(0.8 * h / (dy * 256.0)))
+        .log2()
+        .clamp(1.5, 12.0)
 }
 
 /// Waypoints (lat, lon) of a route path, and the ones not understood.
@@ -1072,15 +1399,23 @@ pub fn norm(s: &str) -> String {
 }
 
 /// Region by id or name.
-pub fn region_of(name: &str) -> Option<&'static Region> {
+/// A zone of a level by its name (French or English), id or code (69, 2A, FR, FRA).
+pub fn zone_of(level: ZoneLevel, name: &str) -> Option<&'static Zone> {
     let n = norm(name);
-    if n.is_empty() {
+    let up = name.trim().to_uppercase();
+    if up.is_empty() {
         return None;
     }
-    world()
-        .regions
-        .iter()
-        .find(|r| norm(&r.name) == n || r.id == n)
+    level.list().iter().find(|z| {
+        z.id.eq_ignore_ascii_case(&up)
+            || (!z.code.is_empty() && z.code == up)
+            || (!n.is_empty() && (norm(&z.name) == n || (!z.en.is_empty() && norm(&z.en) == n)))
+    })
+}
+
+/// A region by id or name (the regions of France).
+pub fn region_of(name: &str) -> Option<&'static Zone> {
+    zone_of(ZoneLevel::Regions, name)
 }
 
 /// `#rrggbb` mix of two colours.
@@ -1135,7 +1470,7 @@ pub fn zone_fills(z: &Zones, data: &Data) -> (BTreeMap<String, ZoneFill>, Vec<St
         if name.trim().is_empty() {
             continue;
         }
-        let Some(reg) = region_of(&name) else {
+        let Some(reg) = zone_of(z.level, &name) else {
             unmatched.push(name);
             continue;
         };
@@ -1166,7 +1501,8 @@ pub fn zone_fills(z: &Zones, data: &Data) -> (BTreeMap<String, ZoneFill>, Vec<St
                     }
                     (scale_color(&z.scale, v), t)
                 }
-                Err(_) => ("#94a3b8".into(), "no data".into()),
+                // No value: the renderers write « No data » in the project's language.
+                Err(_) => ("#94a3b8".into(), String::new()),
             },
         };
         out.insert(reg.id.clone(), ZoneFill { color, text });
@@ -1232,6 +1568,11 @@ pub fn act(
         .get(&crate::Prop::Width)
         .and_then(|v| v.as_number())
         .unwrap_or(1600.0);
+    let box_h = layer
+        .props
+        .get(&crate::Prop::Height)
+        .and_then(|v| v.as_number())
+        .unwrap_or(840.0);
     let go = |st: &mut State, i: usize| -> Result<(), String> {
         let k = c.views.get(i).ok_or("no such view")?;
         if !valid_ll(k.lat, k.lon) {
@@ -1239,6 +1580,7 @@ pub fn act(
         }
         let (cur, _) = view_at(c, st, now, box_w);
         st.cur = Some(i);
+        st.goto = None;
         if c.transition.dur > 0.0 {
             st.from = Some(cur);
             st.at = now;
@@ -1269,7 +1611,47 @@ pub fn act(
             go(st, i)
         }
         "reset" => {
+            // Back to the template's view (flying there), no highlight, layers as designed.
+            let (cur, _) = view_at(c, st, now, box_w);
             *st = State::default();
+            if c.transition.dur > 0.0 {
+                st.from = Some(cur);
+                st.at = now;
+            }
+            Ok(())
+        }
+        "goto" => {
+            let q = arg_str(args, &["place", "q", "name"]).ok_or("where?")?;
+            let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("fr");
+            let f = find_place(&q, lang).ok_or_else(|| format!("“{}” not found", q.trim()))?;
+            let (cur, _) = view_at(c, st, now, box_w);
+            let zoom = match f.zoom {
+                Some(z) => z,
+                None if f.bbox[0] == f.bbox[2] => cur.zoom.max(6.0),
+                None => fit_zoom(c.projection, f.bbox, box_w, box_h),
+            };
+            let (lat, lon) = if f.zoom.is_none() && f.bbox[0] != f.bbox[2] {
+                // The box's middle (on the projection).
+                let (x0, y0) = project(c.projection, f.bbox[0], f.bbox[3]);
+                let (x1, y1) = project(c.projection, f.bbox[2], f.bbox[1]);
+                let (lon, lat) = unproject(c.projection, (x0 + x1) / 2.0, (y0 + y1) / 2.0);
+                (lat, lon)
+            } else {
+                (f.lat, f.lon)
+            };
+            st.goto = Some(Goto {
+                name: f.name,
+                lat,
+                lon,
+                zoom,
+            });
+            st.cur = None;
+            if c.transition.dur > 0.0 {
+                st.from = Some(cur);
+                st.at = now;
+            } else {
+                st.from = None;
+            }
             Ok(())
         }
         "layer" => {
@@ -1303,7 +1685,7 @@ pub fn act(
                 st.highlight.clear();
                 return Ok(());
             }
-            let r = region_of(&z).ok_or_else(|| format!("no zone “{z}”"))?;
+            let r = zone_of(c.zones.level, &z).ok_or_else(|| format!("no zone “{z}”"))?;
             st.highlight = r.id.clone();
             st.layers.insert("zones".into(), true);
             Ok(())
@@ -1346,7 +1728,16 @@ mod tests {
     #[test]
     fn world_loads_and_old_json_loads() {
         assert!(world().land.len() > 10);
-        assert_eq!(world().regions.len(), 13);
+        assert_eq!(world().regions.len(), 18);
+        assert_eq!(world().deps.len(), 101);
+        assert!(world().countries.len() > 150);
+        // Rings close and stay on the globe.
+        for z in &world().deps {
+            for r in &z.rings {
+                assert!(r.len() > 3, "{}", z.name);
+                assert!(r.iter().all(|p| valid_ll(p[1], p[0])));
+            }
+        }
         let l: Layer =
             serde_json::from_str(r#"{"id":"a","name":"M","type":"map","props":{}}"#).unwrap();
         let LayerKind::Map { x } = l.kind else {
@@ -1497,7 +1888,99 @@ mod tests {
         .unwrap();
         assert!(route_progress(&st, &c.routes[1], 12_500) < 1.0);
         assert_eq!(route_progress(&st, &c.routes[1], 15_000), 1.0);
-        act(&l, &mut st, "reset", &serde_json::Value::Null, &ctx(&d, 0)).unwrap();
-        assert_eq!(st, State::default());
+        act(
+            &l,
+            &mut st,
+            "reset",
+            &serde_json::Value::Null,
+            &ctx(&d, 20_000),
+        )
+        .unwrap();
+        // Back to the template's view, flying from where it was.
+        assert_eq!(st.cur, None);
+        assert!(st.highlight.is_empty() && st.layers.is_empty());
+        assert!(st.from.is_some() && st.at == 20_000);
+    }
+
+    #[test]
+    fn goto_a_place_and_zones_of_every_level() {
+        let l = layer(Config::default());
+        let d = Data::new();
+        let mut st = State::default();
+        act(
+            &l,
+            &mut st,
+            "goto",
+            &serde_json::json!({"place":"lyon"}),
+            &ctx(&d, 1000),
+        )
+        .unwrap();
+        let g = st.goto.clone().unwrap();
+        assert_eq!(g.name, "Lyon");
+        assert!((g.lat - 45.76).abs() < 0.1 && (g.lon - 4.83).abs() < 0.1);
+        let c = Config::default();
+        let (v, _) = view_at(&c, &st, 1000 + 10_000, 1600.0);
+        assert!((v.lat - g.lat).abs() < 1e-9);
+        // Coordinates, a departement code, a country in English.
+        act(
+            &l,
+            &mut st,
+            "goto",
+            &serde_json::json!({"place":"43.3, 5.4"}),
+            &ctx(&d, 0),
+        )
+        .unwrap();
+        assert_eq!(st.goto.as_ref().unwrap().lat, 43.3);
+        act(
+            &l,
+            &mut st,
+            "goto",
+            &serde_json::json!({"place":"2A"}),
+            &ctx(&d, 0),
+        )
+        .unwrap();
+        assert_eq!(st.goto.as_ref().unwrap().name, "Corse-du-Sud");
+        act(
+            &l,
+            &mut st,
+            "goto",
+            &serde_json::json!({"place":"Spain", "lang":"en"}),
+            &ctx(&d, 0),
+        )
+        .unwrap();
+        assert_eq!(st.goto.as_ref().unwrap().name, "Spain");
+        assert!(act(
+            &l,
+            &mut st,
+            "goto",
+            &serde_json::json!({"place":"Atlantis"}),
+            &ctx(&d, 0)
+        )
+        .is_err());
+        // A key view leaves the place.
+        act(&l, &mut st, "next", &serde_json::Value::Null, &ctx(&d, 0)).unwrap();
+        assert!(st.goto.is_none());
+        // Zones: departements by code or name, countries by ISO code or name.
+        assert_eq!(zone_of(ZoneLevel::Deps, "69").unwrap().name, "Rhône");
+        assert_eq!(zone_of(ZoneLevel::Deps, "finistere").unwrap().id, "29");
+        assert_eq!(
+            zone_of(ZoneLevel::Countries, "Allemagne").unwrap().id,
+            "DEU"
+        );
+        assert_eq!(zone_of(ZoneLevel::Countries, "DE").unwrap().id, "DEU");
+        assert_eq!(zone_of(ZoneLevel::Regions, "Bretagne").unwrap().id, "bre");
+        // Names in the project's language, renamed in the Designer.
+        let mut c = Config::default();
+        assert_eq!(place_name(&c, "London", "Londres", "fr"), "Londres");
+        assert_eq!(place_name(&c, "London", "Londres", "en"), "London");
+        c.names.push(Rename {
+            from: "Londres".into(),
+            to: "LONDON".into(),
+        });
+        assert_eq!(place_name(&c, "London", "Londres", "fr"), "LONDON");
+        // The attribution names the data drawn.
+        let (txt, req) = attribution(&c, &State::default(), 6.0, "fr");
+        assert_eq!(txt, "Données\u{a0}: Natural Earth, IGN");
+        assert!(req);
     }
 }

@@ -107,21 +107,20 @@ thread_local! {
     static PICS: RefCell<HashMap<(usize, u16, u16), Option<(Arc<Pixmap>, f32, f32, u16)>>> = RefCell::new(HashMap::new());
 }
 
-/// Draws a colour glyph (emoji) at pen (x, baseline), `size` px, squeezed by `sx`.
+/// The colour picture of a glyph (emoji) and the transform placing it at pen
+/// (x, baseline), `size` px, squeezed by `sx`, under `tf` (layer → picture).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn picture(
-    d: &mut Draw,
+pub(crate) fn picture_at(
     chain: &Chain,
     g: &PGlyph,
     x: f32,
     baseline: f32,
     size: f32,
     sx: f32,
-    alpha: f32,
-    mask: Option<&Mask>,
-) {
+    tf: Transform,
+) -> Option<(Arc<Pixmap>, Transform)> {
     let font = &chain.fonts[g.font];
-    let scale = (d.tf.sx * d.tf.sx + d.tf.ky * d.tf.ky).sqrt().max(0.01);
+    let scale = (tf.sx * tf.sx + tf.ky * tf.ky).sqrt().max(0.01);
     let want = (size * scale).round().clamp(8.0, 512.0) as u16;
     let key = (font.font_data().as_ptr() as usize, g.id.0, want);
     let pic = PICS.with(|m| {
@@ -151,14 +150,31 @@ pub(crate) fn picture(
             })
             .clone()
     });
-    let Some((pm, ox, oy, ppem)) = pic else {
-        return;
-    };
+    let (pm, ox, oy, ppem) = pic?;
     let k = size / ppem.max(1) as f32;
     let h = pm.height() as f32;
-    let tf =
-        d.tf.pre_translate(x + ox * k * sx, baseline - (oy + h) * k)
-            .pre_scale(k * sx, k);
+    let at = tf
+        .pre_translate(x + ox * k * sx, baseline - (oy + h) * k)
+        .pre_scale(k * sx, k);
+    Some((pm, at))
+}
+
+/// Draws a colour glyph (emoji) at pen (x, baseline), `size` px, squeezed by `sx`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn picture(
+    d: &mut Draw,
+    chain: &Chain,
+    g: &PGlyph,
+    x: f32,
+    baseline: f32,
+    size: f32,
+    sx: f32,
+    alpha: f32,
+    mask: Option<&Mask>,
+) {
+    let Some((pm, tf)) = picture_at(chain, g, x, baseline, size, sx, d.tf) else {
+        return;
+    };
     let paint = PixmapPaint {
         opacity: alpha * d.opacity,
         quality: tiny_skia::FilterQuality::Bicubic,
@@ -180,13 +196,37 @@ pub(crate) fn shadow(
     blur: f32,
     mask: Option<&Mask>,
 ) {
+    shadow_with(d, paths, &[], stroke, color, dx, dy, blur, mask);
+}
+
+/// The same with colour pictures (emoji: their own transform in layer
+/// space) casting their shadow too, as the browser's drop shadow does.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn shadow_with(
+    d: &mut Draw,
+    paths: &[&Path],
+    pics: &[(Arc<Pixmap>, Transform)],
+    stroke: f32,
+    color: Color,
+    dx: f32,
+    dy: f32,
+    blur: f32,
+    mask: Option<&Mask>,
+) {
     let tf = d.tf.pre_translate(dx, dy);
     let scale = (d.tf.sx * d.tf.sx + d.tf.ky * d.tf.ky).sqrt().max(0.01);
     let sigma = (blur * scale / 2.0).max(0.0);
     let margin = (sigma * 3.0 + stroke * scale + 2.0).ceil();
     let mut bounds: Option<tiny_skia::Rect> = None;
-    for p in paths {
-        if let Some(b) = (*p).clone().transform(tf).map(|p| p.bounds()) {
+    let pic_paths: Vec<Path> = pics
+        .iter()
+        .filter_map(|(pm, t)| {
+            let r = tiny_skia::Rect::from_xywh(0.0, 0.0, pm.width() as f32, pm.height() as f32)?;
+            PathBuilder::from_rect(r).transform(*t)
+        })
+        .collect();
+    for p in paths.iter().copied().chain(pic_paths.iter()) {
+        if let Some(b) = p.clone().transform(tf).map(|p| p.bounds()) {
             bounds = Some(match bounds {
                 None => b,
                 Some(a) => tiny_skia::Rect::from_ltrb(
@@ -225,6 +265,39 @@ pub(crate) fn shadow(
                 ..Default::default()
             };
             off.stroke_path(p, &paint, &s, local, None);
+        }
+    }
+    if !pics.is_empty() {
+        // The pictures' coverage in the shadow's colour.
+        let mut cover = Pixmap::new(off.width(), off.height()).unwrap_or_else(|| off.clone());
+        let pp = PixmapPaint {
+            quality: tiny_skia::FilterQuality::Bicubic,
+            ..Default::default()
+        };
+        for (pm, t) in pics {
+            cover.draw_pixmap(0, 0, pm.as_ref().as_ref(), &pp, local.pre_concat(*t), None);
+        }
+        let c = sk(color, 1.0).premultiply();
+        let [cr, cg, cb, ca] = [c.red(), c.green(), c.blue(), c.alpha()];
+        for (o, s) in off
+            .data_mut()
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(cover.data().as_chunks::<4>().0)
+        {
+            let k = s[3] as f32 / 255.0;
+            if k <= 0.0 {
+                continue;
+            }
+            // Source over: the picture's shadow over what the paths left.
+            let src = [cr * k, cg * k, cb * k, ca * k];
+            let keep = 1.0 - src[3];
+            for i in 0..4 {
+                o[i] = (src[i] * 255.0 + o[i] as f32 * keep)
+                    .round()
+                    .clamp(0.0, 255.0) as u8;
+            }
         }
     }
     if sigma > 0.3 {

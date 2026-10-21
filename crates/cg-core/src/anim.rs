@@ -22,6 +22,15 @@ pub fn default_value(prop: Prop) -> Value {
         Stroke => Value::Color(Color::TRANSPARENT),
         ArcStart | InnerRadius => Value::Number(0.0),
         ArcEnd => Value::Number(360.0),
+        // As the Text widget's own shadow: #000000aa, 4 px down, 12 px blur.
+        ShadowColor => Value::Color(Color([0.0, 0.0, 0.0, 170.0 / 255.0])),
+        ShadowX => Value::Number(0.0),
+        ShadowY => Value::Number(4.0),
+        ShadowBlur => Value::Number(12.0),
+        DrawStart => Value::Number(0.0),
+        DrawEnd => Value::Number(100.0),
+        CornerTl | CornerTr | CornerBr | CornerBl => Value::Number(0.0),
+        Fill2 => Value::Color(Color([1.0, 59.0 / 255.0, 92.0 / 255.0, 1.0])),
     }
 }
 
@@ -34,6 +43,39 @@ pub fn layer_default(layer: &Layer, prop: Prop) -> Value {
             Prop::ArcEnd => return Value::Number(f64::from(c.end)),
             Prop::InnerRadius => return Value::Number(f64::from(c.inner)),
             _ => {}
+        }
+    }
+    // A pen's visible portion: its settings (older layers have it only there).
+    if let LayerKind::Pen { x: c } = &layer.kind {
+        match prop {
+            Prop::DrawStart => return Value::Number(f64::from(c.v_start)),
+            Prop::DrawEnd => return Value::Number(f64::from(c.v_end)),
+            _ => {}
+        }
+    }
+    // A rectangle's corners and a gradient's second colour: their settings
+    // (older layers have them only there).
+    let corner = match prop {
+        Prop::CornerTl => Some(0),
+        Prop::CornerTr => Some(1),
+        Prop::CornerBr => Some(2),
+        Prop::CornerBl => Some(3),
+        _ => None,
+    };
+    if let (Some(i), LayerKind::Rect { x: c }) = (corner, &layer.kind) {
+        return Value::Number(f64::from(c.corners[i]));
+    }
+    if prop == Prop::Fill2 {
+        let c2 = match &layer.kind {
+            LayerKind::Text { x, .. } => Some(x.color2.as_str()),
+            LayerKind::Rect { x } => Some(x.fill_style.color2.as_str()),
+            LayerKind::Ellipse { x } => Some(x.fill_style.color2.as_str()),
+            LayerKind::Polygon { x } => Some(x.fill_style.color2.as_str()),
+            LayerKind::Pen { x } => Some(x.fill_style.color2.as_str()),
+            _ => None,
+        };
+        if let Some(c) = c2.and_then(Color::from_hex) {
+            return Value::Color(c);
         }
     }
     default_value(prop)

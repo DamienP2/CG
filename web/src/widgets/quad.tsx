@@ -9,7 +9,6 @@ import { t } from '../i18n';
 
 export interface Config {
   shape?: 'rect' | 'diamond' | 'parallelogram' | 'trapezoid';
-  lockRatio?: boolean;
   perCorner?: boolean;
   /** Top left, top right, bottom right, bottom left. */
   corners?: [number, number, number, number];
@@ -30,7 +29,6 @@ export interface State {}
 
 const D: Required<Omit<Config, 'fillStyle' | 'strokeStyle'>> = {
   shape: 'rect',
-  lockRatio: false,
   perCorner: false,
   corners: [0, 0, 0, 0],
   skewUnit: 'px',
@@ -105,9 +103,10 @@ export function corners(c: Config, w: number, h: number): Pt[] {
   }
 }
 
-export function outline(c: Config, w: number, h: number, radius: number): string {
+/** The outline; `radius`: the animated corner radius, `each`: the animated radius of each corner (Per corner; else the settings'). */
+export function outline(c: Config, w: number, h: number, radius: number, each?: number[]): string {
   const k = cfg(c);
-  const radii = k.shape !== 'rect' ? [k.vertexRound] : k.perCorner ? [...k.corners] : [radius];
+  const radii = k.shape !== 'rect' ? [k.vertexRound] : k.perCorner ? [...(each ?? k.corners)] : [radius];
   return roundedPolygon(corners(c, w, h), radii);
 }
 
@@ -119,7 +118,7 @@ export default defineWidget({
   icon: Square,
   create: () => ({ props: { width: 500, height: 120 } }),
   ownsLook: true,
-  Render: ({ layer, r, w, h, data }) => <ShapeSvg d={outline(layer, w, h, num(r.cornerRadius))} w={w} h={h} r={r} fill={layer.fillStyle} stroke={layer.strokeStyle} data={data} />,
+  Render: ({ layer, r, w, h, data }) => <ShapeSvg d={outline(layer, w, h, num(r.cornerRadius), [num(r.cornerTl), num(r.cornerTr), num(r.cornerBr), num(r.cornerBl)])} w={w} h={h} r={r} fill={layer.fillStyle} stroke={layer.strokeStyle} data={data} />,
   Inspector: ({ layer, edit }) => {
     const k = cfg(layer);
     return (
@@ -136,25 +135,14 @@ export default defineWidget({
               ['trapezoid', t('Trapezoid')],
             ]}
           />
-          <Toggle
-            expose="lockRatio"
-            exposeValue={!!k.lockRatio}
-            label={t('Square')}
-            value={k.lockRatio}
-            onChange={(v) =>
-              edit((l) => {
-                l.lockRatio = v || undefined;
-                if (v) l.props.height = l.props.width;
-              })
-            }
-          />
           {k.shape === 'rect' && (
             <>
               <Toggle label={t('Per corner')} path="perCorner" value={false} />
               {!k.perCorner ? (
                 <GroupRow layer={layer} spec={{ label: t('Radius'), props: ['cornerRadius'], min: 0, suffix: 'px' }} />
               ) : (
-                ['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((label, i) => <Num key={label} label={t(label)} path={`corners.${i}`} value={k.corners[i]} min={0} max={600} unit="px" />)
+                // Animatable, as the radius of all corners.
+                (['cornerTl', 'cornerTr', 'cornerBr', 'cornerBl'] as const).map((p, i) => <GroupRow key={p} layer={layer} spec={{ label: t(['Top left', 'Top right', 'Bottom right', 'Bottom left'][i]), props: [p], min: 0, suffix: 'px' }} />)
               )}
             </>
           )}

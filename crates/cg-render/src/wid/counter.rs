@@ -274,12 +274,8 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         if let Some(pp) = rrect(0.0, 0.0, d.w, d.h, 6.0) {
             d.fill(&pp, Draw::hex(&c.plate_color), FillRule::Winding, None);
             if let Some(m) = d.clip(0.0, d.h - 10.0, d.w, 10.0) {
-                d.fill(
-                    &pp,
-                    Draw::hex(if st.frozen { "#38bdf8" } else { "#ff3b5c" }),
-                    FillRule::Winding,
-                    Some(&m),
-                );
+                // The freeze stays in the control room: the bar never changes on air.
+                d.fill(&pp, Draw::hex("#ff3b5c"), FillRule::Winding, Some(&m));
             }
         }
     }
@@ -594,5 +590,60 @@ fn draw_flip(
             let sy = ((1.0 - k) * std::f32::consts::PI).cos().abs();
             half(d, *n, false, sy, 0.5 - k / 2.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{OutputFormat, Renderer};
+    use cg_core::{sample, ChannelState, Command};
+    use serde_json::json;
+
+    #[test]
+    fn a_frozen_counter_looks_the_same_on_air() {
+        let mut project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(json!({
+            "id": "ct", "name": "C", "duration": 10.0, "markers": [], "fields": [], "zone": "",
+            "layers": [{
+                "id": "c", "name": "Score", "type": "counter", "from": "0", "to": "5", "duration": 0.0,
+                "fontFamily": "Inter", "fontWeight": 700, "plate": true, "plateColor": "#000000",
+                "props": {"x": 0.0, "y": 0.0, "width": 400.0, "height": 200.0, "fontSize": 60.0, "fill": [1.0, 1.0, 1.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        project.templates.push(t);
+        let mut state = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(90),
+            template_id: "ct".into(),
+            data: None,
+            rundown_id: None,
+        };
+        state.apply(&project, take).unwrap();
+        for _ in 0..30 {
+            state.tick(1.0);
+        }
+        let out = OutputFormat {
+            width: 1920,
+            height: 1080,
+        };
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let bar = |r: &mut Renderer, st: &ChannelState| {
+            let f = r.render_channel(&project, st, out, "UTC");
+            let i = (195 * 1920 + 200) * 4;
+            [f.data[i], f.data[i + 1], f.data[i + 2]]
+        };
+        assert_eq!(bar(&mut r, &state), [255, 59, 92]);
+        let freeze = Command::Act {
+            zone: None,
+            layer: Some(90),
+            target: "Score".into(),
+            op: "freeze".into(),
+            args: json!({}),
+        };
+        state.apply(&project, freeze).unwrap();
+        // The freeze stays in the control room: the bar does not change.
+        assert_eq!(bar(&mut r, &state), [255, 59, 92]);
     }
 }

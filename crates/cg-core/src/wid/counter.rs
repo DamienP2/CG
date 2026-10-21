@@ -102,6 +102,8 @@ pub struct Config {
     pub max: Option<f64>,
     /// Of the + / − buttons.
     pub step: f64,
+    /// More + buttons of the Operator ("2, 3": +2 and +3).
+    pub extra_steps: String,
     /// fr-FR, en-US, de-DE, de-CH, es-ES, en-IN.
     pub locale: String,
     /// + on positive values.
@@ -140,6 +142,7 @@ impl Default for Config {
             min: None,
             max: None,
             step: 1.0,
+            extra_steps: String::new(),
             locale: "fr-FR".into(),
             plus: false,
             compact: false,
@@ -163,6 +166,16 @@ impl Default for Config {
             plate_color: "#160f33".into(),
         }
     }
+}
+
+/// The extra steps of the Operator's row ("2, 3; 5" → [2, 3, 5]), positive, at most 4.
+pub fn extra_steps(c: &Config) -> Vec<f64> {
+    c.extra_steps
+        .split([',', ';', ' '])
+        .filter_map(|s| parse_num(s.trim()))
+        .filter(|v| *v > 0.0 && v.is_finite())
+        .take(4)
+        .collect()
 }
 
 /// A transition of the displayed value.
@@ -657,8 +670,12 @@ pub fn act(
     };
     match op {
         "inc" | "dec" => {
+            // `by`: an amount of its own (the extra steps), else `times` the step.
+            let by = args
+                .get("by")
+                .and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(parse_num)));
             let k = args.get("times").and_then(|v| v.as_f64()).unwrap_or(1.0);
-            let d = p.c.step * k * if op == "inc" { 1.0 } else { -1.0 };
+            let d = by.unwrap_or(p.c.step * k) * if op == "inc" { 1.0 } else { -1.0 };
             go(st, target + d);
         }
         "set" => {
@@ -840,6 +857,26 @@ mod tests {
         act(&l, &mut st, "reset", &json!({}), &ctx(800)).unwrap();
         assert_eq!(st.value, None);
         assert!(act(&l, &mut st, "x", &json!({}), &ctx(0)).is_err());
+    }
+
+    #[test]
+    fn extra_steps_add_their_own_amount() {
+        let l = layer(json!({"to":"10","transition":"none","extraSteps":"2, 3; x 0"}));
+        let LayerKind::Counter { x: c, .. } = &l.kind else {
+            panic!()
+        };
+        assert_eq!(extra_steps(c), vec![2.0, 3.0]);
+        let data = Data::new();
+        let ctx = ActCtx {
+            now_ms: 0,
+            age_secs: 10.0,
+            data: &data,
+        };
+        let mut st = State::default();
+        act(&l, &mut st, "inc", &json!({"by": 3}), &ctx).unwrap();
+        assert_eq!(st.value, Some(13.0));
+        act(&l, &mut st, "dec", &json!({"by": "2"}), &ctx).unwrap();
+        assert_eq!(st.value, Some(11.0));
     }
 
     #[test]

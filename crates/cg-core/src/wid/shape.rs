@@ -142,6 +142,29 @@ pub struct StrokeStyle {
     pub cap: Cap,
 }
 
+/// A stroke style read over other defaults than [`StrokeStyle::default`]
+/// (the centred stroke of an older ellipse, the round ends of a pen): the
+/// fields a layer leaves out keep `base`'s, as the web app reads them.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct PartialStroke {
+    pub position: Option<StrokePosition>,
+    pub dash: Option<Dash>,
+    pub join: Option<Join>,
+    pub cap: Option<Cap>,
+}
+
+impl PartialStroke {
+    pub fn over(self, base: StrokeStyle) -> StrokeStyle {
+        StrokeStyle {
+            position: self.position.unwrap_or(base.position),
+            dash: self.dash.unwrap_or(base.dash),
+            join: self.join.unwrap_or(base.join),
+            cap: self.cap.unwrap_or(base.cap),
+        }
+    }
+}
+
 /// Fill rule of self-crossing outlines.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

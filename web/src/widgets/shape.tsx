@@ -5,7 +5,7 @@ import { col, cssColor, interpolateText, num, propValue, type Resolved } from '.
 import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow, AssetPicker } from '../designer/Inspector';
 import { useEffect, useState } from 'react';
-import { ColorPick, getPath, hex, Num, Row, Section, Seg, Toggle, useBound, ListEditor } from './kit';
+import { getPath, hex, Num, Row, Section, Seg, Toggle, useBound, ListEditor } from './kit';
 import { t } from '../i18n';
 
 export type FillKind = 'none' | 'solid' | 'linear' | 'radial' | 'image';
@@ -28,15 +28,15 @@ export interface StrokeStyle {
 }
 export type FillRule = 'nonzero' | 'evenodd';
 export const FILL: Required<FillStyle> = { kind: 'solid', color2: '#ff3b5c', angle: 90, stops: [], image: '', fit: 'cover' };
-/** The gradient's stops in order (mirror of FillStyle::gradient). */
-const gradientStops = (f: Required<FillStyle>, c1: string) =>
+/** The gradient's stops in order (mirror of FillStyle::gradient); `c2`: the second colour (the animatable fill2). */
+const gradientStops = (f: Required<FillStyle>, c1: string, c2: string) =>
   [
     { at: 0, color: c1 },
     ...f.stops
       .filter((s) => Number.isFinite(s.at ?? 50))
       .map((s) => ({ at: Math.min(1, Math.max(0, (s.at ?? 50) / 100)), color: hex(s.color ?? '#ffffff') }))
       .sort((a, b) => a.at - b.at),
-    { at: 1, color: hex(f.color2) },
+    { at: 1, color: c2 },
   ].map((s, i) => <stop key={i} offset={s.at} stopColor={s.color} />);
 export const STROKE: Required<StrokeStyle> = { position: 'inside', dash: 'solid', join: 'miter', cap: 'butt' };
 
@@ -103,14 +103,14 @@ export function ShapeSvg({ d, w, h, r, fill, stroke, rule = 'nonzero', data }: {
     const len = (w * Math.abs(dx) + h * Math.abs(dy)) * 2;
     defs = (
       <linearGradient id={`${id}f`} gradientUnits="userSpaceOnUse" x1={w / 2 - dx * len} y1={h / 2 - dy * len} x2={w / 2 + dx * len} y2={h / 2 + dy * len}>
-        {gradientStops(f, c1)}
+        {gradientStops(f, c1, cssColor(col(r.fill2)))}
       </linearGradient>
     );
     paint = `url(#${id}f)`;
   } else if (f.kind === 'radial') {
     defs = (
       <radialGradient id={`${id}f`} gradientUnits="userSpaceOnUse" cx={w / 2} cy={h / 2} r={Math.hypot(w, h) / 2}>
-        {gradientStops(f, c1)}
+        {gradientStops(f, c1, cssColor(col(r.fill2)))}
       </radialGradient>
     );
     paint = `url(#${id}f)`;
@@ -183,8 +183,8 @@ export function useImageSize(src: string): [[number, number], (s: [number, numbe
 export function StrokeToggle({ layer, edit, width = 4 }: { layer: Layer; edit: ShapeEdit; width?: number }) {
   return (
     <Toggle
-      expose="props.strokeWidth"
-      exposeValue={num(propValue(layer, 'strokeWidth', 0))}
+      // The width is exposed by its own row (Width): the toggle is not.
+      expose={false}
       label={t('Stroke')}
       value={num(propValue(layer, 'strokeWidth', 0)) > 0}
       onChange={(v) =>
@@ -204,7 +204,7 @@ export type ShapeEdit = (fn: (l: { props: Layer['props'] }) => void) => void;
  * the layer's animated properties (keyframes), the rest is `fillStyle` /
  * `strokeStyle` of the layer.
  */
-export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition }: { layer: Layer; id: string; edit: ShapeEdit; rule?: boolean; caps?: boolean; noPosition?: boolean }) {
+export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition, joins = true }: { layer: Layer; id: string; edit: ShapeEdit; rule?: boolean; caps?: boolean; noPosition?: boolean; joins?: boolean }) {
   const f = { ...FILL, ...(layer as { fillStyle?: FillStyle }).fillStyle };
   const stroke = num(propValue(layer, 'strokeWidth', 0)) > 0;
   return (
@@ -223,7 +223,7 @@ export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition }: 
           ]}
         />
         {f.kind !== 'none' && f.kind !== 'image' && <ColorGroupRow layer={layer} prop="fill" label={f.kind === 'solid' ? t('Color') : t('From')} />}
-        {(f.kind === 'linear' || f.kind === 'radial') && <GradientTo />}
+        {(f.kind === 'linear' || f.kind === 'radial') && <GradientTo layer={layer} />}
         {f.kind === 'linear' && <Num label={t('Angle')} path="fillStyle.angle" value={FILL.angle} min={0} max={360} unit="°" />}
         {f.kind === 'image' && <ImageSource />}
         {f.kind === 'image' && (
@@ -253,7 +253,7 @@ export function FillStrokeSections({ layer, id, edit, rule, caps, noPosition }: 
       </Section>
       <Section id={`${id}-stroke`} title={t('Stroke')}>
         <StrokeToggle layer={layer} edit={edit} />
-        {stroke && <StrokeRows layer={layer} caps={caps} position={!noPosition} />}
+        {stroke && <StrokeRows layer={layer} caps={caps} joins={joins} position={!noPosition} />}
       </Section>
     </>
   );
@@ -315,10 +315,11 @@ export function StrokeRows({ layer, caps, joins = true, position, capDefault = S
   );
 }
 
-function GradientTo() {
+/** The second colour of a gradient (animatable) and the colours between. */
+export function GradientTo({ layer }: { layer: Layer }) {
   return (
     <>
-      <ColorPick label={t('To')} path="fillStyle.color2" value={FILL.color2} />
+      <ColorGroupRow layer={layer} prop="fill2" label={t('To')} />
       <ListEditor
         label={t('Between')}
         path="fillStyle.stops"

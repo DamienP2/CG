@@ -3,15 +3,16 @@
 // (crates/cg-core/src/wid/timer.rs); actions in crates/cg-core/src/wid/timer.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Flag, Pause, Play, RotateCcw, Timer, Undo2 } from 'lucide-react';
+import { Flag, Minus, Pause, Play, Plus, RotateCcw, Timer, Undo2 } from 'lucide-react';
 import { col, cssColor, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
 import type { Data, Layer, FontStyle } from '../engine/types';
-import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
+import { FontControls, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import * as T from './timer-fmt';
+import { OpField, OpLine } from './table-text';
 import { t, tc } from '../i18n';
 
 export type Config = T.Config;
@@ -351,10 +352,6 @@ const sampleText = (layer: L, data: Data, fmt: string) => {
   return T.segText(d.segs, e.c.sep);
 };
 
-function setPrecision(f: string, p: string) {
-  return f.replace(/[.:,]?(SS|S|FF)$/, '') + ({ s: '', t: '.S', h: '.SS', f: ':FF' } as Record<string, string>)[p];
-}
-
 function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn: (l: L) => void, key?: string) => void; set: (path: string, v: unknown, coalesce?: boolean) => void }) {
   const e = T.eff(layer, data);
   const c = e.c;
@@ -374,12 +371,18 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           onChange={(v) =>
             edit((l) => {
               const x = l as L & Config;
+              const was = x.timerMode ?? mode;
               x.timerMode = v;
               x.mode = LEGACY_MODE[v] as L['mode'];
-              x.format = PRESETS[v][0][0];
-              if (PRESETS[v][0][1]) x.case = PRESETS[v][0][1];
-              x.zeros = 'pad';
-              if (STEPS[v]) x.steps = structuredClone(STEPS[v]);
+              // A format, zeros and steps of the designer's own stay (only the presets of the old mode change).
+              const preset = !x.format?.trim() || PRESETS[was].some((p) => p[0] === x.format) || !T.hasToken(x.format);
+              if (preset) {
+                x.format = PRESETS[v][0][0];
+                if (PRESETS[v][0][1]) x.case = PRESETS[v][0][1];
+                x.zeros = 'pad';
+              }
+              const sameSteps = (a?: T.Step[], b?: T.Step[]) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+              if (!x.steps?.length || sameSteps(x.steps, STEPS[was])) x.steps = STEPS[v] ? structuredClone(STEPS[v]) : [];
               if (v !== 'clock') x.cities = false;
             })
           }
@@ -443,30 +446,34 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
 
       {c.face !== 'analog' && (
         <Section id="timer-digits" title={t('Digits')}>
-          <Toggle label={t('Tabular')} path="tabular" value={false} />
-          <Seg
-            label={t('Zeros')}
-            path="zeros"
-            value="pad"
-            options={[
-              ['pad', '00:01:05'],
-              ['trim', '1:05'],
-            ]}
-          />
-          {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
-          <Seg
-            label={t('Separator')}
-            path="sep"
-            value=":"
-            options={[
-              [':', ':'],
-              ['h', 'h'],
-              ["'", "'"],
-              [' ', t('space')],
-              ['.', '.'],
-            ]}
-          />
-          <Toggle label={t('Blink')} path="sepBlink" value={false} />
+          <Toggle label={t('Tabular')} path="tabular" value={T.DEF.tabular} />
+          {mode !== 'date' && (
+            <>
+              <Seg
+                label={t('Zeros')}
+                path="zeros"
+                value="pad"
+                options={[
+                  ['pad', '00:01:05'],
+                  ['trim', '1:05'],
+                ]}
+              />
+              {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
+              <Seg
+                label={t('Separator')}
+                path="sep"
+                value=":"
+                options={[
+                  [':', ':'],
+                  ['h', 'h'],
+                  ["'", "'"],
+                  [' ', t('space')],
+                  ['.', '.'],
+                ]}
+              />
+              <Toggle label={t('Blink')} path="sepBlink" value={false} />
+            </>
+          )}
           {mode === 'clock' && (
             <>
               <Seg
@@ -486,7 +493,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
               )}
             </>
           )}
-          {mode === 'date' && (
+          {(mode === 'date' || (mode === 'clock' && /dddd|ddd|MMMM|MMM/.test(e.format.replace(/\[[^\]]*\]/g, '')))) && (
             <>
               <Select label={t('Language')} path="lang" value="en-GB" options={T.LANGS} />
               <Seg
@@ -507,15 +514,17 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
       )}
 
       <Section id="timer-style" title={t('Style')}>
-        <Seg
-          label={t('Look')}
-          path="face"
-          value={c.face}
-          options={[
-            ['digital', t('Digits')],
-            ['analog', t('Analog clock')],
-          ]}
-        />
+        {(mode === 'clock' || c.face === 'analog') && (
+          <Seg
+            label={t('Look')}
+            path="face"
+            value={c.face}
+            options={[
+              ['digital', t('Digits')],
+              ['analog', t('Analog clock')],
+            ]}
+          />
+        )}
         {c.face === 'analog' && (
           <>
             <ColorPick label={t('Face')} path="analog.face" value={T.DEF.analog.face} none={t('None')} first={T.DEF.analog.face} />
@@ -543,7 +552,6 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
         )}
         <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
         {c.face !== 'analog' && <GroupRow layer={layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />}
-        <ColorGroupRow layer={layer} prop="fill" label={t('Colour')} />
         {affixed && (
           <>
             <Num label={t('Affix size')} path="affix.size" value={30} min={15} max={100} unit="%" />
@@ -576,7 +584,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
                 <Toggle label={t('Shadow')} path="plate.shadow" value={true} />
               </>
             )}
-            <Toggle label={t('Reserve width')} path="reserve" value={false} />
+            <Toggle label={t('Reserve width')} path="reserve" value={T.DEF.reserve} />
             {c.reserve && <Toggle label={t('Guide')} path="guide" value={true} />}
             <Toggle label={t('Shrink to fit')} path="fit" value={false} />
           </>
@@ -644,29 +652,6 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
               />
             </>
           )}
-          <Seg
-            expose="format"
-            exposeValue={e.format}
-            exposeOptions={[]}
-            label={t('Precision')}
-            value={/FF$/.test(e.format) ? 'f' : /SS$/.test(e.format) ? 'h' : /S$/.test(e.format) ? 't' : 's'}
-            options={[
-              ['s', t('Seconds')],
-              ['t', t('Tenths')],
-              ['h', t('Hundredths')],
-              ['f', t('Frames')],
-            ]}
-            onChange={(v) => set('format', setPrecision(e.format, v))}
-          />
-          <Seg
-            label={t('Rounding')}
-            path="swRound"
-            value="trunc"
-            options={[
-              ['trunc', t('Truncate')],
-              ['near', t('Nearest')],
-            ]}
-          />
           <Num label={t('Split hold')} path="splitHold" value={5} min={1} max={15} unit="s" />
         </Section>
       )}
@@ -707,7 +692,7 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           {c.atZero === 'overrun' && (
             <>
               <ColorPick label={t('Overrun text')} path="overColor" value="#ff3b5c" />
-              <Text label={t('Overrun bg')} path="overBg" value="" placeholder="#hex" />
+              <ColorPick label={t('Overrun bg')} path="overBg" value="" none={t('None')} first="#3a0d18" />
             </>
           )}
           <Toggle label={t('Banner')} path="banner" value={false} />
@@ -724,17 +709,22 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
           <Section id="timer-start" title={t('Start')}>
             <Seg
               label={t('Start')}
-              path="startMode"
-              value="manual"
+              expose="startMode"
+              exposeValue={e.start}
+              value={e.start}
+              onChange={(v) => set('startMode', v)}
               options={[
                 ['manual', t('Manual')],
                 ['auto', t('At In')],
                 ['at', t('At a time')],
-                ['ext', t('External')],
               ]}
             />
-            {c.startMode === 'at' && <Text label={t('Start at')} path="startAt" value="20:00:00" placeholder="20:00:00" />}
-            <Toggle label={t('Run off air')} path="offAir" value={true} />
+            {e.start === 'at' && (
+              <>
+                <Text label={t('Start at')} path="startAt" value="20:00:00" placeholder="20:00:00" />
+                <Toggle label={t('Run off air')} path="offAir" value={true} />
+              </>
+            )}
           </Section>
           <Section id="timer-steps" title={t('Steps')}>
             <ListEditor
@@ -785,6 +775,14 @@ function statusOf(e: T.Eff, r: T.Run, now: number, tz: string): [string, string]
   return ['RUNNING', '#22c55e'];
 }
 
+/** A time of day in a zone, HH:mm:ss. */
+const hmsIn = (ms: number, z: T.ZoneSel, tz: string) => {
+  const c = T.compAt(ms, z, tz);
+  return `${String(c.h).padStart(2, '0')}:${String(c.mi).padStart(2, '0')}:${String(c.s).padStart(2, '0')}`;
+};
+/** Whole seconds of a value as shown (a countdown rounds up). */
+const wholeSecs = (e: T.Eff, ms: number) => Math.max(0, e.mode === 'countdown' ? Math.ceil(ms / 1000 - 1e-6) : Math.floor(ms / 1000));
+
 const fmtClock = (ms: number, tz: string) => {
   const c = T.compAt(ms, T.zoneNamed(''), tz);
   return `${String(c.h).padStart(2, '0')}:${String(c.mi).padStart(2, '0')}:${String(c.s).padStart(2, '0')}`;
@@ -802,7 +800,7 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   const e = T.eff(layer, data);
   const st = state as State | undefined;
   const tz = time.defaultTz;
-  const fps = 25;
+  const fps = (time as { fps?: number }).fps ?? 25;
   const onAir = !!item;
   const ageMs = got.current.age * 1000 + (Date.now() - got.current.at);
   const r = T.run(e, st, now, ageMs, tz);
@@ -823,21 +821,20 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
     setInput('');
   };
   const adj = (s: number) => act('adjust', { seconds: s });
+  // Space stays the Operator's CONTINUE; the value is typed in the row.
   useKeys(
     isTimed
       ? {
-          ' ': () => act('toggle'),
           s: () => act('start'),
-          p: () => act(paused ? 'resume' : 'pause'),
+          p: () => (paused ? act('resume') : !tgt && act('pause')),
           x: () => void confirmReset(),
-          t: () => act('restart'),
+          t: () => !tgt && act('restart'),
           l: () => e.mode === 'stopwatch' && act('split'),
           '1': () => adj(-10),
           '2': () => adj(-1),
           '3': () => adj(1),
           '4': () => adj(10),
           '5': () => adj(60),
-          v: () => setTimeout(() => inp.current?.focus(), 30),
         }
       : {},
   );
@@ -898,9 +895,10 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
       <Btns
         list={[
           { label: t('▶ Start'), cls: 'green big', keyHint: 'S', disabled: st0 && !paused, title: tgt ? t('A countdown to a time always runs') : undefined, onClick: () => act('start') },
-          { label: paused ? t('⏯ Resume') : t('⏸ Pause'), cls: 'amber big', keyHint: 'P', disabled: !st0, onClick: () => act(paused ? 'resume' : 'pause') },
+          // A countdown to a time keeps its top: no pause, no restart (= reset).
+          (!tgt || paused) && { label: paused ? t('⏯ Resume') : t('⏸ Pause'), cls: 'amber big', keyHint: 'P', disabled: !st0, onClick: () => act(paused ? 'resume' : 'pause') },
           { label: t('↺ Reset'), cls: 'big', keyHint: 'X', confirm: onAir ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-          { label: t('⟲ Restart'), cls: 'violet big', keyHint: 'T', onClick: () => act('restart') },
+          !tgt && { label: t('⟲ Restart'), cls: 'violet big', keyHint: 'T', confirm: onAir ? t('{name} is on air: start it again from its start value?', { name: layer.name }) : undefined, onClick: () => act('restart') },
           e.mode === 'stopwatch' && { label: t('⏱ Split'), cls: 'big', keyHint: 'L', disabled: !st0 || paused, onClick: () => act('split') },
         ]}
       />
@@ -930,26 +928,27 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
             }}
           />
           <button className="opx-btn violet" onClick={set}>
-            {t('Set')} <kbd>V</kbd>
+            {t('Set')}
           </button>
         </div>
       </Row>
       {err && <Msg level="error">⛔ {t('{error} — nothing changed on air.', { error: err })}</Msg>}
-      {e.start === 'ext' && !tgt && !st0 && <Msg level="info">{t('Waiting for the external trigger (API, Stream Deck, GPI box).')}</Msg>}
       <Note>
         <span style={{ fontFamily: 'var(--mono, monospace)', fontSize: 10.5 }}>
-          {api('start')} · ops: start, pause, resume, toggle, reset, restart, adjust {'{seconds:10}'}, set {"{value:'05:00'}"}
+          {api('start')} · ops: start, {tgt ? '' : 'pause, resume, toggle, '}reset, {tgt ? '' : 'restart, '}adjust {'{seconds:10}'}, set {"{value:'05:00'}"}
           {e.mode === 'stopwatch' ? ', split' : ''}
         </span>
         <br />
-        {t('Keys: Space start / pause · {keys} · 1–5 adjust · V set value', { keys: `S P X T${e.mode === 'stopwatch' ? ' L' : ''}` })}
+        {t('Keys: {keys} · 1–5 adjust · V set value', { keys: tgt ? 'S X' : `S P X T${e.mode === 'stopwatch' ? ' L' : ''}` })}
       </Note>
     </div>
   );
 }
 
-/** The Operator's compact row: the time shown, start / pause, reset, restart (split). */
-function Compact({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string } }) {
+type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string; fps?: number } };
+
+/** What the compact controls show now (time on air advancing between two updates). */
+function useNow({ layer, state, data, item, time }: OpP) {
   useFrame();
   const serverOffset = useApp((s) => s.serverOffset) ?? 0;
   const got = useRef({ age: time.ageSecs, at: Date.now() });
@@ -960,17 +959,46 @@ function Compact({ layer, state, data, act, item, time }: { layer: L; state: unk
   const tz = time.defaultTz;
   const ageMs = got.current.age * 1000 + (Date.now() - got.current.at);
   const r = T.run(e, st, now, ageMs, tz);
+  const d = T.display(e, st, { now, ageMs, fps: time.fps ?? 25, defaultTz: tz });
+  return { e, r, d, now, tz };
+}
+
+/** The Operator's compact row: the time shown, start / pause, ±10 s, the value (or the new target), reset, restart (split). */
+function Compact(p: OpP) {
+  const { layer, act, item } = p;
+  const { e, r, d, now, tz } = useNow(p);
+  const tgt = T.isTarget(e);
   const st0 = T.started(e, r);
-  const running = st0 && r.pausedAt == null;
-  const d = T.display(e, st, { now, ageMs, fps: 25, defaultTz: tz });
+  const paused = r.pausedAt != null;
+  const running = st0 && !paused;
+  const shown = T.segText(d.segs, e.c.sep);
+  const target = tgt ? T.targetOf(e, r, now, tz) : null;
+  // V: type the value (on air, while this widget's row is selected).
+  const field = useRef<HTMLInputElement>(null);
+  useKeys({ v: () => setTimeout(() => field.current?.focus(), 30) });
+  const toggle = running ? !tgt && { icon: Pause, title: t('Pause'), tone: 'amber' as const, onClick: () => act('pause') } : (!tgt || paused) && { icon: Play, title: paused ? tc('action', 'Resume') : tc('action', 'Start'), tone: 'green' as const, onClick: () => act(st0 ? 'resume' : 'start') };
+  return (
+    <OpLine
+      value={shown}
+      list={[toggle, { icon: Minus, title: '−10 s', tag: '10 s', onClick: () => act('adjust', { seconds: -10 }) }, { icon: Plus, title: '+10 s', tag: '10 s', onClick: () => act('adjust', { seconds: 10 }) }]}
+      field={tgt ? <OpField inputRef={field} width={80} title={t('New target')} value={target != null ? hmsIn(target, e.targetZone, tz) : ''} placeholder="20:00:00" onSubmit={(v) => act('set', { value: v })} /> : <OpField inputRef={field} width={62} title={t('Set value')} value={T.plainDur(wholeSecs(e, T.rawValue(e, r, now, tz) ?? 0) * 1000)} placeholder="mm:ss" onSubmit={(v) => act('set', { value: v })} />}
+      after={[
+        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+        !tgt && { icon: Undo2, title: t('Restart'), confirm: item ? t('{name} is on air: start it again from its start value?', { name: layer.name }) : undefined, onClick: () => act('restart') },
+        e.mode === 'stopwatch' && { icon: Flag, title: t('Split'), disabled: !running, onClick: () => act('split') },
+      ]}
+    />
+  );
+}
+
+/** Under ⋯: the fine adjustments. */
+function More({ act }: OpP) {
   return (
     <OpRow
-      value={T.segText(d.segs, e.c.sep)}
       list={[
-        running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: st0 ? t('Resume') : tc('action', 'Start'), tone: 'green', onClick: () => act(st0 ? 'resume' : 'start') },
-        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-        { icon: Undo2, title: t('Restart'), onClick: () => act('restart') },
-        e.mode === 'stopwatch' && { icon: Flag, title: t('Split'), disabled: !running, onClick: () => act('split') },
+        { icon: Minus, title: '−1 s', tag: '1 s', onClick: () => act('adjust', { seconds: -1 }) },
+        { icon: Plus, title: '+1 s', tag: '1 s', onClick: () => act('adjust', { seconds: 1 }) },
+        { icon: Plus, title: '+1 min', tag: '1 min', onClick: () => act('adjust', { seconds: 60 }) },
       ]}
     />
   );
@@ -1043,6 +1071,7 @@ const timerDef = () =>
     Inspector: (p) => <Inspector layer={p.layer as L} data={p.data} edit={p.edit as never} set={p.set} />,
     Operator: (p) => <Operator layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     Compact: (p) => <Compact layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
+    More: (p) => <More layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     controls: (l, data) => T.timed(T.eff(l as L, data)),
     warnings: (l, { data, state }) => warnings(l as L, data, state),
   });

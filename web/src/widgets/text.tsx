@@ -14,8 +14,8 @@ import { useApp } from '../store';
 import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
 import { scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
-import { t } from '../i18n';
+import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, wiredKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { t, tc } from '../i18n';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -44,6 +44,8 @@ export interface Config {
   bandAccentColor?: string;
   justify?: boolean;
   dir?: 'ltr' | 'rtl';
+  /** Most characters the Operator can type in its field (0 = no limit). */
+  maxChars?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -73,6 +75,7 @@ export const D: Required<Config> = {
   bandAccentColor: '#ff3b5c',
   justify: false,
   dir: 'ltr',
+  maxChars: 0,
 };
 const cfg = (c: Config): Required<Config> => withDefaults(D, c);
 
@@ -269,7 +272,7 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0 }: { layer: 
     };
     if (grad) {
       Object.assign(st, {
-        backgroundImage: `linear-gradient(${k.gradAngle}deg, ${fill}, ${hex(k.color2)})`,
+        backgroundImage: `linear-gradient(${k.gradAngle}deg, ${fill}, ${cssColor(col(r.fill2))})`,
         backgroundSize: `${w / sx}px ${h}px`,
         backgroundPosition: `${-left / sx}px ${-y}px`,
         backgroundRepeat: 'no-repeat',
@@ -335,22 +338,37 @@ const OVERFLOWS: [TextOverflow, string, string][] = [
   ['visible', 'Overflow', 'Drawn outside its box'],
 ];
 
-function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Template; edit: (fn: (l: TextLayer) => void, key?: string) => void }) {
+/** Most characters the Operator can type in a field: the smallest « Max characters » of the Texts showing it (0 = no limit). */
+export function maxChars(tpl: Template, key: string): number {
+  let out = 0;
+  for (const l of tpl.layers) {
+    if (l.type !== 'text' || !(l.maxChars! > 0) || !wiredKeys(l.text).includes(key)) continue;
+    out = out ? Math.min(out, l.maxChars!) : l.maxChars!;
+  }
+  return out;
+}
+
+function Inspector({ layer, template, edit }: { layer: TextLayer; data: Data; template: Template; edit: (fn: (l: TextLayer) => void, key?: string) => void }) {
   const k = cfg(layer);
   const set = (key: string, v: unknown) => edit((l) => void ((l as unknown as Record<string, unknown>)[key] = v));
   const mode = layer.overflow ?? 'fit';
   const stroke = num(propValue(layer as Layer, 'strokeWidth', 0)) > 0;
+  // The Operator types in it (a field of its own, not read from data).
+  const typed = wiredKeys(layer.text).some((key) => template.fields.some((f) => f.key === key && !f.binding?.source));
+  const scroll = !!layer.scroll && layer.scroll !== 'none';
   return (
     <>
       <Section id="text-content" title={t('Content')}>
         <Content path="text" rich value="" multiline lorem expose placeholder={t('Text')} />
+        {typed && <Num label={t('Max characters')} path="maxChars" value={k.maxChars} min={0} max={9999} expose={false} />}
       </Section>
       <Section id="text-font" title={t('Typography')}>
         <FontRow layer={layer} set={set} />
         <GroupRow layer={layer as Layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
         <Num expose="lineHeight" exposeValue={layer.lineHeight ?? 1.2} label={t('Line height')} value={layer.lineHeight ?? 1.2} min={0.5} max={4} step={0.05} precision={2} unit="×" onChange={(v) => edit((l) => void (l.lineHeight = Math.abs(v - 1.2) < 1e-6 ? undefined : v), `lh-${layer.id}`)} />
-        <GroupRow layer={layer as Layer} spec={{ label: t('Spacing'), props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
-        <Row expose={['align', 'justify', 'italic']} exposeValue={{ align: layer.align, justify: k.justify, italic: k.italic }} label={t('Align')}>
+        <GroupRow layer={layer as Layer} spec={{ label: tc('text', 'Spacing'), props: ['letterSpacing'], precision: 1, suffix: 'px' }} />
+        {/* Italic sits in this row but is not exposed with the alignment. */}
+        <Row expose={['align', 'justify']} exposeValue={{ align: layer.align, justify: k.justify }} label={t('Align')}>
           <Segmented
             value={k.justify ? 'justify' : layer.align}
             onChange={(v) =>
@@ -431,15 +449,15 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
         <ColorGroupRow layer={layer as Layer} prop="fill" label={k.fillType === 'gradient' ? t('From') : t('Color')} />
         {k.fillType === 'gradient' && (
           <>
-            <ColorPick label={t('To')} path="color2" value={D.color2} />
+            <ColorGroupRow layer={layer as Layer} prop="fill2" label={t('To')} />
             <Num label={t('Angle')} path="gradAngle" value={k.gradAngle} min={0} max={360} unit="°" />
           </>
         )}
       </Section>
       <Section id="text-effects" title={t('Effects')}>
         <Toggle
-          expose="props.strokeWidth"
-          exposeValue={num(propValue(layer as Layer, 'strokeWidth', 0))}
+          // The width is exposed by its own row (Width): the toggle is not.
+          expose={false}
           label={t('Stroke')}
           value={stroke}
           onChange={(v) =>
@@ -487,7 +505,8 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
           </>
         )}
       </Section>
-      <Section id="text-fit" title={t('When the text is too long')}>
+      {/* A scrolling text is never fitted. */}
+      {!scroll && <Section id="text-fit" title={t('When the text is too long')}>
         <Seg
           expose="wrap"
           exposeValue={!!layer.wrap}
@@ -532,6 +551,8 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
           <>
             <Num expose="squeeze" exposeValue={layer.squeeze ?? 0.8} label={t('Narrower to')} value={Math.round((layer.squeeze ?? 0.8) * 100)} min={50} max={100} unit="%" onChange={(v) => edit((l) => void (l.squeeze = v / 100), `squeeze-${layer.id}`)} />
             <Num expose="minSize" exposeValue={layer.minSize ?? 0.6} label={t('Smaller to')} value={Math.round((layer.minSize ?? 0.6) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.minSize = v / 100), `minsize-${layer.id}`)} />
+            {/* The Operator is warned when the text gets smaller than this. */}
+            <Num expose={false} label={t('Warn under')} value={Math.round((layer.warnBelow ?? 0.8) * 100)} min={20} max={100} unit="%" onChange={(v) => edit((l) => void (l.warnBelow = Math.abs(v - 80) < 1e-6 ? undefined : v / 100), `warn-${layer.id}`)} />
             <Seg
               label={t('Then')}
               path="fitEnd"
@@ -543,7 +564,7 @@ function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Te
             />
           </>
         )}
-      </Section>
+      </Section>}
     </>
   );
 }

@@ -25,11 +25,15 @@ const MAX_REDIRECTS: usize = 5;
 #[derive(Deserialize)]
 pub struct ProxyQuery {
     url: String,
+    /// The page is made transparent (its root and body backgrounds cleared).
+    #[serde(default)]
+    transparent: Option<String>,
 }
 
-/// `GET /api/web/proxy?url=…`
+/// `GET /api/web/proxy?url=…[&transparent=1]`
 pub async fn proxy(Query(q): Query<ProxyQuery>) -> Response {
-    match tokio::task::spawn_blocking(move || fetch(&q.url)).await {
+    let clear = q.transparent.as_deref().is_some_and(|v| v != "0");
+    match tokio::task::spawn_blocking(move || fetch(&q.url, clear)).await {
         Ok(Ok(page)) => page.into_response(),
         Ok(Err(e)) => error_page(&e),
         Err(_) => error_page("the page could not be loaded"),
@@ -57,12 +61,16 @@ impl IntoResponse for Page {
 
 const SANDBOX: &str = "sandbox allow-scripts allow-forms allow-popups";
 
-/// A small page in the frame saying why the site is not shown.
+/// A small page in the frame saying why the site is not shown; it tells the
+/// Iframe widget too (its Operator row shows the page did not load).
 fn error_page(msg: &str) -> Response {
     let esc = msg
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;");
+    let js = serde_json::to_string(msg)
+        .unwrap_or_else(|_| "\"\"".into())
+        .replace('<', "\\u003c");
     (
         StatusCode::BAD_GATEWAY,
         [
@@ -71,7 +79,8 @@ fn error_page(msg: &str) -> Response {
         ],
         format!(
             "<!doctype html><meta charset=utf-8><body style=\"margin:0;display:grid;place-items:center;height:100vh;\
-             font:600 22px system-ui,sans-serif;color:#fff;background:rgba(20,22,34,.85)\"><p style=\"max-width:80%;text-align:center\">{esc}</p>"
+             font:600 22px system-ui,sans-serif;color:#fff;background:rgba(20,22,34,.85)\"><p style=\"max-width:80%;text-align:center\">{esc}</p>\
+             <script>parent.postMessage({{strataWeb:'error',msg:{js}}},'*')</script>"
         ),
     )
         .into_response()
@@ -181,7 +190,7 @@ fn agent() -> ureq::Agent {
         .into()
 }
 
-fn fetch(url: &str) -> Result<Page, String> {
+fn fetch(url: &str, clear: bool) -> Result<Page, String> {
     let agent = agent();
     let mut uri = check(url)?;
     for _ in 0..=MAX_REDIRECTS {
@@ -217,7 +226,7 @@ fn fetch(url: &str) -> Result<Page, String> {
             .read_to_end(&mut body)
             .map_err(|e| format!("the page could not be read: {e}"))?;
         if content_type.contains("html") {
-            body = with_base(&body, &uri.to_string());
+            body = with_base(&body, &uri.to_string(), clear);
         }
         return Ok(Page { content_type, body });
     }
@@ -246,12 +255,16 @@ fn join(base: &Uri, to: &str) -> String {
 }
 
 /// The page with `<base href>` at the start of its head, so that its
-/// relative addresses point at the site, not at Strata.
-fn with_base(html: &[u8], url: &str) -> Vec<u8> {
-    let tag = format!(
+/// relative addresses point at the site, not at Strata; `clear`: a style
+/// making the page transparent (the Iframe's « Fond » set to transparent).
+fn with_base(html: &[u8], url: &str, clear: bool) -> Vec<u8> {
+    let mut tag = format!(
         "<base href=\"{}\">",
         url.replace('&', "&amp;").replace('"', "&quot;")
     );
+    if clear {
+        tag.push_str("<style>html,body{background:transparent!important}</style>");
+    }
     let lower: Vec<u8> = html
         .iter()
         .take(64 * 1024)
@@ -303,14 +316,21 @@ mod tests {
         let out = with_base(
             b"<!doctype html><HTML><Head lang=x><title>a</title>",
             "https://e.com/a/b?x=1&y=2",
+            false,
         );
         assert_eq!(
             String::from_utf8(out).unwrap(),
             "<!doctype html><HTML><Head lang=x><base href=\"https://e.com/a/b?x=1&amp;y=2\"><title>a</title>"
         );
-        assert!(String::from_utf8(with_base(b"<p>hi", "https://e.com/"))
-            .unwrap()
-            .starts_with("<base href"));
+        assert!(
+            String::from_utf8(with_base(b"<p>hi", "https://e.com/", false))
+                .unwrap()
+                .starts_with("<base href")
+        );
+        // Transparent: the page's backgrounds are cleared, after the base.
+        let out = String::from_utf8(with_base(b"<head><title>a</title>", "https://e.com/", true))
+            .unwrap();
+        assert!(out.starts_with("<head><base href=\"https://e.com/\"><style>html,body{background:transparent!important}</style><title>"));
     }
 
     #[test]

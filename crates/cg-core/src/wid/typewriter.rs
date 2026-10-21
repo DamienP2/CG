@@ -95,7 +95,8 @@ pub struct Config {
     /// Seconds a typed text stays before it is erased.
     pub hold: f64,
     pub chain_loop: bool,
-    /// The whole text is laid out from the start (no word jumps line).
+    /// Older layers: the layout is now always frozen (the whole text laid
+    /// out from the start: no word jumps line); kept so they load.
     pub frozen: bool,
     pub on_edit: OnEdit,
     /// Size chosen once on the complete text so it fits the box.
@@ -105,6 +106,8 @@ pub struct Config {
     pub line_height: f32,
     pub plate: bool,
     pub plate_color: String,
+    /// The plate's bar on the left ("" = none).
+    pub plate_accent: String,
     pub shadow: bool,
 }
 
@@ -134,6 +137,7 @@ impl Default for Config {
             line_height: 1.2,
             plate: false,
             plate_color: "#160f33".into(),
+            plate_accent: "#ff3b5c".into(),
             shadow: false,
         }
     }

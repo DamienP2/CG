@@ -1223,4 +1223,90 @@ mod tests {
         let p = pic.pixel(160, 90).unwrap();
         assert!(p.blue() > 200 && p.red() < 40 && p.green() < 40, "{p:?}");
     }
+
+    /// SRT both ways between a stream output and an input of Strata: the
+    /// input listens on its port and the output calls, then the output
+    /// listens and the input calls (needs an ffmpeg with SRT).
+    #[test]
+    fn srt_streams_come_back_as_inputs() {
+        use cg_output::OutputSink;
+        let has_srt = cg_output::ffmpeg::command()
+            .arg("-protocols")
+            .output()
+            .is_ok_and(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .any(|l| l.trim() == "srt")
+            });
+        if !has_srt {
+            return;
+        }
+        let base = 49_000 + (std::process::id() % 500) as u16 * 2;
+        for (port, input_listens) in [(base, true), (base + 1, false)] {
+            let hub = Inputs::default();
+            let mut i = input(
+                InputKind::Srt,
+                &format!("srt://127.0.0.1:{port}"),
+                input_listens,
+            );
+            if input_listens {
+                (i.url, i.port) = (String::new(), port);
+            }
+            hub.apply(&[i]);
+            let host = if input_listens {
+                "127.0.0.1"
+            } else {
+                "0.0.0.0"
+            };
+            let mut out = cg_output::stream::StreamSender::open(
+                cg_output::stream::StreamConfig {
+                    id: "s".into(),
+                    name: "S".into(),
+                    protocol: cg_output::stream::Protocol::Srt,
+                    url: format!("srt://{host}:{port}"),
+                    listen: !input_listens,
+                    bitrate: 2000,
+                    codec: cg_output::stream::Codec::H264,
+                    background: "#0000ff".into(),
+                    audio: true,
+                    hw_encode: false,
+                    enabled: true,
+                },
+                320,
+                180,
+                (25, 1),
+                None,
+            )
+            .unwrap();
+            let frame = Arc::new(cg_render::Frame::blank(320, 180));
+            let mut got = false;
+            for _ in 0..300 {
+                let _ = out.push(&frame, std::time::SystemTime::now());
+                std::thread::sleep(Duration::from_millis(40));
+                if hub.received("in-1").unwrap_or(0) > 5 {
+                    got = true;
+                    break;
+                }
+            }
+            assert!(
+                got,
+                "input listens: {input_listens}, no picture: {:?}",
+                hub.status()
+            );
+            // Shown after the smoothing buffer.
+            let mut pic = None;
+            for _ in 0..50 {
+                let _ = out.push(&frame, std::time::SystemTime::now());
+                pic = cg_render::LiveInputs::picture(&hub, "in-1");
+                if pic.is_some() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(40));
+            }
+            let pic = pic.expect("a picture after the buffer");
+            assert_eq!((pic.width(), pic.height()), (320, 180));
+            let p = pic.pixel(160, 90).unwrap();
+            assert!(p.blue() > 200 && p.red() < 40 && p.green() < 40, "{p:?}");
+        }
+    }
 }

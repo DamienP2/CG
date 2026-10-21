@@ -105,7 +105,15 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
     let root = if (w - opts.width).abs() > 0.5 || (h - opts.height).abs() > 0.5 {
         let s = (opts.width / w).min(opts.height / h);
         let id = new_id();
-        let mut g = layer(&id, &name, None, LayerKind::Group { clip: false });
+        let mut g = layer(
+            &id,
+            &name,
+            None,
+            LayerKind::Group {
+                clip: false,
+                lottie: None,
+            },
+        );
         set(&mut g, Prop::X, ((opts.width - w * s) / 2.0).round());
         set(&mut g, Prop::Y, ((opts.height - h * s) / 2.0).round());
         set(&mut g, Prop::Width, w);
@@ -270,6 +278,8 @@ fn layer(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
         locked: false,
         manual_start: false,
         scale_lock: false,
+        lock_ratio: false,
+        drop_shadow: false,
         timeline: None,
         props: BTreeMap::new(),
         tracks: BTreeMap::new(),
@@ -409,7 +419,10 @@ impl Converter {
                 let w = num(l.get("w")).unwrap_or(100.0);
                 let h = num(l.get("h")).unwrap_or(100.0);
                 (
-                    LayerKind::Group { clip: false },
+                    LayerKind::Group {
+                        clip: false,
+                        lottie: None,
+                    },
                     Box2 {
                         x: 0.0,
                         y: 0.0,
@@ -455,7 +468,10 @@ impl Converter {
                     return;
                 }
                 (
-                    LayerKind::Group { clip: false },
+                    LayerKind::Group {
+                        clip: false,
+                        lottie: None,
+                    },
                     Box2 {
                         x: 0.0,
                         y: 0.0,
@@ -505,7 +521,13 @@ impl Converter {
                         b,
                     )
                 } else {
-                    (LayerKind::Group { clip: false }, b)
+                    (
+                        LayerKind::Group {
+                            clip: false,
+                            lottie: None,
+                        },
+                        b,
+                    )
                 }
             }
             // Text.
@@ -535,7 +557,13 @@ impl Converter {
                 set(&mut c, Prop::Y, 0.0);
                 set(&mut c, Prop::Width, bounds.w.max(1.0).round());
                 set(&mut c, Prop::Height, bounds.h.max(1.0).round());
-                (LayerKind::Group { clip: false }, Some(c))
+                (
+                    LayerKind::Group {
+                        clip: false,
+                        lottie: None,
+                    },
+                    Some(c),
+                )
             } else {
                 (kind, None)
             };

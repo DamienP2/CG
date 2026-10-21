@@ -76,6 +76,8 @@ pub struct Input<'a> {
     pub age_ms: f32,
     /// Wall clock, Unix ms.
     pub now: i64,
+    /// The project's language (texts the chart writes: « Aucune donnée »…).
+    pub lang: &'a str,
 }
 
 const D2R: f32 = std::f32::consts::PI / 180.0;
@@ -442,6 +444,37 @@ struct Ctx<'a> {
     kh: f32,
     fs: f32,
     hidden: usize,
+    ink: Inks,
+    lang: &'a str,
+}
+
+/// Colours of the texts: main, secondary (ticks, subtitle), category names.
+struct Inks {
+    main: String,
+    muted: String,
+    cat: String,
+    na: String,
+}
+
+impl Inks {
+    fn of(c: &Config) -> Inks {
+        let t = c.text_color.trim();
+        if t.is_empty() {
+            return Inks {
+                main: WHITE.into(),
+                muted: MUTED.into(),
+                cat: "#d6d0f5".into(),
+                na: "#8f88b5".into(),
+            };
+        }
+        let solid: String = t.chars().take(7).collect();
+        Inks {
+            main: t.into(),
+            muted: format!("{solid}bf"),
+            cat: t.into(),
+            na: format!("{solid}99"),
+        }
+    }
 }
 
 impl Ctx<'_> {
@@ -490,6 +523,8 @@ pub fn layout(inp: &Input) -> Out {
         kh: hl_k(c, st, inp.now),
         fs: inp.fs,
         hidden: 0,
+        ink: Inks::of(c),
+        lang: inp.lang,
     };
     let (w, h, fs) = (inp.w, inp.h, inp.fs);
     let mut out = Out::default();
@@ -516,7 +551,7 @@ pub fn layout(inp: &Input) -> Out {
             fs * 1.75,
             900,
             anc,
-            WHITE,
+            &cx.ink.main,
             1.0,
         )));
         top += fs * 2.1;
@@ -528,7 +563,7 @@ pub fn layout(inp: &Input) -> Out {
                 fs,
                 600,
                 anc,
-                MUTED,
+                &cx.ink.muted,
                 1.0,
             )));
             top += fs * 1.5;
@@ -565,8 +600,9 @@ pub fn layout(inp: &Input) -> Out {
             } else {
                 cx.p.ser.iter().map(|s| s.as_str()).collect()
             };
+            let others = word(&c.texts.others, "Others", "Autres", cx.lang);
             if is_pie {
-                names.push("Others");
+                names.push(&others);
             }
             let widest = names.iter().map(|n| tw2(n, lfs)).fold(60.0f32, f32::max);
             let lw = (w * 0.3).min(widest + lfs * 2.6);
@@ -595,6 +631,7 @@ pub fn layout(inp: &Input) -> Out {
     out.prims.extend(body);
     if c.legend != LegendPos::None && !legend.is_empty() {
         let sw = lfs * 0.8;
+        let main = cx.ink.main.clone();
         let item = |out: &mut Out, x: f32, y: f32, it: &LegendItem| {
             let o = if it.dim { 0.3 } else { it.op };
             let mut s = shape(rect_cmds(x, y - sw * 0.85, sw, sw, &[sw * 0.25]));
@@ -608,7 +645,7 @@ pub fn layout(inp: &Input) -> Out {
                 lfs,
                 700,
                 Anchor::Start,
-                WHITE,
+                &main,
                 o,
             )));
         };
@@ -652,16 +689,19 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
         g.push(Prim::Text(text(
             (o.0 + o.1) / 2.0,
             (o.2 + o.3) / 2.0,
-            "No data",
+            &word(&c.texts.no_data, "No data", "Aucune donnée", cx.lang),
             fs * 1.4,
             800,
             Anchor::Middle,
-            MUTED,
+            &cx.ink.muted,
             1.0,
         )));
         return g;
     }
     let ct = c.chart_type;
+    if ct == ChartType::Columns && c.orient == Orient::H {
+        return hbars(cx, o);
+    }
     let stacked = is_stacked(c);
     let pct = is_pct(c);
     let vals: Vec<Vec<Option<f32>>> = cx.p.cats.iter().map(|c| c.vals.clone()).collect();
@@ -768,7 +808,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
             tfs,
             700,
             Anchor::End,
-            MUTED,
+            &cx.ink.muted,
             1.0,
         )));
     }
@@ -780,7 +820,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
             fs * 0.8,
             700,
             Anchor::Middle,
-            MUTED,
+            &cx.ink.muted,
             1.0,
         );
         t.rotate = true;
@@ -794,7 +834,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
             fs * 0.8,
             700,
             Anchor::Middle,
-            MUTED,
+            &cx.ink.muted,
             1.0,
         )));
     }
@@ -844,7 +884,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                 cfs,
                 if is_hl { 900 } else { 700 },
                 Anchor::Middle,
-                if is_hl { WHITE } else { "#d6d0f5" },
+                if is_hl { &cx.ink.main } else { &cx.ink.cat },
                 if hid { 0.3 } else { (0.3 + ce).min(1.0) },
             )));
         }
@@ -894,8 +934,8 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                         let mut lb = Lab::new(
                             x + bw / 2.0,
                             yy(0.0) - 10.0,
-                            "n/a".into(),
-                            "#8f88b5",
+                            word("", "n/a", "n.d.", cx.lang),
+                            &cx.ink.na,
                             -1.0,
                             1.0,
                         );
@@ -994,7 +1034,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                     x + bw / 2.0,
                     yc,
                     txt,
-                    if inside { ink(&color) } else { WHITE },
+                    if inside { ink(&color) } else { &cx.ink.main },
                     v.abs(),
                     op,
                 );
@@ -1200,7 +1240,7 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                 } else {
                     pt.y - lfs * 0.75
                 };
-                let mut lb = Lab::new(pt.x, y, txt, WHITE, pt.v.abs(), *op);
+                let mut lb = Lab::new(pt.x, y, txt, &cx.ink.main, pt.v.abs(), *op);
                 lb.halo = Some(c.panel.color.clone());
                 lb.col = Some(pt.ci);
                 labels.push(lb);
@@ -1225,6 +1265,18 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                 bottom - 2.0,
                 l.overlap,
             );
+        }
+    }
+    if c.ref_line.on {
+        let y = yy(c.ref_line.value);
+        if y >= top - 2.0 && y <= bottom + 2.0 {
+            data.extend(ref_line(
+                cx,
+                (left, y),
+                (right, y),
+                (right, y - lfs * 0.45),
+                Anchor::End,
+            ));
         }
     }
     for lb in &labels {
@@ -1258,6 +1310,394 @@ fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
                     *sc = [x0, y0, (x1 - x0).max(0.0), (y1 - y0).max(0.0)];
                 }
             }
+            Prim::Text(t) => t.clip = Some(clip),
+        }
+    }
+    cx.hidden += hidden;
+    g.extend(data);
+    g
+}
+
+/// The reference line from `a` to `b` (dashed, the text colour) and its label at `at`.
+fn ref_line(cx: &Ctx, a: (f32, f32), b: (f32, f32), at: (f32, f32), anchor: Anchor) -> Vec<Prim> {
+    let c = cx.c;
+    let mut s = shape(line_cmds(a, b));
+    s.stroke = Some(cx.ink.main.clone());
+    s.width = 3.0;
+    s.dash = Some([10.0, 8.0]);
+    s.opacity = 0.85;
+    let mut out = vec![Prim::Shape(s)];
+    if !c.ref_line.label.is_empty() {
+        out.push(Prim::Text(text(
+            at.0,
+            at.1,
+            &c.ref_line.label,
+            cx.fs * 0.78,
+            800,
+            anchor,
+            &cx.ink.main,
+            1.0,
+        )));
+    }
+    out
+}
+
+/// Columns lying (`orient: h`): names on the left, values along the bottom,
+/// bars growing to the right (mirror of `hbars` in chart-layout.tsx).
+fn hbars(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {
+    let c = cx.c;
+    let st = cx.st;
+    let fs = cx.fs;
+    let mut g: Vec<Prim> = Vec::new();
+    let (ns, nc) = (cx.p.ser.len(), cx.p.cats.len());
+    let grouped = c.col_mode == ColMode::Grouped;
+    let pct = is_pct(c);
+    let vals: Vec<Vec<Option<f32>>> = cx.p.cats.iter().map(|c| c.vals.clone()).collect();
+    let tv = targets(c, &vals);
+    let shown_raw: Vec<Vec<Option<f32>>> =
+        cx.p.cats
+            .iter()
+            .map(|cat| (0..ns).map(|j| cx.tv(cat, j, cat.vals[j])).collect())
+            .collect();
+    let sv = targets(c, &shown_raw);
+    let sc = scale(c, &tv);
+    let k = cx.k;
+    let pa = st.prev_axis.unwrap_or([sc.min, sc.max]);
+    let (x_min, x_max) = (lerp(pa[0], sc.min, k), lerp(pa[1], sc.max, k));
+    let mut ticks = Vec::new();
+    let mut v = (sc.min / sc.step - 1e-6).ceil() * sc.step;
+    while v <= sc.max + 1e-6 * sc.step.max(1.0) {
+        ticks.push((v * 1e6).round() / 1e6);
+        v += sc.step;
+        if ticks.len() > 200 {
+            break;
+        }
+    }
+    let tick_label = |v: f32| {
+        if pct {
+            format!("{} %", js_num(v))
+        } else {
+            fmt(c, v)
+        }
+    };
+    let (tfs, cfs, lfs) = (fs * 0.8, fs * 0.82, fs * 0.78);
+    let l = &c.labels;
+    let name_w =
+        cx.p.cats
+            .iter()
+            .map(|c| tw2(&c.name, cfs))
+            .fold(0.0f32, f32::max)
+            .min((o.1 - o.0) * 0.4);
+    let mut left = o.0 + name_w + fs * 0.6;
+    if !c.axis.y_title.is_empty() {
+        left += fs * 1.3;
+    }
+    // Room for the values written after the bars, and for the last tick.
+    let lab_w = if l.value || l.pct {
+        tv.iter()
+            .flatten()
+            .flatten()
+            .map(|v| tw2(&label_text(c, l.name, Some(*v), Some(100.0), ""), lfs))
+            .fold(0.0f32, f32::max)
+            + lfs * 0.6
+    } else {
+        0.0
+    };
+    let last_tick = ticks
+        .last()
+        .map(|v| tw2(&tick_label(*v), tfs) / 2.0)
+        .unwrap_or(0.0);
+    let right = o.1 - lab_w.max(last_tick).min((o.1 - o.0) * 0.3);
+    let top = o.2 + fs * 0.4;
+    let mut bottom = o.3 - fs * 1.5;
+    if !c.axis.x_title.is_empty() {
+        bottom -= fs * 1.4;
+    }
+    let (pw, ph) = (right - left, bottom - top);
+    let span = if x_max - x_min != 0.0 {
+        x_max - x_min
+    } else {
+        1.0
+    };
+    let xx = |v: f32| left + (v - x_min) / span * pw;
+    let n_slots = if st.prev.is_empty() {
+        nc as f32
+    } else {
+        lerp(st.prev_n, nc as f32, k)
+    };
+    let band = ph / n_slots;
+    let slot_y: Vec<f32> =
+        cx.p.cats
+            .iter()
+            .enumerate()
+            .map(|(i, cat)| {
+                let from = st
+                    .prev
+                    .iter()
+                    .find(|q| q.name == cat.name)
+                    .map(|q| q.slot)
+                    .unwrap_or(i as f32);
+                top + (lerp(from, i as f32, k) + 0.5) * band
+            })
+            .collect();
+    for &v in &ticks {
+        let x = xx(v);
+        if x < left - 2.0 || x > right + 2.0 {
+            continue;
+        }
+        let zero = v.abs() < 1e-6;
+        if c.axis.grid || zero {
+            let mut s = shape(line_cmds((x, top), (x, bottom)));
+            s.stroke = Some(WHITE.into());
+            s.opacity = if zero { 0.55 } else { 0.12 };
+            s.width = if zero { 3.0 } else { 2.0 };
+            g.push(Prim::Shape(s));
+        }
+        g.push(Prim::Text(text(
+            x,
+            bottom + fs * 1.15,
+            &tick_label(v),
+            tfs,
+            700,
+            Anchor::Middle,
+            &cx.ink.muted,
+            1.0,
+        )));
+    }
+    if !c.axis.y_title.is_empty() {
+        let mut t = text(
+            o.0 + fs * 0.7,
+            top + ph / 2.0,
+            &c.axis.y_title,
+            fs * 0.8,
+            700,
+            Anchor::Middle,
+            &cx.ink.muted,
+            1.0,
+        );
+        t.rotate = true;
+        g.push(Prim::Text(t));
+    }
+    if !c.axis.x_title.is_empty() {
+        g.push(Prim::Text(text(
+            left + pw / 2.0,
+            o.3 - fs * 0.2,
+            &c.axis.x_title,
+            fs * 0.8,
+            700,
+            Anchor::Middle,
+            &cx.ink.muted,
+            1.0,
+        )));
+    }
+    let every = ((cfs * 1.3) / band).ceil().max(1.0) as usize;
+    let cat_e: Vec<(f32, bool)> =
+        cx.p.cats
+            .iter()
+            .enumerate()
+            .map(|(i, cat)| cx.tm.cat(st, i, &cat.name))
+            .collect();
+    let ser_e: Vec<(f32, bool)> = (0..ns).map(|j| cx.tm.ser(st, j)).collect();
+    for (i, cat) in cx.p.cats.iter().enumerate() {
+        let y = slot_y[i];
+        let is_hl = st.hl.kind == HlKind::Category && st.hl.idx == cat.ri as i32;
+        if c.axis.vgrid {
+            let mut s = shape(line_cmds((left, y), (right, y)));
+            s.stroke = Some(WHITE.into());
+            s.opacity = 0.1;
+            s.width = 2.0;
+            g.push(Prim::Shape(s));
+        }
+        if is_hl {
+            let mut s = shape(rect_cmds(
+                o.0,
+                y - band / 2.0,
+                right - o.0 + fs * 0.6,
+                band,
+                &[10.0],
+            ));
+            s.fill = Some(WHITE.into());
+            s.opacity = 0.08;
+            g.push(Prim::Shape(s));
+        }
+        let (e, hid) = cat_e[i];
+        let ce = e.max(if hid { 0.0 } else { 0.0001 });
+        if i % every == 0 || is_hl {
+            g.push(Prim::Text(text(
+                left - fs * 0.6,
+                y + cfs * 0.35,
+                &cat.name,
+                cfs,
+                if is_hl { 900 } else { 700 },
+                Anchor::End,
+                if is_hl { &cx.ink.main } else { &cx.ink.cat },
+                if hid { 0.3 } else { (0.3 + ce).min(1.0) },
+            )));
+        }
+    }
+    let clip = [left - 4.0, top - 30.0, o.1 - left + 8.0, ph + 60.0];
+    let dim_of = |j: usize, ri: usize| {
+        cx.hlv(|hl| {
+            let on = hl.kind == HlKind::None
+                || (hl.kind == HlKind::Series && hl.idx == j as i32)
+                || (hl.kind == HlKind::Category && hl.idx == ri as i32);
+            if on {
+                1.0
+            } else {
+                0.22
+            }
+        })
+    };
+    let mut data: Vec<Prim> = Vec::new();
+    let mut labs: Vec<Prim> = Vec::new();
+    let mut hidden = 0usize;
+    let gw = band * 0.74;
+    let bh = if grouped {
+        ((gw - (ns as f32 - 1.0) * 6.0) / ns as f32).max(2.0)
+    } else {
+        gw
+    };
+    for (i, cat) in cx.p.cats.iter().enumerate() {
+        let cy = slot_y[i];
+        let (mut pos, mut neg) = (0.0f32, 0.0f32);
+        let tot: f32 = cat.vals.iter().flatten().filter(|v| **v > 0.0).sum();
+        for j in 0..ns {
+            let e = cat_e[i].0.min(ser_e[j].0);
+            let (color, _, _) = series_style(c, j);
+            let op = dim_of(j, cat.ri);
+            let y = if grouped {
+                cy - gw / 2.0 + j as f32 * (bh + 6.0)
+            } else {
+                cy - gw / 2.0
+            };
+            let Some(raw) = tv[i][j] else {
+                if e > 0.0 && grouped {
+                    labs.push(Prim::Text(text(
+                        xx(0.0) + 10.0,
+                        y + bh / 2.0 + lfs * 0.3,
+                        &word("", "n/a", "n.d.", cx.lang),
+                        lfs * 0.8,
+                        800,
+                        Anchor::Start,
+                        &cx.ink.na,
+                        1.0,
+                    )));
+                }
+                continue;
+            };
+            let shown = sv[i][j].unwrap_or(raw);
+            let v = shown * e;
+            let (x0, x1) = if grouped {
+                (xx(0.0), xx(v))
+            } else if v >= 0.0 {
+                let r = (xx(pos), xx(pos + v));
+                pos += v;
+                r
+            } else {
+                let r = (xx(neg), xx(neg + v));
+                neg += v;
+                r
+            };
+            let xl = x0.min(x1);
+            let ww = (x1 - x0).abs();
+            if ww < 0.2 && e < 1.0 {
+                continue;
+            }
+            let rad = 8.0f32.min(bh / 4.0).min(ww / 2.0);
+            let radii = if v >= 0.0 {
+                [0.0, rad, rad, 0.0]
+            } else {
+                [rad, 0.0, 0.0, rad]
+            };
+            let mut s = shape(rect_cmds(xl, y, ww, bh, &radii));
+            s.fill = Some(color.clone());
+            s.opacity = op;
+            if cat.interp[j] {
+                s.fill_opacity = 0.35;
+                s.stroke = Some(color.clone());
+                s.width = 3.0;
+                s.dash = Some([8.0, 6.0]);
+            }
+            data.push(Prim::Shape(s));
+            if e < 0.6 {
+                continue;
+            }
+            let lp = if pct {
+                Some(raw)
+            } else {
+                match cat.vals[j] {
+                    Some(vj) if tot > 0.0 && vj > 0.0 => Some(vj / tot * 100.0),
+                    _ => None,
+                }
+            };
+            let lv = if pct { cat.vals[j] } else { Some(shown) };
+            let txt = label_text(c, l.name, lv, lp, &cx.p.ser[j]);
+            if txt.is_empty() {
+                continue;
+            }
+            if grouped && bh < lfs * 0.9 {
+                hidden += 1;
+                continue;
+            }
+            let tw = tw2(&txt, lfs);
+            let fits = ww >= tw + lfs * 0.8;
+            let is_end = grouped
+                || (v >= 0.0 && (0..ns).rfind(|q| tv[i][*q].unwrap_or(0.0) > 0.0) == Some(j));
+            let mut inside = l.pos == LabelPos::Inside || !grouped;
+            if inside && !fits {
+                if l.overlap == Overlap::Offset && is_end {
+                    inside = false;
+                } else {
+                    hidden += 1;
+                    continue;
+                }
+            }
+            if !inside && !grouped && !is_end {
+                hidden += 1;
+                continue;
+            }
+            let ty = y + bh / 2.0 + lfs * 0.35;
+            let (tx, anchor) = if inside && !grouped {
+                (xl + ww / 2.0, Anchor::Middle)
+            } else if inside {
+                if v >= 0.0 {
+                    (x1 - lfs * 0.5, Anchor::End)
+                } else {
+                    (x1 + lfs * 0.5, Anchor::Start)
+                }
+            } else if v >= 0.0 {
+                (x1 + lfs * 0.45, Anchor::Start)
+            } else {
+                (x1 - lfs * 0.45, Anchor::End)
+            };
+            labs.push(Prim::Text(text(
+                tx,
+                ty,
+                &txt,
+                lfs,
+                800,
+                anchor,
+                if inside { ink(&color) } else { &cx.ink.main },
+                op,
+            )));
+        }
+    }
+    if c.ref_line.on {
+        let x = xx(c.ref_line.value);
+        if x >= left - 2.0 && x <= right + 2.0 {
+            data.extend(ref_line(
+                cx,
+                (x, top - fs * 0.3),
+                (x, bottom),
+                (x + lfs * 0.4, top + lfs * 0.6),
+                Anchor::Start,
+            ));
+        }
+    }
+    data.extend(labs);
+    for d in data.iter_mut() {
+        match d {
+            Prim::Shape(s) => s.clip = Some(clip),
             Prim::Text(t) => t.clip = Some(clip),
         }
     }
@@ -1317,7 +1757,8 @@ fn pie(
     let j = (pc.series.max(0) as usize).min(ns.saturating_sub(1));
     let mut slices: Vec<Slice> = Vec::new();
     for (i, cat) in cx.p.cats.iter().enumerate() {
-        let raw = cat.raw.get(j).copied().flatten();
+        // Values after the « Missing » rule (zero, interpolated, or a gap).
+        let raw = cat.vals.get(j).copied().flatten();
         match raw {
             None => out.pie_missing += 1,
             Some(v) if v < 0.0 => out.pie_neg.push((cat.name.clone(), v)),
@@ -1367,7 +1808,7 @@ fn pie(
                 keep
             });
             slices.push(Slice {
-                name: "Others".into(),
+                name: word(&c.texts.others, "Others", "Autres", cx.lang),
                 ri: usize::MAX,
                 i: usize::MAX,
                 target: sum,
@@ -1391,7 +1832,7 @@ fn pie(
                 let (ce, hid) = cx.tm.cat(st, i, &cat.name);
                 e = e.max(ce);
                 all_hidden &= hid;
-                v += tween_val(st, cx.k, &cat.name, &ser_name, cat.raw[j]).unwrap_or(0.0);
+                v += tween_val(st, cx.k, &cat.name, &ser_name, cat.vals[j]).unwrap_or(0.0);
             }
             s.e = e;
             s.hidden = all_hidden;
@@ -1447,11 +1888,11 @@ fn pie(
             g.push(Prim::Text(text(
                 cxp,
                 cyp + fs * 0.35,
-                "No data",
+                &word(&c.texts.no_data, "No data", "Aucune donnée", cx.lang),
                 fs * 1.2,
                 800,
                 Anchor::Middle,
-                MUTED,
+                &cx.ink.muted,
                 1.0,
             )));
         }
@@ -1512,7 +1953,7 @@ fn pie(
         }
         let pctv = s.target / total_t * 100.0;
         let name = if s.ri == usize::MAX {
-            format!("Others ({})", s.group.len())
+            format!("{} ({})", s.name, s.group.len())
         } else {
             s.name.clone()
         };
@@ -1558,7 +1999,7 @@ fn pie(
                 ay: cyp + dy + sy * (r + 4.0),
                 ex: cxp + dx + sx * (r + fs * 0.9),
                 txt,
-                fill: WHITE.into(),
+                fill: cx.ink.main.clone(),
                 op,
                 color: s.color.clone(),
             });
@@ -1631,7 +2072,7 @@ fn pie(
             } else {
                 Anchor::End
             },
-            WHITE,
+            &lb.fill,
             lb.op,
         )));
     }
@@ -1643,17 +2084,17 @@ fn pie(
             (r0 * 0.45).min(fs * 1.8),
             900,
             Anchor::Middle,
-            WHITE,
+            &cx.ink.main,
             1.0,
         )));
         g.push(Prim::Text(text(
             cxp,
             cyp + fs * 1.3,
-            "Total",
+            &word(&c.texts.total, "Total", "Total", cx.lang),
             fs * 0.75,
             700,
             Anchor::Middle,
-            MUTED,
+            &cx.ink.muted,
             1.0,
         )));
     }
@@ -1674,6 +2115,7 @@ mod tests {
             fs: 26.0,
             age_ms: 10_000.0,
             now: 1_000_000,
+            lang: "en",
         })
     }
 

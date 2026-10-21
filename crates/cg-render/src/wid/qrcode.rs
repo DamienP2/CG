@@ -3,7 +3,8 @@
 //! web gets the very same matrix from `GET /api/qr?data=…&ec=L|M|Q|H`.
 
 use cg_core::wid::qrcode::{
-    geo, logo_rect, logo_size, payload, structure, Ecl, FinderStyle, ModStyle, State,
+    address, cap_text, geo, logo_rect, logo_size, payload, structure, Ecl, FinderStyle, ModStyle,
+    State,
 };
 use cg_core::{LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{FillRule, PathBuilder, Rect, Transform};
@@ -74,7 +75,7 @@ fn circle(pb: &mut PathBuilder, cx: f32, cy: f32, r: f32, ccw: bool) {
     pb.close();
 }
 
-pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
+pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::QrCode {
         data,
         background,
@@ -83,14 +84,15 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     else {
         return false;
     };
-    let text = payload(c, data, d.data);
+    let (url, caption) = address(c, data, st);
+    let text = payload(c, url, d.data);
     if text.is_empty() {
         return true;
     }
     let Some((n, mods)) = qr_modules_ec(&text, c.ecl) else {
         return true;
     };
-    let label = cg_core::anim::interpolate_text(&c.label.text, d.data);
+    let label = cap_text(c, &cg_core::anim::interpolate_text(caption, d.data));
     let g = geo(c, &label, n, d.w, d.h);
     let m = g.m;
     let fill = d.color(Prop::Fill);
@@ -220,62 +222,43 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     if let Some(p) = pb.finish() {
         d.fill(&p, fcol, FillRule::Winding, None);
     }
-    // Logo.
+    // Logo (a picture only: none is drawn without one).
     if let Some((rx, _, rn, side)) = rect {
         let lw = (side as f32 * m + 0.5).floor();
         let cx = ox + (rx as f32 + rn as f32 / 2.0) * m;
         let lx = (cx - lw / 2.0 + 0.5).floor();
         let ly = (oy + (rx as f32 + rn as f32 / 2.0) * m - lw / 2.0 + 0.5).floor();
         let src = c.logo.src.trim();
-        let drawn = !src.is_empty()
-            && d.image_size(src).is_some_and(|(iw, ih)| {
-                let s = (lw / iw as f32).min(lw / ih as f32);
-                let tf = Transform::from_scale(s, s).post_translate(
-                    lx + (lw - iw as f32 * s) / 2.0,
-                    ly + (lw - ih as f32 * s) / 2.0,
-                );
-                d.image(src, tf, 1.0, None).is_some()
-            });
-        if !drawn {
-            if let Some(p) = rrect(lx, ly, lw, lw, lw * 0.22) {
-                d.fill(&p, Draw::hex(&c.logo.color), FillRule::Winding, None);
-            }
-            let (cx, cy) = (lx + lw / 2.0, ly + lw / 2.0);
-            let mut pb = PathBuilder::new();
-            pb.move_to(cx - lw * 0.16, cy - lw * 0.24);
-            pb.line_to(cx + lw * 0.26, cy);
-            pb.line_to(cx - lw * 0.16, cy + lw * 0.24);
-            pb.close();
-            if let Some(p) = pb.finish() {
-                let bg = if c.transparent {
-                    cg_core::Color::WHITE
-                } else {
-                    Draw::hex(background)
-                };
-                d.fill(&p, bg, FillRule::Winding, None);
-            }
+        if let Some((iw, ih)) = d.image_size(src) {
+            let s = (lw / iw as f32).min(lw / ih as f32);
+            let tf = Transform::from_scale(s, s).post_translate(
+                lx + (lw - iw as f32 * s) / 2.0,
+                ly + (lw - ih as f32 * s) / 2.0,
+            );
+            d.image(src, tf, 1.0, None);
         }
     }
-    // Label pill.
+    // Caption pill: below, above or beside the code, its font and case.
     if g.lab > 0.0 {
-        let up = label.to_uppercase();
-        let lw =
-            d.w.min((g.px * 0.7).max(up.chars().count() as f32 * c.label.size * 0.68 + 60.0));
-        let lx = ((d.w - lw) / 2.0 + 0.5).floor();
-        if let Some(p) = rrect(lx, g.lab_y, lw.round(), g.lab, g.lab / 2.0) {
+        if let Some(p) = rrect(g.lab_x, g.lab_y, g.lab_w, g.lab, g.lab_r) {
             d.fill(&p, Draw::hex(&c.label.bg), FillRule::Winding, None);
         }
-        d.text(
-            "Inter",
-            900,
-            c.label.size,
-            &up,
-            Draw::hex(&c.label.color),
-            TextAlign::Center,
-            VerticalAlign::Middle,
-            (0.0, g.lab_y, d.w, g.lab),
-            None,
-        );
+        let lh = c.label.size * 1.25;
+        let top = g.lab_y + (g.lab - lh * g.lines.len() as f32) / 2.0;
+        let weight = c.label.weight;
+        for (i, line) in g.lines.iter().enumerate() {
+            d.text(
+                &c.label.font,
+                weight,
+                c.label.size,
+                line,
+                Draw::hex(&c.label.color),
+                TextAlign::Center,
+                VerticalAlign::Middle,
+                (g.lab_x, top + i as f32 * lh, g.lab_w, lh),
+                None,
+            );
+        }
     }
     true
 }
@@ -382,6 +365,39 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn the_caption_goes_beside_and_the_address_follows_the_state() {
+        let project = cg_core::sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "qr", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "q", "name": "QR", "type": "qrCode", "data": "https://example.com", "background": "#ffffff",
+                "label": {"on": true, "text": "Scannez pour voter", "pos": "beside", "bg": "#ff0000"},
+                "logo": {"on": true},
+                "props": {"x": 0.0, "y": 0.0, "width": 600.0, "height": 360.0, "fill": [0.0, 0.0, 0.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        let mut r = crate::Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 10.0, &Default::default());
+        let px = |x: u32, y: u32| {
+            let i = ((y * f.width + x) * 4) as usize;
+            [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]]
+        };
+        // The red pill right of the code, at its middle height; the code on the left.
+        let red = (380..600).filter(|&x| {
+            let p = px(x, 180);
+            p[0] > 200 && p[1] < 60 && p[3] == 255
+        });
+        assert!(red.count() > 40);
+        assert_eq!(px(30, 180)[3], 255);
+        // Logo on without a picture: the centre keeps its modules (no placeholder plate).
+        let LayerKind::QrCode { x: c, .. } = &t.layers[0].kind else {
+            panic!()
+        };
+        assert_eq!(logo_size(c, structure(25, c.ecl).as_ref()).0, 0);
     }
 
     #[test]

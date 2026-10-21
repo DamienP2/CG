@@ -11,10 +11,10 @@ export interface Keyframe {
   easing: Easing;
 }
 
-export const PROPS = ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fill', 'stroke', 'strokeWidth', 'cornerRadius', 'fontSize', 'letterSpacing', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'arcStart', 'arcEnd', 'innerRadius'] as const;
+export const PROPS = ['x', 'y', 'width', 'height', 'anchorX', 'anchorY', 'rotation', 'scaleX', 'scaleY', 'opacity', 'fill', 'stroke', 'strokeWidth', 'cornerRadius', 'fontSize', 'letterSpacing', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'arcStart', 'arcEnd', 'innerRadius', 'shadowColor', 'shadowX', 'shadowY', 'shadowBlur', 'drawStart', 'drawEnd', 'cornerTl', 'cornerTr', 'cornerBr', 'cornerBl', 'fill2'] as const;
 export type Prop = (typeof PROPS)[number];
 
-export const COLOR_PROPS: ReadonlySet<Prop> = new Set(['fill', 'stroke']);
+export const COLOR_PROPS: ReadonlySet<Prop> = new Set(['fill', 'stroke', 'shadowColor', 'fill2']);
 
 export type TextAlign = 'left' | 'center' | 'right';
 export type VerticalAlign = 'top' | 'middle' | 'bottom';
@@ -95,6 +95,10 @@ export type Layer = LayerKind & {
   manualStart?: boolean;
   /** Scale X and Y change together. */
   scaleLock?: boolean;
+  /** Width and height keep their ratio when resized (fields and stage handles). */
+  lockRatio?: boolean;
+  /** Drop shadow under the layer and its children (props shadowColor / shadowX / shadowY / shadowBlur); not for Texts (their own). */
+  dropShadow?: boolean;
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -392,6 +396,8 @@ export interface Project {
   formats: Format[];
   /** Designer drafts not yet published (the operator uses `templates`). */
   drafts?: Template[];
+  /** The empty template a new project starts with: the server removes it at a publish while it has no layer. */
+  starter?: string;
   /** Designer aids (mirror of model::Guides). */
   guides?: Guides;
 }
@@ -500,9 +506,11 @@ export interface ChannelInfo {
   frameRate: FrameRate;
   projectId: string | null;
   outputs: string[];
-  renditions: { id: string; name: string; width: number; height: number; slate?: string }[];
+  renditions: { id: string; name: string; width: number; height: number; slate?: string; slateStyle?: string }[];
   /** Still picture the outputs show while no project is loaded ("" = none). */
   slate?: string;
+  /** The design shown while no project is loaded ("custom": the still picture). */
+  slateStyle?: string;
 }
 
 export type Role = 'admin' | 'designer' | 'operator' | 'viewer';

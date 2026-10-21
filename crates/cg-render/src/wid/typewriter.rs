@@ -77,12 +77,11 @@ fn block(lines: usize, size: f32, lh: f32) -> f32 {
 pub(crate) struct Lay {
     pub size: f32,
     pub lines: Vec<(usize, usize)>,
-    /// The complete text does not fit, even at the minimum size.
-    pub over: bool,
 }
 
 /// The frozen layout of a text: the size (auto-shrink on the complete text)
-/// and its lines. Same as `layoutTw` in typewriter.tsx.
+/// and its lines. Same as `layoutTw` in typewriter.tsx (which also tells the
+/// Designer when the text does not fit).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layout(
     c: &Config,
@@ -102,7 +101,6 @@ pub(crate) fn layout(
         return Lay {
             size: size0,
             lines: l,
-            over: !ok && !g.is_empty(),
         };
     }
     let lo0 = c.min_size.min(size0).max(1.0);
@@ -111,7 +109,6 @@ pub(crate) fn layout(
         return Lay {
             size: lo0,
             lines: l,
-            over: true,
         };
     }
     let (mut lo, mut hi, mut best) = (lo0, size0, l);
@@ -128,7 +125,6 @@ pub(crate) fn layout(
     Lay {
         size: lo,
         lines: best,
-        over: false,
     }
 }
 
@@ -274,27 +270,16 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     if c.plate {
         if let Some(p) = rrect(0.0, 0.0, d.w, d.h, 4.0) {
             d.fill(&p, Draw::hex(&c.plate_color), FillRule::Winding, None);
-            if let Some(m) = d.clip(0.0, 0.0, 10.0, d.h) {
-                d.fill(&p, Draw::hex("#ff3b5c"), FillRule::Winding, Some(&m));
+            if !c.plate_accent.trim().is_empty() {
+                if let Some(m) = d.clip(0.0, 0.0, 10.0, d.h) {
+                    d.fill(&p, Draw::hex(&c.plate_accent), FillRule::Winding, Some(&m));
+                }
             }
         }
     }
     let clip = d.boxed();
     let mask = clip.as_ref();
-    // Not frozen: only the typed part is laid out (words jump: for comparison).
-    let lay = if c.frozen {
-        lay
-    } else {
-        let shown: Vec<String> = g[..vis.shown.min(g.len())].to_vec();
-        let l = layout(c, &shown, lay.size, bw, bh, &mut |s, z| {
-            tx::chain_width(&chain, s, z, ls)
-        });
-        Lay {
-            size: lay.size,
-            lines: l.lines,
-            over: lay.over,
-        }
-    };
+    // The layout is always the complete text's (frozen): no word jumps while typing.
     let size = lay.size;
     let line_h = size * c.line_height;
     let nl = lay.lines.len();
@@ -430,4 +415,37 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Renderer;
+    use cg_core::sample;
+    use serde_json::json;
+
+    #[test]
+    fn the_plate_accent_is_a_setting() {
+        let project = sample::demo_project();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let mut left = |accent: Option<&str>| {
+            let mut l = json!({
+                "id": "tw", "name": "T", "type": "typewriter", "text": "Bonjour", "speed": 20.0, "cursor": false,
+                "fontFamily": "Inter", "fontWeight": 700, "plate": true, "plateColor": "#000000",
+                "props": {"x": 0.0, "y": 0.0, "width": 600.0, "height": 200.0, "fontSize": 40.0, "fill": [1.0, 1.0, 1.0, 1.0]}
+            });
+            if let Some(a) = accent {
+                l["plateAccent"] = json!(a);
+            }
+            let t: cg_core::Template = serde_json::from_value(json!({
+                "id": "t", "name": "T", "duration": 100.0, "markers": [], "fields": [], "zone": "", "layers": [l]
+            }))
+            .unwrap();
+            let f = r.render_template(&project, &t, "main", 50.0, &Default::default());
+            let i = (100 * f.width as usize + 4) * 4;
+            [f.data[i], f.data[i + 1], f.data[i + 2]]
+        };
+        assert_eq!(left(None), [255, 59, 92], "red by default");
+        assert_eq!(left(Some("#00ff00")), [0, 255, 0]);
+        assert_eq!(left(Some("")), [0, 0, 0], "none");
+    }
 }

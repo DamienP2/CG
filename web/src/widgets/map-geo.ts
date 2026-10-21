@@ -6,26 +6,92 @@ import { interpolateText } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 
 export type Ll = [number, number];
-export interface Region {
+/** A zone (region, departement or country): id, French and English names, code (ISO alpha-2, INSEE), label point, box [w, s, e, n], outline (mirrors Zone). */
+export interface Zone {
   id: string;
   name: string;
+  en: string;
+  code: string;
   lon: number;
   lat: number;
-  ring: Ll[];
+  bbox: [number, number, number, number];
+  rings: Ll[][];
 }
-/** name, lat, lon, importance, min zoom, kind */
-export type Place = [string, number, number, number, number, string];
+/** English name, lat, lon, importance, min zoom, kind, French name */
+export type Place = [string, number, number, number, number, string, string];
+/** « Aller à… »: French name, English name (or ''), lat, lon, kind (c city, k capital). */
+export type Gaz = [string, string, number, number, string];
 export interface World {
   land: Ll[][];
   lakes: Ll[][];
   borders: Ll[][];
-  roads: Ll[][];
-  regions: Region[];
+  countries: Zone[];
+  regions: Zone[];
+  deps: Zone[];
   places: Place[];
+  gaz: Gaz[];
   paris: { urban: Ll[]; parks: Ll[][]; seine: Ll[]; canal: Ll[]; peri: Ll[]; motorways: Ll[][]; streets: Ll[][]; stands: Ll[]; bowl: Ll[]; pitch: Ll[]; lines: Ll[]; halfway: Ll[]; circle: Ll[] };
 }
+interface RawArcs {
+  tf: [number, number, number, number];
+  arcs: number[][];
+}
+interface RawZone {
+  id: string;
+  name: string;
+  en?: string;
+  iso2?: string;
+  code?: string;
+  lon: number;
+  lat: number;
+  box: [number, number, number, number];
+  rings: number[][];
+}
+/** Quantized, delta-encoded arcs → points (mirrors RawArcs::decode). */
+const decodeArcs = (a: RawArcs): Ll[][] =>
+  a.arcs.map((arc) => {
+    let x = 0;
+    let y = 0;
+    const out: Ll[] = [];
+    for (let i = 0; i + 1 < arc.length; i += 2) {
+      x += arc[i];
+      y += arc[i + 1];
+      out.push([x * a.tf[0] + a.tf[2], y * a.tf[1] + a.tf[3]]);
+    }
+    return out;
+  });
+/** A ring of arc indexes (~i = arc i reversed), shared ends once (mirrors ring). */
+function ringOf(refs: number[], arcs: Ll[][]): Ll[] {
+  const out: Ll[] = [];
+  for (const i of refs) {
+    const a = arcs[i >= 0 ? i : ~i];
+    if (!a) continue;
+    const pts = i >= 0 ? a : a.slice().reverse();
+    out.push(...(out.length ? pts.slice(1) : pts));
+  }
+  return out;
+}
 let parsed: World | null = null;
-export const world = (): World => (parsed ??= JSON.parse(worldRaw as string) as World);
+export function world(): World {
+  if (parsed) return parsed;
+  const raw = JSON.parse(worldRaw as string) as { world: RawArcs; fr: RawArcs; lakeArcs: RawArcs; land: number[][]; borders: number[][]; lakes: number[][]; countries: RawZone[]; regions: RawZone[]; deps: RawZone[]; places: Place[]; gaz: Gaz[]; paris: World['paris'] };
+  const [wa, fa, la] = [decodeArcs(raw.world), decodeArcs(raw.fr), decodeArcs(raw.lakeArcs)];
+  const zones = (list: RawZone[], arcs: Ll[][]): Zone[] => list.map((z) => ({ id: z.id, name: z.name, en: z.en ?? '', code: z.iso2 || z.code || '', lon: z.lon, lat: z.lat, bbox: z.box, rings: z.rings.map((r) => ringOf(r, arcs)) }));
+  parsed = {
+    land: raw.land.map((r) => ringOf(r, wa)),
+    lakes: raw.lakes.map((r) => ringOf(r, la)),
+    borders: raw.borders.map((r) => ringOf(r, wa)),
+    countries: zones(raw.countries, wa),
+    regions: zones(raw.regions, fa),
+    deps: zones(raw.deps, fa),
+    places: raw.places,
+    gaz: raw.gaz,
+    paris: raw.paris,
+  };
+  return parsed;
+}
+export type ZoneLevel = 'regions' | 'deps' | 'countries';
+export const zonesOf = (level: ZoneLevel): Zone[] => (level === 'deps' ? world().deps : level === 'countries' ? world().countries : world().regions);
 
 // ------------------------------------------------------------- settings --
 
@@ -60,10 +126,10 @@ export interface Route {
 }
 export type Corner = 'tl' | 'tr' | 'bl' | 'br';
 export interface Config {
+  /** 'satellite' (old, only a gradient) is drawn as 'vector'. */
   style?: 'vector' | 'satellite' | 'mono';
-  colors?: { water?: string; land?: string; border?: string; road?: string };
+  colors?: { water?: string; land?: string; border?: string; grid?: string };
   showBorders?: boolean;
-  showRoads?: boolean;
   graticule?: boolean;
   radius?: number;
   projection?: Projection;
@@ -77,13 +143,23 @@ export interface Config {
   curve?: 'gc' | 'straight';
   routeW?: number;
   planeHead?: boolean;
-  zones?: { mode?: 'category' | 'scale'; rows?: string[][]; categories?: { name?: string; color?: string }[]; scale?: { v?: number; color?: string }[]; unit?: string; title?: string; opacity?: number; legend?: boolean; legendPos?: Corner };
-  labels?: { cities?: boolean; countries?: boolean; minImp?: number; size?: number; collide?: boolean; pad?: number; showHidden?: boolean };
-  attribution?: { provider?: 'own' | 'osm' | 'sat'; pos?: Corner; style?: 'dark' | 'light' | 'minimal'; show?: boolean };
+  zones?: { level?: ZoneLevel; mode?: 'category' | 'scale'; rows?: string[][]; categories?: { name?: string; color?: string }[]; scale?: { v?: number; color?: string }[]; unit?: string; title?: string; opacity?: number; legend?: boolean; legendPos?: Corner };
+  labels?: { cities?: boolean; countries?: boolean; minImp?: number; size?: number; pad?: number; showHidden?: boolean };
+  attribution?: { pos?: Corner; style?: 'dark' | 'light' | 'minimal'; show?: boolean };
   /** Designer only: dragging on the stage pans the map. */
   dragPans?: boolean;
+  /** Places renamed (labels, zones). */
+  names?: { from?: string; to?: string }[];
+}
+/** « Aller à… »: the place shown instead of a key view. */
+export interface Goto {
+  name: string;
+  lat: number;
+  lon: number;
+  zoom: number;
 }
 export interface State {
+  goto?: Goto | null;
   cur?: number | null;
   from?: View | null;
   at?: number;
@@ -95,14 +171,8 @@ export interface State {
 }
 
 export const STYLES = {
-  vector: { water: '#0b1a3a', land: '#26365a', border: '#9aa6d6', road: '#f5a524' },
-  satellite: { water: '#06202e', land: '#41562f', border: '#e7e2c9', road: '#d6c8a0' },
-  mono: { water: '#101217', land: '#2c3039', border: '#6b7181', road: '#9ca3af' },
-};
-export const PROVIDERS = {
-  own: { name: 'Strata vector data (own)', text: 'Map data: Strata', required: false },
-  osm: { name: 'OpenStreetMap (ODbL)', text: '© OpenStreetMap contributors', required: true },
-  sat: { name: 'Satellite imagery (licensed)', text: 'Imagery © licensed provider', required: true },
+  vector: { water: '#0b1a3a', land: '#26365a', border: '#9aa6d6' },
+  mono: { water: '#101217', land: '#2c3039', border: '#6b7181' },
 };
 export const DEFAULT_VIEWS: Required<KeyView>[] = [
   { name: 'World', lat: 25, lon: 10, zoom: 2.65, rot: 0, tilt: 0 },
@@ -156,20 +226,29 @@ export const SCALE = [
   { v: 28, color: '#f97316' },
   { v: 36, color: '#dc2626' },
 ];
-export const WEATHER = {
-  mode: 'scale' as const,
-  title: 'Temperature · °C',
-  unit: '°C',
-  rows: [['Region', '°C'], ...world().regions.map((r, i) => [r.name, String([11, 12, 14, 9, 13, 15, 14, 10, 18, 8, 21, 23, 22][i] ?? 15)])],
-};
+/** Designer samples (« Exemple »), for the zones of a level. */
+export function sample(kind: 'election' | 'weather', level: ZoneLevel) {
+  const list = zonesOf(level);
+  // A steady pseudo-random value per zone.
+  const h = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  if (kind === 'weather') {
+    const head = level === 'countries' ? 'Country' : level === 'deps' ? 'Departement' : 'Region';
+    // Warmer to the south.
+    const rows = list.map((z) => [z.name, String(Math.round(Math.min(34, Math.max(-8, 30 - Math.abs(z.lat) * 0.45 + (h(z.id) % 7) - 3))))]);
+    return { mode: 'scale' as const, title: 'Temperature · °C', unit: '°C', scale: SCALE, rows: [[head, '°C'], ...rows] };
+  }
+  if (level === 'regions') return ELECTION;
+  const cats = ELECTION.categories;
+  const rows = list.map((z) => [z.name, cats[h(z.id) % cats.length].name, `${28 + (h(z.id + 'p') % 15)} %`]);
+  return { ...ELECTION, rows: [[level === 'countries' ? 'Country' : 'Departement', 'Winner', '%'], ...rows] };
+}
 
 /** Settings with their defaults (mirrors Config::default()). */
 export function cfg(c: Config) {
   return {
     style: c.style ?? 'vector',
-    colors: { ...STYLES.vector, ...c.colors },
+    colors: { ...STYLES.vector, grid: '', ...c.colors },
     showBorders: c.showBorders ?? true,
-    showRoads: c.showRoads ?? true,
     graticule: c.graticule ?? false,
     radius: c.radius ?? 16,
     projection: c.projection ?? 'mercator',
@@ -183,11 +262,26 @@ export function cfg(c: Config) {
     curve: c.curve ?? 'gc',
     routeW: c.routeW ?? 6,
     planeHead: c.planeHead ?? true,
-    zones: { mode: ELECTION.mode as 'category' | 'scale', rows: ELECTION.rows, categories: ELECTION.categories, scale: SCALE, unit: '°C', title: ELECTION.title, opacity: 0.85, legend: true, legendPos: 'bl' as Corner, ...c.zones },
-    labels: { cities: true, countries: true, minImp: 3, size: 24, collide: true, pad: 8, showHidden: false, ...c.labels },
-    attribution: { provider: 'osm' as const, pos: 'br' as Corner, style: 'dark' as const, show: true, ...c.attribution },
+    zones: { level: 'regions' as ZoneLevel, mode: ELECTION.mode as 'category' | 'scale', rows: ELECTION.rows, categories: ELECTION.categories, scale: SCALE, unit: '°C', title: ELECTION.title, opacity: 0.85, legend: true, legendPos: 'bl' as Corner, ...c.zones },
+    labels: { cities: true, countries: true, minImp: 3, size: 24, pad: 8, showHidden: false, ...c.labels },
+    attribution: { pos: 'br' as Corner, style: 'dark' as const, show: true, ...c.attribution },
     dragPans: c.dragPans ?? false,
+    names: (c.names ?? []).map((r) => ({ from: '', to: '', ...r })),
   };
+}
+
+/** The attribution of the data drawn and whether its licence requires it (mirrors attribution). */
+export function attribution(k: K, s: State, zoom: number, lang: string): [string, boolean] {
+  const ign = layerOn(k, s, 'zones') && zoom <= 10 && k.zones.level !== 'countries';
+  const src = ['Natural Earth', ...(ign ? ['IGN'] : [])].join(', ');
+  return [`${lang.startsWith('fr') ? 'Données\u00a0: ' : 'Data: '}${src}`, ign];
+}
+/** A place name as shown: the Designer's renaming, else in the project's language (mirrors place_name). */
+export function placeName(k: K, en: string, fr: string, lang: string): string {
+  const n = norm(en);
+  const nf = norm(fr);
+  const r = k.names.find((x) => x.from.trim() && (norm(x.from) === n || norm(x.from) === nf));
+  return r ? r.to : lang.startsWith('fr') ? fr : en;
 }
 export type K = ReturnType<typeof cfg>;
 export type MarkerK = K['markers'][number];
@@ -278,7 +372,7 @@ export function interpolate(k: K, a: View, b: View, t: number, boxW: number): Vi
 /** The view at `now` and the transition's progress (null = still), mirrors view_at. */
 export function viewAt(k: K, s: State, now: number, boxW: number): [View, number | null] {
   const kv = s.cur != null ? k.views[s.cur] : undefined;
-  const to = clampView(kv ? (kv as View) : k.view);
+  const to = clampView(s.goto ? { lat: s.goto.lat, lon: s.goto.lon, zoom: s.goto.zoom, rot: 0, tilt: 0 } : kv ? (kv as View) : k.view);
   if (!s.from) return [to, null];
   const dur = k.transition.dur * 1000;
   if (!(dur > 0)) return [to, null];
@@ -305,9 +399,12 @@ export function markerPos(m: MarkerK, data: Data): [number, number] | null {
 // --------------------------------------------------------------- routes --
 
 export function place(name: string): [number, number] | null {
-  const n = name.trim().toLowerCase();
-  const p = world().places.find((x) => x[5] !== 'continent' && x[0].toLowerCase() === n);
-  return p ? [p[1], p[2]] : null;
+  const n = norm(name);
+  if (!n) return null;
+  const p = world().places.find((x) => x[5] !== 'continent' && (norm(x[0]) === n || norm(x[6]) === n));
+  if (p) return [p[1], p[2]];
+  const g = world().gaz.find((x) => norm(x[0]) === n || (!!x[1] && norm(x[1]) === n));
+  return g ? [g[2], g[3]] : null;
 }
 export function waypoints(path: string): [[number, number][], string[]] {
   const out: [number, number][] = [];
@@ -387,10 +484,54 @@ export const norm = (x: string) =>
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z]/g, '');
-export function regionOf(name: string): Region | undefined {
+/** What « Aller à… » finds for a typed place, its name, or null (mirrors find_place). */
+export function findPlace(q: string, lang: string): string | null {
+  const x = q.trim();
+  const parts = x.split(/[,; ]/).filter((p) => p.trim());
+  if (parts.length === 2) {
+    const [lat, lon] = parts.map((p) => (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(p.trim()) ? Number(p) : NaN));
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return validLL(lat, lon) ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : null;
+  }
+  const n = norm(x);
+  if (!n) return null;
+  const up = x.toUpperCase();
+  const fr = lang.startsWith('fr');
+  const w = world();
+  const zn = (z: Zone) => (fr || !z.en ? z.name : z.en);
+  for (const list of [w.countries, w.deps]) {
+    const z = list.find((z) => z.id === up || (!!z.code && z.code === up));
+    if (z) return zn(z);
+  }
+  for (const list of [w.countries, w.regions, w.deps]) {
+    const z = list.find((z) => norm(z.name) === n || (!!z.en && norm(z.en) === n));
+    if (z) return zn(z);
+  }
+  const g = w.gaz.find((g) => norm(g[0]) === n || (!!g[1] && norm(g[1]) === n));
+  if (g) return fr || !g[1] ? g[0] : g[1];
+  const p = w.places.find((p) => p[5] !== 'continent' && (norm(p[0]) === n || norm(p[6]) === n));
+  return p ? (fr ? p[6] : p[0]) : null;
+}
+const sugg: Record<string, string[]> = {};
+/** The names « Aller à… » knows, in a language (for the field's suggestions). */
+export function placeNames(lang: string): string[] {
+  const fr = lang.startsWith('fr');
+  const key = fr ? 'fr' : 'en';
+  if (sugg[key]) return sugg[key];
+  const w = world();
+  const out = new Set<string>();
+  for (const z of [...w.countries, ...w.regions, ...w.deps]) out.add(fr || !z.en ? z.name : z.en);
+  for (const g of w.gaz) out.add(fr || !g[1] ? g[0] : g[1]);
+  for (const p of w.places) if (p[5] !== 'continent') out.add(fr ? p[6] : p[0]);
+  return (sugg[key] = [...out].sort((a, b) => a.localeCompare(b, key)));
+}
+/** A zone of a level by its name (French or English), id or code (69, 2A, FR, FRA) (mirrors zone_of). */
+export function zoneOf(level: ZoneLevel, name: string): Zone | undefined {
   const n = norm(name);
-  if (!n) return undefined;
-  return world().regions.find((r) => norm(r.name) === n || r.id === n);
+  const up = String(name ?? '')
+    .trim()
+    .toUpperCase();
+  if (!up) return undefined;
+  return zonesOf(level).find((z) => z.id.toUpperCase() === up || (!!z.code && z.code === up) || (!!n && (norm(z.name) === n || (!!z.en && norm(z.en) === n))));
 }
 export function hexMix(a: string, b: string, k: number) {
   const p = (s: string) => {
@@ -431,7 +572,7 @@ export function zoneFills(z: K['zones'], data: Data): [Record<string, ZoneFill>,
     const name = cell(0);
     const value = cell(1);
     if (!name.trim()) continue;
-    const reg = regionOf(name);
+    const reg = zoneOf(z.level, name);
     if (!reg) {
       unmatched.push(name);
       continue;
@@ -442,7 +583,8 @@ export function zoneFills(z: K['zones'], data: Data): [Record<string, ZoneFill>,
       .filter((x) => x.trim());
     if (z.mode === 'scale') {
       const v = Number(value.trim().replace(',', '.'));
-      if (value.trim() === '' || !Number.isFinite(v)) out[reg.id] = { color: '#94a3b8', text: 'no data' };
+      // No value: the bubble writes « No data » in the project's language.
+      if (value.trim() === '' || !Number.isFinite(v)) out[reg.id] = { color: '#94a3b8', text: '' };
       else out[reg.id] = { color: scaleColor(z.scale, v), text: [`${value.trim()} ${z.unit}`.trim(), ...details].join(' ') };
     } else {
       const n = norm(value);

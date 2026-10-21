@@ -13,6 +13,8 @@ export interface TimeCtx {
   defaultTz: string;
   /** Time on air of one layer when the operator controls its widget. */
   layerAge?: (layer: Layer) => number;
+  /** The operator controls this layer's clock (paused, played, restarted, or waiting for a manual start). */
+  clocked?: (layer: Layer) => boolean;
   /** The operator's state of a spec widget, by layer id (web/src/widgets). */
   widgetState?: (layerId: string) => unknown;
   /** Project frame rate. */
@@ -45,9 +47,18 @@ export function isTimed(l: Layer): boolean {
     case 'slideshow':
     case 'barChart':
       return true;
+    // A Lottie animation: the operator pauses, plays and restarts it.
+    case 'group':
+      return l.lottie !== undefined;
     default:
       return false;
   }
+}
+
+/** The frame the layers of a Lottie group are drawn at (mirrors PlayoutItem::lottie_frame): the template's, unless the operator controls the group's clock, up to the on-air point. */
+export function lottieFrame(group: Layer, frame: number, hold: number, time: TimeCtx): number {
+  if (group.type !== 'group' || group.lottie === undefined || !time.layerAge || !time.clocked?.(group) || frame > hold + 1e-6) return frame;
+  return Math.min(hold, time.layerAge(group) * (time.fps ?? 50));
 }
 
 /** Mirrors PlayoutItem::layer_age (frames). */

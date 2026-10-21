@@ -8,6 +8,8 @@
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
 pub mod sequence;
+mod shadow;
+pub mod slate;
 mod text;
 mod wid;
 
@@ -147,7 +149,21 @@ struct Ctx<'a> {
     lang: &'a str,
 }
 
-impl Ctx<'_> {
+impl<'a> Ctx<'a> {
+    /// The same at another frame (the layers of a Lottie group the operator controls).
+    fn at_frame(&self, frame: f64) -> Ctx<'a> {
+        Ctx {
+            template: self.template,
+            frame,
+            data: self.data,
+            time: self.time,
+            logic: self.logic.clone(),
+            item: self.item,
+            fps: self.fps,
+            lang: self.lang,
+        }
+    }
+
     /// Time inputs of one layer: its own clock when the operator controls it.
     fn time_for(&self, layer: &cg_core::Layer) -> TimeCtx<'_> {
         match self.item {
@@ -523,6 +539,27 @@ impl Renderer {
         parent_opacity: f32,
         mask: Option<&Mask>,
     ) {
+        // The layers of a Lottie group the operator controls follow its clock.
+        let remapped;
+        let ctx = match (parent, ctx.item) {
+            (Some(id), Some(item)) => {
+                let f = ctx
+                    .template
+                    .layers
+                    .iter()
+                    .find(|l| l.id == id)
+                    .map_or(ctx.frame, |g| {
+                        item.lottie_frame(g, ctx.frame, ctx.template.hold_frame())
+                    });
+                if f == ctx.frame {
+                    ctx
+                } else {
+                    remapped = ctx.at_frame(f);
+                    &remapped
+                }
+            }
+            _ => ctx,
+        };
         let children: Vec<_> = ctx
             .template
             .layers
@@ -547,7 +584,7 @@ impl Renderer {
 
             // Crop (reveal mask) in layer space, intersected with the parent mask.
             let crop = crop_rect(&r, w, h);
-            let clip_children = matches!(layer.kind, LayerKind::Group { clip: true });
+            let clip_children = matches!(layer.kind, LayerKind::Group { clip: true, .. });
             let own_mask = if crop.is_some() || clip_children {
                 let rect =
                     crop.unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, w.max(0.0), h.max(0.0)));
@@ -560,6 +597,22 @@ impl Renderer {
             };
             let m = own_mask.as_ref().or(mask);
 
+            // A drop shadow (not for a Text: it has its own): the layer and its children drawn
+            // alone, their shadow under them, all at the layer's opacity, cut by its crop.
+            if layer.drop_shadow && !matches!(layer.kind, LayerKind::Text { .. }) {
+                // A group's own clip cuts its children, not its shadow (CSS overflow vs filter).
+                let cut = if crop.is_some() { m } else { mask };
+                self.draw_shadowed(
+                    pm,
+                    ctx,
+                    &r,
+                    tf,
+                    opacity,
+                    cut,
+                    clip_children.then_some((w, h)),
+                );
+                continue;
+            }
             self.draw_layer(pm, ctx, &r, tf, opacity, m);
             if matches!(layer.kind, LayerKind::Group { .. }) {
                 // Group crop always applies to children; plain clip only when requested.
@@ -571,6 +624,44 @@ impl Renderer {
                 self.draw_children(pm, ctx, Some(&layer.id), tf, opacity, child_mask);
             }
         }
+    }
+
+    /// A layer with its drop shadow (`Layer::drop_shadow`), as the HTML5 renderer's CSS
+    /// `drop-shadow()` on the layer's box: offset and blur in the layer's space.
+    fn draw_shadowed(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        tf: Transform,
+        opacity: f32,
+        mask: Option<&Mask>,
+        clip: Option<(f32, f32)>,
+    ) {
+        let Some(mut content) = Pixmap::new(pm.width(), pm.height()) else {
+            return;
+        };
+        self.draw_layer(&mut content, ctx, r, tf, 1.0, None);
+        if matches!(r.layer.kind, LayerKind::Group { .. }) {
+            let clip = clip
+                .and_then(|(w, h)| Rect::from_xywh(0.0, 0.0, w.max(0.0), h.max(0.0)))
+                .map(|rc| build_mask(&content, None, rc, tf));
+            self.draw_children(&mut content, ctx, Some(&r.layer.id), tf, 1.0, clip.as_ref());
+        }
+        let (ox, oy) = (r.num(Prop::ShadowX) as f32, r.num(Prop::ShadowY) as f32);
+        let (dx, dy) = (tf.sx * ox + tf.kx * oy, tf.ky * ox + tf.sy * oy);
+        let scale = (tf.sx * tf.sy - tf.kx * tf.ky).abs().sqrt();
+        let sigma = r.num(Prop::ShadowBlur).max(0.0) as f32 * scale / 2.0;
+        let Some((out, x, y)) =
+            shadow::compose(&content, r.color(Prop::ShadowColor), dx, dy, sigma)
+        else {
+            return;
+        };
+        let paint = PixmapPaint {
+            opacity,
+            ..PixmapPaint::default()
+        };
+        pm.draw_pixmap(x, y, out.as_ref(), &paint, Transform::identity(), mask);
     }
 
     fn draw_layer(
@@ -1638,6 +1729,58 @@ mod tests {
     }
 
     #[test]
+    fn a_drop_shadow_falls_under_the_layer_and_its_children() {
+        let project = sample::demo_project();
+        let shadow = serde_json::json!({"shadowColor": [0.0, 0.0, 1.0, 1.0], "shadowX": 20.0, "shadowY": 30.0, "shadowBlur": 0.0});
+        let props = |x: f64, y: f64, extra: &serde_json::Value| {
+            let mut p = serde_json::json!({"x": x, "y": y, "width": 200.0, "height": 100.0, "fill": [1.0, 0.0, 0.0, 1.0]});
+            for (k, v) in extra.as_object().unwrap() {
+                p[k] = v.clone();
+            }
+            p
+        };
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "sh", "name": "T", "duration": 10.0, "markers": [], "zone": "", "fields": [],
+            "layers": [
+                {"id": "a", "name": "Rect", "type": "rect", "dropShadow": true, "props": props(100.0, 100.0, &shadow)},
+                {"id": "e", "name": "Ellipse", "type": "ellipse", "dropShadow": true, "fillStyle": {"kind": "solid"}, "props": props(600.0, 100.0, &shadow)},
+                // A group's shadow is its children's.
+                {"id": "g", "name": "Group", "type": "group", "dropShadow": true, "props": {"x": 100.0, "y": 400.0, "width": 200.0, "height": 100.0, "shadowColor": [0.0, 0.0, 1.0, 1.0], "shadowX": 20.0, "shadowY": 30.0, "shadowBlur": 0.0}},
+                {"id": "c", "name": "Child", "type": "rect", "parent": "g", "props": props(0.0, 0.0, &serde_json::json!({}))},
+                // Blurred, and at half opacity.
+                {"id": "b", "name": "Soft", "type": "rect", "dropShadow": true, "props": props(1100.0, 100.0, &serde_json::json!({"shadowColor": [0.0, 0.0, 1.0, 1.0], "shadowY": 30.0, "shadowBlur": 20.0, "opacity": 0.5}))},
+                // A Text keeps its own shadow: no layer shadow.
+                {"id": "t", "name": "Text", "type": "text", "text": "████", "fontFamily": "Inter", "dropShadow": true, "props": props(600.0, 400.0, &shadow)}
+            ]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 0.0, &Default::default());
+        let px = |x: u32, y: u32| {
+            let i = ((y * f.width + x) * 4) as usize;
+            [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]]
+        };
+        // The rectangle over its shadow, the shadow 20 px right and 30 px down.
+        assert_eq!(px(110, 110), [255, 0, 0, 255]);
+        assert_eq!(px(310, 215), [0, 0, 255, 255]);
+        assert_eq!(px(90, 90)[3], 0);
+        assert_eq!(px(325, 215)[3], 0);
+        // The ellipse's shadow is round too (its box corner stays empty).
+        assert_eq!(px(700, 150), [255, 0, 0, 255]);
+        assert_eq!(px(720, 225), [0, 0, 255, 255]);
+        assert_eq!(px(816, 228)[3], 0);
+        // The group's child casts it.
+        assert_eq!(px(310, 515), [0, 0, 255, 255]);
+        // Blurred: soft at the edge, at the layer's opacity.
+        let mid = px(1200, 215);
+        assert!(mid[2] > 100 && mid[3] < 140 && mid[3] > 100, "{mid:?}");
+        let edge = px(1200, 245);
+        assert!(edge[3] > 0 && edge[3] < mid[3], "{edge:?}");
+        // No shadow for the Text.
+        assert_eq!(px(810, 520)[3], 0);
+    }
+
+    #[test]
     fn an_ellipse_arc_and_inner_radius_animate() {
         let project = sample::demo_project();
         // A ring (inner 50 % from its settings) whose end goes 0° → 360°
@@ -1850,5 +1993,55 @@ mod tests {
         if let Ok(path) = std::env::var("CG_DUMP_PNG") {
             std::fs::write(path, f.to_png()).unwrap();
         }
+    }
+
+    #[test]
+    fn a_paused_lottie_freezes_while_the_template_plays_on() {
+        let mut project = sample::demo_project();
+        // A Lottie group whose square moves 0 → 1000 px over the 100 frames of the In.
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "lot", "name": "T", "duration": 100.0, "markers": [], "zone": "", "fields": [],
+            "layers": [
+                {"id": "g", "name": "Anim", "type": "group", "lottie": "/assets/a.json",
+                 "props": {"x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0}},
+                {"id": "r", "name": "Square", "type": "rect", "parent": "g",
+                 "props": {"y": 0.0, "width": 100.0, "height": 100.0, "fill": [1.0, 0.0, 0.0, 1.0]},
+                 "tracks": {"x": [
+                     {"frame": 0.0, "value": 0.0, "easing": {"type": "linear"}},
+                     {"frame": 100.0, "value": 1000.0, "easing": {"type": "linear"}}
+                 ]}}
+            ]
+        }))
+        .unwrap();
+        project.templates.push(t);
+        // Taken in the full-screen zone.
+        let mut state = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(50),
+            template_id: "lot".into(),
+            data: None,
+            rundown_id: None,
+        };
+        state.apply(&project, take).unwrap();
+        for _ in 0..50 {
+            state.tick(1.0);
+        }
+        let pause = Command::Widget {
+            zone: None,
+            layer: Some(50),
+            target: "Anim".into(),
+            control: cg_core::WidgetControl::Pause,
+        };
+        state.apply(&project, pause).unwrap();
+        for _ in 0..30 {
+            state.tick(1.0);
+        }
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_channel(&project, &state, OUT, "UTC");
+        let alpha = |x: usize, y: usize| f.data[(y * 1920 + x) * 4 + 3];
+        // Frozen at frame 50 (x = 500) while the template is at frame 80.
+        assert_eq!(alpha(550, 50), 255);
+        assert_eq!(alpha(850, 50), 0);
     }
 }

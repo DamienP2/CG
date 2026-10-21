@@ -2,9 +2,9 @@
 
 use ab_glyph::FontArc;
 use cg_core::wid::table::{
-    cell_text, col_text, current_page, header_h, header_text, merge_of, model, page_count,
-    rows_text, title_h as title_height, Align, CascadeStyle, ColKind, Config, Deco, EmptyMode,
-    FitMode, MRow, Model, Overflow, PageMode, RowPaint, State, Text, Then,
+    cell_in, cell_text, col_text, current_page, header_h, header_text, live, merge_of, model,
+    page_count, rows_text, title_h as title_height, Align, CascadeStyle, ColKind, Config, Deco,
+    EmptyMode, FitMode, MRow, Model, Overflow, PageMode, RowPaint, State, Text, Then,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -468,6 +468,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         return true;
     }
     let pages = page_count(&c, &m);
+    let st = &live(&c, st, d.time.now_ms, d.time.age_secs);
     let (page, at) = current_page(st, pages, d.time.now_ms);
     let since = if at > 0 {
         (d.time.now_ms - at) as f64 / 1000.0
@@ -575,10 +576,11 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             }
         }
         let tt = cg_core::wid::table::title_text(&c);
+        let title = cg_core::wid::table::title_or(&c, d.lang);
         if let Some(p) = text_path(
             d,
             &tt,
-            &c.title.text,
+            &title,
             align_of(c.title_align),
             (c.title_pad, 0.0, d.w - 2.0 * c.title_pad, title_h),
         ) {
@@ -620,7 +622,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         if let Some(p) = text_path(
             d,
             &rows_t,
-            &c.empty_text,
+            &cg_core::wid::table::empty_or(&c, d.lang),
             TextAlign::Center,
             (pad, y0, d.w - 2.0 * pad, rh * 2.0),
         ) {
@@ -748,7 +750,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                         bg = v;
                     }
                 }
-                if c.cell.on && c.cell.row as usize == row.rank && c.cell.col as usize == j + 1 {
+                if cell_in(&c, row) == Some(j) {
                     bg = Draw::hex(&c.cell.bg);
                     color = Draw::hex(&c.cell.color);
                 }
@@ -1014,6 +1016,33 @@ mod fit_tests {
         let mut c = Config::default();
         c.txt.rows = t;
         cg_core::wid::table::rows_text(&c, 20.0)
+    }
+
+    #[test]
+    fn pages_turn_by_themselves_from_the_take() {
+        let project = cg_core::sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "tt", "name": "T", "duration": 1000.0, "markers": [], "fields": [], "zone": "",
+            "layers": [{
+                "id": "tb", "name": "Table", "type": "table",
+                "grid": [["team", "color"], ["A", "#00ff00"], ["B", "#0000ff"], ["C", "#ff0000"]],
+                "cols": [{"src": "team", "label": "Team", "pct": 100.0}],
+                "headerRow": false, "cascade": {"on": false}, "rowH": 100.0, "gap": 0.0, "perPage": 1,
+                "indicator": false, "rowFrom": "color", "rowPaint": "bg", "autoPages": true, "autoSecs": 6.0,
+                "props": {"x": 0.0, "y": 0.0, "width": 800.0, "height": 400.0}
+            }]
+        }))
+        .unwrap();
+        let mut r = crate::Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let fps = project.frame_rate.as_f64();
+        let mut row = |secs: f64| {
+            let f = r.render_template(&project, &t, "main", secs * fps, &Default::default());
+            let i = (50 * f.width as usize + 780) * 4;
+            [f.data[i], f.data[i + 1], f.data[i + 2]]
+        };
+        assert_eq!(row(1.0), [0, 255, 0], "page 1");
+        assert_eq!(row(7.0), [0, 0, 255], "page 2 after 6 s");
+        assert_eq!(row(13.0), [255, 0, 0], "page 3 after 12 s");
     }
 
     #[test]

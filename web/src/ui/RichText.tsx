@@ -88,7 +88,7 @@ export function fromHtml(root: HTMLElement): string {
 
 const SWATCHES = ['#ffffff', '#ff3b5c', '#facc15', '#22c55e', '#38bdf8', '#7c5cff', '#111111'];
 
-export function RichInput({ value, onChange, multiline, placeholder }: { value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string }) {
+export function RichInput({ value, onChange, multiline, placeholder, maxLength }: { value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string; /** Most characters that can be typed. */ maxLength?: number }) {
   const box = useRef<HTMLDivElement>(null);
   const sent = useRef<string | null>(null);
   const [color, setColor] = useState('#ff3b5c');
@@ -113,6 +113,20 @@ export function RichInput({ value, onChange, multiline, placeholder }: { value: 
       underline: document.queryCommandState('underline'),
       strikeThrough: document.queryCommandState('strikeThrough'),
     });
+  // At the most characters, typing stops (replacing a selection still works).
+  const max = useRef(maxLength);
+  max.current = maxLength;
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const before = (e: InputEvent) => {
+      if (!max.current || !e.inputType.startsWith('insert') || e.inputType === 'insertFromPaste') return;
+      const room = max.current - (el.textContent ?? '').length + (document.getSelection()?.toString().length ?? 0);
+      if (room < Math.max(1, [...(e.data ?? '')].length)) e.preventDefault();
+    };
+    el.addEventListener('beforeinput', before);
+    return () => el.removeEventListener('beforeinput', before);
+  }, []);
   useEffect(() => {
     const sel = () => box.current?.contains(document.getSelection()?.anchorNode ?? null) && refresh();
     document.addEventListener('selectionchange', sel);
@@ -163,7 +177,8 @@ export function RichInput({ value, onChange, multiline, placeholder }: { value: 
           e.stopPropagation();
           if (e.key === 'Enter') {
             e.preventDefault();
-            if (multiline) document.execCommand('insertLineBreak');
+            const full = !!maxLength && (box.current?.textContent ?? '').length >= maxLength;
+            if (multiline && !full) document.execCommand('insertLineBreak');
             else box.current?.blur();
             emit();
           }
@@ -173,9 +188,11 @@ export function RichInput({ value, onChange, multiline, placeholder }: { value: 
           }
         }}
         onPaste={(e) => {
-          // Pasted text keeps no outside style.
+          // Pasted text keeps no outside style (and stops at the most characters).
           e.preventDefault();
-          document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+          let text = e.clipboardData.getData('text/plain');
+          if (maxLength) text = [...text].slice(0, Math.max(0, maxLength - (box.current?.textContent ?? '').length + (document.getSelection()?.toString().length ?? 0))).join('');
+          if (text) document.execCommand('insertText', false, text);
         }}
       />
     </div>

@@ -13,6 +13,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use cg_core::{Command, FrameRate, Project, RundownItem, Template};
+use cg_render::slate::{Slate, SlateStyle};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
@@ -103,6 +104,8 @@ pub fn router() -> Router<Shared> {
             post(item_command),
         )
         .route("/api/channels/{id}/preview.png", get(channel_preview))
+        .route("/api/channels/{id}/slate.png", get(channel_slate))
+        .route("/api/slate.png", get(slate_preview))
         .route("/api/channels/{id}/outputs/{name}/{essence}", get(get_sdp))
         .route("/api/fonts", get(list_fonts))
         .route("/api/fonts/file/{family}/{weight}", get(font_file))
@@ -530,6 +533,7 @@ async fn create_project(
             playlists: Vec::new(),
             formats: Vec::new(),
             drafts: Vec::new(),
+            starter: None,
         },
     };
     p.id = cg_core::new_id();
@@ -553,6 +557,8 @@ async fn create_project(
         let id = blank.id.clone();
         p.drafts.push(blank);
         p.publish(&id);
+        // It goes at a publish if it is still empty (the designer made others).
+        p.starter = Some(id);
     }
     if let Some(src) = &n.from {
         // The copy gets its own media, and its templates point to them.
@@ -735,6 +741,7 @@ async fn put_template(
     p.save_draft(t);
     if q.publish {
         p.publish(&tid);
+        p.drop_empty_starter();
     }
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
@@ -841,6 +848,7 @@ async fn publish_template(
         None => return Err(not_found("template")),
     };
     let name = p.template(&tid).map(|t| t.name.clone()).unwrap_or_default();
+    p.drop_empty_starter();
     let p = s.save_project(p).await.map_err(internal)?;
     // Every publish is a version the designer can go back to.
     let note = format!("Published “{name}” (revision {rev})");
@@ -881,6 +889,9 @@ async fn publish_project(
     }
     if out.is_empty() {
         return Ok(Json(out));
+    }
+    if let Some(gone) = p.drop_empty_starter() {
+        out.retain(|x| x.id != gone);
     }
     let p = s.save_project(p).await.map_err(internal)?;
     let names: Vec<&str> = out.iter().map(|x| x.name.as_str()).collect();
@@ -1517,24 +1528,113 @@ async fn channel_preview(
     };
     let state = ch.state.read().await.clone();
     let wanted = q.rendition.as_deref().unwrap_or("main");
-    let (_, width, height, _) = ch
+    let slate = ch
         .config
-        .pictures()
-        .into_iter()
-        .find(|p| p.0 == wanted)
+        .slate_of(wanted)
         .ok_or_else(|| not_found("rendition"))?;
-    let out = cg_render::OutputFormat { width, height };
+    let out = cg_render::OutputFormat {
+        width: slate.width,
+        height: slate.height,
+    };
     let tz = s.config.timezone.clone();
-    let slate = ch.config.slate_of(wanted).trim().to_string();
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
         match project {
             Some(p) => r.render_channel(&p, &state, out, &tz).to_png(),
             // What the outputs show while no project is loaded.
-            None if !slate.is_empty() => r.render_slate(&slate, out).to_png(),
-            None => cg_render::Frame::blank(out.width, out.height).to_png(),
+            None => r.render_idle(&slate, out).to_png(),
         }
+    })
+    .await
+    .map_err(internal)?;
+    Ok(png(bytes))
+}
+
+#[derive(Deserialize)]
+struct SlateQuery {
+    /// Rendition id (default: the main picture).
+    picture: Option<String>,
+    /// Width of a smaller copy.
+    w: Option<u32>,
+}
+
+/// What a picture's outputs show while no project is loaded (the HTML5
+/// output shows this very picture). Public like the HTML5 outputs.
+async fn channel_slate(
+    State(s): State<Shared>,
+    MaybeUser(me): MaybeUser,
+    Path(id): Path<String>,
+    Query(q): Query<SlateQuery>,
+) -> ApiResult<Response> {
+    match &me {
+        Some(me) => visible_channel(me, &id)?,
+        None => require(s.config.public_outputs)?,
+    }
+    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let slate = ch
+        .config
+        .slate_of(q.picture.as_deref().unwrap_or("main"))
+        .ok_or_else(|| not_found("picture"))?;
+    slate_png(&s, slate, q.w).await
+}
+
+#[derive(Deserialize)]
+struct SlatePreviewQuery {
+    style: SlateStyle,
+    #[serde(default)]
+    channel: String,
+    /// The still picture of the custom style (`/assets/…`).
+    #[serde(default)]
+    image: String,
+    width: u32,
+    height: u32,
+    /// Frame rate (50/1 by default).
+    num: Option<u32>,
+    den: Option<u32>,
+    /// Width of the picture (320 by default).
+    w: Option<u32>,
+}
+
+/// A slate for settings not applied yet (the Video streams page's choices).
+async fn slate_preview(
+    State(s): State<Shared>,
+    CurrentUser(_): CurrentUser,
+    Query(q): Query<SlatePreviewQuery>,
+) -> ApiResult<Response> {
+    let slate = Slate {
+        style: q.style,
+        image: q.image,
+        channel: q.channel,
+        width: q.width,
+        height: q.height,
+        rate: (q.num.unwrap_or(50), q.den.unwrap_or(1)),
+    };
+    slate_png(&s, slate, Some(q.w.unwrap_or(320))).await
+}
+
+/// A slate as PNG, at its size or `thumb` wide (at most 640 px).
+async fn slate_png(s: &Shared, mut slate: Slate, thumb: Option<u32>) -> ApiResult<Response> {
+    slate.width = slate.width.clamp(16, 7680);
+    slate.height = slate.height.clamp(16, 7680);
+    let (w, h) = (slate.width, slate.height);
+    let out = match thumb {
+        Some(t) => {
+            let t = t.clamp(16, 640).min(w);
+            cg_render::OutputFormat {
+                width: t,
+                height: ((h * t + w / 2) / w).max(1),
+            }
+        }
+        None => cg_render::OutputFormat {
+            width: w,
+            height: h,
+        },
+    };
+    let st = s.clone();
+    let bytes = tokio::task::spawn_blocking(move || {
+        let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
+        r.render_idle(&slate, out).to_png()
     })
     .await
     .map_err(internal)?;

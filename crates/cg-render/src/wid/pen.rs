@@ -33,8 +33,9 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         // Empty path or a single point: nothing on air (the inspector warns).
         return true;
     }
-    let k = progress(d.frame, d.hold, d.fps, d.time.age_secs);
-    let (pa, pb, fill_op) = portion(c, k);
+    let k = progress(c, d.frame, d.hold, d.fps, d.time.age_secs);
+    // The visible portion at this frame (animatable), then the In / Out.
+    let (pa, pb, fill_op) = portion(c, d.num(Prop::DrawStart), d.num(Prop::DrawEnd), k);
     let cmds = outline(c, d.w, d.h);
     // Fill: closed paths only, fading in as the stroke draws.
     if c.closed && c.fill_on && fill_op > 0.0 {
@@ -101,4 +102,39 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Renderer;
+
+    #[test]
+    fn the_drawn_portion_animates_on_the_timeline() {
+        let project = cg_core::sample::demo_project();
+        // A straight line across a 400 × 100 box, its End going 0 → 100 % over
+        // 10 frames (no drawing at the In).
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "pen", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "p", "name": "Pen", "type": "pen", "drawIn": false, "arrowEnd": "none",
+                "points": [{"x": 0.0, "y": 0.5}, {"x": 1.0, "y": 0.5}],
+                "props": {"x": 0.0, "y": 0.0, "width": 400.0, "height": 100.0, "stroke": [1.0, 1.0, 1.0, 1.0], "strokeWidth": 10.0},
+                "tracks": {
+                    "drawEnd": [
+                        {"frame": 0.0, "value": 0.0, "easing": {"type": "linear"}},
+                        {"frame": 10.0, "value": 100.0, "easing": {"type": "linear"}}
+                    ]
+                }
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 5.0, &Default::default());
+        let a = |x: u32, y: u32| f.data[((y * f.width + x) * 4 + 3) as usize];
+        // Half way: the left half only.
+        assert_eq!(a(100, 50), 255);
+        assert_eq!(a(300, 50), 0);
+        let f = r.render_template(&project, &t, "main", 10.0, &Default::default());
+        assert_eq!(f.data[((50 * f.width + 300) * 4 + 3) as usize], 255);
+    }
 }

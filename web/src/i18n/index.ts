@@ -69,6 +69,15 @@ export function t(s: string, vars?: Record<string, string | number>): string {
 }
 
 /**
+ * The text in another language than the interface's: the project's, for the
+ * texts a widget draws on air (`tl(lang, 'No data')`). "fr…" gives the French.
+ */
+export function tl(language: string | undefined, s: string, vars?: Record<string, string | number>): string {
+  const out = ((language ?? 'fr').toLowerCase().startsWith('fr') ? DICT.fr[s] : undefined) ?? s;
+  return vars ? out.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : out;
+}
+
+/**
  * A short text whose French depends on what it is about: `tc('theme',
  * 'Light')` looks up 'theme|Light' first ("Clair", not the font weight).
  */

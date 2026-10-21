@@ -48,11 +48,11 @@ fn draw_shape(d: &mut Draw, s: &PShape) {
     }
 }
 
-fn draw_text(d: &mut Draw, t: &PText) {
+fn draw_text(d: &mut Draw, family: &str, t: &PText) {
     if t.text.is_empty() || t.opacity <= 0.0 {
         return;
     }
-    let Some(font) = d.font("Inter", t.weight) else {
+    let Some(font) = d.font(family, t.weight) else {
         return;
     };
     // Baseline of a top-aligned line of the text layout.
@@ -121,12 +121,76 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         fs: d.num(Prop::FontSize),
         age_ms: (d.time.age_secs * 1000.0) as f32,
         now: d.time.now_ms,
+        lang: d.lang,
     });
     for p in &out.prims {
         match p {
             Prim::Shape(s) => draw_shape(d, s),
-            Prim::Text(t) => draw_text(d, t),
+            Prim::Text(t) => draw_text(d, &c.font, t),
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Renderer;
+
+    fn render(chart: serde_json::Value) -> impl Fn(u32, u32) -> [u8; 4] {
+        let project = cg_core::sample::demo_project();
+        let mut layer = serde_json::json!({
+            "id": "c", "name": "Chart", "type": "chart",
+            "data": [["Candidat", "%"], ["A", "40"], ["B", "20"]],
+            "title": {"pos": "none"}, "legend": "none", "panel": {"on": false},
+            "anim": {"fx": "none"}, "labels": {"value": false},
+            "props": {"x": 0.0, "y": 0.0, "width": 1000.0, "height": 600.0, "fontSize": 26.0}
+        });
+        for (k, v) in chart.as_object().unwrap() {
+            layer[k] = v.clone();
+        }
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "ch", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+            "layers": [layer]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 10.0, &Default::default());
+        move |x: u32, y: u32| {
+            let i = ((y * f.width + x) * 4) as usize;
+            [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]]
+        }
+    }
+
+    /// Pixels of the first series' colour (#7c5cff) on a row / a column.
+    fn violet(p: &[u8; 4]) -> bool {
+        p[3] > 200 && p[0] > 100 && p[0] < 150 && p[1] < 120 && p[2] > 220
+    }
+
+    #[test]
+    fn columns_lie_down_and_the_reference_line_crosses() {
+        // Standing: A is a tall column on the left half, nothing at its top-right.
+        let px = render(serde_json::json!({}));
+        let tall = (0..600).filter(|y| violet(&px(300, *y))).count();
+        assert!(tall > 200, "{tall}");
+        // Lying: A is a long bar across, from the names on the left.
+        let px = render(serde_json::json!({"orient": "h"}));
+        let row = (0..600).find(|y| (0..1000).filter(|x| violet(&px(*x, *y))).count() > 400);
+        assert!(row.is_some(), "a long horizontal bar");
+        let y = row.unwrap();
+        // B's bar (half as long) is lower.
+        let b = (y + 40..600).find(|y| {
+            let n = (0..1000).filter(|x| violet(&px(*x, *y))).count();
+            n > 150 && n < 400
+        });
+        assert!(b.is_some(), "a shorter bar below");
+        // A yellow reference line (the text colour) at 30: vertical, between the bars' ends.
+        let px = render(
+            serde_json::json!({"orient": "h", "textColor": "#ffff00", "refLine": {"on": true, "value": 30.0}}),
+        );
+        let yellow = |p: [u8; 4]| p[3] > 150 && p[0] > 200 && p[1] > 200 && p[2] < 80;
+        let x = (0..1000)
+            .filter(|x| (100..500).filter(|y| yellow(px(*x, *y))).count() > 100)
+            .count();
+        assert!(x > 0, "a vertical yellow line");
+    }
 }

@@ -12883,6 +12883,10 @@ a.lib-nav-item {
   padding: 6px 10px;
   min-height: 40px;
 }
+/* The widget whose keyboard shortcuts are on (a click on its row). */
+.opx-wrow.sel {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
 .opx-wrow .opx-widget-name {
   flex: 1;
 }

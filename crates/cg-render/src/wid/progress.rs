@@ -195,6 +195,29 @@ fn circle(cx: f32, cy: f32, r: f32) -> Option<Path> {
     PathBuilder::from_circle(cx, cy, r.max(0.01))
 }
 
+/// The goal marker's look: colour, label size and text.
+struct Goal {
+    color: Color,
+    fs: f32,
+    text: String,
+}
+
+/// A tick of the goal: 6 px wide from radius `r0` to `r1`, at angle `a` (degrees, clockwise from the top).
+fn radial_tick(cx: f32, cy: f32, r0: f32, r1: f32, a: f32) -> Option<Path> {
+    let t = a.to_radians();
+    let (s, c) = (t.sin(), t.cos());
+    // Along the radius (s, -c), across it (c, s).
+    let p = |r: f32, k: f32| (cx + r * s + k * c, cy - r * c + k * s);
+    let mut pb = PathBuilder::new();
+    let pts = [p(r0, -3.0), p(r1, -3.0), p(r1, 3.0), p(r0, 3.0)];
+    pb.move_to(pts[0].0, pts[0].1);
+    for q in &pts[1..] {
+        pb.line_to(q.0, q.1);
+    }
+    pb.close();
+    pb.finish()
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let Some(e) = eff_with(d.layer, d.data, d.follow) else {
         return false;
@@ -228,6 +251,21 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         None => Bar::Solid(fill),
     };
     let op = d.opacity;
+    // Goal marker (same in progress.tsx).
+    let goal_f = e
+        .goal
+        .map(|g| frac(&e, g))
+        .filter(|g| !g.1)
+        .map(|g| g.0 as f32);
+    let goal = Goal {
+        color: Color::from_hex(&c.goal_color).unwrap_or(Color([1.0, 0.824, 0.0, 1.0])),
+        fs: (c.label_size * 0.8).max(1.0),
+        text: if goal_f.is_some() {
+            cg_core::anim::interpolate_text(&c.goal_text, d.data)
+        } else {
+            String::new()
+        },
+    };
 
     if c.shape == Shape::Ring {
         let beside_w = if !text.is_empty() && c.label_pos == LabelPos::Beside {
@@ -280,6 +318,37 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             for rr in [r + t / 2.0, (r - t / 2.0).max(0.0)] {
                 if let Some(p) = circle(cx, cy, rr) {
                     d.stroke(&p, sc, &stroke, None);
+                }
+            }
+        }
+        if let Some(g) = goal_f {
+            let ext = (t * 0.32).max(4.0);
+            let angs = match c.circle_dir {
+                CircleDir::Ccw => vec![c.angle - g * 360.0],
+                CircleDir::Center => vec![c.angle + g * 180.0, c.angle - g * 180.0],
+                CircleDir::Cw => vec![c.angle + g * 360.0],
+            };
+            let (r0, r1) = (r - t / 2.0 - ext, r + t / 2.0 + ext);
+            for (i, a) in angs.into_iter().enumerate() {
+                if let Some(p) = radial_tick(cx, cy, r0, r1, a) {
+                    d.fill(&p, goal.color, FillRule::Winding, None);
+                }
+                if i == 0 && !goal.text.is_empty() {
+                    if let Some(ft) = &font {
+                        let rr = r1 + goal.fs * 0.9;
+                        let ta = a.to_radians();
+                        let (gx, gy) = (cx + rr * ta.sin(), cy - rr * ta.cos());
+                        label(
+                            d,
+                            ft,
+                            &goal.text,
+                            gx,
+                            gy,
+                            goal.fs,
+                            TextAlign::Center,
+                            goal.color,
+                        );
+                    }
                 }
             }
         }
@@ -464,6 +533,52 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             }
         }
     }
+    if let Some(g) = goal_f {
+        let ext = (t * 0.32).max(4.0);
+        let ats = match c.dir {
+            Dir::End => vec![l - g * l],
+            Dir::Center => vec![l / 2.0 + g * l / 2.0, l / 2.0 - g * l / 2.0],
+            Dir::Start => vec![g * l],
+        };
+        for (i, a) in ats.into_iter().enumerate() {
+            let tick = if horiz {
+                rrect(so + a - 3.0, c0 - ext, 6.0, t + 2.0 * ext, 3.0)
+            } else {
+                rrect(c0 - ext, h - so - a - 3.0, t + 2.0 * ext, 6.0, 3.0)
+            };
+            if let Some(p) = tick {
+                d.fill(&p, goal.color, FillRule::Winding, None);
+            }
+            if i == 0 && !goal.text.is_empty() {
+                if let Some(ft) = &font {
+                    if horiz {
+                        let y = c0 - ext - goal.fs * LH / 2.0 - 4.0;
+                        label(
+                            d,
+                            ft,
+                            &goal.text,
+                            so + a,
+                            y,
+                            goal.fs,
+                            TextAlign::Center,
+                            goal.color,
+                        );
+                    } else {
+                        label(
+                            d,
+                            ft,
+                            &goal.text,
+                            c0 + t + ext + 8.0,
+                            h - so - a,
+                            goal.fs,
+                            TextAlign::Left,
+                            goal.color,
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     let Some(ft) = font else { return true };
     if text.is_empty() {
@@ -618,4 +733,45 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         );
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Renderer;
+    use cg_core::sample;
+
+    #[test]
+    fn the_goal_marker_crosses_the_bar() {
+        let project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "pg", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "p", "name": "Bar", "type": "progress", "value": "0", "max": "100",
+                "duration": 0.0, "track": "#000000ff", "thickness": 40.0,
+                "goal": "50", "goalText": "Objectif", "goalColor": "#00ff00",
+                "props": {"x": 0.0, "y": 100.0, "width": 1000.0, "height": 100.0, "fill": [1.0, 0.0, 0.0, 1.0]}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let f = r.render_template(&project, &t, "main", 10.0, &Default::default());
+        let px = |x: u32, y: u32| {
+            let i = ((y * f.width + x) * 4) as usize;
+            [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]]
+        };
+        // The tick at 50 %, on the bar and above it (the bar is 130..170).
+        assert!(
+            px(500, 150)[1] > 200 && px(500, 150)[0] < 50,
+            "{:?}",
+            px(500, 150)
+        );
+        assert!(px(500, 120)[1] > 200, "{:?}", px(500, 120));
+        // The track elsewhere, nothing above it.
+        assert_eq!(px(300, 150)[3], 255);
+        assert!(px(300, 150)[1] < 50);
+        assert_eq!(px(300, 120)[3], 0);
+        // Its label above the tick.
+        let label = (450..550).any(|x| (90..108).any(|y| px(x, y)[3] > 0));
+        assert!(label);
+    }
 }

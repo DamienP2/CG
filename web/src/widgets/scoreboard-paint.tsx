@@ -93,6 +93,8 @@ let seq = 0;
 export class Pt {
   dry: boolean;
   alpha = 1;
+  /** Font family of the texts. */
+  font = 'Inter';
   private stack: { kids: ReactNode[]; clip?: string }[] = [{ kids: [] }];
   defs: ReactNode[] = [];
   private id = `sbp${(seq = (seq + 1) % 1e6)}`;
@@ -163,7 +165,7 @@ export class Pt {
     if (r > 0) this.fill(ellipse(cx, cy, r, r), c);
   }
   tw(s: string, size: number, weight: number, ls: number) {
-    return textWidth(s, 'Inter', weight, size, ls);
+    return textWidth(s, this.font, weight, size, ls);
   }
   private textEl(s: string, x: number, cy: number, o: T, paint: Record<string, unknown>) {
     const w = this.tw(s, o.size, o.weight, o.ls ?? 0);
@@ -173,7 +175,7 @@ export class Pt {
     const sk = o.skew ?? 0;
     const transform = sx !== 1 || sy !== 1 || sk ? `translate(${r2(x)} ${r2(cy)}) matrix(${sx} 0 ${-sk * sx} ${sy} 0 0) translate(${r2(-x)} ${r2(-cy)})` : undefined;
     return (
-      <text key={this.key()} x={r2(x0)} y={r2(cy + 0.3633 * o.size)} fontFamily="Inter" fontWeight={o.weight} fontSize={o.size} letterSpacing={o.ls || undefined} transform={transform} style={{ whiteSpace: 'pre' }} {...paint}>
+      <text key={this.key()} x={r2(x0)} y={r2(cy + 0.3633 * o.size)} fontFamily={this.font === 'Inter' ? 'Inter' : `"${this.font}", Inter`} fontWeight={o.weight} fontSize={o.size} letterSpacing={o.ls || undefined} transform={transform} style={{ whiteSpace: 'pre' }} {...paint}>
         {s}
       </text>
     );

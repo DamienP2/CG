@@ -6,14 +6,15 @@
 // is a pure function of the elapsed time (time on air, or the operator's
 // timestamps): the state never counts.
 import { useEffect, useRef, type CSSProperties } from 'react';
-import { Eraser, Keyboard, Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
+import { ChevronLast, Eraser, Keyboard, Pause, Play, SkipForward } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, OpRow, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, OpRow, Section, Seg, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
-import { t } from '../i18n';
+import { useLiveTime } from './table-text';
+import { t, tc } from '../i18n';
 
 export interface Config {
   /** Texts typed after the first one (`text`). */
@@ -34,6 +35,7 @@ export interface Config {
   eraseRate?: number;
   hold?: number;
   chainLoop?: boolean;
+  /** Older layers: the layout is now always frozen (no word jumps line). */
   frozen?: boolean;
   onEdit?: 'restart' | 'continue';
   autoShrink?: boolean;
@@ -41,6 +43,8 @@ export interface Config {
   lineHeight?: number;
   plate?: boolean;
   plateColor?: string;
+  /** The plate's bar on the left ('' = none). */
+  plateAccent?: string;
   shadow?: boolean;
 }
 
@@ -77,6 +81,7 @@ const D: Required<Config> = {
   lineHeight: 1.2,
   plate: false,
   plateColor: '#160f33',
+  plateAccent: '#ff3b5c',
   shadow: false,
 };
 type K = Required<Config>;
@@ -354,9 +359,8 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
   const size0 = num(r.fontSize);
   const ls = num(r.letterSpacing);
   const R = runOf(layer, st, data, size0, ls, w, h, time.nowMs, time.ageSecs);
-  const { c, g, vis, px, py, bw, bh, m } = R;
-  let lay = R.lay;
-  if (!c.frozen) lay = { ...layoutTw(c, g.slice(0, vis.shown), lay.size, bw, bh, m), size: lay.size };
+  const { c, g, vis, px, py, bw, bh, lay, m } = R;
+  // The layout is always the complete text's (frozen): no word jumps while typing.
   const size = lay.size;
   const lineH = size * c.lineHeight;
   const nl = lay.lines.length;
@@ -412,7 +416,7 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
   }
   return (
     <>
-      {c.plate && <div style={{ position: 'absolute', inset: 0, background: hex(c.plateColor), boxShadow: 'inset 10px 0 #ff3b5c', borderRadius: 4 }} />}
+      {c.plate && <div style={{ position: 'absolute', inset: 0, background: hex(c.plateColor), boxShadow: c.plateAccent.trim() ? `inset 10px 0 ${hex(c.plateAccent)}` : undefined, borderRadius: 4 }} />}
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', opacity: vis.block, color: fill, textShadow: c.shadow ? '0 3px 10px #00000088' : undefined }}>
         {lines}
         {cur && <div style={cur} />}
@@ -425,15 +429,13 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
 
 const PHASE_COL: Record<string, string> = { typing: '#22c55e', paused: '#f59e0b', erasing: '#ff3b5c', hold: '#a594ff', done: '#a3a9bd', cleared: '#6b7290' };
 
-/** The Operator's compact row: start, pause / resume, next text, clear, reset. */
-function Compact({ layer, state, data, act, time }: { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const now = useFrame();
+type OpP = { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
+
+/** The Operator's compact row: start, pause / resume, next text, show all, clear. */
+function Compact({ layer, state, data, act, item, time }: OpP) {
+  const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
-  const offset = time.nowMs - Date.now();
-  const ageRef = useRef({ age: time.ageSecs, at: Date.now() });
-  if (ageRef.current.age !== time.ageSecs) ageRef.current = { age: time.ageSecs, at: Date.now() };
-  const age = ageRef.current.age + (now - ageRef.current.at) / 1000;
-  const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now + offset, age);
+  const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now, age);
   const mode = st.mode ?? 'auto';
   const running = mode === 'auto' || mode === 'run';
   const cur = { cur: R.idx };
@@ -441,25 +443,21 @@ function Compact({ layer, state, data, act, time }: { layer: TwLayer; state: unk
     <OpRow
       value={R.list.length > 1 ? `${R.idx + 1}/${R.list.length}` : undefined}
       list={[
-        { icon: Play, title: t('Start'), tone: 'green', onClick: () => act('start', cur) },
-        mode === 'paused' ? { icon: Play, title: t('Resume'), tone: 'violet', onClick: () => act('resume', cur) } : { icon: Pause, title: t('Pause'), disabled: !running, onClick: () => act('pause', cur) },
+        { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('start', cur) },
+        mode === 'paused' ? { icon: Play, title: tc('action', 'Resume'), tone: 'violet', onClick: () => act('resume', cur) } : { icon: Pause, title: t('Pause'), disabled: !running, onClick: () => act('pause', cur) },
         R.list.length > 1 && { icon: SkipForward, title: t('Next text'), onClick: () => act('next', cur) },
-        { icon: Eraser, title: t('Clear'), onClick: () => act('clear', cur) },
-        { icon: RotateCcw, title: t('Reset'), onClick: () => act('reset', cur) },
+        { icon: ChevronLast, title: t('Show all'), disabled: mode !== 'paused' && R.vis.phase !== 'typing' && mode !== 'idle', onClick: () => act('showAll', cur) },
+        { icon: Eraser, title: t('Clear'), confirm: item ? t('{name} is on air: clear the screen?', { name: layer.name }) : undefined, onClick: () => act(R.list.length > 1 ? 'reset' : 'clear', cur) },
       ]}
     />
   );
 }
 
 function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const now = useFrame();
-  const st = (state ?? {}) as State;
-  const offset = time.nowMs - Date.now();
   // Time on air advances with the clock between two updates of the graphic.
-  const ageRef = useRef({ age: time.ageSecs, at: Date.now() });
-  if (ageRef.current.age !== time.ageSecs) ageRef.current = { age: time.ageSecs, at: Date.now() };
-  const age = ageRef.current.age + (now - ageRef.current.at) / 1000;
-  const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now + offset, age);
+  const { now, age } = useLiveTime(time);
+  const st = (state ?? {}) as State;
+  const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now, age);
   const mode = st.mode ?? 'auto';
   const running = mode === 'auto' || mode === 'run';
   const cur = { cur: R.idx };
@@ -471,9 +469,10 @@ function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: un
     if (s && s.idx === R.idx && s.text !== text && (mode === 'run' || mode === 'paused' || mode === 'auto') && R.vis.phase === 'typing') act('edited', { cur: R.idx, typed: s.shown });
     seen.current = { idx: R.idx, text, shown: R.vis.shown };
   });
+  // Enter and Space stay the Operator's TAKE and CONTINUE.
   useKeys({
-    Enter: () => act('start', cur),
-    ' ': () => act('toggle', cur),
+    s: () => act('start', cur),
+    p: () => act('toggle', cur),
     ArrowRight: () => act('next', cur),
   });
   const n = R.g.length;
@@ -485,12 +484,12 @@ function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: un
     <>
       <Btns
         list={[
-          { label: t('▶ Start'), cls: 'green big', keyHint: 'Enter', onClick: () => act('start', cur) },
-          mode === 'paused' ? { label: t('▶ Resume'), cls: 'violet big', keyHint: 'Space', onClick: () => act('resume', cur) } : { label: t('❚❚ Pause'), cls: 'big', keyHint: 'Space', disabled: !running, onClick: () => act('pause', cur) },
+          { label: t('▶ Start'), cls: 'green big', keyHint: 'S', onClick: () => act('start', cur) },
+          mode === 'paused' ? { label: t('▶ Resume'), cls: 'violet big', keyHint: 'P', onClick: () => act('resume', cur) } : { label: t('❚❚ Pause'), cls: 'big', keyHint: 'P', disabled: !running, onClick: () => act('pause', cur) },
           { label: t('Show all'), cls: 'big', onClick: () => act('showAll', cur) },
-          { label: t('Next text'), cls: 'big', keyHint: 'Right', disabled: R.list.length < 2, onClick: () => act('next', cur) },
-          { label: t('Clear'), cls: 'big', onClick: () => act('clear', cur) },
-          { label: t('Reset'), cls: 'ghost big', onClick: () => act('reset', cur) },
+          R.list.length > 1 && { label: t('Next text'), cls: 'big', keyHint: 'Right', onClick: () => act('next', cur) },
+          // One Clear: with several texts it goes back to the first one.
+          { label: t('Clear'), cls: 'big', onClick: () => act(R.list.length > 1 ? 'reset' : 'clear', cur) },
         ]}
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline', marginTop: 6 }}>
@@ -529,11 +528,15 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
           <ColorGroupRow layer={layer as Layer} prop="fill" label={t('Color')} />
         </div>
         <Num label={t('Line height')} path="lineHeight" value={c.lineHeight} min={0.9} max={2} step={0.05} precision={2} unit="×" />
-        <Toggle label={t('Frozen layout')} path="frozen" value={true} />
         <Toggle label={t('Auto-shrink')} path="autoShrink" value={false} />
         {c.autoShrink && <Num label={t('Min size')} path="minSize" value={c.minSize} min={8} max={Math.max(8, num(layer.props.fontSize ?? 64))} unit="px" />}
         <Toggle label={t('Plate')} path="plate" value={false} />
-        {c.plate && <ColorPick label={t('Plate color')} path="plateColor" value={D.plateColor} />}
+        {c.plate && (
+          <>
+            <ColorPick label={t('Plate color')} path="plateColor" value={D.plateColor} />
+            <ColorPick label={t('Accent colour')} path="plateAccent" value={D.plateAccent} none={t('None')} first={D.plateAccent} />
+          </>
+        )}
         <Toggle label={t('Shadow')} path="shadow" value={false} />
       </Section>
       <Section id="tw-cursor" title={t('Cursor')}>
@@ -550,7 +553,7 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
                 ['█', '█'],
               ]}
             />
-            <ColorPick expose="cursorColor" exposeValue={c.cursorColor || '#ffffff'} label={t('Color')} value={c.cursorColor || '#ffffff'} onChange={(v) => set('cursorColor', v)} />
+            <ColorPick label={t('Color')} path="cursorColor" value="" none={t('Text colour')} />
             <Toggle label={t('Blink')} path="cursorBlink" value={true} />
             <Toggle label={t('Hide at end')} path="cursorHide" value={false} />
           </>
@@ -589,7 +592,7 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
             ['slide', t('Slide up')],
           ]}
         />
-        {c.appear !== 'instant' && <Num label={t('Fade time')} path="appearMs" value={c.appearMs} min={40} max={800} step={10} unit="ms" />}
+        {c.appear !== 'instant' && <Num label={c.appear === 'slide' ? t('Slide time') : t('Fade time')} path="appearMs" value={c.appearMs} min={40} max={800} step={10} unit="ms" />}
         <Seg
           label={t('If edited')}
           path="onEdit"
@@ -599,10 +602,19 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
             ['continue', t('Continue')],
           ]}
         />
+        <Seg
+          label={t('Launch')}
+          value={!!layer.manualStart}
+          onChange={(v) => edit((l) => void (l.manualStart = v || undefined))}
+          options={[
+            [false, t('At the In')],
+            [true, t('Manual')],
+          ]}
+        />
       </Section>
       {c.more.length > 0 && (
         <Section id="tw-chain" title={t('Chaining')}>
-          <Num label={t('Hold')} path="hold" value={c.hold} min={0} max={10} step={0.1} precision={1} unit="s" />
+          <Num label={tc('typewriter', 'Hold')} path="hold" value={c.hold} min={0} max={10} step={0.1} precision={1} unit="s" />
           <Seg
             label={t('Erase')}
             path="erase"
@@ -643,17 +655,15 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
-  Compact: ({ layer, state, data, act, time }) => <Compact layer={layer} state={state} data={data} act={act} time={time} />,
+  Compact: ({ layer, state, data, act, time, item }) => <Compact layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   warnings: (layer, { data, state, r }) => {
     const out: Warning[] = [];
-    const c = cfg(layer);
     const list = textsOf(layer, data);
     if (!list.some((s) => s.trim())) out.push({ level: 'info', text: t('Empty text: only the cursor is shown.'), op: true });
     const size0 = num(r?.fontSize ?? layer.props.fontSize ?? 64);
     const R = runOf(layer, (state ?? {}) as State, data, size0, num(r?.letterSpacing ?? layer.props.letterSpacing ?? 0), num(r?.width ?? layer.props.width ?? 800), num(r?.height ?? layer.props.height ?? 200), Date.now(), 0);
     if (R.lay.size < size0 - 0.5) out.push({ level: 'info', text: t('Auto-shrink: {size} px, computed on the complete text before typing (the size never changes while typing).', { size: Math.round(R.lay.size) }) });
     if (R.lay.over) out.push({ level: 'warn', text: t('The complete text does not fit the box even at {size} px.', { size: Math.round(R.lay.size) }), op: true });
-    if (!c.frozen) out.push({ level: 'warn', text: t('Frozen layout is off: words may jump to the next line while typing.') });
     return out;
   },
 });

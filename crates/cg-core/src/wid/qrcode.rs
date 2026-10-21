@@ -121,11 +121,10 @@ pub struct Sms {
 #[serde(default, rename_all = "camelCase")]
 pub struct Logo {
     pub on: bool,
-    /// Picture (asset path); empty = a play sign in `color`.
+    /// Picture (asset path); empty = no logo (nothing drawn, no module hidden).
     pub src: String,
     /// Asked size, % of the code width (capped by the correction).
     pub size: u32,
-    pub color: String,
 }
 
 impl Default for Logo {
@@ -134,9 +133,18 @@ impl Default for Logo {
             on: false,
             src: String::new(),
             size: 22,
-            color: "#7c5cff".into(),
         }
     }
+}
+
+/// Where the caption goes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LabelPos {
+    #[default]
+    Below,
+    Beside,
+    Above,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -147,6 +155,11 @@ pub struct Label {
     pub size: f32,
     pub color: String,
     pub bg: String,
+    pub pos: LabelPos,
+    pub font: String,
+    pub weight: u16,
+    /// Capitals.
+    pub upper: bool,
 }
 
 impl Default for Label {
@@ -157,8 +170,23 @@ impl Default for Label {
             size: 34.0,
             color: "#ffffff".into(),
             bg: "#7c5cff".into(),
+            pos: LabelPos::Below,
+            font: "Inter".into(),
+            weight: 800,
+            upper: false,
         }
     }
+}
+
+/// An address prepared in the Designer, chosen on air from a menu.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Address {
+    pub name: String,
+    /// `{{key}}` allowed.
+    pub url: String,
+    /// Its own caption (empty = the caption's text).
+    pub caption: String,
 }
 
 /// Settings of the widget, flattened into the layer's JSON. The content of
@@ -189,6 +217,8 @@ pub struct Config {
     /// Smallest module on screen before the check fails, px.
     pub min_px: u32,
     pub label: Label,
+    /// URL type: addresses prepared for the Operator (none = the layer's `data`).
+    pub addresses: Vec<Address>,
 }
 
 impl Default for Config {
@@ -211,23 +241,68 @@ impl Default for Config {
             quiet: 4,
             min_px: 6,
             label: Label::default(),
+            addresses: Vec::new(),
         }
     }
 }
 
-/// No operator state.
+/// What the operator chose on air.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-pub struct State {}
+pub struct State {
+    /// Prepared address on air (None = the first).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub addr: Option<usize>,
+}
 
+/// Actions: `address {i}` or `address {name}`: the prepared address on air.
 pub fn act(
-    _layer: &Layer,
-    _st: &mut State,
+    layer: &Layer,
+    st: &mut State,
     op: &str,
-    _args: &serde_json::Value,
+    args: &serde_json::Value,
     _ctx: &ActCtx,
 ) -> Result<(), String> {
-    Err(format!("unknown action `{op}`"))
+    let crate::LayerKind::QrCode { x: c, .. } = &layer.kind else {
+        return Err("not a QR code".into());
+    };
+    match op {
+        "address" => {
+            if c.addresses.is_empty() {
+                return Err("No address prepared".into());
+            }
+            let i = match (args.get("i").and_then(|v| v.as_u64()), args.get("name")) {
+                (Some(i), _) => i as usize,
+                (None, Some(serde_json::Value::String(n))) => c
+                    .addresses
+                    .iter()
+                    .position(|a| a.name.trim().eq_ignore_ascii_case(n.trim()))
+                    .ok_or_else(|| format!("No address named “{n}”"))?,
+                _ => return Err("address needs {\"i\": n} or {\"name\": …}".into()),
+            };
+            if i >= c.addresses.len() {
+                return Err(format!("No address {i}"));
+            }
+            st.addr = Some(i);
+            Ok(())
+        }
+        _ => Err(format!("unknown action `{op}`")),
+    }
+}
+
+/// The URL on air and its own caption: the prepared address chosen (URL
+/// type with addresses), else the layer's `data` and the caption's text.
+pub fn address<'a>(c: &'a Config, data_field: &'a str, st: &State) -> (&'a str, &'a str) {
+    if c.kind == Kind::Url && !c.addresses.is_empty() {
+        let a = &c.addresses[st.addr.unwrap_or(0).min(c.addresses.len() - 1)];
+        let cap = if a.caption.trim().is_empty() {
+            c.label.text.as_str()
+        } else {
+            a.caption.as_str()
+        };
+        return (&a.url, cap);
+    }
+    (data_field, &c.label.text)
 }
 
 // ---------------------------------------------------------------- payload --
@@ -333,42 +408,124 @@ pub fn payload(c: &Config, data_field: &str, data: &Data) -> String {
 
 // ----------------------------------------------------------------- layout --
 
-/// Geometry in the box: integer module size `m`, code `px` × `px` at (x0, y0).
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Geometry in the box: integer module size `m`, code `px` × `px` at
+/// (x0, y0), and the caption's pill (none when `lab` is 0) with its lines.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Geo {
     pub m: f32,
     pub px: f32,
     pub x0: f32,
     pub y0: f32,
-    /// Label pill height (0 = none) and top.
+    /// Caption pill: height (0 = none), left, top, width, corner radius.
     pub lab: f32,
+    pub lab_x: f32,
     pub lab_y: f32,
+    pub lab_w: f32,
+    pub lab_r: f32,
+    /// Its lines (one, or two beside the code).
+    pub lines: Vec<String>,
 }
 
 pub fn round_js(v: f32) -> f32 {
     (v + 0.5).floor()
 }
 
-pub fn geo(c: &Config, label_text: &str, n: usize, w: f32, h: f32) -> Geo {
-    let lab = if c.label.on && !label_text.is_empty() {
-        round_js(c.label.size * 1.9)
+/// Approximate width of a caption (layout only, the same in both renderers).
+pub fn cap_w(s: &str, size: f32, upper: bool) -> f32 {
+    s.chars().count() as f32 * size * if upper { 0.68 } else { 0.6 }
+}
+
+/// The caption as drawn (capitals or as typed).
+pub fn cap_text(c: &Config, s: &str) -> String {
+    if c.label.upper {
+        s.to_uppercase()
     } else {
-        0.0
-    };
-    let gap = if lab > 0.0 { 18.0 } else { 0.0 };
+        s.to_string()
+    }
+}
+
+/// One line, or two (split between words so that the longer is shortest).
+fn cap_lines(s: &str, max: f32, size: f32, upper: bool) -> Vec<String> {
+    let words: Vec<&str> = s.split(' ').filter(|w| !w.is_empty()).collect();
+    if cap_w(s, size, upper) <= max || words.len() < 2 {
+        return vec![s.to_string()];
+    }
+    let mut best = (f32::INFINITY, 1);
+    for i in 1..words.len() {
+        let m = cap_w(&words[..i].join(" "), size, upper).max(cap_w(
+            &words[i..].join(" "),
+            size,
+            upper,
+        ));
+        if m < best.0 {
+            best = (m, i);
+        }
+    }
+    vec![words[..best.1].join(" "), words[best.1..].join(" ")]
+}
+
+/// `label_text`: the caption as drawn (see [`cap_text`]).
+pub fn geo(c: &Config, label_text: &str, n: usize, w: f32, h: f32) -> Geo {
+    let on = c.label.on && !label_text.is_empty();
+    let size = c.label.size;
+    let up = c.label.upper;
     let total = (n as u32 + 2 * c.quiet) as f32;
+    if on && c.label.pos == LabelPos::Beside {
+        let max_w = round_js(w * 0.4);
+        let gap = 18.0;
+        let avail = (w - max_w - gap).min(h);
+        let m = (avail / total).floor().max(1.0);
+        let px = m * total;
+        let lines = cap_lines(label_text, max_w - size * 1.6, size, up);
+        let widest = lines.iter().map(|l| cap_w(l, size, up)).fold(0.0, f32::max);
+        let lab_w = max_w.min(widest + size * 1.6).round();
+        let lab = round_js(lines.len() as f32 * size * 1.25 + size * 0.75);
+        let x0 = round_js((w - px - gap - lab_w) / 2.0).max(0.0);
+        let y0 = round_js((h - px) / 2.0).max(0.0);
+        return Geo {
+            m,
+            px,
+            x0,
+            y0,
+            lab,
+            lab_x: x0 + px + gap,
+            lab_y: round_js(y0 + px / 2.0 - lab / 2.0),
+            lab_w,
+            lab_r: (lab / 2.0).min(size * 0.7),
+            lines,
+        };
+    }
+    let lab = if on { round_js(size * 1.9) } else { 0.0 };
+    let gap = if lab > 0.0 { 18.0 } else { 0.0 };
     let avail = w.min(h - lab - gap);
     let m = (avail / total).floor().max(1.0);
     let px = m * total;
     let x0 = round_js((w - px) / 2.0);
-    let y0 = round_js((h - lab - gap - px) / 2.0).max(0.0);
+    let top = round_js((h - lab - gap - px) / 2.0).max(0.0);
+    let above = c.label.pos == LabelPos::Above;
+    let (y0, lab_y) = if above {
+        (top + lab + gap, top)
+    } else {
+        (top, top + px + gap)
+    };
+    let lab_w = w
+        .min((px * 0.7).max(cap_w(label_text, size, up) + 60.0))
+        .round();
     Geo {
         m,
         px,
         x0,
         y0,
         lab,
-        lab_y: y0 + px + gap,
+        lab_x: ((w - lab_w) / 2.0 + 0.5).floor(),
+        lab_y,
+        lab_w,
+        lab_r: lab / 2.0,
+        lines: if on {
+            vec![label_text.to_string()]
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -617,7 +774,8 @@ pub fn logo_size(c: &Config, s: Option<&Structure>) -> (u32, &'static str) {
     let Some(s) = s else {
         return (0, "");
     };
-    if !c.logo.on {
+    // No picture: no logo (never a placeholder on air).
+    if !c.logo.on || c.logo.src.trim().is_empty() {
         return (0, "");
     }
     let mut pct = c.logo.size.min(c.ecl.logo_max());
@@ -692,6 +850,62 @@ mod tests {
     }
 
     #[test]
+    fn caption_places_and_addresses() {
+        let mut c = Config::default();
+        c.label.on = true;
+        let below = geo(&c, "Scannez pour voter", 25, 520.0, 640.0);
+        assert!(below.lab_y > below.y0 + below.px);
+        c.label.pos = LabelPos::Above;
+        let above = geo(&c, "Scannez pour voter", 25, 520.0, 640.0);
+        assert!(above.lab_y + above.lab <= above.y0);
+        c.label.pos = LabelPos::Beside;
+        let beside = geo(&c, "Scannez pour voter", 25, 520.0, 520.0);
+        assert_eq!(beside.lines, vec!["Scannez", "pour voter"]);
+        assert!(beside.lab_x >= beside.x0 + beside.px);
+        assert!(beside.lab_x + beside.lab_w <= 520.0);
+        c.addresses = vec![
+            Address {
+                name: "Vote".into(),
+                url: "https://example.com/vote".into(),
+                caption: String::new(),
+            },
+            Address {
+                name: "Jeu".into(),
+                url: "https://example.com/jeu".into(),
+                caption: "Scannez pour jouer".into(),
+            },
+        ];
+        let mut st = State::default();
+        assert_eq!(address(&c, "x", &st).0, "https://example.com/vote");
+        let mut l: Layer = serde_json::from_str(
+            r##"{"id":"q","name":"QR","type":"qrCode","data":"x","background":"#ffffff","props":{}}"##,
+        )
+        .unwrap();
+        if let crate::LayerKind::QrCode { x, .. } = &mut l.kind {
+            *x = c.clone();
+        }
+        let d = Data::new();
+        let ctx = ActCtx {
+            now_ms: 0,
+            age_secs: 0.0,
+            data: &d,
+        };
+        act(
+            &l,
+            &mut st,
+            "address",
+            &serde_json::json!({"name": "jeu"}),
+            &ctx,
+        )
+        .unwrap();
+        assert_eq!(
+            address(&c, "x", &st),
+            ("https://example.com/jeu", "Scannez pour jouer")
+        );
+        assert!(act(&l, &mut st, "address", &serde_json::json!({"i": 5}), &ctx).is_err());
+    }
+
+    #[test]
     fn structure_counts() {
         for v in [1usize, 2, 7, 10, 40] {
             for e in [Ecl::L, Ecl::M, Ecl::Q, Ecl::H] {
@@ -706,23 +920,26 @@ mod tests {
     #[test]
     fn logo_is_capped() {
         let s = structure(29, Ecl::M).unwrap();
-        let c = Config {
+        let mut c = Config {
             logo: Logo {
                 on: true,
                 size: 40,
-                ..Default::default()
+                src: "/assets/logo.png".into(),
             },
             ..Default::default()
         };
         let (pct, by) = logo_size(&c, Some(&s));
         assert!(pct <= 18 && !by.is_empty());
+        // No picture: nothing hidden.
+        c.logo.src.clear();
+        assert_eq!(logo_size(&c, Some(&s)).0, 0);
         let s = structure(33, Ecl::H).unwrap();
         let c = Config {
             ecl: Ecl::H,
             logo: Logo {
                 on: true,
                 size: 22,
-                ..Default::default()
+                src: "/assets/logo.png".into(),
             },
             ..Default::default()
         };

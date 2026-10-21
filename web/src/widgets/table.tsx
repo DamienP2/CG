@@ -3,14 +3,15 @@
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
 import { ChevronLeft, ChevronRight, Pause, Pencil, Play, RefreshCw, Table } from 'lucide-react';
+import { Dropdown } from '../ui/Dropdown';
 import { useEffect, useState } from 'react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { locale, t, tn } from '../i18n';
+import { locale, t, tc, tl, tn } from '../i18n';
 import { useTableEditor } from './table-editor-store';
 import { ColorField } from '../ui/fields';
-import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, OpRow, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
-import { cased, TextCell, tw, type CellText, type Overflow } from './table-text';
+import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useKeys, type Warning } from './kit';
+import { cased, OpField, OpLine, TextCell, tw, useLiveTime, type CellText, type Overflow } from './table-text';
 import { textWidth } from '../engine/textFit';
 
 export interface Col {
@@ -69,7 +70,8 @@ export interface Config {
   headerColOn?: boolean;
   headerCol?: string;
   showRank?: boolean;
-  merges?: { on?: boolean; row?: number; col?: number; span?: number; text?: string }[];
+  /** `key`: the row's key (its team), followed when the order changes; without it `row` is the rank. */
+  merges?: { on?: boolean; key?: string; row?: number; col?: number; span?: number; text?: string }[];
   widthMode?: 'auto' | 'fixed' | 'percent';
   rowH?: number;
   pad?: number;
@@ -79,7 +81,7 @@ export interface Config {
   minSize?: number;
   minSqueeze?: number;
   st?: { header?: Pair; hcol?: Pair; odd?: Pair; even?: Pair; hl?: Pair; top3?: Pair; tableBg?: string };
-  cell?: { on?: boolean; row?: number; col?: number; bg?: string; color?: string };
+  cell?: { on?: boolean; key?: string; row?: number; col?: number; bg?: string; color?: string };
   borders?: { outer?: Line; innerH?: Line; innerV?: Line };
   cf?: { neg?: boolean; negColor?: string; top3?: boolean; top3Color?: string; topN?: number; topBar?: boolean; hlBar?: boolean; hlBarColor?: string };
   sortCol?: string;
@@ -89,6 +91,11 @@ export interface Config {
   pageMode?: 'pages' | 'scroll';
   scrollSpeed?: number;
   indicator?: boolean;
+  /** Pages turn by themselves from the take, every `autoSecs` seconds. */
+  autoPages?: boolean;
+  autoSecs?: number;
+  /** Key of the row highlighted from the take ('' = none). */
+  hlKey?: string;
   cascade?: { on?: boolean; style?: 'slide' | 'fade' | 'flip'; offset?: number; dur?: number };
   emptyMode?: 'message' | 'hide';
   emptyText?: string;
@@ -127,6 +134,8 @@ export interface Pic {
 
 /** Mirrors `State` of the Rust module. */
 export interface State {
+  /** The operator acted (else the Designer's auto pages and highlighted row apply from the take). */
+  ctl?: boolean;
   page?: number;
   pageAt?: number;
   auto?: boolean;
@@ -147,12 +156,13 @@ export function cfg(c: Config) {
     grid: c.grid ?? [],
     link: c.link ?? '',
     cols: (c.cols ?? []).map((x) => ({ ...DCOL, ...x })),
-    title: { on: false, text: 'Standings', ...c.title },
+    // '' = « Classement » / "Standings", in the project's language.
+    title: { on: false, text: '', ...c.title },
     headerRow: c.headerRow ?? true,
     headerColOn: c.headerColOn ?? false,
     headerCol: c.headerCol ?? '',
     showRank: c.showRank ?? false,
-    merges: (c.merges ?? []).map((g) => ({ on: true, row: 1, col: 1, span: 2, text: '', ...g })),
+    merges: (c.merges ?? []).map((g) => ({ on: true, key: '', row: 1, col: 1, span: 2, text: '', ...g })),
     widthMode: c.widthMode ?? 'auto',
     rowH: c.rowH ?? 66,
     pad: c.pad ?? 18,
@@ -162,7 +172,7 @@ export function cfg(c: Config) {
     minSize: c.minSize ?? 20,
     minSqueeze: c.minSqueeze ?? 70,
     st: { header: { ...DST.header, ...st.header }, hcol: { ...DST.hcol, ...st.hcol }, odd: { ...DST.odd, ...st.odd }, even: { ...DST.even, ...st.even }, hl: { ...DST.hl, ...st.hl }, top3: { ...DST.top3, ...st.top3 }, tableBg: st.tableBg ?? DST.tableBg },
-    cell: { on: false, row: 1, col: 1, bg: '#facc15', color: '#111111', ...c.cell },
+    cell: { on: false, key: '', row: 1, col: 1, bg: '#facc15', color: '#111111', ...c.cell },
     borders: { outer: { on: false, width: 4, color: '#ffffff', ...b.outer }, innerH: { on: true, width: 1, color: '#ffffff14', ...b.innerH }, innerV: { on: false, width: 1, color: '#ffffff1f', ...b.innerV } },
     cf: { neg: true, negColor: '#ff6b81', top3: false, top3Color: '#facc15', topN: 3, topBar: true, hlBar: true, hlBarColor: '#ffffff', ...c.cf },
     sortCol: c.sortCol ?? '',
@@ -172,9 +182,12 @@ export function cfg(c: Config) {
     pageMode: c.pageMode ?? 'pages',
     scrollSpeed: c.scrollSpeed ?? 50,
     indicator: c.indicator ?? true,
+    autoPages: c.autoPages ?? false,
+    autoSecs: c.autoSecs ?? 6,
+    hlKey: c.hlKey ?? '',
     cascade: { on: true, style: 'slide' as const, offset: 70, dur: 450, ...c.cascade },
     emptyMode: c.emptyMode ?? 'message',
-    emptyText: c.emptyText ?? 'No data yet',
+    emptyText: c.emptyText ?? '',
     txt: { title: c.txt?.title ?? {}, header: c.txt?.header ?? {}, rows: c.txt?.rows ?? {}, rank: c.txt?.rank },
     kw: { odd: 0, even: 0, hl: 0, top3: 0, ...c.kw },
     titleH: c.titleH && c.titleH > 0 ? c.titleH : 64,
@@ -327,8 +340,12 @@ export function cellText(c: MCol, row: MRow): string {
   const v = c.col.type === 'number' ? fmtNum(row.r[c.i] ?? '', c.col.fmt) : String(row.r[c.i] ?? '');
   return c.col.type === 'image' || !v.trim() ? v : `${c.col.prefix ?? ''}${v}${c.col.suffix ?? ''}`;
 }
+/** A setting aimed at a row: by its key (it follows the team), else by rank (mirrors aims). */
+export const aims = (key: string | undefined, rank: number, row: MRow) => (key?.trim() ? row.key === key.trim() : +rank === row.rank);
+/** The single cell styled, when it is in this row: its column, 0-based (mirrors cell_in). */
+export const cellIn = (k: K, row: MRow) => (k.cell.on && aims(k.cell.key, k.cell.row, row) ? Math.max(1, +k.cell.col) - 1 : -1);
 function mergeOf(k: K, m: M, row: MRow): [number, number, string] | undefined {
-  const g = k.merges.find((x) => x.on && +x.row === row.rank);
+  const g = k.merges.find((x) => x.on && aims(x.key, x.row, row));
   if (!g) return;
   const j = Math.max(1, +g.col) - 1;
   if (j >= m.cols.length) return;
@@ -336,6 +353,15 @@ function mergeOf(k: K, m: M, row: MRow): [number, number, string] | undefined {
 }
 export const headerH = (k: K) => (k.headH > 0 ? k.headH : Math.round(k.rowH * 0.85));
 export const titleH = (k: K) => k.titleH;
+
+/** The state on air: the operator's once he acted, else the Designer's auto pages (from the take) and highlighted row (mirrors live). */
+export function live(k: K, st: State, now: number, ageSecs: number): State {
+  if (st.ctl) return st;
+  const s = { ...st };
+  if (!s.hl) s.hl = k.hlKey.trim();
+  if (k.autoPages && !s.auto && k.pageMode === 'pages' && k.autoSecs > 0) Object.assign(s, { auto: true, interval: clamp(k.autoSecs, 0.5, 3600), autoAt: Math.max(1, now - Math.trunc(Math.max(0, ageSecs) * 1000)) });
+  return s;
+}
 
 /** Page shown at `now` and when it appeared (0 = since on air), mirrors current_page. */
 export function currentPage(st: State, pages: number, now: number): [number, number] {
@@ -427,10 +453,14 @@ export function Picture({ v, cx, cy, h }: { v: string; cx: number; cy: number; h
 }
 
 // ------------------------------------------------------------- render --
-export function TableRender({ layer, r, w, data, time, state }: { layer: Config; r: Record<string, unknown>; w: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
+/** The texts the table writes itself, in the project's language, unless the Designer typed its own (mirrors title_or / empty_or). */
+export const titleOr = (k: K, lang?: string) => k.title.text.trim() || tl(lang, 'Standings');
+export const emptyOr = (k: K, lang?: string) => k.emptyText.trim() || tl(lang, 'No data yet');
+
+export function TableRender({ layer, r, w, data, time, state, lang }: { layer: Config; r: Record<string, unknown>; w: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown; lang?: string }) {
   const k = cfg(layer);
-  const st = (state ?? {}) as State;
   const m = model(k, data);
+  const st = live(k, (state ?? {}) as State, time.nowMs, time.ageSecs);
   const size = Math.max(1, vnum(r.fontSize as number));
   if (!m.rows.length && k.emptyMode === 'hide') return null;
   const pages = pageCount(k, m);
@@ -468,7 +498,7 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
   let yy = 0;
   if (k.title.on) {
     out.push(<div key="title" style={{ position: 'absolute', left: 0, top: 0, width: w, height: TH, background: k.titleBg.trim() ? hex(k.titleBg) : `linear-gradient(90deg,${hex(k.titleFrom)},${hex(k.titleTo)})` }} />);
-    out.push(<TextCell key="tt" t={titleText(k)} text={k.title.text} align={k.titleAlign} box={[k.titlePad, 0, w - 2 * k.titlePad, TH]} color={hex(k.titleColor)} />);
+    out.push(<TextCell key="tt" t={titleText(k)} text={titleOr(k, lang)} align={k.titleAlign} box={[k.titlePad, 0, w - 2 * k.titlePad, TH]} color={hex(k.titleColor)} />);
     yy += TH + gap;
   }
   if (showHead) {
@@ -484,7 +514,7 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
   if (!m.rows.length) {
     out.push(
       <div key="empty" style={{ position: 'absolute', left: 0, top: y0, width: w, height: rh * 2, background: hex(k.st.odd.bg), opacity: 0.85 }}>
-        <TextCell t={rowsT} text={k.emptyText} align="center" box={[pad, 0, w - 2 * pad, rh * 2]} color={hex(k.st.odd.color)} />
+        <TextCell t={rowsT} text={emptyOr(k, lang)} align="center" box={[pad, 0, w - 2 * pad, rh * 2]} color={hex(k.st.odd.color)} />
       </div>,
     );
   } else {
@@ -539,7 +569,7 @@ export function TableRender({ layer, r, w, data, time, state }: { layer: Config;
         if (type === 'number' && c.i !== undefined && k.cf.neg && !hl && (num(row.r[c.i] ?? '') ?? 0) < 0) color = k.cf.negColor;
         if (c.i === undefined && top3) color = k.cf.top3Color;
         if (!hl) ((color = cellOf(c.col.colorFrom) ?? color), (bg = cellOf(c.col.bgFrom) ?? bg));
-        if (k.cell.on && +k.cell.row === row.rank && +k.cell.col === j + 1) ((bg = k.cell.bg), (color = k.cell.color));
+        if (cellIn(k, row) === j) ((bg = k.cell.bg), (color = k.cell.color));
         const x = xs[j];
         cells.push(<div key={`b${j}`} style={{ position: 'absolute', left: x, top: 0, width: cw, height: rh, background: hex(bg), borderRadius: k.radius }} />);
         cells.push(<span key={`l${j}`}>{lines(i > 0 || showHead || k.title.on, j > 0, x, 0, cw, rh, `c${j}`)}</span>);
@@ -624,7 +654,7 @@ function warningsOf(layer: TL, data: Data, state: unknown, W: number, H: number)
   if (m.missing.length) out.push({ level: 'error', text: tn(m.missing.length, 'Mapped column not in the data: {names} — not shown.', 'Mapped columns not in the data: {names} — not shown.', { names: m.missing.join(', ') }) });
   if (!m.rows.length) out.push({ level: 'info', text: k.emptyMode === 'hide' ? t('No data: the table is hidden.') : t('No data: the fallback message is on air.'), op: true });
   const pages = pageCount(k, m);
-  const [page] = currentPage((state ?? {}) as State, pages, Date.now());
+  const [page] = currentPage(live(k, (state ?? {}) as State, Date.now(), 0), pages, Date.now());
   if (pages > 1 && k.pageMode === 'pages') out.push({ level: 'info', text: t('{rows} rows for {per} per page: automatic pagination, page {page}/{pages}.', { rows: m.rows.length, per: k.perPage, page: page + 1, pages }) });
   const size = sizeOf(layer);
   const ws = widths(k, m, W, size);
@@ -660,6 +690,9 @@ export default defineWidget({
     borders: { innerH: { on: false, width: 1, color: '#ffffff14' } },
     cf: { neg: false },
     cascade: { on: false },
+    // A standings table turns its pages by itself from the In.
+    autoPages: true,
+    autoSecs: 6,
     props: { width: 1200, height: 400, fontSize: 30 },
   }),
   ownsLook: true,
@@ -668,78 +701,20 @@ export default defineWidget({
     const k = cfg(l);
     return k.cascade.on || k.pageMode === 'scroll';
   },
-  Render: ({ layer, r, w, data, time, state }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} />,
+  Render: ({ layer, r, w, data, time, state, lang }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} lang={lang} />,
   Inspector: ({ layer }) => <TableCard layer={layer as unknown as TL} />,
   quiet: true,
-  Operator: ({ layer, state, data, act, time }) => {
-    const now = useFrame() + (time.nowMs - Date.now());
-    const k = cfg(layer);
-    const st = (state ?? {}) as State;
-    const m = model(k, data);
-    const pages = pageCount(k, m);
-    const [page] = currentPage(st, pages, now);
-    const scroll = k.pageMode === 'scroll';
-    useKeys({ ArrowLeft: () => !scroll && act('prev'), ArrowRight: () => !scroll && act('next') });
-    const a = page * k.perPage + 1;
-    const b = Math.min(m.rows.length, (page + 1) * k.perPage);
-    const left = nextIn(st, now);
-    return (
-      <>
-        {!m.rows.length ? (
-          <Readout sub={k.emptyMode === 'hide' ? t('table hidden') : t('fallback message on air')}>{t('NO DATA')}</Readout>
-        ) : scroll ? (
-          <Readout sub={tn(m.rows.length, '{n} row · {speed} px/s continuous', '{n} rows · {speed} px/s continuous', { speed: k.scrollSpeed })}>{t('SCROLL')}</Readout>
-        ) : (
-          <Readout sub={t('rows {a}–{b} of {n}', { a, b, n: m.rows.length })}>{t('PAGE {page}/{pages}', { page: page + 1, pages })}</Readout>
-        )}
-        <Btns
-          list={[
-            { label: t('Previous'), cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
-            { label: t('Next'), cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
-          ]}
-        />
-        {!scroll && pages > 1 && <Btns label={t('Go to page')} list={Array.from({ length: pages }, (_, i) => ({ label: String(i + 1), cls: i === page ? 'violet' : 'ghost', title: t('Go to page {n}', { n: i + 1 }), onClick: () => act('go', { page: i + 1 }) }))} />}
-        <Toggle label={t('Auto pages')} value={!!st.auto} text={t('Turn pages automatically')} disabled={scroll ? t('Not in continuous scroll') : pages < 2 ? t('One page only') : undefined} onChange={(v) => act(v ? 'auto' : 'stop', v ? { seconds: st.interval || 6 } : undefined)} />
-        {st.auto && !scroll && (
-          <>
-            <Range label={t('Interval')} value={st.interval ?? 6} min={2} max={30} unit=" s" onChange={(v) => act('auto', { seconds: v })} />
-            <Btns list={[st.pausedAt ? { label: t('▶ Resume'), cls: 'green', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'amber', onClick: () => act('pause') }]} />
-            {left !== undefined && (
-              <Note>{st.pausedAt ? t('❚❚ Paused {s} s', { s: secs(left) }) : t('▶ Next page in {s} s', { s: secs(left) })}</Note>
-            )}
-          </>
-        )}
-        <Select label={t('Highlight row')} value={st.hl ?? ''} options={[['', t('— none —')], ...m.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])]} onChange={(v) => act('highlight', { row: v })} />
-        {st.hl && <Btns list={[{ label: t('Clear highlight'), cls: 'ghost', onClick: () => act('highlight', { row: '' }) }]} />}
-        {k.link.trim() && <Btns list={[{ label: t('Reload data'), cls: 'ghost', onClick: () => act('reload') }]} />}
-        <Note>{k.link.trim() ? t('Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.') : t('Source: manual grid.')}</Note>
-      </>
-    );
+  Operator: (p) => <TableOperator {...p} />,
+  Compact: (p) => <TableCompact {...p} />,
+  More: (p) => <TableMore {...p} />,
+  hasMore: (l, data) => {
+    const k = cfg(l);
+    return k.pageMode === 'pages' && pageCount(k, model(k, data)) > 1;
   },
-  // One row: the page, previous / next, auto pages paused or not, reload.
-  Compact: ({ layer, state, data, act, time }) => {
-    const now = useFrame() + (time.nowMs - Date.now());
-    const k = cfg(layer);
-    const st = (state ?? {}) as State;
-    const m = model(k, data);
-    const pages = pageCount(k, m);
-    const [page] = currentPage(st, pages, now);
-    const scroll = k.pageMode === 'scroll';
-    return (
-      <OpRow
-        value={scroll || !m.rows.length ? undefined : `${page + 1}/${pages}`}
-        list={[
-          !scroll && { icon: ChevronLeft, title: t('Previous'), disabled: pages < 2, onClick: () => act('prev') },
-          !scroll && { icon: ChevronRight, title: t('Next'), disabled: pages < 2, onClick: () => act('next') },
-          !scroll && st.auto && (st.pausedAt ? { icon: Play, title: t('Resume'), tone: 'green', onClick: () => act('resume') } : { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') }),
-          !!k.link.trim() && { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') },
-        ]}
-      />
-    );
-  },
+  // Pages to turn, a row to highlight or data to reload.
   controls: (l, data) => {
     const k = cfg(l);
-    return !!k.link.trim() || (k.pageMode !== 'scroll' && pageCount(k, model(k, data)) > 1);
+    return !!k.link.trim() || model(k, data).rows.length > 0;
   },
   Overlay: ({ layer, scale, edit }) => {
     const k = cfg(layer);
@@ -748,6 +723,98 @@ export default defineWidget({
   },
   warnings: (layer, { data, state, r }) => warningsOf(layer as unknown as TL, data, state, vnum(r?.width ?? (layer.props.width as number) ?? 0), vnum(r?.height ?? (layer.props.height as number) ?? 0)),
 });
+
+type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } };
+
+/** The table on air now (the Designer's auto pages and highlight until the operator acts). */
+function useTable({ layer, state, data, time }: OpP) {
+  const { now, age } = useLiveTime(time);
+  const k = cfg(layer);
+  const m = model(k, data);
+  const st = live(k, (state ?? {}) as State, now, age);
+  const pages = pageCount(k, m);
+  const [page] = currentPage(st, pages, now);
+  return { k, m, st, pages, page, now, scroll: k.pageMode === 'scroll' };
+}
+
+/** The highlighted row, chosen among the rows (their key). */
+function HlPick({ m, value, onChange }: { m: M; value: string; onChange: (v: string) => void }) {
+  return (
+    <span className="dd-cell" title={t('Highlight row')} style={{ flex: '0 0 130px', width: 130 }}>
+      <Dropdown value={value} options={[{ value: '', label: '—' }, ...m.rows.map((r) => ({ value: r.key, label: `${r.rank}. ${r.key}` }))]} onChange={onChange} />
+    </span>
+  );
+}
+
+/** One row: the page, previous / next, auto pages, the highlighted row, reload. */
+function TableCompact(p: OpP) {
+  const { act } = p;
+  const { k, m, st, pages, page, scroll } = useTable(p);
+  const turns = !scroll && pages > 1;
+  return (
+    <OpLine
+      value={scroll || !m.rows.length ? undefined : `${page + 1}/${pages}`}
+      list={[
+        !scroll && { icon: ChevronLeft, title: t('Previous'), disabled: pages < 2, onClick: () => act('prev') },
+        !scroll && { icon: ChevronRight, title: t('Next'), disabled: pages < 2, onClick: () => act('next') },
+        turns && (st.auto && !st.pausedAt ? { icon: Pause, title: t('Pause auto pages'), tone: 'amber' as const, onClick: () => act('pause') } : st.auto ? { icon: Play, title: tc('action', 'Resume'), tone: 'green' as const, onClick: () => act('resume') } : { icon: Play, title: t('Auto pages'), onClick: () => act('auto', { seconds: st.interval || k.autoSecs || 6 }) }),
+      ]}
+      field={m.rows.length ? <HlPick m={m} value={st.hl ?? ''} onChange={(v) => act('highlight', { row: v })} /> : undefined}
+      after={[!!k.link.trim() && { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') }]}
+    />
+  );
+}
+
+/** Under ⋯: go to a page. */
+function TableMore(p: OpP) {
+  const { act } = p;
+  const { pages, page, scroll } = useTable(p);
+  if (scroll || pages < 2) return null;
+  return (
+    <div className="wk-oprow">
+      <OpField width={44} title={t('Go to page')} value={String(page + 1)} onSubmit={(v) => act('go', { page: v })} />
+    </div>
+  );
+}
+
+function TableOperator(p: OpP) {
+  const { act } = p;
+  const { k, m, st, pages, page, now, scroll } = useTable(p);
+  useKeys({ ArrowLeft: () => !scroll && act('prev'), ArrowRight: () => !scroll && act('next') });
+  const a = page * k.perPage + 1;
+  const b = Math.min(m.rows.length, (page + 1) * k.perPage);
+  const left = nextIn(st, now);
+  return (
+    <>
+      {!m.rows.length ? (
+        <Readout sub={k.emptyMode === 'hide' ? t('table hidden') : t('fallback message on air')}>{t('NO DATA')}</Readout>
+      ) : scroll ? (
+        <Readout sub={tn(m.rows.length, '{n} row · {speed} px/s continuous', '{n} rows · {speed} px/s continuous', { speed: k.scrollSpeed })}>{t('SCROLL')}</Readout>
+      ) : (
+        <Readout sub={t('rows {a}–{b} of {n}', { a, b, n: m.rows.length })}>{t('PAGE {page}/{pages}', { page: page + 1, pages })}</Readout>
+      )}
+      <Btns
+        list={[
+          { label: t('Previous'), cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
+          { label: t('Next'), cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
+        ]}
+      />
+      {!scroll && pages > 1 && <Btns label={t('Go to page')} list={Array.from({ length: pages }, (_, i) => ({ label: String(i + 1), cls: i === page ? 'violet' : 'ghost', title: t('Go to page {n}', { n: i + 1 }), onClick: () => act('go', { page: i + 1 }) }))} />}
+      <Toggle label={t('Auto pages')} value={!!st.auto} text={t('Turn pages automatically')} disabled={scroll ? t('Not in continuous scroll') : pages < 2 ? t('One page only') : undefined} onChange={(v) => act(v ? 'auto' : 'stop', v ? { seconds: st.interval || k.autoSecs || 6 } : undefined)} />
+      {st.auto && !scroll && (
+        <>
+          <Range label={t('Interval')} value={st.interval ?? 6} min={2} max={30} unit=" s" onChange={(v) => act('auto', { seconds: v })} />
+          <Btns list={[st.pausedAt ? { label: t('▶ Resume'), cls: 'green', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'amber', onClick: () => act('pause') }]} />
+          {left !== undefined && <Note>{st.pausedAt ? t('❚❚ Paused {s} s', { s: secs(left) }) : t('▶ Next page in {s} s', { s: secs(left) })}</Note>}
+        </>
+      )}
+      <Select label={t('Highlight row')} value={st.hl ?? ''} options={[['', t('— none —')], ...m.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])]} onChange={(v) => act('highlight', { row: v })} />
+      {st.hl && <Btns list={[{ label: t('Clear highlight'), cls: 'ghost', onClick: () => act('highlight', { row: '' }) }]} />}
+      {k.link.trim() && <Btns list={[{ label: t('Reload data'), cls: 'ghost', onClick: () => act('reload') }]} />}
+      <Note>{k.link.trim() ? t('Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.') : t('Source: manual grid.')}</Note>
+    </>
+  );
+}
 
 export function ColorPickRow({ label, path, value }: { label: string; path: string; value: string }) {
   const b = useBound();

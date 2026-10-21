@@ -4,6 +4,7 @@ import { api, useApp } from '../store';
 import { defaultData } from '../engine/evaluate';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
+import { KeyScope, MoreToggle } from '../widgets/kit';
 import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type Template } from '../engine/types';
 import { datasetUse } from './DataSets';
 import { exposedFields, type ExposedLayer } from './Exposed';
@@ -146,8 +147,18 @@ export function controlClock(run: PreviewRun, l: Layer, control: 'toggle' | 'res
   return { ...run, clocks: { ...run.clocks, [l.id]: c } };
 }
 
-/** The controls of one widget, driving the preview only. */
-export function PreviewControls({ layer, run, setRun, data, fps, ageSecs }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number }) {
+/** The widget has advanced controls (More) to unfold under its compact row with these values. */
+export function hasMore(l: Layer, data: Record<string, string>, state: unknown): boolean {
+  const def = widgetOf(l.type);
+  return !!def?.More && (def.hasMore ? def.hasMore(l as never, data, state) : true);
+}
+
+/**
+ * The controls of one widget, driving the preview only: its compact row (with the ⋯ of its More
+ * controls: `more` open or not, `onMore` toggles), or its More controls (`show="more"`, in the bar
+ * the Operator puts under it).
+ */
+export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, lang, show = 'compact', more, onMore }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; lang?: string; show?: 'compact' | 'more'; more?: boolean; onMore?: (open: boolean) => void }) {
   const def = widgetOf(layer.type);
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
@@ -173,10 +184,23 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs }: { la
         toast((e as Error).message, 'error');
       }
     };
+    const state = run.widgets[layer.id];
+    const time = { nowMs: Date.now() + offset, ageSecs: ageSecs(), defaultTz: tz, fps, lang };
+    const More = def.More;
+    const withMore = !!More && hasMore(layer, data, state);
+    // The preview's controls never take the keyboard (only the selected widget on air does).
     return (
-      <div className="opx-pvctl">
-        <Compact layer={layer as never} state={run.widgets[layer.id]} data={data} act={act} time={{ nowMs: Date.now() + offset, ageSecs: ageSecs(), defaultTz: tz, fps }} />
-      </div>
+      <KeyScope.Provider value={false}>
+        <div className="opx-pvctl">
+          {show === 'more' ? (
+            More && <More layer={layer as never} state={state} data={data} act={act} time={time} lang={lang} />
+          ) : (
+            <MoreToggle.Provider value={withMore ? { open: !!more, toggle: () => onMore?.(!more) } : null}>
+              <Compact layer={layer as never} state={state} data={data} act={act} time={time} lang={lang} />
+            </MoreToggle.Provider>
+          )}
+        </div>
+      </KeyScope.Provider>
     );
   }
   const c = run.clocks[layer.id];
@@ -184,7 +208,7 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs }: { la
   const age = ageSecs() * fps;
   return (
     <div className="opx-pvctl clock">
-      <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => setRun((r) => controlClock(r, layer, 'toggle', age))}>
+      <button className={`opx-sq ${running ? 'amber' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => setRun((r) => controlClock(r, layer, 'toggle', age))}>
         {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
       </button>
       <button className="opx-sq" title={t('Back to the start')} onClick={() => setRun((r) => controlClock(r, layer, running ? 'restart' : 'reset', age))}>

@@ -393,9 +393,26 @@ pub fn check(data_dir: &Path) -> Result<Release> {
     res
 }
 
-/// The release file for this platform (see [`PACKAGES`]).
+/// The release file for this platform (see [`PACKAGES`]). A server without
+/// ffmpeg next to it takes the installer first: the update package carries
+/// the server alone, the installer brings ffmpeg too ([`add_ffmpeg`]).
 fn pick_package(assets: Vec<GhAsset>) -> Option<GhAsset> {
-    let rank = |a: &GhAsset| PACKAGES.iter().position(|p| a.name.ends_with(p));
+    let no_ffmpeg = exe_path()
+        .ok()
+        .and_then(|e| e.parent().map(|d| d.join("bin").join(FFMPEG)))
+        .is_some_and(|p| !p.exists());
+    pick_package_for(assets, no_ffmpeg)
+}
+
+fn pick_package_for(assets: Vec<GhAsset>, with_ffmpeg: bool) -> Option<GhAsset> {
+    let rank = |a: &GhAsset| {
+        let r = PACKAGES.iter().position(|p| a.name.ends_with(p))?;
+        Some(if with_ffmpeg && r == 0 {
+            PACKAGES.len()
+        } else {
+            r
+        })
+    };
     assets
         .into_iter()
         .filter_map(|a| Some((rank(&a)?, a)))
@@ -1017,12 +1034,14 @@ mod tests {
             "Strata-9.9.9-macos-x86_64.tar.gz",
             "Strata-9.9.9-windows-x86_64.zip",
         ];
-        let assets = names
-            .iter()
-            .enumerate()
-            .map(|(i, n)| asset(i as u64, n))
-            .collect();
-        let picked = pick_package(assets).map(|a| a.name);
+        let all = || {
+            names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| asset(i as u64, n))
+                .collect::<Vec<_>>()
+        };
+        let picked = pick_package_for(all(), false).map(|a| a.name);
         // The update package of this platform, the small one.
         assert_eq!(
             picked,
@@ -1038,20 +1057,30 @@ mod tests {
             .enumerate()
             .map(|(i, n)| asset(i as u64, n))
             .collect();
-        let picked = pick_package(no_update).map(|a| a.name);
+        let installer = pick_package_for(no_update, false).map(|a| a.name);
         if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
-            assert_eq!(picked.as_deref(), Some("Strata-9.9.9-ubuntu-x64.tar.gz"));
+            assert_eq!(installer.as_deref(), Some("Strata-9.9.9-ubuntu-x64.tar.gz"));
         } else if cfg!(target_os = "macos") {
-            assert_eq!(picked.as_deref(), Some("Strata-9.9.9-macos-universal.pkg"));
+            assert_eq!(
+                installer.as_deref(),
+                Some("Strata-9.9.9-macos-universal.pkg")
+            );
         } else if cfg!(windows) {
-            assert_eq!(picked.as_deref(), Some("Strata-9.9.9-windows-x64.msi"));
+            assert_eq!(installer.as_deref(), Some("Strata-9.9.9-windows-x64.msi"));
+        }
+        // A server without ffmpeg takes the installer, which brings it.
+        if PACKAGES.len() > 1 {
+            assert_eq!(pick_package_for(all(), true).map(|a| a.name), installer);
         }
         // An older release: its archive.
-        let old = vec![
-            asset(1, &format!("pulse-cg-9.9.8-{PLATFORM}.tar.gz")),
-            asset(2, &format!("pulse-cg-9.9.8-{PLATFORM}.zip")),
-        ];
-        assert!(pick_package(old).is_some());
+        let old = || {
+            vec![
+                asset(1, &format!("pulse-cg-9.9.8-{PLATFORM}.tar.gz")),
+                asset(2, &format!("pulse-cg-9.9.8-{PLATFORM}.zip")),
+            ]
+        };
+        assert!(pick_package_for(old(), false).is_some());
+        assert!(pick_package_for(old(), true).is_some());
     }
 
     #[test]

@@ -106,7 +106,8 @@ export interface State {
 export const DEF = {
   face: 'digital' as Face,
   analog: { seconds: true, smooth: false, ticks: 'minutes' as Ticks, numbers: false, face: '#0f1222e6', rim: '', hands: '', accent: '#ff3b5c' },
-  tabular: false,
+  // Digits that do not move: fixed-width figures, width of the widest value.
+  tabular: true,
   zeros: 'pad' as 'pad' | 'trim',
   hoursAuto: false,
   sep: ':',
@@ -114,7 +115,7 @@ export const DEF = {
   prefix: '',
   suffix: '',
   affix: { size: 30, color: '#a594ff', weight: 800, upper: true },
-  reserve: false,
+  reserve: true,
   guide: true,
   fit: false,
   plate: { on: false, color: '#140c2e', radius: 22, padX: 46, padY: 14, accent: true, accentColor: '#ff3b5c', shadow: true },
@@ -646,7 +647,8 @@ export function eff(l: ClockLayer, data: Data): Eff {
       manualStart: !!l.manualStart,
       format,
       zone,
-      start: c.startMode,
+      // « External » is gone: it behaved as Manual.
+      start: c.startMode === 'ext' ? 'manual' : c.startMode,
       roundUp: c.roundUp ?? true,
       atZero: c.atZero,
       cdTime: c.cdTarget === 'time',

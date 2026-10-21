@@ -9,6 +9,7 @@ use cg_output::ndi::NdiConfig;
 use cg_output::sdi::SdiConfig;
 use cg_output::st2110::St2110Config;
 use cg_output::stream::StreamConfig;
+use cg_render::slate::{Slate, SlateStyle};
 use serde::{Deserialize, Serialize};
 
 use crate::hardware::{FlowDirection, HardwareConfig};
@@ -114,6 +115,9 @@ pub struct Rendition {
     /// Still picture (`/assets/…`) its outputs show while no project is loaded.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub slate: String,
+    /// The design shown while no project is loaded (see [`slate_style`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slate_style: Option<SlateStyle>,
 }
 
 /// One independent output channel (a studio, a control room…): its own
@@ -140,6 +144,9 @@ pub struct ChannelConfig {
     /// Still picture (`/assets/…`) the main picture shows while no project is loaded.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub slate: String,
+    /// The design the main picture shows while no project is loaded (see [`slate_style`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slate_style: Option<SlateStyle>,
     /// Frames rendered ahead of when they are sent (each on its own thread):
     /// absorbs a slow frame now and then, at the cost of that much delay.
     #[serde(default = "default_render_ahead")]
@@ -157,6 +164,16 @@ fn default_render_ahead() -> u32 {
     2
 }
 
+/// The design a picture shows while no project is loaded. Not set (older
+/// settings): its still picture when it has one, else the first design.
+pub fn slate_style(style: Option<SlateStyle>, image: &str) -> SlateStyle {
+    style.unwrap_or(if image.trim().is_empty() {
+        SlateStyle::Aurora
+    } else {
+        SlateStyle::Custom
+    })
+}
+
 impl ChannelConfig {
     /// (rendition id, width, height, outputs): the main picture ("main")
     /// then the extra renditions.
@@ -170,15 +187,23 @@ impl ChannelConfig {
             .collect()
     }
 
-    /// The still picture of a picture of the channel ("" = none).
-    pub fn slate_of(&self, picture: &str) -> &str {
-        if picture == "main" {
-            return &self.slate;
-        }
-        self.renditions
-            .iter()
-            .find(|r| r.id == picture)
-            .map_or("", |r| r.slate.as_str())
+    /// What a picture of the channel shows while no project is loaded
+    /// (`None`: no such picture).
+    pub fn slate_of(&self, picture: &str) -> Option<Slate> {
+        let (width, height, image, style) = if picture == "main" {
+            (self.width, self.height, &self.slate, self.slate_style)
+        } else {
+            let r = self.renditions.iter().find(|r| r.id == picture)?;
+            (r.width, r.height, &r.slate, r.slate_style)
+        };
+        Some(Slate {
+            style: slate_style(style, image),
+            image: image.trim().to_string(),
+            channel: self.name.clone(),
+            width,
+            height,
+            rate: (self.frame_rate.num, self.frame_rate.den),
+        })
     }
 
     pub fn new(id: &str, name: &str) -> Self {
@@ -193,6 +218,7 @@ impl ChannelConfig {
             renditions: Vec::new(),
             location: String::new(),
             slate: String::new(),
+            slate_style: None,
             render_ahead: default_render_ahead(),
             clock: None,
             unwired: OutputsConfig::default(),
@@ -735,5 +761,32 @@ mod tests {
         }
         c.normalize();
         assert!(c.validate().unwrap_err().contains("used by two"));
+    }
+
+    #[test]
+    fn slates_default_to_the_first_design_or_the_picture_set() {
+        let ch: ChannelConfig = serde_json::from_str(
+            r#"{"id":"a","name":"Studio","width":1920,"height":1080,"frameRate":{"num":25,"den":1},
+            "renditions":[{"id":"v","name":"9:16","width":1080,"height":1920,"slate":"/assets/v.png"},
+            {"id":"s","name":"1:1","width":1080,"height":1080,"slate":"/assets/s.png","slateStyle":"lines"}]}"#,
+        )
+        .unwrap();
+        let main = ch.slate_of("main").unwrap();
+        assert_eq!(main.style, SlateStyle::Aurora);
+        assert_eq!(
+            (main.channel.as_str(), main.width, main.rate),
+            ("Studio", 1920, (25, 1))
+        );
+        let v = ch.slate_of("v").unwrap();
+        assert_eq!(
+            (v.style, v.image.as_str(), v.height),
+            (SlateStyle::Custom, "/assets/v.png", 1920)
+        );
+        assert_eq!(ch.slate_of("s").unwrap().style, SlateStyle::Lines);
+        assert!(ch.slate_of("nope").is_none());
+        // Saved as read: an unset design stays unset.
+        let json = serde_json::to_value(&ch).unwrap();
+        assert!(json.get("slateStyle").is_none());
+        assert_eq!(json["renditions"][1]["slateStyle"], "lines");
     }
 }

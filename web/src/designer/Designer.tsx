@@ -15,7 +15,7 @@ import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { TableEditor } from '../widgets/table-editor';
 import { exposeRows } from '../widgets/table-rows';
-import { GuidesMenu, SafeMenu, SplitButton, useGuidesView } from './Guides';
+import { GuidesMenu, SafeMenu, SplitButton, useGuidesView, ViewMenu } from './Guides';
 import { ProjectHistory, ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
@@ -417,6 +417,18 @@ export function Designer() {
     }
   }, [project, template, load]);
 
+  // The empty template of a new project, removed by the server at a publish: if it was the open one,
+  // the Designer opens another (an open template that is still there keeps its selection).
+  const starter = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!project) return;
+    const was = starter.current;
+    starter.current = project.starter;
+    if (!was || project.starter === was) return;
+    const all = designTemplates(project);
+    if (useDesigner.getState().base?.id === was && !all.some((x) => x.id === was)) load(all[0] ?? null);
+  }, [project, load]);
+
   if (!project) return <div className="loading">{t('Connecting…')}</div>;
 
   const add = (type: LayerType, patch?: Record<string, unknown>, name?: string) => {
@@ -484,6 +496,7 @@ export function Designer() {
           <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
           <GuidesMenu />
           <SafeMenu project={project} />
+          <ViewMenu />
           <button className="btn small bg-toggle" title={t('Stage background: {bg} (click to change)', { bg: t(BG_LABELS[background]) })} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
             <span className={`bg-swatch stage-frame bg-${background}`} />
           </button>

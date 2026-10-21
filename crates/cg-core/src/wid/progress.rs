@@ -150,6 +150,10 @@ pub struct Config {
     pub label_size: f32,
     pub label_color: String,
     pub easing: Easing,
+    /// Goal marker: its value (text, `{{key}}` allowed; empty = none), its label and colour.
+    pub goal: String,
+    pub goal_text: String,
+    pub goal_color: String,
 }
 
 impl Default for Config {
@@ -179,11 +183,15 @@ impl Default for Config {
             label_size: 30.0,
             label_color: "#ffffff".into(),
             easing: Easing::Out,
+            goal: String::new(),
+            goal_text: String::new(),
+            goal_color: "#ffd200".into(),
         }
     }
 }
 
-/// The value the operator set, and the transition towards it.
+/// The value the operator set, and the transition towards it. No value
+/// but a time: back to the data, from the value shown then.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct State {
@@ -237,6 +245,8 @@ pub struct Eff<'a> {
     pub base: f64,
     pub duration: f64,
     pub track: &'a str,
+    /// Goal value (None = no marker).
+    pub goal: Option<f64>,
 }
 
 /// The value of the widget a progress follows now, and its natural end (a
@@ -329,6 +339,11 @@ pub fn eff_with<'a>(
         },
         duration: *duration,
         track,
+        goal: if c.goal.trim().is_empty() {
+            None
+        } else {
+            parse_num(&interpolate_text(&c.goal, data))
+        },
     })
 }
 
@@ -361,16 +376,17 @@ impl Eff<'_> {
     pub fn shown(&self, st: &State, now: i64, age: f64) -> f64 {
         let d = self.duration.max(0.0);
         match st.value {
-            Some(v) => {
+            // A value set by the operator, or back to the data (from the value shown then).
+            v if v.is_some() || st.at != 0 => {
                 let k = if d <= 0.0 {
                     1.0
                 } else {
                     (now - st.at) as f64 / (d * 1000.0)
                 };
-                let (a, b) = (self.capped(st.from), self.capped(v));
+                let (a, b) = (self.capped(st.from), self.capped(v.unwrap_or(self.base)));
                 a + (b - a) * ease(self.c.easing, k)
             }
-            None => {
+            _ => {
                 let k = if d <= 0.0 { 1.0 } else { age / d };
                 let b = self.capped(self.base);
                 self.lo + (b - self.lo) * ease(self.c.easing, k)
@@ -404,10 +420,24 @@ impl Eff<'_> {
                 } else {
                     format!(" {}", self.c.unit)
                 };
-                format!("{} / {}{unit}", fmt_num(v, dec), fmt_num(self.hi, 0))
+                format!(
+                    "{} / {}{unit}",
+                    fmt_num(v, dec),
+                    fmt_num(self.hi, dec_of(self.hi))
+                )
             }
         }
     }
+}
+
+/// Decimals a number needs to show as typed (0–3): 100 → 0, 2.5 → 1.
+pub fn dec_of(v: f64) -> usize {
+    (0..3)
+        .find(|&d| {
+            let x = v * 10f64.powi(d as i32);
+            (x - x.round()).abs() < 1e-6
+        })
+        .unwrap_or(3)
 }
 
 /// "5 000.5": thousands with a space, `dec` decimals.
@@ -434,7 +464,9 @@ pub fn fmt_num(v: f64, dec: usize) -> String {
 }
 
 /// Actions: `set {value}` (number or text), `step {by}` (default: the
-/// step), `inc`, `dec`, `reset` (back to the min).
+/// step), `inc`, `dec`, `reset` (back to the min), `data` (back to the
+/// data: the layer's value, or the widget followed). Following a widget,
+/// `step` / `inc` / `dec` are refused and `reset` is `data`.
 pub fn act(
     layer: &Layer,
     st: &mut State,
@@ -443,6 +475,29 @@ pub fn act(
     ctx: &ActCtx,
 ) -> Result<(), String> {
     let e = eff(layer, ctx.data).ok_or("not a progress bar")?;
+    let follow = e.c.input == Input::Follow;
+    let op = if follow && op == "reset" { "data" } else { op };
+    if op == "data" {
+        // The followed value is not known here: the bar takes it back at once.
+        let from = if follow {
+            0.0
+        } else {
+            e.shown(st, ctx.now_ms, ctx.age_secs)
+        };
+        *st = if follow || st.value.is_none() {
+            State::default()
+        } else {
+            State {
+                value: None,
+                from,
+                at: ctx.now_ms,
+            }
+        };
+        return Ok(());
+    }
+    if follow && matches!(op, "step" | "inc" | "dec") {
+        return Err("The bar follows a timer or a counter: + / − are off".into());
+    }
     let cur = e.target(st);
     let next = match op {
         "set" => {
@@ -582,5 +637,53 @@ mod tests {
         assert_eq!(e.shown(&st, 1000 + 500, 0.0), 0.0);
         assert_eq!(fmt_num(5000.0, 0), "5 000");
         assert_eq!(fmt_num(12.345, 1), "12.3");
+    }
+
+    #[test]
+    fn back_to_the_data_and_follow() {
+        let l = layer(
+            r#"{"id":"a","name":"P","type":"progress","value":"{{v}}","max":"2.5","duration":1,"step":0.5,"label":"value","goal":"2","props":{}}"#,
+        );
+        let mut d = BTreeMap::new();
+        d.insert("v".to_string(), "1".to_string());
+        let ctx = ActCtx {
+            now_ms: 10_000,
+            age_secs: 10.0,
+            data: &d,
+        };
+        let mut st = State::default();
+        act(&l, &mut st, "inc", &serde_json::Value::Null, &ctx).unwrap();
+        assert_eq!(st.value, Some(1.5));
+        // An Update arrives: the bar keeps the operator's value until « Données ».
+        d.insert("v".to_string(), "2".to_string());
+        let e = eff(&l, &d).unwrap();
+        assert_eq!(e.shown(&st, 20_000, 20.0), 1.5);
+        let ctx = ActCtx {
+            now_ms: 20_000,
+            age_secs: 20.0,
+            data: &d,
+        };
+        act(&l, &mut st, "data", &serde_json::Value::Null, &ctx).unwrap();
+        assert_eq!(st.value, None);
+        // Tweens from 1.5 to the data's 2 over the duration.
+        let mid = e.shown(&st, 20_500, 20.5);
+        assert!(mid > 1.5 && mid < 2.0, "{mid}");
+        assert_eq!(e.shown(&st, 21_000, 21.0), 2.0);
+        // The max keeps its decimals; the goal is read.
+        assert_eq!(e.label(2.0, 0.8), "2 / 2.5");
+        assert_eq!(e.goal, Some(2.0));
+        assert_eq!(dec_of(100.0), 0);
+        assert_eq!(dec_of(2.25), 2);
+
+        let f = layer(
+            r#"{"id":"b","name":"P","type":"progress","value":"","max":"","input":"follow","follow":"cd","props":{}}"#,
+        );
+        let mut st = State::default();
+        assert!(act(&f, &mut st, "inc", &serde_json::Value::Null, &ctx).is_err());
+        act(&f, &mut st, "set", &serde_json::json!({"value": 3}), &ctx).unwrap();
+        assert_eq!(st.value, Some(3.0));
+        // Reset follows again.
+        act(&f, &mut st, "reset", &serde_json::Value::Null, &ctx).unwrap();
+        assert_eq!(st, State::default());
     }
 }

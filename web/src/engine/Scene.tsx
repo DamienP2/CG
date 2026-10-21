@@ -104,6 +104,9 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
     const p = (v: number) => `${Math.min(1, Math.max(0, v)) * 100}%`;
     style.clipPath = `inset(${p(ct)} ${p(cr)} ${p(cb)} ${p(cl)})`;
   }
+  // Drop shadow of the layer and its children, in its own space (cg-render draws the same); a Text has its own.
+  const shadow = layerShadow(layer, r);
+  if (shadow) style.filter = shadow;
   // The spec widgets draw everything inside their box (SpecWidget).
   if (widgetOf(layer.type)?.Render) return { style };
   const fill = cssColor(col(r.fill));
@@ -165,6 +168,14 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
       if (layer.type !== 'progress' && layer.type !== 'qrCode') style.overflow = 'hidden';
       return { style };
   }
+}
+
+/** The CSS filter of a layer's drop shadow (Layer.dropShadow), if it has one. */
+export function layerShadow(layer: Layer, r: Resolved): string | undefined {
+  if (!layer.dropShadow || layer.type === 'text') return undefined;
+  const c = col(r.shadowColor);
+  if (c[3] <= 0) return undefined;
+  return `drop-shadow(${num(r.shadowX)}px ${num(r.shadowY)}px ${Math.max(0, num(r.shadowBlur))}px ${cssColor(c)})`;
 }
 
 const hexColor = (s: string, fallback = 'transparent') => {
@@ -348,7 +359,7 @@ function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; f
   const Render = def.Render!;
   return (
     <Boundary resetKey={layer}>
-      <Render layer={layer as never} r={r} w={num(r.width)} h={num(r.height)} data={data} time={time} state={time.widgetState?.(layer.id)} frame={frame} hold={hold} fps={time.fps ?? 50} designer={interactive} />
+      <Render layer={layer as never} r={r} w={num(r.width)} h={num(r.height)} data={data} time={time} state={time.widgetState?.(layer.id)} frame={frame} hold={hold} fps={time.fps ?? 50} designer={interactive} lang={time.lang || 'fr'} />
     </Boundary>
   );
 }
@@ -368,13 +379,27 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
       {lines && (squeeze < 1 ? <div style={{ width: `${100 / squeeze}%`, transform: `scaleX(${squeeze})`, transformOrigin: '0 0' }}>{lines}</div> : lines)}
       {src && layer.type === 'image' && <img src={src} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, display: 'block' }} />}
       {widgetOf(layer.type)?.Render ? <SpecWidget layer={layer} frame={frame} data={data} hold={hold} interactive={interactive} /> : LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
-      {kids.map((k) => (
-        <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
-      ))}
+      {layer.type === 'group' && layer.lottie !== undefined ? (
+        <LottieKids group={layer} kids={kids} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
+      ) : (
+        kids.map((k) => <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />)
+      )}
       {interactive && layer.type === 'group' && layer.lottie !== undefined && !kids.length && <LottiePlaceholder />}
     </div>
   );
 });
+
+/** The layers of a Lottie group: at the group's own clock when the operator controls it (reads the time context so only it re-renders). */
+function LottieKids({ group, kids, childrenOf, frame, data, hold, interactive }: { group: Layer; kids: Layer[]; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
+  const f = W.lottieFrame(group, frame, hold, useContext(TimeContext));
+  return (
+    <>
+      {kids.map((k) => (
+        <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={f} data={data} hold={hold} interactive={interactive} />
+      ))}
+    </>
+  );
+}
 
 /** A Lottie layer with no file yet, in the Designer only (nothing goes on air). */
 function LottiePlaceholder() {

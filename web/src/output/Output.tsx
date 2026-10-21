@@ -29,12 +29,17 @@ export function Output({ channelId, rendition }: { channelId: string; rendition?
   const picture = channel.renditions.find((r) => r.id === rendition) ?? channel;
   const project = channel.projectId ? full[channel.projectId] : undefined;
   const scale = fixed ? 1 : Math.min(size.w / picture.width, size.h / picture.height);
+  // No project loaded: what the other outputs show (the server draws the
+  // built-in designs; a new address when the settings change).
+  const pictureId = picture === channel ? 'main' : rendition!;
+  const key = [channel.name, picture.width, picture.height, channel.frameRate.num, channel.frameRate.den, picture.slateStyle].join(' ');
+  const slate = channel.projectId ? '' : picture.slateStyle === 'custom' ? (picture.slate ?? '') : `/api/channels/${encodeURIComponent(channelId)}/slate.png?${new URLSearchParams({ picture: pictureId, v: key })}`;
   return (
     <div style={{ position: 'fixed', inset: 0, background: bg, overflow: 'hidden' }}>
       <Viewport width={picture.width} height={picture.height} scale={scale}>
         {project && <Program project={project} live={live[channelId]} width={picture.width} height={picture.height} />}
-        {/* No project loaded: the picture's still image, filling the frame (as on the other outputs). */}
-        {!channel.projectId && picture.slate && <img src={picture.slate} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
+        {/* Filling the frame, as on the other outputs. */}
+        {slate && <img src={slate} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
       </Viewport>
     </div>
   );

@@ -8,18 +8,21 @@
 // displayed. The operator's value holds until the source sends another one;
 // the freeze holds the display while the source keeps being read.
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Hash, Minus, Plus, Snowflake } from 'lucide-react';
+import { Hash, Minus, Plus, RotateCcw, Snowflake } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
-import { t } from '../i18n';
+import { OpField, OpLine, useLiveTime } from './table-text';
+import { t, tc } from '../i18n';
 
 export interface Config {
   min?: number | null;
   max?: number | null;
   step?: number;
+  /** More + buttons of the Operator ("2, 3": +2 and +3). */
+  extraSteps?: string;
   locale?: string;
   plus?: boolean;
   compact?: boolean;
@@ -63,6 +66,7 @@ const D: Required<Config> = {
   min: null,
   max: null,
   step: 1,
+  extraSteps: '',
   locale: 'fr-FR',
   plus: false,
   compact: false,
@@ -272,6 +276,13 @@ function source(p: Parts, data: Data): [string, number | null] {
   return [raw, v == null ? null : roundTo(cap(p.c, v)[0], p.fmt.decimals)];
 }
 const manual = (st: State, raw: string) => st.value != null && (!!st.frozen || st.srcSeen === raw);
+/** The extra steps ("2, 3; 5" → [2, 3, 5]), positive, at most 4 (mirrors extra_steps). */
+export const extraSteps = (c: K) =>
+  String(c.extraSteps ?? '')
+    .split(/[,; ]/)
+    .map((x) => parseNum(x.trim()))
+    .filter((v): v is number => v != null && v > 0 && Number.isFinite(v))
+    .slice(0, 4);
 
 interface Mem {
   target: number | null;
@@ -529,7 +540,7 @@ function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resol
     );
   return (
     <>
-      {c.plate && <div style={{ position: 'absolute', inset: 0, background: hex(c.plateColor), borderRadius: 6, boxShadow: `inset 0 -10px ${st.frozen ? '#38bdf8' : '#ff3b5c'}` }} />}
+      {c.plate && <div style={{ position: 'absolute', inset: 0, background: hex(c.plateColor), borderRadius: 6, boxShadow: 'inset 0 -10px #ff3b5c' }} />}
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', fontKerning: 'normal' }}>
         {prefix && (
           <At x={x0} b={affB} font={afont} size={asize} color={acol}>
@@ -608,41 +619,53 @@ function Flip({ from, to, text, k, active, x, baseline, asc: a, size, cellW, fon
 
 // ------------------------------------------------------------- operator --
 
-/** The Operator's compact row: the value shown, − / + one step, freeze. */
-function Compact({ layer, state, data, act, time }: { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const now = useFrame() + (time.nowMs - Date.now());
+type OpP = { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
+
+/** The Operator's compact row: the value shown, − / + one step, the extra steps, the value to set, freeze (a value from data). */
+function Compact({ layer, state, data, act, time }: OpP) {
+  const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
   const p = partsOf(layer);
-  const [v] = display(p, st, data, now, time.ageSecs, null);
-  const stepTxt = format({ ...p.fmt, plus: false, compact: false }, p.c.step);
+  const [v, anim] = display(p, st, data, now, age, null);
+  const plain = { ...p.fmt, plus: false, compact: false };
+  const stepTxt = format(plain, p.c.step);
+  const wired = /\{\{\w+\}\}/.test(layer.to);
   return (
-    <OpRow
-      value={v}
+    <OpLine
+      value={format(p.fmt, v)}
       list={[
         { icon: Minus, title: `− ${stepTxt}`, onClick: () => act('dec') },
         { icon: Plus, title: `+ ${stepTxt}`, tone: 'green', onClick: () => act('inc') },
-        { icon: Snowflake, title: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), tone: st.frozen ? 'violet' : undefined, onClick: () => act('freeze') },
+        ...extraSteps(p.c).map((x) => ({ icon: Plus, title: `+ ${format(plain, x)}`, tag: format(plain, x), tone: 'green' as const, onClick: () => act('inc', { by: x }) })),
       ]}
+      field={<OpField width={52} title={t('Set value')} value={format(plain, anim?.to ?? v)} onSubmit={(x) => act('set', { value: x })} />}
+      after={[wired && { icon: Snowflake, title: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), tone: st.frozen ? 'violet' : undefined, onClick: () => act('freeze') }]}
     />
   );
 }
 
+/** Under ⋯: back to the initial value. */
+function More({ layer, act, item }: OpP) {
+  return <OpRow list={[{ icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the initial value?', { name: layer.name }) : t('Back to the initial value?'), onClick: () => act('reset') }]} />;
+}
+
 function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const now = useFrame() + (time.nowMs - Date.now());
+  const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
   const p = partsOf(layer);
   const [input, setInput] = useState('');
-  const [v] = display(p, st, data, now, time.ageSecs, null);
+  const [v] = display(p, st, data, now, age, null);
   const [raw, src] = source(p, data);
   const wired = /\{\{\w+\}\}/.test(layer.to);
   const light = !wired ? '#6b7290' : src == null ? '#f59e0b' : '#22c55e';
   const stepTxt = format({ ...p.fmt, plus: false, compact: false }, p.c.step);
-  useKeys({ ArrowUp: () => act('inc'), ArrowDown: () => act('dec'), f: () => act('freeze') });
+  // ↑ / ↓ stay the rundown's.
+  useKeys({ '+': () => act('inc'), '-': () => act('dec'), f: () => wired && act('freeze') });
   const box: CSSProperties = { background: '#0d0f16', borderRadius: 8, padding: '8px 10px', minWidth: 0 };
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <div style={{ ...box, border: `1px solid ${st.frozen ? '#38bdf8' : '#ff3b5c'}` }}>
+        <div style={{ ...box, border: `1px solid ${st.frozen ? '#38bdf8' : '#ff3b5c'}` }} title={st.frozen ? t('Frozen in the control room only: nothing changes on air.') : undefined}>
           <div className="hint">{t('ON AIR')}{st.frozen && <b style={{ color: '#38bdf8' }}> · {t('FROZEN')}</b>}</div>
           <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: 22, fontWeight: 700 }}>{format(p.fmt, v)}</div>
         </div>
@@ -657,8 +680,9 @@ function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unk
       </div>
       <Btns
         list={[
-          { label: `− ${stepTxt}`, cls: 'huge', keyHint: 'Down', onClick: () => act('dec') },
-          { label: `+ ${stepTxt}`, cls: 'huge green', keyHint: 'Up', onClick: () => act('inc') },
+          { label: `− ${stepTxt}`, cls: 'huge', keyHint: '-', onClick: () => act('dec') },
+          { label: `+ ${stepTxt}`, cls: 'huge green', keyHint: '+', onClick: () => act('inc') },
+          ...extraSteps(p.c).map((x) => ({ label: `+ ${format({ ...p.fmt, plus: false, compact: false }, x)}`, cls: 'huge green', onClick: () => act('inc', { by: x }) })),
         ]}
       />
       <Row label={t('Set')}>
@@ -672,7 +696,8 @@ function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unk
       {input.trim() && parseNum(input) == null && <Msg level="warn">{t('“{value}” is not a number: it would be ignored.', { value: input })}</Msg>}
       <Btns
         list={[
-          { label: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), cls: st.frozen ? 'violet' : '', keyHint: 'F', onClick: () => act('freeze') },
+          // A value typed by hand changes only by hand: nothing to freeze.
+          wired && { label: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), cls: st.frozen ? 'violet' : '', keyHint: 'F', onClick: () => act('freeze') },
           { label: t('Reset'), cls: 'ghost', confirm: t('Back to the initial value?'), onClick: () => act('reset') },
         ]}
       />
@@ -696,7 +721,8 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
         <Text label={t('Suffix')} path="suffix" value="" />
         <Text label={t('Count from')} path="from" value="0" />
         <Num label={t('Intro')} path="duration" value={2} min={0} step={0.1} precision={1} unit="s" />
-        <Num label={t('Step + / −')} path="step" value={1} min={0} step={1} precision={3} />
+        <Num label={t('Step + / −')} path="step" value={1} min={0.001} step={1} precision={3} />
+        <Text label={t('Extra steps')} path="extraSteps" value="" placeholder="2, 3" />
         <Toggle label={t('Limits')} value={limits} onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
         {limits && (
           <>
@@ -733,7 +759,7 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
         {affixed && (
           <>
             <Num label={t('Affix size')} path="affixSize" value={c.affixSize} min={20} max={100} unit="%" />
-            <ColorPick expose="affixColor" exposeValue={c.affixColor || '#ffffff'} label={t('Affix color')} value={c.affixColor || '#ffffff'} onChange={(v) => set('affixColor', v)} />
+            <ColorPick label={t('Affix color')} path="affixColor" value="" none={t('Text colour')} />
             <Seg
               label={t('Affix weight')}
               path="affixWeight"
@@ -786,9 +812,9 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
         )}
         {c.colorMode === 'trend' && (
           <>
-            <ColorPick label={t('Up')} path="upColor" value={D.upColor} />
-            <ColorPick label={t('Down')} path="downColor" value={D.downColor} />
-            <Num label={t('Hold')} path="trendHold" value={c.trendHold} min={0} max={10} step={0.5} precision={1} unit="s" />
+            <ColorPick label={tc('trend', 'Up')} path="upColor" value={D.upColor} />
+            <ColorPick label={tc('trend', 'Down')} path="downColor" value={D.downColor} />
+            <Num label={tc('trend', 'Hold')} path="trendHold" value={c.trendHold} min={0} max={10} step={0.5} precision={1} unit="s" />
           </>
         )}
       </Section>
@@ -862,7 +888,8 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
-  Compact: ({ layer, state, data, act, time }) => <Compact layer={layer} state={state} data={data} act={act} time={time} />,
+  Compact: ({ layer, state, data, act, time, item }) => <Compact layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  More: ({ layer, state, data, act, time, item }) => <More layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   warnings: (layer, { data, state }) => {
     const out: Warning[] = [];
     const st = (state ?? {}) as State;

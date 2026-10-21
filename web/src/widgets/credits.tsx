@@ -2,15 +2,18 @@
 // logos, spaces) with an import from text, 1 / 2 / 3 columns, styles per level, speed from a total duration or
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
-import { useState } from 'react';
-import { Pause, Play, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronLast, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
-import { Area, Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
-import { FitLine, FONT_CSS, tw } from './table-text';
-import { t } from '../i18n';
+import { Dropdown } from '../ui/Dropdown';
+import { confirmDialog } from '../ui/dialogs';
+import { loadFonts, useFonts } from '../engine/fonts';
+import { Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Toggle, useBound, useKeys, type Warning } from './kit';
+import { familyCss, FitLine, FONT, OpField, OpLine, tw, useLiveTime } from './table-text';
+import { t, tc, tl } from '../i18n';
 
 type Kind = 'section' | 'line' | 'logo' | 'space';
 export interface Entry {
@@ -31,6 +34,8 @@ export interface Config {
   importText?: string;
   layout?: 'one' | 'two' | 'three';
   align?: 'left' | 'center' | 'right';
+  /** One font for the whole credits (the channel's), Inter by default. */
+  font?: string;
   gutter?: number;
   sectionGap?: number;
   lineGap?: number;
@@ -72,6 +77,7 @@ export function cfg(c: Config) {
     importText: c.importText ?? '',
     layout: c.layout ?? 'two',
     align: c.align ?? 'center',
+    font: c.font?.trim() || FONT,
     gutter: c.gutter ?? 40,
     sectionGap: c.sectionGap ?? 70,
     lineGap: c.lineGap ?? 10,
@@ -242,7 +248,7 @@ export function cards(bl: Block[], boxH: number): Card[] {
 }
 const styled = (s: St, t: string) => (s.upper ? t.toUpperCase() : t);
 const lsOf = (s: St) => (s.upper ? s.size * 0.06 : 0);
-const mw = (t: string, s: St) => tw(styled(s, t), s.size, s.weight, lsOf(s));
+const mw = (t: string, s: St, family: string) => tw(styled(s, t), s.size, s.weight, lsOf(s), family);
 const isAsset = (s: string) => s.startsWith('/') || s.includes('.');
 const IMG = new Map<string, number>();
 /** Width / height of a picture (loaded once; 3 until known). */
@@ -272,7 +278,7 @@ export function crawlItems(k: K, es: E[], h: number): [CItem[], number] {
     let it: Omit<CItem, 'x'>;
     if (e.kind === 'section') {
       if (out.length) gap = k.sectionGap * 2;
-      it = { body: { t: 'section', s: e.a }, w: mw(e.a, k.st.section), roleW: 0 };
+      it = { body: { t: 'section', s: e.a }, w: mw(e.a, k.st.section, k.font), roleW: 0 };
     } else if (e.kind === 'logo') {
       if (out.length) gap = k.sectionGap * 2;
       it = { body: { t: 'logo', s: e.a }, w: lh * ratioOf(e.a), roleW: 0 };
@@ -280,8 +286,8 @@ export function crawlItems(k: K, es: E[], h: number): [CItem[], number] {
       x += k.spaceH;
       continue;
     } else {
-      const rw = e.a ? mw(e.a, k.st.role) + 16 : 0;
-      it = { body: { t: 'lines', row: [[e.a, e.b]] }, w: rw + mw(e.b, k.st.name), roleW: rw };
+      const rw = e.a ? mw(e.a, k.st.role, k.font) + 16 : 0;
+      it = { body: { t: 'lines', row: [[e.a, e.b]] }, w: rw + mw(e.b, k.st.name, k.font), roleW: rw };
     }
     x += gap;
     out.push({ ...it, x });
@@ -353,15 +359,15 @@ function Logo({ src, x, y, h }: { src: string; x: number; y: number; h: number }
     </svg>
   );
 }
-function TextBox({ s, t, align, box, cut }: { s: St; t: string; align: 'left' | 'center' | 'right'; box: [number, number, number, number]; cut?: boolean }) {
+function TextBox({ s, t, align, box, cut, family }: { s: St; t: string; align: 'left' | 'center' | 'right'; box: [number, number, number, number]; cut?: boolean; family: string }) {
   if (!t.trim()) return null;
-  return <FitLine text={styled(s, t)} size={s.size} weight={s.weight} ls={lsOf(s)} align={align} box={box} color={hex(s.color, '#fff')} fit={cut ? { overflow: 'ellipsis', minSize: s.size, minSqueeze: 100 } : undefined} />;
+  return <FitLine text={styled(s, t)} size={s.size} weight={s.weight} ls={lsOf(s)} align={align} box={box} color={hex(s.color, '#fff')} family={family} fit={cut ? { overflow: 'ellipsis', minSize: s.size, minSqueeze: 100 } : undefined} />;
 }
 function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
   const { section: ss, role: rs, name: ns } = k.st;
   const al = k.align;
   if (b.body.t === 'space') return null;
-  if (b.body.t === 'section') return <TextBox s={ss} t={b.body.s} align={al} box={[0, y0, w, R(ss.size * 1.3)]} />;
+  if (b.body.t === 'section') return <TextBox family={k.font} s={ss} t={b.body.s} align={al} box={[0, y0, w, R(ss.size * 1.3)]} />;
   if (b.body.t === 'logo') {
     const lw = k.logoH * ratioOf(b.body.s);
     return <Logo src={b.body.s} x={al === 'left' ? 0 : al === 'center' ? (w - lw) / 2 : w - lw} y={y0} h={k.logoH} />;
@@ -373,8 +379,8 @@ function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
     const lw = w * split - k.gutter / 2;
     return (
       <>
-        <TextBox s={rs} t={role} align={al === 'left' ? 'left' : 'right'} box={[0, y0, lw, b.roleH]} cut />
-        <TextBox s={ns} t={name} align={al === 'right' ? 'right' : 'left'} box={[lw + k.gutter, y0, w - lw - k.gutter, b.roleH]} cut />
+        <TextBox family={k.font} s={rs} t={role} align={al === 'left' ? 'left' : 'right'} box={[0, y0, lw, b.roleH]} cut />
+        <TextBox family={k.font} s={ns} t={name} align={al === 'right' ? 'right' : 'left'} box={[lw + k.gutter, y0, w - lw - k.gutter, b.roleH]} cut />
       </>
     );
   }
@@ -385,8 +391,8 @@ function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
     <>
       {row.map(([role, name], j) => (
         <span key={j}>
-          {b.roleH > 0 && <TextBox s={rs} t={role} align={al} box={[j * (cw + k.gutter), y0, cw, b.roleH]} cut={three} />}
-          <TextBox s={ns} t={name} align={al} box={[j * (cw + k.gutter), y0 + b.roleH, cw, nh]} cut={three} />
+          {b.roleH > 0 && <TextBox family={k.font} s={rs} t={role} align={al} box={[j * (cw + k.gutter), y0, cw, b.roleH]} cut={three} />}
+          <TextBox family={k.font} s={ns} t={name} align={al} box={[j * (cw + k.gutter), y0 + b.roleH, cw, nh]} cut={three} />
         </span>
       ))}
     </>
@@ -417,14 +423,14 @@ function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: n
     g.items.forEach((it, i) => {
       const x = off + it.x;
       if (x > w || x + it.w < 0) return;
-      if (it.body.t === 'section') out.push(<TextBox key={i} s={k.st.section} t={it.body.s} align="left" box={[x, 0, it.w + 4, h]} />);
+      if (it.body.t === 'section') out.push(<TextBox family={k.font} key={i} s={k.st.section} t={it.body.s} align="left" box={[x, 0, it.w + 4, h]} />);
       else if (it.body.t === 'logo') out.push(<Logo key={i} src={it.body.s} x={x} y={(h - lh) / 2} h={lh} />);
       else if (it.body.t === 'lines') {
         const [role, name] = it.body.row[0];
         out.push(
           <span key={i}>
-            {role && <TextBox s={k.st.role} t={role} align="left" box={[x, 0, it.roleW, h]} />}
-            <TextBox s={k.st.name} t={name} align="left" box={[x + it.roleW, 0, it.w - it.roleW + 4, h]} />
+            {role && <TextBox family={k.font} s={k.st.role} t={role} align="left" box={[x, 0, it.roleW, h]} />}
+            <TextBox family={k.font} s={k.st.name} t={name} align="left" box={[x + it.roleW, 0, it.w - it.roleW + 4, h]} />
           </span>,
         );
       }
@@ -450,7 +456,7 @@ function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: n
     });
   }
   return (
-    <div style={{ position: 'absolute', inset: 0, fontFamily: FONT_CSS }}>
+    <div style={{ position: 'absolute', inset: 0, fontFamily: familyCss(k.font) }}>
       {k.panel && <div style={{ position: 'absolute', left: 0, width: w, ...(vert ? { top: 0, height: h } : { top: R((h - band) / 2), height: band }), background: hex(k.panelColor), borderRadius: 6 }} />}
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', WebkitMaskImage: mask, maskImage: mask }}>{out}</div>
     </div>
@@ -463,7 +469,18 @@ const fmtDur = (sec: number) => {
   const v = Math.max(0, Number.isFinite(sec) ? sec : 0);
   return `${pad2(v / 60)}:${pad2(v % 60)}.${Math.floor((v * 10) % 10)}`;
 };
-const fmtClock = (ms: number) => new Date(ms).toLocaleTimeString('en-GB');
+/** A time of day, hh:mm:ss, in the server's zone (the end time is read there). */
+const fmtClock = (ms: number, tz?: string) => {
+  try {
+    return new Date(ms).toLocaleTimeString('en-GB', { timeZone: tz || undefined });
+  } catch {
+    return new Date(ms).toLocaleTimeString('en-GB');
+  }
+};
+const mss = (sec: number) => {
+  const s = Math.max(0, Math.ceil(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
 
 const TEXT0 = `# Presented by
 Presenter | Claire Martin
@@ -519,6 +536,115 @@ function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Wa
   return out;
 }
 
+/** The font of the whole credits (families of Assets, each shown in itself). */
+function FamilyRow({ value }: { value: string }) {
+  const b = useBound();
+  const families = useFonts((s) => s.families);
+  // The list is loaded at start, which fails before logging in.
+  useEffect(() => {
+    if (!families.length) void loadFonts();
+  }, [families.length]);
+  const known = families.some((f) => f.family.toLowerCase() === value.toLowerCase());
+  const opts = [...(known ? [] : [{ value, label: t('{family} (missing)', { family: value }) }]), ...families.map((f) => ({ value: f.family, label: f.family, style: { fontFamily: `"${f.family}", Inter, sans-serif` } }))];
+  return (
+    <Row label={t('Font')} expose="font" exposeValue={value}>
+      <div className="font-pick">
+        <Dropdown value={families.find((f) => f.family.toLowerCase() === value.toLowerCase())?.family ?? value} options={opts} onChange={(v) => b.set('font', v)} />
+      </div>
+    </Row>
+  );
+}
+
+/** The text pasted in the import box (several lines). */
+function PasteBox({ init, onChange }: { init: string; onChange: (v: string) => void }) {
+  const [v, setV] = useState(init);
+  return <textarea rows={14} value={v} placeholder={'# Section\nRole | Name'} style={{ width: '100%', minWidth: 360, fontFamily: 'var(--mono, monospace)', fontSize: 12 }} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => (setV(e.target.value), onChange(e.target.value))} />;
+}
+
+type OpP = { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz?: string; fps?: number } };
+
+/** Where the credits are now, for the Operator's controls. */
+function useRun({ layer, state, data, time }: OpP) {
+  const { now, age } = useLiveTime(time);
+  const l = layer as CL;
+  const k = cfg(l);
+  const st = (state ?? {}) as State;
+  const [w, h] = sizeOf(l);
+  const g = geo(k, entriesOf(k, data), w, h);
+  const ageNow = st.started ? 0 : Math.max(0, age);
+  const f = progress(k, st, g.x, now, ageNow);
+  const rem = remaining(k, st, g.x, now, ageNow);
+  // Manual launch: it waits for the operator's top.
+  const status: 'running' | 'paused' | 'done' | 'idle' = f >= 1 - 1e-9 ? 'done' : !st.started ? (l.manualStart ? 'idle' : 'running') : st.running ? 'running' : f > 0 ? 'paused' : 'idle';
+  return { l, k, st, g, f, rem, status, now, travel: { travel: g.x } };
+}
+
+function CreditsCompact(p: OpP) {
+  const { act, item, time } = p;
+  const { l, k, rem, status, now, travel } = useRun(p);
+  const tz = time.defaultTz || undefined;
+  return (
+    <OpLine
+      value={mss(rem)}
+      list={[status === 'running' ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause', travel) } : status === 'paused' ? { icon: Play, title: tc('action', 'Resume'), tone: 'green', onClick: () => act('resume', travel) } : { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('start', travel) }]}
+      field={<OpField width={80} title={t('End at')} value={status === 'done' ? '' : fmtClock(now + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />}
+      after={[
+        { icon: Minus, title: '−10 s', tag: '10 s', disabled: status === 'done', onClick: () => act('adjust', { seconds: -10, ...travel }) },
+        { icon: Plus, title: '+10 s', tag: '10 s', disabled: status === 'done', onClick: () => act('adjust', { seconds: 10, ...travel }) },
+        k.mode === 'pages' && { icon: SkipForward, title: tc('credits', 'Next card'), onClick: () => act('next', travel) },
+        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the start of the credits?', { name: (l as { name?: string }).name ?? '' }) : undefined, onClick: () => act('reset') },
+      ]}
+    />
+  );
+}
+
+/** Under ⋯: to the end in a few seconds. */
+function CreditsMore(p: OpP) {
+  const { act } = p;
+  const { status, travel } = useRun(p);
+  return <OpRow list={[{ icon: ChevronLast, title: t('Finish now'), disabled: status === 'done', onClick: () => act('finish', travel) }]} />;
+}
+
+function CreditsOperator(p: OpP) {
+  const { act, time } = p;
+  const { k, st, g, f, rem, status, travel } = useRun(p);
+  const tz = time.defaultTz || undefined;
+  const fps = time.fps ?? 25;
+  const color = { running: 'var(--pvw, #22c55e)', paused: 'var(--warn, #f59e0b)', done: 'var(--text-3, #888)', idle: 'var(--text-2, #aaa)' }[status];
+  const rr = realRate(k, st, g.x);
+  const speed = k.mode === 'pages' ? t('card {n}/{total} · {secs} s per card', { n: Math.min(g.x, Math.floor(f * g.x) + 1), total: g.x, secs: (1 / Math.max(1e-6, rr * g.x)).toFixed(1) }) : t('{speed} px/s · {perFrame} px/frame', { speed: (rr * g.x).toFixed(0), perFrame: ((rr * g.x) / fps).toFixed(k.optimised ? 0 : 2) });
+  const toggle = () => act(status === 'running' ? 'pause' : status === 'paused' ? 'resume' : 'start', travel);
+  // Space stays the Operator's CONTINUE.
+  useKeys({ p: toggle, ArrowRight: () => k.mode === 'pages' && act('next', travel) });
+  return (
+    <>
+      <Readout sub={t('{status} · remaining · {end} · {speed}', { status: t(STATUS_LABEL[status]), end: status === 'running' ? t('ends at {time}', { time: fmtClock(Date.now() + rem * 1000, tz) }) : '—', speed })}>
+        <i style={{ color, fontStyle: 'normal' }}>{fmtDur(rem)}</i>
+      </Readout>
+      <div style={{ height: 6, borderRadius: 3, background: 'var(--panel-3, #333)', overflow: 'hidden', margin: '4px 0 8px' }}>
+        <div style={{ height: '100%', width: `${(f * 100).toFixed(1)}%`, background: 'var(--live, #ff3b5c)' }} />
+      </div>
+      <Btns
+        list={[
+          status === 'running'
+            ? { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'P', onClick: () => act('pause', travel) }
+            : status === 'paused'
+              ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'P', onClick: () => act('resume', travel) }
+              : { label: t('▶ Start'), cls: 'big green', keyHint: 'P', onClick: () => act('start', travel) },
+          k.mode === 'pages' && { label: t('Next card ⏭'), cls: 'big', keyHint: '→', onClick: () => act('next', travel) },
+          { label: t('Finish now'), cls: 'big', disabled: status === 'done', onClick: () => act('finish', travel) },
+          { label: t('↺ Reset'), cls: 'big ghost', onClick: () => act('reset') },
+        ]}
+      />
+      <Btns label={t('Remaining')} list={[-10, -1, 1, 10].map((d) => ({ label: `${d > 0 ? '+' : '−'}${Math.abs(d)} s`, onClick: () => act('adjust', { seconds: d, ...travel }) }))} />
+      <Row label={t('End at')}>
+        <OpField width={96} title={t('End at')} value={status === 'done' ? '' : fmtClock(Date.now() + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />
+      </Row>
+      <Note>{t('Remaining-time changes recompute the speed from the current position: nothing jumps.')}</Note>
+    </>
+  );
+}
+
 /** Colour · size · weight · CAPS of a level. */
 function StyleRows({ label, path, s }: { label: string; path: string; s: St }) {
   const b = useBound();
@@ -554,7 +680,11 @@ export default defineWidget({
   label: 'Credits',
   group: 'Data',
   icon: ScrollText,
-  create: () => ({ entries: parse(TEXT0), importText: TEXT0, fade: false, panel: false, props: { width: 1100, height: 1000 } }),
+  create: () => {
+    // The sample credits in the project's language.
+    const text = tl(useApp.getState().project?.language, TEXT0);
+    return { entries: parse(text), importText: text, fade: false, panel: false, props: { width: 1100, height: 1000 } };
+  },
   ownsLook: true,
   content: ['entries', 'link'],
   live: () => true,
@@ -590,38 +720,48 @@ export default defineWidget({
                   addLabel={t('Entry')}
                 />
               </Row>
-              <Area label={t('Import')} path="importText" value={k.importText} placeholder="# Section" />
               <Btns
+                label={t('Import')}
                 list={[
-                  { label: t('Replace'), cls: 'violet', title: t('Replace the entries with the imported text'), onClick: () => set((x) => void (x.entries = parse(k.importText))) },
-                  { label: t('Append'), title: t('Append the imported text to the entries'), onClick: () => set((x) => void (x.entries = [...k.entries, ...parse(k.importText)])) },
-                  { label: t('To text'), cls: 'ghost', title: t('Entries to import text'), onClick: () => set((x) => void (x.importText = toText(k.entries))) },
+                  {
+                    label: t('Paste a text…'),
+                    title: t('Paste a text (# Section, Role | Name)'),
+                    onClick: async () => {
+                      let text = toText(k.entries);
+                      const ok = await confirmDialog({ title: t('Paste a text (# Section, Role | Name)'), message: <PasteBox init={text} onChange={(v) => (text = v)} />, confirm: t('Replace') });
+                      if (ok && text.trim()) set((x) => void ((x.entries = parse(text)), (x.importText = text)));
+                    },
+                  },
                 ]}
               />
             </>
           )}
         </Section>
-        <Section id="credits-layout" title={t('Layout')} closed={k.mode === 'crawl'}>
-          <Seg
-            label={t('Columns')}
-            path="layout"
-            value={k.layout}
-            options={[
-              ['one', '1'],
-              ['two', '2'],
-              ['three', '3'],
-            ]}
-          />
-          <Seg
-            label={t('Align')}
-            path="align"
-            value={k.align}
-            options={[
-              ['left', t('Left')],
-              ['center', t('Centre')],
-              ['right', t('Right')],
-            ]}
-          />
+        <Section id="credits-layout" title={t('Layout')}>
+          {k.mode !== 'crawl' && (
+            <>
+              <Seg
+                label={t('Columns')}
+                path="layout"
+                value={k.layout}
+                options={[
+                  ['one', '1'],
+                  ['two', '2'],
+                  ['three', '3'],
+                ]}
+              />
+              <Seg
+                label={t('Align')}
+                path="align"
+                value={k.align}
+                options={[
+                  ['left', t('Left')],
+                  ['center', t('Centre')],
+                  ['right', t('Right')],
+                ]}
+              />
+            </>
+          )}
           <Num label={t('Gutter')} path="gutter" value={k.gutter} min={0} max={1000} unit="px" />
           <Num label={t('Section gap')} path="sectionGap" value={k.sectionGap} min={0} max={1000} unit="px" />
           <Num label={t('Line gap')} path="lineGap" value={k.lineGap} min={0} max={1000} unit="px" />
@@ -629,6 +769,7 @@ export default defineWidget({
           <Num label={t('Logo height')} path="logoH" value={k.logoH} min={10} max={1000} unit="px" />
         </Section>
         <Section id="credits-styles" title={t('Styles')}>
+          <FamilyRow value={k.font} />
           <StyleRows label={t('Section')} path="st.section" s={k.st.section} />
           <StyleRows label={t('Role')} path="st.role" s={k.st.role} />
           <StyleRows label={t('Name')} path="st.name" s={k.st.name} />
@@ -711,6 +852,15 @@ export default defineWidget({
             ]}
           />
           <Seg
+            label={t('Launch')}
+            value={!!l.manualStart}
+            onChange={(v) => edit((x) => void ((x as CL).manualStart = v || undefined))}
+            options={[
+              [false, t('At the In')],
+              [true, t('Manual')],
+            ]}
+          />
+          <Seg
             label={t('End')}
             path="end"
             value={k.end}
@@ -719,90 +869,25 @@ export default defineWidget({
               ['stop', t('Stop')],
             ]}
           />
-          <Seg
-            label={t('If short')}
-            path="shortMode"
-            value={k.shortMode}
-            options={[
-              ['center', t('Centre')],
-              ['exit', t('Exit')],
-            ]}
-          />
+          {k.mode !== 'pages' && (
+            <Seg
+              label={t('If short')}
+              path="shortMode"
+              value={k.shortMode}
+              options={[
+                ['center', t('Centre')],
+                ['exit', t('Exit')],
+              ]}
+            />
+          )}
         </Section>
       </>
     );
   },
-  // One row: remaining time, start / pause / resume, next card, reset.
-  Compact: ({ layer, state, data, act, time }) => {
-    const frame = useFrame();
-    const now = frame + (time.nowMs - Date.now());
-    const l = layer as unknown as CL;
-    const k = cfg(l);
-    const st = (state ?? {}) as State;
-    const [w, h] = sizeOf(l);
-    const g = geo(k, entriesOf(k, data), w, h);
-    const ageNow = st.started ? 0 : Math.max(0, time.ageSecs + (now - time.nowMs) / 1000);
-    const f = progress(k, st, g.x, now, ageNow);
-    const rem = remaining(k, st, g.x, now, ageNow);
-    const status = f >= 1 - 1e-9 ? 'done' : !st.started ? 'running' : st.running ? 'running' : f > 0 ? 'paused' : 'idle';
-    const travelArg = { travel: g.x };
-    const s = Math.max(0, Math.ceil(rem));
-    return (
-      <OpRow
-        value={`${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`}
-        list={[
-          status === 'running' ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause', travelArg) } : status === 'paused' ? { icon: Play, title: t('Resume'), tone: 'green', onClick: () => act('resume', travelArg) } : { icon: Play, title: t('Start'), tone: 'green', onClick: () => act('start', travelArg) },
-          k.mode === 'pages' && { icon: SkipForward, title: t('Next card'), onClick: () => act('next', travelArg) },
-          { icon: RotateCcw, title: t('Reset'), onClick: () => act('reset') },
-        ]}
-      />
-    );
-  },
-  Operator: ({ layer, state, data, act, time }) => {
-    const frame = useFrame();
-    const now = frame + (time.nowMs - Date.now());
-    const l = layer as unknown as CL;
-    const k = cfg(l);
-    const st = (state ?? {}) as State;
-    const [w, h] = sizeOf(l);
-    const g = geo(k, entriesOf(k, data), w, h);
-    const ageNow = st.started ? 0 : Math.max(0, time.ageSecs + (now - time.nowMs) / 1000);
-    const f = progress(k, st, g.x, now, ageNow);
-    const rem = remaining(k, st, g.x, now, ageNow);
-    const status = f >= 1 - 1e-9 ? 'done' : !st.started ? 'running' : st.running ? 'running' : f > 0 ? 'paused' : 'idle';
-    const color = { running: 'var(--pvw, #22c55e)', paused: 'var(--warn, #f59e0b)', done: 'var(--text-3, #888)', idle: 'var(--text-2, #aaa)' }[status];
-    const rr = realRate(k, st, g.x);
-    const speed = k.mode === 'pages' ? t('card {n}/{total} · {secs} s per card', { n: Math.min(g.x, Math.floor(f * g.x) + 1), total: g.x, secs: (1 / Math.max(1e-6, rr * g.x)).toFixed(1) }) : t('{speed} px/s · {perFrame} px/frame', { speed: (rr * g.x).toFixed(0), perFrame: ((rr * g.x) / 25).toFixed(k.optimised ? 0 : 2) });
-    const [endAt, setEndAt] = useState(() => fmtClock(Date.now() + rem * 1000));
-    const travelArg = { travel: g.x };
-    const toggle = () => act(status === 'running' ? 'pause' : status === 'paused' ? 'resume' : 'start');
-    useKeys({ Space: toggle, ArrowRight: () => k.mode === 'pages' && act('next', travelArg) });
-    return (
-      <>
-        <Readout sub={t('{status} · remaining · {end} · {speed}', { status: t(STATUS_LABEL[status]), end: status === 'running' ? t('ends at {time}', { time: fmtClock(Date.now() + rem * 1000) }) : '—', speed })}>
-          <i style={{ color, fontStyle: 'normal' }}>{fmtDur(rem)}</i>
-        </Readout>
-        <div style={{ height: 6, borderRadius: 3, background: 'var(--panel-3, #333)', overflow: 'hidden', margin: '4px 0 8px' }}>
-          <div style={{ height: '100%', width: `${(f * 100).toFixed(1)}%`, background: 'var(--live, #ff3b5c)' }} />
-        </div>
-        <Btns
-          list={[
-            status === 'running'
-              ? { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'Space', onClick: () => act('pause', travelArg) }
-              : status === 'paused'
-                ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'Space', onClick: () => act('resume', travelArg) }
-                : { label: t('▶ Start'), cls: 'big green', keyHint: 'Space', onClick: () => act('start', travelArg) },
-            { label: t('Next card ⏭'), cls: 'big', keyHint: '→', disabled: k.mode !== 'pages', onClick: () => act('next', travelArg) },
-            { label: t('↺ Reset'), cls: 'big ghost', onClick: () => act('reset') },
-          ]}
-        />
-        <Btns label={t('Remaining')} list={[-10, -1, 1, 10].map((d) => ({ label: `${d > 0 ? '+' : '−'}${Math.abs(d)} s`, onClick: () => act('remaining', { seconds: rem + d, ...travelArg }) }))} />
-        <Text label={t('End at')} value={endAt} placeholder="hh:mm:ss" onChange={setEndAt} />
-        <Btns list={[{ label: t('Set end time'), cls: 'violet', title: t('Land exactly on the end of the show'), onClick: () => act('endAt', { time: endAt, ...travelArg }) }]} />
-        <Note>{t('Remaining-time changes recompute the speed from the current position: nothing jumps.')}</Note>
-      </>
-    );
-  },
+  // One row: remaining time, start / pause / resume, the end time, ±10 s, next card, reset.
+  Compact: (p) => <CreditsCompact {...p} />,
+  More: (p) => <CreditsMore {...p} />,
+  Operator: (p) => <CreditsOperator {...p} />,
   warnings: (layer, { data, state, r }) => {
     const l = layer as unknown as CL;
     const [w, h] = sizeOf(l, r as never);

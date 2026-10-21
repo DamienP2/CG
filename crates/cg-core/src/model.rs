@@ -139,10 +139,29 @@ pub enum Prop {
     ArcStart,
     ArcEnd,
     InnerRadius,
+    /// Drop shadow of the layer (`Layer::drop_shadow`): colour, offset and
+    /// blur radius in layer pixels.
+    ShadowColor,
+    ShadowX,
+    ShadowY,
+    ShadowBlur,
+    /// Pen: visible portion of the path, % of its length; unset, the pen's
+    /// own settings (`vStart`, `vEnd`).
+    DrawStart,
+    DrawEnd,
+    /// Rectangle « Per corner »: radius of each corner (top left, top right,
+    /// bottom right, bottom left); unset, its settings (`corners`).
+    CornerTl,
+    CornerTr,
+    CornerBr,
+    CornerBl,
+    /// Second colour of a gradient (shapes, Text); unset, their settings
+    /// (`fillStyle.color2`, `color2`).
+    Fill2,
 }
 
 impl Prop {
-    pub const ALL: [Prop; 23] = [
+    pub const ALL: &[Prop] = &[
         Prop::X,
         Prop::Y,
         Prop::Width,
@@ -166,10 +185,24 @@ impl Prop {
         Prop::ArcStart,
         Prop::ArcEnd,
         Prop::InnerRadius,
+        Prop::ShadowColor,
+        Prop::ShadowX,
+        Prop::ShadowY,
+        Prop::ShadowBlur,
+        Prop::DrawStart,
+        Prop::DrawEnd,
+        Prop::CornerTl,
+        Prop::CornerTr,
+        Prop::CornerBr,
+        Prop::CornerBl,
+        Prop::Fill2,
     ];
 
     pub fn is_color(self) -> bool {
-        matches!(self, Prop::Fill | Prop::Stroke)
+        matches!(
+            self,
+            Prop::Fill | Prop::Stroke | Prop::ShadowColor | Prop::Fill2
+        )
     }
 }
 
@@ -318,6 +351,10 @@ pub enum LayerKind {
         /// Clip children to the group box (used for wipes / reveals).
         #[serde(default)]
         clip: bool,
+        /// A Lottie animation placed by the Lottie widget: its file (""
+        /// while none is chosen); its layers are the group's children.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lottie: Option<String>,
     },
     Rect {
         /// Settings of the spec widget (`wid::quad`).
@@ -728,6 +765,13 @@ pub struct Layer {
     /// Scale X and Y change together (designer setting).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scale_lock: bool,
+    /// Width and height keep their ratio when resized (designer setting).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lock_ratio: bool,
+    /// Drop shadow under the layer (and its children), set by the
+    /// `Shadow*` properties; the Text widget has its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub drop_shadow: bool,
     /// Properties shown on the Designer's timeline (animatable); none =
     /// position, size and opacity. Properties with keyframes always are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1257,6 +1301,42 @@ pub struct Template {
     pub marker_model: u8,
 }
 
+/// The widget a scrolling Text of older projects becomes: horizontal, the
+/// Ticker it was drawn as (its lines are the items); vertical, the Credits
+/// (its lines are the names, at its speed in px/s, in its font).
+fn legacy_scroll(kind: &LayerKind) -> Option<LayerKind> {
+    let LayerKind::Text {
+        text,
+        font_family,
+        scroll,
+        speed,
+        ..
+    } = kind
+    else {
+        return None;
+    };
+    match scroll {
+        TextScroll::None => None,
+        TextScroll::Horizontal => kind.scrolling_as(),
+        TextScroll::Vertical => {
+            use crate::wid::credits::{parse, Config, SpeedMode};
+            let mut x = Config::default();
+            // Wired to one value (`{{key}}`): the credits read it as their text.
+            let t = text.trim();
+            if t.starts_with("{{") && t.ends_with("}}") && t.matches("{{").count() == 1 {
+                x.link = t.to_string();
+                x.entries.clear();
+            } else {
+                x.entries = parse(text);
+            }
+            x.speed_mode = SpeedMode::Pxs;
+            x.pxs = *speed;
+            x.font = font_family.clone();
+            Some(LayerKind::Credits { x })
+        }
+    }
+}
+
 impl Template {
     /// An empty template: 1 s long (at `fps`), on air at half of it.
     pub fn blank(name: &str, zone: &str, fps: f64) -> Self {
@@ -1361,6 +1441,26 @@ impl Template {
     pub fn upgrade_layers(&mut self) -> bool {
         let mut changed = false;
         for l in &mut self.layers {
+            // The Ellipse's « Circle » is now the width / height lock of every layer.
+            if let LayerKind::Ellipse { x } = &mut l.kind {
+                if x.circle {
+                    x.circle = false;
+                    l.lock_ratio = true;
+                    changed = true;
+                }
+            }
+            // A scrolling Text is now a Ticker (horizontal) or Credits (vertical).
+            if let Some(kind) = legacy_scroll(&l.kind) {
+                l.kind = kind;
+                changed = true;
+            }
+            // « Circle » of an ellipse is now the Dimensions lock of the layer.
+            if let LayerKind::Ellipse { x } = &mut l.kind {
+                if std::mem::take(&mut x.circle) {
+                    l.lock_ratio = true;
+                    changed = true;
+                }
+            }
             // The analog clock is now a Timer with an analog face.
             if let LayerKind::AnalogClock {
                 timezone,
@@ -1804,6 +1904,10 @@ pub struct Project {
     /// there. A draft without a published template is a new template.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drafts: Vec<Template>,
+    /// The empty template a new project starts with: removed at a publish
+    /// while it still has no layer ([`Project::drop_empty_starter`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starter: Option<String>,
     /// Designer aids: guides, safe areas, areas to keep clear.
     #[serde(default, skip_serializing_if = "Guides::is_default")]
     pub guides: Guides,
@@ -2031,6 +2135,36 @@ impl Project {
             None => self.templates.push(t),
         }
         Some(rev)
+    }
+
+    /// The empty template the project started with goes once another one is
+    /// published, if it still has no layer (its draft neither); once it has
+    /// layers it is an ordinary template. Returns the id removed.
+    pub fn drop_empty_starter(&mut self) -> Option<String> {
+        let id = self.starter.clone()?;
+        let versions: Vec<&Template> = self
+            .templates
+            .iter()
+            .chain(self.drafts.iter())
+            .filter(|t| t.id == id)
+            .collect();
+        if versions.is_empty() {
+            self.starter = None;
+            return None;
+        }
+        if versions.iter().any(|t| !t.layers.is_empty()) {
+            self.starter = None;
+            return None;
+        }
+        // Never the last template of the project.
+        if !self.design_templates().any(|t| t.id != id) {
+            return None;
+        }
+        self.templates.retain(|t| t.id != id);
+        self.drafts.retain(|t| t.id != id);
+        self.rundown.retain(|r| r.template_id != id);
+        self.starter = None;
+        Some(id)
     }
 
     /// Every template the designer lists: published ones (or their draft),
@@ -2266,5 +2400,139 @@ mod setting_tests {
             t.with_settings(&BTreeMap::new()),
             std::borrow::Cow::Borrowed(_)
         ));
+    }
+
+    #[test]
+    fn a_lottie_group_keeps_its_file() {
+        for file in ["", "/assets/p/anim.json"] {
+            let l: Layer = serde_json::from_value(serde_json::json!({
+                "id": "g", "name": "Lottie", "type": "group", "clip": true, "lottie": file
+            }))
+            .unwrap();
+            let back = serde_json::to_value(&l).unwrap();
+            assert_eq!(
+                back["lottie"], file,
+                "the Fichier row needs it after a save"
+            );
+            assert_eq!(back["clip"], true);
+        }
+        // A plain group has none.
+        let g: Layer = serde_json::from_str(r#"{"id":"g","name":"G","type":"group"}"#).unwrap();
+        assert!(serde_json::to_value(&g).unwrap().get("lottie").is_none());
+    }
+
+    #[test]
+    fn ratio_lock_and_drop_shadow_are_kept() {
+        let l: Layer = serde_json::from_str(
+            r#"{"id":"a","name":"A","type":"rect","lockRatio":true,"dropShadow":true,"props":{"shadowX":3.0,"shadowColor":[1.0,0.0,0.0,0.5]}}"#,
+        )
+        .unwrap();
+        assert!(l.lock_ratio && l.drop_shadow);
+        let v = serde_json::to_value(&l).unwrap();
+        assert_eq!(v["lockRatio"], true);
+        assert_eq!(v["dropShadow"], true);
+        assert_eq!(v["props"]["shadowX"], 3.0);
+        let r = crate::anim::resolve_layer(&l, 0.0, &Default::default(), 0.0);
+        assert_eq!(r.num(Prop::ShadowX), 3.0);
+        assert_eq!(r.num(Prop::ShadowY), 4.0);
+        assert_eq!(r.num(Prop::ShadowBlur), 12.0);
+        assert_eq!(r.color(Prop::ShadowColor), Color([1.0, 0.0, 0.0, 0.5]));
+        // Off: not written.
+        let plain: Layer = serde_json::from_str(r#"{"id":"a","name":"A","type":"rect"}"#).unwrap();
+        let v = serde_json::to_value(&plain).unwrap();
+        assert!(v.get("lockRatio").is_none() && v.get("dropShadow").is_none());
+    }
+
+    #[test]
+    fn an_ellipse_circle_becomes_the_ratio_lock() {
+        let mut t = Template::blank("T", "", 50.0);
+        t.layers.push(
+            serde_json::from_str(r#"{"id":"e","name":"E","type":"ellipse","circle":true}"#)
+                .unwrap(),
+        );
+        assert!(t.upgrade_layers());
+        assert!(t.layers[0].lock_ratio);
+        assert!(!t.upgrade_layers());
+    }
+
+    #[test]
+    fn the_empty_starter_template_goes_at_a_publish() {
+        let mut p = crate::sample::demo_project();
+        p.templates.clear();
+        p.drafts.clear();
+        p.rundown.clear();
+        let starter = Template::blank("Template 1", "", 50.0);
+        let sid = starter.id.clone();
+        p.templates.push(starter);
+        p.starter = Some(sid.clone());
+        // Alone: it stays.
+        assert_eq!(p.drop_empty_starter(), None);
+        assert_eq!(p.starter.as_deref(), Some(sid.as_str()));
+        // Another template published while it is still empty: it goes.
+        let mut other = Template::blank("Lower third", "", 50.0);
+        other
+            .layers
+            .push(serde_json::from_str(r#"{"id":"a","name":"A","type":"rect"}"#).unwrap());
+        let oid = other.id.clone();
+        p.save_draft(other);
+        p.publish(&oid);
+        assert_eq!(p.drop_empty_starter(), Some(sid.clone()));
+        assert!(p.template(&sid).is_none() && p.starter.is_none());
+        assert!(p.template(&oid).is_some());
+        // Given layers (even only in its draft), it is kept for good.
+        let mut q = crate::sample::demo_project();
+        let mut s = Template::blank("Template 1", "", 50.0);
+        q.starter = Some(s.id.clone());
+        q.templates.push(s.clone());
+        s.layers
+            .push(serde_json::from_str(r#"{"id":"b","name":"B","type":"rect"}"#).unwrap());
+        q.save_draft(s.clone());
+        assert_eq!(q.drop_empty_starter(), None);
+        assert!(q.starter.is_none() && q.template(&s.id).is_some());
+    }
+
+    #[test]
+    fn scrolling_texts_become_a_ticker_or_credits() {
+        let mut t = Template::blank("T", "", 50.0);
+        let text = |id: &str, scroll: &str, body: &str| -> Layer {
+            serde_json::from_value(serde_json::json!({
+                "id": id, "name": id, "type": "text", "text": body, "fontFamily": "Oswald",
+                "scroll": scroll, "speed": 90.0, "separator": " | "
+            }))
+            .unwrap()
+        };
+        t.layers.push(text("h", "horizontal", "One\nTwo"));
+        t.layers
+            .push(text("v", "vertical", "Directed by | Jane\nThanks"));
+        t.layers.push(text("w", "vertical", "{{roll}}"));
+        t.layers.push(text("f", "none", "Fixed"));
+        assert!(t.upgrade_layers());
+        let LayerKind::Ticker {
+            text,
+            separator,
+            speed,
+            font,
+            ..
+        } = &t.layers[0].kind
+        else {
+            panic!("{:?}", t.layers[0].kind)
+        };
+        assert_eq!(
+            (text.as_str(), separator.as_str(), *speed),
+            ("One\nTwo", " | ", 90.0)
+        );
+        assert_eq!(font.font_family, "Oswald");
+        let LayerKind::Credits { x } = &t.layers[1].kind else {
+            panic!("{:?}", t.layers[1].kind)
+        };
+        assert_eq!(x.entries.len(), 2);
+        assert_eq!((x.pxs, x.font.as_str()), (90.0, "Oswald"));
+        assert_eq!(x.speed_mode, crate::wid::credits::SpeedMode::Pxs);
+        let LayerKind::Credits { x } = &t.layers[2].kind else {
+            panic!()
+        };
+        assert_eq!(x.link, "{{roll}}");
+        assert!(matches!(t.layers[3].kind, LayerKind::Text { .. }));
+        assert!(!t.upgrade_layers());
     }
 }

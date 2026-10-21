@@ -22,8 +22,11 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     if closed {
         shape::paint(d, &cmds, &c.fill_style, &c.stroke_style, FillRule::Evenodd);
     } else if let Some(p) = shape::path(&cmds) {
-        // An arc: its centred stroke only, with its ends.
-        let width = d.num(Prop::StrokeWidth).max(1.0);
+        // An arc: its centred stroke only, with its ends (none at 0 px).
+        let width = d.num(Prop::StrokeWidth);
+        if width <= 0.0 {
+            return true;
+        }
         let s = shape::stroke_of(&c.stroke_style, width);
         let col = d.color(Prop::Stroke);
         d.stroke(&p, col, &s, None);

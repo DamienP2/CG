@@ -424,4 +424,13 @@ export const designer: Record<string, string> = {
   'variable added: {names}': 'variable ajoutée : {names}',
   'variables added: {names}': 'variables ajoutées : {names}',
   'data not in this template, unbound: {names}': 'données absentes de ce modèle, déliées : {names}',
+  // Drop shadow of every layer (Effects › Shadow), as named on the timeline and to the Operator.
+  'Shadow color': 'Couleur de l’ombre',
+  'Shadow X': 'Ombre X',
+  'Shadow Y': 'Ombre Y',
+  'Shadow blur': 'Flou de l’ombre',
+  // The stage as on air, its fill or its key (canvas toolbar).
+  'Output view: {view} (click to change)': 'Vue de la sortie : {view} (cliquez pour changer)',
+  'Output view: choose': 'Vue de la sortie : choisir',
+  'Key': 'Clé',
 };

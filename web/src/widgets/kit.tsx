@@ -7,7 +7,7 @@ import { plain as plainText } from '../engine/rich';
 // the inspector and of the Operator, styled like the rest of the app.
 import { Dropdown } from '../ui/Dropdown';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Database, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Database, Ellipsis, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
 import { fieldUsed, formatSetting, newFieldKey, settingKind } from '../engine/settings';
 import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evaluate';
@@ -43,7 +43,7 @@ export interface RenderProps<T extends LayerType = LayerType> {
   fps: number;
   /** Drawn in the Designer (guides such as a reserved width may show). */
   designer?: boolean;
-  /** The project's language, for the texts a widget writes itself (« Aucune donnée », periods…). */
+  /** The project's language ("fr" by default), for the texts a widget writes itself (« Aucune donnée », periods…): `tl(lang, 'No data')`. */
   lang?: string;
 }
 
@@ -71,6 +71,8 @@ export interface OperatorProps<T extends LayerType = LayerType> {
   /** The graphic on air (undefined in the Designer). */
   item?: PlayoutItem;
   time: TimeCtx;
+  /** The project's language ("fr" by default). */
+  lang?: string;
 }
 
 export interface OverlayProps<T extends LayerType = LayerType> {
@@ -111,6 +113,8 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   Compact?: (p: OperatorProps<T>) => ReactNode;
   /** Advanced controls, unfolded under the compact row by its ⋯ button (same look as Compact). */
   More?: (p: OperatorProps<T>) => ReactNode;
+  /** It has advanced controls now (default: when it has More): else no ⋯. */
+  hasMore?: (l: LayerOf<T>, data: Data, state: unknown) => boolean;
   /** It has controls with these settings (default: when it has Operator controls). */
   controls?: (l: LayerOf<T>, data: Data) => boolean;
   /** Orange handles over the selected layer in the Designer. */
@@ -608,12 +612,16 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
                 coalesce,
               );
             const style = f.w ? { flex: `0 0 ${f.w}px`, width: f.w } : undefined;
-            if (f.options)
+            if (f.options) {
+              const o = opts(f.options).map(([v, l]) => ({ value: String(v), label: typeof l === 'string' ? l : String(v) }));
+              // An on / off kept as a boolean: false is the option '' (unless 'false' is one).
+              const cur = typeof val === 'boolean' && !o.some((x) => x.value === String(val)) ? (val ? 'true' : '') : String(val ?? '');
               return (
                 <span key={f.key} className="dd-cell" style={style}>
-                  <Dropdown value={String(val ?? '')} options={opts(f.options).map(([o, l]) => ({ value: String(o), label: typeof l === 'string' ? l : String(o) }))} onChange={(nv) => change(nv)} />
+                  <Dropdown value={cur} options={o} onChange={(nv) => change(nv)} />
                 </span>
               );
+            }
             if (f.color) return <input key={f.key} type="color" style={style} value={String(val ?? '#ffffff').slice(0, 7)} onChange={(e) => change(e.target.value, true)} />;
             return <input key={f.key} style={style} placeholder={f.placeholder ?? f.key} value={String(val ?? '')} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => change(f.num ? +e.target.value : e.target.value, true)} />;
           })}
@@ -760,19 +768,51 @@ export function useFrame(active = true): number {
   return now;
 }
 
-/** Keyboard shortcuts of an Operator panel while it is shown (not in fields). */
+/**
+ * Where a widget's keys apply: on air, only while its row is selected in the On air panel (true);
+ * never from the Operator's preview bar (false); no scope (null, the Designer's try-out): always.
+ */
+export const KeyScope = createContext<boolean | null>(null);
+
+/**
+ * Keyboard shortcuts of an Operator panel while it is shown (not in fields). A key handled here is
+ * not passed on (the Operator's Space / Enter / arrows); one handler per key and event.
+ */
 export function useKeys(map: Record<string, () => void>) {
   const ref = useRef(map);
   ref.current = map;
+  const scope = useContext(KeyScope);
+  const active = useRef(scope);
+  active.current = scope;
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
+      if (active.current === false || e.defaultPrevented) return;
       if ((e.target as HTMLElement).closest('input, textarea, select, [contenteditable]')) return;
       const fn = ref.current[e.key] ?? ref.current[e.code];
-      if (fn) (e.preventDefault(), fn());
+      if (!fn) return;
+      e.preventDefault();
+      // A focused button would also "click" on Space / Enter.
+      (e.target as HTMLElement).closest?.('button')?.blur();
+      fn();
     };
-    addEventListener('keydown', on);
-    return () => removeEventListener('keydown', on);
+    // Before the Operator's own keys (bubbling on window).
+    addEventListener('keydown', on, true);
+    return () => removeEventListener('keydown', on, true);
   }, []);
+}
+
+/** The ⋯ of a compact row, given by the Operator when the widget has More controls. */
+export const MoreToggle = createContext<{ open: boolean; toggle: () => void } | null>(null);
+
+/** The ⋯ button (OpRow adds it by itself; for a Compact without OpRow). */
+export function MoreButton() {
+  const more = useContext(MoreToggle);
+  if (!more) return null;
+  return (
+    <button className={`opx-sq ${more.open ? 'on' : ''}`} title={t('More')} aria-expanded={more.open} onClick={more.toggle}>
+      <Ellipsis size={14} />
+    </button>
+  );
 }
 
 /** A button of a compact Operator row: an icon, its text in the tooltip. */
@@ -788,8 +828,8 @@ export interface OpBtn {
   tag?: string;
 }
 
-/** The compact controls of a widget: a small readout, then icon buttons. */
-export function OpRow({ value, list }: { value?: ReactNode; list: (OpBtn | false | null | undefined)[] }) {
+/** The compact controls of a widget: a small readout, then icon buttons (and the ⋯ of its More controls, unless `noMore`). */
+export function OpRow({ value, list, noMore }: { value?: ReactNode; list: (OpBtn | false | null | undefined)[]; noMore?: boolean }) {
   return (
     <div className="wk-oprow">
       {value != null && value !== '' && <b className="wk-oprow-v">{value}</b>}
@@ -810,6 +850,7 @@ export function OpRow({ value, list }: { value?: ReactNode; list: (OpBtn | false
             {b.tag && <span>{b.tag}</span>}
           </button>
         ))}
+      {!noMore && <MoreButton />}
     </div>
   );
 }

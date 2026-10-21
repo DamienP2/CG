@@ -1,39 +1,43 @@
 // Map: stylised offline vector map (no network, ever): projections, key
 // views with fly transitions, markers, great-circle routes, zones from data,
-// labels by priority, provider attribution.
+// labels by priority, « Aller à… », names in the project's language, the
+// attribution of the data drawn.
 // Same picture as crates/cg-render/src/wid/map.rs (line for line); actions in
 // crates/cg-core/src/wid/map.rs; geometry and logic in ./map-geo.ts.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Map as MapIcon, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Map as MapIcon, MapPin, Route as RouteIcon, RotateCcw, Search, Shapes, Star, Tag } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { t, tc, tn } from '../i18n';
-import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
-import { col, ellipse, mix, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
+import { t, tc, tl, tn } from '../i18n';
+import { useApp } from '../store';
+import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, MoreButton, Num, OpRow, Readout, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { col, ellipse, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
+  attribution,
   cfg,
   clampView,
-  ELECTION,
+  findPlace,
   hexMix,
   keyOf,
   layerOn,
   markerOn,
   markerPos,
   normLon,
+  placeName,
+  placeNames,
   project,
-  PROVIDERS,
   routeLine,
   routeOn,
   routeProgress,
-  SCALE,
+  sample,
   STYLES,
   unproject,
   viewAt,
-  WEATHER,
   world,
   wraps,
   zoneFills,
+  zonesOf,
   type Config as GeoConfig,
   type Corner,
   type Icon,
@@ -42,6 +46,7 @@ import {
   type Projection,
   type State as GeoState,
   type View,
+  type Zone,
 } from './map-geo';
 
 export type Config = GeoConfig;
@@ -276,7 +281,10 @@ interface Cand {
 }
 
 /** Draws the map; returns the hidden labels and the invalid markers (mirrors paint). */
-function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: number, debug: boolean): { hidden: string[] } {
+/** Colour of the place « Aller à… » went to (mirrors GOTO). */
+const GOTO = '#ffd200';
+
+function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: number, debug: boolean, lang: string): { hidden: string[] } {
   const wd = world();
   const [v] = viewAt(k, s, now, w);
   const pj = k.projection;
@@ -319,35 +327,10 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
       lines.push(Array.from({ length: 37 }, (_, i) => [lo, -90 + i * 5] as Ll).filter((ll) => pj !== 'mercator' || Math.abs(ll[1]) <= 85));
     }
     for (const la of [-60, -30, 0, 30, 60]) lines.push(Array.from({ length: 73 }, (_, i) => [-180 + i * 5, la] as Ll));
-    p.strokeC(rings(pj, cam, lines, false, offs), withA(col(cl.border), 0.22), 1, false);
+    p.strokeC(rings(pj, cam, lines, false, offs), withA(col(cl.grid.trim() ? cl.grid : cl.border), 0.22), 1, false);
   }
   const landCmds = rings(pj, cam, wd.land, true, offs);
-  if (k.style === 'satellite') {
-    const y = (la: number) => project(pj, 0, la)[1];
-    const a = cam.scr(cam.cx, y(82));
-    const b = cam.scr(cam.cx, y(-60));
-    const stops: [number, string][] = [
-      [0, '#e8ecef'],
-      [0.12, '#7b8a74'],
-      [0.22, '#2f4a2a'],
-      [0.32, cl.land],
-      [0.42, '#8a7a4e'],
-      [0.5, '#c9a86a'],
-      [0.6, '#5f6b34'],
-      [0.68, '#1f4a23'],
-      [0.8, '#6f7a3e'],
-      [1, '#dfe5e8'],
-    ];
-    const cs = stops.map(([o, c]) => [o, col(c)] as [number, RGBA]);
-    if (v.zoom <= 7) p.fillLin(landCmds, a, b, cs);
-    else {
-      // Close up the band is wider than the box: its colour at the centre.
-      const t = Math.min(1, Math.max(0, (cam.cy - y(82)) / (y(-60) - y(82))));
-      let cc = cs[0][1];
-      for (let i = 1; i < cs.length; i++) if (t >= cs[i - 1][0] && t <= cs[i][0]) cc = mix(cs[i - 1][1], cs[i][1], (t - cs[i - 1][0]) / Math.max(1e-6, cs[i][0] - cs[i - 1][0]));
-      p.fillC(landCmds, cc);
-    }
-  } else p.fill(landCmds, cl.land);
+  p.fill(landCmds, cl.land);
   p.stroke(landCmds, hexMix(cl.land, '#ffffff', 0.18), 1.2, true);
   p.fill(rings(pj, cam, wd.lakes, true, offs), cl.water);
 
@@ -357,29 +340,31 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
   if (zoneOn) {
     const a0 = p.alpha;
     const pulse = Math.sin(((((now % 1100) + 1100) % 1100) / 1100) * 2 * Math.PI) * 0.5 + 0.5;
-    for (const r of wd.regions) {
-      const cmds = rings(pj, cam, [r.ring], true, offs);
+    for (const r of zonesOf(k.zones.level)) {
+      const cmds = rings(pj, cam, r.rings, true, offs);
       const is = hl === r.id;
       p.alpha = a0 * Math.min(1, Math.max(0, k.zones.opacity)) * (hl && !is ? 0.32 : 1);
       p.fill(cmds, zf[r.id]?.color ?? cl.land);
       if (!is) p.stroke(cmds, cl.water, 1.6, true);
     }
-    const r = wd.regions.find((x) => x.id === hl);
+    const r = zonesOf(k.zones.level).find((x) => x.id === hl);
     if (r) {
       p.alpha = a0;
-      p.stroke(rings(pj, cam, [r.ring], true, offs), '#ffffff', 3 + 7 * pulse, true);
+      p.stroke(rings(pj, cam, r.rings, true, offs), '#ffffff', 3 + 7 * pulse, true);
     }
     p.alpha = a0;
   }
   if (k.showBorders) p.strokeC(rings(pj, cam, wd.borders, false, offs), col(cl.border), 1.8, true, [7, 4]);
-  if (k.showRoads && v.zoom <= 10.5) p.strokeC(rings(pj, cam, wd.roads, false, offs), withA(col(cl.road), 0.85), 2.4, true);
 
-  if (v.zoom >= 9) {
+  // Paris detail (from zoom 9, when Paris is in view).
+  const ppm = cam.s / (40075016.7 * Math.cos(48.87 * D2R));
+  const [parX, parY] = cam.scr(...project(pj, 2.3522, 48.8566));
+  const near = parX > -30000 * ppm && parY > -30000 * ppm && parX < w + 30000 * ppm && parY < h + 30000 * ppm;
+  if (v.zoom >= 9 && near) {
     const dp = wd.paris;
-    const ppm = cam.s / (40075016.7 * Math.cos(48.87 * D2R));
     const mw = (m: number, min: number) => Math.max(m * ppm, min);
     const one = (r: Ll[], close: boolean) => rings(pj, cam, [r], close, [0]);
-    const urban = k.style === 'satellite' ? '#5d5a52' : hexMix(cl.land, '#ffffff', 0.08);
+    const urban = hexMix(cl.land, '#ffffff', 0.08);
     const park = k.style === 'mono' ? hexMix(cl.land, '#ffffff', 0.12) : '#2f6b3a';
     const stand = k.style === 'mono' ? '#c7cad3' : '#dfe3ee';
     p.fill(one(dp.urban, true), urban);
@@ -387,11 +372,11 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
     p.stroke(rings(pj, cam, dp.streets, false, [0]), hexMix(urban, '#ffffff', 0.25), mw(12, 1.2), true);
     p.stroke(one(dp.seine, false), cl.water, mw(130, 3), true);
     p.stroke(one(dp.canal, false), cl.water, mw(32, 1.5), false);
-    if (k.showRoads) {
+    {
       const cmds = [...rings(pj, cam, [dp.peri], true, [0]), ...rings(pj, cam, dp.motorways, false, [0])];
       const ww = mw(34, 4);
       p.strokeC(cmds, withA(col('#0b0f1d'), 0.5), ww + 3, true);
-      p.stroke(cmds, cl.road, ww, true);
+      p.stroke(cmds, hexMix(cl.land, '#ffffff', 0.3), ww, true);
     }
     const st = one(dp.stands, true);
     p.fill(st, stand);
@@ -501,9 +486,23 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
         cands.push({ pri: 9.5 - i * 0.01, kind: 0, name: m.name, color: m.color, x: x + sz * 0.62 + 6, y: ly - fs * 0.8, w: tw, h: fs * 1.6, fs, px: x, py: y });
       }
     });
+  // « Aller à… »: the place, a dot and its name.
+  if (s.goto) {
+    const g = s.goto;
+    const [X, Y] = project(pj, g.lon, g.lat);
+    const [x, y] = cam.scr(wrapX(X), Y);
+    if (inView(x, y, 200)) {
+      marker(p, 'dot', GOTO, x, y, sz, now);
+      const fs = Math.round(sz * 0.62);
+      const name = placeName(k, g.name, g.name, lang);
+      const tw = p.tw(name, fs, 800, 0) + 26;
+      cands.push({ pri: 10, kind: 0, name, color: GOTO, x: x + sz * 0.62 + 6, y: y - fs * 0.8, w: tw, h: fs * 1.6, fs, px: x, py: y });
+    }
+  }
   const lb = k.labels;
   if (layerOn(k, s, 'labels'))
-    for (const [name, lat, lon, imp, minZ, kind] of wd.places) {
+    for (const [en, lat, lon, imp, minZ, kind, fr] of wd.places) {
+      const name = placeName(k, en, fr, lang);
       const city = kind === 'city' || kind === 'poi';
       if ((city && !lb.cities) || (!city && !lb.countries)) continue;
       const maxZ = kind === 'country' ? 8.5 : kind === 'continent' ? 3.6 : 99;
@@ -528,7 +527,7 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
   const hidden: string[] = [];
   const pad = lb.pad;
   for (const c of cands) {
-    const hit = lb.collide && placed.some((q) => c.x < q.x + q.w + pad && c.x + c.w + pad > q.x && c.y < q.y + q.h + pad && c.y + c.h + pad > q.y);
+    const hit = placed.some((q) => c.x < q.x + q.w + pad && c.x + c.w + pad > q.x && c.y < q.y + q.h + pad && c.y + c.h + pad > q.y);
     if (hit) {
       hidden.push(c.name);
       if (debug && lb.showHidden) {
@@ -569,20 +568,21 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
   }
 
   if (zoneOn && hl) {
-    const r = wd.regions.find((x) => x.id === hl);
+    const r = zonesOf(k.zones.level).find((x) => x.id === hl);
     if (r) {
       const [X, Y] = project(pj, r.lon, r.lat);
       const [x, y] = cam.scr(wrapX(X), Y);
       const z = zf[r.id];
-      const t2 = z ? z.text : 'no data';
+      const t2 = z && z.text ? z.text : tl(lang, 'No data');
+      const zname = placeName(k, r.en || r.name, r.name, lang);
       const zc = z ? z.color : '#ffffff';
-      const bw = Math.max(p.tw(r.name, 26, 800, 0), p.tw(t2, 22, 700, 0)) + 36;
+      const bw = Math.max(p.tw(zname, 26, 800, 0), p.tw(t2, 22, 700, 0)) + 36;
       const bx = x - bw / 2;
       const by = y - 120;
       const b = rrect(bx, by, bw, 84, 12);
       p.fill(b, '#080a16eb');
       p.stroke(b, zc, 4, false);
-      p.text(r.name, bx + 18, by + 26.6, '#ffffff', { size: 26, weight: 800 });
+      p.text(zname, bx + 18, by + 26.6, '#ffffff', { size: 26, weight: 800 });
       p.text(t2, bx + 18, by + 58, z ? hexMix(zc, '#ffffff', 0.35) : '#cbd5e1', { size: 22, weight: 700 });
       p.fill(
         poly(
@@ -600,7 +600,8 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
   if (tilted) p.pop();
 
   const att = k.attribution;
-  const attVisible = att.show || PROVIDERS[att.provider].required;
+  const [attText, attReq] = attribution(k, s, v.zoom, lang);
+  const attVisible = att.show || attReq;
   if (zoneOn && k.zones.legend) {
     const z = k.zones;
     const title = String(z.title ?? '').toUpperCase();
@@ -648,8 +649,9 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
         yy += 30;
       }
   }
+  // Attribution of the data drawn (kept when the licence requires it).
   if (attVisible) {
-    const text = PROVIDERS[att.provider].text;
+    const text = attText;
     const tw = p.tw(text, 15, 600, 0) + 20;
     const [ax, ay] = corner(att.pos, w, h, tw, 26, 16, 14);
     if (att.style === 'minimal') p.textHalo(text, ax + 10, ay + 13, WHITE, [0, 0, 0, 0.7], 3, { size: 15, weight: 600 });
@@ -666,44 +668,166 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
 
 /** The layers the operator turns on and off, by name (translated where shown). */
 const LAYER_NAMES = { markers: 'Markers', routes: 'Routes', zones: 'Zones', labels: 'Labels' } as const;
+const LAYER_ICONS = { markers: MapPin, routes: RouteIcon, zones: Shapes, labels: Tag } as const;
 
-/** The Operator's compact row: the view shown, previous / next view, reset. */
-function Compact({ layer, state, act }: { layer: Config; state: unknown; act: (op: string, args?: unknown) => void }) {
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
-  const cur = s.cur;
+type Act = (op: string, args?: unknown) => void;
+interface OpP {
+  layer: Config;
+  state: unknown;
+  act: Act;
+  item?: unknown;
+  lang?: string;
+}
+
+/** What the map shows: the place gone to, the key view or nothing (the template's view). */
+function shownName(k: K, s: State, lang: string): string | undefined {
+  if (s.goto) return placeName(k, s.goto.name, s.goto.name, lang);
+  return s.cur != null ? k.views[s.cur]?.name : undefined;
+}
+
+/** « Aller à… »: a city, a zone (name or code) or « lat, lon »; Enter goes there. */
+function GotoField({ act, lang, width = 150 }: { act: Act; lang: string; width?: number }) {
+  const toast = useApp((s) => s.toast);
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const id = useRef(`map-gaz-${Math.random().toString(36).slice(2)}`).current;
+  const go = () => {
+    const x = q.trim();
+    if (!x) return;
+    if (!findPlace(x, lang)) return toast(t('“{place}” not found: type a city, a region, a departement, a country or “lat, lon”.', { place: x }), 'error');
+    act('goto', { place: x, lang });
+    setQ('');
+  };
   return (
-    <OpRow
-      value={cur != null ? k.views[cur]?.name : undefined}
-      list={[
-        k.views.length > 0 && { icon: ChevronLeft, title: t('Previous view'), onClick: () => act('prev') },
-        k.views.length > 0 && { icon: ChevronRight, title: t('Next view'), tone: 'green', onClick: () => act('next') },
-        { icon: RotateCcw, title: t('Reset'), onClick: () => act('reset') },
-      ]}
-    />
+    <>
+      <input
+        style={{ width, height: 28 }}
+        value={q}
+        list={open ? id : undefined}
+        placeholder={t('Go to…')}
+        title={t('Go to…')}
+        onFocus={() => setOpen(true)}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') go();
+          if (e.key === 'Escape') setQ('');
+        }}
+      />
+      {open && (
+        <datalist id={id}>
+          {placeNames(lang).map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
+      )}
+      <button className="opx-sq" title={t('Go to…')} disabled={!q.trim()} onClick={go}>
+        <Search size={13} />
+      </button>
+    </>
   );
 }
 
-function Operator({ layer, state, act }: { layer: Config; state: unknown; act: (op: string, args?: unknown) => void }) {
+/** The Operator's compact row: the view shown, previous / next view, reset, « Aller à… ». */
+function Compact({ layer, state, act, item, lang = 'fr' }: OpP) {
+  const k = cfg(layer);
+  const s = (state ?? {}) as State;
+  return (
+    <div className="wk-oprow">
+      <OpRow
+        noMore
+        value={shownName(k, s, lang)}
+        list={[
+          k.views.length > 0 && { icon: ChevronLeft, title: t('Previous view'), onClick: () => act('prev') },
+          k.views.length > 0 && { icon: ChevronRight, title: t('Next view'), tone: 'green', onClick: () => act('next') },
+          { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the template view?', { name: (layer as { name?: string }).name ?? t('Map') }) : undefined, onClick: () => act('reset') },
+        ]}
+      />
+      <GotoField act={act} lang={lang} />
+      <MoreButton />
+    </div>
+  );
+}
+
+/** A zone's name in the lists (departements with their code). */
+const zoneLabel = (k: K, z: Zone, level: string, lang: string) => `${level === 'deps' ? `${z.id} ` : ''}${placeName(k, z.en || z.name, z.name, lang)}`;
+const zoneOptions = (k: K, lang: string) => zonesOf(k.zones.level).map((z) => ({ value: z.id, label: zoneLabel(k, z, k.zones.level, lang) })).sort((a, b) => (k.zones.level === 'deps' ? 0 : a.label.localeCompare(b.label, lang)));
+
+/** Under ⋯: the layers, the zone put forward, the markers, a route to draw. */
+function More({ layer, state, act, lang = 'fr' }: OpP) {
+  const k = cfg(layer);
+  const s = (state ?? {}) as State;
+  return (
+    <div className="wk-oprow">
+      <OpRow
+        noMore
+        list={(['markers', 'routes', 'zones', 'labels'] as const).map((l) => {
+          const on = layerOn(k, s, l);
+          return { icon: LAYER_ICONS[l], title: t(LAYER_NAMES[l]), tone: on ? 'violet' : undefined, onClick: () => act('layer', { name: l, on: !on }) };
+        })}
+      />
+      <Star size={13} className="muted" />
+      <select className="opx-output" title={t('Put forward')} value={s.highlight ?? ''} onChange={(e) => act('highlight', { zone: e.target.value })}>
+        <option value="">—</option>
+        {zoneOptions(k, lang).map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      {k.routes.length > 0 && (
+        <>
+          <RouteIcon size={13} className="muted" />
+          <select className="opx-output" title={t('Draw a route')} value="" onChange={(e) => e.target.value && act('route', { id: e.target.value })}>
+            <option value="">{t('Draw a route')}</option>
+            {k.routes.map((r) => (
+              <option key={keyOf(r)} value={keyOf(r)}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      {k.markers.length > 0 && (
+        <OpRow
+          noMore
+          list={k.markers.map((m) => {
+            const on = markerOn(s, m);
+            return { icon: MapPin, tag: m.name || '—', title: m.name, tone: on ? 'violet' : undefined, onClick: () => act('marker', { id: keyOf(m), on: !on }) };
+          })}
+        />
+      )}
+    </div>
+  );
+}
+
+function Operator({ layer, state, act, item, lang = 'fr' }: OpP) {
   const now = useFrame();
   const k = cfg(layer);
   const s = (state ?? {}) as State;
   const [v, fly] = viewAt(k, s, now, 1600);
-  const [zone, setZone] = useState('idf');
+  const opts = zoneOptions(k, lang);
+  const [zone, setZone] = useState('');
+  const z = opts.some((o) => o.value === zone) ? zone : (opts[0]?.value ?? '');
   useKeys({ ArrowRight: () => act('next'), ArrowLeft: () => act('prev') });
   const cur = s.cur;
-  const name = cur != null ? k.views[cur]?.name : t('Template view');
+  const name = shownName(k, s, lang) ?? t('Template view');
   return (
     <>
-      <Readout sub={`${v.lat.toFixed(3)}°, ${v.lon.toFixed(3)}° · z ${v.zoom.toFixed(2)} · ${Math.round(v.rot)}° · ${t('tilt {n}°', { n: Math.round(v.tilt) })}${fly != null ? ` · ${t('flying {n} %', { n: Math.round(fly * 100) })}` : ''}`}>{name ?? '—'}</Readout>
+      <Readout sub={`${v.lat.toFixed(3)}°, ${v.lon.toFixed(3)}° · z ${v.zoom.toFixed(2)} · ${Math.round(v.rot)}° · ${t('tilt {n}°', { n: Math.round(v.tilt) })}${fly != null ? ` · ${t('flying {n} %', { n: Math.round(fly * 100) })}` : ''}`}>{name}</Readout>
       <Btns
         label={t('Views')}
         list={[
-          ...k.views.map((kv, i) => ({ label: kv.name, cls: `big ${cur === i ? 'violet' : ''}`, onClick: () => act('go', { view: i }) })),
+          ...k.views.map((kv, i) => ({ label: kv.name, cls: `big ${cur === i && !s.goto ? 'violet' : ''}`, onClick: () => act('go', { view: i }) })),
           { label: t('Next view'), cls: 'big green', keyHint: '→', onClick: () => act('next') },
-          { label: t('Reset'), cls: 'big ghost', title: t('Template view, no highlight, layers and routes as designed'), onClick: () => act('reset') },
+          { label: t('Reset'), cls: 'big ghost', title: t('Template view, no highlight, layers and routes as designed'), confirm: item ? t('{name} is on air: back to the template view?', { name: (layer as { name?: string }).name ?? t('Map') }) : undefined, onClick: () => act('reset') },
         ]}
       />
+      <Row label={t('Go to…')}>
+        <div className="wk-oprow">
+          <GotoField act={act} lang={lang} width={220} />
+        </div>
+      </Row>
       <Btns
         label={t('Layers')}
         list={(['markers', 'routes', 'zones', 'labels'] as const).map((l) => {
@@ -721,11 +845,11 @@ function Operator({ layer, state, act }: { layer: Config; state: unknown; act: (
         />
       )}
       <Row label={t('Zone')}>
-        <Dropdown value={zone} options={world().regions.map((r) => ({ value: r.id, label: r.name }))} onChange={setZone} />
+        <Dropdown value={z} options={opts} onChange={setZone} />
       </Row>
       <Btns
         list={[
-          { label: t('✦ Highlight zone'), cls: 'amber', onClick: () => act('highlight', { zone }) },
+          { label: t('✦ Highlight zone'), cls: 'amber', disabled: !z, onClick: () => act('highlight', { zone: z }) },
           { label: t('Clear highlight'), cls: 'ghost', disabled: !s.highlight, onClick: () => act('highlight', { zone: '' }) },
         ]}
       />
@@ -792,19 +916,20 @@ export default defineWidget({
   label: 'Map',
   group: 'Sport & interaction',
   icon: MapIcon,
-  create: () => ({ markers: [], routes: [], showRoads: false, layers: { markers: false, routes: false, zones: false, labels: true }, props: { width: 1600, height: 840 } }),
+  create: () => ({ markers: [], routes: [], layers: { markers: false, routes: false, zones: false, labels: true }, props: { width: 1600, height: 840 } }),
   ownsLook: true,
   live: () => true,
-  Render: ({ layer, w, h, data, time, state, designer }) => {
+  Render: ({ layer, w, h, data, time, state, designer, lang }) => {
     const p = new Pt();
-    paint(p, cfg(layer), (state ?? {}) as State, data, time.nowMs, w, h, !!designer);
+    paint(p, cfg(layer), (state ?? {}) as State, data, time.nowMs, w, h, !!designer, lang ?? 'fr');
     return p.svg(w, h);
   },
   Overlay: ({ layer, w, h, scale, edit }) => (cfg(layer).dragPans ? <PanOverlay layer={layer} w={w} h={h} scale={scale} edit={edit as never} /> : null),
   Inspector: ({ layer, edit, state }) => {
     const k = cfg(layer);
-    const prov = PROVIDERS[k.attribution.provider];
+    const lang = useApp((s) => s.project?.language) || 'fr';
     const [v] = viewAt(k, (state ?? {}) as State, Date.now(), num(layer.props.width ?? 1600));
+    const [attText, attReq] = attribution(k, (state ?? {}) as State, v.zoom, lang);
     return (
       <>
         <Section id="map-view" title={t('View')}>
@@ -908,11 +1033,21 @@ export default defineWidget({
           <Toggle label={t('Zones')} path="layers.zones" value={true} />
           {k.layers.zones && (
             <>
+              <Seg
+                label={t('Division')}
+                path="zones.level"
+                value={k.zones.level}
+                options={[
+                  ['regions', t('Regions')],
+                  ['deps', t('Departements')],
+                  ['countries', t('Countries')],
+                ]}
+              />
               <Btns
                 label={t('Sample')}
                 list={[
-                  { label: t('Election'), onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...ELECTION })) },
-                  { label: t('Weather'), onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...WEATHER, scale: SCALE })) },
+                  { label: t('Election'), onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...sample('election', cfg(l).zones.level) })) },
+                  { label: t('Weather'), onClick: () => edit((l) => void (l.zones = { ...cfg(l).zones, ...sample('weather', cfg(l).zones.level) })) },
                 ]}
               />
               <Seg
@@ -961,16 +1096,15 @@ export default defineWidget({
             expose="style"
             exposeValue={k.style}
             label={t('Style')}
-            value={k.style}
+            value={k.style === 'mono' ? 'mono' : 'vector'}
             onChange={(sv) =>
               edit((l) => {
                 l.style = sv;
-                l.colors = { ...STYLES[sv] };
+                l.colors = { ...STYLES[sv], grid: cfg(l).colors.grid };
               })
             }
             options={[
               ['vector', t('Vector')],
-              ['satellite', t('Satellite')],
               ['mono', 'Mono'],
             ]}
           />
@@ -988,10 +1122,8 @@ export default defineWidget({
           <ColorPick label={t('Land')} path="colors.land" value={k.colors.land} />
           <Toggle label={t('Borders')} path="showBorders" value={true} />
           {k.showBorders && <ColorPick label={t('Color')} path="colors.border" value={k.colors.border} />}
-          <Toggle label={t('Roads')} path="showRoads" value={true} />
-          {k.showRoads && <ColorPick label={t('Color')} path="colors.road" value={k.colors.road} />}
           <Toggle label={t('Graticule')} path="graticule" value={false} />
-          {k.graticule && !k.showBorders && <ColorPick label={t('Color')} path="colors.border" value={k.colors.border} />}
+          {k.graticule && <ColorPick label={t('Color')} value={k.colors.grid.trim() ? k.colors.grid : k.colors.border} onChange={(x) => edit((l) => void (l.colors = { ...cfg(l).colors, grid: x }), `mgc-${layer.id}`)} />}
           <Num label={t('Corners')} path="radius" value={k.radius} min={0} max={2000} unit="px" />
         </Section>
         <Section id="map-labels" title={t('Labels')}>
@@ -1002,20 +1134,28 @@ export default defineWidget({
               <Toggle label={t('Countries')} path="labels.countries" value={true} />
               <Num label={t('Importance')} path="labels.minImp" value={k.labels.minImp} min={1} max={10} />
               <Num label={t('Size')} path="labels.size" value={k.labels.size} min={1} max={400} unit="px" />
-              <Toggle label={t('Collisions')} path="labels.collide" value={true} />
-              {k.labels.collide && (
-                <>
-                  <Num label={t('Spacing')} path="labels.pad" value={k.labels.pad} min={0} max={200} unit="px" />
-                  <Toggle label={t('Show hidden')} value={k.labels.showHidden} onChange={(x) => edit((l) => void (l.labels = { ...l.labels, showHidden: x || undefined }))} />
-                </>
-              )}
+              <Num label={t('Spacing')} path="labels.pad" value={k.labels.pad} min={0} max={200} unit="px" />
+              <Toggle label={t('Show hidden')} value={k.labels.showHidden} onChange={(x) => edit((l) => void (l.labels = { ...l.labels, showHidden: x || undefined }))} />
             </>
           )}
+          <ListEditor
+            label={t('Renamed places')}
+            path="names"
+            value={k.names}
+            fields={[
+              { key: 'from', placeholder: t('Name on the map') },
+              { key: 'to', placeholder: t('Shown name') },
+            ]}
+            add={() => ({ from: '', to: '' })}
+            addLabel={t('Name')}
+          />
         </Section>
         <Section id="map-att" title={t('Attribution')}>
-          <Select label={t('Provider')} path="attribution.provider" value={k.attribution.provider} options={(Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]).map((x) => [x, t(PROVIDERS[x].name)] as const)} />
-          <Toggle label={t('Show')} path="attribution.show" value={prov.required ? true : k.attribution.show} disabled={prov.required ? t('Required by the licence') : undefined} />
-          {(k.attribution.show || prov.required) && (
+          <Row label={t('Credit (auto)')}>
+            <input className="wk-data" readOnly value={attText} />
+          </Row>
+          <Toggle label={t('Show')} path="attribution.show" value={attReq ? true : k.attribution.show} disabled={attReq ? t('Required by the licence') : undefined} />
+          {(k.attribution.show || attReq) && (
             <>
               <Seg label={t('Position')} path="attribution.pos" value={k.attribution.pos} options={POS} />
               <Seg
@@ -1051,8 +1191,9 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, act }) => <Operator layer={layer} state={state} act={act} />,
-  Compact: ({ layer, state, act }) => <Compact layer={layer} state={state} act={act} />,
+  Operator: ({ layer, state, act, item, lang }) => <Operator layer={layer} state={state} act={act} item={item} lang={lang} />,
+  Compact: ({ layer, state, act, item, lang }) => <Compact layer={layer} state={state} act={act} item={item} lang={lang} />,
+  More: ({ layer, state, act, lang }) => <More layer={layer} state={state} act={act} lang={lang} />,
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;
@@ -1065,14 +1206,15 @@ export default defineWidget({
         if (bad.length) out.push({ level: 'warn', op: true, text: t('Route “{name}”: waypoint not found — {places}. Use a known city or “lat,lon”.', { name: rt.name, places: bad.join(', ') }) });
       }
     const [, unmatched] = zoneFills(k.zones, data);
-    if (unmatched.length) out.push({ level: 'warn', text: t('Zone data: no region named {names}.', { names: unmatched.join(', ') }) });
+    if (unmatched.length) out.push({ level: 'warn', text: t('Zone data: no zone named {names}.', { names: unmatched.join(', ') }) });
     for (const kv of k.views) if (!Number.isFinite(+kv.lat) || !Number.isFinite(+kv.lon) || Math.abs(+kv.lat) > 90 || Math.abs(+kv.lon) > 180) out.push({ level: 'error', op: true, text: t('Key view “{name}” has invalid coordinates: the Operator cannot go to it.', { name: kv.name }) });
-    const prov = PROVIDERS[k.attribution.provider];
-    if (!k.attribution.show && prov.required) out.push({ level: 'info', text: t('Attribution kept on air: required by the {name} licence.', { name: t(prov.name) }) });
+    const lang = useApp.getState().project?.language || 'fr';
+    const [, req] = attribution(k, s, viewAt(k, s, Date.now(), 1600)[0].zoom, lang);
+    if (!k.attribution.show && req) out.push({ level: 'info', text: t('Attribution kept on air: required by the IGN licence (zones).') });
     if (r) {
       const w = num(r.width);
       const h = num(r.height);
-      const { hidden } = paint(new Pt(true), k, s, data, Date.now(), w, h, false);
+      const { hidden } = paint(new Pt(true), k, s, data, Date.now(), w, h, false, lang);
       if (hidden.length) out.push({ level: 'info', text: tn(hidden.length, '{n} label hidden by priority: {names}', '{n} labels hidden by priority: {names}', { names: `${hidden.slice(0, 6).join(', ')}${hidden.length > 6 ? '…' : ''}` }) });
     }
     const [v] = viewAt(k, s, Date.now(), 1600);

@@ -1,11 +1,14 @@
-//! Ellipse: circle lock, portion (sector / arc / chord) between a start and
-//! an end angle, ring / donut. The outline is a path in layer pixels (never
-//! a scaled circle), so a flat ellipse keeps an even stroke.
+//! Ellipse: portion (sector / arc / chord) between a start and an end
+//! angle, ring / donut (a circle is the Dimensions lock of the layer). The
+//! outline is a path in layer pixels (never a scaled circle), so a flat
+//! ellipse keeps an even stroke.
 //! Drawn by `cg-render/src/wid/ellipse.rs` and `web/src/widgets/ellipse.tsx` (keep in sync).
 
 use serde::{Deserialize, Serialize};
 
-use super::shape::{Cmd, FillStyle, StrokePosition, StrokeStyle};
+use serde::Deserializer;
+
+use super::shape::{Cmd, FillStyle, PartialStroke, StrokePosition, StrokeStyle};
 use super::ActCtx;
 use crate::model::Layer;
 
@@ -29,12 +32,19 @@ fn centred() -> StrokeStyle {
     }
 }
 
+/// A style that leaves its position out is centred too (as the web reads it).
+fn centred_partial<'de, D: Deserializer<'de>>(d: D) -> Result<StrokeStyle, D::Error> {
+    Ok(PartialStroke::deserialize(d)?.over(centred()))
+}
+
 /// Settings of the widget, flattened into the layer's JSON. Without them
 /// (older projects) it is the full ellipse it always was.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
-    /// Width and height stay equal.
+    /// Older ellipses: width and height stayed equal. Read only: the project
+    /// upgrade turns it into the layer's Dimensions lock (`lock_ratio`).
+    #[serde(skip_serializing)]
     pub circle: bool,
     /// Degrees, 0 = 12 o'clock, clockwise.
     pub start: f32,
@@ -44,7 +54,7 @@ pub struct Config {
     /// Sector: inner radius, % (ring / donut).
     pub inner: f32,
     pub fill_style: FillStyle,
-    #[serde(default = "centred")]
+    #[serde(default = "centred", deserialize_with = "centred_partial")]
     pub stroke_style: StrokeStyle,
 }
 
@@ -249,6 +259,29 @@ mod tests {
             panic!()
         };
         assert!((x0 - x1).abs() < 1e-3 && (y0 - y1).abs() < 1e-3);
+    }
+
+    #[test]
+    fn partial_stroke_style_stays_centred() {
+        let l: Layer = serde_json::from_str(
+            r#"{"id":"a","name":"E","type":"ellipse","props":{},"strokeStyle":{"dash":"dashed"},"circle":true}"#,
+        )
+        .unwrap();
+        let crate::LayerKind::Ellipse { x } = &l.kind else {
+            panic!()
+        };
+        assert_eq!(x.stroke_style.position, StrokePosition::Center);
+        assert_eq!(x.stroke_style.dash, super::super::shape::Dash::Dashed);
+        assert!(x.circle);
+        // « Circle » is read, never written again.
+        let json = serde_json::to_string(&l).unwrap();
+        assert!(!json.contains("circle"));
+        // The project upgrade makes it the layer's Dimensions lock.
+        let mut t = crate::model::Template::blank("T", "z", 50.0);
+        t.layers.push(l);
+        assert!(t.upgrade_layers());
+        assert!(t.layers[0].lock_ratio);
+        assert!(!t.upgrade_layers());
     }
 
     #[test]

@@ -1,16 +1,17 @@
 // Image: fits (incl. original size and tile), focal point, crop, rounded / circle mask, stroke,
 // colorize, fallback picture when the source is missing.
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
-import { api, useApp } from '../store';
-import { Film, Image, Pause, Play, Radio, RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { api, uploadAsset, useApp } from '../store';
+import { Film, Image, Pause, Play, Radio, RefreshCw, RotateCcw } from 'lucide-react';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { inputMessage, useInputs, useLiveFrame } from '../engine/liveInputs';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
-import type { Data } from '../engine/types';
+import type { Data, PlayoutItem } from '../engine/types';
+import type { TimeCtx } from '../engine/widgets';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, OpRow, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
-import { t, tn } from '../i18n';
+import { lang, t, tn } from '../i18n';
 
 export interface Crop {
   l: number;
@@ -19,8 +20,8 @@ export interface Crop {
   b: number;
 }
 export interface Config {
-  /** Original / Tile on top of the layer's `fit` (contain / cover / stretch). */
-  fitMode?: 'original' | 'tile';
+  /** Original / Tile on top of the layer's `fit` (contain / cover / stretch), or any of the five when the Operator chooses it (an exposed Fit). */
+  fitMode?: 'original' | 'tile' | 'contain' | 'cover' | 'stretch';
   tileScale?: number;
   /** Kept in view when Cover crops (fractions of the picture). */
   focal?: { x: number; y: number };
@@ -43,20 +44,27 @@ export interface Config {
   clip?: string;
   /** A live video input shown instead ('' = none). */
   input?: string;
+  /** In and out points of the sequence (a video file), s at its speed: only the frames between are played (out 0 = to the end). */
+  clipIn?: number;
+  clipOut?: number;
 }
 
-/** Operator state of a sequence started by hand (wall-clock ms). */
+/** Operator state of a sequence (wall-clock ms): started by hand, or taken over (paused, played, restarted) when it starts at the In. */
 export interface State {
   playing?: boolean;
   atMs?: number;
   pausedEl?: number;
+  /** The operator took over a sequence starting at the In: these times replace its time on air. */
+  own?: boolean;
+  /** Times the operator reloaded the picture. */
+  reload?: number;
 }
 
 type Fit = 'contain' | 'cover' | 'stretch' | 'original' | 'tile';
 type Rect = [number, number, number, number];
 type ImgLayer = Config & { id: string; src: string; fit: 'contain' | 'cover' | 'stretch'; props: Record<string, unknown> };
 
-const D = { tileScale: 100, focal: { x: 0.5, y: 0.5 }, crop: { l: 0, t: 0, r: 0, b: 0 }, mask: 'none' as const, radius: 28, colorize: 'none' as const, tint: '#ff3b5c', fallback: '', frames: [] as string[], fps: 12, playMode: 'loop' as const, loops: 3, start: 'in' as const, video: false, clip: '', input: '' };
+const D = { tileScale: 100, focal: { x: 0.5, y: 0.5 }, crop: { l: 0, t: 0, r: 0, b: 0 }, mask: 'none' as const, radius: 28, colorize: 'none' as const, tint: '#ff3b5c', fallback: '', frames: [] as string[], fps: 12, playMode: 'loop' as const, loops: 3, start: 'in' as const, video: false, clip: '', input: '', clipIn: 0, clipOut: 0 };
 const cfg = (c: Config) => withDefaults(D, c);
 const fitOf = (l: ImgLayer): Fit => l.fitMode ?? l.fit ?? 'contain';
 
@@ -101,22 +109,75 @@ function place(c: Config, [iw, ih]: [number, number], [fw, fh]: [number, number]
   ];
 }
 
-/** Where a sequence is (mirrors seq). */
+/** The frames played, between the in and out points: [first, count] (mirrors clip_range). */
+export function clipRange(c: Config): [number, number] {
+  const k = cfg(c);
+  const total = k.frames.length;
+  if (!total) return [0, 0];
+  const fps = clamp(k.fps, 0.1, 120);
+  const first = Math.min(Math.round(Math.max(0, k.clipIn) * fps), total - 1);
+  const end = k.clipOut > 0 ? clamp(Math.round(k.clipOut * fps), first + 1, total) : total;
+  return [first, end - first];
+}
+
+/** Where a sequence is (mirrors seq): its frame, whether it runs, the seconds left (to the end, or of this loop when it loops forever). */
 export function seqInfo(c: Config, st: State | undefined, nowMs: number, ageSecs: number) {
   const k = cfg(c);
-  const n = Math.max(1, k.frames.length);
-  const el = Math.max(0, k.start === 'in' ? ageSecs : st?.playing ? (nowMs - (st.atMs ?? 0)) / 1000 : (st?.pausedEl ?? 0));
+  const [first, count] = clipRange(c);
+  const n = Math.max(1, count);
+  const driven = k.start === 'manual' || !!st?.own;
+  const el = Math.max(0, !driven ? ageSecs : st?.playing ? (nowMs - (st.atMs ?? 0)) / 1000 : (st?.pausedEl ?? 0));
   const loops = k.playMode === 'loop' ? Infinity : k.playMode === 'once' ? 1 : Math.max(1, k.loops);
-  let f = Math.floor(el * clamp(k.fps, 0.1, 120));
+  const fps = clamp(k.fps, 0.1, 120);
+  let f = Math.floor(el * fps);
   let ended = false;
   if (f >= n * loops) ((f = n * loops - 1), (ended = true));
-  return { idx: f % n, lap: Math.floor(f / n) + 1, loops, ended, el, n };
+  const lap = n / fps;
+  const remaining = Number.isFinite(loops) ? Math.max(0, lap * loops - el) : lap - (el % lap);
+  return { idx: first + (f % n), lap: Math.floor(f / n) + 1, loops, ended, el, n, running: !ended && (!driven || !!st?.playing), remaining };
 }
+
+/**
+ * The time of the controls now, re-rendered while `active`: the clock runs on
+ * from the time given; on air, the time on air runs on from the state last
+ * received (the server sends none while the timeline holds).
+ */
+function useNow(time: TimeCtx, item: PlayoutItem | undefined, active: boolean) {
+  const lives = useApp((s) => s.live);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const h = setInterval(() => tick((n) => n + 1), 250);
+    return () => clearInterval(h);
+  }, [active]);
+  const anchor = useRef({ time, at: Date.now() });
+  if (anchor.current.time !== time) anchor.current = { time, at: Date.now() };
+  const d = Date.now() - anchor.current.at;
+  let ageSecs = time.ageSecs + d / 1000;
+  const live = item && Object.values(lives).find((l) => Object.values(l.state.layers).includes(item));
+  if (item && live) ageSecs = (item.age ?? 0) / (time.fps ?? 50) + Math.max(0, Date.now() - live.at) / 1000;
+  return { nowMs: time.nowMs + d, ageSecs };
+}
+
+/** Seconds left as −m:ss. */
+const left = (s: number) => {
+  const v = Math.ceil(Math.max(0, s) - 1e-6);
+  return `−${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
+};
 
 // --------------------------------------------------------------- pictures --
 // Natural sizes and failures, per source (module level: warnings read them too).
 const sizes = new Map<string, [number, number]>();
-const failed = new Set<string>();
+/** Sources that could not be read, and when: tried again after a while (a file imported since shows). */
+const failed = new Map<string, number>();
+const RETRY_MS = 3000;
+const hasFailed = (src: string) => {
+  const at = failed.get(src);
+  if (at === undefined) return false;
+  if (Date.now() - at < RETRY_MS) return true;
+  failed.delete(src);
+  return false;
+};
 const loading = new Set<string>();
 const subs = new Set<() => void>();
 let version = 0;
@@ -131,7 +192,7 @@ const useStore = () =>
   );
 
 function load(src: string) {
-  if (!src || sizes.has(src) || failed.has(src) || loading.has(src)) return;
+  if (!src || sizes.has(src) || hasFailed(src) || loading.has(src)) return;
   loading.add(src);
   const img = new window.Image();
   img.onload = () => {
@@ -141,7 +202,7 @@ function load(src: string) {
   };
   img.onerror = () => {
     loading.delete(src);
-    failed.add(src);
+    failed.set(src, Date.now());
     bump();
   };
   img.src = src;
@@ -150,7 +211,7 @@ function load(src: string) {
 /** 'ok' with its size, 'missing', or 'loading'. */
 function status(src: string): { s: 'ok'; size: [number, number] } | { s: 'missing' } | { s: 'loading' } {
   src = src.trim();
-  if (!src || failed.has(src)) return { s: 'missing' };
+  if (!src || hasFailed(src)) return { s: 'missing' };
   const z = sizes.get(src);
   if (z) return { s: 'ok', size: z };
   load(src);
@@ -163,27 +224,24 @@ function wantedSrc(l: ImgLayer, data: Data, idx = 0) {
   return interpolateText(k.frames.length ? k.frames[Math.min(idx, k.frames.length - 1)] : l.src, data).trim();
 }
 
-// Designer-only UI: crop editing and the key / fill preview, per layer (not saved).
-const ui = { crop: new Set<string>(), view: new Map<string, 'program' | 'fill' | 'key'>() };
+// Designer-only UI: crop editing, per layer (not saved).
+const ui = { crop: new Set<string>() };
 const setUi = (fn: () => void) => (fn(), bump());
 
 // --------------------------------------------------------------- drawing --
 
 const px = (r: Rect): CSSProperties => ({ position: 'absolute', left: r[0], top: r[1], width: r[2], height: r[3] });
 
-/** One picture at rectangle P, colorized, in the preview view. */
-function Pic({ src, P, colorize, tint, view }: { src: string; P: Rect; colorize: string; tint: string; view: string }) {
+/** One picture at rectangle P, colorized. */
+function Pic({ src, P, colorize, tint }: { src: string; P: Rect; colorize: string; tint: string }) {
   const q = `url("${src.replace(/"/g, '%22')}")`;
-  const filters: string[] = [];
-  if (colorize === 'tint') filters.push('grayscale(1)');
-  if (view === 'key') filters.push('brightness(0) invert(1)');
-  const filter = filters.join(' ') || undefined;
+  const filter = colorize === 'tint' ? 'grayscale(1)' : undefined;
   const masked = (bg: string): CSSProperties => ({ ...px(P), background: bg, WebkitMaskImage: q, maskImage: q, WebkitMaskSize: '100% 100%', maskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat' });
-  if (colorize === 'replace') return <div style={masked(view === 'key' ? '#fff' : hex(tint))} />;
+  if (colorize === 'replace') return <div style={masked(hex(tint))} />;
   return (
     <>
-      <img src={src} alt="" draggable={false} onError={() => (failed.add(src), bump())} style={{ ...px(P), maxWidth: 'none', display: 'block', filter }} />
-      {colorize === 'tint' && view !== 'key' && <div style={{ ...masked(hex(tint)), mixBlendMode: 'multiply' }} />}
+      <img src={src} alt="" draggable={false} onError={() => (failed.set(src, Date.now()), bump())} style={{ ...px(P), maxWidth: 'none', display: 'block', filter }} />
+      {colorize === 'tint' && <div style={{ ...masked(hex(tint)), mixBlendMode: 'multiply' }} />}
     </>
   );
 }
@@ -220,11 +278,20 @@ function Slate({ F }: { F: Rect }) {
   );
 }
 
-/** What is shown: the picture, the fallback (missing), or the slate. */
-function resolve(l: ImgLayer, data: Data, idx: number) {
+/** The picture read again after `reload` operator reloads (another URL: never the cached copy). */
+const reloaded = (src: string, n: number) => (n > 0 && src ? `${src}${src.includes('?') ? '&' : '?'}reload=${n}` : src);
+
+/** What is shown: the picture, the fallback (missing), or the slate. `reload`: the operator's reloads. */
+function resolve(l: ImgLayer, data: Data, idx: number, reload = 0) {
   const k = cfg(l);
-  const src = wantedSrc(l, data, idx);
-  const st = status(src);
+  let src = wantedSrc(l, data, idx);
+  let st = status(src);
+  if (reload > 0 && st.s !== 'missing') {
+    // The new copy once it has loaded; the old one meanwhile.
+    const fresh = reloaded(src, reload);
+    const sf = status(fresh);
+    if (sf.s === 'ok') [src, st] = [fresh, sf];
+  }
   if (st.s !== 'missing') return { src, st, missing: false };
   const fb = interpolateText(k.fallback, data).trim();
   return { src: fb, st: status(fb), missing: true };
@@ -250,18 +317,19 @@ function ImageView({ layer, r, w, h, data, time, state, designer }: { layer: Img
   // Every frame of a sequence decoded once, up front: cycling never stutters.
   useEffect(() => k.frames.forEach((f) => load(interpolateText(f, data).trim())), [k.frames, data]);
   const sq = seqInfo(layer, state as State, time.nowMs, time.ageSecs);
+  const reload = (state as State | undefined)?.reload ?? 0;
   if (k.input.trim() && !(live.url && live.size)) {
     const info = inputs.find((i) => i.id === k.input.trim());
     return designer ? <VideoPlaceholder icon={<Radio size={44} />} title={info ? info.name : t('Live input')} sub={info ? (inputMessage(info.message) || t('No signal')) : t('This input does not exist any more')} /> : null;
   }
   if (k.video && !k.input.trim() && !k.frames.length && !layer.src.trim()) return designer ? <VideoPlaceholder icon={<Film size={44} />} title={t('Video')} sub={t('Choose a file or a live input on the right')} /> : null;
-  const { src, st, missing } = k.input.trim() && live.url && live.size ? { src: live.url, st: { s: 'ok' as const, size: live.size }, missing: false } : resolve(layer, data, sq.idx);
-  const view = designer ? (ui.view.get(layer.id) ?? 'program') : 'program';
+  const isLive = !!(k.input.trim() && live.url && live.size);
+  const { src, st, missing } = isLive ? { src: live.url!, st: { s: 'ok' as const, size: live.size! }, missing: false } : resolve(layer, data, sq.idx, reload);
   const [F, radius] = frameRect(layer, w, h);
   const sw = num(r.strokeWidth as never);
-  const bg: CSSProperties = view === 'program' ? {} : { background: '#000' };
   const fit: Fit = missing ? 'cover' : fitOf(layer);
-  const colorize = missing ? 'none' : k.colorize;
+  // Neither the fallback nor a live input is colorized (as the engine).
+  const colorize = missing || isLive ? 'none' : k.colorize;
   let inner: ReactNode = null;
   if (st.s === 'missing') inner = <Slate F={[0, 0, F[2], F[3]]} />;
   else if (st.s === 'ok') {
@@ -272,8 +340,8 @@ function ImageView({ layer, r, w, h, data, time, state, designer }: { layer: Img
       const c = cropOf(layer);
       const [cx, cy, cw, ch] = [R[0] + c.l * R[2], R[1] + c.t * R[3], R[2] * (1 - c.l - c.r), R[3] * (1 - c.t - c.b)];
       return (
-        <div style={{ position: 'absolute', inset: 0, ...bg }}>
-          <Pic src={src} P={R} colorize="none" tint="" view={view} />
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <Pic src={src} P={R} colorize="none" tint="" />
           <svg width={w} height={h} style={{ position: 'absolute', inset: 0 }}>
             <path fillRule="evenodd" fill="#000" opacity={0.6} d={`M${R[0]} ${R[1]}h${R[2]}v${R[3]}h${-R[2]}Z M${cx} ${cy}h${cw}v${ch}h${-cw}Z`} />
             <rect x={cx} y={cy} width={cw} height={ch} fill="none" stroke="#f59e0b" strokeWidth={4} strokeDasharray="14 10" />
@@ -287,26 +355,26 @@ function ImageView({ layer, r, w, h, data, time, state, designer }: { layer: Img
       const size = `${iw * t}px ${ih * t}px`;
       inner =
         colorize === 'replace' ? (
-          <div style={{ position: 'absolute', inset: 0, background: view === 'key' ? '#fff' : hex(k.tint), WebkitMaskImage: q, maskImage: q, WebkitMaskSize: size, maskSize: size, WebkitMaskRepeat: 'repeat', maskRepeat: 'repeat' }} />
+          <div style={{ position: 'absolute', inset: 0, background: hex(k.tint), WebkitMaskImage: q, maskImage: q, WebkitMaskSize: size, maskSize: size, WebkitMaskRepeat: 'repeat', maskRepeat: 'repeat' }} />
         ) : (
           <>
-            <div style={{ position: 'absolute', inset: 0, backgroundImage: q, backgroundSize: size, backgroundRepeat: 'repeat', filter: view === 'key' ? 'brightness(0) invert(1)' : colorize === 'tint' ? 'grayscale(1)' : undefined }} />
-            {colorize === 'tint' && view !== 'key' && <div style={{ position: 'absolute', inset: 0, background: hex(k.tint), mixBlendMode: 'multiply', WebkitMaskImage: q, maskImage: q, WebkitMaskSize: size, maskSize: size }} />}
+            <div style={{ position: 'absolute', inset: 0, backgroundImage: q, backgroundSize: size, backgroundRepeat: 'repeat', filter: colorize === 'tint' ? 'grayscale(1)' : undefined }} />
+            {colorize === 'tint' && <div style={{ position: 'absolute', inset: 0, background: hex(k.tint), mixBlendMode: 'multiply', WebkitMaskImage: q, maskImage: q, WebkitMaskSize: size, maskSize: size }} />}
           </>
         );
     } else {
       const [win, pic] = place(layer, [iw, ih], [F[2], F[3]], fit, missing ? { l: 0, t: 0, r: 0, b: 0 } : cropOf(layer));
       inner = (
         <div style={{ ...px(win), overflow: 'hidden', isolation: 'isolate' }}>
-          <Pic src={src} P={[pic[0] - win[0], pic[1] - win[1], pic[2], pic[3]]} colorize={colorize} tint={k.tint} view={view} />
+          <Pic src={src} P={[pic[0] - win[0], pic[1] - win[1], pic[2], pic[3]]} colorize={colorize} tint={k.tint} />
         </div>
       );
     }
   }
   return (
-    <div style={{ position: 'absolute', inset: 0, ...bg }}>
+    <div style={{ position: 'absolute', inset: 0 }}>
       <div style={{ ...px(F), borderRadius: radius, overflow: 'hidden', isolation: 'isolate' }}>{inner}</div>
-      {sw > 0 && <div style={{ ...px(F), borderRadius: radius, boxShadow: `inset 0 0 0 ${sw}px ${view === 'key' ? '#fff' : cssColor(col(r.stroke as never))}`, pointerEvents: 'none' }} />}
+      {sw > 0 && <div style={{ ...px(F), borderRadius: radius, boxShadow: `inset 0 0 0 ${sw}px ${cssColor(col(r.stroke as never))}`, pointerEvents: 'none' }} />}
     </div>
   );
 }
@@ -370,7 +438,6 @@ export default defineWidget({
     const fit = fitOf(l);
     const { src, st, missing } = resolve(l, data, 0);
     const cropping = ui.crop.has(layer.id);
-    const view = ui.view.get(layer.id) ?? 'program';
     const stroke = num(l.props.strokeWidth as never) > 0;
     return (
       <>
@@ -389,13 +456,9 @@ export default defineWidget({
         )}
         <Section id="image-fit" title={t('Fit & crop')}>
           <Seg
-            expose="fit"
-            exposeValue={l.fit}
-            exposeOptions={[
-              ['contain', t('Contain')],
-              ['cover', t('Cover')],
-              ['stretch', t('Stretch')],
-            ]}
+            // Exposed: the Operator chooses among the five (fitMode wins over fit).
+            expose="fitMode"
+            exposeValue={fit}
             label={t('Fit')}
             value={fit}
             onChange={(v) =>
@@ -455,8 +518,8 @@ export default defineWidget({
           />
           {k.mask === 'rounded' && <Num label={t('Radius')} path="radius" value={k.radius} min={0} max={2000} unit="px" />}
           <Toggle
-            expose="props.strokeWidth"
-            exposeValue={num(l.props.strokeWidth as never)}
+            // The width is exposed by its own row (Width): the toggle is not.
+            expose={false}
             label={t('Stroke')}
             value={stroke}
             onChange={(v) =>
@@ -473,7 +536,8 @@ export default defineWidget({
             </>
           )}
         </Section>
-        <Section id="image-colorize" title={t('Colorize')}>
+        {/* A live input is never colorized. */}
+        {!k.input.trim() && <Section id="image-colorize" title={t('Colorize')}>
           <Seg
             label={t('Mode')}
             path="colorize"
@@ -485,47 +549,45 @@ export default defineWidget({
             ]}
           />
           {k.colorize !== 'none' && <ColorPick label={t('Colour')} path="tint" value={D.tint} />}
-        </Section>
-        <Section id="image-preview" title={t('Output preview')} closed>
-          <Seg
-            label={t('View')}
-            value={view}
-            onChange={(v) => setUi(() => ui.view.set(layer.id, v))}
-            options={[
-              ['program', t('Program')],
-              ['fill', t('Fill')],
-              ['key', t('Key')],
-            ]}
-          />
-        </Section>
+        </Section>}
       </>
     );
   },
 
-  // A sequence of frames: play / pause, restart (a still picture has no controls).
-  controls: (layer) => cfg(layer as unknown as ImgLayer).frames.length > 0,
-  Compact: ({ layer, state, act }) => {
+  // A sequence (animation, video file): time left, play / pause (it freezes), restart; a still picture: reload. A live input: none.
+  controls: (layer) => {
+    const k = cfg(layer as unknown as ImgLayer);
+    return !k.input.trim() && (k.frames.length > 0 || !k.video);
+  },
+  Compact: ({ layer, state, act, time, item }) => {
+    const k = cfg(layer as unknown as ImgLayer);
     const st = (state ?? {}) as State;
-    if (!cfg(layer as unknown as ImgLayer).frames.length) return null;
+    const now = useNow(time, item, k.frames.length > 0);
+    if (k.input.trim()) return null;
+    if (!k.frames.length) return k.video ? null : <OpRow list={[{ icon: RefreshCw, title: t('Reload the picture'), onClick: () => act('reload') }]} />;
+    const s = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs);
     return (
       <OpRow
+        value={left(s.remaining)}
         list={[
-          st.playing ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act('play') },
+          s.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act('play') },
           { icon: RotateCcw, title: t('Restart'), onClick: () => act('restart') },
         ]}
       />
     );
   },
-  // A sequence started by hand: the operator plays it.
-  Operator: ({ layer, state, act }) => {
+  Operator: ({ layer, state, act, time, item }) => {
     const k = cfg(layer as unknown as ImgLayer);
-    if (!k.frames.length) return null;
     const st = (state ?? {}) as State;
+    const now = useNow(time, item, k.frames.length > 0);
+    if (k.input.trim()) return null;
+    if (!k.frames.length) return k.video ? null : <Btns list={[{ label: t('Reload'), cls: 'violet', title: t('Reload the picture'), onClick: () => act('reload') }]} />;
+    const running = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs).running;
     return (
       <>
         <Btns
           list={[
-            { label: st.playing ? t('Pause') : t('Play'), cls: st.playing ? '' : 'violet', onClick: () => act(st.playing ? 'pause' : 'play') },
+            { label: running ? t('Pause') : t('Play'), cls: running ? '' : 'violet', onClick: () => act(running ? 'pause' : 'play') },
             { label: t('Restart'), cls: 'ghost', onClick: () => act('restart') },
           ]}
         />
@@ -607,9 +669,9 @@ export default defineWidget({
     const missingFrames = k.frames.filter((f) => status(interpolateText(f, data)).s === 'missing').length;
     if (k.frames.length && missingFrames) out.push({ level: 'warn', text: tn(missingFrames, '{n} frame of the sequence cannot be found: the fallback shows in their place.', '{n} frames of the sequence cannot be found: the fallback shows in their place.'), op: true });
     if (k.colorize !== 'none' && r.missing) out.push({ level: 'info', text: t('Colorize does not apply to the fallback picture.') });
-    if (k.frames.length && !r.missing && k.start === 'manual') {
+    if (k.frames.length && !r.missing && (k.start === 'manual' || (state as State | undefined)?.own)) {
       const s = seqInfo(l, state as State, Date.now(), 0);
-      if (!(state as State | undefined)?.playing || s.ended) out.push({ level: 'info', text: s.ended ? t('Sequence finished on frame {n}/{total}.', { n: s.idx + 1, total: s.n }) : t('Sequence paused on frame {n}/{total}.', { n: s.idx + 1, total: s.n }), op: 'only' });
+      if (!s.running) out.push({ level: 'info', text: s.ended ? t('Sequence finished on frame {n}/{total}.', { n: s.idx + 1, total: s.n }) : t('Sequence paused on frame {n}/{total}.', { n: s.idx + 1, total: s.n }), op: 'only' });
     }
     return out;
   },
@@ -636,6 +698,43 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
       setBusy(false);
     }
   };
+  // A PNG sequence: a zip (split by the server), or the pictures of a folder (sent one by one), in the order of their names.
+  const fps0 = useApp((s) => (s.project ? s.project.frameRate.num / s.project.frameRate.den : 25));
+  const importPngs = async (files: File[]) => {
+    if (!pid || !files.length) return;
+    const zip = files.find((f) => /\.zip$/i.test(f.name));
+    if (zip) return importFile(zip);
+    const pngs = files.filter((f) => /\.png$/i.test(f.name) || f.type === 'image/png').sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (!pngs.length) return toast(t('No PNG picture in this folder'), 'error');
+    setBusy(true);
+    try {
+      const stem = (pngs[0].webkitRelativePath.split('/').slice(-2, -1)[0] || pngs[0].name.replace(/[-_ ]*\d*\.png$/i, '') || 'sequence').replace(/[^\w-]+/g, '-');
+      const frames: string[] = [];
+      for (const [i, f] of pngs.entries()) frames.push(await uploadAsset(new File([f], `${stem}-${String(i).padStart(4, '0')}.png`, { type: 'image/png' }), pid));
+      ed((x) => {
+        x.frames = frames;
+        x.fps = Math.round(fps0 * 100) / 100;
+      });
+      toast(tn(frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: Math.round(fps0 * 10) / 10 }), 'info');
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  // A dropped folder: its pictures.
+  const dropped = async (items: DataTransferItemList) => {
+    const out: File[] = [];
+    const walk = async (e: FileSystemEntry): Promise<void> => {
+      if (e.isFile) out.push(await new Promise<File>((res, rej) => (e as FileSystemFileEntry).file(res, rej)));
+      else if (e.isDirectory) {
+        const r = (e as FileSystemDirectoryEntry).createReader();
+        for (let batch: FileSystemEntry[] = []; (batch = await new Promise((res, rej) => r.readEntries(res, rej))).length; ) for (const x of batch) await walk(x);
+      }
+    };
+    for (const e of [...items].map((i) => i.webkitGetAsEntry()).filter((x): x is FileSystemEntry => !!x)) await walk(e);
+    return importPngs(out);
+  };
   const n = k.frames.length;
   return (
     <Section id="image-anim" title={n ? tn(n, 'Animation · {n} frame', 'Animation · {n} frames') : t('Animation')} closed={!n}>
@@ -643,6 +742,17 @@ function Sequence({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer)
         <label className={`btn small ${busy ? 'disabled' : ''}`} title={t("An animated GIF or PNG (APNG): split into frames in the project's media")}>
           {busy ? t('Splitting…') : t('Animated GIF / PNG…')}
           <input type="file" accept="image/gif,image/png,image/apng" hidden disabled={busy} onChange={(e) => (e.target.files?.[0] && void importFile(e.target.files[0]), (e.target.value = ''))} />
+        </label>
+      </Row>
+      <Row label={t('PNG sequence')}>
+        <label
+          className={`btn small ${busy ? 'disabled' : ''}`}
+          title={t('A folder or a zip of numbered PNG pictures (with transparency): choose the pictures of the folder, or drop it here')}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => (e.preventDefault(), void dropped(e.dataTransfer.items))}
+        >
+          {t('Folder or zip…')}
+          <input type="file" accept=".zip,image/png" multiple hidden disabled={busy} onChange={(e) => (void importPngs([...(e.target.files ?? [])]), (e.target.value = ''))} />
         </label>
       </Row>
       {n > 0 && (
@@ -700,6 +810,68 @@ function Playback({ k }: { k: ReturnType<typeof cfg> }) {
   );
 }
 
+/** Seconds as mm:ss,d. */
+const clipTime = (s: number) => {
+  const d = Math.round(Math.max(0, s) * 10);
+  const out = `${String(Math.floor(d / 600)).padStart(2, '0')}:${((d % 600) / 10).toFixed(1).padStart(4, '0')}`;
+  return lang() === 'fr' ? out.replace('.', ',') : out;
+};
+/** 3 · 3,5 · 0:03,5 · 1:02.5 → seconds. */
+const parseClipTime = (s: string) => {
+  const m = /^(?:(\d+):)?(\d+(?:\.\d*)?)$/.exec(s.trim().replace(',', '.'));
+  return m ? Number(m[1] ?? 0) * 60 + Number(m[2]) : null;
+};
+
+/** A time of the clip (mm:ss,d): typed, or ↑ ↓ by a tenth (Shift: a second). */
+function ClipTime({ label, value, max, onChange }: { label: string; value: number; max: number; onChange: (v: number) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const put = (v: number) => onChange(Math.round(clamp(v, 0, max) * 100) / 100);
+  const commit = () => {
+    const v = text === null ? null : parseClipTime(text);
+    if (v !== null) put(v);
+    setText(null);
+  };
+  return (
+    <Row label={label}>
+      <span className="pp-field">
+        <label className="num-field">
+          <input
+            value={text ?? clipTime(value)}
+            title={t('Minutes:seconds — or type 3, 3.5, 0:03.5')}
+            onFocus={(e) => (setText(clipTime(value)), e.currentTarget.select())}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') (setText(null), e.currentTarget.blur());
+              if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                put(value + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 1 : 0.1));
+                setText(null);
+              }
+            }}
+          />
+        </label>
+      </span>
+    </Row>
+  );
+}
+
+/** In and out points of a video file: only the frames between are played. */
+function ClipPoints({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLayer) => void, key?: string) => void }) {
+  const fps = clamp(k.fps, 0.1, 120);
+  const total = k.frames.length / fps;
+  const [first, count] = clipRange(k);
+  const out = (first + count) / fps;
+  return (
+    <>
+      <ClipTime label={t('In point')} value={first / fps} max={Math.max(0, out - 1 / fps)} onChange={(v) => ed((x) => void (x.clipIn = v || undefined))} />
+      <ClipTime label={t('Out point')} value={out} max={total} onChange={(v) => ed((x) => void (x.clipOut = v >= total - 1e-6 ? undefined : Math.max(v, first / fps + 1 / fps)))} />
+    </>
+  );
+}
+
 const fileName = (src: string) => decodeURIComponent(src.split('?')[0].split('/').pop() || src);
 
 /** The Video widget's source: a file of the assets (played as frames) or a live input. */
@@ -724,6 +896,8 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
         x.clip = src;
         x.src = '';
         x.input = undefined;
+        // Another file: its own in and out points.
+        x.clipIn = x.clipOut = undefined;
         if (!x.playMode) x.playMode = 'once';
       });
       toast(tn(r.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: Math.round(r.fps * 10) / 10 }), 'info');
@@ -779,6 +953,7 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
           {k.frames.length > 0 && (
             <>
               <Note>{tn(k.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: k.fps })} · {t('the video is played as pictures (alpha kept), at most a minute')}</Note>
+              <ClipPoints k={k} ed={ed} />
               <Playback k={k} />
             </>
           )}

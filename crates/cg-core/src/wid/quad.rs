@@ -40,8 +40,6 @@ pub enum TrapMode {
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub shape: QuadShape,
-    /// Width and height stay equal (square).
-    pub lock_ratio: bool,
     /// One radius per corner (top left, top right, bottom right, bottom left).
     pub per_corner: bool,
     pub corners: [f32; 4],
@@ -66,7 +64,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             shape: QuadShape::Rect,
-            lock_ratio: false,
             per_corner: false,
             corners: [0.0, 0.0, 0.0, 0.0],
             skew_unit: SkewUnit::Px,
@@ -126,11 +123,13 @@ pub fn corners(c: &Config, w: f32, h: f32) -> [[f32; 2]; 4] {
     }
 }
 
-/// The outline; `radius` is the animated corner radius of a rectangle.
-pub fn outline(c: &Config, w: f32, h: f32, radius: f32) -> Vec<Cmd> {
+/// The outline; `radius` is the animated corner radius of a rectangle,
+/// `per_corner` its animated radius of each corner (`cornerTl`…; the
+/// settings' `corners` when None).
+pub fn outline(c: &Config, w: f32, h: f32, radius: f32, per_corner: Option<[f32; 4]>) -> Vec<Cmd> {
     let pts = corners(c, w, h);
     let radii: Vec<f32> = match c.shape {
-        QuadShape::Rect if c.per_corner => c.corners.to_vec(),
+        QuadShape::Rect if c.per_corner => per_corner.unwrap_or(c.corners).to_vec(),
         QuadShape::Rect => vec![radius],
         _ => vec![c.vertex_round],
     };
@@ -184,5 +183,39 @@ mod tests {
             panic!()
         };
         assert_eq!(x, Config::default());
+    }
+
+    #[test]
+    fn corners_and_second_colour_animate_from_their_settings() {
+        use crate::anim::layer_default;
+        use crate::model::{Color, Prop, Value};
+        let l: Layer = serde_json::from_str(
+            r##"{"id":"a","name":"Box","type":"rect","props":{},"perCorner":true,"corners":[10,20,30,40],"fillStyle":{"kind":"linear","color2":"#0000ff"}}"##,
+        )
+        .unwrap();
+        assert_eq!(layer_default(&l, Prop::CornerBr), Value::Number(30.0));
+        assert_eq!(
+            layer_default(&l, Prop::Fill2),
+            Value::Color(Color::from_hex("#0000ff").unwrap())
+        );
+        let crate::LayerKind::Rect { x } = &l.kind else {
+            panic!()
+        };
+        // The animated radii win over the settings.
+        let o = outline(x, 200.0, 100.0, 0.0, Some([0.0, 0.0, 0.0, 0.0]));
+        assert_eq!(o.len(), 6);
+        assert!(outline(x, 200.0, 100.0, 0.0, None).len() > 6);
+    }
+
+    #[test]
+    fn square_is_the_dimensions_lock() {
+        // « Square » (`lockRatio`) of older rectangles is the layer's lock.
+        let l: Layer = serde_json::from_str(
+            r#"{"id":"a","name":"Box","type":"rect","props":{},"lockRatio":true}"#,
+        )
+        .unwrap();
+        assert!(l.lock_ratio);
+        let json = serde_json::to_string(&l).unwrap();
+        assert_eq!(json.matches("lockRatio").count(), 1);
     }
 }

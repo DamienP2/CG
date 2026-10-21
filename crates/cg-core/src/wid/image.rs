@@ -10,6 +10,8 @@ use serde_json::Value;
 use super::ActCtx;
 use crate::model::{ImageFit, Layer, LayerKind};
 
+/// The fit when it is not the layer's `fit`: Original or Tile, or any of
+/// the five when the Operator chooses it (an exposed Fit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FitMode {
@@ -17,6 +19,9 @@ pub enum FitMode {
     Original,
     /// Repeated at `tileScale` %.
     Tile,
+    Contain,
+    Cover,
+    Stretch,
 }
 
 /// The fit in effect (the layer's `fit` unless `fitMode` is set).
@@ -121,6 +126,10 @@ pub struct Config {
     pub clip: String,
     /// A live video input (cg-server inputs) shown instead ("" = none).
     pub input: String,
+    /// In and out points of the sequence (a video file), s at its speed:
+    /// only the frames between are played (out 0 = to the end).
+    pub clip_in: f32,
+    pub clip_out: f32,
 }
 
 impl Default for Config {
@@ -143,6 +152,8 @@ impl Default for Config {
             video: false,
             clip: String::new(),
             input: String::new(),
+            clip_in: 0.0,
+            clip_out: 0.0,
         }
     }
 }
@@ -151,6 +162,9 @@ pub fn fit(c: &Config, legacy: ImageFit) -> Fit {
     match (c.fit_mode, legacy) {
         (Some(FitMode::Original), _) => Fit::Original,
         (Some(FitMode::Tile), _) => Fit::Tile,
+        (Some(FitMode::Contain), _) => Fit::Contain,
+        (Some(FitMode::Cover), _) => Fit::Cover,
+        (Some(FitMode::Stretch), _) => Fit::Stretch,
         (None, ImageFit::Contain) => Fit::Contain,
         (None, ImageFit::Cover) => Fit::Cover,
         (None, ImageFit::Stretch) => Fit::Stretch,
@@ -225,8 +239,9 @@ pub fn place(
     )
 }
 
-/// Operator state of an animated sequence started by hand. Times are wall
-/// clock (ms), so playback never drifts.
+/// Operator state of an animated sequence: started by hand, or taken over
+/// by the operator (paused, played, restarted) when it starts at the In.
+/// Times are wall clock (ms), so playback never drifts.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct State {
@@ -235,6 +250,17 @@ pub struct State {
     pub at_ms: i64,
     /// Seconds played when paused.
     pub paused_el: f64,
+    /// A sequence starting at the In that the operator paused, played or
+    /// restarted: these times replace its time on air.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub own: bool,
+    /// Times the operator reloaded the picture (the renderers read it again).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub reload: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Where a sequence is.
@@ -247,14 +273,42 @@ pub struct Seq {
     pub loops: Option<u64>,
     pub ended: bool,
     pub el: f64,
+    /// It plays (not paused, not ended).
+    pub running: bool,
+    /// Seconds left: to the end, or to the end of this loop when it loops forever.
+    pub remaining: f64,
+}
+
+/// The frames played, between the in and out points: (first, count).
+pub fn clip_range(c: &Config) -> (usize, usize) {
+    let total = c.frames.len();
+    if total == 0 {
+        return (0, 0);
+    }
+    let fps = c.fps.clamp(0.1, 120.0);
+    let first = ((c.clip_in.max(0.0) * fps).round() as usize).min(total - 1);
+    let end = if c.clip_out > 0.0 {
+        ((c.clip_out * fps).round() as usize).clamp(first + 1, total)
+    } else {
+        total
+    };
+    (first, end - first)
+}
+
+/// The operator drives its clock: started by hand, or taken over.
+fn driven(c: &Config, st: &State) -> bool {
+    c.start == Start::Manual || st.own
 }
 
 pub fn seq(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> Seq {
-    let n = c.frames.len().max(1) as u64;
-    let el = match c.start {
-        Start::In => age_secs,
-        Start::Manual if st.playing => (now_ms - st.at_ms) as f64 / 1000.0,
-        Start::Manual => st.paused_el,
+    let (first, count) = clip_range(c);
+    let n = count.max(1) as u64;
+    let el = if !driven(c, st) {
+        age_secs
+    } else if st.playing {
+        (now_ms - st.at_ms) as f64 / 1000.0
+    } else {
+        st.paused_el
     }
     .max(0.0);
     let loops = match c.play_mode {
@@ -262,7 +316,8 @@ pub fn seq(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> Seq {
         PlayMode::Once => Some(1),
         PlayMode::Count => Some(c.loops.max(1) as u64),
     };
-    let mut f = (el * c.fps.clamp(0.1, 120.0) as f64).floor() as u64;
+    let fps = c.fps.clamp(0.1, 120.0) as f64;
+    let mut f = (el * fps).floor() as u64;
     let mut ended = false;
     if let Some(l) = loops {
         if f >= n * l {
@@ -270,16 +325,24 @@ pub fn seq(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> Seq {
             ended = true;
         }
     }
+    let lap = n as f64 / fps;
+    let remaining = match loops {
+        Some(l) => (lap * l as f64 - el).max(0.0),
+        None => lap - el % lap,
+    };
     Seq {
-        idx: (f % n) as usize,
+        idx: first + (f % n) as usize,
         lap: f / n + 1,
         loops,
         ended,
         el,
+        running: !ended && (!driven(c, st) || st.playing),
+        remaining,
     }
 }
 
-/// Operator actions of a sequence in manual start: `play`, `pause`, `restart`.
+/// Operator actions of a sequence: `play`, `pause` (it freezes, also when
+/// it starts at the In), `restart`; of any picture: `reload`.
 pub fn act(
     layer: &Layer,
     st: &mut State,
@@ -291,32 +354,30 @@ pub fn act(
         return Err("not an image".into());
     };
     let now = ctx.now_ms;
+    let s = seq(c, st, now, ctx.age_secs);
+    let reload = st.reload;
     match op {
         "play" => {
-            if st.playing {
+            if s.running {
                 return Ok(());
             }
-            let s = seq(c, st, now, 0.0);
             // Finished: plays again from the start.
-            let el = if s.ended { 0.0 } else { st.paused_el };
+            let el = if s.ended { 0.0 } else { s.el };
             st.playing = true;
             st.at_ms = now - (el * 1000.0) as i64;
             st.paused_el = el;
+            st.own = true;
         }
         "pause" => {
-            if !st.playing {
+            if !s.running {
                 return Ok(());
             }
-            let s = seq(c, st, now, 0.0);
-            let total = c.frames.len().max(1) as f64 / c.fps.clamp(0.1, 120.0) as f64;
-            let el = match s.loops {
-                Some(l) if s.ended => total * l as f64,
-                _ => s.el,
-            };
             *st = State {
                 playing: false,
                 at_ms: 0,
-                paused_el: el,
+                paused_el: s.el,
+                own: true,
+                reload,
             };
         }
         "restart" => {
@@ -324,8 +385,11 @@ pub fn act(
                 playing: true,
                 at_ms: now,
                 paused_el: 0.0,
+                own: true,
+                reload,
             };
         }
+        "reload" => st.reload = st.reload.wrapping_add(1),
         _ => return Err(format!("unknown action `{op}`")),
     }
     Ok(())
@@ -422,5 +486,52 @@ mod tests {
         act(&l, &mut st, "restart", &Value::Null, &ctx(9000)).unwrap();
         assert_eq!(seq(c, &st, 9000, 0.0).idx, 0);
         assert!(act(&l, &mut st, "jump", &Value::Null, &ctx(0)).is_err());
+    }
+
+    #[test]
+    fn pause_freezes_a_sequence_started_at_the_in() {
+        let l = layer(
+            r#"{"id":"a","name":"V","type":"image","props":{},"src":"","frames":["a","b","c","d","e"],"fps":10,"playMode":"once"}"#,
+        );
+        let LayerKind::Image { x: c, .. } = &l.kind else {
+            panic!()
+        };
+        let data = Data::default();
+        let ctx = |now_ms, age_secs| ActCtx {
+            now_ms,
+            age_secs,
+            data: &data,
+        };
+        let mut st = State::default();
+        // Plays with the time on air: 0.25 s in, frame 2, running, 0.25 s left.
+        let s = seq(c, &st, 0, 0.25);
+        assert_eq!((s.idx, s.running), (2, true));
+        assert!((s.remaining - 0.25).abs() < 1e-9);
+        act(&l, &mut st, "pause", &Value::Null, &ctx(1000, 0.25)).unwrap();
+        // Frozen, whatever the time on air.
+        let s = seq(c, &st, 50_000, 40.0);
+        assert_eq!((s.idx, s.running), (2, false));
+        act(&l, &mut st, "play", &Value::Null, &ctx(2000, 1.25)).unwrap();
+        assert_eq!(seq(c, &st, 2100, 1.35).idx, 3);
+        act(&l, &mut st, "reload", &Value::Null, &ctx(2100, 1.35)).unwrap();
+        assert_eq!(st.reload, 1);
+        act(&l, &mut st, "restart", &Value::Null, &ctx(3000, 2.25)).unwrap();
+        assert_eq!((seq(c, &st, 3000, 2.25).idx, st.reload), (0, 1));
+    }
+
+    #[test]
+    fn in_and_out_points() {
+        let l = layer(
+            r#"{"id":"a","name":"V","type":"image","props":{},"src":"","frames":["a","b","c","d","e","f","g","h","i","j"],"fps":10,"playMode":"once","clipIn":0.2,"clipOut":0.5}"#,
+        );
+        let LayerKind::Image { x: c, .. } = &l.kind else {
+            panic!()
+        };
+        assert_eq!(clip_range(c), (2, 3));
+        let st = State::default();
+        assert_eq!(seq(c, &st, 0, 0.0).idx, 2);
+        // Stays on the out point's last frame.
+        let s = seq(c, &st, 0, 9.0);
+        assert!(s.ended && s.idx == 4);
     }
 }

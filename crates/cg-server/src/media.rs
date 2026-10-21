@@ -303,6 +303,69 @@ fn video_frames(bytes: &[u8], ext: &str, fps: f64) -> Result<Vec<Vec<u8>>, Strin
     }
 }
 
+/// Names compared with their numbers as numbers (`f2` before `f10`).
+fn natural(a: &str, b: &str) -> std::cmp::Ordering {
+    let chunks = |s: &str| {
+        let mut out: Vec<(bool, String)> = Vec::new();
+        for c in s.chars() {
+            let d = c.is_ascii_digit();
+            match out.last_mut() {
+                Some((was, cur)) if *was == d => cur.push(c),
+                _ => out.push((d, c.to_string())),
+            }
+        }
+        out
+    };
+    let (x, y) = (chunks(a), chunks(b));
+    for ((dx, cx), (dy, cy)) in x.iter().zip(&y) {
+        let o = if *dx && *dy {
+            let (tx, ty) = (cx.trim_start_matches('0'), cy.trim_start_matches('0'));
+            tx.len().cmp(&ty.len()).then_with(|| tx.cmp(ty))
+        } else {
+            cx.to_lowercase().cmp(&cy.to_lowercase())
+        };
+        if o != std::cmp::Ordering::Equal {
+            return o;
+        }
+    }
+    x.len().cmp(&y.len())
+}
+
+/// A PNG sequence in a zip: its pictures in the order of their names.
+fn zip_frames(bytes: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+    use std::io::Read;
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("invalid archive: {e}"))?;
+    let mut names: Vec<String> = zip
+        .file_names()
+        .filter_map(|n| n.ok().map(|n| n.into_owned()))
+        .filter(|n| {
+            let base = n.rsplit('/').next().unwrap_or(n);
+            n.to_ascii_lowercase().ends_with(".png")
+                && !n.starts_with("__MACOSX/")
+                && !base.starts_with('.')
+        })
+        .collect();
+    names.sort_by(|a, b| natural(a, b));
+    if names.is_empty() {
+        return Err("no PNG picture in this zip".into());
+    }
+    if names.len() > 2000 {
+        return Err(format!("{} pictures: at most 2000", names.len()));
+    }
+    names
+        .iter()
+        .map(|n| {
+            let f = zip.by_name(n).map_err(|e| e.to_string())?;
+            let mut out = Vec::new();
+            f.take(64 * 1024 * 1024)
+                .read_to_end(&mut out)
+                .map_err(|e| e.to_string())?;
+            Ok(out)
+        })
+        .collect()
+}
+
 async fn put_sequence(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
@@ -384,6 +447,9 @@ async fn sequence(
     let (pngs, fps) = tokio::task::spawn_blocking(move || {
         if VIDEO.contains(&ext.as_str()) {
             video_frames(&body, &ext, project_fps).map(|f| (f, project_fps as f32))
+        } else if ext == "zip" {
+            // A PNG sequence: played at the project's rate.
+            zip_frames(&body).map(|f| (f, project_fps as f32))
         } else {
             cg_render::sequence::split(&body)
         }
@@ -507,5 +573,28 @@ mod tests {
         assert_eq!(kind_of("clip.mov"), "video");
         assert_eq!(kind_of("Inter.woff2"), "font");
         assert_eq!(kind_of("readme"), "other");
+    }
+
+    #[test]
+    fn a_zip_of_pngs_is_a_sequence_in_name_order() {
+        use std::io::Write;
+        // The pictures' bytes (read as they are).
+        let png = |v: u8| vec![0x89, b'P', b'N', b'G', v];
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default();
+        for (name, v) in [
+            ("seq/f10.png", 10),
+            ("seq/f2.png", 2),
+            ("seq/.hidden.png", 99),
+            ("seq/notes.txt", 0),
+        ] {
+            z.start_file(name, opts).unwrap();
+            z.write_all(&png(v)).unwrap();
+        }
+        let bytes = z.finish().unwrap().into_inner();
+        let frames = zip_frames(&bytes).unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0], png(2));
+        assert_eq!(natural("f2.png", "f10.png"), std::cmp::Ordering::Less);
     }
 }

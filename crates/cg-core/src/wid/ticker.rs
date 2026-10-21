@@ -364,8 +364,12 @@ pub const MAX_RUNS: usize = 24;
 /// Padding of the text in a flip / roll slot, px.
 pub const PAD: f32 = 30.0;
 
+/// Readable speeds, px/s: the same range in the Designer and on air.
+pub const SPEED_MIN: f64 = 10.0;
+pub const SPEED_MAX: f64 = 800.0;
+
 pub fn speed(t: &Ticker, st: &State) -> f64 {
-    st.speed.unwrap_or(t.speed).clamp(1.0, 5000.0)
+    st.speed.unwrap_or(t.speed).clamp(SPEED_MIN, SPEED_MAX)
 }
 
 /// Period of a slot (flip / roll), seconds.
@@ -715,9 +719,8 @@ fn materialize(t: &Ticker, layer: &Layer, st: &mut State, ctx: &ActCtx) {
     st.anchor = ctx.now_ms;
     st.started = true;
     st.running = !layer.manual_start;
-    if st.runs.is_empty() {
-        st.runs = runs(t, st);
-    }
+    // The runs stay empty: the tape keeps following the layer's items (and
+    // their edits in the Designer) until the operator edits the queue.
 }
 
 /// Position where an edit made now applies (crawl: px; flip / roll: next slot).
@@ -755,17 +758,20 @@ pub fn act(
     let now = ctx.now_ms;
     match op {
         "start" => {
-            let q = queue(&t, st);
             st.started = true;
             st.running = true;
             st.base = 0.0;
             st.anchor = now;
-            st.runs = vec![Run {
-                at: 0.0,
-                items: q,
-                prio: None,
-                kind: RunKind::Pass,
-            }];
+            // The operator's queue, else the layer's items, followed live.
+            st.runs = match &st.queue {
+                Some(q) => vec![Run {
+                    at: 0.0,
+                    items: q.clone(),
+                    prio: None,
+                    kind: RunKind::Pass,
+                }],
+                None => Vec::new(),
+            };
             return Ok(());
         }
         "pause" => {
@@ -795,7 +801,7 @@ pub fn act(
             } else {
                 return Err("`px` or `delta` needed".into());
             };
-            let v = v.clamp(10.0, 800.0);
+            let v = v.clamp(SPEED_MIN, SPEED_MAX);
             let p0 = period(&t, st, h);
             let c = clock(&t, st, now, 0.0);
             st.base = c;
@@ -830,6 +836,10 @@ pub fn act(
     }
     // Queue edits: they apply at the next pass.
     materialize(&t, layer, st, ctx);
+    if st.runs.is_empty() {
+        // The tape so far: what was on screen until now.
+        st.runs = runs(&t, st);
+    }
     let mut q = queue(&t, st);
     let at = edit_at(&t, st, now, h);
     match op {
@@ -1064,6 +1074,35 @@ mod tests {
         )
         .unwrap();
         assert_eq!(clock(&t, &st, 10_000, 0.0), 400.0);
+    }
+
+    #[test]
+    fn a_pause_keeps_following_the_items_and_speeds_stay_readable() {
+        let json = |items: &str, speed: u32| {
+            format!(
+                r#"{{"id":"a","name":"T","type":"ticker","text":"","separator":" ","speed":{speed},"fontFamily":"Inter","fontWeight":700,"items":[{items}],"props":{{"height":80}}}}"#
+            )
+        };
+        let l = layer(&json(r#"{"text":"one"}"#, 100));
+        let d = Data::new();
+        let mut st = State::default();
+        act(&l, &mut st, "pause", &serde_json::Value::Null, &ctx(&d, 0)).unwrap();
+        // Edited in the Designer after the pause: the tape shows the new items.
+        let l2 = layer(&json(r#"{"text":"one"},{"text":"two"}"#, 100));
+        let t2 = of(&l2).unwrap();
+        assert_eq!(runs(&t2, &st)[0].items.len(), 2);
+        // 10 to 800 px/s in the Designer and on air.
+        act(
+            &l,
+            &mut st,
+            "speed",
+            &serde_json::json!({"px": 5000}),
+            &ctx(&d, 10),
+        )
+        .unwrap();
+        assert_eq!(st.speed, Some(SPEED_MAX));
+        let fast = layer(&json(r#"{"text":"one"}"#, 3000));
+        assert_eq!(speed(&of(&fast).unwrap(), &State::default()), SPEED_MAX);
     }
 
     #[test]

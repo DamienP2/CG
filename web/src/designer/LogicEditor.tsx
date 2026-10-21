@@ -69,11 +69,16 @@ export function propsOf(l: Layer | undefined, numeric: boolean): Prop[] {
   if (!l) return [];
   const has = (p: Prop) => {
     if (p === 'fill') return l.type !== 'image';
-    if (p === 'stroke' || p === 'strokeWidth') return l.type !== 'image' && l.type !== 'progress' && l.type !== 'qrCode';
+    if (p === 'stroke' || p === 'strokeWidth') return l.type !== 'image' && l.type !== 'qrCode';
     if (p === 'cornerRadius') return l.type === 'rect' || l.type === 'group' || l.type === 'progress';
     if (p === 'fontSize' || p === 'letterSpacing') return TEXT_LIKE.has(l.type);
     if (p.startsWith('crop')) return l.type === 'image';
     if (p === 'arcStart' || p === 'arcEnd' || p === 'innerRadius') return l.type === 'ellipse';
+    if (p === 'drawStart' || p === 'drawEnd') return l.type === 'pen';
+    if (p === 'cornerTl' || p === 'cornerTr' || p === 'cornerBr' || p === 'cornerBl') return l.type === 'rect';
+    if (p === 'fill2') return ['rect', 'ellipse', 'polygon', 'pen', 'text'].includes(l.type);
+    // The layer's drop shadow (a Text has its own).
+    if (p === 'shadowColor' || p === 'shadowX' || p === 'shadowY' || p === 'shadowBlur') return l.type !== 'text';
     return true;
   };
   return PROPS.filter((p) => has(p) && (!numeric || !COLOR_PROPS.has(p)));

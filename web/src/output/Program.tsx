@@ -65,7 +65,7 @@ export function Program({ project, live, width, height }: { project: Project; li
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
-            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
+            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} clocked={(l) => !!item.clocks?.[l.id] || !!l.manualStart} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
               {/*
                * A row or an Update fading: the graphic with the new values fades in while the one with
                * the old values fades out, added up (plus-lighter): what both cover stays opaque.

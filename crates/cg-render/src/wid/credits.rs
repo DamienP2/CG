@@ -15,6 +15,7 @@ use super::ticker::zone_mask;
 use super::{rrect, Draw};
 use crate::text as tx;
 
+/// The generated logo plate's font.
 const FAMILY: &str = "Inter";
 
 fn is_asset(s: &str) -> bool {
@@ -101,6 +102,7 @@ fn ta(a: Align) -> TextAlign {
 #[allow(clippy::too_many_arguments)]
 fn line(
     d: &mut Draw,
+    family: &str,
     s: &Style,
     t: &str,
     align: TextAlign,
@@ -111,7 +113,7 @@ fn line(
     if t.trim().is_empty() {
         return;
     }
-    let Some(f) = d.font(FAMILY, s.weight) else {
+    let Some(f) = d.font(family, s.weight) else {
         return;
     };
     let fit = cut.then_some(Fit {
@@ -134,6 +136,7 @@ fn draw_block(d: &mut Draw, c: &Config, b: &Block, y0: f32, m: Option<&Mask>) {
         Body::Space => {}
         Body::Section(t) => line(
             d,
+            &c.font,
             ss,
             t,
             al,
@@ -169,9 +172,10 @@ fn draw_block(d: &mut Draw, c: &Config, b: &Block, y0: f32, m: Option<&Mask>) {
                 } else {
                     TextAlign::Left
                 };
-                line(d, rs, role, ra, (0.0, y0, lw, b.role_h), true, m);
+                line(d, &c.font, rs, role, ra, (0.0, y0, lw, b.role_h), true, m);
                 line(
                     d,
+                    &c.font,
                     ns,
                     name,
                     na,
@@ -191,9 +195,18 @@ fn draw_block(d: &mut Draw, c: &Config, b: &Block, y0: f32, m: Option<&Mask>) {
                 for (j, (role, name)) in row.iter().enumerate() {
                     let x = j as f32 * (cw + c.gutter);
                     if b.role_h > 0.0 {
-                        line(d, rs, role, al, (x, y0, cw, b.role_h), n > 1.0, m);
+                        line(d, &c.font, rs, role, al, (x, y0, cw, b.role_h), n > 1.0, m);
                     }
-                    line(d, ns, name, al, (x, y0 + b.role_h, cw, nh), n > 1.0, m);
+                    line(
+                        d,
+                        &c.font,
+                        ns,
+                        name,
+                        al,
+                        (x, y0 + b.role_h, cw, nh),
+                        n > 1.0,
+                        m,
+                    );
                 }
             }
         },
@@ -257,7 +270,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                 .collect();
             let fonts: Vec<_> = [c.st.section.weight, c.st.role.weight, c.st.name.weight]
                 .iter()
-                .map(|wt| (*wt, d.font(FAMILY, *wt)))
+                .map(|wt| (*wt, d.font(&c.font, *wt)))
                 .collect();
             let mut mw = |t: &str, s: &Style| -> f32 {
                 fonts
@@ -287,6 +300,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                 match &it.body {
                     Body::Section(s) => line(
                         d,
+                        &c.font,
                         &c.st.section,
                         s,
                         TextAlign::Left,
@@ -300,6 +314,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                         if !role.is_empty() {
                             line(
                                 d,
+                                &c.font,
                                 &c.st.role,
                                 role,
                                 TextAlign::Left,
@@ -310,6 +325,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                         }
                         line(
                             d,
+                            &c.font,
                             &c.st.name,
                             name,
                             TextAlign::Left,

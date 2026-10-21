@@ -1,12 +1,13 @@
 // QR code: settings, drawing, inspector and the readability check.
 // Same picture as crates/cg-render/src/wid/qrcode.rs; structure / payload / geometry mirror crates/cg-core/src/wid/qrcode.rs.
 // The matrix comes from the server (`/api/qr?data=…&ec=…`, the Rust `qrcode` crate): one encoder for both renderers.
-import { useEffect, useReducer } from 'react';
-import { QrCode } from 'lucide-react';
+import { useEffect, useReducer, useRef } from 'react';
+import { ChevronDown, Link, QrCode } from 'lucide-react';
 import { col, interpolateText, num, toHex, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
-import { Area, ColorPick, Content, defineWidget, Num, Row, Section, Seg, Toggle, type Warning } from './kit';
+import { FontPick } from '../ui/FontPick';
+import { Area, ColorPick, Content, defineWidget, ListEditor, Num, Row, Section, Seg, Select, Toggle, type Warning } from './kit';
 import { t, tc, tn } from '../i18n';
 
 type Ecl = 'L' | 'M' | 'Q' | 'H';
@@ -24,15 +25,25 @@ export interface Config {
   finderStyle?: 'square' | 'rounded' | 'circle';
   finderSame?: boolean;
   finderColor?: string;
-  logo?: { on?: boolean; src?: string; size?: number; color?: string };
+  logo?: { on?: boolean; src?: string; size?: number };
   quiet?: number;
   minPx?: number;
-  label?: { on?: boolean; text?: string; size?: number; color?: string; bg?: string };
+  label?: { on?: boolean; text?: string; size?: number; color?: string; bg?: string; pos?: 'below' | 'beside' | 'above'; font?: string; weight?: number; upper?: boolean };
+  /** URL type: addresses prepared for the Operator (none = the layer's `data`). */
+  addresses?: Address[];
 }
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface State {}
+export interface Address {
+  name?: string;
+  url?: string;
+  /** Its own caption (empty = the caption's text). */
+  caption?: string;
+}
+/** The prepared address on air (mirrors `State` in Rust). */
+export interface State {
+  addr?: number;
+}
 
-type QrLayer = Config & { data: string; background: string; props: Record<string, unknown> };
+type QrLayer = Config & { id?: string; data: string; background: string; props: Record<string, unknown> };
 
 function cfg(c: Config) {
   return {
@@ -49,13 +60,24 @@ function cfg(c: Config) {
     finderStyle: c.finderStyle ?? 'square',
     finderSame: c.finderSame ?? true,
     finderColor: c.finderColor ?? '#7c5cff',
-    logo: { on: false, src: '', size: 22, color: '#7c5cff', ...c.logo },
+    logo: { on: false, src: '', size: 22, ...c.logo },
     quiet: c.quiet ?? 4,
     minPx: c.minPx ?? 6,
-    label: { on: false, text: 'Scan to vote', size: 34, color: '#ffffff', bg: '#7c5cff', ...c.label },
+    label: { on: false, text: 'Scan to vote', size: 34, color: '#ffffff', bg: '#7c5cff', pos: 'below' as 'below' | 'beside' | 'above', font: 'Inter', weight: 800, upper: false, ...c.label },
+    addresses: (c.addresses ?? []).map((a) => ({ name: '', url: '', caption: '', ...a })),
   };
 }
 type Cfg = ReturnType<typeof cfg>;
+
+/** The URL on air and its caption: the prepared address chosen, else the layer's `data` (mirrors `address`). */
+export function address(c: Cfg, dataField: string, st: State | undefined): [string, string] {
+  if (c.kind === 'url' && c.addresses.length) {
+    const a = c.addresses[Math.min(st?.addr ?? 0, c.addresses.length - 1)];
+    return [a.url, a.caption.trim() ? a.caption : c.label.text];
+  }
+  return [dataField, c.label.text];
+}
+const capText = (c: Cfg, s: string) => (c.label.upper ? s.toUpperCase() : s);
 
 const ORD: Record<Ecl, number> = { L: 0, M: 1, Q: 2, H: 3 };
 const LOGO_MAX: Record<Ecl, number> = { L: 12, M: 18, Q: 24, H: 30 };
@@ -253,7 +275,8 @@ function damage(s: Structure, pct: number) {
   return d;
 }
 function logoSize(c: Cfg, s: Structure | null): [number, string] {
-  if (!s || !c.logo.on) return [0, ''];
+  // No picture: no logo (never a placeholder on air).
+  if (!s || !c.logo.on || !c.logo.src.trim()) return [0, ''];
   let pct = Math.min(c.logo.size, LOGO_MAX[c.ecl]);
   let by = c.logo.size > LOGO_MAX[c.ecl] ? 'level' : '';
   while (pct > 0) {
@@ -265,16 +288,48 @@ function logoSize(c: Cfg, s: Structure | null): [number, string] {
   return [pct, by];
 }
 const roundJs = (v: number) => Math.floor(v + 0.5);
+/** Approximate width of a caption (layout only, the same in both renderers). */
+const capW = (s: string, size: number, up: boolean) => [...s].length * size * (up ? 0.68 : 0.6);
+function capLines(s: string, max: number, size: number, up: boolean): string[] {
+  const words = s.split(' ').filter(Boolean);
+  if (capW(s, size, up) <= max || words.length < 2) return [s];
+  let best: [number, number] = [Infinity, 1];
+  for (let i = 1; i < words.length; i++) {
+    const m = Math.max(capW(words.slice(0, i).join(' '), size, up), capW(words.slice(i).join(' '), size, up));
+    if (m < best[0]) best = [m, i];
+  }
+  return [words.slice(0, best[1]).join(' '), words.slice(best[1]).join(' ')];
+}
+/** Code and caption pill in the box (mirrors `geo`); `label`: the caption as drawn. */
 function geo(c: Cfg, label: string, n: number, w: number, h: number) {
-  const lab = c.label.on && label ? roundJs(c.label.size * 1.9) : 0;
-  const gap = lab ? 18 : 0;
+  const on = c.label.on && !!label;
+  const size = c.label.size;
+  const up = c.label.upper;
   const total = n + 2 * c.quiet;
+  if (on && c.label.pos === 'beside') {
+    const maxW = roundJs(w * 0.4);
+    const gap = 18;
+    const avail = Math.min(w - maxW - gap, h);
+    const m = Math.max(1, Math.floor(avail / total));
+    const px = m * total;
+    const lines = capLines(label, maxW - size * 1.6, size, up);
+    const widest = Math.max(0, ...lines.map((l) => capW(l, size, up)));
+    const labW = Math.round(Math.min(maxW, widest + size * 1.6));
+    const lab = roundJs(lines.length * size * 1.25 + size * 0.75);
+    const x0 = Math.max(0, roundJs((w - px - gap - labW) / 2));
+    const y0 = Math.max(0, roundJs((h - px) / 2));
+    return { m, px, x0, y0, lab, labX: x0 + px + gap, labY: roundJs(y0 + px / 2 - lab / 2), labW, labR: Math.min(lab / 2, size * 0.7), lines };
+  }
+  const lab = on ? roundJs(size * 1.9) : 0;
+  const gap = lab ? 18 : 0;
   const avail = Math.min(w, h - lab - gap);
   const m = Math.max(1, Math.floor(avail / total));
   const px = m * total;
   const x0 = roundJs((w - px) / 2);
-  const y0 = Math.max(0, roundJs((h - lab - gap - px) / 2));
-  return { m, px, x0, y0, lab, labY: y0 + px + gap };
+  const top = Math.max(0, roundJs((h - lab - gap - px) / 2));
+  const above = c.label.pos === 'above';
+  const labW = Math.round(Math.min(w, Math.max(px * 0.7, capW(label, size, up) + 60)));
+  return { m, px, x0, y0: above ? top + lab + gap : top, lab, labX: Math.floor((w - labW) / 2 + 0.5), labY: above ? top : top + px + gap, labW, labR: lab / 2, lines: on ? [label] : [] };
 }
 
 // --------------------------------------------------------- self-decode --
@@ -386,17 +441,23 @@ interface Check {
   cr?: number | null;
   decode?: ReturnType<typeof selfDecode>;
 }
-function check(layer: QrLayer, data: Data, r: Resolved | undefined, q: Matrix | null | undefined): Check {
+function check(layer: QrLayer, data: Data, st: State | undefined, r: Resolved | undefined, q: Matrix | null | undefined): Check {
   const c = cfg(layer);
-  const text = payload(c, layer.data, data);
+  const [url, caption] = address(c, layer.data, st);
+  const text = payload(c, url, data);
   const issues: Warning[] = [];
   if (!text) return { ready: true, ok: false, issues: [{ level: 'error', text: t('Empty content: nothing to encode (nothing on air).'), op: true }], payload: text };
   if (q === undefined) return { ready: false, ok: true, issues, payload: text };
-  if (q === null) return { ready: true, ok: false, issues: [{ level: 'error', text: t('Too long: {n} bytes do not fit even in version 40 at level {level}.', { n: new TextEncoder().encode(text).length, level: c.ecl }), op: true }], payload: text };
+  if (q === null) {
+    const n = new TextEncoder().encode(text).length;
+    // The server takes 2 048 bytes at most (crates/cg-server/src/api.rs).
+    const msg = n > 2048 ? t('Too long: {n} bytes, the server encodes 2,048 at most.', { n }) : t('Too long: {n} bytes do not fit even in version 40 at level {level}.', { n, level: c.ecl });
+    return { ready: true, ok: false, issues: [{ level: 'error', text: msg, op: true }], payload: text };
+  }
   const w = num((r?.width ?? layer.props.width ?? 520) as number);
   const h = num((r?.height ?? layer.props.height ?? 640) as number);
   const sc = Math.min(Math.abs(num((r?.scaleX ?? layer.props.scaleX ?? 1) as number)), Math.abs(num((r?.scaleY ?? layer.props.scaleY ?? 1) as number)));
-  const g = geo(c, interpolateText(c.label.text, data), q.size, w, h);
+  const g = geo(c, capText(c, interpolateText(caption, data)), q.size, w, h);
   const s = structure(q.size, c.ecl);
   const logo = logoSize(c, s);
   const dmg = s ? damage(s, logo[0]) : undefined;
@@ -408,7 +469,6 @@ function check(layer: QrLayer, data: Data, r: Resolved | undefined, q: Matrix | 
   const dec = selfDecode(q, s);
   const screenPx = Math.floor(g.m * sc * 10) / 10;
   if (!dec.ok) issues.push({ level: 'error', text: t('Self-decode failed ({why}).', { why: t(dec.why ?? '') }), op: true });
-  else if (dec.ecl !== c.ecl) issues.push({ level: 'warn', text: t('The server encoded level {got} instead of {level}: /api/qr does not take the correction level yet (the logo budget assumes {level}).', { got: dec.ecl ?? '', level: c.ecl }) });
   if (screenPx < c.minPx) issues.push({ level: 'error', text: t('Module {px} px on screen, under the {min} px minimum: shorten the content, lower the correction or enlarge the box.', { px: screenPx, min: c.minPx }), op: true });
   if (cr == null) issues.push({ level: 'warn', text: t('A colour is not a #rrggbb value: contrast not checked.') });
   else if (cr < 3) issues.push({ level: 'error', text: t('Contrast {ratio}:1 is too low (needs 3:1, 7:1 recommended).', { ratio: cr.toFixed(1) }), op: true });
@@ -417,17 +477,18 @@ function check(layer: QrLayer, data: Data, r: Resolved | undefined, q: Matrix | 
   if (c.quiet < 2) issues.push({ level: 'error', text: tn(c.quiet, 'Quiet zone {n} module: readers cannot find the code edge (4 recommended, 2 minimum).', 'Quiet zone {n} modules: readers cannot find the code edge (4 recommended, 2 minimum).'), op: true });
   else if (c.quiet < 4) issues.push({ level: 'warn', text: t('Quiet zone reduced to {n} modules (4 is the standard): keep the area around the code plain.', { n: c.quiet }) });
   if (c.transparent && c.quiet > 0) issues.push({ level: 'info', text: t('Transparent background: the check assumes the backdrop colour {color} behind the code.', { color: c.backdrop }) });
-  if (c.logo.on && logo[0] < c.logo.size) issues.push({ level: 'info', text: logo[1] === 'level' ? t('Logo capped at {pct} % (asked {asked} %): level {level} allows {max} % at most.', { pct: logo[0], asked: c.logo.size, level: c.ecl, max: LOGO_MAX[c.ecl] }) : t('Logo capped at {pct} % (asked {asked} %): more would hide more codewords than the correction can repair.', { pct: logo[0], asked: c.logo.size }) });
-  if (c.logo.on && c.ecl !== 'H') issues.push({ level: 'info', text: t('A logo hides modules: correction H is recommended (now {level}).', { level: c.ecl }) });
+  if (c.logo.on && !c.logo.src.trim()) issues.push({ level: 'info', text: t('Logo on without a picture: nothing is drawn.') });
+  else if (c.logo.on && logo[0] < c.logo.size) issues.push({ level: 'info', text: logo[1] === 'level' ? t('Logo capped at {pct} % (asked {asked} %): level {level} allows {max} % at most.', { pct: logo[0], asked: c.logo.size, level: c.ecl, max: LOGO_MAX[c.ecl] }) : t('Logo capped at {pct} % (asked {asked} %): more would hide more codewords than the correction can repair.', { pct: logo[0], asked: c.logo.size }) });
+  if (c.logo.on && c.logo.src.trim() && c.ecl !== 'H') issues.push({ level: 'info', text: t('A logo hides modules: correction H is recommended (now {level}).', { level: c.ecl }) });
   return { ready: true, ok: !issues.some((i) => i.level === 'error'), issues, payload: text, q, m: g.m, screenPx, px: g.px, logo, dmg, cr, decode: dec };
 }
 
 // ----------------------------------------------------------------- render --
 
-function Svg({ layer, r, w, h, data, q }: { layer: QrLayer; r: Resolved; w: number; h: number; data: Data; q: Matrix }) {
+function Svg({ layer, r, w, h, data, q, caption }: { layer: QrLayer; r: Resolved; w: number; h: number; data: Data; q: Matrix; caption: string }) {
   const c = cfg(layer);
   const n = q.size;
-  const label = interpolateText(c.label.text, data);
+  const label = capText(c, interpolateText(caption, data));
   const g = geo(c, label, n, w, h);
   const m = g.m;
   const s = structure(n, c.ecl);
@@ -488,31 +549,25 @@ function Svg({ layer, r, w, h, data, q }: { layer: QrLayer; r: Resolved; w: numb
   const crisp = c.modStyle === 'square' && c.finderStyle === 'square';
   let logo = null;
   if (rect) {
+    // A picture only: no logo is drawn without one.
     const lw = Math.floor(rect[3] * m + 0.5);
     const lx = Math.floor(ox + (rect[0] + rect[2] / 2) * m - lw / 2 + 0.5);
     const ly = Math.floor(oy + (rect[0] + rect[2] / 2) * m - lw / 2 + 0.5);
-    const src = c.logo.src.trim();
-    const cx = lx + lw / 2;
-    const cy = ly + lw / 2;
-    logo = src ? (
-      <image href={src} x={lx} y={ly} width={lw} height={lw} preserveAspectRatio="xMidYMid meet" />
-    ) : (
-      <>
-        <rect x={lx} y={ly} width={lw} height={lw} rx={lw * 0.22} fill={c.logo.color} />
-        <path d={`M${cx - lw * 0.16} ${cy - lw * 0.24}L${cx + lw * 0.26} ${cy}L${cx - lw * 0.16} ${cy + lw * 0.24}Z`} fill={c.transparent ? '#ffffff' : layer.background} />
-      </>
-    );
+    logo = <image href={c.logo.src.trim()} x={lx} y={ly} width={lw} height={lw} preserveAspectRatio="xMidYMid meet" />;
   }
   let lab = null;
   if (g.lab) {
-    const up = label.toUpperCase();
-    const lw = Math.min(w, Math.max(g.px * 0.7, [...up].length * c.label.size * 0.68 + 60));
+    // Caption pill below, above or beside the code, in its font and case (same in qrcode.rs).
+    const lh = c.label.size * 1.25;
+    const top = g.labY + (g.lab - lh * g.lines.length) / 2;
     lab = (
       <>
-        <rect x={Math.floor((w - lw) / 2 + 0.5)} y={g.labY} width={Math.round(lw)} height={g.lab} rx={g.lab / 2} fill={c.label.bg} />
-        <text x={w / 2} y={g.labY + g.lab / 2 + c.label.size * 0.36} textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontWeight={900} fontSize={c.label.size} fill={c.label.color}>
-          {up}
-        </text>
+        <rect x={g.labX} y={g.labY} width={g.labW} height={g.lab} rx={g.labR} fill={c.label.bg} />
+        {g.lines.map((line, i) => (
+          <text key={i} x={g.labX + g.labW / 2} y={top + i * lh + lh / 2 + c.label.size * 0.36} textAnchor="middle" fontFamily={`"${c.label.font}", Inter, system-ui, sans-serif`} fontWeight={c.label.weight} fontSize={c.label.size} fill={c.label.color} style={{ whiteSpace: 'pre' }}>
+            {line}
+          </text>
+        ))}
       </>
     );
   }
@@ -530,12 +585,57 @@ function Svg({ layer, r, w, h, data, q }: { layer: QrLayer; r: Resolved; w: numb
   );
 }
 
-function Render({ layer, r, w, h, data }: { layer: QrLayer; r: Resolved; w: number; h: number; data: Data }) {
+function Render({ layer, r, w, h, data, state }: { layer: QrLayer; r: Resolved; w: number; h: number; data: Data; state: unknown }) {
   const c = cfg(layer);
-  const text = payload(c, layer.data, data);
+  const [url, caption] = address(c, layer.data, state as State | undefined);
+  const text = payload(c, url, data);
   const q = useMatrix(text, c.ecl);
-  if (!q) return null;
-  return <Svg layer={layer} r={r} w={w} h={h} data={data} q={q} />;
+  // The prepared addresses are fetched ahead: switching on air is instant.
+  for (const a of c.kind === 'url' ? c.addresses : []) {
+    const p = payload(c, a.url, data);
+    if (p) matrix(p, c.ecl);
+  }
+  // While a new code loads, the last one stays (never an empty frame on air).
+  const last = useRef<{ q: Matrix; caption: string } | null>(null);
+  if (q) last.current = { q, caption };
+  else if (q === null || !text) last.current = null;
+  const shown = q ? { q, caption } : last.current;
+  if (!shown) return null;
+  return <Svg layer={layer} r={r} w={w} h={h} data={data} q={shown.q} caption={shown.caption} />;
+}
+
+/** The rare types, under « More types ». */
+const RARE: [NonNullable<Config['kind']>, string][] = [
+  ['vcard', 'vCard'],
+  ['wifi', 'Wi-Fi'],
+  ['email', 'E-mail'],
+];
+
+/** The URL type's addresses: name, address, own caption; the first one is the layer's `data` (wired or exposed like before). */
+function Addresses({ layer, edit }: { layer: QrLayer; edit: (fn: (l: QrLayer) => void, key?: string) => void }) {
+  const c = cfg(layer);
+  const items = c.addresses.length ? c.addresses : [{ name: t('Address'), url: layer.data ?? '', caption: '' }];
+  return (
+    <Row expose="addresses" exposeValue={items}>
+      <ListEditor
+        value={items}
+        onChange={(v) =>
+          edit((l) => {
+            const list = v.map((a) => ({ name: String(a.name ?? ''), url: String(a.url ?? ''), caption: String(a.caption ?? '') }));
+            l.addresses = list;
+            if (list[0]) l.data = list[0].url;
+          }, `qr-addr-${layer.id}`)
+        }
+        fields={[
+          { key: 'name', placeholder: t('Name'), w: 54 },
+          { key: 'url', placeholder: 'https://…' },
+          { key: 'caption', placeholder: t('Caption') },
+        ]}
+        add={() => ({ name: `${t('Address')} ${items.length + 1}`, url: 'https://', caption: '' })}
+        addLabel={t('Address')}
+      />
+    </Row>
+  );
 }
 
 export default defineWidget({
@@ -544,30 +644,38 @@ export default defineWidget({
   label: 'QR code',
   group: 'Sport & interaction',
   icon: QrCode,
-  create: () => ({ data: 'https://vote.pulse.tv/final', background: '#ffffff', props: { width: 520, height: 520, fill: [0, 0, 0, 1] } }),
+  create: () => ({ data: 'https://example.com', background: '#ffffff', props: { width: 520, height: 520, fill: [0, 0, 0, 1] } }),
   ownsLook: true,
   content: ['data'],
-  Render: ({ layer, r, w, h, data }) => <Render layer={layer as QrLayer} r={r} w={w} h={h} data={data} />,
-  Inspector: ({ layer, set }) => {
+  Render: ({ layer, r, w, h, data, state }) => <Render layer={layer as QrLayer} r={r} w={w} h={h} data={data} state={state} />,
+  Inspector: ({ layer, set, edit }) => {
     const L = layer as QrLayer;
     const c = cfg(L);
+    const rare = RARE.find(([k]) => k === c.kind);
     return (
       <>
         <Section id="qr-content" title={t('Content')}>
           <Seg
+            expose="kind"
+            exposeValue={c.kind}
             label={t('Type')}
-            path="kind"
-            value={c.kind}
+            value={rare ? 'more' : c.kind}
+            onChange={(v) => set('kind', v === 'more' ? (rare?.[0] ?? 'vcard') : v)}
             options={[
               ['url', 'URL'],
               ['text', t('Text')],
-              ['vcard', 'vCard'],
-              ['wifi', 'Wi-Fi'],
-              ['email', 'E-mail'],
               ['sms', 'SMS'],
+              [
+                'more',
+                <span key="m" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+                  {rare ? rare[1] : t('More')} <ChevronDown size={12} />
+                </span>,
+                t('More types'),
+              ],
             ]}
           />
-          {c.kind === 'url' && <Content label={t('Address')} path="data" value="" placeholder="https://…" />}
+          {rare && <Select label={t('More types')} value={c.kind} onChange={(v) => set('kind', v)} options={RARE} />}
+          {c.kind === 'url' && <Addresses layer={L} edit={edit as never} />}
           {c.kind === 'text' && <Content label={t('Text')} path="data" value="" multiline />}
           {c.kind === 'vcard' && (
             <>
@@ -670,7 +778,6 @@ export default defineWidget({
               <Row expose="logo.src" exposeValue={c.logo.src} label={t('Picture')}>
                 <AssetPicker value={c.logo.src} onChange={(v) => set('logo.src', v)} />
               </Row>
-              {!c.logo.src && <ColorPick label={t('Color')} path="logo.color" value={c.logo.color} />}
               <Num label={t('Max size')} path="logo.size" value={c.logo.size} min={5} max={40} unit="%" />
             </>
           )}
@@ -681,6 +788,20 @@ export default defineWidget({
               <Num label={t('Size')} path="label.size" value={c.label.size} min={16} max={72} unit="px" />
               <ColorPick label={t('Color')} path="label.color" value={c.label.color} />
               <ColorPick label={t('Pill')} path="label.bg" value={c.label.bg} />
+              <Seg
+                label={t('Position')}
+                path="label.pos"
+                value={c.label.pos}
+                options={[
+                  ['below', t('Below')],
+                  ['beside', t('Beside')],
+                  ['above', t('Above')],
+                ]}
+              />
+              <Row label={t('Font')}>
+                <FontPick family={c.label.font} weight={c.label.weight} onChange={(f, w) => edit((l) => void ((l as QrLayer).label = { ...(l as QrLayer).label, font: f, weight: w }))} />
+              </Row>
+              <Toggle label={t('Capitals')} path="label.upper" value={c.label.upper} />
             </>
           )}
         </Section>
@@ -702,14 +823,33 @@ export default defineWidget({
       </>
     );
   },
-  warnings: (layer, { data, r }) => {
+  // On air: the menu of the prepared addresses.
+  Compact: ({ layer, state, act }) => {
+    const c = cfg(layer as QrLayer);
+    const cur = Math.min((state as State | undefined)?.addr ?? 0, Math.max(0, c.addresses.length - 1));
+    return (
+      <div className="wk-oprow">
+        <Link size={13} className="muted" />
+        <select className="opx-output" title={t('Address')} value={cur} onChange={(e) => act('address', { i: +e.target.value })}>
+          {c.addresses.map((a, i) => (
+            <option key={i} value={i}>
+              {a.name || a.url}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  },
+  controls: (l) => cfg(l as QrLayer).kind === 'url' && cfg(l as QrLayer).addresses.length > 1,
+  warnings: (layer, { data, state, r }) => {
     const L = layer as QrLayer;
     const c = cfg(L);
-    const text = payload(c, L.data, data);
-    const ck = check(L, data, r, text ? matrix(text, c.ecl) : null);
+    const [url] = address(c, L.data, state as State | undefined);
+    const text = payload(c, url, data);
+    const ck = check(L, data, state as State | undefined, r, text ? matrix(text, c.ecl) : null);
     if (!ck.ready) return [];
     const out = ck.issues.slice();
-    if (c.kind === 'url' && L.data && !/\{\{/.test(L.data) && !/^[a-z][a-z0-9+.-]*:/i.test(L.data)) out.push({ level: 'warn', text: t('No https:// — phones may read it as plain text.') });
+    if (c.kind === 'url' && url && !/\{\{/.test(url) && !/^[a-z][a-z0-9+.-]*:/i.test(url)) out.push({ level: 'warn', text: t('No https:// — phones may read it as plain text.') });
     if (ck.ok && !out.some((i) => i.level === 'warn')) out.unshift({ level: 'ok', text: t('Readable ✓') });
     return out;
   },

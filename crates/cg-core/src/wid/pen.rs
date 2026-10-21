@@ -1,11 +1,12 @@
 //! Pen: a Bézier path whose points and handles are fractions of the box.
-//! The visible portion (start / end %) is what the In draws; arrows follow
-//! the visible tip. Drawn by `cg-render/src/wid/pen.rs` and
+//! The visible portion (start / end %, the animatable `drawStart` /
+//! `drawEnd`) is what the In draws, over the pen's own duration after its
+//! delay; arrows follow the visible tip. Drawn by `cg-render/src/wid/pen.rs` and
 //! `web/src/widgets/pen.tsx` (keep in sync).
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-use super::shape::{Cap, Cmd, FillRule, FillStyle, Join, StrokeStyle};
+use super::shape::{Cap, Cmd, FillRule, FillStyle, Join, PartialStroke, StrokeStyle};
 use super::ActCtx;
 use crate::model::Layer;
 
@@ -63,7 +64,9 @@ pub enum Arrow {
 pub struct Config {
     pub points: Vec<PenPoint>,
     pub closed: bool,
-    /// Dash, ends and joins (the stroke is centred on the path).
+    /// Dash, ends and joins (the stroke is centred on the path); what a
+    /// layer leaves out is round, as the web reads it.
+    #[serde(deserialize_with = "round_partial")]
     pub stroke_style: StrokeStyle,
     /// The width stays the same when the box is resized…
     pub fixed_width: bool,
@@ -78,11 +81,30 @@ pub struct Config {
     pub fill_on: bool,
     pub fill_style: FillStyle,
     pub fill_rule: FillRule,
-    /// Visible portion, % of the path length.
+    /// Visible portion, % of the path length: the defaults of the
+    /// animatable `drawStart` / `drawEnd` (older layers have only these).
     pub v_start: f32,
     pub v_end: f32,
     /// The In draws the stroke from start to end (the Out erases it).
     pub draw_in: bool,
+    /// How long the drawing lasts, s (None = the template's In, 1 s without one).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub draw_duration: Option<f32>,
+    /// Time on air before it starts drawing, s.
+    pub draw_delay: f32,
+}
+
+/// Round ends and joins, the rest as any stroke.
+fn round_stroke() -> StrokeStyle {
+    StrokeStyle {
+        cap: Cap::Round,
+        join: Join::Round,
+        ..Default::default()
+    }
+}
+
+fn round_partial<'de, D: Deserializer<'de>>(d: D) -> Result<StrokeStyle, D::Error> {
+    Ok(PartialStroke::deserialize(d)?.over(round_stroke()))
 }
 
 fn p(x: f32, y: f32, ix: f32, iy: f32, ox: f32, oy: f32) -> PenPoint {
@@ -107,11 +129,7 @@ impl Default for Config {
                 p(0.94, 0.14, -0.1, 0.55, 0.0, 0.0),
             ],
             closed: false,
-            stroke_style: StrokeStyle {
-                cap: Cap::Round,
-                join: Join::Round,
-                ..Default::default()
-            },
+            stroke_style: round_stroke(),
             fixed_width: true,
             ref_w: 1100.0,
             ref_h: 560.0,
@@ -124,6 +142,8 @@ impl Default for Config {
             v_start: 0.0,
             v_end: 100.0,
             draw_in: true,
+            draw_duration: None,
+            draw_delay: 0.0,
         }
     }
 }
@@ -264,13 +284,24 @@ fn ease_out(k: f64) -> f64 {
     1.0 - (1.0 - k).powi(3)
 }
 
-/// Progress of the drawing: (In 0…1, Out 0…1). The In lasts the template's
-/// In (its hold frame; 1 s without one) on the time on air; the Out erases
-/// over the same time after the hold.
-pub fn progress(frame: f64, hold: f64, fps: f64, age_secs: f64) -> (f64, f64) {
+/// How long the drawing lasts, s: the pen's own duration, else the
+/// template's In (its hold frame; 1 s without one).
+pub fn draw_secs(c: &Config, hold: f64, fps: f64) -> f64 {
+    match c.draw_duration {
+        Some(d) if d.is_finite() && d > 0.0 => f64::from(d),
+        _ if hold > 0.0 => hold / fps.max(1.0),
+        _ => 1.0,
+    }
+}
+
+/// Progress of the drawing: (In 0…1, Out 0…1). The In draws over the
+/// pen's duration once its delay has passed on the time on air; the Out
+/// erases over the same time after the hold.
+pub fn progress(c: &Config, frame: f64, hold: f64, fps: f64, age_secs: f64) -> (f64, f64) {
     let fps = fps.max(1.0);
-    let secs = if hold > 0.0 { hold / fps } else { 1.0 };
-    let k_in = (age_secs / secs).clamp(0.0, 1.0);
+    let secs = draw_secs(c, hold, fps);
+    let delay = f64::from(c.draw_delay.max(0.0));
+    let k_in = ((age_secs - delay) / secs).clamp(0.0, 1.0);
     let k_out = if frame > hold + 1e-6 {
         ((frame - hold) / (secs * fps)).clamp(0.0, 1.0)
     } else {
@@ -279,10 +310,11 @@ pub fn progress(frame: f64, hold: f64, fps: f64, age_secs: f64) -> (f64, f64) {
     (k_in, k_out)
 }
 
-/// Visible portion in % with the In / Out applied, and the fill opacity.
-pub fn portion(c: &Config, (k_in, k_out): (f64, f64)) -> (f32, f32, f32) {
-    let mut a = c.v_start.clamp(0.0, 100.0) as f64;
-    let mut b = c.v_end.clamp(0.0, 100.0) as f64;
+/// Visible portion in % (`start` / `end`: the `drawStart` / `drawEnd` at
+/// this frame) with the In / Out applied, and the fill opacity.
+pub fn portion(c: &Config, start: f32, end: f32, (k_in, k_out): (f64, f64)) -> (f32, f32, f32) {
+    let mut a = start.clamp(0.0, 100.0) as f64;
+    let mut b = end.clamp(0.0, 100.0) as f64;
     if !c.draw_in {
         return (a as f32, b as f32, 1.0);
     }
@@ -455,7 +487,7 @@ mod tests {
         };
         let poly = flatten(&segments(&c, 1000.0, 100.0));
         // Half way through the In: the head is at the visible tip, not at the end.
-        let (a, b, _) = portion(&c, (0.5, 0.0));
+        let (a, b, _) = portion(&c, c.v_start, c.v_end, (0.5, 0.0));
         let v = visible(&c, &poly, a, b, 10.0).unwrap();
         let Head::Fill(pts, _) = &v.heads[0] else {
             panic!()
@@ -466,10 +498,34 @@ mod tests {
 
     #[test]
     fn timing() {
+        let c = Config::default();
         // On air for half the In.
-        assert_eq!(progress(12.5, 25.0, 50.0, 0.25).0, 0.5);
+        assert_eq!(progress(&c, 12.5, 25.0, 50.0, 0.25).0, 0.5);
         // Out half way.
-        assert_eq!(progress(37.5, 25.0, 50.0, 10.0), (1.0, 0.5));
+        assert_eq!(progress(&c, 37.5, 25.0, 50.0, 10.0), (1.0, 0.5));
+        // Its own duration and delay: 2 s after 1 s.
+        let c = Config {
+            draw_duration: Some(2.0),
+            draw_delay: 1.0,
+            ..Default::default()
+        };
+        assert_eq!(progress(&c, 25.0, 25.0, 50.0, 0.5).0, 0.0);
+        assert_eq!(progress(&c, 25.0, 25.0, 50.0, 2.0).0, 0.5);
+        assert_eq!(progress(&c, 75.0, 25.0, 50.0, 9.0), (1.0, 0.5));
+    }
+
+    #[test]
+    fn partial_stroke_style_stays_round() {
+        let l: Layer = serde_json::from_str(
+            r#"{"id":"a","name":"P","type":"pen","props":{},"strokeStyle":{"dash":"dashed"}}"#,
+        )
+        .unwrap();
+        let crate::LayerKind::Pen { x } = l.kind else {
+            panic!()
+        };
+        assert_eq!(x.stroke_style.cap, Cap::Round);
+        assert_eq!(x.stroke_style.join, Join::Round);
+        assert_eq!(x.stroke_style.dash, super::super::shape::Dash::Dashed);
     }
 
     #[test]

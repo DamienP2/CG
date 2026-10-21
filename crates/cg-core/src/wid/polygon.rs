@@ -45,7 +45,7 @@ pub struct Config {
     pub mode: Mode,
     /// Regular: number of sides (3…64).
     pub sides: f32,
-    /// Degrees; 0 = first vertex at the top.
+    /// Orientation, degrees; 0 = first vertex at the top.
     pub start_angle: f32,
     pub star: bool,
     /// Star: inner radius, % of the outer one (1…100).
@@ -95,20 +95,52 @@ impl Default for Config {
     }
 }
 
-/// Regular polygon or star inscribed in the box's ellipse.
-pub fn regular_points(c: &Config, w: f32, h: f32) -> Vec<[f32; 2]> {
+/// A regular polygon or star on the unit circle (y down), and how it is
+/// fitted to the box: scale `sx`, `sy` and the place of the circle's centre
+/// (`cx`, `cy`), so that its edges touch the four sides of the box.
+pub struct RegularFrame {
+    pub unit: Vec<[f32; 2]>,
+    pub sx: f32,
+    pub sy: f32,
+    pub cx: f32,
+    pub cy: f32,
+}
+
+pub fn regular_frame(c: &Config, w: f32, h: f32) -> RegularFrame {
     let n = (c.sides.round() as i32).clamp(3, 64) as usize;
     let count = if c.star { n * 2 } else { n };
     let inner = c.inner.clamp(1.0, 100.0) / 100.0;
-    (0..count)
+    let unit: Vec<[f32; 2]> = (0..count)
         .map(|i| {
             let a = (c.start_angle + i as f32 * 360.0 / count as f32).to_radians();
             let r = if c.star && i % 2 == 1 { inner } else { 1.0 };
-            [
-                w / 2.0 + a.sin() * r * w / 2.0,
-                h / 2.0 - a.cos() * r * h / 2.0,
-            ]
+            [a.sin() * r, -a.cos() * r]
         })
+        .collect();
+    let (mut x0, mut x1, mut y0, mut y1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+    for [x, y] in &unit {
+        x0 = x0.min(*x);
+        x1 = x1.max(*x);
+        y0 = y0.min(*y);
+        y1 = y1.max(*y);
+    }
+    let sx = if x1 - x0 > 1e-6 { w / (x1 - x0) } else { 0.0 };
+    let sy = if y1 - y0 > 1e-6 { h / (y1 - y0) } else { 0.0 };
+    RegularFrame {
+        cx: if sx > 0.0 { -x0 * sx } else { w / 2.0 },
+        cy: if sy > 0.0 { -y0 * sy } else { h / 2.0 },
+        unit,
+        sx,
+        sy,
+    }
+}
+
+/// Regular polygon or star fitted to the box (it touches its four sides).
+pub fn regular_points(c: &Config, w: f32, h: f32) -> Vec<[f32; 2]> {
+    let f = regular_frame(c, w, h);
+    f.unit
+        .iter()
+        .map(|[x, y]| [f.cx + x * f.sx, f.cy + y * f.sy])
         .collect()
 }
 
@@ -195,6 +227,24 @@ mod tests {
         let p = regular_points(&c, 200.0, 200.0);
         assert_eq!(p.len(), 6);
         assert!((p[0][0] - 100.0).abs() < 1e-3 && p[0][1].abs() < 1e-3);
+        // Fitted to its box: a pentagon touches the bottom and both sides.
+        let c = Config {
+            sides: 5.0,
+            ..Default::default()
+        };
+        let p = regular_points(&c, 300.0, 200.0);
+        let max = |i: usize| p.iter().map(|q| q[i]).fold(f32::MIN, f32::max);
+        let min = |i: usize| p.iter().map(|q| q[i]).fold(f32::MAX, f32::min);
+        assert!(min(0).abs() < 1e-3 && (max(0) - 300.0).abs() < 1e-3);
+        assert!(min(1).abs() < 1e-3 && (max(1) - 200.0).abs() < 1e-3);
+        // A 4-point star (3 and 4 sides allowed).
+        let c = Config {
+            sides: 4.0,
+            star: true,
+            inner: 30.0,
+            ..Default::default()
+        };
+        assert_eq!(regular_points(&c, 100.0, 100.0).len(), 8);
         let c = Config {
             star: true,
             sides: 100.0,

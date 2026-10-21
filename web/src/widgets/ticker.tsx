@@ -4,13 +4,14 @@
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useState } from 'react';
-import { ArrowLeftRight, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowLeftRight, Check, List, Minus, Pause, Play, Plus, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
-import { FontControls, GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
-import { FitLine, FONT_CSS, tw } from './table-text';
-import { t } from '../i18n';
+import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
+import { FontPick } from '../ui/FontPick';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
+import { FitLine, FONT_CSS, tw, useLiveTime } from './table-text';
+import { t, tc } from '../i18n';
 
 export interface Item {
   cat?: string;
@@ -64,7 +65,7 @@ export interface State {
   runs?: Run[];
 }
 
-type TL = Config & FontStyle & { text: string; separator: string; speed: number; props: Record<string, unknown>; manualStart?: boolean };
+type TL = Config & FontStyle & { text: string; separator: string; speed: number; props: Record<string, unknown>; manualStart?: boolean; name?: string };
 const PAD = 30;
 const MODE_LABEL = { crawl: 'Crawl', roll: 'Roll', flip: 'Flip' } as const;
 
@@ -145,7 +146,9 @@ export function expand(items: Item[], data: Data): Item[] {
   }
   return out;
 }
-const speedOf = (l: TL, st: State) => clamp(st.speed ?? l.speed ?? 120, 1, 5000);
+/** Readable speeds, px/s: the same range in the Designer and on air (mirrors SPEED_MIN / SPEED_MAX). */
+export const SPEED: [number, number] = [10, 800];
+const speedOf = (l: TL, st: State) => clamp(st.speed ?? l.speed ?? 120, SPEED[0], SPEED[1]);
 export const periodOf = (l: TL, k: K, st: State, h: number) => (k.mode === 'flip' ? Math.max(0.5, k.itemDur) : Math.max(0, k.itemDur) + h / Math.max(5, speedOf(l, st)));
 export function clockOf(l: TL, k: K, st: State, now: number, age: number) {
   const rate = k.mode === 'crawl' ? speedOf(l, st) : 1;
@@ -323,7 +326,7 @@ function measure(k: K, l: TL, lk: Look) {
     const { cs, cp, cg } = chip(lk.size);
     return tw(c.name.toUpperCase(), cs, 900) + 2 * cp + cg;
   };
-  const textW = (s: string) => tw(upc(s, lk.upper), lk.size, lk.weight, lk.ls);
+  const textW = (s: string) => tw(upc(s, lk.upper), lk.size, lk.weight, lk.ls, lk.family);
   const itemW = (it: Item) => textW(it.text ?? '') + chipW(it);
   const sepW = k.sepType === 'none' ? 0 : k.sepType === 'image' ? Math.round(lk.size * 1.05) * 2.4 : k.sepType === 'symbol' ? tw(k.sepSymbol, Math.round(lk.size * 0.7), 900) : textW(l.separator ?? '');
   return { catOf, chipW, itemW, sepW };
@@ -509,32 +512,88 @@ function QueueRow({ it, i, n, cats, act }: { it: Item; i: number; n: number; cat
   );
 }
 
-/** The Operator's compact row: running / paused, start from the top, pause / resume, next item. */
-function TickerCompact({ l, state, data, act, time }: { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const frame = useFrame();
-  const now = frame + (time.nowMs - Date.now());
+type OpP = { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
+
+/** The scene at this frame, for the Operator's rows. */
+function useScene({ l, state, data, time }: OpP) {
+  const { now, age: onAir } = useLiveTime(time);
   const k = cfg(l);
   const st = (state ?? {}) as State;
   const w = num(l.props.width as number) || 1920;
   const h = num(l.props.height as number) || 80;
   const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: l.props.fill ?? [1, 1, 1, 1] });
-  const age = st.started ? 0 : time.ageSecs + (now - time.nowMs) / 1000;
-  const sc = scene(l, k, st, data, lk, w, h, now, age);
+  const age = st.started ? 0 : onAir;
+  return { k, st, sc: scene(l, k, st, data, lk, w, h, now, age) };
+}
+
+/** The category of an urgent item: one named URGENT, if any. */
+const urgentCat = (k: K) => k.cats.find((c) => c.name.trim().toUpperCase() === 'URGENT')?.name ?? '';
+
+/** The Operator's compact row: start from the top, pause / resume (start when manual), next item, an urgent item inserted after the current one. */
+function TickerCompact(p: OpP) {
+  const { l, act, item } = p;
+  const { k, st, sc } = useScene(p);
+  const [urgent, setUrgent] = useState('');
   const paused = !!st.started && !st.running;
+  // Manual launch: it waits for the operator.
+  const waiting = !!l.manualStart && !st.started;
+  const insert = () => {
+    if (!urgent.trim()) return;
+    act('insert', { text: urgent.trim(), cat: urgentCat(k), when: 'after' });
+    setUrgent('');
+  };
   return (
-    <OpRow
-      list={[
-        { icon: SkipBack, title: t('Start from the top of the queue'), onClick: () => act('start') },
-        paused ? { icon: Play, title: t('Resume'), tone: 'green', onClick: () => act('resume') } : { icon: Pause, title: t('Pause'), tone: 'amber', disabled: sc.ended, onClick: () => act('pause') },
-        k.mode !== 'crawl' && { icon: SkipForward, title: t('Next item'), onClick: () => act('next') },
-      ]}
-    />
+    <div className="wk-oprow">
+      <OpRow
+        noMore
+        list={[
+          { icon: SkipBack, title: t('Start from the top of the queue'), confirm: item && !waiting ? t('{name} is on air: start again from the top of the queue?', { name: l.name ?? '' }) : undefined, onClick: () => act('start') },
+          waiting ? { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('resume') } : paused ? { icon: Play, title: tc('action', 'Resume'), tone: 'green', onClick: () => act('resume') } : { icon: Pause, title: t('Pause'), tone: 'amber', disabled: sc.ended, onClick: () => act('pause') },
+          k.mode !== 'crawl' && { icon: SkipForward, title: t('Next item'), onClick: () => act('next') },
+        ]}
+      />
+      <input title={t('Urgent item')} placeholder={t('Priority item')} value={urgent} style={{ width: 180, height: 28 }} onChange={(e) => setUrgent(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && insert())} />
+      <OpRow list={[{ icon: Check, title: t('Insert after the current one'), tone: 'violet', disabled: !urgent.trim(), onClick: insert }]} />
+    </div>
   );
 }
 
-function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const frame = useFrame();
-  const now = frame + (time.nowMs - Date.now());
+/** Under ⋯: the speed (not in flip, one item at a time), the queue to edit. */
+function TickerMore(p: OpP) {
+  const { l, act } = p;
+  const { k, st } = useScene(p);
+  const [open, setOpen] = useState(false);
+  const [add, setAdd] = useState('');
+  const q = queueOf(l, st);
+  const cats = k.cats.map((c) => c.name);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, minWidth: 0 }}>
+      <OpRow
+        list={[
+          k.mode !== 'flip' && { icon: Minus, title: t('Slower'), onClick: () => act('speed', { delta: -20 }) },
+          k.mode !== 'flip' && { icon: Plus, title: t('Faster'), onClick: () => act('speed', { delta: 20 }) },
+          { icon: List, title: t('Queue'), tone: open ? 'violet' : undefined, onClick: () => setOpen(!open) },
+        ]}
+      />
+      {open && (
+        <div className="wk-list">
+          {q.map((it, i) => (
+            <QueueRow key={`${i}-${it.text}`} it={it} i={i} n={q.length} cats={cats} act={act} />
+          ))}
+          <div className="wk-item">
+            <input placeholder={t('New item')} value={add} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && add.trim() && (act('add', { text: add }), setAdd('')))} onChange={(e) => setAdd(e.target.value)} />
+            <button className="opx-btn small" disabled={!add.trim()} onClick={() => (act('add', { text: add }), setAdd(''))}>
+              + {t('Add item')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number; fps?: number } }) {
+  const { now, age: aired } = useLiveTime(time);
   const k = cfg(l);
   const st = (state ?? {}) as State;
   const [prio, setPrio] = useState({ text: '', cat: k.cats.find((c) => c.name === 'URGENT')?.name ?? '', keep: false });
@@ -542,7 +601,7 @@ function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; 
   const w = num(l.props.width as number) || 1920;
   const h = num(l.props.height as number) || 80;
   const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: l.props.fill ?? [1, 1, 1, 1] });
-  const age = st.started ? 0 : time.ageSecs + (now - time.nowMs) / 1000;
+  const age = st.started ? 0 : aired;
   const sc = scene(l, k, st, data, lk, w, h, now, age);
   const status = sc.ended ? 'ENDED' : !st.started ? 'AUTO' : st.running ? 'RUNNING' : 'PAUSED';
   const color = { RUNNING: 'var(--pvw, #22c55e)', AUTO: 'var(--pvw, #22c55e)', PAUSED: 'var(--warn, #f59e0b)', ENDED: 'var(--text-3, #888)' }[status];
@@ -550,13 +609,14 @@ function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; 
   const lim = limitOf(k);
   const q = queueOf(l, st);
   const cats = k.cats.map((c) => c.name);
-  useKeys({ Space: () => act(sc.ended ? 'start' : st.started && !st.running ? 'resume' : 'pause'), ArrowRight: () => k.mode !== 'crawl' && act('next'), '+': () => act('speed', { delta: 20 }), '-': () => act('speed', { delta: -20 }) });
+  // Space stays the Operator's CONTINUE.
+  useKeys({ p: () => act(sc.ended ? 'start' : st.started && !st.running ? 'resume' : 'pause'), ArrowRight: () => k.mode !== 'crawl' && act('next'), '+': () => k.mode !== 'flip' && act('speed', { delta: 20 }), '-': () => k.mode !== 'flip' && act('speed', { delta: -20 }) });
   let onAir: Item | undefined;
   if (!sc.crawl) onAir = segs(sc.placed, sc.pos, sc.pos + 1).find((g) => g.x <= sc.pos + 1e-9)?.item;
   const paused = !!st.started && !st.running;
   return (
     <>
-      <Readout sub={t('{mode} · {speed} px/s ({perFrame} px/frame) · pass {pass}/{passes} · {n} active item(s)', { mode: t(MODE_LABEL[k.mode]).toUpperCase(), speed: Math.round(v), perFrame: (v / 25).toFixed(1), pass: Math.max(1, sc.pass), passes: lim ?? '∞', n: sc.q.length })}>
+      <Readout sub={t('{mode} · {speed} px/s ({perFrame} px/frame) · pass {pass}/{passes} · {n} active item(s)', { mode: t(MODE_LABEL[k.mode]).toUpperCase(), speed: Math.round(v), perFrame: (v / (time.fps ?? 25)).toFixed(1), pass: Math.max(1, sc.pass), passes: lim ?? '∞', n: sc.q.length })}>
         <i style={{ color, fontStyle: 'normal' }}>{t(status)}</i>
       </Readout>
       {onAir && (
@@ -567,17 +627,19 @@ function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; 
       <Btns
         list={[
           { label: t('▶ Start'), cls: 'big green', title: t('Start from the top of the queue'), onClick: () => act('start') },
-          paused ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'Space', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'Space', disabled: sc.ended, onClick: () => act('pause') },
+          paused || (l.manualStart && !st.started) ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'P', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'P', disabled: sc.ended, onClick: () => act('pause') },
           { label: t('Next item ⏭'), cls: 'big', keyHint: '→', disabled: k.mode === 'crawl', title: t('Flip / roll: go to the next item'), onClick: () => act('next') },
         ]}
       />
-      <Btns
-        label={t('Speed live')}
-        list={[
-          { label: t('− Slower'), keyHint: '-', onClick: () => act('speed', { delta: -20 }) },
-          { label: t('+ Faster'), keyHint: '+', onClick: () => act('speed', { delta: 20 }) },
-        ]}
-      />
+      {k.mode !== 'flip' && (
+        <Btns
+          label={t('Speed live')}
+          list={[
+            { label: t('− Slower'), keyHint: '-', onClick: () => act('speed', { delta: -20 }) },
+            { label: t('+ Faster'), keyHint: '+', onClick: () => act('speed', { delta: 20 }) },
+          ]}
+        />
+      )}
       <Text label={t('Priority')} value={prio.text} placeholder={t('Priority item')} onChange={(s) => setPrio({ ...prio, text: s })} />
       <Select label={t('Category')} value={prio.cat} options={[['', '—'], ...cats.map((c) => [c, c] as [string, string])]} onChange={(c) => setPrio({ ...prio, cat: c })} />
       <Toggle value={prio.keep} text={t('Also keep it in the queue')} onChange={(b) => setPrio({ ...prio, keep: b })} />
@@ -699,7 +761,14 @@ export default defineWidget({
           </Row>
         </Section>
         <Section id="ticker-look" title={t('Look')}>
-          <FontControls layer={layer as never} set={set} />
+          <Row label={t('Font')} expose={['fontFamily', 'fontWeight']} exposeValue={{ fontFamily: l.fontFamily, fontWeight: l.fontWeight }}>
+            <FontPick family={l.fontFamily} weight={l.fontWeight} onChange={(f, w) => (set('fontFamily', f), w !== l.fontWeight && set('fontWeight', w))} />
+          </Row>
+          <Row label={t('Upper case')} expose="uppercase" exposeValue={!!l.uppercase}>
+            <button className={`btn small ${l.uppercase ? 'on' : ''}`} onClick={() => set('uppercase', !l.uppercase)} title={t('Upper case')}>
+              AA
+            </button>
+          </Row>
           <GroupRow layer={layer as never} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />
           <ColorGroupRow layer={layer as never} prop="fill" label={t('Color')} />
           <Num label={t('Spacing')} path="spacing" value={k.spacing} min={0} max={300} unit="px" />
@@ -716,7 +785,7 @@ export default defineWidget({
           />
           {k.sepType === 'text' && <Text label={t('Text')} path="separator" value={l.separator} />}
           {k.sepType === 'symbol' && <Seg label={t('Symbol')} path="sepSymbol" value={k.sepSymbol} options={['●', '◆', '▶', '■', '★', '|', '/']} />}
-          {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label={t('Sep. color')} path="sepColor" value={k.sepColor || '#ffffff'} />}
+          {(k.sepType === 'text' || k.sepType === 'symbol') && <ColorPick label={t('Sep. color')} path="sepColor" value="" none={t('Text colour')} />}
           {k.sepType === 'image' && (
             <Row expose="sepImage" exposeValue={k.sepImage} label={t('Logo')}>
               <AssetPicker value={k.sepImage} onChange={(v) => set('sepImage', v)} />
@@ -760,8 +829,8 @@ export default defineWidget({
               ]}
             />
           )}
-          <Num label={t('Speed')} path="speed" value={l.speed ?? 140} min={10} max={5000} step={5} unit="px/s" />
-          {k.mode !== 'crawl' && <Num label={k.mode === 'flip' ? t('Per item') : t('Hold')} path="itemDur" value={k.itemDur} min={k.mode === 'flip' ? 0.5 : 0} max={60} step={0.5} precision={1} unit="s" />}
+          {k.mode !== 'flip' && <Num label={t('Speed')} path="speed" value={l.speed ?? 140} min={SPEED[0]} max={SPEED[1]} step={5} unit="px/s" />}
+          {k.mode !== 'crawl' && <Num label={k.mode === 'flip' ? t('Per item') : tc('ticker', 'Hold')} path="itemDur" value={k.itemDur} min={k.mode === 'flip' ? 0.5 : 0} max={60} step={0.5} precision={1} unit="s" />}
           {k.mode === 'flip' && (
             <>
               <Seg
@@ -791,6 +860,15 @@ export default defineWidget({
           />
           {k.end === 'passes' && <Num label={t('Passes')} path="passes" value={k.passes} min={1} max={99} />}
           <Seg
+            label={t('Launch')}
+            value={!!l.manualStart}
+            onChange={(v) => set('manualStart', v || undefined)}
+            options={[
+              [false, t('At the In')],
+              [true, t('Manual')],
+            ]}
+          />
+          <Seg
             label={t('If empty')}
             path="emptyMode"
             value={k.emptyMode}
@@ -805,7 +883,8 @@ export default defineWidget({
     );
   },
   Operator: ({ layer, state, data, act, time }) => <TickerOperator l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
-  Compact: ({ layer, state, data, act, time }) => <TickerCompact l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
+  Compact: ({ layer, state, data, act, time, item }) => <TickerCompact l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
+  More: ({ layer, state, data, act, time, item }) => <TickerMore l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
   warnings: (layer, { data, state, r }) => {
     const l = layer as unknown as TL;
     return warningsOf(l, data, state, num((r?.width as number) ?? (l.props.width as number) ?? 1920), num((r?.height as number) ?? (l.props.height as number) ?? 80));

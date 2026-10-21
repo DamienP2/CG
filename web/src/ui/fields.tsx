@@ -272,18 +272,22 @@ export function TextInput({
   multiline,
   placeholder,
   commitOnBlur,
+  maxLength,
 }: {
   value: string;
   onChange: (v: string) => void;
   multiline?: boolean;
   placeholder?: string;
   commitOnBlur?: boolean;
+  /** Most characters that can be typed. */
+  maxLength?: number;
 }) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
   const props = {
     value: text,
     placeholder,
+    maxLength: maxLength || undefined,
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setText(e.target.value);
       if (!commitOnBlur) onChange(e.target.value);

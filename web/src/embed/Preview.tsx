@@ -76,7 +76,7 @@ export function EmbedPreview() {
       {error && <p style={{ color: '#ff8a8a', font: '12px system-ui', padding: 12 }}>{error}</p>}
       {t && format && (
         <Viewport width={format.width} height={format.height} scale={scale}>
-          <LiveTime ageSecs={(ask?.frame ?? 0) / fps} clientNow={Date.now()}>
+          <LiveTime ageSecs={(ask?.frame ?? 0) / fps} clientNow={Date.now()} lang={project?.language || 'fr'}>
             <Scene template={t} frame={ask?.frame ?? 0} data={data} />
           </LiveTime>
         </Viewport>

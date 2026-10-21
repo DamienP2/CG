@@ -1,5 +1,5 @@
 import { RichInput } from '../ui/RichText';
-import { richField } from '../engine/rich';
+import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -14,11 +14,11 @@ import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { Row } from '../widgets/kit';
+import { KeyScope, MoreToggle, Row } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, shownData, sourcePatch, steppedDatasets } from './DataSets';
-import { changedKeys, hasControls, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
+import { changedKeys, hasControls, hasMore, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
-import { shownText } from '../widgets/text';
+import { maxChars, shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
@@ -36,9 +36,9 @@ import { t, tc, tn } from '../i18n';
  */
 
 /** The control of an exposed value, as in the Designer (text, choices, number, colour, picture, on / off). */
-export function FieldInput({ field, value, onChange, rich }: { field: Field; value: string; onChange: (v: string) => void; rich?: boolean }) {
+export function FieldInput({ field, value, onChange, rich, maxLength }: { field: Field; value: string; onChange: (v: string) => void; rich?: boolean; /** Most characters (a Text's « Max characters »). */ maxLength?: number }) {
   // A text the operator can style (bold, colour…: it is only shown in Texts).
-  if (rich) return <RichInput multiline={field.kind === 'multiline'} value={value} onChange={onChange} />;
+  if (rich) return <RichInput multiline={field.kind === 'multiline'} value={value} onChange={onChange} maxLength={maxLength} />;
   if (field.options?.length) {
     const short = field.options.length <= 4 && field.options.every(([, l]) => l.length <= 12);
     return short ? (
@@ -56,7 +56,7 @@ export function FieldInput({ field, value, onChange, rich }: { field: Field; val
   }
   switch (field.kind) {
     case 'multiline':
-      return <TextInput multiline value={value} onChange={onChange} />;
+      return <TextInput multiline value={value} onChange={onChange} maxLength={maxLength} />;
     case 'number':
       return (
         <span className="pp-field">
@@ -80,7 +80,7 @@ export function FieldInput({ field, value, onChange, rich }: { field: Field; val
     case 'table':
       return <TableRowsField value={value} onChange={onChange} />;
     default:
-      return <TextInput value={value} onChange={onChange} />;
+      return <TextInput value={value} onChange={onChange} maxLength={maxLength} />;
   }
 }
 
@@ -184,6 +184,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
   const [airSel, setAirSel] = useState<string | null>(null);
+  // The widget of a graphic on air whose keys are on (`zone:layer`, a click on its row), and the ⋯ unfolded.
+  const [airWidget, setAirWidget] = useState<string | null>(null);
+  const [airMore, setAirMore] = useState<Record<string, boolean>>({});
+  const [pvMore, setPvMore] = useState<Record<string, boolean>>({});
   // Reordering the graphics by dragging their grip.
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ id: string; where: 'before' | 'after' } | null>(null);
@@ -309,7 +313,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input, textarea, select')) return;
+      // A key the selected widget on air took (its own shortcuts) is not the Operator's.
+      if (e.defaultPrevented || (e.target as HTMLElement).closest('input, textarea, select')) return;
+      if (e.key === 'Escape' && airWidget) return setAirWidget(null);
+      // A focused button (a widget's, a row's) would also "click" on Space / Enter.
+      if (e.key === ' ' || e.key === 'Enter') (e.target as HTMLElement).closest?.('button')?.blur();
       const idx = items.findIndex((r) => r.id === cued);
       if (e.key === 'F1' || e.key === 'Enter') (e.preventDefault(), take());
       // Continue / Out act on the graphic on air shown in the controls (not on the next one cued).
@@ -335,6 +343,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const previewFormat = formatFor(project, main.width, main.height);
   const itemZone = item ? zoneOf(item) : undefined;
   const fps = project.frameRate.num / project.frameRate.den || 1;
+  const lang = project.language || 'fr';
   // The selected graphic widget by widget (a tab each when there are several).
   const parts = template ? widgetParts(template) : { shared: [], widgets: [] };
   const part = (item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0];
@@ -495,7 +504,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             <Screen width={previewFormat.width} height={previewFormat.height}>
               {template && (
                 <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
-                  <PreviewScene template={inFormat(template, previewFormat.id)} data={previewData} fps={fps} run={pv} />
+                  <PreviewScene template={inFormat(template, previewFormat.id)} data={previewData} fps={fps} run={pv} lang={lang} />
                 </div>
               )}
             </Screen>
@@ -523,7 +532,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               )}
               {((part && part.controls) || onAirNow) && (
                 <div className="opx-wbar">
-                  {part?.controls && <PreviewControls key={`${item.id}-${part.layer.id}`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} />}
+                  {part?.controls && <PreviewControls key={`${item.id}-${part.layer.id}`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} lang={lang} more={!!pvMore[part.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [part.layer.id]: open })} />}
                   <span className="spacer" />
                   {onAirNow && (
                     <>
@@ -533,6 +542,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       </button>
                     </>
                   )}
+                </div>
+              )}
+              {part?.controls && pvMore[part.layer.id] && hasMore(part.layer, previewData, pv.widgets[part.layer.id]) && (
+                <div className="opx-wbar">
+                  <PreviewControls key={`${item.id}-${part.layer.id}-more`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} lang={lang} show="more" />
                 </div>
               )}
               <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
@@ -638,7 +652,18 @@ export function Operator({ channelId }: { channelId: string | null }) {
               <span className="opx-title">{t('Controls')}</span>
             )}
           </header>
-          {selItem && selZone ? <AirControls project={project} zone={selZone} item={selItem} command={command} nextRowOf={(key) => nextRowOf(selItem, key)} /> : <p className="opx-hint pad">{t('Nothing on air.')}</p>}
+          {selItem && selZone ? (
+            <AirControls
+              project={project}
+              zone={selZone}
+              item={selItem}
+              command={command}
+              nextRowOf={(key) => nextRowOf(selItem, key)}
+              widget={{ selected: airWidget, onSelect: setAirWidget, more: airMore, onMore: (k, open) => setAirMore({ ...airMore, [k]: open }) }}
+            />
+          ) : (
+            <p className="opx-hint pad">{t('Nothing on air.')}</p>
+          )}
         </section>
       </div>
     </div>
@@ -797,9 +822,15 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
                           {boundDraft[f.key] ?? draft[f.key] ?? '…'}
                         </span>
                       ) : (
-                        <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => onDraft({ [f.key]: v })} />
+                        <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} maxLength={maxChars(template, f.key) || undefined} onChange={(v) => onDraft({ [f.key]: v })} />
                       )}
                     </Row>
+                    {/* A Text's « Max characters »: what is typed, out of the most. */}
+                    {!live(f) && maxChars(template, f.key) > 0 && (
+                      <p className="hint" style={{ textAlign: 'right', padding: '0 10px 6px' }}>
+                        {plain(draft[f.key] ?? '').length} / {maxChars(template, f.key)}
+                      </p>
+                    )}
                     {fitWarnings
                       .filter((w) => w.keys.includes(f.key) && !fedIds.has(w.layer.id))
                       .map((w) => (
@@ -855,13 +886,13 @@ function tabName(widgets: WidgetPart[], i: number) {
 }
 
 /** The preview of the selected graphic, held at its On air point; its widgets run once the preview's controls were used. */
-function PreviewScene({ template, data, fps, run }: { template: Template; data: Record<string, string>; fps: number; run: PreviewRun }) {
+function PreviewScene({ template, data, fps, run, lang }: { template: Template; data: Record<string, string>; fps: number; run: PreviewRun; lang: string }) {
   const hold = holdFrame(template);
   const now = useTicker(run.active);
   const age = hold / fps + (run.active ? Math.max(0, now - run.since) / 1000 : 0);
   const clocks = { clocks: run.clocks } as PlayoutItem;
   return (
-    <LiveTime ageSecs={age} clientNow={now} layerAge={run.active ? (l) => layerAgeFrames(clocks, age * fps, l) / fps : undefined} widgetState={run.active ? (id) => run.widgets[id] : undefined} fps={fps}>
+    <LiveTime ageSecs={age} clientNow={now} layerAge={run.active ? (l) => layerAgeFrames(clocks, age * fps, l) / fps : undefined} clocked={run.active ? (l) => !!run.clocks[l.id] || !!l.manualStart : undefined} widgetState={run.active ? (id) => run.widgets[id] : undefined} fps={fps} lang={lang}>
       <Scene template={template} frame={hold} data={data} />
     </LiveTime>
   );
@@ -1113,31 +1144,53 @@ function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, chi
   );
 }
 
+/** Which widget row of the graphics on air is selected (its keys are on) and which ones are unfolded (⋯). */
+interface AirWidgets {
+  selected: string | null;
+  onSelect: (key: string) => void;
+  more: Record<string, boolean>;
+  onMore: (key: string, open: boolean) => void;
+}
+
 /**
  * The controls of a widget of the graphic on air (web/src/widgets), on one row: its name, a small
- * readout, icon buttons. Its full panel stays mounted, hidden, for its keyboard shortcuts.
+ * readout, icon buttons, the ⋯ of its More controls (unfolded in a row under it). A click on the
+ * row selects it: only then its keyboard shortcuts work. Its full panel stays mounted, hidden, for them.
  */
-function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number }) {
+function SpecControls({ layer, item, act, fps, lang, selected, onSelect, more, onMore }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number; lang: string; selected: boolean; onSelect: () => void; more: boolean; onMore: (open: boolean) => void }) {
   const def = widgetOf(layer.type)!;
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const state = item.widgets?.[layer.id];
   const Compact = def.Compact;
   const Op = def.Operator;
+  const More = def.More;
   if (!Compact) return null;
-  const time = { nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps };
+  const time = { nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps, lang };
+  const withMore = !!More && hasMore(layer, item.data, state);
+  const open = withMore && more;
   return (
-    <div className="opx-widget opx-wrow">
-      <span className="opx-widget-name">
-        <strong>{layer.name}</strong>
-      </span>
-      <Compact layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} />
-      {Op && (
-        <div hidden>
-          <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} />
+    <KeyScope.Provider value={selected}>
+      <div className={`opx-widget opx-wrow ${selected ? 'sel' : ''}`} onClick={onSelect}>
+        <span className="opx-widget-name">
+          <strong>{layer.name}</strong>
+        </span>
+        <MoreToggle.Provider value={withMore ? { open, toggle: () => onMore(!open) } : null}>
+          <Compact layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
+        </MoreToggle.Provider>
+        {Op && (
+          <div hidden>
+            <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
+          </div>
+        )}
+      </div>
+      {open && More && (
+        <div className="opx-widget opx-wrow" onClick={onSelect}>
+          <span className="opx-widget-name" />
+          <More layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
         </div>
       )}
-    </div>
+    </KeyScope.Provider>
   );
 }
 
@@ -1241,7 +1294,7 @@ function useUpdateFade(): [boolean, (v: boolean) => void] {
   return [v, set];
 }
 
-function AirControls({ project, zone, item, command, nextRowOf }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined }) {
+function AirControls({ project, zone, item, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const target = { zone: zone.id };
   // Deleted (or unpublished) while on air: it can still be taken out.
@@ -1274,9 +1327,23 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
       {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
         .filter((l) => l.visible && !!widgetOf(l.type)?.Compact && hasControls(l, item.data))
-        .map((l) => (
-          <SpecControls key={l.id} layer={l} item={item} fps={project.frameRate.num / project.frameRate.den || 50} act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })} />
-        ))}
+        .map((l) => {
+          const key = `${zone.id}:${l.id}`;
+          return (
+            <SpecControls
+              key={l.id}
+              layer={l}
+              item={item}
+              fps={project.frameRate.num / project.frameRate.den || 50}
+              lang={project.language || 'fr'}
+              act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })}
+              selected={widget.selected === key}
+              onSelect={() => widget.onSelect(key)}
+              more={!!widget.more[key]}
+              onMore={(open) => widget.onMore(key, open)}
+            />
+          );
+        })}
       {timed
         .filter((l) => !widgetOf(l.type)?.Operator)
         .map((l) => {
@@ -1287,7 +1354,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
               <span className="opx-widget-name">
                 <strong>{l.name}</strong>
               </span>
-              <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
+              <button className={`opx-sq ${running ? 'amber' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
                 {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
               </button>
               <button className="opx-sq" title={t('Back to the start')} onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>

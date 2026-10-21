@@ -74,6 +74,17 @@ export interface Config {
   panel?: { on?: boolean; color?: string; opacity?: number };
   anim?: { fx?: Fx; dur?: number; stagger?: number; upd?: number; curve?: 'ease' | 'out' | 'linear' };
   reveal?: RevealMode;
+  /** Columns: standing (v) or lying, names on the left (h). */
+  orient?: 'v' | 'h';
+  /** New data on air: tweened at once (auto) or kept until the operator's Reload. */
+  onAir?: 'auto' | 'reload';
+  /** Font family of the texts (weights by role). */
+  font?: string;
+  /** Colour of the texts (empty = white and lavender). */
+  textColor?: string;
+  refLine?: { on?: boolean; value?: number; label?: string };
+  /** Texts the chart writes itself (empty = in the project's language). */
+  texts?: { noData?: string; others?: string; total?: string };
 }
 export interface Hl {
   kind: HlKind;
@@ -136,7 +147,18 @@ export function cfg(c: Config) {
     panel: { on: true, color: '#120e24', opacity: 0.88, ...c.panel },
     anim: { fx: 'auto' as Fx, dur: 0.9, stagger: 110, upd: 0.8, curve: 'ease' as const, ...c.anim },
     reveal: c.reveal ?? 'all',
+    orient: c.orient ?? 'v',
+    onAir: c.onAir ?? 'reload',
+    font: c.font ?? 'Inter',
+    textColor: c.textColor ?? '',
+    refLine: { on: false, value: 0, label: '', ...c.refLine },
+    texts: { noData: '', others: '', total: '', ...c.texts },
   };
+}
+
+/** A text the chart writes: the Designer's, else in the project language (mirrors `word`). */
+export function word(own: string, en: string, fr: string, lang: string): string {
+  return own.trim() ? own : lang.startsWith('fr') ? fr : en;
 }
 export type Cfg = ReturnType<typeof cfg>;
 
@@ -159,7 +181,7 @@ export function resolveGrid(c: Cfg, data: Data): string[][] {
 }
 
 export function withData(c: Cfg, data: Data): Cfg {
-  return { ...c, title: { ...c.title, text: interpolateText(c.title.text, data), sub: interpolateText(c.title.sub, data) }, axis: { ...c.axis, xTitle: interpolateText(c.axis.xTitle, data), yTitle: interpolateText(c.axis.yTitle, data) } };
+  return { ...c, title: { ...c.title, text: interpolateText(c.title.text, data), sub: interpolateText(c.title.sub, data) }, axis: { ...c.axis, xTitle: interpolateText(c.axis.xTitle, data), yTitle: interpolateText(c.axis.yTitle, data) }, refLine: { ...c.refLine, label: interpolateText(c.refLine.label, data) } };
 }
 
 export function numOf(v: string): number | null {
@@ -299,7 +321,7 @@ export function scale(c: Cfg, tv: (number | null)[][]): Scale {
   }
   if (!Number.isFinite(lo)) ((lo = 0), (hi = 1));
   if (c.chartType !== 'lines' || c.axis.zero) ((lo = Math.min(lo, 0)), (hi = Math.max(hi, 0)));
-  if (isPct(c)) return { min: 0, max: 100, step: 20 };
+  if (isPct(c)) return { min: 0, max: 100, step: nice(0, 100, c.axis.ticks).step };
   if (c.axis.auto) return nice(lo, hi + (hi - lo) * 0.04, c.axis.ticks);
   const mn = Math.min(c.axis.min, c.axis.max - 1e-6);
   const mx = Math.max(c.axis.max, mn + 1e-6);
@@ -387,6 +409,8 @@ export interface Input {
   fs: number;
   ageMs: number;
   now: number;
+  /** The project's language (texts the chart writes: « Aucune donnée »…). */
+  lang: string;
 }
 
 const D2R = Math.PI / 180;
@@ -555,6 +579,21 @@ interface Ctx {
   kh: number;
   fs: number;
   hidden: number;
+  ink: Inks;
+  lang: string;
+}
+/** Colours of the texts: main, secondary (ticks, subtitle), category names, n/a (mirrors Inks). */
+interface Inks {
+  main: string;
+  muted: string;
+  cat: string;
+  na: string;
+}
+function inksOf(c: Cfg): Inks {
+  const t = c.textColor.trim();
+  if (!t) return { main: WHITE, muted: MUTED, cat: '#d6d0f5', na: '#8f88b5' };
+  const solid = [...t].slice(0, 7).join('');
+  return { main: t, muted: `${solid}bf`, cat: t, na: `${solid}99` };
 }
 const hlv = (cx: Ctx, f: (hl: Hl) => number) => lerp(f(cx.st.prevHl), f(cx.st.hl), cx.kh);
 interface LegendItem {
@@ -570,7 +609,7 @@ export function layout(inp: Input): Out {
   const p = parse(c, inp.grid);
   const fxv = fxOf(c);
   const tm = new Tm(inp.now, inp.ageMs, fxv === 'none' ? 0 : c.anim.dur * 1000, c.anim.stagger, fxv, revealMode(c, s), Math.max(1, s.step));
-  const cx: Ctx = { c, st: s, p, tm, k: updK(c, s, inp.now), kh: hlK(c, s, inp.now), fs: inp.fs, hidden: 0 };
+  const cx: Ctx = { c, st: s, p, tm, k: updK(c, s, inp.now), kh: hlK(c, s, inp.now), fs: inp.fs, hidden: 0, ink: inksOf(c), lang: inp.lang };
   const { w, h, fs } = inp;
   const out: Out = { prims: [], hidden: 0, pieNeg: [], pieZero: false, pieOthers: 0, pieMissing: 0 };
   if (c.panel.on) out.prims.push({ ...shape(rectD(0, 0, w, h, [28])), fill: c.panel.color, opacity: c.panel.opacity });
@@ -583,10 +622,10 @@ export function layout(inp: Input): Out {
     const center = c.title.pos === 'center';
     const tx = center ? w / 2 : left;
     const anc: Anchor = center ? 'middle' : 'start';
-    out.prims.push(text(tx, top + fs * 1.45, c.title.text, fs * 1.75, 900, anc, WHITE, 1));
+    out.prims.push(text(tx, top + fs * 1.45, c.title.text, fs * 1.75, 900, anc, cx.ink.main, 1));
     top += fs * 2.1;
     if (c.title.sub) {
-      out.prims.push(text(tx, top + fs * 0.85, c.title.sub, fs, 600, anc, MUTED, 1));
+      out.prims.push(text(tx, top + fs * 0.85, c.title.sub, fs, 600, anc, cx.ink.muted, 1));
       top += fs * 1.5;
     }
     top += fs * 0.3;
@@ -600,7 +639,7 @@ export function layout(inp: Input): Out {
   if (c.legend === 'top') ((ly = top + lfs * 0.6), (top += lfs * 2));
   else if (c.legend === 'bottom') ((bottom -= lfs * 1.9), (ly = bottom + lfs * 1.1));
   else if (c.legend === 'right') {
-    const names = isPie ? [...p.cats.map((x) => x.name), 'Others'] : p.ser;
+    const names = isPie ? [...p.cats.map((x) => x.name), word(c.texts.others, 'Others', 'Autres', cx.lang)] : p.ser;
     const widest = names.reduce((a, n) => Math.max(a, tw2(n, lfs)), 60);
     const lw = Math.min(w * 0.3, widest + lfs * 2.6);
     right -= lw;
@@ -616,7 +655,7 @@ export function layout(inp: Input): Out {
     const item = (x: number, y: number, it: LegendItem) => {
       const o = it.dim ? 0.3 : it.op;
       out.prims.push({ ...shape(rectD(x, y - sw * 0.85, sw, sw, [sw * 0.25])), fill: it.color, opacity: o });
-      out.prims.push(text(x + sw + lfs * 0.5, y, it.name, lfs, 700, 'start', WHITE, o));
+      out.prims.push(text(x + sw + lfs * 0.5, y, it.name, lfs, 700, 'start', cx.ink.main, o));
     };
     if (c.legend === 'right') {
       let y = top + lfs;
@@ -650,8 +689,9 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
   const g: Prim[] = [];
   const ns = cx.p.ser.length;
   const nc = cx.p.cats.length;
-  if (!ns || !nc) return [text((o[0] + o[1]) / 2, (o[2] + o[3]) / 2, 'No data', fs * 1.4, 800, 'middle', MUTED, 1)];
+  if (!ns || !nc) return [text((o[0] + o[1]) / 2, (o[2] + o[3]) / 2, word(c.texts.noData, 'No data', 'Aucune donnée', cx.lang), fs * 1.4, 800, 'middle', cx.ink.muted, 1)];
   const ct = c.chartType;
+  if (ct === 'columns' && c.orient === 'h') return hbars(cx, o);
   const stacked = isStacked(c);
   const pct = isPct(c);
   const tv = targets(
@@ -692,10 +732,10 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
     if (y < top - 2 || y > bottom + 2) continue;
     const zero = Math.abs(v) < 1e-6;
     if (c.axis.grid || zero) g.push({ ...shape(lineD([left, y], [right, y])), stroke: WHITE, opacity: zero ? 0.55 : 0.12, width: zero ? 3 : 2 });
-    g.push(text(left - fs * 0.5, y + tfs * 0.35, tickLabel(v), tfs, 700, 'end', MUTED, 1));
+    g.push(text(left - fs * 0.5, y + tfs * 0.35, tickLabel(v), tfs, 700, 'end', cx.ink.muted, 1));
   }
-  if (c.axis.yTitle) g.push({ ...text(o[0] + fs * 0.7, top + ph / 2, c.axis.yTitle, fs * 0.8, 700, 'middle', MUTED, 1), rotate: true });
-  if (c.axis.xTitle) g.push(text(left + pw / 2, o[3] - fs * 0.2, c.axis.xTitle, fs * 0.8, 700, 'middle', MUTED, 1));
+  if (c.axis.yTitle) g.push({ ...text(o[0] + fs * 0.7, top + ph / 2, c.axis.yTitle, fs * 0.8, 700, 'middle', cx.ink.muted, 1), rotate: true });
+  if (c.axis.xTitle) g.push(text(left + pw / 2, o[3] - fs * 0.2, c.axis.xTitle, fs * 0.8, 700, 'middle', cx.ink.muted, 1));
   const cfs = fs * 0.82;
   const maxCat = cx.p.cats.reduce((a, x) => Math.max(a, tw2(x.name, cfs)), -Infinity);
   const every = Math.max(1, Math.ceil((maxCat + 12) / band));
@@ -708,7 +748,7 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
     if (isHl) g.push({ ...shape(rectD(x - band / 2, top - fs * 0.6, band, bottom - top + fs * 0.6, [10])), fill: WHITE, opacity: 0.08 });
     const [e, hid] = catE[i];
     const ce = Math.max(e, hid ? 0 : 0.0001);
-    if (i % every === 0 || isHl) g.push(text(x, bottom + fs * 1.15, cat.name, cfs, isHl ? 900 : 700, 'middle', isHl ? WHITE : '#d6d0f5', hid ? 0.3 : Math.min(1, 0.3 + ce)));
+    if (i % every === 0 || isHl) g.push(text(x, bottom + fs * 1.15, cat.name, cfs, isHl ? 900 : 700, 'middle', isHl ? cx.ink.main : cx.ink.cat, hid ? 0.3 : Math.min(1, 0.3 + ce)));
   });
   const clip: [number, number, number, number] = [left - 30, top - 4, pw + 60, ph + 8];
   const dimOf = (j: number, ri: number) => hlv(cx, (hl) => (hl.kind === 'none' || (hl.kind === 'series' && hl.idx === j) || (hl.kind === 'category' && hl.idx === ri) ? 1 : 0.22));
@@ -733,7 +773,7 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
         const op = dimOf(j, cat.ri);
         const x = grouped ? cxp - gw / 2 + j * (bw + 6) : cxp - gw / 2;
         if (raw == null) {
-          if (e > 0 && grouped) labels.push({ ...lab(x + bw / 2, Y(0) - 10, 'n/a', '#8f88b5', -1, 1), size: lfs * 0.8 });
+          if (e > 0 && grouped) labels.push({ ...lab(x + bw / 2, Y(0) - 10, word('', 'n/a', 'n.d.', cx.lang), cx.ink.na, -1, 1), size: lfs * 0.8 });
           continue;
         }
         const shown = sv[i][j] ?? raw;
@@ -775,7 +815,7 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
         if (!inside && v >= 0 && yt - lfs * 1.2 < top - lfs * 0.6) inside = true;
         const ylab = inside ? (v >= 0 ? Math.max(yt, top) + lfs * 1.05 : yt + hh - lfs * 0.45) : v >= 0 ? yt - lfs * 0.45 : yt + hh + lfs * 1.05;
         const yc = !grouped && inside ? yt + hh / 2 + lfs * 0.35 : ylab;
-        labels.push({ ...lab(x + bw / 2, yc, txt, inside ? ink(color) : WHITE, Math.abs(v), op), w: tw, slot: bw + 6, j, inside });
+        labels.push({ ...lab(x + bw / 2, yc, txt, inside ? ink(color) : cx.ink.main, Math.abs(v), op), w: tw, slot: bw + 6, j, inside });
       }
     });
     if (grouped)
@@ -870,7 +910,7 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
         const txt = labelText(c, false, pt.v, pc, '');
         if (!txt) continue;
         const y = L.pos === 'inside' && ct === 'areas' ? pt.y + lfs * 1.4 : pt.y - lfs * 0.75;
-        labels.push({ ...lab(pt.x, y, txt, WHITE, Math.abs(pt.v), op), halo: c.panel.color, col: pt.ci });
+        labels.push({ ...lab(pt.x, y, txt, cx.ink.main, Math.abs(pt.v), op), halo: c.panel.color, col: pt.ci });
       }
     const cols: number[] = [];
     for (const lb of labels) if (lb.col != null && !cols.includes(lb.col)) cols.push(lb.col);
@@ -882,6 +922,10 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
         bottom - 2,
         L.overlap,
       );
+  }
+  if (c.refLine.on) {
+    const y = Y(c.refLine.value);
+    if (y >= top - 2 && y <= bottom + 2) data.push(...refLine(cx, [left, y], [right, y], [right, y - lfs * 0.45], 'end'));
   }
   for (const lb of labels) {
     if (lb.hide) continue;
@@ -897,6 +941,159 @@ function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {
       d.clip = [x0, y0, Math.max(0, x1 - x0), Math.max(0, y1 - y0)];
     } else d.clip = clip;
   }
+  cx.hidden += hidden;
+  return g.concat(data);
+}
+
+/** The reference line from `a` to `b` (dashed, the text colour) and its label at `at` (mirrors ref_line). */
+function refLine(cx: Ctx, a: [number, number], b: [number, number], at: [number, number], anchor: Anchor): Prim[] {
+  const out: Prim[] = [{ ...shape(lineD(a, b)), stroke: cx.ink.main, width: 3, dash: [10, 8], opacity: 0.85 }];
+  if (cx.c.refLine.label) out.push(text(at[0], at[1], cx.c.refLine.label, cx.fs * 0.78, 800, anchor, cx.ink.main, 1));
+  return out;
+}
+
+/** Columns lying (`orient: h`): names on the left, values along the bottom, bars growing to the right (mirrors hbars). */
+function hbars(cx: Ctx, o: [number, number, number, number]): Prim[] {
+  const { c, st: s, fs } = cx;
+  const g: Prim[] = [];
+  const ns = cx.p.ser.length;
+  const nc = cx.p.cats.length;
+  const grouped = c.colMode === 'grouped';
+  const pct = isPct(c);
+  const tv = targets(
+    c,
+    cx.p.cats.map((x) => x.vals),
+  );
+  const sv = targets(
+    c,
+    cx.p.cats.map((cat) => cat.vals.map((v, j) => tweenVal(s, cx.k, cat.name, cx.p.ser[j], v))),
+  );
+  const sc = scale(c, tv);
+  const k = cx.k;
+  const pa = s.prevAxis ?? [sc.min, sc.max];
+  const xMin = lerp(pa[0], sc.min, k);
+  const xMax = lerp(pa[1], sc.max, k);
+  const ticks: number[] = [];
+  for (let v = Math.ceil(sc.min / sc.step - 1e-6) * sc.step; v <= sc.max + 1e-6 * Math.max(1, sc.step) && ticks.length <= 200; v += sc.step) ticks.push(Math.round(v * 1e6) / 1e6);
+  const tickLabel = (v: number) => (pct ? `${jsNum(v)} %` : fmt(c, v));
+  const tfs = fs * 0.8;
+  const cfs = fs * 0.82;
+  const lfs = fs * 0.78;
+  const L = c.labels;
+  const nameW = Math.min(
+    cx.p.cats.reduce((a, x) => Math.max(a, tw2(x.name, cfs)), 0),
+    (o[1] - o[0]) * 0.4,
+  );
+  let left = o[0] + nameW + fs * 0.6;
+  if (c.axis.yTitle) left += fs * 1.3;
+  // Room for the values written after the bars, and for the last tick.
+  const labW = L.value || L.pct ? tv.flat().reduce<number>((a, v) => (v == null ? a : Math.max(a, tw2(labelText(c, L.name, v, 100, ''), lfs))), 0) + lfs * 0.6 : 0;
+  const lastTick = ticks.length ? tw2(tickLabel(ticks[ticks.length - 1]), tfs) / 2 : 0;
+  const right = o[1] - Math.min(Math.max(labW, lastTick), (o[1] - o[0]) * 0.3);
+  const top = o[2] + fs * 0.4;
+  let bottom = o[3] - fs * 1.5;
+  if (c.axis.xTitle) bottom -= fs * 1.4;
+  const pw = right - left;
+  const ph = bottom - top;
+  const span = xMax - xMin !== 0 ? xMax - xMin : 1;
+  const X = (v: number) => left + ((v - xMin) / span) * pw;
+  const nSlots = s.prev.length ? lerp(s.prevN, nc, k) : nc;
+  const band = ph / nSlots;
+  const slotY = cx.p.cats.map((cat, i) => top + (lerp(s.prev.find((q) => q.name === cat.name)?.slot ?? i, i, k) + 0.5) * band);
+  for (const v of ticks) {
+    const x = X(v);
+    if (x < left - 2 || x > right + 2) continue;
+    const zero = Math.abs(v) < 1e-6;
+    if (c.axis.grid || zero) g.push({ ...shape(lineD([x, top], [x, bottom])), stroke: WHITE, opacity: zero ? 0.55 : 0.12, width: zero ? 3 : 2 });
+    g.push(text(x, bottom + fs * 1.15, tickLabel(v), tfs, 700, 'middle', cx.ink.muted, 1));
+  }
+  if (c.axis.yTitle) g.push({ ...text(o[0] + fs * 0.7, top + ph / 2, c.axis.yTitle, fs * 0.8, 700, 'middle', cx.ink.muted, 1), rotate: true });
+  if (c.axis.xTitle) g.push(text(left + pw / 2, o[3] - fs * 0.2, c.axis.xTitle, fs * 0.8, 700, 'middle', cx.ink.muted, 1));
+  const every = Math.max(1, Math.ceil((cfs * 1.3) / band));
+  const catE = cx.p.cats.map((cat, i) => cx.tm.cat(s, i, cat.name));
+  const serE = cx.p.ser.map((_, j) => cx.tm.ser(s, j));
+  cx.p.cats.forEach((cat, i) => {
+    const y = slotY[i];
+    const isHl = s.hl.kind === 'category' && s.hl.idx === cat.ri;
+    if (c.axis.vgrid) g.push({ ...shape(lineD([left, y], [right, y])), stroke: WHITE, opacity: 0.1, width: 2 });
+    if (isHl) g.push({ ...shape(rectD(o[0], y - band / 2, right - o[0] + fs * 0.6, band, [10])), fill: WHITE, opacity: 0.08 });
+    const [e, hid] = catE[i];
+    const ce = Math.max(e, hid ? 0 : 0.0001);
+    if (i % every === 0 || isHl) g.push(text(left - fs * 0.6, y + cfs * 0.35, cat.name, cfs, isHl ? 900 : 700, 'end', isHl ? cx.ink.main : cx.ink.cat, hid ? 0.3 : Math.min(1, 0.3 + ce)));
+  });
+  const clip: [number, number, number, number] = [left - 4, top - 30, o[1] - left + 8, ph + 60];
+  const dimOf = (j: number, ri: number) => hlv(cx, (hl) => (hl.kind === 'none' || (hl.kind === 'series' && hl.idx === j) || (hl.kind === 'category' && hl.idx === ri) ? 1 : 0.22));
+  const data: Prim[] = [];
+  const labs: Prim[] = [];
+  let hidden = 0;
+  const gw = band * 0.74;
+  const bh = grouped ? Math.max(2, (gw - (ns - 1) * 6) / ns) : gw;
+  cx.p.cats.forEach((cat, i) => {
+    const cy = slotY[i];
+    let pos = 0;
+    let neg = 0;
+    const tot = cat.vals.reduce<number>((a, v) => a + (v != null && v > 0 ? v : 0), 0);
+    for (let j = 0; j < ns; j++) {
+      const e = Math.min(catE[i][0], serE[j][0]);
+      const { color } = seriesStyle(c, j);
+      const op = dimOf(j, cat.ri);
+      const y = grouped ? cy - gw / 2 + j * (bh + 6) : cy - gw / 2;
+      const raw = tv[i][j];
+      if (raw == null) {
+        if (e > 0 && grouped) labs.push(text(X(0) + 10, y + bh / 2 + lfs * 0.3, word('', 'n/a', 'n.d.', cx.lang), lfs * 0.8, 800, 'start', cx.ink.na, 1));
+        continue;
+      }
+      const shown = sv[i][j] ?? raw;
+      const v = shown * e;
+      let x0: number, x1: number;
+      if (grouped) ((x0 = X(0)), (x1 = X(v)));
+      else if (v >= 0) ((x0 = X(pos)), (x1 = X(pos + v)), (pos += v));
+      else ((x0 = X(neg)), (x1 = X(neg + v)), (neg += v));
+      const xl = Math.min(x0, x1);
+      const ww = Math.abs(x1 - x0);
+      if (ww < 0.2 && e < 1) continue;
+      const rad = Math.min(8, bh / 4, ww / 2);
+      const bar: PShape = { ...shape(rectD(xl, y, ww, bh, v >= 0 ? [0, rad, rad, 0] : [rad, 0, 0, rad])), fill: color, opacity: op };
+      if (cat.interp[j]) Object.assign(bar, { fillOpacity: 0.35, stroke: color, width: 3, dash: [8, 6] });
+      data.push(bar);
+      if (e < 0.6) continue;
+      const vj = cat.vals[j];
+      const lp = pct ? raw : vj != null && tot > 0 && vj > 0 ? (vj / tot) * 100 : null;
+      const lv = pct ? vj : shown;
+      const txt = labelText(c, L.name, lv, lp, cx.p.ser[j]);
+      if (!txt) continue;
+      if (grouped && bh < lfs * 0.9) {
+        hidden++;
+        continue;
+      }
+      const tw = tw2(txt, lfs);
+      const fits = ww >= tw + lfs * 0.8;
+      let lastPos = -1;
+      for (let q = 0; q < ns; q++) if ((tv[i][q] ?? 0) > 0) lastPos = q;
+      const isEnd = grouped || (v >= 0 && lastPos === j);
+      let inside = L.pos === 'inside' || !grouped;
+      if (inside && !fits) {
+        if (L.overlap === 'offset' && isEnd) inside = false;
+        else {
+          hidden++;
+          continue;
+        }
+      }
+      if (!inside && !grouped && !isEnd) {
+        hidden++;
+        continue;
+      }
+      const ty = y + bh / 2 + lfs * 0.35;
+      const [tx, anchor]: [number, Anchor] = inside && !grouped ? [xl + ww / 2, 'middle'] : inside ? (v >= 0 ? [x1 - lfs * 0.5, 'end'] : [x1 + lfs * 0.5, 'start']) : v >= 0 ? [x1 + lfs * 0.45, 'start'] : [x1 - lfs * 0.45, 'end'];
+      labs.push(text(tx, ty, txt, lfs, 800, anchor, inside ? ink(color) : cx.ink.main, op));
+    }
+  });
+  if (c.refLine.on) {
+    const x = X(c.refLine.value);
+    if (x >= left - 2 && x <= right + 2) data.push(...refLine(cx, [x, top - fs * 0.3], [x, bottom], [x + lfs * 0.4, top + lfs * 0.6], 'start'));
+  }
+  data.push(...labs);
+  for (const d of data) d.clip = clip;
   cx.hidden += hidden;
   return g.concat(data);
 }
@@ -935,7 +1132,8 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
   const j = Math.min(Math.max(0, Math.trunc(pc.series)), Math.max(0, ns - 1));
   let slices: Slice[] = [];
   cx.p.cats.forEach((cat, i) => {
-    const raw = cat.raw[j] ?? null;
+    // Values after the « Missing » rule (zero, interpolated, or a gap).
+    const raw = cat.vals[j] ?? null;
     if (raw == null) out.pieMissing++;
     else if (raw < 0) out.pieNeg.push([cat.name, raw]);
     else slices.push({ name: cat.name, ri: cat.ri, i, target: raw, color: sliceColor(c, i), group: [], e: 0, v: 0, hidden: false });
@@ -948,7 +1146,7 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
     const small = slices.filter((x) => (x.target / totalT) * 100 < pc.othersPct);
     if (small.length >= 2) {
       slices = slices.filter((x) => !small.includes(x));
-      slices.push({ name: 'Others', ri: OTHERS_RI, i: -1, target: small.reduce((a, x) => a + x.target, 0), color: OTHERS, group: small.map((x) => x.i), e: 0, v: 0, hidden: false });
+      slices.push({ name: word(c.texts.others, 'Others', 'Autres', cx.lang), ri: OTHERS_RI, i: -1, target: small.reduce((a, x) => a + x.target, 0), color: OTHERS, group: small.map((x) => x.i), e: 0, v: 0, hidden: false });
       out.pieOthers = small.length;
     }
   }
@@ -963,7 +1161,7 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
         const [ce, hid] = cx.tm.cat(s, i, cat.name);
         e = Math.max(e, ce);
         all = all && hid;
-        v += tweenVal(s, cx.k, cat.name, serName, cat.raw[j]) ?? 0;
+        v += tweenVal(s, cx.k, cat.name, serName, cat.vals[j]) ?? 0;
       }
       sl.e = e;
       sl.hidden = all;
@@ -993,7 +1191,7 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
   const R0 = (R * clamp(pc.donut, 0, 95)) / 100;
   if (totalT <= 0 || total <= 1e-9) {
     g.push({ ...shape(circleD(cxp, cyp, R - 3)), stroke: WHITE, opacity: 0.35, width: 6, dash: [18, 14] });
-    if (totalT <= 0) g.push(text(cxp, cyp + fs * 0.35, 'No data', fs * 1.2, 800, 'middle', MUTED, 1));
+    if (totalT <= 0) g.push(text(cxp, cyp + fs * 0.35, word(c.texts.noData, 'No data', 'Aucune donnée', cx.lang), fs * 1.2, 800, 'middle', cx.ink.muted, 1));
     return g;
   }
   const sweep = cx.tm.fx !== 'sweep' ? 360 : 360 * cx.tm.ep(cx.tm.age);
@@ -1016,7 +1214,7 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
     const op = hlv(cx, (hl) => (hl.kind === 'category' && hl.idx !== sl.ri ? 0.3 : 1));
     if (vis1 > a0) g.push({ ...shape(sliceD(cxp + dx, cyp + dy, R0, R, a0, vis1)), fill: sl.color, stroke: edge, width: 3, round: true, opacity: op });
     const pctv = (sl.target / totalT) * 100;
-    const name = sl.ri === OTHERS_RI ? `Others (${sl.group.length})` : sl.name;
+    const name = sl.ri === OTHERS_RI ? `${sl.name} (${sl.group.length})` : sl.name;
     const txt = labelText(c, L.name, sl.target, pctv, name);
     if (!txt || pc.start + sweep < mid || sl.e < 0.6) continue;
     const small = pctv < L.minSize;
@@ -1034,7 +1232,7 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
     if (!goOut) {
       const rr = R0 > 0 ? (R0 + R) / 2 : R * 0.62;
       labs.push({ inside: true, side: 0, x: cxp + dx + sx * rr, y: cyp + dy + sy * rr + lfs * 0.35, ax: 0, ay: 0, ex: 0, txt, fill: ink(sl.color), op, color: sl.color });
-    } else labs.push({ inside: false, side: sx >= 0 ? 1 : -1, x: 0, y: cyp + dy + sy * (R + fs * 0.9), ax: cxp + dx + sx * (R + 4), ay: cyp + dy + sy * (R + 4), ex: cxp + dx + sx * (R + fs * 0.9), txt, fill: WHITE, op, color: sl.color });
+    } else labs.push({ inside: false, side: sx >= 0 ? 1 : -1, x: 0, y: cyp + dy + sy * (R + fs * 0.9), ax: cxp + dx + sx * (R + 4), ay: cyp + dy + sy * (R + 4), ex: cxp + dx + sx * (R + fs * 0.9), txt, fill: cx.ink.main, op, color: sl.color });
     prio.push(pctv);
   }
   const hide = labs.map(() => false);
@@ -1050,11 +1248,11 @@ function pie(cx: Ctx, o: [number, number, number, number], legend: LegendItem[],
     const tx = cxp + lb.side * (R + fs * 2);
     const ex = lb.side > 0 ? Math.min(lb.ex, tx - 10) : Math.max(lb.ex, tx + 10);
     g.push({ ...shape(`M${lb.ax} ${lb.ay}L${ex} ${lb.y}L${tx - lb.side * 6} ${lb.y}`), stroke: lb.color, width: 3, opacity: lb.op });
-    g.push(text(tx, lb.y + lfs * 0.35, lb.txt, lfs, 800, lb.side > 0 ? 'start' : 'end', WHITE, lb.op));
+    g.push(text(tx, lb.y + lfs * 0.35, lb.txt, lfs, 800, lb.side > 0 ? 'start' : 'end', lb.fill, lb.op));
   });
   if (R0 > fs * 2.5 && pc.centerTotal) {
-    g.push(text(cxp, cyp + fs * 0.2, fmt(c, totalT), Math.min(R0 * 0.45, fs * 1.8), 900, 'middle', WHITE, 1));
-    g.push(text(cxp, cyp + fs * 1.3, 'Total', fs * 0.75, 700, 'middle', MUTED, 1));
+    g.push(text(cxp, cyp + fs * 0.2, fmt(c, totalT), Math.min(R0 * 0.45, fs * 1.8), 900, 'middle', cx.ink.main, 1));
+    g.push(text(cxp, cyp + fs * 1.3, word(c.texts.total, 'Total', 'Total', cx.lang), fs * 0.75, 700, 'middle', cx.ink.muted, 1));
   }
   return g;
 }

@@ -7,10 +7,11 @@ import * as T from './timer-fmt';
 import { display as counterDisplay, partsOf } from './counter';
 import { useDesigner } from '../designer/designerStore';
 import { Dropdown } from '../ui/Dropdown';
-import { Minus, Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Check, Database, Minus, Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { confirmDialog } from '../ui/dialogs';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
-import type { Data, Layer } from '../engine/types';
+import type { Data, Layer, PlayoutItem } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, OpRow, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
@@ -42,9 +43,13 @@ export interface Config {
   labelSize?: number;
   labelColor?: string;
   easing?: 'linear' | 'out' | 'inout' | 'back';
+  /** Goal marker: its value (text, {{key}} allowed; empty = none), its label and colour. */
+  goal?: string;
+  goalText?: string;
+  goalColor?: string;
 }
 
-/** The value set by the operator and the transition towards it (mirrors `State` in Rust). */
+/** The value set by the operator and the transition towards it (mirrors `State` in Rust); no value but a time = back to the data from `from`. */
 export interface State {
   value?: number | null;
   from?: number;
@@ -76,6 +81,9 @@ const D = {
   labelSize: 30,
   labelColor: '#ffffff',
   easing: 'out' as NonNullable<Config['easing']>,
+  goal: '',
+  goalText: '',
+  goalColor: '#ffd200',
 };
 const cfg = (l: Config) => withDefaults(D, l) as typeof D & { thickness?: number };
 const LH = 1.2;
@@ -129,9 +137,10 @@ export function effOf(l: L, data: Data, follow?: [number, number | null] | null)
   const ease = (k: number) => (EASE[c.easing] ?? EASE.out)(clamp(k, 0, 1));
   const shown = (st: State | undefined, now: number, age: number) => {
     const d = Math.max(0, l.duration ?? 0);
-    if (st?.value != null) {
+    if (st?.value != null || st?.at) {
+      // A value set by the operator, or back to the data (from the value shown then).
       const k = d <= 0 ? 1 : (now - (st.at ?? 0)) / (d * 1000);
-      const [a, b] = [capped(st.from ?? 0), capped(st.value)];
+      const [a, b] = [capped(st.from ?? 0), capped(st.value ?? base)];
       return a + (b - a) * ease(k);
     }
     const k = d <= 0 ? 1 : age / d;
@@ -149,7 +158,17 @@ export function effOf(l: L, data: Data, follow?: [number, number | null] | null)
     return best?.color || null;
   };
   const target = (st: State | undefined) => st?.value ?? base;
-  return { c, lo, hi, base, shown, frac, stepColor, target };
+  const g = c.goal.trim() ? parseNum(interpolateText(c.goal, data)) : null;
+  return { c, lo, hi, base, shown, frac, stepColor, target, goal: g };
+}
+
+/** Decimals a number needs to show as typed (0–3): 100 → 0, 2.5 → 1 (mirrors dec_of). */
+export function decOf(v: number): number {
+  for (let d = 0; d < 3; d++) {
+    const x = v * Math.pow(10, d);
+    if (Math.abs(x - Math.round(x)) < 1e-6) return d;
+  }
+  return 3;
 }
 
 /** "5 000.5" (mirrors fmt_num). */
@@ -167,7 +186,7 @@ function labelText(e: ReturnType<typeof effOf>, v: number, f: number) {
   if (e.frac(v)[1]) return '—';
   const dec = Math.min(3, c.decimals);
   if (c.label === 'pct') return `${fmtNum(f * 100, dec)} %`;
-  return `${fmtNum(v, dec)} / ${fmtNum(e.hi, 0)}${c.unit ? ' ' + c.unit : ''}`;
+  return `${fmtNum(v, dec)} / ${fmtNum(e.hi, decOf(e.hi))}${c.unit ? ' ' + c.unit : ''}`;
 }
 
 // --------------------------------------------------------------- drawing --
@@ -237,6 +256,17 @@ function View({ layer, r, w, h, data, nowMs, ageSecs, state }: { layer: L; r: Re
     if (ptr) svg.push(<path key="bp" d={`M ${x - 9} ${y} L ${x + 9} ${y} L ${x} ${y + 10} Z`} fill="#0d0a1f" />);
     lab(text, bx + bw / 2, y - bh / 2, fs, 'middle', 'bl');
   };
+  // Goal marker: a tick across the bar at the goal and its label (same in progress.rs).
+  const goal = e.goal != null && !e.frac(e.goal)[1] ? e.frac(e.goal)[0] : null;
+  const gc = hex(c.goalColor, '#ffd200');
+  const gfs = Math.max(1, c.labelSize * 0.8);
+  const gText = goal != null ? interpolateText(c.goalText, data) : '';
+  const glab = (s: string, x: number, y: number, anchor: 'start' | 'middle' | 'end') =>
+    labels.push(
+      <div key={`g${labels.length}`} style={{ position: 'absolute', left: anchor === 'start' ? x : anchor === 'middle' ? x - 200 : x - 400, top: y - (gfs * LH) / 2, width: 400, height: gfs * LH, font: `800 ${gfs}px Inter, system-ui, sans-serif`, lineHeight: LH, color: gc, whiteSpace: 'pre', textAlign: anchor === 'start' ? 'left' : anchor === 'middle' ? 'center' : 'right', pointerEvents: 'none' }}>
+        {s}
+      </div>,
+    );
 
   if (c.shape === 'ring') {
     const besideW = text && c.labelPos === 'beside' ? tw + 30 : 0;
@@ -263,6 +293,20 @@ function View({ layer, r, w, h, data, nowMs, ageSecs, state }: { layer: L; r: Re
         ['i', Math.max(0, R - T / 2)],
       ] as const)
         svg.push(<circle key={k} cx={cx} cy={cy} r={rr} fill="none" stroke={sc} strokeWidth={sw} />);
+    if (goal != null) {
+      const ext = Math.max(4, T * 0.32);
+      const angs = c.circleDir === 'ccw' ? [c.angle - goal * 360] : c.circleDir === 'center' ? [c.angle + goal * 180, c.angle - goal * 180] : [c.angle + goal * 360];
+      angs.forEach((a, i) => {
+        const r0 = R - T / 2 - ext;
+        const r1 = R + T / 2 + ext;
+        svg.push(<rect key={`gm${i}`} x={cx - 3} y={cy - r1} width={6} height={r1 - r0} rx={3} fill={gc} transform={`rotate(${a} ${cx} ${cy})`} />);
+        if (i === 0 && gText) {
+          const rr = r1 + gfs * 0.9;
+          const t0 = (a * Math.PI) / 180;
+          glab(gText, cx + rr * Math.sin(t0), cy - rr * Math.cos(t0), 'middle');
+        }
+      });
+    }
     if (text) {
       if (c.labelPos === 'inside') lab(text, cx, cy, Math.max(1, Math.min(fs * 1.8, (R - T / 2) * 0.62)), 'middle', 'l');
       else if (c.labelPos === 'beside') lab(text, w - besideW + 20, cy, fs, 'start', 'l');
@@ -338,6 +382,18 @@ function View({ layer, r, w, h, data, nowMs, ageSecs, state }: { layer: L; r: Re
       svg.push(rect('t', 0, Ln, radius, track, strokeAttr));
       if (f > 0) svg.push(rect('b', p, q, radius, p0));
     }
+    if (goal != null) {
+      const ext = Math.max(4, T * 0.32);
+      const ats = c.dir === 'end' ? [Ln - goal * Ln] : c.dir === 'center' ? [Ln / 2 + (goal * Ln) / 2, Ln / 2 - (goal * Ln) / 2] : [goal * Ln];
+      ats.forEach((a, i) => {
+        if (horiz) svg.push(<rect key={`gm${i}`} x={so + a - 3} y={c0 - ext} width={6} height={T + 2 * ext} rx={3} fill={gc} />);
+        else svg.push(<rect key={`gm${i}`} x={c0 - ext} y={h - so - a - 3} width={T + 2 * ext} height={6} rx={3} fill={gc} />);
+        if (i === 0 && gText) {
+          if (horiz) glab(gText, so + a, c0 - ext - (gfs * LH) / 2 - 4, 'middle');
+          else glab(gText, c0 + T + ext + 8, h - so - a, 'start');
+        }
+      });
+    }
     if (text) {
       const pos = (a: number) => (horiz ? so + a : h - so - a);
       const len = q - p;
@@ -389,6 +445,13 @@ function fitBox(l: L, shape: string, orient: string) {
   Object.assign(p, { width: w, height: h, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2) });
 }
 
+/** The thickness drawn when none is set: the whole box across (a ring: 12 % of its size). */
+function autoThickness(l: L, c: ReturnType<typeof cfg>) {
+  const w = num(l.props.width ?? 0);
+  const h = num(l.props.height ?? 0);
+  return Math.round(c.shape === 'ring' ? Math.min(w, h) * 0.12 : c.orient === 'h' ? h : w);
+}
+
 function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l: L) => void, key?: string) => void }) {
   const e = effOf(layer, data);
   const c = e.c;
@@ -423,7 +486,14 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
             <Content label={t('Max')} path="max" value="100" placeholder="100" />
           </>
         )}
-        <Num label={t('Step + / −')} path="step" value={5} min={0} step={1} precision={2} />
+        {c.input !== 'follow' && <Num label={t('Step + / −')} path="step" value={5} min={0} step={1} precision={2} />}
+        <Content label={t('Goal')} path="goal" value="" />
+        {c.goal.trim() !== '' && (
+          <>
+            <Content label={t('Text')} path="goalText" value="" />
+            <ColorPick label={t('Color')} path="goalColor" value="#ffd200" />
+          </>
+        )}
       </Section>
       <Section id="progress-shape" title={t('Shape')}>
         <Seg
@@ -516,21 +586,9 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
         <ColorGroupRow layer={layer} prop="fill" label={c.gradient ? t('From') : t('Bar')} />
         <Toggle label={t('Gradient')} path="gradient" value={false} />
         {c.gradient && <ColorPick label={t('To')} path="color2" value="#22c55e" />}
-        <Toggle
-          expose="thickness"
-          exposeValue={c.thickness ?? 56}
-          label={t('Thickness')}
-          value={c.thickness != null}
-          onChange={(v) =>
-            edit((l) => {
-              if (v) (l as L & Config).thickness = 56;
-              else delete (l as L & Config).thickness;
-            })
-          }
-        />
-        {c.thickness != null && <Num label={t('Width')} path="thickness" value={56} min={2} max={2000} unit="px" />}
+        <Num label={t('Thickness')} path="thickness" value={autoThickness(layer, c)} min={1} max={2000} unit="px" />
         <Toggle label={t('Rounded')} path="rounded" value={false} />
-        {!c.rounded && <GroupRow layer={layer} spec={{ label: t('Corners'), props: ['cornerRadius'], min: 0, suffix: 'px' }} />}
+        {c.shape === 'linear' && !c.rounded && <GroupRow layer={layer} spec={{ label: t('Corners'), props: ['cornerRadius'], min: 0, suffix: 'px' }} />}
         <Toggle
           expose="props.strokeWidth"
           exposeValue={num(layer.props.strokeWidth ?? 0)}
@@ -553,7 +611,7 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
         <Toggle
           expose="steps"
           exposeValue={c.steps}
-          label={t('Steps')}
+          label={t('Colour thresholds')}
           value={c.steps.length > 0}
           onChange={(v) =>
             edit((l) => {
@@ -572,7 +630,7 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
               { key: 'color', color: true, w: 40 },
             ]}
             add={() => ({ on: true, below: 20, color: '#ff3b5c' })}
-            addLabel={t('Step')}
+            addLabel={t('Threshold')}
           />
         )}
       </Section>
@@ -638,47 +696,104 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
 
 // -------------------------------------------------------------- operator --
 
-/** The Operator's compact row: the percentage, − / + one step, reset. */
-function Compact({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } }) {
-  useFrame();
+type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: PlayoutItem; time: { nowMs: number; ageSecs: number } };
+
+/** The value followed (input Follow) as the Operator sees it: the graphic's timer or counter and its state on air. */
+function useFollowed(layer: L, item: PlayoutItem | undefined, data: Data, now: number, age: number) {
+  const project = useApp((s) => s.project);
+  const tz = useApp((s) => s.timezone) ?? '';
+  const c = cfg(layer);
+  if (c.input !== 'follow') return null;
+  const tpl = project?.templates.find((t) => (item ? t.id === item.templateId : t.layers.some((x) => x === (layer as Layer) || x.id === layer.id)));
+  return followed(tpl?.layers ?? [], c, item ? (id) => item.widgets?.[id] : undefined, data, now, age, tz);
+}
+
+/** The value shown now, and its operator's state. */
+function useShown({ layer, state, data, item, time }: OpP) {
   const got = useRef({ age: time.ageSecs, at: Date.now() });
   if (got.current.age !== time.ageSecs) got.current = { age: time.ageSecs, at: Date.now() };
-  const e = effOf(layer, data);
-  const c = e.c;
-  const st = state as State | undefined;
   const serverOffset = useApp((s) => s.serverOffset) ?? 0;
   const now = Date.now() + (item ? serverOffset : 0);
-  const v = e.shown(st, now, got.current.age + (Date.now() - got.current.at) / 1000);
+  const age = got.current.age + (Date.now() - got.current.at) / 1000;
+  const e = effOf(layer, data, useFollowed(layer, item, data, now, age));
+  const st = state as State | undefined;
+  const v = e.shown(st, now, age);
+  return { e, st, v };
+}
+
+const pctText = (e: ReturnType<typeof effOf>, v: number) => {
   const [f, bad] = e.frac(v);
+  return bad ? '—' : `${fmtNum(f * 100, e.c.decimals)} %`;
+};
+
+/** The Operator's compact row: the percentage, − / + one step, reset, back to the data (Follow: the percentage, back to following). */
+function Compact(p: OpP) {
+  useFrame();
+  const { layer, act, item } = p;
+  const { e, st, v } = useShown(p);
+  const c = e.c;
   const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
+  const manual = st?.value != null;
+  if (c.input === 'follow') return <OpRow value={pctText(e, v)} list={[{ icon: RotateCcw, title: t('Reset'), disabled: !manual, onClick: () => act('data') }]} />;
   return (
     <OpRow
-      value={bad ? '—' : `${fmtNum(f * 100, c.decimals)}\u00a0%`}
+      value={pctText(e, v)}
       list={[
         { icon: Minus, title: `− ${stepTxt}`, onClick: () => act('dec') },
         { icon: Plus, title: `+ ${stepTxt}`, tone: 'green', onClick: () => act('inc') },
         { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+        { icon: Database, title: t('Back to the data'), disabled: !manual, onClick: () => act('data') },
       ]}
     />
   );
 }
 
-function Operator({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } }) {
+/** Under ⋯: a value typed exactly. */
+function More({ layer, act }: OpP) {
+  const toast = useApp((s) => s.toast);
+  const [input, setInput] = useState('');
+  const c = cfg(layer);
+  const e = effOf(layer, {});
+  const set = () => {
+    const x = parseNum(input);
+    if (!input.trim()) return toast(t('Empty value'), 'error');
+    if (x == null) return toast(t('“{value}” is not a number', { value: input.trim() }), 'error');
+    act('set', { value: x });
+    setInput('');
+  };
+  return (
+    <div className="wk-oprow">
+      <input
+        id={`pg-set-${layer.id}`}
+        style={{ width: 130, height: 28, fontFamily: 'var(--mono, monospace)' }}
+        value={input}
+        placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
+        onChange={(ev) => setInput(ev.target.value)}
+        onKeyDown={(ev) => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter') set();
+        }}
+      />
+      <button className="opx-sq violet" title={t('Set value')} onClick={set}>
+        <Check size={13} />
+      </button>
+    </div>
+  );
+}
+
+function Operator(p: OpP) {
   useFrame();
+  const { layer, act, item } = p;
   const [input, setInput] = useState('');
   const [err, setErr] = useState('');
   const inp = useRef<HTMLInputElement>(null);
-  const got = useRef({ age: time.ageSecs, at: Date.now() });
-  if (got.current.age !== time.ageSecs) got.current = { age: time.ageSecs, at: Date.now() };
-  const e = effOf(layer, data);
+  const { e, st, v } = useShown(p);
   const c = e.c;
-  const st = state as State | undefined;
-  const serverOffset = useApp((s) => s.serverOffset) ?? 0;
-  const now = Date.now() + (item ? serverOffset : 0);
-  const v = e.shown(st, now, got.current.age + (Date.now() - got.current.at) / 1000);
+  const follow = c.input === 'follow';
   const [f, bad] = e.frac(v);
   const col = e.stepColor(f) ?? 'var(--accent)';
   const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
+  const resetMsg = item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined;
   const set = () => {
     const x = parseNum(input);
     if (!input.trim()) return setErr(t('Empty value'));
@@ -687,55 +802,71 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
     setErr('');
     setInput('');
   };
-  useKeys({
-    ArrowUp: () => act('inc'),
-    ArrowRight: () => act('inc'),
-    ArrowDown: () => act('dec'),
-    ArrowLeft: () => act('dec'),
-    r: () => act('reset'),
-    v: () => setTimeout(() => inp.current?.focus(), 30),
-  });
+  useKeys(
+    follow
+      ? {}
+      : {
+          ArrowUp: () => act('inc'),
+          ArrowRight: () => act('inc'),
+          ArrowDown: () => act('dec'),
+          ArrowLeft: () => act('dec'),
+          r: async () => {
+            // On air the key asks like the button.
+            if (resetMsg && !(await confirmDialog({ title: resetMsg, confirm: t('Yes') }))) return;
+            act('reset');
+          },
+          // The field of the ⋯ row on air (this panel is hidden there), else this one.
+          v: () => setTimeout(() => ((document.getElementById(`pg-set-${layer.id}`) as HTMLInputElement | null) ?? inp.current)?.focus(), 30),
+        },
+  );
   const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--line-2, var(--line))' };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={box}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ font: '800 40px/1 var(--mono, monospace)', whiteSpace: 'nowrap' }}>{bad ? '—' : `${fmtNum(f * 100, c.decimals)} %`}</span>
+          <span style={{ font: '800 40px/1 var(--mono, monospace)', whiteSpace: 'nowrap' }}>{pctText(e, v)}</span>
           <span style={{ color: 'var(--text-3)', fontFamily: 'var(--mono, monospace)' }}>
-            {fmtNum(v, c.decimals)} / {fmtNum(e.hi, 0)}
+            {fmtNum(v, c.decimals)} / {fmtNum(e.hi, decOf(e.hi))}
             {c.unit ? ` ${c.unit}` : ''}
           </span>
           {st?.value != null && <span style={{ marginLeft: 'auto', font: '800 10.5px Inter, system-ui, sans-serif', color: '#38bdf8' }}>{t('SET BY HAND')}</span>}
         </div>
         <div style={{ height: 10, borderRadius: 5, background: 'var(--panel-3, #2a2346)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${(f * 100).toFixed(2)}%`, background: col.startsWith('#') ? hex(col) : col }} />
+          <div style={{ height: '100%', width: `${bad ? 0 : (f * 100).toFixed(2)}%`, background: col.startsWith('#') ? hex(col) : col }} />
         </div>
       </div>
-      <Row label={t('Set value')}>
-        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-          <input
-            ref={inp}
-            style={{ flex: 1, minWidth: 0, fontFamily: 'var(--mono, monospace)' }}
-            value={input}
-            placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
-            onChange={(ev) => setInput(ev.target.value)}
-            onKeyDown={(ev) => {
-              ev.stopPropagation();
-              if (ev.key === 'Enter') set();
-            }}
-          />
-          <button className="opx-btn violet" onClick={set}>
-            {t('Set')} <kbd>V</kbd>
-          </button>
-        </div>
-      </Row>
+      {!follow && (
+        <Row label={t('Set value')}>
+          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+            <input
+              ref={inp}
+              style={{ flex: 1, minWidth: 0, fontFamily: 'var(--mono, monospace)' }}
+              value={input}
+              placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
+              onChange={(ev) => setInput(ev.target.value)}
+              onKeyDown={(ev) => {
+                ev.stopPropagation();
+                if (ev.key === 'Enter') set();
+              }}
+            />
+            <button className="opx-btn violet" onClick={set}>
+              {t('Set')} <kbd>V</kbd>
+            </button>
+          </div>
+        </Row>
+      )}
       {err && <Msg level="error">⛔ {t('{error} — nothing changed on air.', { error: err })}</Msg>}
       <Btns
-        list={[
-          { label: `− ${stepTxt}`, cls: 'big', keyHint: '↓', onClick: () => act('dec') },
-          { label: `+ ${stepTxt}`, cls: 'green big', keyHint: '↑', onClick: () => act('inc') },
-          { label: t('↺ Reset'), cls: 'big', keyHint: 'R', confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-        ]}
+        list={
+          follow
+            ? [{ label: t('↺ Reset'), cls: 'big', disabled: st?.value == null, onClick: () => act('data') }]
+            : [
+                { label: `− ${stepTxt}`, cls: 'big', keyHint: '↓', onClick: () => act('dec') },
+                { label: `+ ${stepTxt}`, cls: 'green big', keyHint: '↑', onClick: () => act('inc') },
+                { label: t('↺ Reset'), cls: 'big', keyHint: 'R', confirm: resetMsg, onClick: () => act('reset') },
+                { label: t('Back to the data'), cls: 'big', disabled: st?.value == null, onClick: () => act('data') },
+              ]
+        }
       />
     </div>
   );
@@ -745,13 +876,21 @@ function warnings(l: L, data: Data, state: unknown): Warning[] {
   const out: Warning[] = [];
   const e = effOf(l, data);
   const c = e.c;
+  // Follow without a max: the range is the followed widget's (known on air only).
+  const follow = c.input === 'follow';
+  const ranged = !follow || !!(l.max ?? '').trim();
   const v = e.target(state as State | undefined);
   const [f, bad, raw] = e.frac(v);
-  if (bad) out.push({ level: 'error', op: true, text: t('Min = max ({value}): the bar stays empty — no division by zero. Set a max above the min.', { value: fmtNum(e.lo, 2) }) });
-  else if (e.hi < e.lo) out.push({ level: 'warn', text: t('Min is above max: the bar fills backwards.') });
-  if (!bad && raw > 1 + 1e-9) out.push({ level: 'info', op: true, text: t('Value {value} is above the max {max}: capped at 100 %.', { value: fmtNum(v, c.decimals), max: fmtNum(e.hi, 0) }) });
-  if (!bad && raw < -1e-9) out.push({ level: 'info', op: true, text: t('Value {value} is below the min {min}: capped at 0 %.', { value: fmtNum(v, c.decimals), min: fmtNum(e.lo, 0) }) });
-  if (parseNum(interpolateText(l.value ?? '', data)) == null) out.push({ level: 'warn', text: t('The value “{value}” is not a number: 0 is used.', { value: interpolateText(l.value ?? '', data) }) });
+  if (ranged) {
+    if (bad) out.push({ level: 'error', op: true, text: t('Min = max ({value}): the bar stays empty — no division by zero. Set a max above the min.', { value: fmtNum(e.lo, 2) }) });
+    else if (e.hi < e.lo) out.push({ level: 'warn', text: t('Min is above max: the bar fills backwards.') });
+  }
+  if (!follow) {
+    if (!bad && raw > 1 + 1e-9) out.push({ level: 'info', op: true, text: t('Value {value} is above the max {max}: capped at 100 %.', { value: fmtNum(v, c.decimals), max: fmtNum(e.hi, decOf(e.hi)) }) });
+    if (!bad && raw < -1e-9) out.push({ level: 'info', op: true, text: t('Value {value} is below the min {min}: capped at 0 %.', { value: fmtNum(v, c.decimals), min: fmtNum(e.lo, decOf(e.lo)) }) });
+    if (parseNum(interpolateText(l.value ?? '', data)) == null) out.push({ level: 'warn', text: t('The value “{value}” is not a number: 0 is used.', { value: interpolateText(l.value ?? '', data) }) });
+  } else if (!c.follow) out.push({ level: 'warn', text: t('Choose the timer or counter the bar follows.') });
+  if (c.goal.trim() && e.goal == null) out.push({ level: 'warn', text: t('The goal “{value}” is not a number: no marker.', { value: interpolateText(c.goal, data) }) });
   const w = num(l.props.width ?? 0);
   const h = num(l.props.height ?? 0);
   if (c.shape === 'linear' && c.rounded && f > 0) {
@@ -781,11 +920,13 @@ export default defineWidget({
   }),
   ownsLook: true,
   live: () => true,
-  content: ['value', 'max', 'min'],
+  content: ['value', 'max', 'min', 'goal', 'goalText'],
   Render: ({ layer, r, w, h, data, time, state }) => <View layer={layer} r={r} w={w} h={h} data={data} nowMs={time.nowMs} ageSecs={time.ageSecs} state={state} />,
   Inspector: ({ layer, data, edit }) => <Inspector layer={layer} data={data} edit={edit} />,
   Operator: ({ layer, state, data, act, item, time }) => <Operator layer={layer} state={state} data={data} act={act} item={item} time={time} />,
   Compact: ({ layer, state, data, act, item, time }) => <Compact layer={layer} state={state} data={data} act={act} item={item} time={time} />,
+  More: ({ layer, state, data, act, item, time }) => <More layer={layer} state={state} data={data} act={act} item={item} time={time} />,
+  hasMore: (l) => cfg(l).input !== 'follow',
   warnings: (l, { data, state }) => warnings(l, data, state),
 });
 

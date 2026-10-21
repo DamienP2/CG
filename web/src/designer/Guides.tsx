@@ -1,9 +1,10 @@
-import { ChevronDown, Eye, EyeOff, Move, Plus, Ruler, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronDown, Contrast, Eye, EyeOff, Move, Plus, Ruler, ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { newId } from '../engine/evaluate';
 import type { Area, Guides, Project } from '../engine/types';
 import { api, useApp } from '../store';
+import { Segmented } from '../ui/fields';
 import { t } from '../i18n';
 
 /*
@@ -25,7 +26,22 @@ type View = {
   editSafe?: boolean;
   /** The area selected while editing ("action", "title" or an exclusion id). */
   area?: string | null;
+  /** What the stage shows: the picture (program), the fill over black, or the key (alpha, white on black); not kept. */
+  stageView?: StageView;
 };
+
+export type StageView = 'program' | 'fill' | 'key';
+const STAGE_VIEWS: { id: StageView; label: string }[] = [
+  { id: 'program', label: 'Program' },
+  { id: 'fill', label: 'Fill' },
+  { id: 'key', label: 'Key' },
+];
+
+/** The stage's background and the filter of its scene for a view (fill: over black; key: the alpha in white on black). */
+export function stageViewStyle(view: StageView | undefined, background: string): { background: string; filter?: string } {
+  if (!view || view === 'program') return { background };
+  return { background: 'black', filter: view === 'key' ? 'brightness(0) invert(1)' : undefined };
+}
 function loadView(): View {
   try {
     return { safe: true, guides: true, snap: true, ...JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') };
@@ -389,6 +405,50 @@ export function SplitButton({ icon, label, on, onToggle, title, children, width 
       {open && (
         <div className="menu guides-menu" style={{ position: 'fixed', left: open.left, top: open.top, width }} onClick={(e) => (e.target as HTMLElement).closest('[data-close]') && setOpen(null)}>
           {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Toolbar: the stage as on air (program), its fill or its key, for the whole stage. */
+export function ViewMenu() {
+  const view = useGuidesView();
+  const mode = view.stageView ?? 'program';
+  const label = t(STAGE_VIEWS.find((v) => v.id === mode)!.label);
+  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [open]);
+  const on = mode !== 'program' ? 'on' : '';
+  return (
+    <div className="menu-wrap split-btn" onPointerDown={(e) => e.stopPropagation()}>
+      <button className={`btn small ${on}`} title={t('Output view: {view} (click to change)', { view: label })} onClick={() => view.set({ stageView: STAGE_VIEWS[(STAGE_VIEWS.findIndex((v) => v.id === mode) + 1) % STAGE_VIEWS.length].id })}>
+        <Contrast size={13} /> {label}
+      </button>
+      <button
+        className={`btn small split-arrow ${on}`}
+        title={t('Output view: choose')}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setOpen(open ? null : { left: Math.min(r.left - 80, window.innerWidth - 270), top: r.bottom + 6 });
+        }}
+      >
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="menu guides-menu" style={{ position: 'fixed', left: open.left, top: open.top, width: 260 }}>
+          <Segmented
+            value={mode}
+            onChange={(v) => {
+              view.set({ stageView: v });
+              setOpen(null);
+            }}
+            options={STAGE_VIEWS.map((v) => ({ value: v.id, label: t(v.label) }))}
+          />
         </div>
       )}
     </div>

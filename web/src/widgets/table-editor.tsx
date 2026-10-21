@@ -6,7 +6,7 @@ import { Eye, EyeOff, GripVertical, Plus, Redo2, Table as TableIcon, Trash2, Tri
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoundData } from '../data/dataStore';
-import { t, tc, tn } from '../i18n';
+import { t, tn } from '../i18n';
 import { findLayer, useDesigner } from '../designer/designerStore';
 import { holdFrame, num as vnum, resolveLayer } from '../engine/evaluate';
 import type { Data, Layer, Template } from '../engine/types';
@@ -16,7 +16,8 @@ import { parseHex, toHex } from '../engine/evaluate';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick, WEIGHT_NAMES } from '../ui/FontPick';
 import { Btns, Bound, Content, getPath, GridEditor, Note, Num, Row, Section, Seg, Select, setPath, Text, Toggle, useBound } from './kit';
-import { cfg, colText, ColorPickRow, DST, FMTS, headerH, headerText, model, rowsText, TableRender, titleH, titleText, widths, type Col, type Config } from './table';
+import { cfg, colText, ColorPickRow, DST, emptyOr, FMTS, headerH, headerText, model, rowsText, TableRender, titleH, titleOr, titleText, widths, type Col, type Config } from './table';
+import { useApp } from '../store';
 import { colFor } from './table-build';
 import { useTableEditor } from './table-editor-store';
 import { exposeRows, unexposeRows } from './table-rows';
@@ -496,7 +497,7 @@ function TableCanvas({ layer, template, data, frame, sel, setSel, selectCol, pag
         <div className="te-stage" style={{ width: W * s, height: viewH * s }}>
           <div className="te-box" style={{ width: W * s, height: H * s }} />
           <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: viewH, transform: `scale(${s})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
-            <TableRender layer={layer} r={r as never} w={W} data={data} time={{ nowMs: Date.now(), ageSecs: k.pageMode === 'scroll' ? 0 : 60 }} state={{ page: pg }} />
+            <TableRender layer={layer} r={r as never} w={W} data={data} time={{ nowMs: Date.now(), ageSecs: k.pageMode === 'scroll' ? 0 : 60 }} state={{ page: pg, ctl: true, hl: k.hlKey }} lang={useApp.getState().project?.language} />
           </div>
           {k.title.on && Z({ x: 0, y: 0, w: W, h: TH, cls: `title ${sel.k === 'title' ? 'on' : ''}`, title: t('Title bar'), onClick: () => setSel({ k: 'title' }) })}
           {list.map((_, i) => (
@@ -580,16 +581,6 @@ function TypoRows({ path, t: tx }: { path: string; t: CellText }) {
           ['upper', 'AA', t('Uppercase')],
           ['lower', 'aa', t('Lowercase')],
           ['title', 'Aa', t('Capitalized')],
-        ]}
-      />
-      <Seg
-        label={tc('stroke', 'Line')}
-        path={`${path}.deco`}
-        value={tx.deco}
-        options={[
-          ['none', '—', t('None')],
-          ['underline', <u key="u">U</u>, t('Underline')],
-          ['strike', <s key="s">S</s>, t('Strikethrough')],
         ]}
       />
       <Seg
@@ -697,11 +688,35 @@ function Colours({ path }: { path: string }) {
   );
 }
 
+/** The row a merge or the single cell is on: its key (it follows the team), or its rank for older settings. */
+function RowKey({ label, path, live, k }: { label: string; path: string; live: Live; k: { key?: string; row?: number } }) {
+  const b = useBound();
+  const key = k.key?.trim() ?? '';
+  // Older settings: the row at that rank now.
+  const value = key || live.rows.find((r) => r.rank === +(k.row ?? 1))?.key || '';
+  const opts = [...(key && !live.rows.some((r) => r.key === key) ? [{ value: key, label: key }] : []), ...live.rows.map((r) => ({ value: r.key, label: `${r.rank}. ${r.key}` }))];
+  return (
+    <Row label={label}>
+      <Dropdown
+        value={value}
+        options={opts}
+        onChange={(v) => {
+          b.set(`${path}.key`, v);
+          const r = live.rows.find((x) => x.key === v);
+          if (r) b.set(`${path}.row`, r.rank);
+        }}
+      />
+    </Row>
+  );
+}
+
 function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, sel, setSel, edit, set, dsName }: { layer: TL; k: K; live: Live; size: number; setGrid: (g: string[][]) => void; widthsAs: (m: 'auto' | 'percent' | 'fixed') => void; setShare: (i: number, v: number) => void; shareOf: (i: number) => number; sel: Sel; setSel: (s: Sel) => void; edit: Edit; set: Set; dsName?: string }) {
   const head = live.head.filter(Boolean);
   const colOpts: [string, string][] = k.cols.map((c) => [c.src, c.label || c.src]);
   const zebra = k.st.even.bg !== k.st.odd.bg || k.st.even.color !== k.st.odd.color;
   const wOpts: [number, string][] = [[0, t('Like the rows')], ...[400, 500, 600, 700, 800, 900].map((w) => [w, t(WEIGHT_NAMES[w])] as [number, string])];
+  // The rows by their key (their team…): what follows them when the order changes.
+  const keyOpts: [string, string][] = [['', t('— none —')], ...(k.hlKey && !live.rows.some((r) => r.key === k.hlKey) ? [[k.hlKey, k.hlKey] as [string, string]] : []), ...live.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])];
   const ALIGN: [string, string][] = [
     ['left', t('Left')],
     ['center', t('Centre')],
@@ -726,7 +741,7 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
       <div className="te-form">
         {title(t('Title'), t('Title bar'))}
         <Section id="te-ti-content" title={t('Content')}>
-          <Content label={t('Text')} path="title.text" value={k.title.text} />
+          <Content label={t('Text')} path="title.text" value={k.title.text} placeholder={titleOr({ ...k, title: { ...k.title, text: '' } }, useApp.getState().project?.language)} />
         </Section>
         <TextSections id="ti" path="txt.title" t={titleText(k)} />
         <Section id="te-ti-col" title={t('Colours')}>
@@ -780,12 +795,10 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
         <TextSections id="rw" path="txt.rows" t={rowsText(k, size)} />
         <Section id="te-rw-col" title={zebra ? t('Odd rows') : t('Colours')}>
           <Colours path="st.odd" />
-          <Select label={t('Weight')} path="kw.odd" value={k.kw.odd ?? 0} options={wOpts} />
         </Section>
         {zebra && (
           <Section id="te-rw-even" title={t('Even rows')}>
             <Colours path="st.even" />
-            <Select label={t('Weight')} path="kw.even" value={k.kw.even ?? 0} options={wOpts} />
           </Section>
         )}
         {k.cf.top3 && (
@@ -801,7 +814,7 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
           <Colours path="st.hl" />
           {k.cf.hlBar && <ColorPickRow label={t('Marker')} path="cf.hlBarColor" value={k.cf.hlBarColor} />}
           <Select label={t('Weight')} path="kw.hl" value={k.kw.hl ?? 0} options={wOpts} />
-          <Note>{t('The operator picks the row in the Operator.')}</Note>
+          <Select label={t('From the In')} path="hlKey" value={k.hlKey} options={keyOpts} />
         </Section>
         <Section id="te-rw-data" title={t('Colour from the data')}>
           <Row label={t('Column')}>
@@ -905,16 +918,6 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
               ]}
             />
             <Seg label={t('Align')} path={`${cp}.align`} value={c!.align} options={ALIGN} />
-            <Seg
-              label={t('Widths')}
-              value={k.widthMode}
-              onChange={(v) => widthsAs(v as 'auto')}
-              options={[
-                ['auto', t('Auto')],
-                ['percent', '%'],
-                ['fixed', 'px'],
-              ]}
-            />
             {k.widthMode === 'percent' && <Num label={t('Width')} value={shareOf(i)} min={1} max={95} unit="%" onChange={(v) => setShare(i, v)} />}
             {k.widthMode === 'fixed' && <Num label={t('Width')} path={`${cp}.w`} value={c!.w} min={10} max={4000} unit="px" />}
             {c!.type === 'number' && <Seg label={t('Format')} path={`${cp}.fmt`} value={c!.fmt} options={FMTS} />}
@@ -1025,7 +1028,14 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
       <Section id="te-pages" title={t('Pages')}>
         <Num label={t('Rows per page')} path="perPage" value={k.perPage} min={1} max={99} />
         {k.pageMode === 'scroll' && <Num label={t('Scroll speed')} path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />}
-        {k.pageMode === 'pages' && k.indicator && <ColorPickRow label={t('Page dots')} path="indicatorColor" value={k.indicatorColor} />}
+        {k.pageMode === 'pages' && k.indicator && <ColorPickRow label={t('Page dots colour')} path="indicatorColor" value={k.indicatorColor} />}
+        {k.pageMode === 'pages' && (
+          <>
+            <Toggle label={t('Auto pages')} path="autoPages" value={k.autoPages} text={t('From the In')} />
+            {k.autoPages && <Num label={t('Interval')} path="autoSecs" value={k.autoSecs} min={1} max={120} step={0.5} precision={1} unit="s" />}
+          </>
+        )}
+        <Select label={t('Highlighted row')} path="hlKey" value={k.hlKey} options={keyOpts} />
       </Section>
       {k.cascade.on && (
         <Section id="te-cascade" title={t('Rows come in')}>
@@ -1112,10 +1122,10 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
         </Section>
       )}
       <Section id="te-merges" title={t('Merged cells')} closed>
-        <Btns list={[{ label: k.merges.length ? t('+ Merge') : t('Merge cells'), cls: 'ghost', onClick: () => set('merges', [...k.merges, { on: true, row: 2, col: 1, span: 2, text: '' }]) }]} />
+        <Btns list={[{ label: k.merges.length ? t('+ Merge') : t('Merge cells'), cls: 'ghost', onClick: () => set('merges', [...k.merges, { on: true, key: live.rows[1]?.key ?? '', row: 2, col: 1, span: 2, text: '' }]) }]} />
         {k.merges.map((g, x) => (
           <div key={x} className="te-merge">
-            <Num label={t('Row')} path={`merges.${x}.row`} value={g.row} min={1} />
+            <RowKey label={t('Row')} path={`merges.${x}`} live={live} k={g} />
             <Num label={t('From column')} path={`merges.${x}.col`} value={g.col} min={1} />
             <Num label={t('Cells')} path={`merges.${x}.span`} value={g.span} min={2} />
             <Text label={t('Text')} path={`merges.${x}.text`} value={g.text} placeholder={t('Keep the first cell')} />
@@ -1127,7 +1137,7 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
         <Toggle label={t('Shown')} path="cell.on" value={k.cell.on} />
         {k.cell.on && (
           <>
-            <Num label={t('Row')} path="cell.row" value={k.cell.row} min={1} />
+            <RowKey label={t('Row')} path="cell" live={live} k={k.cell} />
             <Num label={t('Column')} path="cell.col" value={k.cell.col} min={1} />
             <Colours path="cell" />
           </>
@@ -1143,7 +1153,7 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
             ['hide', t('Nothing')],
           ]}
         />
-        {k.emptyMode === 'message' && <Text label={t('Message')} path="emptyText" value={k.emptyText} />}
+        {k.emptyMode === 'message' && <Text label={t('Message')} path="emptyText" value={k.emptyText} placeholder={emptyOr({ ...k, emptyText: '' }, useApp.getState().project?.language)} />}
       </Section>
     </div>
   );

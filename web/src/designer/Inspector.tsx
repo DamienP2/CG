@@ -24,7 +24,7 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { ICONS } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { t, tc, tn } from '../i18n';
 
 interface PropSpec {
@@ -93,7 +93,7 @@ const CROP: PropSpec[] = [
   },
 ];
 
-export const PROP_LABELS: Record<Prop, string> = Object.fromEntries([...TRANSFORM, ...STYLE, ...TEXT, ...CROP.map((c) => ({ ...c, label: `Crop ${c.label}` })), { prop: 'fill', label: 'Fill' }, { prop: 'stroke', label: 'Stroke' }, { prop: 'arcStart', label: 'Start' }, { prop: 'arcEnd', label: 'End' }, { prop: 'innerRadius', label: 'Inner radius' }].map((s) => [s.prop, s.label])) as Record<Prop, string>;
+export const PROP_LABELS: Record<Prop, string> = Object.fromEntries([...TRANSFORM, ...STYLE, ...TEXT, ...CROP.map((c) => ({ ...c, label: `Crop ${c.label}` })), { prop: 'fill', label: 'Fill' }, { prop: 'stroke', label: 'Stroke' }, { prop: 'arcStart', label: 'Start' }, { prop: 'arcEnd', label: 'End' }, { prop: 'innerRadius', label: 'Inner radius' }, { prop: 'shadowColor', label: 'Shadow color' }, { prop: 'shadowX', label: 'Shadow X' }, { prop: 'shadowY', label: 'Shadow Y' }, { prop: 'shadowBlur', label: 'Shadow blur' }, { prop: 'drawStart', label: 'Start' }, { prop: 'drawEnd', label: 'End' }, { prop: 'cornerTl', label: 'Top left' }, { prop: 'cornerTr', label: 'Top right' }, { prop: 'cornerBr', label: 'Bottom right' }, { prop: 'cornerBl', label: 'Bottom left' }, { prop: 'fill2', label: 'To' }].map((s) => [s.prop, s.label])) as Record<Prop, string>;
 
 export function Section({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -149,8 +149,8 @@ export interface RowSpec {
   precision?: number;
   min?: number;
   max?: number;
-  /** Scale X / Y keep their ratio when locked. */
-  lock?: boolean;
+  /** The two values keep their ratio when this setting of the layer is on (Scale: scaleLock, Dimensions: lockRatio). */
+  lock?: 'scaleLock' | 'lockRatio';
 }
 
 const TRANSFORM_ROWS: RowSpec[] = [
@@ -161,7 +161,7 @@ const TRANSFORM_ROWS: RowSpec[] = [
     fields: ['X', 'Y'],
     display: 100,
     suffix: '%',
-    lock: true,
+    lock: 'scaleLock',
   },
   {
     label: 'Dimensions',
@@ -169,6 +169,7 @@ const TRANSFORM_ROWS: RowSpec[] = [
     fields: ['W', 'H'],
     suffix: 'px',
     min: 0,
+    lock: 'lockRatio',
   },
   {
     label: 'Anchor',
@@ -306,7 +307,7 @@ function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { val
 export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
   const { frame, update, format, updateBase } = useDesigner();
   const driven = useContext(DrivenContext);
-  const locked = !!spec.lock && !!layer.scaleLock;
+  const locked = !!spec.lock && !!layer[spec.lock];
   const overridden = format !== MAIN_FORMAT && spec.props.some((p) => isOverridden(layer, format, p));
   const setValue = (prop: Prop, nv: number) =>
     update((t) => {
@@ -339,7 +340,7 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
           </span>
         ))}
         {spec.lock && (
-          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => update((t) => void (findLayer(t, layer.id)!.scaleLock = !locked || undefined))}>
+          <button className={`pp-lock ${locked ? 'on' : ''}`} title={locked ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => update((t) => void (findLayer(t, layer.id)![spec.lock!] = !locked || undefined))}>
             {locked ? <LinkIcon size={12} /> : <Unlink size={12} />}
           </button>
         )}
@@ -355,7 +356,7 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
 }
 
 /** Colour row in the same layout. */
-export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke'; label: string }) {
+export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke' | 'shadowColor' | 'fill2'; label: string }) {
   const { frame, update } = useDesigner();
   const driven = useContext(DrivenContext).get(prop);
   return (
@@ -995,6 +996,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
           <LayerGeneral layer={layer} />
         </Group>
       )}
+      {layer.type !== 'text' && <EffectsGroup layer={layer} />}
       <Group id="properties" title={t('Properties')}>
         <Group id="transform" title={tc('section', 'Transform')} level={2}>
           {TRANSFORM_ROWS.map((r) => (
@@ -1053,6 +1055,30 @@ function LayerInspector({ layer }: { layer: Layer }) {
         </Group>
       </Group>
     </DrivenContext.Provider>
+  );
+}
+
+/**
+ * Effects › Shadow of a layer (every widget but the Text, which has its own): on / off, then its
+ * colour, offset and blur, animatable like the other properties. Drawn by both renderers.
+ */
+function EffectsGroup({ layer }: { layer: Layer }) {
+  const { update } = useDesigner();
+  const set = (path: string, v: unknown, coalesce?: boolean) => update((t) => setPath(findLayer(t, layer.id)!, path, v), coalesce ? `${path}-${layer.id}` : undefined);
+  return (
+    <Bound obj={layer} set={set}>
+      <SpecSection id="layer-effects" title={t('Effects')} closed>
+        <Toggle label={t('Shadow')} expose="dropShadow" exposeValue={!!layer.dropShadow} value={!!layer.dropShadow} onChange={(v) => set('dropShadow', v || undefined)} />
+        {layer.dropShadow && (
+          <>
+            <ColorGroupRow layer={layer} prop="shadowColor" label="Color" />
+            <GroupRow layer={layer} spec={{ label: 'Offset X', props: ['shadowX'], suffix: 'px', min: -200, max: 200 }} />
+            <GroupRow layer={layer} spec={{ label: 'Offset Y', props: ['shadowY'], suffix: 'px', min: -200, max: 200 }} />
+            <GroupRow layer={layer} spec={{ label: 'Blur', props: ['shadowBlur'], suffix: 'px', min: 0, max: 200 }} />
+          </>
+        )}
+      </SpecSection>
+    </Bound>
   );
 }
 

@@ -322,6 +322,54 @@ impl Default for Anim {
     }
 }
 
+/// Columns: bars standing (vertical) or lying (horizontal, names on the left).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Orient {
+    #[default]
+    V,
+    H,
+}
+
+/// New data while on air: shown at once with the update tween (Auto), or
+/// kept until the operator's Reload (the data at the take stays).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OnAir {
+    Auto,
+    #[default]
+    Reload,
+}
+
+/// A line across the values (a goal, a majority…).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RefLine {
+    pub on: bool,
+    pub value: f32,
+    pub label: String,
+}
+
+/// Texts the chart writes itself; empty = in the project's language.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Texts {
+    pub no_data: String,
+    pub others: String,
+    pub total: String,
+}
+
+/// A text the chart writes: the Designer's, else in the project language.
+pub fn word(own: &str, en: &str, fr: &str, lang: &str) -> String {
+    if !own.trim().is_empty() {
+        own.to_string()
+    } else if lang.starts_with("fr") {
+        fr.to_string()
+    } else {
+        en.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RevealMode {
@@ -357,6 +405,14 @@ pub struct Config {
     pub panel: Panel,
     pub anim: Anim,
     pub reveal: RevealMode,
+    pub orient: Orient,
+    pub on_air: OnAir,
+    /// Font family of the texts (weights by role).
+    pub font: String,
+    /// Colour of the texts (empty = white and lavender).
+    pub text_color: String,
+    pub ref_line: RefLine,
+    pub texts: Texts,
 }
 
 /// The poll sample of a new chart.
@@ -397,6 +453,12 @@ impl Default for Config {
             panel: Panel::default(),
             anim: Anim::default(),
             reveal: RevealMode::All,
+            orient: Orient::V,
+            on_air: OnAir::Reload,
+            font: "Inter".into(),
+            text_color: String::new(),
+            ref_line: RefLine::default(),
+            texts: Texts::default(),
         }
     }
 }
@@ -539,6 +601,7 @@ pub fn with_data(c: &Config, data: &Data) -> Config {
     c.title.sub = interpolate_text(&c.title.sub, data);
     c.axis.x_title = interpolate_text(&c.axis.x_title, data);
     c.axis.y_title = interpolate_text(&c.axis.y_title, data);
+    c.ref_line.label = interpolate_text(&c.ref_line.label, data);
     c
 }
 
@@ -860,7 +923,7 @@ pub fn scale(c: &Config, tv: &[Vec<Option<f32>>]) -> Scale {
         Scale {
             min: 0.0,
             max: 100.0,
-            step: 20.0,
+            step: nice(0.0, 100.0, c.axis.ticks).step,
         }
     } else if c.axis.auto {
         nice(lo, hi + (hi - lo) * 0.04, c.axis.ticks)
@@ -1031,14 +1094,7 @@ fn snapshot(
                     .ser
                     .iter()
                     .enumerate()
-                    .map(|(j, s)| {
-                        let target = if c.chart_type == ChartType::Pie {
-                            cat.raw[j]
-                        } else {
-                            cat.vals[j]
-                        };
-                        tween_val(st, k, &cat.name, s, target)
-                    })
+                    .map(|(j, s)| tween_val(st, k, &cat.name, s, cat.vals[j]))
                     .collect(),
             }
         })
@@ -1062,6 +1118,51 @@ fn now_hl(c: &Config, st: &mut State, hl: Hl, now: i64) {
     st.hl_at = now;
 }
 
+/// Takes the data `data` (values tween from what is shown, or cut).
+fn reload(c: &Config, st: &mut State, data: &Data, now: i64, cut: bool) {
+    let (prev, ser, axis, n) = snapshot(c, st, data, now);
+    st.cur = Some(resolve_grid(c, data));
+    if cut {
+        st.prev.clear();
+        st.prev_series.clear();
+        st.prev_axis = None;
+        st.prev_n = 0.0;
+        st.at = 0;
+    } else {
+        st.prev = prev;
+        st.prev_series = ser;
+        st.prev_axis = axis;
+        st.prev_n = n;
+        st.at = now;
+    }
+}
+
+/// The graphic's data changed on air (`old` → `ctx.data`), by an Update, a
+/// connector or an automation: the chart keeps what it showed (« Sur
+/// Recharger »: until the operator's Reload) or tweens to the new values
+/// (« Auto »). False when its own numbers did not change.
+pub fn on_data(layer: &Layer, st: &mut State, old: &Data, ctx: &ActCtx) -> bool {
+    let Ok(c) = config(layer) else {
+        return false;
+    };
+    let new = resolve_grid(c, ctx.data);
+    if st.cur.is_none() {
+        let before = resolve_grid(c, old);
+        if before == new {
+            return false;
+        }
+        // Frozen as taken (what was on screen).
+        reload(c, st, old, ctx.now_ms, true);
+    } else if st.cur.as_ref() == Some(&new) {
+        return false;
+    }
+    if c.on_air == OnAir::Auto {
+        // The tween starts from what is shown (`cur`).
+        reload(c, st, ctx.data, ctx.now_ms, false);
+    }
+    true
+}
+
 /// Operator actions:
 /// - `reload` {cut?}: takes the current data; values tween from what is shown.
 /// - `next` / `prev`: reveals the next step / hides the last one.
@@ -1081,21 +1182,7 @@ pub fn act(
     match op {
         "reload" => {
             let cut = args.get("cut").and_then(|v| v.as_bool()).unwrap_or(false);
-            let (prev, ser, axis, n) = snapshot(c, st, ctx.data, now);
-            st.cur = Some(resolve_grid(c, ctx.data));
-            if cut {
-                st.prev.clear();
-                st.prev_series.clear();
-                st.prev_axis = None;
-                st.prev_n = 0.0;
-                st.at = 0;
-            } else {
-                st.prev = prev;
-                st.prev_series = ser;
-                st.prev_axis = axis;
-                st.prev_n = n;
-                st.at = now;
-            }
+            reload(c, st, ctx.data, now, cut);
             Ok(())
         }
         "next" | "prev" | "showAll" => {
@@ -1167,6 +1254,8 @@ mod tests {
             locked: false,
             manual_start: false,
             scale_lock: false,
+            lock_ratio: false,
+            drop_shadow: false,
             timeline: None,
             props: BTreeMap::new(),
             tracks: BTreeMap::new(),

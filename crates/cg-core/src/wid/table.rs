@@ -370,7 +370,10 @@ pub fn col_text(c: &Config, mc: &MCol, size: f32) -> Text {
 #[serde(default, rename_all = "camelCase")]
 pub struct Merge {
     pub on: bool,
-    /// Rank of the row (on the whole table, 1 = first).
+    /// Key of the row (its team…): the merge follows it when the order
+    /// changes ("" = older merges: by `row`).
+    pub key: String,
+    /// Rank of the row (on the whole table, 1 = first), without a key.
     pub row: u32,
     /// First column (1 = left).
     pub col: u32,
@@ -383,6 +386,7 @@ impl Default for Merge {
     fn default() -> Self {
         Self {
             on: true,
+            key: String::new(),
             row: 1,
             col: 1,
             span: 2,
@@ -391,20 +395,12 @@ impl Default for Merge {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Title {
     pub on: bool,
+    /// "" = « Classement » / "Standings", in the project's language.
     pub text: String,
-}
-
-impl Default for Title {
-    fn default() -> Self {
-        Self {
-            on: false,
-            text: "Standings".into(),
-        }
-    }
 }
 
 /// Background and text colour of a level.
@@ -463,6 +459,8 @@ impl Default for Styles {
 #[serde(default, rename_all = "camelCase")]
 pub struct CellStyle {
     pub on: bool,
+    /// Key of the row (follows it when the order changes; "" = by `row`, the rank).
+    pub key: String,
     pub row: u32,
     pub col: u32,
     pub bg: String,
@@ -473,6 +471,7 @@ impl Default for CellStyle {
     fn default() -> Self {
         Self {
             on: false,
+            key: String::new(),
             row: 1,
             col: 1,
             bg: "#facc15".into(),
@@ -721,6 +720,11 @@ pub struct Config {
     pub scroll_speed: f64,
     /// "2 / 4" under the table.
     pub indicator: bool,
+    /// Pages turn by themselves from the take, every `auto_secs` seconds.
+    pub auto_pages: bool,
+    pub auto_secs: f64,
+    /// Key of the row highlighted from the take ("" = none).
+    pub hl_key: String,
     pub cascade: Cascade,
     pub empty_mode: EmptyMode,
     pub empty_text: String,
@@ -781,9 +785,13 @@ impl Default for Config {
             page_mode: PageMode::Pages,
             scroll_speed: 50.0,
             indicator: true,
+            auto_pages: false,
+            auto_secs: 6.0,
+            hl_key: String::new(),
             cascade: Cascade::default(),
             empty_mode: EmptyMode::Message,
-            empty_text: "No data yet".into(),
+            // "" = the project's language.
+            empty_text: String::new(),
             txt: Box::default(),
             kw: KindWeights::default(),
             title_h: 64.0,
@@ -1192,11 +1200,50 @@ pub fn cell_text(col: &MCol, row: &MRow) -> String {
 }
 
 /// The merge of a row, if any: (first column index, span, text).
+/// The texts the table writes itself, in the project's language (`lang`),
+/// unless the Designer typed its own: the title, the message without rows.
+pub fn title_or(c: &Config, lang: &str) -> String {
+    if c.title.text.trim().is_empty() {
+        if lang.starts_with("fr") {
+            "Classement"
+        } else {
+            "Standings"
+        }
+        .into()
+    } else {
+        c.title.text.clone()
+    }
+}
+pub fn empty_or(c: &Config, lang: &str) -> String {
+    if c.empty_text.trim().is_empty() {
+        if lang.starts_with("fr") {
+            "Pas encore de données"
+        } else {
+            "No data yet"
+        }
+        .into()
+    } else {
+        c.empty_text.clone()
+    }
+}
+
+/// A setting aimed at a row: by its key (it follows the team), else by rank.
+pub fn aims(key: &str, rank: u32, row: &MRow) -> bool {
+    let k = key.trim();
+    if k.is_empty() {
+        rank as usize == row.rank
+    } else {
+        row.key == k
+    }
+}
+
+/// The single cell styled, when it is in this row: its column (0-based).
+pub fn cell_in(c: &Config, row: &MRow) -> Option<usize> {
+    (c.cell.on && aims(&c.cell.key, c.cell.row, row)).then(|| c.cell.col.max(1) as usize - 1)
+}
+
 pub fn merge_of<'a>(c: &'a Config, m: &Model, row: &MRow) -> Option<(usize, usize, &'a str)> {
-    let g = c
-        .merges
-        .iter()
-        .find(|g| g.on && g.row as usize == row.rank)?;
+    let g = c.merges.iter().find(|g| g.on && aims(&g.key, g.row, row))?;
     let j = (g.col.max(1) - 1) as usize;
     if j >= m.cols.len() {
         return None;
@@ -1230,6 +1277,8 @@ pub fn title_h(c: &Config) -> f32 {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct State {
+    /// The operator acted (else the Designer's auto pages and highlighted row apply from the take).
+    pub ctl: bool,
     /// Page shown when auto pages started (or the page set), 0 = first.
     pub page: usize,
     /// When the page last changed (cascade), Unix ms; 0 = on air.
@@ -1242,6 +1291,24 @@ pub struct State {
     pub paused_at: i64,
     /// Key of the highlighted row ("" = none).
     pub hl: String,
+}
+
+/// The state on air: the operator's once he acted, else the Designer's auto
+/// pages (counted from the take) and highlighted row.
+pub fn live(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> State {
+    if st.ctl {
+        return st.clone();
+    }
+    let mut s = st.clone();
+    if s.hl.is_empty() {
+        s.hl = c.hl_key.trim().to_string();
+    }
+    if c.auto_pages && !s.auto && c.page_mode == PageMode::Pages && c.auto_secs > 0.0 {
+        s.auto = true;
+        s.interval = c.auto_secs.clamp(0.5, 3600.0);
+        s.auto_at = (now_ms - (age_secs.max(0.0) * 1000.0) as i64).max(1);
+    }
+    s
 }
 
 /// Page shown at `now` and when it appeared (Unix ms, 0 = since on air).
@@ -1314,6 +1381,9 @@ pub fn act(
     let m = model(c, ctx.data);
     let pages = page_count(c, &m);
     let now = ctx.now_ms;
+    // From now on the operator's state: what was on air so far, kept.
+    *st = live(c, st, now, ctx.age_secs);
+    st.ctl = true;
     let (cur, _) = current_page(st, pages, now);
     let scroll = c.page_mode == PageMode::Scroll;
     match op {
@@ -1583,6 +1653,83 @@ mod tests {
         )
         .unwrap();
         assert_eq!(current_page(&st, 3, 64_100).0, 1);
+    }
+
+    #[test]
+    fn designer_auto_pages_and_highlight_from_the_take() {
+        let mut c = sample(10);
+        c.auto_pages = true;
+        c.auto_secs = 6.0;
+        c.hl_key = "T3".into();
+        let l = layer(c.clone());
+        let d = Data::new();
+        // On air for 13 s: two pages turned, the Designer's row highlighted.
+        let st = live(&c, &State::default(), 100_000, 13.0);
+        assert_eq!(current_page(&st, 3, 100_000).0, 2);
+        assert_eq!(st.hl, "T3");
+        // The operator acts: what was on air is kept, then it is his.
+        let mut st = State::default();
+        let cx = ActCtx {
+            now_ms: 100_000,
+            age_secs: 13.0,
+            data: &d,
+        };
+        act(&l, &mut st, "next", &serde_json::Value::Null, &cx).unwrap();
+        assert!(st.ctl && st.auto);
+        assert_eq!(current_page(&st, 3, 100_000).0, 0);
+        act(
+            &l,
+            &mut st,
+            "highlight",
+            &serde_json::json!({"row": ""}),
+            &cx,
+        )
+        .unwrap();
+        assert_eq!(live(&c, &st, 100_000, 13.0).hl, "");
+    }
+
+    #[test]
+    fn merges_and_the_cell_follow_their_row() {
+        let mut c = sample(4);
+        c.merges = vec![Merge {
+            key: "T1".into(),
+            row: 1,
+            ..Merge::default()
+        }];
+        c.cell = CellStyle {
+            on: true,
+            key: "T1".into(),
+            row: 1,
+            col: 2,
+            ..CellStyle::default()
+        };
+        let m = model(&c, &Data::new());
+        // Sorted by points: T3, T2, T1, T0. Rank 1 is T3; T1 is third.
+        let t1 = m.rows.iter().find(|r| r.key == "T1").unwrap();
+        assert_eq!(t1.rank, 3);
+        assert!(merge_of(&c, &m, t1).is_some());
+        assert_eq!(cell_in(&c, t1), Some(1));
+        assert!(m
+            .rows
+            .iter()
+            .filter(|r| r.key != "T1")
+            .all(|r| merge_of(&c, &m, r).is_none() && cell_in(&c, r).is_none()));
+        // Older settings without a key: the rank.
+        c.merges[0].key.clear();
+        let first = &m.rows[0];
+        assert!(merge_of(&c, &m, first).is_some());
+    }
+
+    #[test]
+    fn generated_texts_follow_the_language() {
+        let c = Config::default();
+        assert_eq!(title_or(&c, "fr"), "Classement");
+        assert_eq!(empty_or(&c, "en"), "No data yet");
+        let c = Config {
+            empty_text: "Bientôt".into(),
+            ..Config::default()
+        };
+        assert_eq!(empty_or(&c, "fr"), "Bientôt");
     }
 
     #[test]

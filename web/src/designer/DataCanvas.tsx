@@ -178,9 +178,12 @@ function portsOf(l: Layer): string[] {
   if (TEXT_LIKE.has(l.type)) props.push('fontSize', 'letterSpacing');
   if (l.type === 'image') props.push('cropLeft', 'cropRight', 'cropTop', 'cropBottom');
   if (l.type === 'ellipse') props.push('arcStart', 'arcEnd', 'innerRadius');
+  if (l.type === 'pen') props.push('drawStart', 'drawEnd');
+  if (l.type === 'rect') props.push('cornerTl', 'cornerTr', 'cornerBr', 'cornerBl');
+  if (['rect', 'ellipse', 'polygon', 'pen', 'text'].includes(l.type)) props.push('fill2');
   return props;
 }
-const isColor = (p: string) => p === 'fill' || p === 'stroke';
+const isColor = (p: string) => p === 'fill' || p === 'stroke' || p === 'fill2';
 
 /** Text operations of a Transform node. */
 const TRANSFORMS: { make: () => DataFilter; label: string }[] = [

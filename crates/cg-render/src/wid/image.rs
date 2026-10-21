@@ -19,6 +19,29 @@ use crate::paint_for;
 /// Colorized copies of pictures (key: source, mode, colour).
 static TINTED: Mutex<Option<HashMap<String, Pixmap>>> = Mutex::new(None);
 
+/// The reloads each renderer has done, by (renderer, layer).
+static RELOADED: Mutex<Option<HashMap<(usize, String), u32>>> = Mutex::new(None);
+
+/// The operator reloaded the picture: it is read again from the disk once.
+fn reload(d: &mut Draw, st: &State, src: &str) {
+    if st.reload == 0 {
+        return;
+    }
+    let key = (std::ptr::from_ref(&*d.rd) as usize, d.layer.id.clone());
+    let mut seen = RELOADED.lock().unwrap_or_else(|e| e.into_inner());
+    let map = seen.get_or_insert_with(HashMap::new);
+    if map.get(&key) == Some(&st.reload) {
+        return;
+    }
+    map.insert(key, st.reload);
+    drop(seen);
+    d.rd.images.remove(src);
+    let prefix = format!("{src}|");
+    if let Some(m) = TINTED.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        m.retain(|k, _| !k.starts_with(&prefix));
+    }
+}
+
 fn colorized(src: &Pixmap, mode: Colorize, tint: Color) -> Pixmap {
     let mut out = src.clone();
     let [tr, tg, tb, _] = tint.0;
@@ -159,6 +182,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         let s = seq(c, st, d.time.now_ms, d.time.age_secs);
         interpolate_text(&c.frames[s.idx.min(c.frames.len() - 1)], d.data)
     };
+    reload(d, st, wanted.trim());
     let (w, h) = (d.w, d.h);
     let (f, radius) = frame_rect(c, w, h);
     let Some(frame_path) = rrect(f[0], f[1], f[2], f[3], radius) else {

@@ -6,8 +6,9 @@
 pub(crate) mod paint;
 
 use cg_core::wid::scoreboard::{
-    card_color, clock_on, clock_text, period_text, scores, short_of, tennis_pts, tennis_tag,
-    Config, Crest, Kind, Layout, Order, ScoreAnim, State, Team, Version,
+    card_color, clock_on, clock_text, fill, fmt_left, period_text, scores, shootout_on, short_of,
+    shot_on, shot_text, susps_left, tennis_pts, tennis_tag, tr, Config, Crest, Kind, Layout, Order,
+    ScoreAnim, State, Team, Version,
 };
 use cg_core::wid::shape::Cmd;
 use cg_core::LayerKind;
@@ -17,6 +18,31 @@ use super::Draw;
 
 const TAG_BG: &str = "#11142a";
 const CELL_BG: &str = "#0b0d18";
+const BG: &str = "#05060c";
+
+/// Colours of the board from its background: base, score cells, clock / period cells.
+struct Pal {
+    bg: String,
+    cell: String,
+    tag: String,
+}
+
+fn pal(c: &Config) -> Pal {
+    let bg = c.bg.trim();
+    if bg.is_empty() || bg.eq_ignore_ascii_case(BG) {
+        return Pal {
+            bg: BG.into(),
+            cell: CELL_BG.into(),
+            tag: TAG_BG.into(),
+        };
+    }
+    use cg_core::wid::map::hex_mix;
+    Pal {
+        bg: bg.into(),
+        cell: hex_mix(bg, "#ffffff", 0.04),
+        tag: hex_mix(bg, "#ffffff", 0.08),
+    }
+}
 
 fn clamp01(v: f32) -> f32 {
     v.clamp(0.0, 1.0)
@@ -144,26 +170,40 @@ enum Item {
     Txt(String, &'static str, u16),
     Dot(bool),
     Card(&'static str),
-    Badge(&'static str),
+    /// A pill: text, background.
+    Badge(String, &'static str),
+    /// A kick of the shoot-out: scored, missed, to come.
+    Pen(Option<bool>),
     Sep,
 }
 
-fn stats(c: &Config, st: &State, i: usize) -> Vec<Item> {
+fn stats(c: &Config, st: &State, i: usize, lang: &str, now: i64) -> Vec<Item> {
     let pr = c.p();
     let t = st.team(i);
     let mut groups: Vec<Vec<Item>> = Vec::new();
+    if shootout_on(c, st) {
+        let n = t.pens.len().max(5);
+        let mut g: Vec<Item> = (0..n).map(|k| Item::Pen(t.pens.get(k).copied())).collect();
+        let goals = t.pens.iter().filter(|p| **p).count();
+        g.push(Item::Txt(format!(" {goals}"), "#ffffff", 800));
+        groups.push(g);
+    }
     if c.fields.fouls {
         let mut g = vec![
-            Item::Txt("FOULS ".into(), "#ffffffbf", 700),
+            Item::Txt(format!("{} ", tr(c, lang, "FOULS")), "#ffffffbf", 700),
             Item::Txt(t.fouls.to_string(), "#ffffff", 800),
         ];
         if pr.bonus > 0 && t.fouls >= pr.bonus {
-            g.push(Item::Badge("BONUS"));
+            g.push(Item::Badge(tr(c, lang, "BONUS"), "#ff3b5c"));
         }
         groups.push(g);
     }
     if c.fields.timeouts && pr.timeouts > 0 {
-        let mut g = vec![Item::Txt("TO ".into(), "#ffffffbf", 700)];
+        let mut g = vec![Item::Txt(
+            format!("{} ", tr(c, lang, "TO")),
+            "#ffffffbf",
+            700,
+        )];
         let left = pr.timeouts.saturating_sub(t.to_used);
         for k in 0..pr.timeouts {
             g.push(Item::Dot(k < left));
@@ -181,6 +221,15 @@ fn stats(c: &Config, st: &State, i: usize) -> Vec<Item> {
                 }
             }
         }
+        if !g.is_empty() {
+            groups.push(g);
+        }
+    }
+    if c.fields.susp {
+        let g: Vec<Item> = susps_left(c, st, i, now)
+            .into_iter()
+            .map(|ms| Item::Badge(fmt_left(ms), "#0284c7"))
+            .collect();
         if !g.is_empty() {
             groups.push(g);
         }
@@ -213,7 +262,8 @@ fn draw_stats(
             Item::Txt(s, _, wt) => p.tw(s, fs, *wt, 0.0),
             Item::Dot(_) => fs * 0.55 + 3.0,
             Item::Card(_) => fs * 0.6 + 3.0,
-            Item::Badge(s) => p.tw(s, fs * 0.8, 800, 0.0) + 12.0 + 6.0,
+            Item::Badge(s, _) => p.tw(s, fs * 0.8, 800, 0.0) + 12.0 + 6.0,
+            Item::Pen(_) => fs * 0.62 + 3.0,
             Item::Sep => fs * 0.9,
         })
         .collect();
@@ -233,8 +283,16 @@ fn draw_stats(
                 if *on { "#facc15" } else { "#ffffff33" },
             ),
             Item::Card(c) => p.rect(cx, cy - fs * 0.425, fs * 0.6, fs * 0.85, 2.0, c),
-            Item::Badge(s) => {
-                p.rect(cx + 6.0, cy - fs * 0.5, iw - 6.0, fs, 4.0, "#ff3b5c");
+            Item::Pen(k) => {
+                let r = fs * 0.31;
+                match k {
+                    Some(true) => p.circle(cx + r, cy, r, "#22c55e"),
+                    Some(false) => p.circle(cx + r, cy, r, "#ef4444"),
+                    None => p.circle(cx + r, cy, r, "#ffffff33"),
+                }
+            }
+            Item::Badge(s, bg) => {
+                p.rect(cx + 6.0, cy - fs * 0.5, iw - 6.0, fs, 4.0, bg);
                 p.text(
                     s,
                     cx + 6.0 + (iw - 6.0) / 2.0,
@@ -257,8 +315,15 @@ pub(crate) fn board(
     data: &cg_core::anim::Data,
     now: i64,
     hh: f32,
+    lang: &str,
 ) -> (f32, f32) {
     let pr = c.p();
+    let pl = pal(c);
+    let shot = if shot_on(c, st) {
+        Some(shot_text(c, st, now))
+    } else {
+        None
+    };
     let h = hh;
     let n = c.team_count();
     let order: Vec<usize> = if st.swapped {
@@ -293,7 +358,7 @@ pub(crate) fn board(
         None
     };
     let per = if c.fields.period {
-        period_text(c, st)
+        tr(c, lang, &period_text(c, st))
     } else {
         String::new()
     };
@@ -325,7 +390,7 @@ pub(crate) fn board(
         let txt = sc.get(i).copied().unwrap_or(0).to_string();
         let real = p.tw(&txt, sfs, 800, 0.0);
         let sx = if real > reserve { reserve / real } else { 1.0 };
-        let mut bg = col(CELL_BG);
+        let mut bg = col(&pl.cell);
         let mut fg = col("#ffffff");
         let mut scale = 1.0;
         let fx = st.fx.sc.get(&i);
@@ -377,11 +442,11 @@ pub(crate) fn board(
         let slots = c.best_of.clamp(3, 5) as usize - 1;
         let row_w = bar_w + poss_w + crest_w + name_w + slots as f32 * cell_w + g_w + p_w;
         let hd = h * 0.56;
-        let tag = tennis_tag(tn);
+        let tag = tr(c, lang, tennis_tag(tn));
         w0 = row_w;
         h0 = hd + 2.0 * h + 2.0 * gap;
         p.clip(&rrect(0.0, 0.0, w0, h0, radius));
-        p.rect(0.0, 0.0, w0, hd, 0.0, TAG_BG);
+        p.rect(0.0, 0.0, w0, hd, 0.0, &pl.tag);
         let mut x = h * 0.25;
         let pfs = h * 0.3;
         p.text(
@@ -393,7 +458,7 @@ pub(crate) fn board(
         );
         x += p.tw(&per, pfs, 800, pfs * 0.08) + h * 0.3;
         if !tag.is_empty() {
-            let tw = p.tw(tag, pfs, 800, pfs * 0.08);
+            let tw = p.tw(&tag, pfs, 800, pfs * 0.08);
             let bg = if tn.tb {
                 "#ff3b5c"
             } else if tn.free {
@@ -403,7 +468,7 @@ pub(crate) fn board(
             };
             p.rect(x, hd / 2.0 - pfs * 0.75, tw + h * 0.3, pfs * 1.5, 5.0, bg);
             p.text(
-                tag,
+                &tag,
                 x + h * 0.15,
                 hd / 2.0,
                 "#ffffff",
@@ -415,7 +480,7 @@ pub(crate) fn board(
             let t = c.team(i);
             y += gap;
             p.rect(0.0, y - gap, w0, gap, 0.0, "#1a1d30");
-            p.rect(0.0, y, w0, h, 0.0, CELL_BG);
+            p.rect(0.0, y, w0, h, 0.0, &pl.cell);
             p.rect(0.0, y, bar_w, h * 0.7, 0.0, &t.c1);
             p.rect(0.0, y + h * 0.7, bar_w, h * 0.3, 0.0, &t.c2);
             let mut x = bar_w;
@@ -474,14 +539,20 @@ pub(crate) fn board(
                 &pts,
                 x + p_w / 2.0,
                 y + h / 2.0,
-                CELL_BG,
+                &pl.cell,
                 T::new(h * 0.56, 800).mid(),
             );
             y += h;
         }
         p.pop();
     } else if c.layout == Layout::Stacked {
-        let stat_w = if full && (c.fields.fouls || c.fields.timeouts || c.fields.cards) {
+        let stat_w = if full
+            && (c.fields.fouls
+                || c.fields.timeouts
+                || c.fields.cards
+                || c.fields.susp
+                || shootout_on(c, st))
+        {
             h * 3.6
         } else {
             0.0
@@ -498,7 +569,7 @@ pub(crate) fn board(
         p.clip(&rrect(0.0, 0.0, w0, h0, radius));
         let head_y = if top { 0.0 } else { h0 - hd };
         if hd > 0.0 {
-            p.rect(0.0, head_y, w0, hd, 0.0, TAG_BG);
+            p.rect(0.0, head_y, w0, hd, 0.0, &pl.tag);
             let pfs = h * 0.3;
             p.text(
                 &per,
@@ -509,6 +580,17 @@ pub(crate) fn board(
             );
             if let Some((txt, _, ended)) = &ck {
                 let mut rx = w0 - h * 0.25;
+                if let Some((s, end)) = &shot {
+                    let sfs = h * 0.42;
+                    p.text(
+                        s,
+                        rx,
+                        head_y + hd / 2.0,
+                        if *end { "#ff3b5c" } else { "#ffd200" },
+                        T::new(sfs, 800).end(),
+                    );
+                    rx -= p.tw("88", sfs, 800, 0.0) + h * 0.3;
+                }
                 if st.added > 0 {
                     let a = format!("+{}", st.added);
                     let afs = h * 0.34;
@@ -542,7 +624,7 @@ pub(crate) fn board(
         let mut y = if top { hd } else { 0.0 };
         for &i in &order {
             let t = c.team(i);
-            p.rect(0.0, y, w0, gap, 0.0, "#05060c");
+            p.rect(0.0, y, w0, gap, 0.0, &pl.bg);
             y += gap;
             p.rect(0.0, y, w0, h, 0.0, &t.c1);
             p.rect(0.0, y, bar_w, h, 0.0, &t.c2);
@@ -565,7 +647,7 @@ pub(crate) fn board(
             }
             x += poss_w;
             if stat_w > 0.0 {
-                let items = stats(c, st, i);
+                let items = stats(c, st, i, lang, now);
                 p.clip(&rrect(x, y, stat_w, h, 0.0));
                 draw_stats(
                     p,
@@ -597,9 +679,10 @@ pub(crate) fn board(
         p.pop();
     } else {
         let show_clk = c.fields.period || ck.is_some();
+        let shot_w = if shot.is_some() { h * 0.95 } else { 0.0 };
         let clock_w = if show_clk {
             if ck.is_some() {
-                h * 2.9
+                h * 2.9 + shot_w
             } else {
                 h * 2.1
             }
@@ -640,7 +723,10 @@ pub(crate) fn board(
         }
         w0 = x;
         let ex_h = h * 0.56;
-        let has_stats = full && order.iter().any(|&i| !stats(c, st, i).is_empty());
+        let has_stats = full
+            && order
+                .iter()
+                .any(|&i| !stats(c, st, i, lang, now).is_empty());
         let tab = ck.is_some() && st.added > 0;
         h0 = h + if has_stats {
             ex_h
@@ -651,16 +737,28 @@ pub(crate) fn board(
         };
         // Row
         p.clip(&rrect(0.0, 0.0, w0, h, radius));
-        p.rect(0.0, 0.0, w0, h, 0.0, "#05060c");
+        p.rect(0.0, 0.0, w0, h, 0.0, &pl.bg);
         if show_clk {
-            p.rect(clock_x, 0.0, clock_w, h, 0.0, TAG_BG);
+            p.rect(clock_x, 0.0, clock_w, h, 0.0, &pl.tag);
             let (pf, cf) = (h * 0.25, h * 0.46);
             let (lp, lc) = (
                 if c.fields.period { pf * 1.1 } else { 0.0 },
                 if ck.is_some() { cf * 1.05 } else { 0.0 },
             );
             let top = (h - lp - lc) / 2.0;
-            let cx = clock_x + clock_w / 2.0;
+            let cx = clock_x + (clock_w - shot_w) / 2.0;
+            if let Some((s, end)) = &shot {
+                // The shot clock right of the match clock.
+                let sx = clock_x + clock_w - shot_w;
+                p.rect(sx, h * 0.2, 1.0, h * 0.6, 0.0, "#ffffff26");
+                p.text(
+                    s,
+                    sx + shot_w / 2.0,
+                    h / 2.0,
+                    if *end { "#ff3b5c" } else { "#ffd200" },
+                    T::new(h * 0.5, 800).mid(),
+                );
+            }
             if c.fields.period {
                 p.text(
                     &per,
@@ -730,7 +828,7 @@ pub(crate) fn board(
                 let t = c.team(i);
                 p.rect(bx, h, team_w, ex_h, 0.0, "#0b0d18eb");
                 p.rect(bx, h, team_w, gap, 0.0, &t.c2);
-                let items = stats(c, st, i);
+                let items = stats(c, st, i, lang, now);
                 p.clip(&rrect(bx, h, team_w, ex_h, 0.0));
                 draw_stats(
                     p,
@@ -746,7 +844,7 @@ pub(crate) fn board(
             }
         }
         if tab {
-            let tx = clock_x + clock_w / 2.0 - h * 0.45;
+            let tx = clock_x + (clock_w - shot_w) / 2.0 - h * 0.45;
             p.rect(tx, h, h * 0.9, h * 0.42, h * 0.1, "#ff3b5c");
             p.rect(tx, h, h * 0.9, h * 0.1, 0.0, "#ff3b5c");
             p.text(
@@ -787,9 +885,12 @@ pub(crate) fn board(
                     let pulse = 1.0 + 0.04 * (k * 40.0).sin() * (1.0 - clamp01(k * 4.0));
                     let tfs = h * 0.6;
                     let tx = h * 0.35;
-                    let tw = p.tw(&ev.text, tfs, 800, tfs * 0.02);
+                    // In the project's language (or the Designer's words).
+                    let text = fill(&tr(c, lang, &ev.text), &ev.vars);
+                    let sub = fill(&tr(c, lang, &ev.sub), &ev.vars);
+                    let tw = p.tw(&text, tfs, 800, tfs * 0.02);
                     p.text(
-                        &ev.text,
+                        &text,
                         tx + tw / 2.0,
                         by + bh / 2.0,
                         fg,
@@ -803,7 +904,7 @@ pub(crate) fn board(
                     p.clip(&rrect(sx, by, (w0 - sx - h * 0.2).max(0.0), bh, 0.0));
                     let a = p.alpha;
                     p.alpha = a * 0.9;
-                    p.text(&ev.sub, sx, by + bh / 2.0, fg, T::new(h * 0.32, 800));
+                    p.text(&sub, sx, by + bh / 2.0, fg, T::new(h * 0.32, 800));
                     p.alpha = a;
                     p.pop();
                     // Shine
@@ -840,12 +941,69 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let now = d.time.now_ms;
     let data = d.data;
     let (w, h) = (d.w, d.h);
+    let lang = d.lang.to_string();
     let (bw, bh) = {
         let mut p = Pt::new(d, true);
-        board(&mut p, c, st, data, now, 100.0)
+        p.font = c.font.clone();
+        board(&mut p, c, st, data, now, 100.0, &lang)
     };
     let row = (100.0 * (w / bw.max(1.0)).min(h / bh.max(1.0))).max(1.0);
     let mut p = Pt::new(d, false);
-    board(&mut p, c, st, data, now, row);
+    p.font = c.font.clone();
+    board(&mut p, c, st, data, now, row, &lang);
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cg_core::wid::scoreboard::{preset, Sport};
+
+    #[test]
+    fn stats_speak_the_project_language_or_the_designers_words() {
+        let mut c = Config {
+            preset: Sport::Basketball,
+            fields: preset(Sport::Basketball).fields,
+            ..Default::default()
+        };
+        let st = State::default();
+        let has = |items: &[Item], s: &str| {
+            items
+                .iter()
+                .any(|it| matches!(it, Item::Txt(t, _, _) if t == s))
+        };
+        assert!(has(&stats(&c, &st, 0, "fr", 0), "FAUTES "));
+        assert!(has(&stats(&c, &st, 0, "en", 0), "FOULS "));
+        c.texts.insert("FOULS".into(), "F".into());
+        assert!(has(&stats(&c, &st, 0, "fr", 0), "F "));
+    }
+
+    #[test]
+    fn the_shot_clock_shows_in_yellow_next_to_the_match_clock() {
+        let project = cg_core::sample::demo_project();
+        let board = |shot: bool| {
+            let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+                "id": "sb", "name": "T", "duration": 30.0, "markers": [], "zone": "", "fields": [],
+                "layers": [{
+                    "id": "s", "name": "Score", "type": "scoreboard", "preset": "basketball",
+                    "fields": {"period": true, "clock": true, "shot": shot},
+                    "clock": {"dir": "down", "len": 10.0, "extra": 5.0, "tenths": true},
+                    "anim": {"banner": false},
+                    "props": {"x": 0.0, "y": 0.0, "width": 1600.0, "height": 120.0}
+                }]
+            }))
+            .unwrap();
+            let mut r = crate::Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+            let f = r.render_template(&project, &t, "main", 10.0, &Default::default());
+            (0..f.width * 120)
+                .filter(|k| {
+                    let i = (*k * 4) as usize;
+                    let p = &f.data[i..i + 4];
+                    p[3] > 200 && p[0] > 230 && p[1] > 190 && p[1] < 230 && p[2] < 40
+                })
+                .count()
+        };
+        assert!(board(true) > 30, "yellow digits of the shot clock");
+        assert_eq!(board(false), 0);
+    }
 }

@@ -10,7 +10,15 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     let LayerKind::Rect { x: c } = &d.layer.kind else {
         return false;
     };
-    let cmds = outline(c, d.w, d.h, d.num(Prop::CornerRadius));
+    // Per corner: the animatable radius of each corner.
+    let each = [
+        Prop::CornerTl,
+        Prop::CornerTr,
+        Prop::CornerBr,
+        Prop::CornerBl,
+    ]
+    .map(|p| d.num(p));
+    let cmds = outline(c, d.w, d.h, d.num(Prop::CornerRadius), Some(each));
     shape::paint(d, &cmds, &c.fill_style, &c.stroke_style, FillRule::Nonzero);
     true
 }

@@ -92,6 +92,9 @@ const fn f(
         cards,
         poss,
         sets,
+        shot: false,
+        shootout: false,
+        susp: false,
     }
 }
 
@@ -115,7 +118,10 @@ pub fn preset(s: Sport) -> &'static Preset {
             v: 1,
             ev: "GOAL!",
         }],
-        fields: f(true, true, false, false, true, false, false),
+        fields: Fields {
+            shootout: true,
+            ..f(true, true, false, false, true, false, false)
+        },
         digits: 2,
         cards: &["yellow", "red"],
         timeouts: 0,
@@ -186,7 +192,10 @@ pub fn preset(s: Sport) -> &'static Preset {
                 ev: "3 POINTS!",
             },
         ],
-        fields: f(true, true, true, true, false, true, false),
+        fields: Fields {
+            shot: true,
+            ..f(true, true, true, true, false, true, false)
+        },
         digits: 3,
         cards: &[],
         timeouts: 5,
@@ -207,7 +216,10 @@ pub fn preset(s: Sport) -> &'static Preset {
             v: 1,
             ev: "GOAL!",
         }],
-        fields: f(true, true, false, true, true, false, false),
+        fields: Fields {
+            susp: true,
+            ..f(true, true, false, true, true, false, false)
+        },
         digits: 2,
         cards: &["yellow", "2 min", "red"],
         timeouts: 3,
@@ -415,6 +427,12 @@ pub struct Fields {
     pub poss: bool,
     /// Sets won (volleyball).
     pub sets: bool,
+    /// Shot clock (basketball: 24 s, reset to 24 or 14).
+    pub shot: bool,
+    /// Penalty shoot-out: each kick scored / missed (the « Penalties » period).
+    pub shootout: bool,
+    /// Timed suspensions counting down (handball 2 min, rugby yellow card 10 min).
+    pub susp: bool,
 }
 
 impl Default for Fields {
@@ -527,6 +545,23 @@ impl Default for SourceCfg {
     }
 }
 
+/// The shot clock: its length and the shorter reset, seconds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ShotCfg {
+    pub len: f64,
+    pub reset: f64,
+}
+
+impl Default for ShotCfg {
+    fn default() -> Self {
+        Self {
+            len: 24.0,
+            reset: 14.0,
+        }
+    }
+}
+
 /// Settings of the widget, flattened into the layer's JSON.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -550,6 +585,16 @@ pub struct Config {
     pub source: SourceCfg,
     /// Tennis: best of 3 or 5 sets.
     pub best_of: u32,
+    pub shot: ShotCfg,
+    /// Minutes of a suspension (0 = the sport's: handball 2, rugby 10).
+    pub susp_len: f64,
+    /// Background of the board.
+    pub bg: String,
+    /// Font family of the texts.
+    pub font: String,
+    /// The texts the board writes (periods, banners…), by English wording;
+    /// a missing or empty one is written in the project's language.
+    pub texts: BTreeMap<String, String>,
 }
 
 impl Default for Config {
@@ -570,8 +615,130 @@ impl Default for Config {
             debounce: 400.0,
             source: SourceCfg::default(),
             best_of: 3,
+            shot: ShotCfg::default(),
+            susp_len: 0.0,
+            bg: "#05060c".into(),
+            font: "Inter".into(),
+            texts: BTreeMap::new(),
         }
     }
+}
+
+/// French of the texts the board writes.
+fn fr(en: &str) -> Option<&'static str> {
+    Some(match en {
+        "1st half" => "1re mi-temps",
+        "2nd half" => "2e mi-temps",
+        "Extra time 1" => "Prolongation 1",
+        "Extra time 2" => "Prolongation 2",
+        "Penalties" => "Tirs au but",
+        "Extra time" => "Prolongation",
+        "Extra 1" => "Prolongation 1",
+        "Extra 2" => "Prolongation 2",
+        "OT" => "Prol.",
+        "FINAL" => "TERMINÉ",
+        "MANUAL ENTRY" => "SAISIE MANUELLE",
+        "DEUCE" => "ÉGALITÉ",
+        "ADVANTAGE" => "AVANTAGE",
+        "FOULS" => "FAUTES",
+        "TO" => "TM",
+        "GOAL!" => "BUT\u{a0}!",
+        "TRY!" => "ESSAI\u{a0}!",
+        "CONVERSION" => "TRANSFORMATION",
+        "PENALTY GOAL" => "PÉNALITÉ",
+        "DROP GOAL" => "DROP",
+        "3 POINTS!" => "3 POINTS\u{a0}!",
+        "SCORE!" => "POINT\u{a0}!",
+        "YELLOW CARD" => "CARTON JAUNE",
+        "RED CARD" => "CARTON ROUGE",
+        "2-MIN SUSPENSION" => "EXCLUSION 2 MIN",
+        "SUSPENSION" => "EXCLUSION",
+        "TIMEOUT" => "TEMPS MORT",
+        "{team} · {n} left" => "{team} · reste {n}",
+        "GAME, SET & MATCH" => "JEU, SET ET MATCH",
+        "MATCH!" => "MATCH\u{a0}!",
+        "{team} wins {a}–{b}" => "{team} gagne {a}–{b}",
+        _ => return None,
+    })
+}
+
+/// A text the board writes: the Designer's own, else in the project's
+/// language (French when `lang` starts with "fr"), else the English.
+pub fn tr(c: &Config, lang: &str, en: &str) -> String {
+    if let Some(own) = c.texts.get(en).filter(|s| !s.trim().is_empty()) {
+        return own.clone();
+    }
+    if lang.starts_with("fr") {
+        if let Some(f) = fr(en) {
+            return f.to_string();
+        }
+    }
+    en.to_string()
+}
+
+/// `{name}` replaced by its value.
+pub fn fill(s: &str, vars: &BTreeMap<String, String>) -> String {
+    let mut out = s.to_string();
+    for (k, v) in vars {
+        out = out.replace(&format!("{{{k}}}"), v);
+    }
+    out
+}
+
+/// The texts of a sport the Designer may rename (in order).
+pub fn texts_of(c: &Config) -> Vec<&'static str> {
+    let p = c.p();
+    let mut out: Vec<&'static str> = Vec::new();
+    let mut add = |s: &'static str| {
+        if !s.is_empty() && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    for s in p.periods {
+        add(s);
+    }
+    for pt in p.pts {
+        add(pt.ev);
+    }
+    match p.kind {
+        Kind::Tennis => {
+            for s in [
+                "FINAL",
+                "MANUAL ENTRY",
+                "TIE-BREAK",
+                "DEUCE",
+                "ADVANTAGE",
+                "GAME, SET & MATCH",
+            ] {
+                add(s);
+            }
+        }
+        Kind::Sets => {
+            add("MATCH!");
+            add("{team} wins {a}–{b}");
+        }
+        Kind::Points => {}
+    }
+    if p.bonus > 0 {
+        add("FOULS");
+        add("BONUS");
+    }
+    if p.timeouts > 0 {
+        add("TO");
+        add("TIMEOUT");
+        add("{team} · {n} left");
+    }
+    for card in p.cards {
+        add(match *card {
+            "yellow" => "YELLOW CARD",
+            "red" => "RED CARD",
+            _ => "2-MIN SUSPENSION",
+        });
+    }
+    if c.fields.susp {
+        add("SUSPENSION");
+    }
+    out
 }
 
 impl Config {
@@ -605,6 +772,12 @@ pub struct TeamState {
     pub red: u32,
     /// 2-minute suspensions.
     pub susp: u32,
+    /// Points added by the operator, in order (− cancels the last one).
+    pub added: Vec<i64>,
+    /// Penalty shoot-out: each kick, scored or missed.
+    pub pens: Vec<bool>,
+    /// Timed suspensions: [match time it started, length] (ms).
+    pub susps: Vec<[i64; 2]>,
 }
 
 impl TeamState {
@@ -655,7 +828,8 @@ pub struct ScoreFx {
     pub from: String,
 }
 
-/// Event banner since `at`.
+/// Event banner since `at`. `text` and `sub` are written in the project's
+/// language when drawn ([`tr`]), their `{name}` filled from `vars`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Banner {
@@ -663,6 +837,8 @@ pub struct Banner {
     pub sub: String,
     pub color: String,
     pub at: i64,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -724,6 +900,9 @@ pub struct State {
     pub last: Last,
     pub ignored: u32,
     pub hist: Vec<Hist>,
+    /// Shot clock: the period's elapsed ms when it was last reset, and its length (ms; 0 = the setting).
+    pub shot_base: i64,
+    pub shot_len: i64,
 }
 
 impl State {
@@ -795,6 +974,63 @@ pub fn clock_text(c: &Config, st: &State, now: i64) -> (String, bool, bool) {
         len > 0 && e > len,
         false,
     )
+}
+
+/// The shot clock shows (field on, the match clock in this period).
+pub fn shot_on(c: &Config, st: &State) -> bool {
+    c.fields.shot && clock_on(c, st)
+}
+
+/// Shot clock: whole seconds left (up), ended (at 0). It runs with the match clock.
+pub fn shot_text(c: &Config, st: &State, now: i64) -> (String, bool) {
+    let len = if st.shot_len > 0 {
+        st.shot_len
+    } else {
+        (c.shot.len.max(1.0) * 1000.0) as i64
+    };
+    let left = (len - (elapsed(st, now) - st.shot_base)).max(0);
+    (((left + 999) / 1000).to_string(), left == 0)
+}
+
+/// The match time (ms): the periods before, then this one (cumulative sports).
+pub fn match_ms(c: &Config, st: &State, now: i64) -> i64 {
+    offset_ms(c, st) + elapsed(st, now)
+}
+
+/// Minutes of a suspension in this sport.
+pub fn susp_min(c: &Config) -> f64 {
+    if c.susp_len > 0.0 {
+        c.susp_len
+    } else if c.preset == Sport::Rugby {
+        10.0
+    } else {
+        2.0
+    }
+}
+
+/// Running suspensions of a team: the time left of each (ms), soonest first.
+pub fn susps_left(c: &Config, st: &State, i: usize, now: i64) -> Vec<i64> {
+    let m = match_ms(c, st, now);
+    let mut v: Vec<i64> = st
+        .team(i)
+        .susps
+        .iter()
+        .map(|s| s[0] + s[1] - m)
+        .filter(|l| *l > 0)
+        .collect();
+    v.sort();
+    v
+}
+
+/// `m:ss` of a time left.
+pub fn fmt_left(ms: i64) -> String {
+    let t = (ms.max(0) + 999) / 1000;
+    format!("{}:{:02}", t / 60, t % 60)
+}
+
+/// The penalty shoot-out shows (field on, the « Penalties » period).
+pub fn shootout_on(c: &Config, st: &State) -> bool {
+    c.fields.shootout && c.p().periods.get(st.period) == Some(&"Penalties")
 }
 
 /// `mm:ss[.t]` → ms.
@@ -973,6 +1209,21 @@ fn banner(
     color: Option<&str>,
     now: i64,
 ) {
+    banner_v(c, st, team, text, sub, color, now, BTreeMap::new());
+}
+
+/// A banner whose text / sub hold `{name}`s (filled when drawn, after the translation).
+#[allow(clippy::too_many_arguments)]
+fn banner_v(
+    c: &Config,
+    st: &mut State,
+    team: usize,
+    text: &str,
+    sub: String,
+    color: Option<&str>,
+    now: i64,
+    vars: BTreeMap<String, String>,
+) {
     if !c.anim.banner || text.is_empty() {
         return;
     }
@@ -981,7 +1232,14 @@ fn banner(
         sub,
         color: color.map(str::to_string).unwrap_or_else(|| c.team(team).c1),
         at: now,
+        vars,
     });
+}
+
+fn vars(list: &[(&str, String)]) -> BTreeMap<String, String> {
+    list.iter()
+        .map(|(k, v)| (k.to_string(), v.clone()))
+        .collect()
 }
 
 fn score_line(st: &State, n: usize) -> String {
@@ -1038,14 +1296,15 @@ fn tennis_point(c: &Config, st: &mut State, i: usize, now: i64) -> Result<(), St
                 .map(|x| format!("{}-{}", x[0], x[1]))
                 .collect::<Vec<_>>()
                 .join("  ");
-            banner(
+            banner_v(
                 c,
                 st,
                 i,
-                &format!("SET {}", short_of(&c.team(i))),
+                "SET {team}",
                 sets,
                 None,
                 now,
+                vars(&[("team", short_of(&c.team(i)))]),
             );
         }
     } else if g[0] == 6 && g[1] == 6 {
@@ -1067,27 +1326,33 @@ fn volley_check(c: &Config, st: &mut State, i: usize, now: i64) {
         let (wi, wo) = (st.volley.won[i], st.volley.won[o]);
         if wi >= 3 {
             st.volley.done = true;
-            banner(
+            banner_v(
                 c,
                 st,
                 i,
                 "MATCH!",
-                format!("{} wins {wi}–{wo}", short_of(&c.team(i))),
+                "{team} wins {a}–{b}".into(),
                 None,
                 now,
+                vars(&[
+                    ("team", short_of(&c.team(i))),
+                    ("a", wi.to_string()),
+                    ("b", wo.to_string()),
+                ]),
             );
         } else {
-            banner(
+            banner_v(
                 c,
                 st,
                 i,
-                &format!("SET {}", short_of(&c.team(i))),
+                "SET {team}",
                 format!(
                     "{}–{} · sets {}–{}",
                     s[0], s[1], st.volley.won[0], st.volley.won[1]
                 ),
                 None,
                 now,
+                vars(&[("team", short_of(&c.team(i)))]),
             );
             st.period = (st.period + 1).min(4);
             for t in st.teams.iter_mut() {
@@ -1161,6 +1426,11 @@ fn run(
                     take_manual(c, st, ctx.data, now);
                     let v = st.teams[i].score + pt.v;
                     set_score(st, i, v, now);
+                    let added = &mut st.teams[i].added;
+                    added.push(pt.v);
+                    if added.len() > 100 {
+                        added.remove(0);
+                    }
                     let player = s_arg(args, "player");
                     let line = score_line(st, n);
                     let sub = if player.trim().is_empty() {
@@ -1187,14 +1457,23 @@ fn run(
                 st.tennis.pts[i] -= 1;
                 return Ok(());
             }
-            if p.kind == Kind::Points {
+            // The team's last point (any type), else the smallest one.
+            let by = if p.kind == Kind::Points {
                 take_manual(c, st, ctx.data, now);
-            }
-            let v = st.teams[i].score - p.pts[0].v;
+                st.teams[i]
+                    .added
+                    .last()
+                    .copied()
+                    .unwrap_or_else(|| p.pts.iter().map(|x| x.v).min().unwrap_or(1))
+            } else {
+                p.pts[0].v
+            };
+            let v = st.teams[i].score - by;
             if v < 0 {
                 return Err("Refused: a score cannot go below 0".into());
             }
             set_score(st, i, v, now);
+            st.teams[i].added.pop();
             Ok(())
         }
         "set" => {
@@ -1219,6 +1498,7 @@ fn run(
             }
             for (i, s) in v.into_iter().enumerate() {
                 set_score(st, i, s, now);
+                st.teams[i].added.clear();
             }
             Ok(())
         }
@@ -1231,7 +1511,9 @@ fn run(
                 if p.bonus > 0 {
                     st.teams.iter_mut().for_each(|t| t.fouls = 0);
                 }
-                if p.kind == Kind::Sets {
+                // Timeouts come back each set (volleyball), each half and overtime (basketball).
+                let half = p.bonus > 0 && (st.period == p.periods.len() / 2 || st.period >= 4);
+                if p.kind == Kind::Sets || half {
                     st.teams.iter_mut().for_each(|t| t.to_used = 0);
                 }
             } else {
@@ -1242,6 +1524,8 @@ fn run(
             }
             st.clock = Clock::default();
             st.added = 0;
+            st.shot_base = 0;
+            st.shot_len = 0;
             Ok(())
         }
         "clockStart" | "clockPause" | "clockToggle" => {
@@ -1263,6 +1547,9 @@ fn run(
             }
             if start {
                 // A countdown at 0 does not start again.
+                if c.clock.dir == ClockDir::Down && elapsed(st, now) >= period_len(c, st.period) {
+                    return Err("The period is over: go to the next one".into());
+                }
                 st.clock.running = true;
                 st.clock.start_at = now;
             } else {
@@ -1273,6 +1560,7 @@ fn run(
         }
         "clockReset" => {
             st.clock = Clock::default();
+            st.shot_base = 0;
             Ok(())
         }
         "clockSet" => {
@@ -1288,6 +1576,8 @@ fn run(
                     v
                 }
             };
+            // The shot clock keeps its time.
+            st.shot_base += e.max(0) - elapsed(st, now);
             st.clock.base = e.max(0);
             st.clock.start_at = now;
             Ok(())
@@ -1298,8 +1588,46 @@ fn run(
                 .and_then(|v| v.as_f64())
                 .ok_or("secs needed")?;
             let d = if c.clock.dir == ClockDir::Down { -d } else { d };
-            st.clock.base = (elapsed(st, now) + (d * 1000.0) as i64).max(0);
+            let e = (elapsed(st, now) + (d * 1000.0) as i64).max(0);
+            st.shot_base += e - elapsed(st, now);
+            st.clock.base = e;
             st.clock.start_at = now;
+            Ok(())
+        }
+        "shot" => {
+            if !c.fields.shot {
+                return Err("No shot clock on this board".into());
+            }
+            let secs = args.get("s").and_then(|v| v.as_f64()).unwrap_or(c.shot.len);
+            st.shot_len = (secs.max(1.0) * 1000.0) as i64;
+            st.shot_base = elapsed(st, now);
+            Ok(())
+        }
+        "penalty" => {
+            let i = team_arg(c, args)?;
+            let scored = args.get("scored").and_then(|v| v.as_bool()).unwrap_or(true);
+            st.teams[i].pens.push(scored);
+            Ok(())
+        }
+        "suspension" => {
+            let i = team_arg(c, args)?;
+            let min = args
+                .get("min")
+                .and_then(|v| v.as_f64())
+                .unwrap_or_else(|| susp_min(c));
+            let m = match_ms(c, st, now);
+            st.teams[i].susps.push([m, (min.max(0.1) * 60000.0) as i64]);
+            let mins = format!("{}", (min * 10.0).round() / 10.0);
+            banner_v(
+                c,
+                st,
+                i,
+                "SUSPENSION",
+                "{team} · {min} min".into(),
+                Some(card_color("2 min")),
+                now,
+                vars(&[("team", short_of(&c.team(i))), ("min", mins)]),
+            );
             Ok(())
         }
         "added" => {
@@ -1321,11 +1649,17 @@ fn run(
             if !p.cards.contains(&color.as_str()) {
                 return Err(format!("No {color} card in {}", p.name));
             }
+            let timed = c.fields.susp
+                && (color == "2 min" || (color == "yellow" && c.preset == Sport::Rugby));
+            let m = match_ms(c, st, now);
             let t = &mut st.teams[i];
             match color.as_str() {
                 "yellow" => t.yellow += 1,
                 "red" => t.red += 1,
                 _ => t.susp += 1,
+            }
+            if timed {
+                t.susps.push([m, (susp_min(c) * 60000.0) as i64]);
             }
             let text = if color == "2 min" {
                 "2-MIN SUSPENSION".to_string()
@@ -1355,14 +1689,15 @@ fn run(
             }
             t.to_used += 1;
             let left = p.timeouts - t.to_used;
-            banner(
+            banner_v(
                 c,
                 st,
                 i,
                 "TIMEOUT",
-                format!("{} · {left} left", short_of(&c.team(i))),
+                "{team} · {n} left".into(),
                 None,
                 now,
+                vars(&[("team", short_of(&c.team(i))), ("n", left.to_string())]),
             );
             Ok(())
         }
@@ -1449,6 +1784,14 @@ pub fn act(
     };
     let now = ctx.now_ms;
     st.ensure(c.team_count());
+    // A countdown stops at 0 (it never runs on past it).
+    if c.clock.dir == ClockDir::Down && st.clock.running {
+        let len = period_len(c, st.period);
+        if elapsed(st, now) >= len {
+            st.clock.running = false;
+            st.clock.base = len;
+        }
+    }
     match op {
         "undo" => {
             let h = st.hist.pop().ok_or("Nothing to undo")?;
@@ -1744,5 +2087,119 @@ mod tests {
         assert_eq!(scores(&c, &st, &d, 30_000), vec![2, 1]);
         let lost: Data = [("home".to_string(), "".to_string())].into();
         assert_eq!(active_source(&c, &st, &lost, 30_000), Active::FeedLost);
+    }
+
+    #[test]
+    fn minus_cancels_the_teams_last_point() {
+        let l = layer(Config {
+            preset: Sport::Rugby,
+            ..Default::default()
+        });
+        let mut st = State::default();
+        // Try (5), then penalty (3, button 2): − takes the 3 off, then the 5.
+        go(&l, &mut st, "add", json!({"team":0,"pts":0}), 0).unwrap();
+        go(&l, &mut st, "add", json!({"team":0,"pts":2}), 1000).unwrap();
+        assert_eq!(st.team(0).score, 8);
+        go(&l, &mut st, "sub", json!({"team":0}), 2000).unwrap();
+        assert_eq!(st.team(0).score, 5);
+        go(&l, &mut st, "sub", json!({"team":0}), 3000).unwrap();
+        assert_eq!(st.team(0).score, 0);
+        // Nothing left: refused below zero.
+        assert!(go(&l, &mut st, "sub", json!({"team":0}), 4000).is_err());
+    }
+
+    #[test]
+    fn shot_clock_suspensions_and_shootout() {
+        let l = layer(Config {
+            preset: Sport::Basketball,
+            fields: preset(Sport::Basketball).fields,
+            clock: ClockCfg {
+                dir: ClockDir::Down,
+                len: 10.0,
+                extra: 5.0,
+                tenths: true,
+            },
+            ..Default::default()
+        });
+        let LayerKind::Scoreboard { x: c } = &l.kind else {
+            panic!()
+        };
+        let mut st = State::default();
+        go(&l, &mut st, "clockStart", json!({}), 0).unwrap();
+        assert_eq!(shot_text(c, &st, 10_000), ("14".to_string(), false));
+        go(&l, &mut st, "shot", json!({"s": 14}), 10_000).unwrap();
+        assert_eq!(shot_text(c, &st, 15_500).0, "9");
+        // Paused with the match clock.
+        go(&l, &mut st, "clockPause", json!({}), 16_000).unwrap();
+        assert_eq!(shot_text(c, &st, 60_000).0, "8");
+        // A countdown at 0 stops and does not start again.
+        go(&l, &mut st, "clockStart", json!({}), 60_000).unwrap();
+        go(&l, &mut st, "foul", json!({"team":0}), 60_000 + 600_000).unwrap();
+        assert!(!st.clock.running);
+        assert!(go(&l, &mut st, "clockStart", json!({}), 700_000).is_err());
+        // Handball: a 2-minute suspension counts down with the match time.
+        let h = layer(Config {
+            preset: Sport::Handball,
+            fields: preset(Sport::Handball).fields,
+            ..Default::default()
+        });
+        let LayerKind::Scoreboard { x: hc } = &h.kind else {
+            panic!()
+        };
+        let mut st = State::default();
+        go(&h, &mut st, "clockStart", json!({}), 0).unwrap();
+        go(
+            &h,
+            &mut st,
+            "card",
+            json!({"team":1,"color":"2 min"}),
+            30_000,
+        )
+        .unwrap();
+        assert_eq!(susps_left(hc, &st, 1, 90_000), vec![60_000]);
+        assert_eq!(fmt_left(60_000), "1:00");
+        assert!(susps_left(hc, &st, 1, 151_000).is_empty());
+        // Football: shoot-out kicks in the « Penalties » period.
+        let f = layer(Config::default());
+        let LayerKind::Scoreboard { x: fc } = &f.kind else {
+            panic!()
+        };
+        let mut st = State {
+            period: 4,
+            ..Default::default()
+        };
+        assert!(shootout_on(fc, &st));
+        go(&f, &mut st, "penalty", json!({"team":0,"scored":true}), 0).unwrap();
+        go(
+            &f,
+            &mut st,
+            "penalty",
+            json!({"team":0,"scored":false}),
+            1000,
+        )
+        .unwrap();
+        assert_eq!(st.team(0).pens, vec![true, false]);
+    }
+
+    #[test]
+    fn texts_follow_the_language_and_the_designer() {
+        let mut c = Config::default();
+        assert_eq!(tr(&c, "fr", "1st half"), "1re mi-temps");
+        assert_eq!(tr(&c, "en", "1st half"), "1st half");
+        assert_eq!(tr(&c, "fr", "GOAL!"), "BUT\u{a0}!");
+        c.texts.insert("GOAL!".into(), "GOOOAL".into());
+        assert_eq!(tr(&c, "fr", "GOAL!"), "GOOOAL");
+        let l = layer(Config {
+            preset: Sport::Basketball,
+            ..Default::default()
+        });
+        let mut st = State::default();
+        go(&l, &mut st, "timeout", json!({"team":0}), 0).unwrap();
+        let ev = st.fx.ev.clone().unwrap();
+        let LayerKind::Scoreboard { x: bc } = &l.kind else {
+            panic!()
+        };
+        assert_eq!(fill(&tr(bc, "fr", &ev.sub), &ev.vars), "PSG · reste 4");
+        assert!(texts_of(bc).contains(&"TIMEOUT"));
     }
 }

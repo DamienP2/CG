@@ -1171,6 +1171,151 @@
     ]
    }
   },
+  "/api/channels/{id}/slate.png": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Slate of a picture (PNG)",
+    "description": "What the picture's outputs show while no project is loaded, at the picture size: its built-in design (`slateStyle`) or its still picture; transparent when there is none. The HTML5 output shows this picture.\n\n**Rights:** public when HTML5 outputs are (`publicOutputs`); else anyone who sees the channel.",
+    "security": [],
+    "parameters": [
+     {
+      "name": "picture",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "description": "Rendition id (default: main picture)."
+     },
+     {
+      "name": "w",
+      "in": "query",
+      "schema": {
+       "type": "integer"
+      },
+      "description": "Width of a smaller copy (at most 640)."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "image/png": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/slate.png": {
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Preview a slate (PNG)",
+    "description": "A slate for settings not applied yet (the choices of the Video streams page): a built-in design, or `custom` with `image`.",
+    "parameters": [
+     {
+      "name": "style",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "$ref": "#/components/schemas/SlateStyle"
+      }
+     },
+     {
+      "name": "channel",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "description": "Channel name written on the slate."
+     },
+     {
+      "name": "image",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "description": "Still picture of the `custom` style (`/assets/…`)."
+     },
+     {
+      "name": "width",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "Picture width."
+     },
+     {
+      "name": "height",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      },
+      "description": "Picture height."
+     },
+     {
+      "name": "num",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "default": 50
+      },
+      "description": "Frame rate numerator."
+     },
+     {
+      "name": "den",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "default": 1
+      },
+      "description": "Frame rate denominator."
+     },
+     {
+      "name": "w",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "default": 320
+      },
+      "description": "Width of the PNG (at most 640)."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "image/png": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/channels/{id}/outputs/{name}/{essence}": {
    "parameters": [
     {
@@ -3354,11 +3499,37 @@
         },
         "height": {
          "type": "integer"
+        },
+        "slate": {
+         "type": "string"
+        },
+        "slateStyle": {
+         "$ref": "#/components/schemas/SlateStyle"
         }
        }
       }
+     },
+     "slate": {
+      "type": "string",
+      "description": "Still picture shown while no project is loaded (\"\" = none)."
+     },
+     "slateStyle": {
+      "$ref": "#/components/schemas/SlateStyle"
      }
     }
+   },
+   "SlateStyle": {
+    "type": "string",
+    "enum": [
+     "aurora",
+     "bento",
+     "gradient",
+     "frame",
+     "lines",
+     "split",
+     "custom"
+    ],
+    "description": "What a channel picture shows while no project is loaded: a built-in design (Aurora, Bento, Gradient, Frame, Lines, Split: \"Strata\", the channel name, size, ratio and frame rate) or `custom`, its still picture (`slate`). Not set in the settings: `custom` when a still picture is set, else `aurora`."
    },
    "PlayoutItem": {
     "type": "object",
@@ -3608,7 +3779,7 @@
    },
    "ServerConfig": {
     "type": "object",
-    "description": "config.json: name, bind, publicOutputs, timezone and channels (format, outputs, loaded project).",
+    "description": "config.json: name, bind, publicOutputs, timezone and channels (format, outputs, loaded project, `slate` and `slateStyle` (SlateStyle) of the main picture and of each rendition).",
     "additionalProperties": true
    },
    "Playlist": {

@@ -3,7 +3,7 @@
 import type { Layer } from './types';
 
 /** Not settings: identity, animation, bindings, and content wired elsewhere. */
-const SKIP = new Set(['id', 'name', 'parent', 'type', 'visible', 'locked', 'props', 'tracks', 'bindings', 'settingBindings', 'overrides', 'timeline', 'manualStart', 'scaleLock', 'grid', 'entries', 'merges', 'link', 'csv', 'items', 'text', 'src']);
+const SKIP = new Set(['id', 'name', 'parent', 'type', 'visible', 'locked', 'props', 'tracks', 'bindings', 'settingBindings', 'overrides', 'timeline', 'manualStart', 'scaleLock', 'lockRatio', 'grid', 'entries', 'merges', 'link', 'csv', 'items', 'text', 'src']);
 
 /** Settings a widget has that its saved form may leave out (unset = inherited). */
 const EXTRA: Record<string, string[]> = {

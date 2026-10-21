@@ -58,15 +58,18 @@ const PROP_ROWS: {
   display?: number;
   suffix?: string;
   labels?: string[];
+  /** The two values keep their ratio when this setting of the layer is on. */
+  lock?: 'scaleLock' | 'lockRatio';
 }[] = [
   { label: 'Position', props: ['x', 'y'], labels: ['X', 'Y'] },
-  { label: 'Size', props: ['width', 'height'], labels: ['W', 'H'] },
+  { label: 'Size', props: ['width', 'height'], labels: ['W', 'H'], lock: 'lockRatio' },
   {
     label: 'Scale',
     props: ['scaleX', 'scaleY'],
     display: 100,
     suffix: '%',
     labels: ['X', 'Y'],
+    lock: 'scaleLock',
   },
   { label: 'Rotation', props: ['rotation'], suffix: '°' },
   { label: 'Opacity', props: ['opacity'], display: 100, suffix: '%' },
@@ -493,6 +496,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         display: undefined,
         suffix: undefined,
         labels: undefined,
+        lock: undefined,
       })),
     ];
     labels.push(
@@ -540,9 +544,9 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           >
             <X size={10} />
           </button>
-          {g.label === 'Scale' && (
-            <button className={`tl-lock ${layer.scaleLock ? 'on' : ''}`} title={layer.scaleLock ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => st.update((t) => void (findLayer(t, layer.id)!.scaleLock = !layer.scaleLock || undefined))}>
-              {layer.scaleLock ? <LinkIcon size={11} /> : <Unlink size={11} />}
+          {g.lock && (
+            <button className={`tl-lock ${layer[g.lock] ? 'on' : ''}`} title={layer[g.lock] ? t('Proportions locked (click to unlock)') : t('Lock the proportions')} onClick={() => st.update((t) => void (findLayer(t, layer.id)![g.lock!] = !layer[g.lock!] || undefined))}>
+              {layer[g.lock] ? <LinkIcon size={11} /> : <Unlink size={11} />}
             </button>
           )}
           <span className="prop-values">
@@ -568,9 +572,9 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   onChange={(v) =>
                     st.update((t) => {
                       const l = findLayer(t, layer.id)!;
-                      // Locked scale: X and Y keep their ratio.
-                      if (g.label === 'Scale' && l.scaleLock) {
-                        const other: Prop = p === 'scaleX' ? 'scaleY' : 'scaleX';
+                      // Locked scale or size: the two keep their ratio.
+                      if (g.lock && l[g.lock] && g.props.length === 2) {
+                        const other: Prop = p === g.props[0] ? g.props[1] : g.props[0];
                         const cur = num(propValue(l, p, frame));
                         setProp(l, other, cur ? (num(propValue(l, other, frame)) * v) / cur : v, frame);
                       }
@@ -876,16 +880,24 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       <button
         className="tool"
         title={tc('stroke', 'Line')}
+        // A straight Pen stroke: round ends, dashes along the line (a thin rectangle had neither).
         onClick={() =>
           onAdd(
-            'rect',
+            'pen',
             {
+              points: [
+                { x: 0, y: 0.5 },
+                { x: 1, y: 0.5 },
+              ],
+              arrowEnd: 'none',
+              drawIn: false,
               props: {
                 x: 160,
-                y: 540,
+                y: 520,
                 width: 600,
-                height: 4,
-                fill: [1, 1, 1, 1],
+                height: 40,
+                stroke: [1, 1, 1, 1],
+                strokeWidth: 4,
               },
             },
             tc('stroke', 'Line'),

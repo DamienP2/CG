@@ -1,7 +1,8 @@
 // One line of text fitted to its cell for the table, ticker and credits widgets: shrink → squeeze → ellipsis,
 // the chain of crates/cg-render/src/wid/table.rs `fitted_path` (engine/textFit.ts fitText = cg_render text::fit_text).
-import type { CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import { fitText, textWidth } from '../engine/textFit';
+import { MoreButton, OpRow, useFrame, type OpBtn } from './kit';
 
 export const FONT = 'Inter';
 export const FONT_CSS = `"Inter", system-ui, sans-serif`;
@@ -14,8 +15,68 @@ export interface FitCfg {
   minSqueeze: number;
 }
 
-/** Width of one line (Inter at a weight), px. */
-export const tw = (text: string, size: number, weight: number, ls = 0) => textWidth(text, { fontFamily: FONT, fontWeight: weight, letterSpacing: ls }, size);
+/** Width of one line (a family, Inter by default, at a weight), px. */
+export const tw = (text: string, size: number, weight: number, ls = 0, family = FONT) => textWidth(text, { fontFamily: family || FONT, fontWeight: weight, letterSpacing: ls }, size);
+/** CSS font family of a text drawn in `family` (Inter when it is missing). */
+export const familyCss = (family?: string) => (family && family !== FONT ? `"${family}", ${FONT_CSS}` : FONT_CSS);
+
+/**
+ * A field of a compact Operator row (a value, a time): it shows `value` until
+ * it is typed in; Enter (or leaving it changed) sends the text, Escape gives up.
+ */
+export function OpField({ value, title, width, placeholder, onSubmit, inputRef }: { value: string; title: string; width: number; placeholder?: string; onSubmit: (v: string) => void; inputRef?: Ref<HTMLInputElement> }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const send = () => {
+    const v = (draft ?? '').trim();
+    setDraft(null);
+    if (v && v !== value.trim()) onSubmit(v);
+  };
+  return (
+    <input
+      ref={inputRef}
+      className="mono"
+      title={title}
+      placeholder={placeholder}
+      style={{ width, height: 28, textAlign: 'center' }}
+      value={draft ?? value}
+      onFocus={() => setDraft(value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={send}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') (setDraft(null), requestAnimationFrame(() => (e.target as HTMLInputElement).blur()));
+      }}
+    />
+  );
+}
+
+/**
+ * The wall-clock time and the time on air now, for an Operator row redrawn every frame: the
+ * Operator gives them when it draws (its updates), they advance from there.
+ */
+export function useLiveTime(time: { nowMs: number; ageSecs: number }) {
+  const frame = useFrame();
+  const ref = useRef({ nowMs: time.nowMs, off: time.nowMs - Date.now(), age: time.ageSecs, at: Date.now() });
+  const r = ref.current;
+  if (r.nowMs !== time.nowMs) Object.assign(r, { nowMs: time.nowMs, off: time.nowMs - Date.now() });
+  if (r.age !== time.ageSecs) Object.assign(r, { age: time.ageSecs, at: Date.now() });
+  return { now: frame + r.off, age: r.age + Math.max(0, frame - r.at) / 1000 };
+}
+
+type Btn = OpBtn | false | null | undefined;
+/** A compact Operator row with a field among its buttons: readout, buttons, the field, more buttons (the ⋯ last). */
+export function OpLine({ value, list, field, after = [] }: { value?: ReactNode; list: Btn[]; field?: ReactNode; after?: Btn[] }) {
+  if (!field) return <OpRow value={value} list={[...list, ...after]} />;
+  const has = (l: Btn[]) => l.some(Boolean);
+  return (
+    <div className="wk-oprow">
+      {(has(list) || (value != null && value !== '')) && <OpRow value={value} list={list} noMore />}
+      {field}
+      {has(after) ? <OpRow list={after} /> : <MoreButton />}
+    </div>
+  );
+}
 
 export interface Fitted1 {
   text: string;
@@ -25,9 +86,9 @@ export interface Fitted1 {
 }
 
 /** The fitted text of a cell `w` px wide (mirrors fitted_path). */
-export function fit1(text: string, size: number, weight: number, ls: number, w: number, fit?: FitCfg): Fitted1 {
+export function fit1(text: string, size: number, weight: number, ls: number, w: number, fit?: FitCfg, family = FONT): Fitted1 {
   if (!fit) return { text, size, sx: 1, changed: false };
-  const base = { fontFamily: FONT, fontWeight: weight, letterSpacing: ls, lineHeight: 1.2, boxW: Math.max(1, w), boxH: size, wrap: false };
+  const base = { fontFamily: family || FONT, fontWeight: weight, letterSpacing: ls, lineHeight: 1.2, boxW: Math.max(1, w), boxH: size, wrap: false };
   const r = fit.overflow === 'ellipsis' ? fitText(text, { ...base, size, overflow: 'ellipsis', squeeze: 1, minSize: 1 }) : fitText(text, { ...base, size, overflow: 'fit', squeeze: fit.minSqueeze / 100, minSize: fit.overflow === 'shrink' ? Math.min(1, fit.minSize / size) : 1 });
   let t = r.text;
   if (r.clip && fit.overflow !== 'ellipsis') t = fitText(t, { ...base, boxW: Math.max(1, w / r.squeeze), size: r.size, overflow: 'ellipsis', squeeze: 1, minSize: 1 }).text;
@@ -35,8 +96,8 @@ export function fit1(text: string, size: number, weight: number, ls: number, w: 
 }
 
 /** A fitted line in the box (x, y, w, h), vertically centred. */
-export function FitLine({ text, size, weight, ls = 0, align, box: [x, y, w, h], color, fit, style }: { text: string; size: number; weight: number; ls?: number; align: 'left' | 'center' | 'right'; box: [number, number, number, number]; color: string; fit?: FitCfg; style?: CSSProperties }) {
-  const f = fit1(text, size, weight, ls, w, fit);
+export function FitLine({ text, size, weight, ls = 0, align, box: [x, y, w, h], color, fit, style, family = FONT }: { text: string; size: number; weight: number; ls?: number; align: 'left' | 'center' | 'right'; box: [number, number, number, number]; color: string; fit?: FitCfg; style?: CSSProperties; family?: string }) {
+  const f = fit1(text, size, weight, ls, w, fit, family);
   return (
     <div style={{ position: 'absolute', left: x, top: y, width: w, height: h, display: 'flex', alignItems: 'center', ...style }}>
       <span
@@ -46,7 +107,7 @@ export function FitLine({ text, size, weight, ls = 0, align, box: [x, y, w, h], 
           flex: 'none',
           transform: f.sx < 1 ? `scaleX(${f.sx})` : undefined,
           transformOrigin: '0 50%',
-          fontFamily: FONT_CSS,
+          fontFamily: familyCss(family),
           fontWeight: weight,
           fontSize: f.size,
           letterSpacing: ls,

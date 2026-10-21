@@ -96,6 +96,21 @@ export const DEFAULTS: Record<Prop, Value> = {
   arcStart: 0,
   arcEnd: 360,
   innerRadius: 0,
+  // Drop shadow (Layer.dropShadow), as the Text widget's own: #000000aa, 4 px down, 12 px blur.
+  shadowColor: [0, 0, 0, 170 / 255],
+  shadowX: 0,
+  shadowY: 4,
+  shadowBlur: 12,
+  // Pen: visible portion of the path, % of its length.
+  drawStart: 0,
+  drawEnd: 100,
+  // Rectangle « Per corner »: top left, top right, bottom right, bottom left radius.
+  cornerTl: 0,
+  cornerTr: 0,
+  cornerBr: 0,
+  cornerBl: 0,
+  // Second colour of a gradient (shapes, Text).
+  fill2: [1, 59 / 255, 92 / 255, 1],
 };
 
 /** Mirror of anim::layer_default: a property neither set nor animated; an ellipse's arc is its settings (older layers have them only there). */
@@ -104,6 +119,18 @@ export function layerDefault(layer: Layer, p: Prop): Value {
     if (p === 'arcStart') return layer.start ?? DEFAULTS.arcStart;
     if (p === 'arcEnd') return layer.end ?? DEFAULTS.arcEnd;
     if (p === 'innerRadius') return layer.inner ?? DEFAULTS.innerRadius;
+  }
+  // A pen's visible portion: its settings (older layers have it only there).
+  if (layer.type === 'pen') {
+    if (p === 'drawStart') return layer.vStart ?? DEFAULTS.drawStart;
+    if (p === 'drawEnd') return layer.vEnd ?? DEFAULTS.drawEnd;
+  }
+  // A rectangle's corners and a gradient's second colour: their settings (older layers have them only there).
+  const ci = ['cornerTl', 'cornerTr', 'cornerBr', 'cornerBl'].indexOf(p);
+  if (ci >= 0 && layer.type === 'rect') return layer.corners?.[ci] ?? 0;
+  if (p === 'fill2') {
+    const c2 = layer.type === 'text' ? layer.color2 ?? '#a594ff' : ['rect', 'ellipse', 'polygon', 'pen'].includes(layer.type) ? ((layer as { fillStyle?: { color2?: string } }).fillStyle?.color2 ?? '#ff3b5c') : undefined;
+    if (c2 !== undefined) return parseHex(c2) ?? DEFAULTS.fill2;
   }
   return DEFAULTS[p];
 }

@@ -3,10 +3,14 @@
 // Same picture as crates/cg-render/src/wid/scoreboard.rs (line for line);
 // rules and actions in crates/cg-core/src/wid/scoreboard.rs.
 import { useState } from 'react';
-import { Minus, Pause, Play, Plus, Trophy, Undo2 } from 'lucide-react';
+import { CircleCheck, CircleX, Flag, Hand, Minus, Pause, Play, Plus, RotateCcw, SkipForward, Timer, Trophy, Undo2, UserMinus } from 'lucide-react';
 import { interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { t } from '../i18n';
+import { useFonts } from '../engine/fonts';
+import { Dropdown } from '../ui/Dropdown';
+import { useApp } from '../store';
+import { t, tc, tl } from '../i18n';
+import { hexMix } from './map-geo';
 import { AssetPicker } from '../designer/Inspector';
 import { Btns, ColorPick, Content, defineWidget, getPath, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { col, ink, mix, poly, rrect, tf, ellipse, Pt, type Cmd } from './scoreboard-paint';
@@ -31,6 +35,12 @@ export interface Fields {
   cards?: boolean;
   poss?: boolean;
   sets?: boolean;
+  /** Shot clock (basketball: 24 s, reset to 24 or 14). */
+  shot?: boolean;
+  /** Penalty shoot-out kicks (the « Penalties » period). */
+  shootout?: boolean;
+  /** Timed suspensions counting down. */
+  susp?: boolean;
 }
 export interface Config {
   preset?: Sport;
@@ -48,6 +58,14 @@ export interface Config {
   debounce?: number;
   source?: { rule?: 'override' | 'manual' | 'feed'; overS?: number };
   bestOf?: number;
+  shot?: { len?: number; reset?: number };
+  /** Minutes of a suspension (0 = the sport's). */
+  suspLen?: number;
+  /** Background of the board. */
+  bg?: string;
+  font?: string;
+  /** The texts the board writes, by English wording (empty = in the project's language). */
+  texts?: Record<string, string>;
 }
 
 interface TeamState {
@@ -57,6 +75,9 @@ interface TeamState {
   yellow?: number;
   red?: number;
   susp?: number;
+  added?: number[];
+  pens?: boolean[];
+  susps?: [number, number][];
 }
 export interface State {
   teams?: TeamState[];
@@ -68,11 +89,13 @@ export interface State {
   version?: 'compact' | 'full' | null;
   tennis?: { pts?: [number, number]; games?: [number, number]; sets?: [number, number][]; tb?: boolean; done?: boolean; free?: boolean; freePts?: [string, string] };
   volley?: { sets?: [number, number][]; won?: [number, number]; done?: boolean };
-  fx?: { sc?: Record<string, { at: number; from: string }>; ev?: { text: string; sub: string; color: string; at: number } | null; undoAt?: number; ignAt?: number };
+  fx?: { sc?: Record<string, { at: number; from: string }>; ev?: { text: string; sub: string; color: string; at: number; vars?: Record<string, string> } | null; undoAt?: number; ignAt?: number };
   src?: { manualAt?: number; dirty?: boolean };
   last?: { key: string; at: number };
   ignored?: number;
   hist?: { label: string }[];
+  shotBase?: number;
+  shotLen?: number;
 }
 
 // ---------------------------------------------------------------- presets --
@@ -100,7 +123,7 @@ interface Preset {
   multi: boolean;
   rules: string;
 }
-const F = (period: boolean, clock: boolean, fouls: boolean, timeouts: boolean, cards: boolean, poss: boolean, sets: boolean) => ({ period, clock, fouls, timeouts, cards, poss, sets });
+const F = (period: boolean, clock: boolean, fouls: boolean, timeouts: boolean, cards: boolean, poss: boolean, sets: boolean) => ({ period, clock, fouls, timeouts, cards, poss, sets, shot: false, shootout: false, susp: false });
 export const PRESETS: Record<Sport, Preset> = {
   football: {
     name: 'Football',
@@ -111,7 +134,7 @@ export const PRESETS: Record<Sport, Preset> = {
     cumulative: true,
     kind: 'points',
     pts: [{ label: 'GOAL', v: 1, ev: 'GOAL!' }],
-    fields: F(true, true, false, false, true, false, false),
+    fields: { ...F(true, true, false, false, true, false, false), shootout: true },
     digits: 2,
     cards: ['yellow', 'red'],
     timeouts: 0,
@@ -156,7 +179,7 @@ export const PRESETS: Record<Sport, Preset> = {
       { label: '+2', v: 2, ev: '' },
       { label: '+3', v: 3, ev: '3 POINTS!' },
     ],
-    fields: F(true, true, true, true, false, true, false),
+    fields: { ...F(true, true, true, true, false, true, false), shot: true },
     digits: 3,
     cards: [],
     timeouts: 5,
@@ -174,7 +197,7 @@ export const PRESETS: Record<Sport, Preset> = {
     cumulative: true,
     kind: 'points',
     pts: [{ label: 'GOAL', v: 1, ev: 'GOAL!' }],
-    fields: F(true, true, false, true, true, false, false),
+    fields: { ...F(true, true, false, true, true, false, false), susp: true },
     digits: 2,
     cards: ['yellow', '2 min', 'red'],
     timeouts: 3,
@@ -267,13 +290,18 @@ function cfg(c: Config) {
     debounce: c.debounce ?? 400,
     source: { rule: 'override' as const, overS: 20, ...c.source },
     bestOf: c.bestOf ?? 3,
+    shot: { len: 24, reset: 14, ...c.shot },
+    suspLen: c.suspLen ?? 0,
+    bg: c.bg ?? '#05060c',
+    font: c.font ?? 'Inter',
+    texts: c.texts ?? {},
   };
 }
 type K = ReturnType<typeof cfg>;
 const P = (k: K) => PRESETS[k.preset] ?? PRESETS.football;
 const teamCount = (k: K) => (P(k).multi ? Math.max(2, k.teams.length) : 2);
 const team = (k: K, i: number): Required<Team> => (k.teams[i] ? { ...TEAM_DEF, ...k.teams[i] } : SAMPLE[i % 4]);
-const ts = (s: State, i: number): Required<TeamState> => ({ score: 0, fouls: 0, toUsed: 0, yellow: 0, red: 0, susp: 0, ...s.teams?.[i] });
+const ts = (s: State, i: number): Required<TeamState> => ({ score: 0, fouls: 0, toUsed: 0, yellow: 0, red: 0, susp: 0, added: [], pens: [], susps: [], ...s.teams?.[i] });
 
 const STOP = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'of', 'the', 'fc', 'and', 'et', 'd']);
 /** 3-letter short name from a long name (mirrors auto_short). */
@@ -381,6 +409,60 @@ function tennisTag(t: Tn) {
 const periodText = (k: K, s: State) => (P(k).kind === 'tennis' ? `SET ${tennisOf(s).sets.length + (tennisOf(s).done ? 0 : 1)}` : (P(k).periods[s.period ?? 0] ?? ''));
 const won = (s: State): [number, number] => s.volley?.won ?? [0, 0];
 
+// ------------------------------------------------------------------ texts --
+
+/** A text the board writes: the Designer's own, else in the project's language (mirrors tr). */
+export const tr = (k: K, lang: string, en: string) => (k.texts[en]?.trim() ? k.texts[en] : tl(lang, en));
+/** `{name}` replaced by its value (mirrors fill). */
+const fill = (s: string, vars: Record<string, string> | undefined) => Object.entries(vars ?? {}).reduce((a, [key, v]) => a.split(`{${key}}`).join(v), s);
+/** The texts of a sport the Designer may rename, in order (mirrors texts_of). */
+function textsOf(k: K): string[] {
+  const pr = P(k);
+  const out: string[] = [];
+  const add = (x: string) => x && !out.includes(x) && out.push(x);
+  pr.periods.forEach(add);
+  pr.pts.forEach((pt) => add(pt.ev));
+  if (pr.kind === 'tennis') ['FINAL', 'MANUAL ENTRY', 'TIE-BREAK', 'DEUCE', 'ADVANTAGE', 'GAME, SET & MATCH'].forEach(add);
+  if (pr.kind === 'sets') ['MATCH!', '{team} wins {a}–{b}'].forEach(add);
+  if (pr.bonus > 0) ['FOULS', 'BONUS'].forEach(add);
+  if (pr.timeouts > 0) ['TO', 'TIMEOUT', '{team} · {n} left'].forEach(add);
+  for (const c of pr.cards) add(c === 'yellow' ? 'YELLOW CARD' : c === 'red' ? 'RED CARD' : '2-MIN SUSPENSION');
+  if (k.fields.susp) add('SUSPENSION');
+  return out;
+}
+
+// -------------------------------------------- shot clock, suspensions, shoot-out --
+
+const shotOn = (k: K, s: State) => k.fields.shot && clockOn(k, s);
+/** Whole seconds left of the shot clock, ended (mirrors shot_text). */
+function shotText(k: K, s: State, now: number): [string, boolean] {
+  const len = (s.shotLen ?? 0) > 0 ? s.shotLen! : Math.trunc(Math.max(1, k.shot.len) * 1000);
+  const left = Math.max(0, len - (elapsed(s, now) - (s.shotBase ?? 0)));
+  return [String(Math.floor((left + 999) / 1000)), left === 0];
+}
+const matchMs = (k: K, s: State, now: number) => offsetMs(k, s) + elapsed(s, now);
+const suspMin = (k: K) => (k.suspLen > 0 ? k.suspLen : k.preset === 'rugby' ? 10 : 2);
+/** Time left of the running suspensions of a team, soonest first (mirrors susps_left). */
+function suspsLeft(k: K, s: State, i: number, now: number): number[] {
+  const m = matchMs(k, s, now);
+  return (ts(s, i).susps ?? [])
+    .map(([a, l]) => a + l - m)
+    .filter((l) => l > 0)
+    .sort((a, b) => a - b);
+}
+const fmtLeft = (ms: number) => {
+  const t = Math.floor((Math.max(0, ms) + 999) / 1000);
+  return `${Math.floor(t / 60)}:${pad(t % 60)}`;
+};
+const shootoutOn = (k: K, s: State) => k.fields.shootout && P(k).periods[s.period ?? 0] === 'Penalties';
+
+/** Colours of the board from its background (mirrors pal). */
+function pal(k: K) {
+  const bg = k.bg.trim();
+  if (!bg || bg.toLowerCase() === '#05060c') return { bg: '#05060c', cell: CELL_BG, tag: TAG_BG };
+  return { bg, cell: hexMix(bg, '#ffffff', 0.04), tag: hexMix(bg, '#ffffff', 0.08) };
+}
+
 // ---------------------------------------------------------------- drawing --
 
 const TAG_BG = '#11142a';
@@ -476,21 +558,26 @@ function possMark(p: Pt, serve: boolean, cx: number, cy: number, h: number, mirr
   }
 }
 
-type Item = ['txt', string, string, number] | ['dot', boolean] | ['card', string] | ['badge', string] | ['sep'];
-function stats(k: K, s: State, i: number): Item[] {
+type Item = ['txt', string, string, number] | ['dot', boolean] | ['card', string] | ['badge', string, string] | ['pen', boolean | null] | ['sep'];
+function stats(k: K, s: State, i: number, lang: string, now: number): Item[] {
   const pr = P(k);
   const t = ts(s, i);
   const groups: Item[][] = [];
+  if (shootoutOn(k, s)) {
+    const g: Item[] = Array.from({ length: Math.max(5, t.pens.length) }, (_, j): Item => ['pen', t.pens[j] ?? null]);
+    g.push(['txt', ` ${t.pens.filter(Boolean).length}`, '#ffffff', 800]);
+    groups.push(g);
+  }
   if (k.fields.fouls) {
     const g: Item[] = [
-      ['txt', 'FOULS ', '#ffffffbf', 700],
+      ['txt', `${tr(k, lang, 'FOULS')} `, '#ffffffbf', 700],
       ['txt', String(t.fouls), '#ffffff', 800],
     ];
-    if (pr.bonus > 0 && t.fouls >= pr.bonus) g.push(['badge', 'BONUS']);
+    if (pr.bonus > 0 && t.fouls >= pr.bonus) g.push(['badge', tr(k, lang, 'BONUS'), '#ff3b5c']);
     groups.push(g);
   }
   if (k.fields.timeouts && pr.timeouts > 0) {
-    const g: Item[] = [['txt', 'TO ', '#ffffffbf', 700]];
+    const g: Item[] = [['txt', `${tr(k, lang, 'TO')} `, '#ffffffbf', 700]];
     const left = Math.max(0, pr.timeouts - t.toUsed);
     for (let j = 0; j < pr.timeouts; j++) g.push(['dot', j < left]);
     groups.push(g);
@@ -506,6 +593,10 @@ function stats(k: K, s: State, i: number): Item[] {
     }
     if (g.length) groups.push(g);
   }
+  if (k.fields.susp) {
+    const g = suspsLeft(k, s, i, now).map((ms): Item => ['badge', fmtLeft(ms), '#0284c7']);
+    if (g.length) groups.push(g);
+  }
   const out: Item[] = [];
   groups.forEach((g, j) => {
     if (j) out.push(['sep']);
@@ -515,7 +606,7 @@ function stats(k: K, s: State, i: number): Item[] {
 }
 
 function drawStats(p: Pt, items: Item[], x: number, w: number, cy: number, fs: number, color: string, right: boolean) {
-  const widths = items.map((it) => (it[0] === 'txt' ? p.tw(it[1], fs, it[3], 0) : it[0] === 'dot' ? fs * 0.55 + 3 : it[0] === 'card' ? fs * 0.6 + 3 : it[0] === 'badge' ? p.tw(it[1], fs * 0.8, 800, 0) + 18 : fs * 0.9));
+  const widths = items.map((it) => (it[0] === 'txt' ? p.tw(it[1], fs, it[3], 0) : it[0] === 'dot' ? fs * 0.55 + 3 : it[0] === 'card' ? fs * 0.6 + 3 : it[0] === 'badge' ? p.tw(it[1], fs * 0.8, 800, 0) + 18 : it[0] === 'pen' ? fs * 0.62 + 3 : fs * 0.9));
   const total = widths.reduce((a, b) => a + b, 0);
   let cx = right ? x + w - total : x;
   const white = color === '#ffffff';
@@ -524,8 +615,9 @@ function drawStats(p: Pt, items: Item[], x: number, w: number, cy: number, fs: n
     if (it[0] === 'txt') p.text(it[1], cx, cy, white ? it[2] : color, { size: fs, weight: it[3] });
     else if (it[0] === 'dot') p.circle(cx + fs * 0.275, cy, fs * 0.275, it[1] ? '#facc15' : '#ffffff33');
     else if (it[0] === 'card') p.rect(cx, cy - fs * 0.425, fs * 0.6, fs * 0.85, 2, it[1]);
+    else if (it[0] === 'pen') p.circle(cx + fs * 0.31, cy, fs * 0.31, it[1] === true ? '#22c55e' : it[1] === false ? '#ef4444' : '#ffffff33');
     else if (it[0] === 'badge') {
-      p.rect(cx + 6, cy - fs * 0.5, iw - 6, fs, 4, '#ff3b5c');
+      p.rect(cx + 6, cy - fs * 0.5, iw - 6, fs, 4, it[2]);
       p.text(it[1], cx + 6 + (iw - 6) / 2, cy, '#ffffff', { size: fs * 0.8, weight: 800, anchor: 0 });
     } else p.text('|', cx + iw / 2, cy, '#ffffff4d', { size: fs, weight: 700, anchor: 0 });
     cx += iw;
@@ -533,8 +625,10 @@ function drawStats(p: Pt, items: Item[], x: number, w: number, cy: number, fs: n
 }
 
 /** Lays out (and unless dry, draws) the board at row height h; returns its size (mirrors board()). */
-function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [number, number] {
+function board(p: Pt, k: K, s: State, data: Data, now: number, h: number, lang: string): [number, number] {
   const pr = P(k);
+  const pl = pal(k);
+  const shot = shotOn(k, s) ? shotText(k, s, now) : null;
   const n = teamCount(k);
   const order = Array.from({ length: n }, (_, i) => (s.swapped ? n - 1 - i : i));
   const full = (s.version ?? k.version) === 'full';
@@ -550,7 +644,7 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
   const possW = k.fields.poss ? h * 0.42 : 0;
   const setsW = k.fields.sets && pr.kind === 'sets' ? h * 0.7 : 0;
   const ck = clockOn(k, s) ? clockText(k, s, now) : null;
-  const per = k.fields.period ? periodText(k, s) : '';
+  const per = k.fields.period ? tr(k, lang, periodText(k, s)) : '';
   const serve = pr.poss === 'Serve';
   const radius = k.radius;
   const gap = h * 0.0375;
@@ -571,7 +665,7 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
     const txt = String(sc[i] ?? 0);
     const real = p.tw(txt, sfs, 800, 0);
     const sx = real > reserve ? reserve / real : 1;
-    let bg = col(CELL_BG);
+    let bg = col(pl.cell);
     let fg = col('#ffffff');
     let scale = 1;
     const fx = s.fx?.sc?.[i];
@@ -609,11 +703,11 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
     const slots = Math.min(5, Math.max(3, k.bestOf)) - 1;
     const rowW = barW + possW + crestW + nameW + slots * cellW + gW + pW;
     const hd = h * 0.56;
-    const tag = tennisTag(tn);
+    const tag = tennisTag(tn) && tr(k, lang, tennisTag(tn));
     w0 = rowW;
     h0 = hd + 2 * h + 2 * gap;
     p.clip(rrect(0, 0, w0, h0, radius));
-    p.rect(0, 0, w0, hd, 0, TAG_BG);
+    p.rect(0, 0, w0, hd, 0, pl.tag);
     let x = h * 0.25;
     const pfs = h * 0.3;
     p.text(per, x, hd / 2, '#ffffff', { size: pfs, weight: 800, ls: pfs * 0.08 });
@@ -628,7 +722,7 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
       const t = team(k, i);
       y += gap;
       p.rect(0, y - gap, w0, gap, 0, '#1a1d30');
-      p.rect(0, y, w0, h, 0, CELL_BG);
+      p.rect(0, y, w0, h, 0, pl.cell);
       p.rect(0, y, barW, h * 0.7, 0, t.c1);
       p.rect(0, y + h * 0.7, barW, h * 0.3, 0, t.c2);
       let xx = barW;
@@ -654,12 +748,12 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
       xx += gW;
       const pts = tennisPts(tn, i);
       p.rect(xx, y, pW, h, 0, pts === 'AD' ? '#facc15' : '#ffffff');
-      p.text(pts, xx + pW / 2, y + h / 2, CELL_BG, { size: h * 0.56, weight: 800, anchor: 0 });
+      p.text(pts, xx + pW / 2, y + h / 2, pl.cell, { size: h * 0.56, weight: 800, anchor: 0 });
       y += h;
     }
     p.pop();
   } else if (k.layout === 'stacked') {
-    const statW = full && (k.fields.fouls || k.fields.timeouts || k.fields.cards) ? h * 3.6 : 0;
+    const statW = full && (k.fields.fouls || k.fields.timeouts || k.fields.cards || k.fields.susp || shootoutOn(k, s)) ? h * 3.6 : 0;
     const rowW = barW + crestW + nameW + possW + statW + setsW + scoreW;
     const hd = k.fields.period || ck ? h * 0.6 : 0;
     w0 = rowW;
@@ -668,11 +762,16 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
     p.clip(rrect(0, 0, w0, h0, radius));
     const headY = top ? 0 : h0 - hd;
     if (hd > 0) {
-      p.rect(0, headY, w0, hd, 0, TAG_BG);
+      p.rect(0, headY, w0, hd, 0, pl.tag);
       const pfs = h * 0.3;
       p.text(per, h * 0.25, headY + hd / 2, '#c7cbe0', { size: pfs, weight: 800, ls: pfs * 0.08 });
       if (ck) {
         let rx = w0 - h * 0.25;
+        if (shot) {
+          const sfs = h * 0.42;
+          p.text(shot[0], rx, headY + hd / 2, shot[1] ? '#ff3b5c' : '#ffd200', { size: sfs, weight: 800, anchor: 1 });
+          rx -= p.tw('88', sfs, 800, 0) + h * 0.3;
+        }
         if ((s.added ?? 0) > 0) {
           const a = `+${s.added}`;
           const afs = h * 0.34;
@@ -687,7 +786,7 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
     let y = top ? hd : 0;
     for (const i of order) {
       const t = team(k, i);
-      p.rect(0, y, w0, gap, 0, '#05060c');
+      p.rect(0, y, w0, gap, 0, pl.bg);
       y += gap;
       p.rect(0, y, w0, h, 0, t.c1);
       p.rect(0, y, barW, h, 0, t.c2);
@@ -700,7 +799,7 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
       x += possW;
       if (statW > 0) {
         p.clip(rrect(x, y, statW, h, 0));
-        drawStats(p, stats(k, s, i), x, statW, y + h / 2, h * 0.24, ink(t.c1), false);
+        drawStats(p, stats(k, s, i, lang, now), x, statW, y + h / 2, h * 0.24, ink(t.c1), false);
         p.pop();
       }
       x += statW;
@@ -715,7 +814,8 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
     p.pop();
   } else {
     const showClk = k.fields.period || !!ck;
-    const clockW = showClk ? (ck ? h * 2.9 : h * 2.1) : 0;
+    const shotW = shot ? h * 0.95 : 0;
+    const clockW = showClk ? (ck ? h * 2.9 + shotW : h * 2.1) : 0;
     const teamW = barW + crestW + nameW + possW + setsW + scoreW;
     const seq: ([number, boolean] | null)[] = order.map((i, j) => [i, n === 2 && j === 1]);
     if (showClk) {
@@ -738,19 +838,25 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
     });
     w0 = x;
     const exH = h * 0.56;
-    const hasStats = full && order.some((i) => stats(k, s, i).length > 0);
+    const hasStats = full && order.some((i) => stats(k, s, i, lang, now).length > 0);
     const tab = !!ck && (s.added ?? 0) > 0;
     h0 = h + (hasStats ? exH : tab ? h * 0.42 : 0);
     p.clip(rrect(0, 0, w0, h, radius));
-    p.rect(0, 0, w0, h, 0, '#05060c');
+    p.rect(0, 0, w0, h, 0, pl.bg);
     if (showClk) {
-      p.rect(clockX, 0, clockW, h, 0, TAG_BG);
+      p.rect(clockX, 0, clockW, h, 0, pl.tag);
       const pf = h * 0.25;
       const cf = h * 0.46;
       const lp = k.fields.period ? pf * 1.1 : 0;
       const lc = ck ? cf * 1.05 : 0;
       const top = (h - lp - lc) / 2;
-      const cx = clockX + clockW / 2;
+      const cx = clockX + (clockW - shotW) / 2;
+      if (shot) {
+        // The shot clock right of the match clock.
+        const sx = clockX + clockW - shotW;
+        p.rect(sx, h * 0.2, 1, h * 0.6, 0, '#ffffff26');
+        p.text(shot[0], sx + shotW / 2, h / 2, shot[1] ? '#ff3b5c' : '#ffd200', { size: h * 0.5, weight: 800, anchor: 0 });
+      }
       if (k.fields.period) p.text(per, cx, top + lp / 2, '#c7cbe0', { size: pf, weight: 800, ls: pf * 0.08, anchor: 0 });
       if (ck) p.text(ck[0], cx, top + lp + lc / 2, ck[2] ? '#ff3b5c' : '#ffffff', { size: cf, weight: 800, anchor: 0 });
     }
@@ -788,11 +894,11 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
         p.rect(bx, h, teamW, exH, 0, '#0b0d18eb');
         p.rect(bx, h, teamW, gap, 0, t.c2);
         p.clip(rrect(bx, h, teamW, exH, 0));
-        drawStats(p, stats(k, s, i), bx + h * 0.2, teamW - h * 0.4, h + exH / 2, h * 0.3, '#ffffff', mirror);
+        drawStats(p, stats(k, s, i, lang, now), bx + h * 0.2, teamW - h * 0.4, h + exH / 2, h * 0.3, '#ffffff', mirror);
         p.pop();
       }
     if (tab) {
-      const tx = clockX + clockW / 2 - h * 0.45;
+      const tx = clockX + (clockW - shotW) / 2 - h * 0.45;
       p.rect(tx, h, h * 0.9, h * 0.42, h * 0.1, '#ff3b5c');
       p.rect(tx, h, h * 0.9, h * 0.1, 0, '#ff3b5c');
       p.text(`+${s.added}`, tx + h * 0.45, h + h * 0.21, '#ffffff', { size: h * 0.32, weight: 800, anchor: 0 });
@@ -831,13 +937,16 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
           const pulse = 1 + 0.04 * Math.sin(kk * 40) * (1 - clamp01(kk * 4));
           const tfs = h * 0.6;
           const tx = h * 0.35;
-          const tw = p.tw(ev.text, tfs, 800, tfs * 0.02);
-          p.text(ev.text, tx + tw / 2, by + bh / 2, fg, { size: tfs, weight: 800, ls: tfs * 0.02, anchor: 0, sx: pulse, sy: pulse, skew: 0.2 });
+          // In the project's language (or the Designer's words).
+          const text = fill(tr(k, lang, ev.text), ev.vars);
+          const sub = fill(tr(k, lang, ev.sub), ev.vars);
+          const tw = p.tw(text, tfs, 800, tfs * 0.02);
+          p.text(text, tx + tw / 2, by + bh / 2, fg, { size: tfs, weight: 800, ls: tfs * 0.02, anchor: 0, sx: pulse, sy: pulse, skew: 0.2 });
           const sx = tx + tw + h * 0.35;
           p.clip(rrect(sx, by, Math.max(0, w0 - sx - h * 0.2), bh, 0));
           const a = p.alpha;
           p.alpha = a * 0.9;
-          p.text(ev.sub, sx, by + bh / 2, fg, { size: h * 0.32, weight: 800 });
+          p.text(sub, sx, by + bh / 2, fg, { size: h * 0.32, weight: 800 });
           p.alpha = a;
           p.pop();
           const shx = -0.1 * w0 + 1.2 * w0 * clamp01(kk * 2.2);
@@ -865,13 +974,26 @@ function board(p: Pt, k: K, s: State, data: Data, now: number, h: number): [numb
   return [w0, totalH];
 }
 
+/** A painter in the board's font. */
+const ptOf = (k: K, dry = false) => Object.assign(new Pt(dry), { font: k.font || 'Inter' });
 /** Natural size of the board at row height h. */
-const sizeAt = (k: K, s: State, data: Data, now: number, h: number) => board(new Pt(true), k, s, data, now, h);
+const sizeAt = (k: K, s: State, data: Data, now: number, h: number, lang = 'fr') => board(ptOf(k, true), k, s, data, now, h, lang);
 
 // --------------------------------------------------------------- operator --
 
-/** The Operator's compact row: the score, − / + per team, undo, the clock. */
-function Compact({ layer, state, data, act }: { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void }) {
+type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; lang?: string };
+
+/** The point buttons of a sport: one per value (highest first), with the first preset button of that value. */
+function pointTypes(k: K): [number, number][] {
+  const pr = P(k);
+  if (pr.kind !== 'points') return [[1, 0]];
+  const seen = new Map<number, number>();
+  pr.pts.forEach((pt, j) => !seen.has(pt.v) && seen.set(pt.v, j));
+  return [...seen.entries()].sort((a, b) => b[0] - a[0]);
+}
+
+/** The Operator's compact rows: the score and clock, undo, start / pause; then per team − (its last point) and one + per point type. */
+function Compact({ layer, state, data, act }: OpP) {
   const now = useFrame();
   const k = cfg(layer);
   const s = (state ?? {}) as State;
@@ -883,26 +1005,79 @@ function Compact({ layer, state, data, act }: { layer: Config; state: unknown; d
   const ck = clockOn(k, s) ? clockText(k, s, now) : null;
   const hasClock = pr.kind === 'points' && k.clock.dir !== 'none';
   const score = pr.kind === 'tennis' ? `${tn.games.join('–')} · ${[0, 1].map((i) => tennisPts(tn, i)).join('–')}` : sc.join('–');
+  const types = pointTypes(k);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+      <OpRow
+        value={ck ? `${score} · ${ck[0]}` : score}
+        list={[
+          { icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') },
+          hasClock && (s.clock?.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('clockPause') } : { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('clockStart') }),
+        ]}
+      />
+      <div className="wk-oprow" style={{ gap: 10 }}>
+        {order.map((i) => {
+          const sh = shortOf(team(k, i));
+          return (
+            <OpRow
+              key={i}
+              noMore
+              list={[
+                { icon: Minus, tag: sh, title: pr.kind === 'tennis' ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh }), onClick: () => act('sub', { team: i }) },
+                ...types.map(([v, j]) => ({ icon: Plus, tag: String(v), tone: 'green' as const, title: pr.kind === 'points' ? `${sh} +${v}` : t('POINT {team}', { team: sh }), onClick: () => act('add', { team: i, pts: j }) })),
+              ]}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Under ⋯: period, possession, fouls, timeouts, shot clock, suspensions, shoot-out kicks. */
+function More({ layer, state, data, act, lang }: OpP) {
+  const k = cfg(layer);
+  const s = (state ?? {}) as State;
+  const pr = P(k);
+  const n = teamCount(k);
+  const order = Array.from({ length: n }, (_, i) => (s.swapped ? n - 1 - i : i));
+  void data;
+  const sh = (i: number) => shortOf(team(k, i));
+  const per = s.period ?? 0;
+  const next = pr.periods[per + 1];
+  const card = k.preset === 'handball' ? '2 min' : k.preset === 'rugby' ? 'yellow' : '';
   return (
     <OpRow
-      value={ck ? `${score} · ${ck[0]}` : score}
+      noMore
       list={[
-        ...order.flatMap((i) => {
-          const sh = shortOf(team(k, i));
-          return [
-            { icon: Minus, tag: sh, title: pr.kind === 'tennis' ? t('Remove a point in this game') : `${sh} −${pr.pts[0].v}`, onClick: () => act('sub', { team: i }) },
-            { icon: Plus, tag: sh, tone: 'green' as const, title: pr.kind === 'points' ? `${sh} ${t(pr.pts[0].label)}` : t('POINT {team}', { team: sh }), onClick: () => act('add', { team: i, pts: 0 }) },
-          ];
-        }),
-        { icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') },
-        hasClock && (s.clock?.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('clockPause') } : { icon: Play, title: t('Start'), tone: 'green', onClick: () => act('clockStart') }),
+        k.fields.period && pr.kind !== 'tennis' && { icon: SkipForward, tag: next ? tr(k, lang ?? 'fr', next) : undefined, title: t('Next period'), disabled: !next, onClick: () => act('nextPeriod') },
+        k.fields.poss && { icon: Flag, tag: sh(((s.poss ?? 0) + 1) % n), title: `${t(pr.poss)} → ${sh(((s.poss ?? 0) + 1) % n)}`, onClick: () => act('possession') },
+        ...(k.fields.fouls && pr.kind !== 'tennis' ? order.map((i) => ({ icon: Hand, tag: sh(i), title: t('Foul {team}', { team: sh(i) }), onClick: () => act('foul', { team: i }) })) : []),
+        ...(k.fields.timeouts && pr.timeouts > 0 ? order.map((i) => ({ icon: Timer, tag: sh(i), title: t('Timeout {team}', { team: sh(i) }), disabled: ts(s, i).toUsed >= pr.timeouts, onClick: () => act('timeout', { team: i }) })) : []),
+        ...(shotOn(k, s) ? [k.shot.len, k.shot.reset].map((v) => ({ icon: RotateCcw, tag: String(v), title: t('Shot clock: {n} s', { n: v }), onClick: () => act('shot', { s: v }) })) : []),
+        ...(k.fields.susp ? order.map((i) => ({ icon: UserMinus, tag: sh(i), title: t('Suspension {team}', { team: sh(i) }), onClick: () => (card ? act('card', { team: i, color: card }) : act('suspension', { team: i })) })) : []),
+        ...(shootoutOn(k, s)
+          ? order.flatMap((i) => [
+              { icon: CircleCheck, tag: sh(i), tone: 'green' as const, title: t('Kick scored · {team}', { team: sh(i) }), onClick: () => act('penalty', { team: i, scored: true }) },
+              { icon: CircleX, tag: sh(i), title: t('Kick missed · {team}', { team: sh(i) }), onClick: () => act('penalty', { team: i, scored: false }) },
+            ])
+          : []),
       ]}
     />
   );
 }
 
-function Operator({ layer, state, data, act }: { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void }) {
+/** It has advanced controls under ⋯. */
+function hasMore(layer: Config, state: unknown) {
+  const k = cfg(layer);
+  const s = (state ?? {}) as State;
+  const pr = P(k);
+  return (k.fields.period && pr.kind !== 'tennis') || k.fields.poss || (k.fields.fouls && pr.kind !== 'tennis') || (k.fields.timeouts && pr.timeouts > 0) || shotOn(k, s) || k.fields.susp || shootoutOn(k, s);
+}
+
+function Operator({ layer, state, data, act, lang: lg }: OpP) {
   const now = useFrame();
+  const lang = lg ?? 'fr';
   const k = cfg(layer);
   const s = (state ?? {}) as State;
   const pr = P(k);
@@ -934,7 +1109,7 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: aCol, boxShadow: `0 0 8px ${aCol}` }} />
         {t('ACTIVE SOURCE: {source}', { source: activeText(a, k.source.rule) })}
       </div>
-      <Readout sub={`${pr.kind === 'tennis' ? tennisTag(tn) : (pr.periods[s.period ?? 0] ?? '')}${ck ? ` · ${ck[0]}${s.added ? ` +${s.added}` : ''} ${s.clock?.running ? '▶' : '❚❚'}` : ''}${ign ? ` · ${t('⚠ double press ignored')}` : ''}`}>{score}</Readout>
+      <Readout sub={`${pr.kind === 'tennis' ? tennisTag(tn) && tr(k, lang, tennisTag(tn)) : tr(k, lang, pr.periods[s.period ?? 0] ?? '')}${ck ? ` · ${ck[0]}${s.added ? ` +${s.added}` : ''} ${s.clock?.running ? '▶' : '❚❚'}` : ''}${shotOn(k, s) ? ` · ${shotText(k, s, now)[0]}` : ''}${ign ? ` · ${t('⚠ double press ignored')}` : ''}`}>{score}</Readout>
       {order.map((i) => {
         const sh = shortOf(team(k, i));
         return (
@@ -942,7 +1117,7 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
             key={i}
             label={sh}
             list={[
-              { label: '−', cls: 'huge ghost', title: pr.kind === 'tennis' ? t('Remove a point in this game') : `−${pr.pts[0].v}`, onClick: () => act('sub', { team: i }) },
+              { label: '−', cls: 'huge ghost', title: pr.kind === 'tennis' ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh }), onClick: () => act('sub', { team: i }) },
               ...pr.pts.map((pt, j) => ({ label: pr.kind === 'points' ? t(pt.label) : t('POINT {team}', { team: sh }), cls: `huge ${j ? '' : 'green'}`, keyHint: j === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'P' : undefined) : undefined, onClick: () => act('add', { team: i, pts: j }) })),
             ]}
           />
@@ -1020,9 +1195,21 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
               ] as const
             ).map(([d, l]) => ({ label: l, onClick: () => act('clockAdjust', { secs: d }) }))}
           />
+          {shotOn(k, s) && <Btns label={t('Shot clock')} list={[k.shot.len, k.shot.reset].map((v) => ({ label: `${v} s`, onClick: () => act('shot', { s: v }) }))} />}
           <Btns label={t('Added time')} list={[...[1, 2, 3, 4, 5].map((m) => ({ label: `+${m}`, cls: s.added === m ? 'violet' : '', onClick: () => act('added', { min: m }) })), { label: t('None'), cls: 'ghost', onClick: () => act('added', { min: 0 }) }]} />
         </>
       )}
+      {shootoutOn(k, s) &&
+        order.map((i) => (
+          <Btns
+            key={`pen${i}`}
+            label={`${tr(k, lang, 'Penalties')} · ${shortOf(team(k, i))}`}
+            list={[
+              { label: t('Scored'), cls: 'green', onClick: () => act('penalty', { team: i, scored: true }) },
+              { label: t('Missed'), cls: 'red', onClick: () => act('penalty', { team: i, scored: false }) },
+            ]}
+          />
+        ))}
       {(pr.cards.length > 0 || pr.timeouts > 0 || k.fields.fouls || pr.kind === 'points') && (
         <>
           <Seg label={t('Team')} value={who} onChange={(v) => setWho(+v)} options={Array.from({ length: n }, (_, i) => [i, shortOf(team(k, i))] as const)} />
@@ -1036,6 +1223,7 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
               ...pr.cards.map((c) => ({ label: `▮ ${t(CARD_NAMES[c] ?? c)}`, cls: c === 'red' ? 'red' : c === 'yellow' ? 'amber' : '', onClick: () => act('card', { team: who, player, color: c }) })),
               pr.timeouts > 0 && { label: t('Timeout ({n} left)', { n: Math.max(0, pr.timeouts - ts(s, who).toUsed) }), cls: 'big', disabled: ts(s, who).toUsed >= pr.timeouts, onClick: () => act('timeout', { team: who }) },
               k.fields.fouls && { label: t('+ Foul'), onClick: () => act('foul', { team: who }) },
+              k.fields.susp && !pr.cards.includes('2 min') && { label: t('Suspension'), onClick: () => act('suspension', { team: who }) },
             ]}
           />
         </>
@@ -1056,6 +1244,13 @@ function Operator({ layer, state, data, act }: { layer: Config; state: unknown; 
 }
 
 // -------------------------------------------------------------- inspector --
+
+/** The font families of the project (Assets). */
+function FamilyPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const families = useFonts((s) => s.families);
+  const has = families.some((f) => f.family.toLowerCase() === value.toLowerCase());
+  return <Dropdown value={value} options={[...(has ? [] : [{ value, label: value }]), ...families.map((f) => ({ value: f.family, label: f.family, style: { fontFamily: `"${f.family}", Inter, sans-serif` } }))]} onChange={onChange} />;
+}
 
 function TeamLogo({ i, label }: { i: number; label: string }) {
   const b = useBound();
@@ -1096,19 +1291,21 @@ export default defineWidget({
   },
   ownsLook: true,
   live: () => true,
-  Render: ({ layer, w, h, data, time, state }) => {
+  Render: ({ layer, w, h, data, time, state, lang }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;
     const now = time.nowMs;
-    const [bw, bh] = sizeAt(k, s, data, now, 100);
+    const [bw, bh] = sizeAt(k, s, data, now, 100, lang ?? 'fr');
     const row = Math.max(1, 100 * Math.min(w / Math.max(1, bw), h / Math.max(1, bh)));
-    const p = new Pt();
-    board(p, k, s, data, now, row);
+    const p = ptOf(k);
+    board(p, k, s, data, now, row, lang ?? 'fr');
     return p.svg(w, h);
   },
   Inspector: ({ layer, edit, data }) => {
     const k = cfg(layer);
     const pr = P(k);
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const lang = useApp((s) => s.project?.language) || 'fr';
     const n = teamCount(k);
     const fit = () =>
       edit((l) => {
@@ -1189,36 +1386,43 @@ export default defineWidget({
               ]}
             />
           )}
-          <Seg
-            label={t('Order')}
-            path="order"
-            value={k.order}
-            options={[
-              ['clockFirst', t('Clock first')],
-              ['clockMid', t('Between')],
-              ['clockLast', t('Clock last')],
-            ]}
-          />
+          {pr.kind !== 'tennis' && (
+            <Seg
+              label={t('Order')}
+              path="order"
+              value={k.layout === 'stacked' && k.order === 'clockMid' ? 'clockFirst' : k.order}
+              options={[['clockFirst', t('Clock first')], ...(k.layout === 'stacked' ? [] : [['clockMid', t('Between')] as const]), ['clockLast', t('Clock last')]]}
+            />
+          )}
           {k.version === 'full' && <Num label={t('Name space')} path="nameW" value={k.nameW} min={2.5} max={9} step={0.1} precision={1} unit="×h" />}
-          <Seg
-            label={t('Score width')}
-            path="digits"
-            value={k.digits}
-            options={[
-              [2, t('2 digits')],
-              [3, t('3 digits')],
-            ]}
-          />
+          {pr.kind !== 'tennis' && (
+            <Seg
+              label={t('Score width')}
+              path="digits"
+              value={k.digits}
+              options={[
+                [2, t('2 digits')],
+                [3, t('3 digits')],
+              ]}
+            />
+          )}
           <Num label={t('Corners')} path="radius" value={k.radius} min={0} max={30} unit="px" />
+          <ColorPick label={t('Background')} path="bg" value={k.bg} />
+          <Row label={t('Font')}>
+            <FamilyPick value={k.font} onChange={(v) => edit((l) => void (l.font = v))} />
+          </Row>
           <Btns list={[{ label: t('Fit box'), title: t('Fit the box to the board'), onClick: fit }]} />
         </Section>
         <Section id="sb-elements" title={t('Elements')}>
           <Toggle label={t('Period')} path="fields.period" value={k.fields.period} />
           {pr.kind === 'sets' && <Toggle label={t('Sets')} path="fields.sets" value={k.fields.sets} />}
           <Toggle label={t(pr.poss)} path="fields.poss" value={k.fields.poss} />
-          <Toggle label={t('Fouls')} path="fields.fouls" value={k.fields.fouls} />
+          {pr.kind !== 'tennis' && <Toggle label={t('Fouls')} path="fields.fouls" value={k.fields.fouls} />}
           {pr.timeouts > 0 && <Toggle label={t('Timeouts')} path="fields.timeouts" value={k.fields.timeouts} />}
+          {points && <Toggle label={t('Shot clock')} path="fields.shot" value={k.fields.shot} />}
           {pr.cards.length > 0 && <Toggle label={t('Cards')} path="fields.cards" value={k.fields.cards} />}
+          {pr.periods.includes('Penalties') && <Toggle label={t('Shoot-out')} path="fields.shootout" value={k.fields.shootout} />}
+          {(k.preset === 'handball' || k.preset === 'rugby' || k.preset === 'generic') && <Toggle label={t('Suspensions (countdown)')} path="fields.susp" value={k.fields.susp} />}
           <Toggle label={t('Crests')} path="showCrest" value={k.showCrest} />
           {k.showCrest &&
             Array.from({ length: n }, (_, i) => {
@@ -1258,10 +1462,22 @@ export default defineWidget({
                 <Num label={t('Period')} path="clock.len" value={k.clock.len} min={1} max={90} unit="min" />
                 <Num label={t('Extra period')} path="clock.extra" value={k.clock.extra} min={0} max={30} unit="min" />
                 {k.clock.dir === 'down' && <Toggle label={t('Tenths')} path="clock.tenths" value={k.clock.tenths} />}
+                {k.fields.shot && (
+                  <>
+                    <Num label={t('Shot clock')} path="shot.len" value={k.shot.len} min={5} max={60} unit="s" />
+                    <Num label={t('Reset')} path="shot.reset" value={k.shot.reset} min={1} max={60} unit="s" />
+                  </>
+                )}
+                {k.fields.susp && <Num label={t('Suspension')} path="suspLen" value={suspMin(k)} min={0.5} max={20} step={0.5} precision={1} unit="min" />}
               </>
             )}
           </Section>
         )}
+        <Section id="sb-texts" title={t('Texts')} closed>
+          {textsOf(k).map((en) => (
+            <Text key={en} label={tl(lang, en)} value={k.texts[en] ?? ''} placeholder={tl(lang, en)} onChange={(v) => edit((l) => void (l.texts = { ...(l.texts ?? {}), [en]: v }), `sb-text-${en}`)} />
+          ))}
+        </Section>
         <Section id="sb-anim" title={t('Animation')}>
           <Seg
             label={t('Score')}
@@ -1297,8 +1513,10 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, data, act }) => <Operator layer={layer} state={state} data={data} act={act} />,
-  Compact: ({ layer, state, data, act }) => <Compact layer={layer} state={state} data={data} act={act} />,
+  Operator: ({ layer, state, data, act, lang }) => <Operator layer={layer} state={state} data={data} act={act} lang={lang} />,
+  Compact: ({ layer, state, data, act, lang }) => <Compact layer={layer} state={state} data={data} act={act} lang={lang} />,
+  More: ({ layer, state, data, act, lang }) => <More layer={layer} state={state} data={data} act={act} lang={lang} />,
+  hasMore: (l, _data, state) => hasMore(l, state),
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;
