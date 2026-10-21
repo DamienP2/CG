@@ -1805,13 +1805,16 @@ async fn put_system_config(
 
 /// The video hardware this machine has, as far as it can tell (admins).
 async fn get_hardware(
+    State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
 ) -> ApiResult<Json<crate::hardware::HardwareInfo>> {
     require(me.is_admin())?;
-    tokio::task::spawn_blocking(crate::hardware::detect)
+    let mut info = tokio::task::spawn_blocking(crate::hardware::detect)
         .await
-        .map(Json)
-        .map_err(internal)
+        .map_err(internal)?;
+    info.sync = Some(s.perf.sync.get());
+    info.ndi_restart = crate::hardware::ndi_restart_needed(&s.data_dir);
+    Ok(Json(info))
 }
 
 /// Whether each video output runs, by channel and output id.

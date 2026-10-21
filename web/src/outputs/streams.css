@@ -529,3 +529,17 @@
   font-family: var(--mono);
   font-size: 12px;
 }
+.oc-hw-edit {
+  align-self: flex-start;
+}
+.oc-wires .oc-wire-g.off path:first-child {
+  stroke-opacity: 0.3;
+  stroke-dasharray: 5 5;
+}
+.oc-node-head small .vs-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}

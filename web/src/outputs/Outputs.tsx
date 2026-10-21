@@ -6,6 +6,7 @@ import { ENCODINGS, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, 
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
+import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { t, tc, tn } from '../i18n';
 import { InputsMode } from './Inputs';
@@ -63,7 +64,9 @@ const hlsUrl = (channel: string, picture: string, output: string) => `${location
 const hexColor = (c: string) => (/^#[0-9a-f]{6}$/i.test(c) ? c : /^#[0-9a-f]{3}$/i.test(c) ? `#${[...c.slice(1)].map((x) => x + x).join('')}` : c === 'white' ? '#ffffff' : '#000000');
 
 const NODE_W = 232;
-const COL = { program: 40, picture: 330, dest: 640 };
+const COL = { program: 40, picture: 330, dest: 690 };
+/** Format nodes are wider: their title carries the size and rate. */
+const FORMAT_W = 290;
 
 /** Extra formats (renditions); the first ones have their own button in the toolbar. */
 const PICTURE_PRESETS = [
@@ -211,7 +214,9 @@ export function Outputs() {
     window.addEventListener('pointerdown', close);
     return () => window.removeEventListener('pointerdown', close);
   }, [moreFormats]);
-  const cv = useCanvasView('outputs', '.oc-node');
+  // Arrange lays the nodes out from left to right (the graph is only known further down).
+  const arrangeRef = useRef<() => void>(() => {});
+  const cv = useCanvasView('outputs', '.oc-node', { onArrange: () => arrangeRef.current() });
   // Node widths, per browser.
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     try {
@@ -230,7 +235,7 @@ export function Outputs() {
       }
       return next;
     });
-  const widthOf = (id: string) => widths[id] ?? NODE_W;
+  const widthOf = (id: string) => widths[id] ?? (id.startsWith('pic:') ? FORMAT_W : NODE_W);
 
   const load = async () => {
     const i = await api<SystemInfo>('GET', '/api/system');
@@ -349,6 +354,22 @@ export function Outputs() {
         ...allDests.filter((d) => d.picture).map((d) => ({ from: `pic:${d.picture}`, to: d.value.id, color: KIND[d.kind].color, dest: d.value.id })),
       ]
     : [];
+  // Program first, the destinations last (wired or not); saved like a drag of the nodes.
+  arrangeRef.current = () => {
+    if (!ch) return;
+    const size = measureNodes(cv.ref.current, 'data-node');
+    const at = autoLayout(
+      nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n.id), h: 110 }), side: n.kind === 'program' ? ('start' as const) : n.kind === 'picture' ? undefined : ('end' as const) })),
+      edges,
+      { origin: { x: COL.program, y: 40 }, anchorY: 27 },
+    );
+    setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), ...at } }));
+  };
+  /** Column titles follow the nodes of the column. */
+  const colX = (k: 'program' | 'picture' | 'dest') => {
+    const xs = nodes.filter((n) => (k === 'dest' ? n.kind !== 'program' && n.kind !== 'picture' : n.kind === k)).map((n) => pos[n.id].x);
+    return xs.length ? Math.min(...xs) : COL[k];
+  };
   const width = Math.max(980, ...Object.values(pos).map((p) => p.x + NODE_W + 60));
   const height = Math.max(560, ...Object.values(pos).map((p) => p.y + 160));
 
@@ -422,9 +443,10 @@ export function Outputs() {
           list.findIndex((x) => x.id === selDest.value.id),
           1,
         );
+        if (c.unwired && !dests(unwiredOf(c)).length) delete c.unwired;
       });
     } else if (selPic && selPic.id !== 'main') {
-      if (dests(selPic).length && !(await confirmDialog({ title: t('Remove the picture “{name}”?', { name: selPic.name }), message: tn(dests(selPic).length, 'Its {n} destination is removed too.', 'Its {n} destinations are removed too.'), confirm: t('Remove'), danger: true }))) return;
+      if (dests(selPic).length && !(await confirmDialog({ title: t('Remove the format “{name}”?', { name: selPic.name }), message: tn(dests(selPic).length, 'Its {n} destination is removed too.', 'Its {n} destinations are removed too.'), confirm: t('Remove'), danger: true }))) return;
       editCh((c) => void (c.renditions = (c.renditions ?? []).filter((r) => r.id !== selPic.id)));
     }
     setSel('program');
@@ -717,13 +739,13 @@ export function Outputs() {
               <div className="oc-body">
                 <div {...cv.viewport} className={`oc-canvas ${cv.viewport.className}`} onPointerDown={(e) => (setAddMenu(null), cv.viewport.onPointerDown(e))}>
                   <div ref={planeRef} data-canvas-void className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height, ...cv.spaceStyle }} onPointerDown={() => setAddMenu(null)}>
-                    <span className="oc-col" style={{ left: COL.program }}>
+                    <span className="oc-col" style={{ left: colX('program') }}>
                       {t('Source')}
                     </span>
-                    <span className="oc-col" style={{ left: COL.picture }}>
+                    <span className="oc-col" style={{ left: colX('picture') }}>
                       {t('Formats')}
                     </span>
-                    <span className="oc-col" style={{ left: COL.dest }}>
+                    <span className="oc-col" style={{ left: colX('dest') }}>
                       {t('Destinations')}
                     </span>
                     <svg className="oc-wires" width={width} height={height} aria-hidden="true">
@@ -740,7 +762,7 @@ export function Outputs() {
                         if (!e.dest) return <path key={`${e.from}-${e.to}`} d={d} stroke={e.color} />;
                         const dest = e.dest;
                         return (
-                          <g key={`${e.from}-${e.to}`} className="oc-wire-g">
+                          <g key={`${e.from}-${e.to}`} className={`oc-wire-g ${allDests.find((x) => x.value.id === dest)?.value && !isOn(allDests.find((x) => x.value.id === dest)!) ? 'off' : ''}`}>
                             <path d={d} stroke={e.color} />
                             {/* A wider line to click. */}
                             <path
@@ -789,10 +811,12 @@ export function Outputs() {
                               <Icon size={15} />
                             </span>
                             <span className="grow">
-                              <small>{t(k.label)}</small>
+                              <small>
+                                {t(k.label)}
+                                {n.badge && <span className="vs-badge">{n.badge}</span>}
+                              </small>
                               <strong title={n.title}>{n.title}</strong>
                             </span>
-                            {n.badge && <span className="vs-badge">{n.badge}</span>}
                             {n.on !== undefined && <OnSwitch on={n.on} mini onChange={(v) => setOn(n.id, v)} />}
                           </div>
                           <div className="oc-node-sub">{n.sub}</div>
@@ -875,7 +899,7 @@ export function Outputs() {
                           ))}
                         </select>
                       </Field>
-                      <Field label={t('Video format')} hint={t('Every picture and destination of the channel runs at this rate.')}>
+                      <Field label={t('Video format')} hint={t('Every format and destination of the channel runs at this rate.')}>
                         <select
                           value={VIDEO_FORMATS.findIndex((f) => f.width === ch.width && f.height === ch.height && f.rate.num * ch.frameRate.den === ch.frameRate.num * f.rate.den)}
                           onChange={(e) =>
@@ -983,7 +1007,7 @@ export function Outputs() {
                           </button>
                           <div className="oc-slate-info">
                             <span className="oc-slate-name" title={selPic.slate || undefined}>
-                              {selPic.slate ? selPic.slate.split('/').pop() : t('None: black')}
+                              {selPic.slate ? selPic.slate.split('/').pop() : <span className="muted">{t('None: black')}</span>}
                             </span>
                             <span className="row">
                               <button type="button" className="btn small" onClick={() => setSlatePick(selPic.id)}>
@@ -1084,7 +1108,7 @@ export function Outputs() {
                               <dd>{def.genlock ? t('Yes') : t('No')}</dd>
                             </dl>
                           )}
-                          <button type="button" className="btn small" onClick={() => navigate('/hardware')}>
+                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware')}>
                             <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
                           <Hint>{t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.')}</Hint>
@@ -1148,7 +1172,7 @@ export function Outputs() {
                               </dd>
                             </dl>
                           )}
-                          <button type="button" className="btn small" onClick={() => navigate('/hardware')}>
+                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware#st2110')}>
                             <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
                           <div className="set-field">
@@ -1334,7 +1358,7 @@ export function Outputs() {
                         </div>
                       );
                     })()}
-                  {selDest && status[ch.id]?.[selDest.value.id]?.detail && status[ch.id][selDest.value.id].detail !== destStatus(selDest).text && (
+                  {selDest && isOn(selDest) && selDest.picture && status[ch.id]?.[selDest.value.id]?.detail && status[ch.id][selDest.value.id].detail !== destStatus(selDest).text && (
                     <details className="oc-detail">
                       <summary>{t('Details')}</summary>
                       <code>{status[ch.id][selDest.value.id].detail}</code>

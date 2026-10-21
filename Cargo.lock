@@ -381,6 +381,7 @@ dependencies = [
 name = "cg-output"
 version = "0.7.1"
 dependencies = [
+ "cc",
  "cg-render",
  "libloading 0.8.9",
  "serde",

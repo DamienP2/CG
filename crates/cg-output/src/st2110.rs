@@ -6,8 +6,12 @@
 //!   "wide" sender model) from a dedicated thread;
 //! - RTP timestamps derive from the system clock. For production use the host
 //!   must be PTP-disciplined (ptp4l + phc2sys) so system time follows the
-//!   facility grandmaster; kernel-bypass NICs (DPDK / Rivermax) are on the
-//!   roadmap for tighter pacing at UHD rates.
+//!   facility grandmaster; they count TAI (system time + `tai_offset`), as
+//!   ST 2110-10 asks. Kernel-bypass NICs (DPDK / Rivermax) are on the
+//!   roadmap for tighter pacing at UHD rates;
+//! - SMPTE 2022-7: with a blue leg, every packet goes out on both networks
+//!   (same sequence numbers and timestamps), so a receiver loses nothing
+//!   when one network fails.
 
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -112,10 +116,27 @@ pub struct St2110Config {
     /// Local interface address to send from.
     #[serde(default)]
     pub interface: Option<Ipv4Addr>,
+    /// SMPTE 2022-7 copy on the secondary (blue) network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blue: Option<Leg>,
     #[serde(default = "default_ttl")]
     pub ttl: u32,
     #[serde(default = "default_pt")]
     pub payload_type: u8,
+    /// TAI − UTC in seconds: RTP timestamps count TAI.
+    #[serde(default = "default_tai")]
+    pub tai_offset: u32,
+}
+
+/// The blue (2022-7 secondary) destinations of a sender.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Leg {
+    pub fill: SocketAddrV4,
+    #[serde(default)]
+    pub key: Option<SocketAddrV4>,
+    #[serde(default)]
+    pub interface: Option<Ipv4Addr>,
 }
 
 fn default_ttl() -> u32 {
@@ -124,53 +145,97 @@ fn default_ttl() -> u32 {
 fn default_pt() -> u8 {
     96
 }
+fn default_tai() -> u32 {
+    37
+}
+
+/// One RTP stream of a sender and where it goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StreamDest {
+    pub essence: Essence,
+    pub red: SocketAddrV4,
+    /// Its 2022-7 copy.
+    pub blue: Option<SocketAddrV4>,
+}
 
 impl St2110Config {
     /// The streams this sender sends, with their destinations.
-    pub fn streams(&self) -> Vec<(SocketAddrV4, Essence)> {
+    pub fn streams(&self) -> Vec<StreamDest> {
+        let blue = |key: bool| {
+            self.blue
+                .and_then(|l| if key { l.key } else { Some(l.fill) })
+        };
+        let one = |essence| StreamDest {
+            essence,
+            red: self.fill,
+            blue: blue(false),
+        };
         match self.encoding {
-            St2110Encoding::FillKey => std::iter::once((self.fill, Essence::Fill))
-                .chain(self.key.map(|k| (k, Essence::Key)))
+            St2110Encoding::FillKey => std::iter::once(one(Essence::Fill))
+                .chain(self.key.map(|k| StreamDest {
+                    essence: Essence::Key,
+                    red: k,
+                    blue: blue(true),
+                }))
                 .collect(),
-            St2110Encoding::Rgba => vec![(self.fill, Essence::Rgba)],
-            St2110Encoding::Ycbcra => vec![(self.fill, Essence::Ycbcra)],
+            St2110Encoding::Rgba => vec![one(Essence::Rgba)],
+            St2110Encoding::Ycbcra => vec![one(Essence::Ycbcra)],
         }
     }
 
     /// Session description for one stream (`key = true`: the key of a
-    /// fill + key pair; otherwise the main stream).
+    /// fill + key pair; otherwise the main stream). With a blue leg it
+    /// describes both paths (RFC 7104 duplication, as 2022-7 receivers expect).
     pub fn sdp(&self, width: u32, height: u32, rate: (u32, u32), key: bool) -> Option<String> {
-        let (dest, essence) = self
+        let d = self
             .streams()
             .into_iter()
-            .find(|(_, e)| (*e == Essence::Key) == key)?;
-        let src = self.interface.unwrap_or(Ipv4Addr::UNSPECIFIED);
+            .find(|d| (d.essence == Essence::Key) == key)?;
         let rate = if rate.1 == 1 {
             rate.0.to_string()
         } else {
             format!("{}/{}", rate.0, rate.1)
         };
-        let (sampling, depth) = essence.sampling();
-        Some(format!(
+        let (sampling, depth) = d.essence.sampling();
+        let red_src = self.interface.unwrap_or(Ipv4Addr::UNSPECIFIED);
+        let media = |dest: SocketAddrV4, src: Ipv4Addr, mid: Option<&str>| {
+            format!(
+                "m=video {port} RTP/AVP {pt}\r\n\
+                 c=IN IP4 {ip}/{ttl}\r\n\
+                 a=source-filter: incl IN IP4 {ip} {src}\r\n\
+                 a=rtpmap:{pt} raw/90000\r\n\
+                 a=fmtp:{pt} sampling={sampling}; width={width}; height={height}; exactframerate={rate}; depth={depth}; TCS=SDR; colorimetry=BT709; PM=2110GPM; SSN=ST2110-20:2017; TP=2110TPW; \r\n\
+                 a=ts-refclk:ptp=IEEE1588-2008:traceable\r\n\
+                 a=mediaclk:direct=0\r\n{mid}",
+                port = dest.port(),
+                pt = self.payload_type,
+                ip = dest.ip(),
+                ttl = self.ttl,
+                mid = mid.map_or(String::new(), |m| format!("a=mid:{m}\r\n")),
+            )
+        };
+        let mut sdp = format!(
             "v=0\r\n\
-             o=- {sess} 0 IN IP4 {src}\r\n\
+             o=- {sess} 0 IN IP4 {red_src}\r\n\
              s={name} ({label})\r\n\
-             t=0 0\r\n\
-             m=video {port} RTP/AVP {pt}\r\n\
-             c=IN IP4 {ip}/{ttl}\r\n\
-             a=source-filter: incl IN IP4 {ip} {src}\r\n\
-             a=rtpmap:{pt} raw/90000\r\n\
-             a=fmtp:{pt} sampling={sampling}; width={width}; height={height}; exactframerate={rate}; depth={depth}; TCS=SDR; colorimetry=BT709; PM=2110GPM; SSN=ST2110-20:2017; TP=2110TPW; \r\n\
-             a=ts-refclk:ptp=IEEE1588-2008:traceable\r\n\
-             a=mediaclk:direct=0\r\n",
-            sess = u32::from(dest.ip().to_owned()) ^ dest.port() as u32,
+             t=0 0\r\n",
+            sess = u32::from(d.red.ip().to_owned()) ^ d.red.port() as u32,
             name = self.name,
-            label = essence.label(),
-            port = dest.port(),
-            pt = self.payload_type,
-            ip = dest.ip(),
-            ttl = self.ttl,
-        ))
+            label = d.essence.label(),
+        );
+        match d.blue {
+            Some(blue) => {
+                let blue_src = self
+                    .blue
+                    .and_then(|l| l.interface)
+                    .unwrap_or(Ipv4Addr::UNSPECIFIED);
+                sdp.push_str("a=group:DUP primary secondary\r\n");
+                sdp.push_str(&media(d.red, red_src, Some("primary")));
+                sdp.push_str(&media(blue, blue_src, Some("secondary")));
+            }
+            None => sdp.push_str(&media(d.red, red_src, None)),
+        }
+        Some(sdp)
     }
 }
 
@@ -258,10 +323,10 @@ pub fn packetize(
     out
 }
 
-fn open_socket(cfg: &St2110Config) -> std::io::Result<UdpSocket> {
+fn open_socket(ttl: u32, interface: Option<Ipv4Addr>) -> std::io::Result<UdpSocket> {
     let s = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-    s.set_multicast_ttl_v4(cfg.ttl)?;
-    if let Some(ip) = cfg.interface {
+    s.set_multicast_ttl_v4(ttl)?;
+    if let Some(ip) = interface {
         s.set_multicast_if_v4(&ip)?;
         s.bind(&SocketAddrV4::new(ip, 0).into())?;
     }
@@ -285,17 +350,30 @@ impl St2110Sender {
     pub fn start(config: St2110Config, frame_period: Duration) -> Result<Self, OutputError> {
         let mut essences = Vec::new();
         let busy_us = Arc::new(AtomicU64::new(0));
-        for (dest, essence) in config.streams() {
-            let socket = open_socket(&config).map_err(OutputError::Io)?;
+        for d in config.streams() {
+            let mut legs = vec![(open_socket(config.ttl, config.interface)?, d.red)];
+            if let Some(blue) = d.blue {
+                let interface = config.blue.and_then(|l| l.interface);
+                legs.push((open_socket(config.ttl, interface)?, blue));
+            }
             let (tx, rx) = sync_channel::<(Arc<Frame>, SystemTime)>(2);
-            let (name, pt, busy) = (config.name.clone(), config.payload_type, busy_us.clone());
+            let essence = d.essence;
+            let send = Sending {
+                name: config.name.clone(),
+                legs,
+                essence,
+                pt: config.payload_type,
+                tai: Duration::from_secs(config.tai_offset.into()),
+                period: frame_period,
+            };
+            let busy = busy_us.clone();
             std::thread::Builder::new()
                 .name(format!("st2110-{}-{}", config.name, essence.label()))
-                .spawn(move || run(name, socket, dest, essence, pt, rx, frame_period, &busy))
+                .spawn(move || run(send, rx, &busy))
                 .map_err(OutputError::Io)?;
             essences.push(Stream { tx });
         }
-        tracing::info!(fill = %config.fill, key = ?config.key, encoding = ?config.encoding, "ST 2110-20 sender started");
+        tracing::info!(fill = %config.fill, key = ?config.key, blue = ?config.blue, encoding = ?config.encoding, "ST 2110-20 sender started");
         Ok(Self {
             essences,
             config,
@@ -308,17 +386,27 @@ impl St2110Sender {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run(
+/// What one stream thread sends, and where.
+struct Sending {
     name: String,
-    socket: UdpSocket,
-    dest: SocketAddrV4,
+    /// Red, then blue (2022-7).
+    legs: Vec<(UdpSocket, SocketAddrV4)>,
     essence: Essence,
     pt: u8,
-    rx: Receiver<(Arc<Frame>, SystemTime)>,
+    /// TAI − UTC.
+    tai: Duration,
     period: Duration,
-    busy: &AtomicU64,
-) {
+}
+
+fn run(send: Sending, rx: Receiver<(Arc<Frame>, SystemTime)>, busy: &AtomicU64) {
+    let Sending {
+        name,
+        legs,
+        essence,
+        pt,
+        tai,
+        period,
+    } = send;
     let mut seq = 0u32;
     let (mut packets, mut line) = (Packets::default(), Vec::new());
     let (mut frames, mut stats_at) = (0u32, Instant::now());
@@ -336,7 +424,7 @@ fn run(
         }
         // Fill and key threads derive the same timestamp from the frame's
         // capture time so receivers can pair them.
-        let ts = (frame_time(at).as_secs_f64() * RTP_CLOCK) as u64 as u32;
+        let ts = rtp_timestamp(frame_time(at) + tai);
         packetize_into(&frame, essence, pt, &mut seq, ts, &mut packets, &mut line);
         // Pace across what is left of ~90% of the frame period.
         let budget = period.mul_f64(0.9).saturating_sub(start.elapsed());
@@ -344,7 +432,9 @@ fn run(
         let n = packets.len();
         let mut paced = Duration::ZERO;
         for (i, p) in packets.iter().enumerate() {
-            let _ = socket.send_to(p, dest);
+            for (socket, dest) in &legs {
+                let _ = socket.send_to(p, dest);
+            }
             if i % 64 == 63 {
                 let due = budget.mul_f64((i + 1) as f64 / n as f64);
                 let elapsed = send_start.elapsed();
@@ -358,6 +448,13 @@ fn run(
         busy.fetch_add(worked.as_micros() as u64, Ordering::Relaxed);
     }
     tracing::info!(name, stream = essence.label(), "ST 2110 sender stopped");
+}
+
+/// 90 kHz ticks since the epoch, modulo 2³² (ST 2110-10).
+fn rtp_timestamp(since_epoch: Duration) -> u32 {
+    let ticks = since_epoch.as_secs() as u128 * RTP_CLOCK as u128
+        + since_epoch.subsec_nanos() as u128 * RTP_CLOCK as u128 / 1_000_000_000;
+    ticks as u32
 }
 
 fn frame_time(at: SystemTime) -> Duration {
@@ -417,8 +514,10 @@ mod tests {
             fill: "239.10.0.1:5004".parse().unwrap(),
             key: Some("239.10.0.2:5004".parse().unwrap()),
             interface: Some("10.0.0.5".parse().unwrap()),
+            blue: None,
             ttl: 16,
             payload_type: 96,
+            tai_offset: 37,
         };
         let sdp = cfg.sdp(1920, 1080, (60000, 1001), true).unwrap();
         assert!(sdp.contains("c=IN IP4 239.10.0.2/16"));
@@ -433,6 +532,47 @@ mod tests {
         let sdp = one.sdp(1920, 1080, (50, 1), false).unwrap();
         assert!(sdp.contains("sampling=YCbCrA-4:2:2:4") && sdp.contains("depth=10"));
         assert!(one.sdp(1920, 1080, (50, 1), true).is_none());
+    }
+
+    #[test]
+    fn a_blue_leg_doubles_every_stream() {
+        let cfg = St2110Config {
+            id: "a".into(),
+            enabled: true,
+            name: "CG".into(),
+            hardware: String::new(),
+            encoding: St2110Encoding::FillKey,
+            fill: "239.1.0.1:5004".parse().unwrap(),
+            key: Some("239.1.0.2:5004".parse().unwrap()),
+            interface: Some("10.1.0.5".parse().unwrap()),
+            blue: Some(Leg {
+                fill: "239.2.0.1:5004".parse().unwrap(),
+                key: Some("239.2.0.2:5004".parse().unwrap()),
+                interface: Some("10.2.0.5".parse().unwrap()),
+            }),
+            ttl: 32,
+            payload_type: 96,
+            tai_offset: 37,
+        };
+        let s = cfg.streams();
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[1].blue, Some("239.2.0.2:5004".parse().unwrap()));
+        let sdp = cfg.sdp(1920, 1080, (50, 1), true).unwrap();
+        assert!(sdp.contains("a=group:DUP primary secondary"));
+        assert!(sdp.contains("c=IN IP4 239.1.0.2/32") && sdp.contains("c=IN IP4 239.2.0.2/32"));
+        assert!(sdp.contains("incl IN IP4 239.2.0.2 10.2.0.5"));
+        assert!(sdp.contains("a=mid:primary") && sdp.contains("a=mid:secondary"));
+        assert_eq!(sdp.matches("m=video").count(), 2);
+    }
+
+    #[test]
+    fn rtp_timestamps_count_90khz_and_wrap() {
+        assert_eq!(rtp_timestamp(Duration::from_secs(1)), 90_000);
+        assert_eq!(rtp_timestamp(Duration::from_millis(20)), 1_800);
+        // 2³² ticks later it wraps to the same value.
+        let wrap = Duration::from_secs_f64(4_294_967_296.0 / 90_000.0);
+        let t = Duration::from_secs(1_700_000_000);
+        assert!(rtp_timestamp(t + wrap).abs_diff(rtp_timestamp(t)) <= 1);
     }
 
     #[test]

@@ -133,6 +133,49 @@ pub fn pack_line_4224_10(rgba: &[u8], out: &mut Vec<u8>) {
     }
 }
 
+// Q16 BT.709 narrow-range Y'CbCr (8-bit) → RGB coefficients.
+const KR: f64 = 0.2126;
+const KB: f64 = 0.0722;
+const KG: f64 = 1.0 - KR - KB;
+const Y8: i32 = q(255.0 / 219.0);
+const CR_R: i32 = q(255.0 / 224.0 * 2.0 * (1.0 - KR));
+const CB_G: i32 = q(255.0 / 224.0 * 2.0 * (1.0 - KB) * KB / KG);
+const CR_G: i32 = q(255.0 / 224.0 * 2.0 * (1.0 - KR) * KR / KG);
+const CB_B: i32 = q(255.0 / 224.0 * 2.0 * (1.0 - KB));
+
+/// UYVY (8-bit 4:2:2, Cb Y0 Cr Y1, what SDI capture delivers) → opaque
+/// RGBA, BT.709 narrow range. `uyvy` holds `height` rows of `width * 2`
+/// bytes; each pixel pair shares its chroma.
+pub fn uyvy_to_rgba709(uyvy: &[u8], width: usize, height: usize, out: &mut Vec<u8>) {
+    out.clear();
+    out.resize(width * height * 4, 255);
+    let line = width * 2;
+    if width == 0 || uyvy.len() < line * height {
+        // Not a whole picture: opaque black.
+        out.as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .for_each(|p| p[..3].fill(0));
+        return;
+    }
+    const HALF: i32 = 1 << 15;
+    let px = |y: u8, cb: i32, cr: i32, dst: &mut [u8]| {
+        let yy = (y as i32 - 16) * Y8 + HALF;
+        dst[0] = ((yy + CR_R * cr) >> 16).clamp(0, 255) as u8;
+        dst[1] = ((yy - CB_G * cb - CR_G * cr) >> 16).clamp(0, 255) as u8;
+        dst[2] = ((yy + CB_B * cb) >> 16).clamp(0, 255) as u8;
+    };
+    for (src, dst) in uyvy.chunks_exact(line).zip(out.chunks_exact_mut(width * 4)) {
+        for (i, s) in src.as_chunks::<4>().0.iter().enumerate() {
+            let (cb, cr) = (s[0] as i32 - 128, s[2] as i32 - 128);
+            px(s[1], cb, cr, &mut dst[i * 8..i * 8 + 4]);
+            if i * 2 + 1 < width {
+                px(s[3], cb, cr, &mut dst[i * 8 + 4..i * 8 + 8]);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +237,37 @@ mod tests {
         assert_eq!((v >> 20) & 0x3ff, 940);
         assert_eq!((v >> 10) & 0x3ff, 512);
         assert_eq!(v & 0x3ff, 940);
+    }
+
+    #[test]
+    fn uyvy_round_trip() {
+        let mut out = Vec::new();
+        // Black, white and grey at video levels.
+        uyvy_to_rgba709(&[128, 16, 128, 235, 128, 126, 128, 126], 4, 1, &mut out);
+        assert_eq!(&out[0..8], &[0, 0, 0, 255, 255, 255, 255, 255]);
+        assert!(out[8..16].iter().all(|&v| v == 128 || v == 255), "{out:?}");
+        // Colours through the 10-bit encoder (8-bit = 10-bit / 4).
+        for &(r, g, b) in &[
+            (255u8, 0u8, 0u8),
+            (0, 255, 0),
+            (0, 0, 255),
+            (12, 200, 99),
+            (240, 128, 30),
+        ] {
+            let (y, cb, cr) = rgb_to_ycbcr709_10(r, g, b);
+            let e = |v: u16| ((v + 2) / 4) as u8;
+            uyvy_to_rgba709(&[e(cb), e(y), e(cr), e(y)], 2, 1, &mut out);
+            for (got, want) in out[0..3].iter().zip([r, g, b]) {
+                assert!(
+                    (*got as i32 - want as i32).abs() <= 2,
+                    "{r},{g},{b}: {out:?}"
+                );
+            }
+            assert_eq!(&out[0..4], &out[4..8]);
+            assert_eq!(out[3], 255);
+        }
+        // Short input: opaque black of the right size, no panic.
+        uyvy_to_rgba709(&[0; 3], 2, 2, &mut out);
+        assert_eq!(out, [0, 0, 0, 255].repeat(4));
     }
 }

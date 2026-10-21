@@ -25,6 +25,7 @@ use cg_output::{OutputError, OutputSink};
 use cg_render::{Frame, OutputFormat, Renderer};
 
 use crate::config::ChannelConfig;
+use crate::hardware::ClockReference;
 use crate::perf::{ClockStats, PictureStats, SinkStats};
 use crate::state::{ChannelRt, OutputStatus, Shared};
 
@@ -86,7 +87,13 @@ fn open_outputs(
             off(&o.id);
             continue;
         }
-        let r = DeckLinkOutput::open(o.clone()).map(|s| Box::new(s) as Box<dyn OutputSink>);
+        let r = DeckLinkOutput::open(
+            o.clone(),
+            size.0,
+            size.1,
+            (cfg.frame_rate.num, cfg.frame_rate.den),
+        )
+        .map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "sdi", r);
     }
     let rate = (cfg.frame_rate.num, cfg.frame_rate.den);
@@ -513,26 +520,34 @@ fn clock(
     stats: &ClockStats,
 ) {
     crate::rt::prioritize(crate::rt::Work::Clock);
-    let period = ch.config.frame_rate.frame_duration();
-    let secs = period.as_secs_f64();
-    let (start, wall) = (Instant::now(), SystemTime::now());
+    let rate = ch.config.frame_rate;
+    let period = rate.frame_duration();
+    let reference = ch
+        .config
+        .clock
+        .unwrap_or(state.config.hardware.sync.reference);
+    let mut pace = match reference {
+        ClockReference::Ptp => Pace::Grid(Grid::new(rate, state.config.hardware.sync.tai_offset)),
+        ClockReference::Decklink | ClockReference::Free => Pace::free(period),
+    };
+    if reference == ClockReference::Decklink {
+        tracing::warn!(
+            channel = ch.config.name,
+            "no DeckLink output to follow: the channel runs on its own clock"
+        );
+    }
+    stats.set_reference(reference, &ch.config.name);
     let mut n: u64 = 0;
     let mut saved_at = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         n += 1;
-        let due = start + Duration::from_secs_f64(n as f64 * secs);
-        wait_until(due);
-        let late = Instant::now().saturating_duration_since(due);
-        stats.ticked(late);
-        // Stalled (machine overloaded, suspended): carry on from now rather
-        // than racing through the missed ticks.
-        if late > period * 2 {
-            let behind = (late.as_secs_f64() / secs) as u64;
-            n += behind;
-            stats.skipped(behind);
+        let tick = pace.next();
+        stats.ticked(tick.late);
+        if tick.skipped > 0 {
+            stats.skipped(tick.skipped);
+            n += tick.skipped;
         }
-        // Frame times on the clock's own steady scale (RTP timestamps).
-        let at = wall + Duration::from_secs_f64(n as f64 * secs);
+        let at = tick.at;
         for p in &mut pictures {
             p.dispatch(n, at);
         }
@@ -543,6 +558,159 @@ fn clock(
     }
     for p in pictures {
         p.close();
+    }
+}
+
+/// A tick of the clock: when its frame is shown, how late it came, how
+/// many frames were skipped to catch up.
+struct Tick {
+    at: SystemTime,
+    late: Duration,
+    skipped: u64,
+}
+
+/// When the ticks of a channel fall.
+enum Pace {
+    /// Every period from the channel start.
+    Free {
+        start: Instant,
+        wall: SystemTime,
+        period: Duration,
+        n: u64,
+    },
+    /// On the frame grid of the PTP-disciplined system clock.
+    Grid(Grid),
+}
+
+impl Pace {
+    fn free(period: Duration) -> Self {
+        Pace::Free {
+            start: Instant::now(),
+            wall: SystemTime::now(),
+            period,
+            n: 0,
+        }
+    }
+
+    /// Waits for the next tick.
+    fn next(&mut self) -> Tick {
+        match self {
+            Pace::Free {
+                start,
+                wall,
+                period,
+                n,
+            } => {
+                *n += 1;
+                let secs = period.as_secs_f64();
+                let due = *start + Duration::from_secs_f64(*n as f64 * secs);
+                wait_until(due);
+                let late = Instant::now().saturating_duration_since(due);
+                // Stalled (machine overloaded, suspended): carry on from now
+                // rather than racing through the missed ticks.
+                let mut skipped = 0;
+                if late > *period * 2 {
+                    skipped = (late.as_secs_f64() / secs) as u64;
+                    *n += skipped;
+                }
+                // Frame times on the clock's own steady scale (RTP timestamps).
+                let at = *wall + Duration::from_secs_f64(*n as f64 * secs);
+                Tick { at, late, skipped }
+            }
+            Pace::Grid(g) => g.next(),
+        }
+    }
+}
+
+/// SMPTE ST 2059-1 alignment: frame k starts k frame periods after the PTP
+/// epoch (1970-01-01 TAI), so every device locked to the same grandmaster
+/// shows its frames at the same instants. Steady-clock instants are mapped
+/// to TAI again every second (phc2sys slews the system clock, and may step it).
+struct Grid {
+    num: u128,
+    den: u128,
+    /// TAI − UTC.
+    tai: Duration,
+    period: Duration,
+    anchor: Instant,
+    anchor_tai: Duration,
+    /// The next frame.
+    k: u64,
+}
+
+const NS: u128 = 1_000_000_000;
+
+impl Grid {
+    fn new(rate: cg_core::FrameRate, tai_offset: u32) -> Self {
+        let mut g = Grid {
+            num: rate.num.max(1) as u128,
+            den: rate.den.max(1) as u128,
+            tai: Duration::from_secs(tai_offset.into()),
+            period: rate.frame_duration(),
+            anchor: Instant::now(),
+            anchor_tai: Duration::ZERO,
+            k: 0,
+        };
+        g.reanchor();
+        g.k = g.index_at(g.anchor_tai) + 1;
+        g
+    }
+
+    fn reanchor(&mut self) {
+        self.anchor = Instant::now();
+        let utc = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+        self.anchor_tai = utc + self.tai;
+    }
+
+    fn now_tai(&self) -> Duration {
+        self.anchor_tai + self.anchor.elapsed()
+    }
+
+    /// TAI time frame k starts.
+    fn time_of(&self, k: u64) -> Duration {
+        let ns = k as u128 * self.den * NS / self.num;
+        Duration::new((ns / NS) as u64, (ns % NS) as u32)
+    }
+
+    /// The frame showing at TAI time t.
+    fn index_at(&self, t: Duration) -> u64 {
+        (t.as_nanos() * self.num / (self.den * NS)) as u64
+    }
+
+    /// When frame k starts, on the steady clock.
+    fn due(&self, k: u64) -> Instant {
+        let t = self.time_of(k);
+        if t >= self.anchor_tai {
+            self.anchor + (t - self.anchor_tai)
+        } else {
+            self.anchor
+                .checked_sub(self.anchor_tai - t)
+                .unwrap_or(self.anchor)
+        }
+    }
+
+    fn next(&mut self) -> Tick {
+        if self.anchor.elapsed() >= Duration::from_secs(1) {
+            self.reanchor();
+        }
+        // The system clock went back: start again from the frame of now.
+        if self.due(self.k) > Instant::now() + self.period * 2 {
+            self.k = self.index_at(self.now_tai()) + 1;
+        }
+        let due = self.due(self.k);
+        wait_until(due);
+        let late = Instant::now().saturating_duration_since(due);
+        let mut skipped = 0;
+        if late > self.period * 2 {
+            let now = self.index_at(self.now_tai());
+            skipped = now.saturating_sub(self.k);
+            self.k = now;
+        }
+        let at = SystemTime::UNIX_EPOCH + self.time_of(self.k).saturating_sub(self.tai);
+        self.k += 1;
+        Tick { at, late, skipped }
     }
 }
 
@@ -723,5 +891,40 @@ mod tests {
         late.sort();
         // A busy test machine preempts some; the typical one is on time.
         assert!(late[20] < Duration::from_millis(1), "{late:?}");
+    }
+
+    #[test]
+    fn the_ptp_grid_counts_frames_from_the_epoch() {
+        let g = Grid::new(cg_core::FrameRate::new(60000, 1001), 37);
+        // Frame k of 59.94 starts at k × 1001/60000 s.
+        assert_eq!(g.time_of(60), Duration::from_nanos(1_001_000_000));
+        assert_eq!(g.index_at(Duration::from_nanos(1_001_000_000)), 60);
+        assert_eq!(g.index_at(Duration::from_nanos(1_000_999_999)), 59);
+        // Today's frame numbers do not overflow.
+        let now = Duration::from_secs(1_800_000_000);
+        let k = g.index_at(now);
+        assert!(g.time_of(k) <= now && now < g.time_of(k + 1));
+    }
+
+    #[test]
+    fn ptp_ticks_fall_on_the_grid() {
+        let mut g = Grid::new(cg_core::FrameRate::new(50, 1), 37);
+        let tai = Duration::from_secs(37);
+        let mut last = None;
+        for _ in 0..5 {
+            let t = g.next();
+            let since = t.at.duration_since(SystemTime::UNIX_EPOCH).unwrap() + tai;
+            // Whole multiples of 20 ms in TAI.
+            assert_eq!(since.as_nanos() % 20_000_000, 0, "{since:?}");
+            if let Some(l) = last {
+                assert!(t.at > l);
+            }
+            last = Some(t.at);
+            // Shown when the system clock says so.
+            let off = SystemTime::now()
+                .duration_since(t.at)
+                .unwrap_or_else(|e| e.duration());
+            assert!(off < Duration::from_millis(15), "{off:?}");
+        }
     }
 }

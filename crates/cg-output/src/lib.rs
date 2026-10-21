@@ -5,6 +5,7 @@
 //! the web engine, which is what OBS / vMix / CasparCG browser sources expect.
 
 pub mod colorspace;
+pub mod decklink;
 pub mod ffmpeg;
 pub mod mov;
 pub mod ndi;
@@ -34,6 +35,14 @@ pub fn on() -> bool {
     true
 }
 
+/// A hardware frame clock (a DeckLink output locked to its reference).
+pub trait FrameClock: Send + Sync {
+    /// Waits for the next frame boundary; false on timeout.
+    fn wait(&self, timeout: std::time::Duration) -> bool;
+    /// Locked to the reference input (None: unknown).
+    fn locked(&self) -> Option<bool>;
+}
+
 /// Anything that consumes rendered frames at the channel frame rate.
 pub trait OutputSink: Send {
     fn name(&self) -> &str;
@@ -47,6 +56,11 @@ pub trait OutputSink: Send {
     /// Time its own threads have worked so far (not counting waits), for
     /// outputs that send from threads of their own.
     fn work_time(&self) -> Option<std::time::Duration> {
+        None
+    }
+    /// The hardware clock this output runs on, for the channel to follow
+    /// (an SDI output set to genlock).
+    fn frame_clock(&self) -> Option<Arc<dyn FrameClock>> {
         None
     }
 }

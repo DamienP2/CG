@@ -508,7 +508,7 @@ function Inspector({
               ))}
             </select>
           </Field>
-          <button type="button" className="btn small" onClick={() => navigate('/hardware')}>
+          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate(i.kind === 'st2110' ? '/hardware#st2110' : '/hardware')}>
             <Cpu size={13} /> {t('Edit in Hardware')}
           </button>
           <Hint>{i.kind === 'sdi' ? t('SDI inputs need a server built with DeckLink support.') : t('Receiving ST 2110 is not available yet.')}</Hint>

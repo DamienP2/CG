@@ -150,6 +150,14 @@ Ordres de grandeur mesurés (version optimisée, Xeon 2,8 GHz) : rendu d'une ima
 
 **Fluidité** : chaque chaîne a sa propre horloge, qui vise des instants absolus (pas de dérive, pas d'images groupées). Chaque image est calculée une image à l'avance : si un rendu est en retard, les sorties reçoivent la précédente plutôt qu'un trou, et gardent une cadence régulière. Chaque sortie envoie depuis son propre fil : une sortie lente ne ralentit ni le rendu ni les autres. La sortie HTML5 fait avancer les animations à la fréquence de l'écran entre deux messages du serveur.
 
+### Réseau et synchronisation (page Matériel)
+- **Rôles réseau** : une carte pour le **contrôle** (interface web et API, plus `127.0.0.1`), une pour **NDI** (et un serveur de découverte NDI facultatif), le **média rouge** et le **média bleu** pour le ST 2110, la carte **PTP**.
+- **ST 2110 en SMPTE 2022-7** : un flux avec des destinations bleues part sur les deux réseaux (mêmes paquets) ; le SDP décrit les deux chemins. Horodatages RTP en temps TAI.
+- **Référence d'horloge** des canaux : *Libre*, *PTP* (images calées sur la grille ST 2059 de l'horloge système disciplinée par linuxptp) ou *DeckLink* (genlock de la carte). Réglage par défaut dans Matériel, modifiable par canal.
+- **État** : NTP (chrony, timedatectl, w32tm) et PTP (`pmc` de linuxptp : état du port, grand maître, écart) ; une alerte dans Performances quand un canal PTP ou DeckLink perd sa référence, ou quand l'horloge n'est plus synchronisée.
+
+Mise en place de linuxptp et détails : [docs/SYNC.md](docs/SYNC.md).
+
 ### Formats multiples (16:9, 9:16, 1:1…)
 Un projet peut avoir plusieurs **formats**, par exemple le 16:9 de l'antenne et un 9:16 pour les réseaux sociaux.
 

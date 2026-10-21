@@ -144,6 +144,9 @@ pub struct ChannelConfig {
     /// absorbs a slow frame now and then, at the cost of that much delay.
     #[serde(default = "default_render_ahead")]
     pub render_ahead: u32,
+    /// What the channel clock follows (none: the Hardware page default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock: Option<crate::hardware::ClockReference>,
     /// Destinations wired to no picture (their wire was removed): kept,
     /// not started.
     #[serde(default, skip_serializing_if = "OutputsConfig::is_empty")]
@@ -191,6 +194,7 @@ impl ChannelConfig {
             location: String::new(),
             slate: String::new(),
             render_ahead: default_render_ahead(),
+            clock: None,
             unwired: OutputsConfig::default(),
         }
     }
@@ -664,7 +668,12 @@ impl ServerConfig {
             .flat_map(|c| c.pictures())
             .flat_map(|(_, _, _, outputs)| &outputs.st2110)
         {
-            for (d, _) in o.streams() {
+            for d in o
+                .streams()
+                .into_iter()
+                .flat_map(|s| [Some(s.red), s.blue])
+                .flatten()
+            {
                 if !dests.insert(d) {
                     return Err(format!("destination {d} is used by two outputs"));
                 }
@@ -724,6 +733,7 @@ mod tests {
             ch.outputs.st2110.push(o.clone());
             c.channels.push(ch);
         }
-        assert!(c.validate().unwrap_err().contains("used by two outputs"));
+        c.normalize();
+        assert!(c.validate().unwrap_err().contains("used by two"));
     }
 }

@@ -8,6 +8,9 @@ name = "cg-server"
 path = "src/main.rs"
 
 [features]
+default = ["decklink"]
+# DeckLink SDI outputs and inputs (see crates/cg-output/build.rs: left out,
+# with a build warning, where the shim cannot be built, e.g. static musl).
 decklink = ["cg-output/decklink"]
 
 [dependencies]

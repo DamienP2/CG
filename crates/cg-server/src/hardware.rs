@@ -17,6 +17,100 @@ pub struct HardwareConfig {
     pub sdi: SdiHardware,
     #[serde(default)]
     pub st2110: St2110Hardware,
+    #[serde(default)]
+    pub network: NetworkRoles,
+    #[serde(default)]
+    pub sync: SyncConfig,
+}
+
+/// Which network interface does what, by name (`en0`, `eth1`…: names stay
+/// when addresses change). "" = no particular one.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkRoles {
+    /// The web interface and the API listen on this one only (and on the
+    /// loopback, so the machine itself always gets in).
+    #[serde(default)]
+    pub control: String,
+    /// NDI sends and looks for sources on this one only.
+    #[serde(default)]
+    pub ndi: String,
+    /// NDI Discovery Server(s) (`10.0.0.2`, comma separated); "" = mDNS.
+    #[serde(default)]
+    pub ndi_discovery: String,
+    /// ST 2110 primary network (SMPTE 2022-7 red).
+    #[serde(default)]
+    pub media_red: String,
+    /// ST 2110 secondary network (2022-7 blue).
+    #[serde(default)]
+    pub media_blue: String,
+    /// The interface ptp4l runs on (its hardware clock disciplines the
+    /// system clock through phc2sys).
+    #[serde(default)]
+    pub ptp: String,
+}
+
+/// What the channel clocks follow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ClockReference {
+    /// The machine's own clock, frames counted from when the channel starts.
+    #[default]
+    Free,
+    /// The system clock disciplined by PTP (ptp4l + phc2sys): frames fall on
+    /// the SMPTE ST 2059 grid (multiples of the frame period since the PTP
+    /// epoch), so every 2110 device of the plant agrees on them.
+    Ptp,
+    /// The genlock of a DeckLink card: the channel follows the frame
+    /// boundaries of its first SDI destination.
+    Decklink,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncConfig {
+    /// The channels' default reference (each channel can choose another).
+    #[serde(default)]
+    pub reference: ClockReference,
+    /// PTP domain (SMPTE ST 2059-2 default: 127).
+    #[serde(default = "default_domain")]
+    pub ptp_domain: u8,
+    /// TAI − UTC in seconds (37 since 2017): the system clock is UTC, PTP
+    /// and RTP timestamps count TAI.
+    #[serde(default = "default_tai")]
+    pub tai_offset: u32,
+}
+
+fn default_domain() -> u8 {
+    127
+}
+fn default_tai() -> u32 {
+    37
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            reference: ClockReference::Free,
+            ptp_domain: default_domain(),
+            tai_offset: default_tai(),
+        }
+    }
+}
+
+/// The IPv4 address of an interface by name.
+pub fn interface_ip(name: &str) -> Option<Ipv4Addr> {
+    if name.is_empty() {
+        return None;
+    }
+    if_addrs::get_if_addrs()
+        .ok()?
+        .into_iter()
+        .find(|i| i.name == name)
+        .and_then(|i| match i.ip() {
+            std::net::IpAddr::V4(ip) => Some(ip),
+            _ => None,
+        })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -142,8 +236,18 @@ pub struct St2110Flow {
     pub fill: SocketAddrV4,
     #[serde(default)]
     pub key: Option<SocketAddrV4>,
+    /// Sending interface; none = the Media red one of the network roles.
     #[serde(default)]
     pub interface: Option<Ipv4Addr>,
+    /// SMPTE 2022-7: the same packets again on the blue network, to these
+    /// destinations (none = no redundancy).
+    #[serde(default)]
+    pub blue: Option<SocketAddrV4>,
+    #[serde(default)]
+    pub blue_key: Option<SocketAddrV4>,
+    /// Blue interface; none = the Media blue one of the network roles.
+    #[serde(default)]
+    pub blue_interface: Option<Ipv4Addr>,
     #[serde(default = "default_ttl")]
     pub ttl: u32,
     #[serde(default = "default_pt")]
@@ -213,9 +317,20 @@ impl HardwareConfig {
         } else {
             None
         };
-        o.interface = f.interface;
+        o.interface = f
+            .interface
+            .or_else(|| interface_ip(&self.network.media_red));
+        let keyed = o.key.is_some();
+        o.blue = f.blue.map(|fill| cg_output::st2110::Leg {
+            fill,
+            key: f.blue_key.filter(|_| keyed),
+            interface: f
+                .blue_interface
+                .or_else(|| interface_ip(&self.network.media_blue)),
+        });
         o.ttl = f.ttl;
         o.payload_type = f.payload_type;
+        o.tai_offset = self.sync.tai_offset;
     }
 
     /// An SDI destination saved before the Hardware page: its card and
@@ -284,6 +399,9 @@ impl HardwareConfig {
             fill: o.fill,
             key: o.key,
             interface: o.interface,
+            blue: None,
+            blue_key: None,
+            blue_interface: None,
             ttl: o.ttl,
             payload_type: o.payload_type,
         });
@@ -373,16 +491,94 @@ impl HardwareConfig {
                     f.name
                 ));
             }
+            let blue_key = f.blue_key.filter(|_| key.is_some());
+            if let Some(b) = f.blue {
+                if key.is_some() && blue_key.is_none() {
+                    return Err(format!(
+                        "flow `{}`: the blue key destination is missing",
+                        f.name
+                    ));
+                }
+                if b.port() == 0 || blue_key.is_some_and(|k| k.port() == 0) {
+                    return Err(format!("flow `{}`: a blue port is missing", f.name));
+                }
+            }
             if f.direction == FlowDirection::Output {
-                for d in std::iter::once(f.fill).chain(key) {
+                let blue = f.blue.into_iter().chain(blue_key);
+                for d in std::iter::once(f.fill).chain(key).chain(blue) {
                     if !dests.insert(d) {
                         return Err(format!("destination {d} is used by two flows"));
                     }
                 }
             }
         }
+        let n = &self.network;
+        if !n.media_red.is_empty() && n.media_red == n.media_blue {
+            return Err("the red and blue media networks must be different interfaces".into());
+        }
         Ok(())
     }
+}
+
+// ------------------------------------------------------------------ NDI --
+
+/// Where the server keeps the NDI runtime settings (`NDI_CONFIG_DIR`).
+pub fn ndi_config_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
+    data_dir.join("ndi")
+}
+
+/// The NDI runtime settings for the network roles: NDI on its interface
+/// only, and the Discovery Server when there is one. The runtime reads
+/// them when it starts (once per server process).
+pub fn ndi_settings(roles: &NetworkRoles) -> serde_json::Value {
+    let mut ndi = serde_json::Map::new();
+    if let Some(ip) = interface_ip(&roles.ndi) {
+        ndi.insert(
+            "adapters".into(),
+            serde_json::json!({ "allowed": [ip.to_string()] }),
+        );
+    }
+    let discovery = roles.ndi_discovery.trim();
+    if !discovery.is_empty() {
+        ndi.insert(
+            "networks".into(),
+            serde_json::json!({ "ips": "", "discovery": discovery }),
+        );
+    }
+    serde_json::json!({ "ndi": ndi })
+}
+
+/// The NDI settings the runtime started with (it reads them only once).
+static NDI_STARTED_WITH: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// The settings file changed since the NDI runtime read it.
+pub fn ndi_restart_needed(data_dir: &std::path::Path) -> bool {
+    if cg_output::ndi::loaded_path().is_none() {
+        return false;
+    }
+    let file = ndi_config_dir(data_dir).join("ndi-config.v1.json");
+    let now = std::fs::read_to_string(file).unwrap_or_default();
+    let started = NDI_STARTED_WITH.lock().unwrap_or_else(|e| e.into_inner());
+    started.as_ref().is_some_and(|s| *s != now)
+}
+
+/// Writes `ndi-config.v1.json` for the runtime (true when it changed).
+pub fn write_ndi_settings(data_dir: &std::path::Path, roles: &NetworkRoles) -> bool {
+    let dir = ndi_config_dir(data_dir);
+    let file = dir.join("ndi-config.v1.json");
+    let text = serde_json::to_string_pretty(&ndi_settings(roles)).unwrap_or_default();
+    // Until the runtime loads, it will read this one.
+    if cg_output::ndi::loaded_path().is_none() {
+        *NDI_STARTED_WITH.lock().unwrap_or_else(|e| e.into_inner()) = Some(text.clone());
+    }
+    if std::fs::read_to_string(&file).ok().as_deref() == Some(text.as_str()) {
+        return false;
+    }
+    if let Err(e) = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&file, &text)) {
+        tracing::warn!("cannot write the NDI settings ({}): {e}", file.display());
+        return false;
+    }
+    true
 }
 
 // ------------------------------------------------------------- detection --
@@ -402,6 +598,10 @@ pub struct HardwareInfo {
     pub st2110_receive: bool,
     pub interfaces: Vec<NetInterface>,
     pub os: &'static str,
+    /// NTP / PTP status.
+    pub sync: Option<crate::sync::SyncStatus>,
+    /// The NDI network settings changed since the NDI runtime started.
+    pub ndi_restart: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -454,5 +654,91 @@ pub fn detect() -> HardwareInfo {
         st2110_receive: false,
         interfaces,
         os: std::env::consts::OS,
+        sync: None,
+        ndi_restart: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flow() -> St2110Flow {
+        St2110Flow {
+            id: "flow-1".into(),
+            name: "CG".into(),
+            direction: FlowDirection::Output,
+            encoding: St2110Encoding::FillKey,
+            fill: "239.1.0.1:5004".parse().unwrap(),
+            key: Some("239.1.0.2:5004".parse().unwrap()),
+            interface: Some("10.1.0.5".parse().unwrap()),
+            blue: Some("239.2.0.1:5004".parse().unwrap()),
+            blue_key: Some("239.2.0.2:5004".parse().unwrap()),
+            blue_interface: Some("10.2.0.5".parse().unwrap()),
+            ttl: 32,
+            payload_type: 96,
+        }
+    }
+
+    #[test]
+    fn a_flow_with_a_blue_leg_sends_twice() {
+        let mut hw = HardwareConfig::default();
+        hw.st2110.flows.push(flow());
+        hw.sync.tai_offset = 37;
+        let mut o: cg_output::st2110::St2110Config = serde_json::from_value(serde_json::json!({
+            "name": "CG", "fill": "0.0.0.0:0", "hardware": "flow-1"
+        }))
+        .unwrap();
+        hw.apply_st2110(&mut o);
+        let blue = o.blue.unwrap();
+        assert_eq!(blue.fill, "239.2.0.1:5004".parse().unwrap());
+        assert_eq!(blue.key, Some("239.2.0.2:5004".parse().unwrap()));
+        assert_eq!(blue.interface, Some("10.2.0.5".parse().unwrap()));
+        assert_eq!(o.tai_offset, 37);
+        assert!(hw.validate().is_ok());
+    }
+
+    #[test]
+    fn blue_destinations_are_checked() {
+        let mut hw = HardwareConfig::default();
+        hw.st2110.flows.push(St2110Flow {
+            blue_key: None,
+            ..flow()
+        });
+        assert!(hw.validate().unwrap_err().contains("blue key"));
+        let mut hw = HardwareConfig::default();
+        hw.st2110.flows.push(St2110Flow {
+            blue: Some("239.1.0.1:5004".parse().unwrap()),
+            ..flow()
+        });
+        assert!(hw.validate().unwrap_err().contains("used by two"));
+        let mut hw = HardwareConfig::default();
+        hw.network.media_red = "eth1".into();
+        hw.network.media_blue = "eth1".into();
+        assert!(hw.validate().is_err());
+    }
+
+    #[test]
+    fn ndi_settings_follow_the_roles() {
+        let roles = NetworkRoles {
+            ndi_discovery: "10.0.0.2".into(),
+            // No such interface: no adapter restriction.
+            ndi: "no-such-nic".into(),
+            ..NetworkRoles::default()
+        };
+        let v = ndi_settings(&roles);
+        assert_eq!(v["ndi"]["networks"]["discovery"], "10.0.0.2");
+        assert!(v["ndi"].get("adapters").is_none());
+        let lo = if_addrs::get_if_addrs()
+            .unwrap()
+            .into_iter()
+            .find(|i| i.is_loopback() && i.ip().is_ipv4())
+            .unwrap();
+        let v = ndi_settings(&NetworkRoles {
+            ndi: lo.name.clone(),
+            ..NetworkRoles::default()
+        });
+        assert_eq!(v["ndi"]["adapters"]["allowed"][0], "127.0.0.1");
+        assert!(v["ndi"].get("networks").is_none());
     }
 }

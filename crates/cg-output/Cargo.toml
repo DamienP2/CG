@@ -4,9 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-# Blackmagic DeckLink SDI output. Requires the DeckLink SDK / Desktop Video
-# drivers on the build machine (see crates/cg-output/src/sdi.rs).
-decklink = []
+# Blackmagic DeckLink SDI output and input: builds the C++ shim of
+# decklink/ against the SDK headers vendored in decklink-sdk/ (a C++
+# compiler is needed, plus MIDL on Windows). The runtime (Blackmagic
+# Desktop Video) is loaded at run time, so it is not needed to build or to
+# start. See build.rs and src/decklink.rs.
+decklink = ["dep:cc"]
 
 [dependencies]
 cg-render.workspace = true
@@ -16,3 +19,6 @@ tracing.workspace = true
 socket2 = { version = "0.5", features = ["all"] }
 # NDI runtime, loaded when an NDI output opens (see src/ndi.rs).
 libloading = "0.8"
+
+[build-dependencies]
+cc = { version = "1.8", optional = true }

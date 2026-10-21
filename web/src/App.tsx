@@ -1,4 +1,4 @@
-import { Braces, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Braces, CircuitBoard, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Logo } from './ui/Logo';
 import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
@@ -15,6 +15,7 @@ import { Projects } from './pages/Projects';
 import { MediaLibrary } from './pages/Media';
 import { Outputs } from './outputs/Outputs';
 import { Performance } from './perf/Performance';
+import { Hardware } from './hardware/Hardware';
 import { LoadMeter } from './ui/LoadMeter';
 import { Users } from './pages/Users';
 import { DataPage } from './data/DataPage';
@@ -72,7 +73,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs' || route.page === 'hardware' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -153,7 +154,7 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'performance' | 'mos' | 'users' | 'api' | 'settings' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'hardware' | 'performance' | 'mos' | 'users' | 'api' | 'settings' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata';
@@ -172,6 +173,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {tab('media', '/media', <Images size={14} />, t('Assets'))}
           {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
           {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams'))}
+          {can.admin(user) && tab('hardware', '/hardware', <CircuitBoard size={14} />, t('Hardware'))}
           {can.admin(user) && tab('performance', '/performance', <Gauge size={14} />, t('Performance'))}
           {can.admin(user) && tab('mos', '/mos', <Newspaper size={14} />, 'MOS')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, t('Users'))}
@@ -187,6 +189,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         {route.page === 'media' && <MediaLibrary />}
         {route.page === 'data' && <DataPage />}
         {route.page === 'outputs' && <Outputs />}
+        {route.page === 'hardware' && <Hardware />}
         {route.page === 'performance' && <Performance />}
         {route.page === 'settings' && <Settings />}
         {route.page === 'mos' && <MosPage />}

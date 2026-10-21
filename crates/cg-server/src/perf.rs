@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
+use crate::hardware::ClockReference;
+
 use serde::Serialize;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -99,13 +101,44 @@ impl SinkStats {
 }
 
 /// A channel clock.
-#[derive(Default)]
 pub struct ClockStats {
     late_max_us: AtomicU64,
     skipped: AtomicU64,
+    /// What the clock follows, and the channel's name.
+    reference: Mutex<(ClockReference, String)>,
+    /// A DeckLink reference: locked (1), not (0), unknown (-1).
+    locked: std::sync::atomic::AtomicI8,
+}
+
+impl Default for ClockStats {
+    fn default() -> Self {
+        Self {
+            late_max_us: AtomicU64::new(0),
+            skipped: AtomicU64::new(0),
+            reference: Mutex::new((ClockReference::Free, String::new())),
+            locked: std::sync::atomic::AtomicI8::new(-1),
+        }
+    }
 }
 
 impl ClockStats {
+    pub fn set_reference(&self, r: ClockReference, channel: &str) {
+        *lock(&self.reference) = (r, channel.to_string());
+    }
+    pub fn reference(&self) -> ClockReference {
+        lock(&self.reference).0
+    }
+    #[allow(dead_code)] // set by the DeckLink clock (in progress)
+    pub fn set_locked(&self, locked: Option<bool>) {
+        self.locked
+            .store(locked.map_or(-1, i8::from), Ordering::Relaxed);
+    }
+    pub fn locked(&self) -> Option<bool> {
+        match self.locked.load(Ordering::Relaxed) {
+            -1 => None,
+            v => Some(v == 1),
+        }
+    }
     pub fn ticked(&self, late: Duration) {
         self.late_max_us
             .fetch_max(late.as_micros() as u64, Ordering::Relaxed);
@@ -227,11 +260,14 @@ pub struct Perf {
     sys: Mutex<System>,
     tracks: Mutex<Tracks>,
     sampled: RwLock<Sampled>,
+    /// NTP / PTP status.
+    pub sync: Arc<crate::sync::Watch>,
 }
 
 impl Default for Perf {
     fn default() -> Self {
         Self {
+            sync: Default::default(),
             pictures: Default::default(),
             clocks: Default::default(),
             sys: Mutex::new(System::new()),
@@ -250,6 +286,10 @@ impl Perf {
         lock(&self.tracks)
             .by_key
             .retain(|k, _| !k.starts_with(&prefix) && k != channel);
+    }
+
+    pub fn clock_of(&self, channel: &str) -> Option<Arc<ClockStats>> {
+        lock(&self.clocks).get(channel).cloned()
     }
 
     pub fn clock(&self, channel: &str) -> Arc<ClockStats> {
@@ -479,6 +519,7 @@ impl Perf {
 
 /// Samples once a second, for as long as the server runs.
 pub fn spawn_sampler(perf: Arc<Perf>, inputs: Arc<crate::inputs::Inputs>) {
+    crate::sync::spawn(perf.sync.clone());
     std::thread::Builder::new()
         .name("cg-perf".into())
         .spawn(move || {
@@ -534,7 +575,8 @@ impl Warning {
 impl Perf {
     /// Logs warnings when they start (once, not every second).
     fn watch(&self) {
-        let w = machine_warnings(&self.sampled());
+        let mut w = machine_warnings(&self.sampled());
+        w.extend(self.sync_warnings(|_| true));
         static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
         let now: Vec<String> = w.iter().map(|w| w.text.to_string()).collect();
         let mut seen = lock(&SEEN);
@@ -544,6 +586,54 @@ impl Perf {
             }
         }
         *seen = now;
+    }
+}
+
+impl Perf {
+    /// Lost or missing synchronisation, for the channels `shown` lets through.
+    pub fn sync_warnings(&self, shown: impl Fn(&str) -> bool) -> Vec<Warning> {
+        let status = self.sync.get();
+        let mut w = Vec::new();
+        if status.checked_at == 0 {
+            return w;
+        }
+        if status.ntp.synced == Some(false) {
+            w.push(Warning::new(
+                "warn",
+                "The system clock is not synchronised (NTP)",
+                &[],
+            ));
+        }
+        for (id, c) in lock(&self.clocks).iter() {
+            if !shown(id) {
+                continue;
+            }
+            let (reference, name) = lock(&c.reference).clone();
+            match reference {
+                ClockReference::Ptp if !status.ptp.locked => {
+                    let why = status
+                        .ptp
+                        .message
+                        .clone()
+                        .or_else(|| status.ptp.port_state.clone())
+                        .unwrap_or_default();
+                    w.push(Warning::new(
+                        "error",
+                        "{channel}: not locked to PTP ({why})",
+                        &[("channel", name.into()), ("why", why.into())],
+                    ));
+                }
+                ClockReference::Decklink if c.locked() == Some(false) => {
+                    w.push(Warning::new(
+                        "error",
+                        "{channel}: the DeckLink card has no reference signal",
+                        &[("channel", name.into())],
+                    ));
+                }
+                _ => {}
+            }
+        }
+        w
     }
 }
 
@@ -696,6 +786,7 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
     let sm = s.perf.sampled();
     let status = s.output_status.snapshot();
     let mut warnings = machine_warnings(&sm);
+    warnings.extend(s.perf.sync_warnings(|id| me.sees_channel(id)));
     let mut costs = [
         Cost::new("picture", 0.5),
         Cost::new("stream", 1.6),
@@ -717,6 +808,7 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
         rates.push(rate);
         let frame_ms = 1000.0 / rate;
         let clock = sm.clocks.get(&c.id).cloned().unwrap_or_default();
+        let stats = s.perf.clock_of(&c.id);
         if visible && clock.max_ms > frame_ms / 2.0 {
             warnings.push(Warning::new(
                 "warn",
@@ -813,6 +905,8 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
                 "onAir": on_air,
                 "rate": rate,
                 "jitterMs": round(clock.max_ms, 2),
+                "clock": stats.as_ref().map(|c| c.reference()),
+                "clockLocked": stats.as_ref().and_then(|c| c.locked()),
                 "load": round(load_max, 1),
                 "pictures": pictures,
             }));
@@ -945,6 +1039,7 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
             free: round(free, 2),
             items,
         },
+        "sync": s.perf.sync.get(),
         "warnings": warnings,
     }))
 }

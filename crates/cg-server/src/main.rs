@@ -19,6 +19,7 @@ mod render;
 mod rt;
 mod service;
 mod state;
+mod sync;
 mod update;
 mod web;
 mod webproxy;
@@ -344,6 +345,11 @@ async fn shutdown_signal() {
     ctrl_c.await;
 }
 
+/// The NDI runtime is loaded (it reads its settings only then).
+fn ndi_started() -> bool {
+    cg_output::ndi::loaded_path().is_some()
+}
+
 pub const DEFAULT_BIND: &str = "0.0.0.0:8080";
 
 /// After an update the previous process may still hold the port briefly.
@@ -393,15 +399,39 @@ pub async fn serve(
         tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
     }
 
+    // The NDI runtime reads its settings (network roles) from here.
+    if std::env::var_os("NDI_CONFIG_DIR").is_none() {
+        std::env::set_var("NDI_CONFIG_DIR", hardware::ndi_config_dir(&data_dir));
+    }
+
     // Each iteration is one engine "cycle"; settings changes end the cycle
     // and the loop rebuilds everything with the new configuration.
     loop {
         let config = config::ServerConfig::load(&data_dir);
-        let wanted = args
+        perf.sync.set_domain(config.hardware.sync.ptp_domain);
+        if hardware::write_ndi_settings(&data_dir, &config.hardware.network) && ndi_started() {
+            tracing::warn!("NDI network settings changed: they apply when the server restarts");
+        }
+        let mut wanted = args
             .bind
             .or(config.bind)
             .or(args.default_bind)
             .unwrap_or(fallback);
+        // The control network role: the interface the web UI and the API
+        // are reached on (unless an address was given on the command line).
+        let control = &config.hardware.network.control;
+        let mut loopback = None;
+        if args.bind.is_none() && wanted.ip().is_unspecified() && !control.is_empty() {
+            match hardware::interface_ip(control) {
+                Some(ip) => {
+                    wanted.set_ip(ip.into());
+                    loopback = Some(SocketAddr::from(([127, 0, 0, 1], wanted.port())));
+                }
+                None => tracing::warn!(
+                    "control interface `{control}` has no IPv4 address: listening on every interface"
+                ),
+            }
+        }
         let listener = match bind_retry(wanted).await {
             Ok(l) => l,
             // Keep the UI reachable so the setting can be fixed.
@@ -412,6 +442,17 @@ pub async fn serve(
             Err(e) => return Err(e.into()),
         };
         let bind = listener.local_addr()?;
+        // The machine itself always gets in.
+        let local = match loopback.filter(|_| bind.ip() != fallback.ip()) {
+            Some(addr) => match bind_retry(addr).await {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    tracing::warn!("cannot listen on {addr}: {e}");
+                    None
+                }
+            },
+            None => None,
+        };
         // Lets the desktop app find the server without parsing settings.
         let runtime = serde_json::json!({ "bind": bind, "version": env!("CARGO_PKG_VERSION"), "pid": std::process::id() });
         if let Err(e) = std::fs::write(data_dir.join("runtime.json"), runtime.to_string()) {
@@ -492,6 +533,17 @@ pub async fn serve(
         tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 output: /output/<channel>");
         let stop = state::until_true(stop_rx.clone());
         let cycle = shared.clone();
+        let loopback = local.map(|l| {
+            let mut closing = shared.closing.subscribe();
+            let app = app.clone();
+            tokio::spawn(async move {
+                axum::serve(l, app.into_make_service_with_connect_info::<SocketAddr>())
+                    .with_graceful_shutdown(async move {
+                        let _ = closing.wait_for(|c| *c).await;
+                    })
+                    .await
+            })
+        });
         axum::serve(
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -504,6 +556,9 @@ pub async fn serve(
             let _ = cycle.closing.send(true);
         })
         .await?;
+        if let Some(h) = loopback {
+            let _ = h.await;
+        }
         // Channels stop by themselves once `closing` is set, closing their
         // outputs (ports and NDI names the next cycle may open again).
         for h in channels {

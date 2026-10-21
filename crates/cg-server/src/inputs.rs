@@ -954,19 +954,22 @@ mod tests {
     /// Three pictures arriving at once come out one frame apart, after the buffer.
     #[test]
     fn a_burst_is_spread_out() {
-        let l = live(20, 2); // 50 ms frames, 100 ms buffer
+        let l = live(10, 2); // 100 ms frames, 200 ms buffer
+        let start = Instant::now();
         for w in 1..=3 {
             l.put(pic(w));
         }
         assert!(l.current().is_none());
-        std::thread::sleep(Duration::from_millis(110));
+        // Looked at mid-frame, so a slow test machine has 50 ms to spare.
+        let at = |ms| std::thread::sleep(Duration::from_millis(ms).saturating_sub(start.elapsed()));
+        at(250);
         assert_eq!(l.current().unwrap().width(), 1);
-        std::thread::sleep(Duration::from_millis(50));
+        at(350);
         assert_eq!(l.current().unwrap().width(), 2);
-        std::thread::sleep(Duration::from_millis(50));
+        at(450);
         assert_eq!(l.current().unwrap().width(), 3);
         // Nothing new: the last one stays.
-        std::thread::sleep(Duration::from_millis(60));
+        at(600);
         assert_eq!(l.current().unwrap().width(), 3);
         assert_eq!(l.dropped.load(Ordering::Relaxed), 0);
     }
