@@ -67,6 +67,8 @@ export interface FieldIO {
   set: (f: Field, v: string) => void;
   /** Fed by a data source: shown, not edited. */
   fed: (f: Field) => string | null;
+  /** Its value differs from the one on air (its label gets a dot). */
+  changed?: (f: Field) => boolean;
 }
 
 const TRUE = new Set(['true', '1', 'yes', 'on']);
@@ -133,7 +135,7 @@ const ROW_LABEL: Record<string, () => string> = {
 };
 
 /** The exposed properties of one layer: its header, then the Designer's sections. */
-export function LayerProperties({ entry, io }: { entry: ExposedLayer; io: FieldIO }) {
+export function LayerProperties({ entry, io, bare }: { entry: ExposedLayer; io: FieldIO; /** Without its header (the widget's tab names it). */ bare?: boolean }) {
   const { layer, at } = entry;
   const Icon = widgetOf(layer.type)?.icon ?? ICONS[layer.type];
   const kind = widgetOf(layer.type)?.label;
@@ -152,7 +154,15 @@ export function LayerProperties({ entry, io }: { entry: ExposedLayer; io: FieldI
           {fed}
         </span>
       );
-    return node(io.value(f), (v) => io.set(f, v));
+    const el = node(io.value(f), (v) => io.set(f, v));
+    // Changed from on air: the row's label gets a dot (styles.css, :has).
+    return io.changed?.(f) ? (
+      <span key={p} className="opx-chg-mark">
+        {el}
+      </span>
+    ) : (
+      el
+    );
   };
   /** A path's value: the exposed field's, else the layer's own (shown, not changed). */
   const val = (p: Path): string => {
@@ -261,13 +271,15 @@ export function LayerProperties({ entry, io }: { entry: ExposedLayer; io: FieldI
 
   return (
     <div className="opx-layer">
-      <div className="opx-layer-head">
-        <span className="pp-type">
-          <Icon size={13} />
-        </span>
-        <strong>{layer.name}</strong>
-        {kind && <span className="muted small">{t(kind)}</span>}
-      </div>
+      {!bare && (
+        <div className="opx-layer-head">
+          <span className="pp-type">
+            <Icon size={13} />
+          </span>
+          <strong>{layer.name}</strong>
+          {kind && <span className="muted small">{t(kind)}</span>}
+        </div>
+      )}
       {sections}
     </div>
   );
@@ -626,7 +638,7 @@ function SettingInput({ field, value, onChange }: { field: Field; value: string;
 }
 
 /** A text fed by a data set: what it shows, read only (the data set is chosen on the Data side). */
-export function FedText({ label, value, title, children }: { label: string; value: string; title: string; children?: ReactNode }) {
+export function FedText({ label, value, title, children }: { label: ReactNode; value: string; title: string; children?: ReactNode }) {
   const lines = value.split('\n');
   return (
     <div>

@@ -12790,3 +12790,113 @@ a.lib-nav-item {
 .opt-x button:hover {
   color: var(--live);
 }
+
+/* Operator · the selected graphic, widget by widget: tabs, then the widget's bar (preview controls, Fade | Cut, UPDATE). */
+.opx-wtabs {
+  flex: none;
+}
+.opx-wtabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.opx-wtabs button.on {
+  border-bottom-color: var(--accent);
+}
+/* Changed from on air: a tab, a field's label. */
+.opx-chg {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.opx-wtabs .opx-chg {
+  margin: 0;
+}
+.opx-chg-mark {
+  display: contents;
+}
+.pp-row:has(.opx-chg-mark) > .pp-label::before,
+.wk-row:has(.opx-chg-mark) > .prop-label::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.opx-wbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 48px;
+  padding: 7px 12px;
+  background: var(--op-2);
+  border-bottom: 1px solid var(--line);
+}
+.opx-wbar > .opx-btn {
+  height: 32px;
+}
+/* The widget's controls in the bar: its buttons, compact (they drive the preview). */
+.opx-pvctl {
+  --op-1: #151722;
+  --op-2: #1c1f2c;
+  --op-3: #252938;
+  --op-4: #2f3446;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.opx-pvctl .wk-note,
+.opx-pvctl .wk-readout span {
+  display: none;
+}
+.opx-pvctl .wk-readout b {
+  font-size: 15px;
+}
+.opx-pvctl .wk-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+.opx-pvctl .wk-row {
+  min-height: 28px;
+}
+.opx-pvctl .opx-sq {
+  width: 28px;
+  height: 28px;
+}
+.opx-ds-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.opx-pvctl {
+  flex: 1 1 auto;
+}
+.opx-pvctl .wk-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-height: 28px;
+}
+.opx-pvctl .wk-row > .wk-gut,
+.opx-pvctl .wk-tog > span {
+  display: none;
+}
+.opx-pvctl .wk-row > .prop-label {
+  width: auto;
+  min-width: 0;
+  font-size: 11px;
+}

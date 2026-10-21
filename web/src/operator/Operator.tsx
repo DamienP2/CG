@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
 import { linesKey, oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
-import { isTimed } from '../engine/widgets';
+import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
 import { LiveTime, useTicker } from '../engine/LiveTime';
@@ -16,8 +16,9 @@ import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { Row } from '../widgets/kit';
-import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, sourcePatch, steppedDatasets } from './DataSets';
-import { exposedFields, FedText, LayerProperties, OpSection, type FieldIO } from './Exposed';
+import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, shownData, sourcePatch, steppedDatasets } from './DataSets';
+import { changedKeys, hasControls, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
+import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
 import { shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { navigate, projectPath } from '../router';
@@ -177,6 +178,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [updateFade, setUpdateFade] = useUpdateFade();
+  // The widget tab shown, by rundown item; what the preview's controls changed.
+  const [tabOf, setTabOf] = useState<Record<string, string>>({});
+  const [pv, setPv] = useState<PreviewRun>(newPreviewRun);
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
@@ -220,6 +224,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     draftRef.current = fresh;
     setDraft(fresh);
     original.current = { id: item.id, data: structuredClone(item.data) };
+    setPv(newPreviewRun());
   }, [cued, template?.id]);
   // Changed elsewhere (another operator, MOS, the API) or new fields after a publish: follow, unless an edit is on its way.
   useEffect(() => {
@@ -331,8 +336,19 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const previewFormat = formatFor(project, main.width, main.height);
   const itemZone = item ? zoneOf(item) : undefined;
   const fps = project.frameRate.num / project.frameRate.den || 1;
-  // The data part only when the graphic reads data (a source or a data set).
-  const hasData = !!template && (!!usedDatasets(template).length || template.fields.some((f) => f.binding?.source));
+  // The selected graphic widget by widget (a tab each when there are several).
+  const parts = template ? widgetParts(template) : { shared: [], widgets: [] };
+  const part = (item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0];
+  // The data part only when the widget reads data (a source or a data set).
+  const hasData = !!part && (part.datasets.length > 0 || part.bound.length > 0);
+  // What Update would change on air, by widget.
+  const onAirNow = item ? onAirByItem.get(item.id) : undefined;
+  const sent = template ? updateData(template, draft, readMode) : {};
+  const changed = changedKeys(sent, onAirNow ? shownData(onAirNow) : undefined);
+  const partChanged = (p: WidgetPart) => !!template && partKeys(template, p).some((k) => changed.has(k));
+  const updates = parts.widgets.filter(partChanged).length + (parts.shared.some((f) => changed.has(f.key)) ? 1 : 0) || (changed.size ? 1 : 0);
+  const pvAge = () => (template ? holdFrame(template) / fps : 0) + (pv.active ? Math.max(0, Date.now() - pv.since) / 1000 : 0);
+  const setRun = (f: (r: PreviewRun) => PreviewRun) => setPv((r) => f(r.active ? r : { ...r, active: true, since: Date.now() }));
 
   return (
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
@@ -478,9 +494,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             <Screen width={previewFormat.width} height={previewFormat.height}>
               {template && (
                 <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
-                  <LiveTime ageSecs={holdFrame(template) / fps} clientNow={Date.now()}>
-                    <Scene template={inFormat(template, previewFormat.id)} frame={holdFrame(template)} data={previewData} />
-                  </LiveTime>
+                  <PreviewScene template={inFormat(template, previewFormat.id)} data={previewData} fps={fps} run={pv} />
                 </div>
               )}
             </Screen>
@@ -496,27 +510,37 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title={t('Name in the playlist')} />
                 <span className="muted small">{t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}</span>
               </header>
+              {parts.widgets.length > 1 && (
+                <div className="opx-head opx-tabs opx-wtabs">
+                  {parts.widgets.map((p) => (
+                    <button key={p.layer.id} className={p === part ? 'on' : ''} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
+                      {p.layer.name}
+                      {partChanged(p) && <i className="opx-chg" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {((part && part.controls) || onAirNow) && (
+                <div className="opx-wbar">
+                  {part?.controls && <PreviewControls key={`${item.id}-${part.layer.id}`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} />}
+                  <span className="spacer" />
+                  {onAirNow && (
+                    <>
+                      <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
+                      <button className="opx-btn violet" disabled={!operate || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
+                        <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="opx-edit" style={{ gridTemplateColumns: hasData ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
                 <div className="opx-fields-col">
                   <div className="opx-fields">
-                    <ValuesPane template={template} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} fitWarnings={fitWarnings} onDraft={editDraft} />
-                    {steppedDatasets(template).map((ds) => (
-                      <DataSetHand key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
-                    ))}
+                    <ValuesPane template={template} fields={[...parts.shared, ...(part?.fields ?? [])]} exposed={part?.exposed ? [part.exposed] : []} fedLayer={part?.fed.length ? part.layer : undefined} layerId={part?.layer.id} partIds={new Set(parts.widgets.map((p) => p.layer.id))} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} fitWarnings={fitWarnings} onDraft={editDraft} />
                   </div>
-                  <footer className="opx-fields-foot">
-                    <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
-                    <button
-                      className="opx-btn violet"
-                      disabled={!operate || !onAirByItem.get(item.id)}
-                      title={onAirByItem.get(item.id) ? t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)') : t('Not on air: the values go with the take')}
-                      onClick={() => command({ action: 'update', zone: itemZone?.id, data: updateData(template, draft, readMode), fade: updateFade })}
-                    >
-                      <RefreshCw size={13} /> Update
-                    </button>
-                  </footer>
                 </div>
-                {hasData && (
+                {hasData && part && (
                   <>
                     <div
                       className="opx-vgap"
@@ -530,12 +554,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
                         window.addEventListener('pointerup', up);
                       }}
                     />
-                    <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
-                      {usedDatasets(template).map((ds) =>
+                    <DataBlock project={project} template={template} fields={part.bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
+                      {part.datasets.map((ds) =>
                         datasetUse(template, ds).source ? (
-                          <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} sourceName={sourceName(ds.source)} onDraft={editDraft} />
+                          <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
                         ) : (
-                          <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
+                          <div key={ds.key} className="opx-ds-stack">
+                            <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
+                            <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                          </div>
                         ),
                       )}
                     </DataBlock>
@@ -711,44 +738,54 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
  * fed by a data set show), then the properties exposed in the Designer, layer
  * by layer, with the Designer's controls and sections.
  */
-function ValuesPane({ template, draft, boundDraft, readMode, sourceName, previewData, fitWarnings, onDraft }: { template: Template; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; fitWarnings: TextWarning[]; onDraft: (patch: Record<string, string>) => void }) {
-  const { content, layers } = useMemo(() => exposedFields(template.fields, template.layers), [template.fields, template.layers]);
+function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, changed, draft, boundDraft, readMode, sourceName, previewData, fitWarnings, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayer?: Layer; layerId?: string; partIds: Set<string>; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; fitWarnings: TextWarning[]; onDraft: (patch: Record<string, string>) => void }) {
   const live = (f: Field) => !!f.binding?.source && readMode !== 'manual';
   const io: FieldIO = {
     value: (f) => draft[f.key] ?? '',
     set: (f, v) => onDraft({ [f.key]: v }),
     fed: (f) => (live(f) ? (boundDraft[f.key] ?? draft[f.key] ?? '…') : null),
+    changed: (f) => changed.has(f.key),
   };
-  // The Texts a data set feeds (it is only their source): what they show, read only.
+  // A Text a data set feeds (it is only its source): what it shows, read only.
   const fed: { layer: Layer; title: string }[] = [];
   for (const ds of usedDatasets(template)) {
     const use = datasetUse(template, ds);
-    if (!use.source) continue;
+    if (!use.source || !fedLayer) continue;
     const row = Math.max(1, parseInt(draft[rowKey(ds.key)] ?? '1', 10) || 1);
     const one = draft[oneKey(ds.key)] === '1';
     for (const l of use.texts) {
-      if (fed.some((x) => x.layer.id === l.id)) continue;
+      if (l.id !== fedLayer.id || fed.some((x) => x.layer.id === l.id)) continue;
       // All the rows (a line each), unless the operator keeps only the chosen one.
       const all = l.type === 'text' && l.text.includes(`{{${linesKey(ds.key)}}}`) && !one;
       fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }) });
     }
   }
+  const fedChanged = !!fedLayer && usedDatasets(template).some((d) => changed.has(rowKey(d.key)) || changed.has(oneKey(d.key)));
   const fedIds = new Set(fed.map((x) => x.layer.id));
   const keys = new Set(template.fields.map((f) => f.key));
+  const dot = (on: boolean, label: React.ReactNode) =>
+    on ? (
+      <>
+        <i className="opx-chg" />
+        {label}
+      </>
+    ) : (
+      label
+    );
   return (
     <>
-      {(content.length > 0 || fed.length > 0) && (
+      {(fields.length > 0 || fed.length > 0) && (
         <OpSection title={t('Content')}>
           {(() => {
-            // The Texts fed by a data set with the plain values, before the values grouped by layer.
-            const groups = fieldGroups(content);
+            // The Text fed by a data set with the plain values, before the values grouped by layer.
+            const groups = fieldGroups(fields);
             if (fed.length && !groups.some((g) => !g.title)) groups.unshift({ title: '', fields: [] });
             return groups.map((g) => (
               <div key={g.title} className="opx-group">
                 {g.title && <div className="opx-sub">{g.title}</div>}
                 {g.fields.map(({ f, label }) => (
                   <div key={f.key}>
-                    <Row label={f.kind === 'table' ? undefined : label}>
+                    <Row label={f.kind === 'table' ? undefined : dot(changed.has(f.key), label)}>
                       {live(f) ? (
                         <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
                           {boundDraft[f.key] ?? draft[f.key] ?? '…'}
@@ -766,7 +803,7 @@ function ValuesPane({ template, draft, boundDraft, readMode, sourceName, preview
                 ))}
                 {!g.title &&
                   fed.map(({ layer, title }) => (
-                    <FedText key={layer.id} label={layer.name} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title}>
+                    <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title}>
                       {fitWarnings
                         .filter((w) => w.layer.id === layer.id)
                         .map((w) => (
@@ -779,11 +816,11 @@ function ValuesPane({ template, draft, boundDraft, readMode, sourceName, preview
           })()}
         </OpSection>
       )}
-      {layers.map((e) => (
-        <LayerProperties key={e.layer.id} entry={e} io={io} />
+      {exposed.map((e) => (
+        <LayerProperties key={e.layer.id} entry={e} io={io} bare />
       ))}
       {fitWarnings
-        .filter((w) => !fedIds.has(w.layer.id) && !w.keys.some((k) => keys.has(k)))
+        .filter((w) => !fedIds.has(w.layer.id) && !w.keys.some((k) => keys.has(k)) && (w.layer.id === layerId || !partIds.has(w.layer.id)))
         .map((w) => (
           <FitWarning key={w.layer.id} w={w} named />
         ))}
@@ -800,6 +837,19 @@ function FitWarning({ w, named }: { w: TextWarning; named?: boolean }) {
       {named && <strong>{t('{name}:', { name: w.layer.name })}</strong>}
       {!w.overflows ? t('text reduced to {pct}', { pct }) : mode === 'fit' ? t('too long: cut even when reduced — shorten it') : mode === 'ellipsis' ? t('too long: shown with “…”') : t('too long: cut on air')}
     </span>
+  );
+}
+
+/** The preview of the selected graphic, held at its On air point; its widgets run once the preview's controls were used. */
+function PreviewScene({ template, data, fps, run }: { template: Template; data: Record<string, string>; fps: number; run: PreviewRun }) {
+  const hold = holdFrame(template);
+  const now = useTicker(run.active);
+  const age = hold / fps + (run.active ? Math.max(0, now - run.since) / 1000 : 0);
+  const clocks = { clocks: run.clocks } as PlayoutItem;
+  return (
+    <LiveTime ageSecs={age} clientNow={now} layerAge={run.active ? (l) => layerAgeFrames(clocks, age * fps, l) / fps : undefined} widgetState={run.active ? (id) => run.widgets[id] : undefined} fps={fps}>
+      <Scene template={template} frame={hold} data={data} />
+    </LiveTime>
   );
 }
 
@@ -921,10 +971,10 @@ function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at
     const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('pointerdown', down);
-    window.addEventListener('keydown', key);
+    window.addEventListener('keydown', key, true);
     return () => {
       window.removeEventListener('pointerdown', down);
-      window.removeEventListener('keydown', key);
+      window.removeEventListener('keydown', key, true);
     };
   }, [onClose]);
   const auto = item.autoSecs !== undefined;
@@ -961,12 +1011,12 @@ function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at
 }
 
 /** Sources the graphic reads, when it reads them, and Read now. */
-function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }: { children?: React.ReactNode; project: Project; template: Template; item: RundownItem; draft: Record<string, string>; canEdit: boolean; onRead: (patch: Record<string, string>) => void; onMode: (m: ReadMode) => void }) {
+function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, children }: { children?: React.ReactNode; project: Project; template: Template; /** The fields of the widget read from a source. */ fields: Field[]; item: RundownItem; draft: Record<string, string>; canEdit: boolean; onRead: (patch: Record<string, string>) => void; onMode: (m: ReadMode) => void }) {
   const all = useSources();
   const auth = useApp((s) => s.auth);
   const toast = useApp((s) => s.toast);
   const bound = template.fields.filter((f) => f.binding?.source);
-  const used = [...new Set(bound.map((f) => f.binding!.source))].map((id) => all.find((s) => s.id === id) ?? { id, name: id, interval: 0, updatedAt: null, error: t('not found') });
+  const used = [...new Set(fields.filter((f) => f.binding?.source).map((f) => f.binding!.source))].map((id) => all.find((s) => s.id === id) ?? { id, name: id, interval: 0, updatedAt: null, error: t('not found') });
   const mode: ReadMode = item.read ?? 'live';
   const [reading, setReading] = useState(false);
   const readNow = async () => {
@@ -991,9 +1041,7 @@ function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }:
     <div className="opx-data">
       <div className="opx-data-title">{t('Data')}</div>
       {children}
-      {!used.length ? (
-        !usedDatasets(template).length && <p className="opx-hint">{t('No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).')}</p>
-      ) : (
+      {used.length > 0 && (
         <>
           {used.map((s) => (
             <div key={s.id} className="opx-source">
@@ -1040,15 +1088,6 @@ function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }:
               ))}
             </div>
           )}
-          <div>
-            <span className="opx-label">{t('Fields fed by the sources')}</span>
-            {bound.map((f) => (
-              <div key={f.key} className="opx-map">
-                <span>{f.label}</span>
-                <code>{bindingLabel(f.binding!)}</code>
-              </div>
-            ))}
-          </div>
           {mode !== 'live' && (
             <button className="opx-btn" disabled={reading || !canEdit} onClick={readNow} title={mode === 'manual' ? t('Read the sources now and keep the values in this item') : t('Read now to check; the take reads again')}>
               <RefreshCw size={13} /> {reading ? t('Reading…') : t('Read now')}
@@ -1064,7 +1103,8 @@ function DataBlock({ template, item, draft, canEdit, onRead, onMode, children }:
 /** Operator controls of a spec widget of the graphic on air (web/src/widgets). */
 function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number }) {
   const def = widgetOf(layer.type)!;
-  const Op = def.Operator;
+  // A picture without a sequence of frames has no controls.
+  const Op = hasControls(layer) ? def.Operator : undefined;
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const state = item.widgets?.[layer.id];
@@ -1077,7 +1117,6 @@ function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutIt
       <div className="opx-spec-head">
         <Icon size={13} />
         <strong>{layer.name}</strong>
-        <span className="muted small">{t(def.label)}</span>
       </div>
       <Warnings list={warnings} />
       {Op && <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps }} />}
@@ -1233,7 +1272,6 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
               </button>
               <span className="opx-widget-name">
                 <strong>{l.name}</strong>
-                <span className="muted small">{running ? t('running') : t('stopped')}</span>
               </span>
               <button className="opx-sq" title={t('Back to the start')} onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
                 <RotateCcw size={13} />
@@ -1251,7 +1289,6 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           ))}
         </div>
       )}
-      {!timed.length && !triggers.length && !steppedDatasets(tpl).length && !tpl.layers.some((l) => widgetOf(l.type)?.Operator) && <p className="opx-hint">{t('This graphic has no internal controls.')}</p>}
     </div>
   );
 }
