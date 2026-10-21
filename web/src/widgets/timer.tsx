@@ -3,14 +3,14 @@
 // (crates/cg-core/src/wid/timer.rs); actions in crates/cg-core/src/wid/timer.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Timer } from 'lucide-react';
+import { Flag, Pause, Play, RotateCcw, Timer, Undo2 } from 'lucide-react';
 import { col, cssColor, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
 import type { Data, Layer, FontStyle } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import * as T from './timer-fmt';
 import { t, tc } from '../i18n';
 
@@ -948,6 +948,34 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   );
 }
 
+/** The Operator's compact row: the time shown, start / pause, reset, restart (split). */
+function Compact({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string } }) {
+  useFrame();
+  const serverOffset = useApp((s) => s.serverOffset) ?? 0;
+  const got = useRef({ age: time.ageSecs, at: Date.now() });
+  if (got.current.age !== time.ageSecs) got.current = { age: time.ageSecs, at: Date.now() };
+  const now = Date.now() + (item ? serverOffset : 0);
+  const e = T.eff(layer, data);
+  const st = state as State | undefined;
+  const tz = time.defaultTz;
+  const ageMs = got.current.age * 1000 + (Date.now() - got.current.at);
+  const r = T.run(e, st, now, ageMs, tz);
+  const st0 = T.started(e, r);
+  const running = st0 && r.pausedAt == null;
+  const d = T.display(e, st, { now, ageMs, fps: 25, defaultTz: tz });
+  return (
+    <OpRow
+      value={T.segText(d.segs, e.c.sep)}
+      list={[
+        running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: st0 ? t('Resume') : tc('action', 'Start'), tone: 'green', onClick: () => act(st0 ? 'resume' : 'start') },
+        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+        { icon: Undo2, title: t('Restart'), onClick: () => act('restart') },
+        e.mode === 'stopwatch' && { icon: Flag, title: t('Split'), disabled: !running, onClick: () => act('split') },
+      ]}
+    />
+  );
+}
+
 // ------------------------------------------------------------- warnings --
 
 function warnings(layer: L, data: Data, state: unknown): Warning[] {
@@ -1014,6 +1042,8 @@ const timerDef = () =>
     Render: (p) => <TimerView layer={p.layer as L} r={p.r} w={p.w} h={p.h} data={p.data} time={p.time} state={p.state} fps={p.fps} designer={p.designer} />,
     Inspector: (p) => <Inspector layer={p.layer as L} data={p.data} edit={p.edit as never} set={p.set} />,
     Operator: (p) => <Operator layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
+    Compact: (p) => <Compact layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
+    controls: (l, data) => T.timed(T.eff(l as L, data)),
     warnings: (l, { data, state }) => warnings(l as L, data, state),
   });
 

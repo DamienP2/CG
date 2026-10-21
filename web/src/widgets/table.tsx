@@ -2,14 +2,14 @@
 // mapped columns, header row / column, merges, widths fixed / auto / %, styles per level, borders, conditional
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
-import { Pencil, Table } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Pencil, Play, RefreshCw, Table } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { locale, t, tn } from '../i18n';
 import { useTableEditor } from './table-editor-store';
 import { ColorField } from '../ui/fields';
-import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, OpRow, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { cased, TextCell, tw, type CellText, type Overflow } from './table-text';
 import { textWidth } from '../engine/textFit';
 
@@ -715,6 +715,31 @@ export default defineWidget({
         <Note>{k.link.trim() ? t('Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.') : t('Source: manual grid.')}</Note>
       </>
     );
+  },
+  // One row: the page, previous / next, auto pages paused or not, reload.
+  Compact: ({ layer, state, data, act, time }) => {
+    const now = useFrame() + (time.nowMs - Date.now());
+    const k = cfg(layer);
+    const st = (state ?? {}) as State;
+    const m = model(k, data);
+    const pages = pageCount(k, m);
+    const [page] = currentPage(st, pages, now);
+    const scroll = k.pageMode === 'scroll';
+    return (
+      <OpRow
+        value={scroll || !m.rows.length ? undefined : `${page + 1}/${pages}`}
+        list={[
+          !scroll && { icon: ChevronLeft, title: t('Previous'), disabled: pages < 2, onClick: () => act('prev') },
+          !scroll && { icon: ChevronRight, title: t('Next'), disabled: pages < 2, onClick: () => act('next') },
+          !scroll && st.auto && (st.pausedAt ? { icon: Play, title: t('Resume'), tone: 'green', onClick: () => act('resume') } : { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') }),
+          !!k.link.trim() && { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') },
+        ]}
+      />
+    );
+  },
+  controls: (l, data) => {
+    const k = cfg(l);
+    return !!k.link.trim() || (k.pageMode !== 'scroll' && pageCount(k, model(k, data)) > 1);
   },
   Overlay: ({ layer, scale, edit }) => {
     const k = cfg(layer);

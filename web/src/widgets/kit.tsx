@@ -105,6 +105,10 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   Inspector?: (p: InspectorProps<T>) => ReactNode;
   /** Controls in the Operator (graphic on air) and in the Designer's try-out. */
   Operator?: (p: OperatorProps<T>) => ReactNode;
+  /** The same controls on one row (the Operator's widget bar and On air panel): a small readout, icon buttons. */
+  Compact?: (p: OperatorProps<T>) => ReactNode;
+  /** It has controls with these settings (default: when it has Operator controls). */
+  controls?: (l: LayerOf<T>, data: Data) => boolean;
   /** Orange handles over the selected layer in the Designer. */
   Overlay?: (p: OverlayProps<T>) => ReactNode;
   warnings?: (l: LayerOf<T>, ctx: { data: Data; state: unknown; r?: Resolved }) => Warning[];
@@ -765,6 +769,45 @@ export function useKeys(map: Record<string, () => void>) {
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
   }, []);
+}
+
+/** A button of a compact Operator row: an icon, its text in the tooltip. */
+export interface OpBtn {
+  icon: LucideIcon;
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: 'green' | 'amber' | 'violet';
+  /** Asks first (on air). */
+  confirm?: string;
+  /** A few letters next to the icon (a team's short name…). */
+  tag?: string;
+}
+
+/** The compact controls of a widget: a small readout, then icon buttons. */
+export function OpRow({ value, list }: { value?: ReactNode; list: (OpBtn | false | null | undefined)[] }) {
+  return (
+    <div className="wk-oprow">
+      {value != null && value !== '' && <b className="wk-oprow-v">{value}</b>}
+      {list
+        .filter((b): b is OpBtn => !!b)
+        .map((b, i) => (
+          <button
+            key={i}
+            className={`opx-sq ${b.tone ?? ''} ${b.tag ? 'tagged' : ''}`}
+            title={b.title}
+            disabled={b.disabled}
+            onClick={async () => {
+              if (b.confirm && !(await confirmDialog({ title: b.confirm, confirm: t('Yes') }))) return;
+              b.onClick();
+            }}
+          >
+            <b.icon size={13} />
+            {b.tag && <span>{b.tag}</span>}
+          </button>
+        ))}
+    </div>
+  );
 }
 
 /** Big monospace readout (current time, score…). */
