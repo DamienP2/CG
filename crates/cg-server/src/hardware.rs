@@ -103,11 +103,12 @@ pub fn interface_ip(name: &str) -> Option<Ipv4Addr> {
     if name.is_empty() {
         return None;
     }
+    // An interface can have an IPv6 address listed before its IPv4 one.
     if_addrs::get_if_addrs()
         .ok()?
         .into_iter()
-        .find(|i| i.name == name)
-        .and_then(|i| match i.ip() {
+        .filter(|i| i.name == name)
+        .find_map(|i| match i.ip() {
             std::net::IpAddr::V4(ip) => Some(ip),
             _ => None,
         })

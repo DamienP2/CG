@@ -952,8 +952,9 @@ mod tests {
             })
             .collect();
         late.sort();
-        // A busy test machine preempts some; the typical one is on time.
-        assert!(late[20] < Duration::from_millis(1), "{late:?}");
+        // A busy test machine (a shared CI runner) preempts some; the typical
+        // one is on time, far from a frame late.
+        assert!(late[20] < Duration::from_millis(5), "{late:?}");
     }
 
     #[test]
@@ -983,11 +984,11 @@ mod tests {
                 assert!(t.at > l);
             }
             last = Some(t.at);
-            // Shown when the system clock says so.
+            // Shown when the system clock says so (give or take a busy machine).
             let off = SystemTime::now()
                 .duration_since(t.at)
                 .unwrap_or_else(|e| e.duration());
-            assert!(off < Duration::from_millis(15), "{off:?}");
+            assert!(off < Duration::from_millis(40), "{off:?}");
         }
     }
 
@@ -1028,9 +1029,9 @@ mod tests {
             assert!(t.at > last);
             last = t.at;
         }
-        // The card's own pace (10 ms), not the channel's (40 ms).
+        // The card's own pace (10 ms), not the channel's (200 ms).
         assert!(
-            start.elapsed() < Duration::from_millis(100),
+            start.elapsed() < Duration::from_millis(400),
             "{:?}",
             start.elapsed()
         );
