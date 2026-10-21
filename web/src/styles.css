@@ -10074,17 +10074,6 @@ body.cv-moving * {
 .opx-fields-col .opx-fields {
   flex: 1;
 }
-.opx-fields-foot {
-  flex: none;
-  display: flex;
-  gap: 8px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--line);
-}
-.opx-fields-foot .opx-btn {
-  flex: 1;
-  justify-content: center;
-}
 .opx-vgap {
   position: relative;
   background: var(--line);
@@ -10117,9 +10106,6 @@ body.cv-moving * {
 }
 .opx-auto {
   color: var(--pvw);
-}
-.opx-hold {
-  color: var(--warn);
 }
 .opx-acts button.on {
   color: var(--pvw);
@@ -11642,11 +11628,11 @@ body.cv-moving * {
   color: var(--text-3);
 }
 /* Update's Fade / Cut, before the button. */
-.opx-fields-foot .opx-upd-mode {
+.opx-wbar .opx-upd-mode {
   flex: none;
   width: 128px;
 }
-.opx-fields-foot .opx-upd-mode button {
+.opx-wbar .opx-upd-mode button {
   height: 26px;
 }
 
