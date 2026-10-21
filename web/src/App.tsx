@@ -1,5 +1,5 @@
 import { Braces, CircuitBoard, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
-import { Logo } from './ui/Logo';
+import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
 import { Designer } from './designer/Designer';
@@ -100,15 +100,6 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function Brand() {
-  return (
-    <div className="brand">
-      <Logo size={22} />
-      <span>Strata</span>
     </div>
   );
 }

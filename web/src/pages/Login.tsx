@@ -1,5 +1,5 @@
 import { LogIn, ShieldCheck } from 'lucide-react';
-import { Logo } from '../ui/Logo';
+import { Brand } from '../ui/Brand';
 import { useState } from 'react';
 import { ApiError, useApp } from '../store';
 import { LANGS, pickLang, t, useLang } from '../i18n';
@@ -34,11 +34,9 @@ export function Login() {
   return (
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <div className="brand big">
-          <Logo size={30} />
-          <span>Strata</span>
-        </div>
-        <p className="muted">{auth?.serverName}</p>
+        <Brand big />
+        {/* The server's own name, when it has one other than the product's. */}
+        {auth?.serverName && auth.serverName !== 'Strata' && <p className="muted">{auth.serverName}</p>}
         <div className="lang-switch login-lang" role="group" aria-label={t('Language')}>
           {LANGS.map((l) => (
             <button type="button" key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => pickLang(l.id)}>

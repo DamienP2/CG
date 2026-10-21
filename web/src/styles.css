@@ -328,13 +328,30 @@ code {
 .brand {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
+  flex: none;
+}
+.brand-name {
   font-weight: 800;
-  letter-spacing: 0.02em;
-  font-size: 15px;
+  font-size: 18px;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: #fff;
+}
+.brand-rule {
+  width: 1px;
+  height: 18px;
+  background: var(--line-2);
+}
+.brand-sign {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  color: var(--text-2);
 }
 .brand svg {
-  color: var(--live);
+  display: block;
+  flex: none;
 }
 .brand em {
   font-style: normal;
@@ -1796,7 +1813,16 @@ code {
   margin: -8px 0 4px;
 }
 .brand.big {
-  font-size: 22px;
+  gap: 14px;
+}
+.brand.big .brand-name {
+  font-size: 26px;
+}
+.brand.big .brand-rule {
+  height: 24px;
+}
+.brand.big .brand-sign {
+  gap: 7px;
 }
 .login-intro {
   display: flex;
