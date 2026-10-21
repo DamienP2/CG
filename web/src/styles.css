@@ -328,7 +328,7 @@ code {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   flex: none;
 }
 .brand-name {
@@ -338,16 +338,14 @@ code {
   line-height: 1;
   color: #fff;
 }
-.brand-rule {
-  width: 1px;
-  height: 18px;
-  background: var(--line-2);
-}
 .brand-sign {
   display: flex;
   align-items: flex-end;
   gap: 5px;
   color: var(--text-2);
+}
+.brand:not(.stacked) .brand-sign {
+  opacity: 0.75;
 }
 .brand svg {
   display: block;
@@ -1830,7 +1828,7 @@ code {
   font-size: 46px;
 }
 .brand.stacked .brand-sign {
-  gap: 8px;
+  gap: 6px;
 }
 .login-intro {
   display: flex;
