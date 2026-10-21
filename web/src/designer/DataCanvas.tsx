@@ -1,6 +1,6 @@
 import { widgetOf } from '../widgets';
-import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
@@ -21,7 +21,7 @@ import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { getPath, setPath } from '../widgets/kit';
 import { isColorValue, settingLabel, settingPorts } from '../engine/settingPorts';
-import { forgetKeys, formatSetting, settingKind } from '../engine/settings';
+import { fieldUsed, forgetKeys, formatSetting, settingKind } from '../engine/settings';
 import { t, tn } from '../i18n';
 
 /*
@@ -128,6 +128,47 @@ function unbindSetting(l: Layer, path: string) {
   if (!Object.keys(l.settingBindings).length) delete l.settingBindings;
 }
 
+/** Where a layer takes an exposed value: a content port, `s:` + a setting, or a property. */
+type Exposure = { layer: string; port: string };
+/**
+ * Fields exposed to the Operator for one value of one layer (the (•) of the
+ * Inspector): typed by the Operator, used by that port only, fed by no data and
+ * read by no operation. They show in their layer's node, not as variables.
+ */
+function exposuresOf(t: Template, flow: DataFlow): Map<string, Exposure> {
+  const uses = new Map<string, (Exposure | null)[]>();
+  const use = (k: string, e: Exposure | null) => void (k && uses.set(k, [...(uses.get(k) ?? []), e]));
+  for (const l of t.layers) {
+    for (const [p, k] of Object.entries(l.bindings ?? {})) if (k) use(k, { layer: l.id, port: p });
+    for (const [p, k] of Object.entries(l.settingBindings ?? {})) if (k) use(k, HAND_ONLY.has(p) || contentOf(l).includes(p) ? null : { layer: l.id, port: `s:${p}` });
+    // {{key}}: a content that is exactly one key is its exposure, any other mention another use.
+    const count = new Map<string, number>();
+    for (const m of JSON.stringify(l).matchAll(/\{\{(\w+)\}\}/g)) count.set(m[1], (count.get(m[1]) ?? 0) + 1);
+    for (const c of contentOf(l)) {
+      const k = /^\{\{(\w+)\}\}$/.exec(contentValue(l, c).trim())?.[1];
+      if (!k || !count.get(k)) continue;
+      use(k, { layer: l.id, port: c });
+      count.set(k, count.get(k)! - 1);
+    }
+    for (const [k, n] of count) if (n > 0) use(k, null);
+  }
+  const fed = new Set(flow.edges.flatMap((e) => (e.to.startsWith('field:') ? [e.to.slice(6)] : [])));
+  const flowJson = JSON.stringify(flow);
+  const out = new Map<string, Exposure>();
+  for (const f of t.fields) {
+    const u = uses.get(f.key);
+    if (u?.length !== 1 || !u[0] || f.binding || fed.has(f.key) || flowJson.includes(`{${f.key}}`)) continue;
+    if (t.logic?.nodes.some((n) => n.type === 'field' && n.key === f.key)) continue;
+    out.set(f.key, u[0]);
+  }
+  return out;
+}
+/** A field exposed to the Operator goes once nothing uses it any more (as the Inspector's (•) does). */
+function dropField(t: Template, key: string) {
+  if (fieldUsed(t, key) || t.logic?.nodes.some((n) => n.type === 'field' && n.key === key) || t.dataflow?.edges.some((e) => e.to === `field:${key}`)) return;
+  t.fields = t.fields.filter((f) => f.key !== key);
+}
+
 /** Properties a layer exposes as ports. */
 function portsOf(l: Layer): string[] {
   const props: Prop[] = ['x', 'y', 'width', 'height', 'scaleX', 'scaleY', 'rotation', 'opacity'];
@@ -204,6 +245,12 @@ function loadLayout(id: string): Layout {
 }
 
 type Pt = { x: number; y: number };
+/** A port's dot: its node and where it is in it (canvas units). */
+type PortSpot = { node: string; x: number; y: number };
+const sameSpots = (a: Record<string, PortSpot>, b: Record<string, PortSpot>) => {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => b[k] && a[k].node === b[k].node && a[k].x === b[k].x && a[k].y === b[k].y);
+};
 function curve(a: Pt, b: Pt) {
   const dx = Math.max(40, Math.abs(b.x - a.x) / 2);
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
@@ -226,6 +273,8 @@ function stepOf(n: FlowNode): DataStep {
 
 /** Height of a data set's column row (its ports follow it). */
 const DS_ROW = 28;
+/** A column's dot in the middle of its row (`.port` already centres it: no extra margin). */
+const DS_DOT = { marginTop: 0 };
 
 /** The source node and the steps leading to node `id` (included). */
 function chainOf(flow: DataFlow, id: string): { source: FlowNode & { type: 'source' }; steps: DataStep[] } | null {
@@ -324,6 +373,32 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const [dsColumns, setDsColumns] = useState<Record<string, string[]>>({});
   // The Table whose "Build the table" card is open.
   const [building, setBuilding] = useState<string | null>(null);
+  // Where each port's dot is in its node, measured once drawn: the wires start and end on the dots,
+  // whatever the rows, sizes and fonts of the node.
+  const spaceRef = useRef<HTMLDivElement>(null);
+  const [portAt, setPortAt] = useState<Record<string, PortSpot>>({});
+  useLayoutEffect(() => {
+    const space = spaceRef.current;
+    if (!space) return;
+    const measure = () => {
+      const zoom = space.getBoundingClientRect().width / space.offsetWidth || 1;
+      const next: Record<string, PortSpot> = {};
+      for (const el of space.querySelectorAll<HTMLElement>('.port[data-wire]')) {
+        const node = el.closest<HTMLElement>('[data-node-id]');
+        if (!node) continue;
+        const n = node.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        const half = (v: number) => Math.round((v / zoom) * 2) / 2;
+        next[el.dataset.wire!] = { node: node.dataset.nodeId!, x: half(r.left + r.width / 2 - n.left), y: half(r.top + r.height / 2 - n.top) };
+      }
+      setPortAt((cur) => (sameSpots(cur, next) ? cur : next));
+    };
+    measure();
+    // Nodes whose content changes size by itself (a preview loaded, a picture).
+    const ro = new ResizeObserver(measure);
+    for (const n of space.querySelectorAll('.logic-node')) ro.observe(n);
+    return () => ro.disconnect();
+  });
   const logic: Logic = template.logic ?? { nodes: [], edges: [] };
   const migrated = useMemo(() => (template.dataflow ? null : migrate(template)), [template]);
   const flow: DataFlow = template.dataflow ?? migrated!;
@@ -349,10 +424,12 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
 
   // ---- What the canvas shows and where.
   const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))), ...settingPortsOf(l)]);
+  /** Properties with a port: the usual ones, and any other one set from the data (anchor, crop… exposed in the Inspector). */
+  const propPortsOf = (l: Layer) => [...portsOf(l), ...(Object.entries(l.bindings) as [Prop, string][]).filter(([p, k]) => k && !portsOf(l).includes(p)).map(([p]) => p)];
   /** Content ports always; the settings set from the data; properties when unfolded (or wired). */
   const ports = (l: Layer) => {
     const wired = wiredPorts(l);
-    return [...contentOf(l), ...settingPortsOf(l), ...portsOf(l).filter((p) => layout.collapsed[l.id] === false || wired.has(p))];
+    return [...contentOf(l), ...settingPortsOf(l), ...propPortsOf(l).filter((p) => layout.collapsed[l.id] === false || wired.has(p))];
   };
   const portTop = (l: Layer, port: string) => {
     let y = HEAD;
@@ -375,7 +452,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   };
   // Rows the Operator types into a table are not variables of the data (other exposed settings are, wired to their setting).
   const exposed = new Set(template.layers.flatMap((l) => Object.entries(l.settingBindings ?? {}).flatMap(([p, k]) => (HAND_ONLY.has(p) ? [k] : []))));
-  const shownFields = template.fields.filter((f) => !exposed.has(f.key));
+  // Values exposed to the Operator for one port of a layer: in that layer's node.
+  const folded = exposuresOf(template, flow);
+  /** The field exposed to the Operator at a port of `l`, if any. */
+  const exposureAt = (l: Layer, port: string) => {
+    for (const [k, e] of folded) if (e.layer === l.id && e.port === port) return template.fields.find((f) => f.key === k);
+    return undefined;
+  };
+  const shownFields = template.fields.filter((f) => !exposed.has(f.key) && !folded.has(f.key));
   const fieldHeight = (f: Field) => HEAD + (f.binding ? 90 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
   stack(
     COLS.field,
@@ -386,22 +470,28 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     template.layers.map((l) => [`l:${l.id}`, layerHeight(l)]),
   );
   for (const n of flow.nodes) nodePos.set(n.id, { x: n.x, y: n.y });
-  const flowWidth = (n: FlowNode) => widthOf(n.id, n.type === 'source' ? W.source : W.step);
+  // A data set is drawn as wide as a source.
+  const flowWidth = (n: FlowNode) => widthOf(n.id, n.type === 'source' || n.type === 'dataset' ? W.source : W.step);
 
-  // Port positions.
+  // Port positions: the dot measured in its node, else where the rows should put it (first drawing).
+  const spot = (wire: string, fallback: Pt): Pt => {
+    const m = portAt[wire];
+    const p = m && nodePos.get(m.node);
+    return p ? { x: p.x + m.x, y: p.y + m.y } : fallback;
+  };
   const outOf = (id: string, w: number) => {
     const p = nodePos.get(id)!;
-    return { x: p.x + w, y: p.y + HEAD / 2 };
+    return spot(`o:${id}`, { x: p.x + w, y: p.y + HEAD / 2 });
   };
   const inOf = (id: string) => {
     const p = nodePos.get(id)!;
-    return { x: p.x, y: p.y + HEAD / 2 };
+    return spot(`i:${id}`, { x: p.x, y: p.y + HEAD / 2 });
   };
   const layerIn = (l: Layer, port: string): Pt | null => {
     const p = nodePos.get(`l:${l.id}`);
     const top = portTop(l, port);
     if (!p || top < 0) return null;
-    return { x: p.x, y: p.y + top + ROW / 2 };
+    return spot(`i:l:${l.id}:${port}`, { x: p.x, y: p.y + top + ROW / 2 });
   };
   const logicOut = (n: LogicNode) => ({ x: n.x + widthOf(n.id, W.logic), y: n.y + HEAD / 2 });
 
@@ -432,6 +522,18 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       if (n) fn(n);
     }, key);
   const editField = (key: string, fn: (f: Field) => void, coalesce?: string) => update((t) => fn(t.fields.find((f) => f.key === key)!), coalesce);
+  /** Stops exposing to the Operator the value at `port` of `l`, as the Inspector's (•) does: the layer keeps the value set so far, the field goes. */
+  const unexpose = (l: Layer, port: string, key: string) =>
+    update((t) => {
+      const x = findLayer(t, l.id)!;
+      const def = t.fields.find((f) => f.key === key)?.default ?? '';
+      if (port.startsWith('s:')) unbindSetting(x, port.slice(2));
+      else if (contentOf(x).includes(port)) {
+        if (port === 'items') (x as unknown as { items: Item[] }).items = def.split('\n').filter(Boolean).map((text) => ({ cat: '', text, on: true }));
+        else setPath(x, port, def);
+      } else delete x.bindings[port as Prop];
+      dropField(t, key);
+    });
   const newField = (t: Template, label: string, kind: FieldKind, def: string): string => {
     const key = fieldKey(label, new Set(t.fields.map((f) => f.key)));
     t.fields.push({ key, label, kind, default: def });
@@ -457,15 +559,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   for (const n of flow.nodes)
     if (n.type === 'dataset') {
       // All the rows first (for tables, credits…), then each column of the current row.
-      const at = (i: number) => ({ x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 });
-      columnPorts.set(tableKey(n.key), at(0));
-      columnPorts.set(linesKey(n.key), at(0));
-      (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), at(i + 1)));
+      const at = (i: number, key: string) => spot(`o:k:${key}`, { x: n.x + flowWidth(n), y: n.y + HEAD + i * DS_ROW + DS_ROW / 2 });
+      columnPorts.set(tableKey(n.key), at(0, tableKey(n.key)));
+      columnPorts.set(linesKey(n.key), at(0, tableKey(n.key)));
+      (dsColumns[n.id] ?? []).forEach((c, i) => columnPorts.set(columnKey(n.key, c), at(i + 1, columnKey(n.key, c))));
       for (const k of [tableKey(n.key), linesKey(n.key), ...(dsColumns[n.id] ?? []).map((c) => columnKey(n.key, c))]) columnNode.set(k, n.id);
     }
   /** Where a value wired by key starts: a variable, or a data set column. */
   const keyOut = (key: string): Pt | null => (nodePos.has(`f:${key}`) ? outOf(`f:${key}`, widthOf(`f:${key}`, W.field)) : (columnPorts.get(key) ?? null));
-  const wiredKey = (k: string) => template.fields.some((f) => f.key === k) || columnPorts.has(k);
 
   // ---- Wires of the template.
   const wires: { d: string; title: string; onClick: () => void; data?: boolean; edge?: number }[] = [];
@@ -480,12 +581,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: t('Data (click to remove · drop a Filter, Sort or Transform on it)'), onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
   });
   for (const l of template.layers)
-    for (const port of [...contentOf(l), ...settingPortsOf(l), ...portsOf(l)]) {
+    for (const port of [...contentOf(l), ...settingPortsOf(l), ...propPortsOf(l)]) {
       const to = layerIn(l, port);
       if (!to) continue;
       const content = contentOf(l).includes(port);
       const setting = port.startsWith('s:') ? port.slice(2) : null;
-      const keys = content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]].filter((k): k is string => !!k && wiredKey(k));
+      // From a variable or a data set column (an exposed value is in the node itself: no wire).
+      const keys = (content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]]).filter((k): k is string => !!k && !!keyOut(k));
       for (const key of keys) {
         links.push({ from: nodePos.has(`f:${key}`) ? `f:${key}` : (columnNode.get(key) ?? ''), to: `l:${l.id}` });
         wires.push({
@@ -551,7 +653,22 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           const x = t.fields.find((y) => y.key === d.field);
           if (x && kind && x.kind === 'text' && kind !== 'text') x.kind = kind;
         });
-      else if (!target?.closest('.dc-node')) {
+      else if (d.layer && d.port) {
+        // On a value exposed to the Operator: the data feeds it from now on (a variable, before the layer).
+        const l = findLayer(template, d.layer);
+        const x = l && exposureAt(l, d.port);
+        if (!l || !x) return;
+        update((t) => {
+          const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
+          link(f, w.id, `field:${x.key}`);
+          compile(t, f);
+          const y = t.fields.find((z) => z.key === x.key);
+          if (y && kind && y.kind === 'text' && kind !== 'text') y.kind = kind;
+        });
+        const lp = nodePos.get(`l:${l.id}`)!;
+        const place = freeSpot(document.querySelector('.data-canvas .logic-canvas'), { x: lp.x - W.field - 80, y: at.y - HEAD / 2 }, W.field);
+        setLayout((s) => ({ ...s, pos: { ...s.pos, [`f:${x.key}`]: place } }));
+      } else if (!target?.closest('.dc-node')) {
         // Dropped on empty space: a new variable fed from here.
         let made = '';
         update((t) => {
@@ -587,16 +704,26 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const layerId = d.layer;
     const p = d.port;
     if (!layerId || !p) return;
+    // A value exposed to the Operator there: the data takes its place, the exposed field goes.
+    const before = findLayer(template, layerId);
+    const old = before && exposureAt(before, p);
+    const replaced = old && w.kind === 'field' && old.key !== w.key ? old.key : null;
     if (w.kind === 'field' && p.startsWith('s:')) {
-      update((t) => bindSetting(t, findLayer(t, layerId)!, p.slice(2), w.key));
+      update((t) => {
+        bindSetting(t, findLayer(t, layerId)!, p.slice(2), w.key);
+        if (replaced) dropField(t, replaced);
+      });
       return;
     }
     if (p.startsWith('s:')) return;
     if (w.kind === 'field') {
       update((t) => {
         const l = findLayer(t, layerId)!;
-        if (contentOf(l).includes(p)) wireContent(l, p, w.key);
-        else l.bindings[p as Prop] = w.key;
+        if (contentOf(l).includes(p)) {
+          if (replaced) unwireContent(l, p, replaced);
+          wireContent(l, p, w.key);
+        } else l.bindings[p as Prop] = w.key;
+        if (replaced) dropField(t, replaced);
         // Its rows now come from the data: the operator no longer types them.
         if (l.type === 'table' && takesTable(l, p)) unexposeRows(t, l);
       });
@@ -808,7 +935,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         </aside>
 
         <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`}>
-          <div className="logic-space" data-canvas-void style={cv.spaceStyle}>
+          <div className="logic-space" ref={spaceRef} data-canvas-void style={cv.spaceStyle}>
             <svg className="logic-wires">
               {wires.map((w, i) => (
                 <g key={i} className="wire-g">
@@ -836,7 +963,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       <button className="ln-del" title={used ? t('Remove (and its wires)') : t('Remove')} onClick={() => removeFlowNode(n.id)}>
                         <Trash2 size={11} />
                       </button>
-                      <span className="port out" title={t('Drag to a filter, a sort, a transform or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
+                      <span className="port out" data-wire={`o:${n.id}`} title={t('Drag to a filter, a sort, a transform or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                     </div>
                     <div className="ln-body">
                       <span className="dc-meta">
@@ -853,7 +980,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 return (
                   <div key={n.id} data-node-id={n.id} className="logic-node dc-node kind-dataset" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.source) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                     <div className="ln-head" style={{ height: HEAD }}>
-                      <span className="port in" data-flow={n.id} title={t('Drop a source or a step here')} />
+                      <span className="port in" data-flow={n.id} data-wire={`i:${n.id}`} title={t('Drop a source or a step here')} />
                       <Rows3 size={12} />
                       <input className="dc-title" value={n.name} onChange={(e) => setFlowNode(n.id, (x) => void ((x as { name: string }).name = e.target.value), `ds-name-${n.id}`)} title={t('Key: {key}', { key: n.key })} />
                       <button className="ln-del" title={t('Remove')} onClick={() => removeFlowNode(n.id)}>
@@ -876,13 +1003,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               return (
                 <div key={n.id} data-node-id={n.id} className={`logic-node dc-node kind-${n.type} ${layout.size[n.id]?.h ? 'sized' : ''}`} style={{ left: n.x, top: n.y, ...sizeStyle(n.id, W.step) }} onPointerDown={(e) => dragNode(e, n.id, 'flow')}>
                   <div className="ln-head" style={{ height: HEAD }}>
-                    <span className="port in" data-flow={n.id} title={t('Drop a source or a step here')} />
+                    <span className="port in" data-flow={n.id} data-wire={`i:${n.id}`} title={t('Drop a source or a step here')} />
                     <k.icon size={12} />
                     <span>{t(k.label)}</span>
                     <button className="ln-del" title={t('Remove (the wires go through)')} onClick={() => removeFlowNode(n.id)}>
                       <Trash2 size={11} />
                     </button>
-                    <span className="port out" title={t('Drag to a step or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
+                    <span className="port out" data-wire={`o:${n.id}`} title={t('Drag to a step or a variable')} onPointerDown={(e) => startWire(e, { kind: 'flow', id: n.id })} />
                   </div>
                   <div className="ln-body">
                     {chain ? <StepBody source={chain.source} steps={chain.steps} data={values} node={n as FlowNode & DataStep} onChange={(fn) => setFlowNode(n.id, fn as (x: FlowNode) => void, `flow-${n.id}`)} /> : <span className="dc-meta">{t('Wire a source (or a step) into it.')}</span>}
@@ -901,7 +1028,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               return (
                 <div key={f.key} data-node-id={`f:${f.key}`} className="logic-node dc-node kind-field" style={{ left: p.x, top: p.y, ...sizeStyle(`f:${f.key}`, W.field) }} onPointerDown={(e) => dragNode(e, `f:${f.key}`, 'layout')}>
                   <div className="ln-head" style={{ height: HEAD }}>
-                    <span className="port in" data-field={f.key} title={t('Drop a source or a step here')} />
+                    <span className="port in" data-field={f.key} data-wire={`i:f:${f.key}`} title={t('Drop a source or a step here')} />
                     <Variable size={12} />
                     <input className="dc-title" value={f.label} onChange={(e) => editField(f.key, (x) => void (x.label = e.target.value), `label-${f.key}`)} title={t('Key: {key}', { key: f.key })} />
                     <button
@@ -919,7 +1046,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     >
                       <Trash2 size={11} />
                     </button>
-                    <span className="port out" title={t("Drag to a layer's value or to an operation")} onPointerDown={(e) => startWire(e, { kind: 'field', key: f.key })} />
+                    <span className="port out" data-wire={`o:f:${f.key}`} title={t("Drag to a layer's value or to an operation")} onPointerDown={(e) => startWire(e, { kind: 'field', key: f.key })} />
                   </div>
                   <div className="ln-body">
                     <div className="row">
@@ -972,18 +1099,35 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                   </div>
                   {ports(l).map((port) => {
                     const content = contentOf(l).includes(port);
+                    // A value the Operator types (exposed in the Inspector): here, with its (•) to stop.
+                    const op = exposureAt(l, port);
+                    const opMark = op && <OperatorMark field={op} onStop={() => unexpose(l, port, op.key)} />;
                     if (content) {
                       const raw = contentValue(l, port);
-                      const isWired = wired.has(port);
+                      const isWired = wired.has(port) && !op;
                       const result = interpolateText(raw, values);
                       return (
-                        <div key={port} className={`ln-content ${isWired ? 'wired' : ''}`} style={{ height: CROW }}>
+                        <div key={port} className={`ln-content ${wired.has(port) ? 'wired' : ''}`} style={{ height: CROW }}>
                           <div className="ln-input" style={{ height: ROW }}>
-                            <span className="port in" data-layer={l.id} data-port={port} title={takesTable(l, port) ? t("Drop a data set's All rows here (or a variable)") : t('Drop a variable here')} />
+                            <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={takesTable(l, port) ? t("Drop a data set's All rows here (or a variable)") : t('Drop a variable here')} />
                             {port === 'src' ? <ImageIcon size={11} /> : takesTable(l, port) ? <Rows3 size={11} /> : <Type size={11} />} {CONTENT_LABEL[port] ? t(CONTENT_LABEL[port]) : port}
                             {isWired && <span className="dc-from">{t('from data')}</span>}
+                            {op && (
+                              <span className="dc-from" style={{ marginRight: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t('Key: {key}', { key: op.key })}>
+                                {op.label}
+                              </span>
+                            )}
+                            {opMark}
                           </div>
-                          {isWired && port === 'src' && cellType(result) === 'image' ? (
+                          {op ? (
+                            op.kind === 'multiline' || op.kind === 'table' || op.default.includes('\n') ? (
+                              <span className="dc-value live" title={op.default}>
+                                {tableSummary(op.default) ?? (op.default.length > 60 ? `${op.default.slice(0, 60)}…` : op.default.replace(/\n/g, ' ⏎ '))}
+                              </span>
+                            ) : (
+                              <input className="dc-content-input" value={op.default} title={t('Value until the operator types another one')} onChange={(e) => editField(op.key, (x) => void (x.default = e.target.value), `default-${op.key}`)} />
+                            )
+                          ) : isWired && port === 'src' && cellType(result) === 'image' ? (
                             <span className="dc-value live dc-pic" title={result}>
                               <img src={result} alt="" /> {result.split('/').pop()}
                             </span>
@@ -1011,25 +1155,28 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                       const sv = key !== undefined && values[key] !== undefined ? values[key] : getPath(l, path);
                       return (
                         <div key={port} className="ln-input wired dc-setting" style={{ height: ROW }}>
-                          <span className="port in" data-layer={l.id} data-port={port} title={t('Drop a variable or a data set column here')} />
+                          <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={t('Drop a variable or a data set column here')} />
                           <span title={path}>{settingLabel(l, path, t).label.replace(`${t('General')} · `, '')}</span>
-                          <span className="dc-port-value live" title={t('Value it gets from the data')}>
+                          <span className="dc-port-value live" title={op ? t('Value until the operator types another one') : t('Value it gets from the data')}>
                             {isColorValue(sv) ? <span className="dc-swatch" style={{ background: String(sv) }} /> : String(sv ?? '').slice(0, 14)}
                           </span>
-                          <button className="dc-unset" title={t('Stop setting it from the data')} onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
-                            ×
-                          </button>
+                          {opMark || (
+                            <button className="dc-unset" title={t('Stop setting it from the data')} onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
+                              ×
+                            </button>
+                          )}
                         </div>
                       );
                     }
                     const v = r ? r[port as Prop] : undefined;
                     return (
                       <div key={port} className={`ln-input ${wired.has(port) ? 'wired' : ''}`} style={{ height: ROW }}>
-                        <span className="port in" data-layer={l.id} data-port={port} title={t('Drop a variable or an operation here')} />
-                        <span>{t(PROP_LABELS[port as Prop])}</span>
-                        <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={wired.has(port) ? t('Value it gets from the data') : t('Value in Properties')}>
+                        <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={t('Drop a variable or an operation here')} />
+                        <span>{PROP_LABELS[port as Prop] ? t(PROP_LABELS[port as Prop]) : port}</span>
+                        <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={op ? t('Value until the operator types another one') : wired.has(port) ? t('Value it gets from the data') : t('Value in Properties')}>
                           {v === undefined ? '' : isColor(port) ? <span className="dc-swatch" style={{ background: toHex(col(v), true) }} /> : +num(v).toFixed(2)}
                         </span>
+                        {opMark}
                       </div>
                     );
                   })}
@@ -1401,7 +1548,7 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
         <Rows3 size={11} className="dc-type" />
         <span className="ds-name">{t('All rows')}</span>
         <span className="ds-val">{tbl ? t('{rows} × {columns} table', { rows: total, columns: cols.length }) : ''}</span>
-        <span className="port out" title={t('Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
+        <span className="port out" style={DS_DOT} data-wire={`o:k:${tableKey(node.key)}`} title={t('Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
       </div>
       {cols.map((c, i) => {
         const Icon = TYPE_ICON[types[i]];
@@ -1413,7 +1560,7 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
             <span className="ds-val" title={v}>
               <Cell v={v} />
             </span>
-            <span className="port out" title={t("Drag {column} to a layer's value (key {key})", { column: c, key: columnKey(node.key, c) })} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
+            <span className="port out" style={DS_DOT} data-wire={`o:k:${columnKey(node.key, c)}`} title={t("Drag {column} to a layer's value (key {key})", { column: c, key: columnKey(node.key, c) })} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
           </div>
         );
       })}
@@ -1600,6 +1747,15 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
     default:
       return <input placeholder={t('Default value')} title={t('Value until the operator types another one')} value={f.default} onChange={(e) => set(e.target.value)} />;
   }
+}
+
+/** The (•) of a value exposed to the Operator, as in the Inspector: one click stops. */
+function OperatorMark({ field, onStop }: { field: Field; onStop: () => void }) {
+  return (
+    <button className="pp-op on" style={{ flex: 'none', width: 20, height: 20, marginRight: 4 }} title={t('Exposed to the Operator ({fields}) · click to stop', { fields: field.label })} onClick={onStop}>
+      <Radio size={12} />
+    </button>
+  );
 }
 
 export function DataCanvasButton({ className = 'btn small' }: { className?: string }) {
