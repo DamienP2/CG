@@ -98,6 +98,10 @@ pub struct St2110Config {
     #[serde(default = "crate::on")]
     pub enabled: bool,
     pub name: String,
+    /// The flow of the Hardware settings this sends ("" = none): the server
+    /// fills the fields below from it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hardware: String,
     #[serde(default)]
     pub encoding: St2110Encoding,
     /// Multicast group (or unicast) for the fill stream.
@@ -407,6 +411,7 @@ mod tests {
         let cfg = St2110Config {
             enabled: true,
             id: "a".into(),
+            hardware: String::new(),
             encoding: St2110Encoding::FillKey,
             name: "CG1".into(),
             fill: "239.10.0.1:5004".parse().unwrap(),

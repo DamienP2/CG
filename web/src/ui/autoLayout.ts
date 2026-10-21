@@ -15,9 +15,12 @@
  *           alignSinks (true)       nodes that feed nothing go to the last column
  *           tightSources (false)    nodes fed by nothing sit just left of what they
  *                                   feed instead of in the first column (unless pinned)
+ *           anchorY (20)            where the wires meet a node, from its top (title bar):
+ *                                   linked nodes are lined up on it
  *
  * Layers by longest path (cycles are broken first), crossings reduced by
- * barycenter sweeps, columns stacked then straightened towards their neighbours.
+ * barycenter sweeps (long wires get a lane of their own through the columns
+ * they cross), columns stacked then straightened towards their neighbours.
  * Nodes without any wire (and not pinned) go in a grid below. Same input, same output.
  *
  * In a canvas:
@@ -46,6 +49,7 @@ export interface LayoutOptions {
   origin?: { x: number; y: number };
   alignSinks?: boolean;
   tightSources?: boolean;
+  anchorY?: number;
 }
 
 /** Sizes of the nodes in `root` (canvas units, whatever the zoom), by their `data-node-id`. */
@@ -193,40 +197,47 @@ export function autoLayout(nodes: LayoutNode[], edges: LayoutEdge[], opts: Layou
       best = columns.map((c) => [...c]);
     }
   }
-  const order = best.map((c) => c.filter((it) => it.node >= 0).map((it) => it.node));
+  const order = best;
 
   // ---- Columns: x from the widest node; y stacked, centred, then towards the neighbours.
+  // A stand-in keeps a thin lane open, so a long wire never runs through a node.
+  const hOf = (it: Item) => (it.node >= 0 ? nodes[it.node].h : 8);
   const x = new Array<number>(n).fill(0);
-  const y = new Array<number>(n).fill(0);
+  const y = new Map<Item, number>();
   let cx = origin.x;
   for (const c of order) {
-    for (const i of c) x[i] = cx;
-    cx += Math.max(0, ...c.map((i) => nodes[i].w)) + gapX;
+    const real = c.filter((it) => it.node >= 0);
+    for (const it of real) x[it.node] = cx;
+    cx += Math.max(0, ...real.map((it) => nodes[it.node].w)) + gapX;
   }
-  const height = (c: number[]) => c.reduce((s, i) => s + nodes[i].h, 0) + gapY * Math.max(0, c.length - 1);
+  const height = (c: Item[]) => c.reduce((s, it) => s + hOf(it), 0) + gapY * Math.max(0, c.length - 1);
   const tallest = Math.max(0, ...order.map(height));
   for (const c of order) {
     let cy = (tallest - height(c)) / 2;
-    for (const i of c) {
-      y[i] = cy;
-      cy += nodes[i].h + gapY;
+    for (const it of c) {
+      y.set(it, cy);
+      cy += hOf(it) + gapY;
     }
   }
-  const centre = (i: number) => y[i] + nodes[i].h / 2;
+  // Wires leave and reach the nodes near their title bar: that is what lines up.
+  const anchorY = opts.anchorY ?? 20;
+  const lead = (it: Item) => Math.min(anchorY, hOf(it) / 2);
+  const anchor = (it: Item) => y.get(it)! + lead(it);
   /** Moves a column towards where its neighbours want it, keeping its order and gaps (pool-adjacent blocks). */
-  const straighten = (c: number[], nb: number[][]) => {
-    const want = c.map((i) => {
-      if (!nb[i].length) return y[i];
-      const m = nb[i].map(centre).sort((a, b) => a - b);
+  const straighten = (c: Item[], side: Map<Item, Item[]>) => {
+    const want = c.map((it) => {
+      const nb = side.get(it) ?? [];
+      if (!nb.length) return y.get(it)!;
+      const m = nb.map(anchor).sort((a, b) => a - b);
       const mid = (m[(m.length - 1) >> 1] + m[m.length >> 1]) / 2;
-      return mid - nodes[i].h / 2;
+      return mid - lead(it);
     });
-    // Node k sits at t + offs[k], t its block's start: order and gaps hold while t never decreases.
+    // Item k sits at t + offs[k], t its block's start: order and gaps hold while t never decreases.
     const offs: number[] = [];
     let off = 0;
-    for (const i of c) {
+    for (const it of c) {
       offs.push(off);
-      off += nodes[i].h + gapY;
+      off += hOf(it) + gapY;
     }
     type Block = { from: number; to: number; sum: number; t: number };
     const blocks: Block[] = [];
@@ -239,22 +250,23 @@ export function autoLayout(nodes: LayoutNode[], edges: LayoutEdge[], opts: Layou
       }
       blocks.push(b);
     });
-    for (const b of blocks) for (let k = b.from; k <= b.to; k++) y[c[k]] = b.t + offs[k];
+    for (const b of blocks) for (let k = b.from; k <= b.to; k++) y.set(c[k], b.t + offs[k]);
   };
-  for (const [list, nb] of [
-    [order, preds],
-    [[...order].reverse(), succs],
-    [order, preds],
+  for (const [list, side] of [
+    [order, up],
+    [[...order].reverse(), down],
+    [order, up],
   ] as const)
-    for (const c of list) straighten(c, nb);
+    for (const c of list) straighten(c, side);
+  const yOf = (i: number) => y.get(itemOf.get(i)!)!;
 
   // ---- Into place: the whole at the origin, then the loose nodes in a grid below.
   const out: Record<string, { x: number; y: number }> = {};
-  const top = Math.min(...main.map((i) => y[i]));
+  const top = Math.min(...main.map(yOf));
   let bottom = origin.y;
   let right = origin.x;
   for (const i of main) {
-    out[nodes[i].id] = { x: Math.round(x[i]), y: Math.round(y[i] - top + origin.y) };
+    out[nodes[i].id] = { x: Math.round(x[i]), y: Math.round(yOf(i) - top + origin.y) };
     bottom = Math.max(bottom, out[nodes[i].id].y + nodes[i].h);
     right = Math.max(right, x[i] + nodes[i].w);
   }

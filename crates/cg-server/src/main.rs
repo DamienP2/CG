@@ -5,6 +5,7 @@ mod config;
 mod datasources;
 mod demos;
 mod engine;
+mod hardware;
 mod inputs;
 mod library;
 mod locks;

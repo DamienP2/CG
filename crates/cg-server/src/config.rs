@@ -11,6 +11,8 @@ use cg_output::st2110::St2110Config;
 use cg_output::stream::StreamConfig;
 use serde::{Deserialize, Serialize};
 
+use crate::hardware::{FlowDirection, HardwareConfig};
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputsConfig {
@@ -58,6 +60,10 @@ impl OutputsConfig {
         self.streams
             .iter_mut()
             .for_each(|o| fill("stream", &mut o.id, taken));
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ids().next().is_none()
     }
 
     /// Ids of the destinations, in order.
@@ -138,6 +144,10 @@ pub struct ChannelConfig {
     /// absorbs a slow frame now and then, at the cost of that much delay.
     #[serde(default = "default_render_ahead")]
     pub render_ahead: u32,
+    /// Destinations wired to no picture (their wire was removed): kept,
+    /// not started.
+    #[serde(default, skip_serializing_if = "OutputsConfig::is_empty")]
+    pub unwired: OutputsConfig,
 }
 
 fn default_render_ahead() -> u32 {
@@ -181,6 +191,7 @@ impl ChannelConfig {
             location: String::new(),
             slate: String::new(),
             render_ahead: default_render_ahead(),
+            unwired: OutputsConfig::default(),
         }
     }
 
@@ -191,6 +202,14 @@ impl ChannelConfig {
         for r in &mut self.renditions {
             r.outputs.ensure_ids(&mut taken);
         }
+        self.unwired.ensure_ids(&mut taken);
+    }
+
+    /// Every destination list: the pictures', then the unwired ones.
+    fn all_outputs_mut(&mut self) -> impl Iterator<Item = &mut OutputsConfig> {
+        std::iter::once(&mut self.outputs)
+            .chain(self.renditions.iter_mut().map(|r| &mut r.outputs))
+            .chain(std::iter::once(&mut self.unwired))
     }
 }
 
@@ -269,6 +288,9 @@ pub struct ServerConfig {
     /// Live video inputs (streams, NDI, SDI) shown by the Video widget.
     #[serde(default)]
     pub inputs: Vec<crate::inputs::InputConfig>,
+    /// DeckLink cards and ST 2110 flows (Hardware page).
+    #[serde(default)]
+    pub hardware: HardwareConfig,
     /// Pre-0.2 single-channel outputs, moved into the first channel on load.
     #[serde(default, skip_serializing)]
     outputs: Option<OutputsConfig>,
@@ -294,6 +316,7 @@ impl Default for ServerConfig {
             channels: Vec::new(),
             mos: MosConfig::default(),
             inputs: Vec::new(),
+            hardware: HardwareConfig::default(),
             outputs: None,
         }
     }
@@ -374,6 +397,7 @@ impl ServerConfig {
                 taken.insert(i.id.clone());
             }
         }
+        self.link_hardware();
         if self.locations.is_empty() {
             self.locations.push(Location {
                 id: "main".into(),
@@ -387,6 +411,115 @@ impl ServerConfig {
                 ch.location = first.clone();
             }
         }
+    }
+
+    /// SDI and ST 2110 destinations and inputs take their settings from
+    /// the Hardware page. Those saved before it declare their card, output
+    /// or flow there from their own settings, so nothing is lost.
+    fn link_hardware(&mut self) {
+        use crate::inputs::InputKind;
+        let hw = &mut self.hardware;
+        hw.ensure_ids();
+        for ch in &mut self.channels {
+            for outputs in ch.all_outputs_mut() {
+                for o in &mut outputs.sdi {
+                    if o.hardware.is_empty() {
+                        hw.adopt_sdi(o);
+                    }
+                    hw.apply_sdi(o);
+                }
+                for o in &mut outputs.st2110 {
+                    if o.hardware.is_empty() {
+                        hw.adopt_st2110(o);
+                    }
+                    hw.apply_st2110(o);
+                }
+            }
+        }
+        for i in &mut self.inputs {
+            match i.kind {
+                InputKind::Sdi => {
+                    if i.hardware.is_empty() {
+                        hw.adopt_sdi_input(i);
+                    }
+                    let def = hw.sdi.inputs.iter().find(|d| d.id == i.hardware);
+                    if let Some((def, card)) = def.and_then(|d| Some((d, hw.card(&d.card)?))) {
+                        i.device = card.device_of(def.connector);
+                    }
+                }
+                InputKind::St2110 => {}
+                _ => i.hardware.clear(),
+            }
+        }
+    }
+
+    /// Destinations and inputs name things the Hardware page declares, each
+    /// used once.
+    fn validate_hardware(&self) -> Result<(), String> {
+        use crate::inputs::InputKind;
+        let hw = &self.hardware;
+        hw.validate()?;
+        let mut used = HashSet::new();
+        for ch in &self.channels {
+            let wired: Vec<_> = ch.pictures().into_iter().map(|p| p.3).collect();
+            for (outputs, running) in wired
+                .into_iter()
+                .map(|o| (o, true))
+                .chain(std::iter::once((&ch.unwired, false)))
+            {
+                for o in &outputs.sdi {
+                    if !hw.sdi.outputs.iter().any(|d| d.id == o.hardware) {
+                        return Err(format!(
+                            "output `{}`: choose one of the SDI outputs defined in Hardware",
+                            o.name
+                        ));
+                    }
+                    if running && o.enabled && !used.insert(o.hardware.as_str()) {
+                        return Err(format!(
+                            "an SDI output of Hardware is used by two destinations (`{}`)",
+                            o.name
+                        ));
+                    }
+                }
+                for o in &outputs.st2110 {
+                    let ok = hw
+                        .st2110
+                        .flows
+                        .iter()
+                        .any(|f| f.id == o.hardware && f.direction == FlowDirection::Output);
+                    if !ok {
+                        return Err(format!(
+                            "output `{}`: choose one of the ST 2110 output flows defined in Hardware",
+                            o.name
+                        ));
+                    }
+                    if running && o.enabled && !used.insert(o.hardware.as_str()) {
+                        return Err(format!(
+                            "an ST 2110 flow of Hardware is used by two destinations (`{}`)",
+                            o.name
+                        ));
+                    }
+                }
+            }
+        }
+        for i in &self.inputs {
+            let ok = match i.kind {
+                InputKind::Sdi => hw.sdi.inputs.iter().any(|d| d.id == i.hardware),
+                InputKind::St2110 => hw
+                    .st2110
+                    .flows
+                    .iter()
+                    .any(|f| f.id == i.hardware && f.direction == FlowDirection::Input),
+                _ => true,
+            };
+            if !ok {
+                return Err(format!(
+                    "input `{}`: choose one of the inputs defined in Hardware",
+                    i.name
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub fn save(&self, data_dir: &Path) -> std::io::Result<()> {
@@ -433,6 +566,7 @@ impl ServerConfig {
                 return Err("every location needs a name".into());
             }
         }
+        self.validate_hardware()?;
         let mut ndi_names = HashSet::new();
         let mut ids = HashSet::new();
         for ch in &self.channels {
@@ -472,7 +606,7 @@ impl ServerConfig {
                     return Err(format!("rendition `{}`: invalid resolution", r.name));
                 }
             }
-            let mut out_ids = HashSet::new();
+            let mut out_ids: HashSet<&str> = ch.unwired.ids().collect();
             for (_, _, _, outputs) in ch.pictures() {
                 for id in outputs.ids() {
                     if !out_ids.insert(id) {

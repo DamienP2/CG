@@ -122,6 +122,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/system/logs/download", get(crate::perf::logs_download))
         .route("/api/system/config", put(put_system_config))
         .route("/api/outputs/status", get(outputs_status))
+        .route("/api/hardware", get(get_hardware))
         .route("/api/system/restart", post(post_restart))
         .route("/api/mos/status", get(mos_status))
         .route("/api/data/sources", get(list_sources).post(create_source))
@@ -1800,6 +1801,17 @@ async fn put_system_config(
     s.changed("config");
     s.restart.notify_one();
     Ok(StatusCode::ACCEPTED)
+}
+
+/// The video hardware this machine has, as far as it can tell (admins).
+async fn get_hardware(
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<crate::hardware::HardwareInfo>> {
+    require(me.is_admin())?;
+    tokio::task::spawn_blocking(crate::hardware::detect)
+        .await
+        .map(Json)
+        .map_err(internal)
 }
 
 /// Whether each video output runs, by channel and output id.

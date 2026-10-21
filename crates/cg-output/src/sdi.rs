@@ -24,6 +24,10 @@ pub struct SdiConfig {
     #[serde(default = "crate::on")]
     pub enabled: bool,
     pub name: String,
+    /// The SDI output of the Hardware settings this sends to ("" = none):
+    /// the server fills the fields below from it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hardware: String,
     /// DeckLink device index (as listed by Desktop Video).
     pub device: u32,
     /// Use the card's external keyer (fill on SDI A, key on SDI B); off:
@@ -37,6 +41,9 @@ pub struct SdiConfig {
     #[serde(default)]
     pub genlock: bool,
 }
+
+/// This build drives DeckLink cards (the FFI bridge is not written yet).
+pub const SUPPORTED: bool = false;
 
 fn yes() -> bool {
     true
