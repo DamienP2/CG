@@ -114,14 +114,12 @@ function withAdded(
 
 const rowOf = (data: Data | undefined, ds: DataSet) =>
   Math.max(1, parseInt(data?.[rowKey(ds.key)] ?? "1", 10) || 1);
-/** Widgets that take a data set's whole table (they show its rows themselves). */
-const LIST_TAKERS = new Set(["table", "credits", "chart", "ticker"]);
-
 /**
- * How a graphic uses a data set. `source`: only Texts (and simple values)
- * read it: the data set is a source feeding them, without rows going on by
- * themselves (no auto, loop or NEXT row). `row`: they read the columns of
- * one chosen row; `lines`: a Text shows all the rows (one line each).
+ * How a graphic uses a data set. `source`: Texts read it: the data set is
+ * only a source feeding them (and the other widgets reading it), without
+ * rows going on by themselves (no auto, loop or NEXT row). `row`: they read
+ * the columns of one chosen row; `lines`: a Text shows all the rows (one
+ * line each).
  */
 export interface DatasetUse {
   source: boolean;
@@ -148,7 +146,7 @@ export function datasetUse(t: Template, ds: DataSet): DatasetUse {
     new RegExp(`${ds.key}_[A-Za-z0-9]`).test(json) ||
     json.includes(rowKey(ds.key));
   const out: DatasetUse = {
-    source: texts.length > 0 && !readers.some((l) => LIST_TAKERS.has(l.type)),
+    source: texts.length > 0,
     row,
     lines,
     texts,

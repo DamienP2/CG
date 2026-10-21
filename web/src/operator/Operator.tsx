@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { linesKey, oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Warnings } from '../widgets/kit';
@@ -678,8 +678,13 @@ function ValuesPane({ template, draft, boundDraft, readMode, sourceName, preview
     const use = datasetUse(template, ds);
     if (!use.source) continue;
     const row = Math.max(1, parseInt(draft[rowKey(ds.key)] ?? '1', 10) || 1);
-    const all = use.lines && draft[oneKey(ds.key)] !== '1' && !use.row;
-    for (const l of use.texts) if (!fed.some((x) => x.layer.id === l.id)) fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }) });
+    const one = draft[oneKey(ds.key)] === '1';
+    for (const l of use.texts) {
+      if (fed.some((x) => x.layer.id === l.id)) continue;
+      // All the rows (a line each), unless the operator keeps only the chosen one.
+      const all = l.type === 'text' && l.text.includes(`{{${linesKey(ds.key)}}}`) && !one;
+      fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }) });
+    }
   }
   const fedIds = new Set(fed.map((x) => x.layer.id));
   const keys = new Set(template.fields.map((f) => f.key));
@@ -687,38 +692,44 @@ function ValuesPane({ template, draft, boundDraft, readMode, sourceName, preview
     <>
       {(content.length > 0 || fed.length > 0) && (
         <OpSection title={t('Content')}>
-          {fieldGroups(content).map((g) => (
-            <div key={g.title} className="opx-group">
-              {g.title && <div className="opx-sub">{g.title}</div>}
-              {g.fields.map(({ f, label }) => (
-                <div key={f.key}>
-                  <Row label={f.kind === 'table' ? undefined : label}>
-                    {live(f) ? (
-                      <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
-                        {boundDraft[f.key] ?? draft[f.key] ?? '…'}
-                      </span>
-                    ) : (
-                      <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => onDraft({ [f.key]: v })} />
-                    )}
-                  </Row>
-                  {fitWarnings
-                    .filter((w) => w.keys.includes(f.key) && !fedIds.has(w.layer.id))
-                    .map((w) => (
-                      <FitWarning key={w.layer.id} w={w} />
-                    ))}
-                </div>
-              ))}
-            </div>
-          ))}
-          {fed.map(({ layer, title }) => (
-            <FedText key={layer.id} label={layer.name} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title}>
-              {fitWarnings
-                .filter((w) => w.layer.id === layer.id)
-                .map((w) => (
-                  <FitWarning key={w.layer.id} w={w} />
+          {(() => {
+            // The Texts fed by a data set with the plain values, before the values grouped by layer.
+            const groups = fieldGroups(content);
+            if (fed.length && !groups.some((g) => !g.title)) groups.unshift({ title: '', fields: [] });
+            return groups.map((g) => (
+              <div key={g.title} className="opx-group">
+                {g.title && <div className="opx-sub">{g.title}</div>}
+                {g.fields.map(({ f, label }) => (
+                  <div key={f.key}>
+                    <Row label={f.kind === 'table' ? undefined : label}>
+                      {live(f) ? (
+                        <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
+                          {boundDraft[f.key] ?? draft[f.key] ?? '…'}
+                        </span>
+                      ) : (
+                        <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => onDraft({ [f.key]: v })} />
+                      )}
+                    </Row>
+                    {fitWarnings
+                      .filter((w) => w.keys.includes(f.key) && !fedIds.has(w.layer.id))
+                      .map((w) => (
+                        <FitWarning key={w.layer.id} w={w} />
+                      ))}
+                  </div>
                 ))}
-            </FedText>
-          ))}
+                {!g.title &&
+                  fed.map(({ layer, title }) => (
+                    <FedText key={layer.id} label={layer.name} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title}>
+                      {fitWarnings
+                        .filter((w) => w.layer.id === layer.id)
+                        .map((w) => (
+                          <FitWarning key={w.layer.id} w={w} />
+                        ))}
+                    </FedText>
+                  ))}
+              </div>
+            ));
+          })()}
         </OpSection>
       )}
       {layers.map((e) => (
