@@ -534,7 +534,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     <DataBlock project={project} template={template} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
                       {usedDatasets(template).map((ds) =>
                         datasetUse(template, ds).source ? (
-                          <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} sourceName={sourceName(ds.source)} onDraft={editDraft} />
+                          <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} sourceName={sourceName(ds.source)} onDraft={editDraft} />
                         ) : (
                           <DataSetPanel key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirByItem.get(item.id)} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
                         ),

@@ -3,6 +3,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Circle,
+  ClipboardCopy,
+  ClipboardPaste,
   Code,
   Copy,
   Diamond,
@@ -45,6 +47,8 @@ import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKey
 import { PROP_LABELS } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
+import { copyAnimation, pasteAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
+import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { t, tc, tn } from '../i18n';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
@@ -108,6 +112,9 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   const [dragging, setDragging] = useState<{ id: string; frame: number } | null>(null);
   const [editing, setEditing] = useState<{ id: string; left: number; bottom: number } | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: DropPos } | null>(null);
+  // Right-click menu of a row: copy / paste layers and animations.
+  const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
+  const animClip = useClipboard((c) => c.animation);
   const st = useDesigner();
   const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -390,6 +397,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           else st.select([layer.id]);
         }}
         onDoubleClick={() => setRenaming(layer.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (!isSel) st.select([layer.id]);
+          setCtx({ x: e.clientX, y: e.clientY, layerId: layer.id });
+        }}
       >
         <span
           className="twirl"
@@ -424,6 +436,16 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         )}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
         <span className="row-actions">
+          {animated.length > 0 && (
+            <button className="tl-anim" title={t('Copy the animation (keyframes of all its properties), to paste it on another layer')} onClick={(e) => (e.stopPropagation(), copyAnimation(layer.id))}>
+              <ClipboardCopy size={12} />
+            </button>
+          )}
+          {animClip && (
+            <button className="tl-anim" title={t('Paste the animation of {what}', { what: animClip.label })} onClick={(e) => (e.stopPropagation(), pasteAnimation(isSel ? selected : [layer.id]))}>
+              <ClipboardPaste size={12} />
+            </button>
+          )}
           <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
             <Copy size={12} />
           </button>
@@ -482,9 +504,27 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     for (const g of groups) {
       const isAnim = g.props.some((p) => layer.tracks[p]?.length);
       labels.push(
-        <div key={`${layer.id}-${g.label}`} className={`tl-label prop ${isAnim ? 'animated' : ''}`} style={{ paddingLeft: 14 + depth * 14 }}>
+        <div
+          key={`${layer.id}-${g.label}`}
+          className={`tl-label prop ${isAnim ? 'animated' : ''}`}
+          style={{ paddingLeft: 14 + depth * 14 }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setCtx({ x: e.clientX, y: e.clientY, layerId: layer.id, row: { props: g.props, label: g.label } });
+          }}
+        >
           {keyNav(layer, g.props, true)}
           <span className="prop-name">{t(g.label)}</span>
+          {isAnim && (
+            <button className="tl-off tl-anim" title={t('Copy the animation of {prop}', { prop: t(g.label) })} onClick={() => copyAnimation(layer.id, g.props, g.label)}>
+              <ClipboardCopy size={11} />
+            </button>
+          )}
+          {animClip && rowMapping(animClip, g.props).length > 0 && (
+            <button className="tl-off tl-anim" title={t('Paste the animation of {what}', { what: animClip.label })} onClick={() => pasteAnimationOnRow(layer.id, g.props)}>
+              <ClipboardPaste size={11} />
+            </button>
+          )}
           <button
             className="tl-off"
             title={t('Remove from the timeline')}
@@ -684,6 +724,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           </div>
         </div>
       </div>
+      {ctx && <ClipboardMenu at={ctx} onClose={() => setCtx(null)} />}
       {editing && template.markers.some((m) => m.id === editing.id) && <MarkerEditor id={editing.id} fps={fps} pos={editing} onClose={() => setEditing(null)} />}
     </div>
   );

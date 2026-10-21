@@ -9,6 +9,7 @@ import { Inspector } from './Inspector';
 import { LockOverlay, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
+import { copyLayers, cutLayers, pasteClipboard } from './clipboard';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
@@ -145,6 +146,14 @@ function useShortcuts() {
       } else if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         duplicateSelection();
+      } else if (mod && !e.shiftKey && !e.altKey && ['c', 'x', 'v'].includes(e.key.toLowerCase())) {
+        // Copy / cut / paste layers (clipboard.ts); a text selected on the page is copied as usual.
+        const k = e.key.toLowerCase();
+        if (k !== 'v' && (!st.selected.length || window.getSelection()?.toString())) return;
+        e.preventDefault();
+        if (k === 'c') copyLayers(st.selected);
+        else if (k === 'x') cutLayers(st.selected);
+        else pasteClipboard();
       } else if (e.key === ' ') {
         e.preventDefault();
         // A focused button would also "click" on Space.
@@ -391,9 +400,10 @@ export function Designer() {
     if (!project) return;
     if (openedFor.current !== project.id) {
       openedFor.current = project.id;
-      // A project opens on the overview: every zone and template.
+      // A project opens on the overview: every zone and template; with a
+      // single template (a new project), on that template.
       const all = designTemplates(project);
-      if (!template || !all.some((t) => t.id === template.id)) load(null);
+      if (!template || !all.some((t) => t.id === template.id)) load(all.length === 1 ? all[0] : null);
     }
   }, [project, template, load]);
 

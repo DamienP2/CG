@@ -12589,3 +12589,31 @@ a.lib-nav-item {
   background: var(--pvw);
   color: #04140a;
 }
+
+/* Designer clipboard: copy / paste animation buttons and the rows' right-click menu (designer/clipboard.ts). */
+.tl-off.tl-anim:hover,
+.tl-label .row-actions button.tl-anim:hover {
+  color: var(--accent-2);
+}
+.clip-menu {
+  z-index: 1000;
+  min-width: 230px;
+}
+.clip-menu kbd {
+  margin-left: auto;
+  padding-left: 16px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.clip-menu em {
+  margin-left: auto;
+  padding-left: 12px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-3);
+}

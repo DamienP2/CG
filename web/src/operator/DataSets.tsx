@@ -28,7 +28,8 @@ import {
   type Template,
 } from "../engine/types";
 import { useApp } from "../store";
-import { t, tn } from "../i18n";
+import { t } from "../i18n";
+import { Pager, usePaged } from "./Paged";
 
 /*
  * The data sets of a graphic in the Operator's Data block: its rows, the
@@ -111,6 +112,10 @@ function withAdded(
   });
   return { columns, rows, entry };
 }
+
+/** What the search of a row looks in: its cells. */
+const rowText = (r: string[]) => r.join(" ");
+const NO_ROWS: string[][] = [];
 
 const rowOf = (data: Data | undefined, ds: DataSet) =>
   Math.max(1, parseInt(data?.[rowKey(ds.key)] ?? "1", 10) || 1);
@@ -214,6 +219,8 @@ export function DataSetPanel({
   const change = (conf[changeKey(ds.key)] || ds.change || "outIn") as RowChange;
   const [every, setEvery] = useState(() => auto || 8);
   const after = (row: number) => (row < total ? row + 1 : loop ? 1 : row);
+  // 8 rows at a time; the page of the NEXT row follows it.
+  const paged = usePaged(table?.rows ?? NO_ROWS, rowText, next - 1);
 
   /** Changes kept in the item and, on air, sent to the graphic. */
   const set = (patch: Data) => {
@@ -364,6 +371,7 @@ export function DataSetPanel({
           <i style={{ width: `${progress * 100}%` }} />
         </div>
       )}
+      {table && <Pager paged={paged} />}
       <div className="ods-rows">
         {stage === undefined && (
           <p className="opx-hint pad">{t("Loading the rows…")}</p>
@@ -386,7 +394,7 @@ export function DataSetPanel({
               </tr>
             </thead>
             <tbody>
-              {table.rows.map((r, i) => {
+              {paged.shown.map(({ item: r, index: i }) => {
                 const n = i + 1;
                 const isAir = air === n;
                 const isNext = n === next;
@@ -812,7 +820,6 @@ export function DataSetSource({
   template,
   draft,
   onAir,
-  operate,
   sourceName,
   onDraft,
 }: {
@@ -820,7 +827,6 @@ export function DataSetSource({
   template: Template;
   draft: Data;
   onAir: PlayoutItem | undefined;
-  operate: boolean;
   sourceName: string;
   onDraft: (patch: Data) => void;
 }) {
@@ -835,20 +841,20 @@ export function DataSetSource({
   const one = draft[oneKey(ds.key)] === "1";
   // One row: the Texts read its columns, or the one showing the rows shows only one.
   const picks = use.row || (use.lines && one);
-  const allOnly = use.lines && !one && !use.row;
-  const airOne = live?.[oneKey(ds.key)] === "1";
-  const pending =
-    !!live && ((picks && air !== chosen) || (use.lines && airOne !== one));
+  // 8 rows at a time; the page of the chosen row follows it.
+  const paged = usePaged(table?.rows ?? NO_ROWS, rowText, picks ? chosen - 1 : null);
   return (
     <div className="ods ods-src">
       <div className="ods-bar">
         <Rows3 size={14} className="ods-icon" />
         <strong>{ds.name}</strong>
-        <span className="muted small" title={t("Data source")}>
-          {sourceName}
-        </span>
+        {sourceName !== ds.name && (
+          <span className="muted small" title={t("Data source")}>
+            {sourceName}
+          </span>
+        )}
         <span className="spacer" />
-        {use.lines ? (
+        {use.lines && (
           <div
             className="opx-seg tiny"
             title={t("What the text shows: every row, or the chosen one")}
@@ -866,20 +872,9 @@ export function DataSetSource({
               {t("One row")}
             </button>
           </div>
-        ) : (
-          <span className="ods-mode">{t("One row")}</span>
         )}
       </div>
-      <p className="ods-say">
-        {allOnly
-          ? total
-            ? tn(total, "The text shows the only row.", "The text shows all {n} rows.")
-            : t("The text shows all the rows.")
-          : t("The text shows row {row}: click a row to choose another.", {
-              row: total ? chosen : "—",
-            })}
-        {pending && operate && ` ${t("Update sends it on air.")}`}
-      </p>
+      {table && <Pager paged={paged} />}
       <div className="ods-rows">
         {stage === undefined && (
           <p className="opx-hint pad">{t("Loading the rows…")}</p>
@@ -901,7 +896,7 @@ export function DataSetSource({
               </tr>
             </thead>
             <tbody>
-              {table.rows.map((r, i) => {
+              {paged.shown.map(({ item: r, index: i }) => {
                 const n = i + 1;
                 const isChosen = picks && n === chosen;
                 const isAir = picks && air === n;

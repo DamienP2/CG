@@ -7,7 +7,7 @@ import { defaultData, holdFrame, num, propValue } from '../engine/evaluate';
 import { designTemplates } from '../engine/drafts';
 import { inFormat } from '../engine/formats';
 import { areaClip, zoneArea } from '../engine/zones';
-import type { Project } from '../engine/types';
+import type { Project, Template } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
 import { widgetOf } from '../widgets';
@@ -318,12 +318,9 @@ function Overview({
           <Viewport width={size.width} height={size.height} scale={scale}>
             {templates.map((tpl) => {
               const z = zones.get(tpl.zone);
-              const hold = holdFrame(tpl);
               return (
                 <div key={tpl.id} className="overview-tpl" data-template-id={tpl.id} title={t('{name} — click to open', { name: tpl.name })} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
-                  <LiveTime ageSecs={hold / fps} clientNow={now}>
-                    <Scene template={inFormat(tpl, format)} frame={hold} data={defaultData(tpl)} interactive />
-                  </LiveTime>
+                  <OverviewScene template={tpl} format={format} now={now} fps={fps} lang={project.language} />
                 </div>
               );
             })}
@@ -336,5 +333,22 @@ function Overview({
         {t('All templates · {n} · click a graphic to open its template', { n: templates.length })} · {size.width}×{size.height} · {Math.round(scale * 100)}%
       </div>
     </div>
+  );
+}
+
+/**
+ * One template of the overview, drawn as the open template draws it: its
+ * default values, bound fields and data sets read like on air, its settings.
+ */
+function OverviewScene({ template, format, now, fps, lang }: { template: Template; format: string; now: number; fps: number; lang?: string }) {
+  const defaults = useMemo(() => defaultData(template), [template]);
+  const bound = useBoundData(template, defaults);
+  const data = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
+  const shown = useMemo(() => inFormat(template, format), [template, format]);
+  const hold = holdFrame(template);
+  return (
+    <LiveTime ageSecs={hold / fps} clientNow={now} fps={fps} lang={lang}>
+      <Scene template={shown} frame={hold} data={data} interactive />
+    </LiveTime>
   );
 }
