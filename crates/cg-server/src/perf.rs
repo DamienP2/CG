@@ -825,13 +825,18 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
     let mut inputs = Vec::new();
     for i in &s.config.inputs {
         let r = sm.inputs.get(&i.id).cloned().unwrap_or_default();
-        let live = status_in.iter().any(|x| x.id == i.id && x.live);
-        let nominal = i.fps.clamp(1, 120) as f64;
+        let st = status_in.iter().find(|x| x.id == i.id);
+        let live = st.is_some_and(|x| x.live);
+        // The source's rate when known (streams detect it).
+        let nominal = st
+            .and_then(|x| x.fps)
+            .unwrap_or(i.fps as f64)
+            .clamp(1.0, 120.0);
         let px = i.width as f64 * i.height as f64 * nominal;
         use crate::inputs::InputKind;
         match i.kind {
             InputKind::Ndi => in_ndi.add(None, px),
-            InputKind::Sdi => {}
+            InputKind::Sdi | InputKind::St2110 => {}
             _ => in_stream.add(
                 (live && r.fps >= 1.0).then_some(r.cpu),
                 i.width as f64 * i.height as f64 * r.fps,
@@ -904,7 +909,9 @@ pub async fn metrics(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> J
         .find(|i| {
             !matches!(
                 i.kind,
-                crate::inputs::InputKind::Ndi | crate::inputs::InputKind::Sdi
+                crate::inputs::InputKind::Ndi
+                    | crate::inputs::InputKind::Sdi
+                    | crate::inputs::InputKind::St2110
             )
         })
         .map_or((1920, 1080, 25.0), |i| {

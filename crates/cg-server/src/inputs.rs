@@ -16,7 +16,7 @@
 //! restarts the ones that changed.
 
 use std::collections::{BTreeMap, VecDeque};
-use std::io::Read;
+use std::io::{BufRead, Read};
 use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -38,6 +38,8 @@ pub enum InputKind {
     Url,
     Ndi,
     Sdi,
+    /// An ST 2110 flow of the Hardware settings (not received yet).
+    St2110,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,9 +63,12 @@ pub struct InputConfig {
     /// NDI: the source name ("HOST (name)").
     #[serde(default)]
     pub ndi_source: String,
-    /// SDI: DeckLink device index.
+    /// SDI: DeckLink device index (filled from `hardware`).
     #[serde(default)]
     pub device: u32,
+    /// SDI / ST 2110: the input of the Hardware settings ("" = none).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hardware: String,
     /// Streams are decoded at this size (the picture fitted inside) and rate.
     #[serde(default = "default_width")]
     pub width: u32,
@@ -71,6 +76,12 @@ pub struct InputConfig {
     pub height: u32,
     #[serde(default = "default_fps")]
     pub fps: u32,
+    /// SRT listener: the port Strata waits on (0: the port of `url`).
+    #[serde(default)]
+    pub port: u16,
+    /// SRT: time allowed to recover lost packets, ms.
+    #[serde(default = "default_latency")]
+    pub latency: u32,
     /// Smoothing, in frames of delay (0: shown as soon as they come).
     #[serde(default = "default_buffer")]
     pub buffer: u32,
@@ -82,6 +93,9 @@ pub struct InputConfig {
 
 fn default_buffer() -> u32 {
     2
+}
+fn default_latency() -> u32 {
+    120
 }
 
 fn default_width() -> u32 {
@@ -97,7 +111,14 @@ fn default_fps() -> u32 {
 impl InputConfig {
     /// The ffmpeg arguments that decode this stream to raw RGBA on stdout.
     pub fn ffmpeg_args(&self) -> Result<Vec<String>, String> {
-        let url = self.url.trim();
+        // An SRT listener needs only its port.
+        let own;
+        let url = if self.kind == InputKind::Srt && self.listen && self.port > 0 {
+            own = format!("srt://0.0.0.0:{}", self.port);
+            own.as_str()
+        } else {
+            self.url.trim()
+        };
         if url.is_empty() {
             return Err("no address".into());
         }
@@ -114,8 +135,12 @@ impl InputConfig {
                 ))
             }
         };
-        // Low latency, and a short look at the stream before the pictures start.
+        // Low latency, and a short look at the stream before the pictures
+        // start; the decoded picture's size and rate are read from the log.
         let mut a: Vec<String> = [
+            "-loglevel",
+            "info",
+            "-nostats",
             "-fflags",
             "nobuffer",
             "-flags",
@@ -131,9 +156,17 @@ impl InputConfig {
         match self.kind {
             InputKind::Srt => {
                 need(&["srt://"])?;
-                if self.listen && !url.contains("mode=") {
+                let add = |url: &mut String, kv: String| {
                     url.push(if url.contains('?') { '&' } else { '?' });
-                    url.push_str("mode=listener");
+                    url.push_str(&kv);
+                };
+                if self.listen && !url.contains("mode=") {
+                    add(&mut url, "mode=listener".into());
+                }
+                if !url.contains("latency=") {
+                    // ffmpeg takes it in microseconds.
+                    let us = self.latency.clamp(20, 8000) * 1000;
+                    add(&mut url, format!("latency={us}"));
                 }
             }
             InputKind::Udp => need(&["udp://", "rtp://"])?,
@@ -149,17 +182,15 @@ impl InputConfig {
                 a.extend(["-rtsp_transport", "tcp"].map(String::from));
             }
             InputKind::Url => {}
-            InputKind::Ndi | InputKind::Sdi => return Err("not a stream".into()),
+            InputKind::Ndi | InputKind::Sdi | InputKind::St2110 => {
+                return Err("not a stream".into())
+            }
         }
-        let (w, h) = (self.width.clamp(16, 7680), self.height.clamp(16, 4320));
         if self.hw_decode {
             a.extend(["-hwaccel", "auto"].map(String::from));
         }
-        a.extend(["-i".into(), url, "-an".into(), "-vf".into()]);
-        a.push(format!(
-            "fps={},scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0",
-            self.fps.clamp(1, 60)
-        ));
+        // The source's own size and rate.
+        a.extend(["-i".into(), url, "-an".into()]);
         a.extend(["-pix_fmt", "rgba", "-f", "rawvideo", "pipe:1"].map(String::from));
         Ok(a)
     }
@@ -177,6 +208,9 @@ pub struct InputStatus {
     pub height: u32,
     /// Pictures received since the input started.
     pub frames: u64,
+    /// Frames a second of the source (streams: as detected).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fps: Option<f64>,
 }
 
 /// Pictures waiting for their time, and the one on show.
@@ -203,6 +237,8 @@ struct Live {
     stop: AtomicBool,
     /// The ffmpeg decoding it (killed to stop a blocked read).
     child: Mutex<Option<Child>>,
+    /// Frames a second of the source, once known.
+    rate: Mutex<Option<f64>>,
 }
 
 impl Live {
@@ -210,7 +246,10 @@ impl Live {
         *self.message.lock().unwrap_or_else(|p| p.into_inner()) = m.into();
     }
     fn period(&self) -> Duration {
-        Duration::from_secs_f64(1.0 / self.config.fps.clamp(1, 120) as f64)
+        let fps = (*self.rate.lock().unwrap_or_else(|p| p.into_inner()))
+            .unwrap_or(self.config.fps as f64)
+            .clamp(1.0, 120.0);
+        Duration::from_secs_f64(1.0 / fps)
     }
 
     fn put(&self, pm: Pixmap) {
@@ -349,6 +388,7 @@ impl Inputs {
                 message: Mutex::new("Starting…".into()),
                 stop: AtomicBool::new(false),
                 child: Mutex::new(None),
+                rate: Mutex::new(None),
             });
             let l = live.clone();
             let spawned = std::thread::Builder::new()
@@ -358,6 +398,7 @@ impl Inputs {
                     InputKind::Sdi => {
                         l.say("DeckLink support is not built into this server (`decklink` feature)")
                     }
+                    InputKind::St2110 => l.say("Receiving ST 2110 is not available yet"),
                     _ => run_stream(&l),
                 });
             if let Err(e) = spawned {
@@ -384,6 +425,7 @@ impl Inputs {
                     width: pic.as_ref().map_or(0, |p| p.width()),
                     height: pic.as_ref().map_or(0, |p| p.height()),
                     frames: l.received.load(Ordering::Relaxed),
+                    fps: *l.rate.lock().unwrap_or_else(|p| p.into_inner()),
                 }
             })
             .collect()
@@ -681,8 +723,6 @@ fn run_stream(l: &Live) {
         Ok(a) => a,
         Err(e) => return l.say(e),
     };
-    let (w, h) = (c.width.clamp(16, 7680), c.height.clamp(16, 4320));
-    let size = (w * h * 4) as usize;
     while !l.stopped() {
         let spawned = cg_output::ffmpeg::command()
             .args(&args)
@@ -707,16 +747,26 @@ fn run_stream(l: &Live) {
         });
         let mut out = child.stdout.take();
         let log = Arc::new(Mutex::new(String::new()));
-        if let Some(mut err) = child.stderr.take() {
+        // The picture ffmpeg sends: told in its log before the first one.
+        let (format_tx, format_rx) = std::sync::mpsc::channel::<(u32, u32, Option<f64>)>();
+        if let Some(err) = child.stderr.take() {
             let log = log.clone();
             std::thread::spawn(move || {
-                let mut buf = [0u8; 2048];
-                while let Ok(n) = err.read(&mut buf) {
-                    if n == 0 {
-                        break;
+                let mut sent = false;
+                let mut in_output = false;
+                for line in std::io::BufReader::new(err).lines().map_while(Result::ok) {
+                    if line.starts_with("Output #") {
+                        in_output = true;
+                    }
+                    if in_output && !sent {
+                        if let Some(f) = decoded_format(&line) {
+                            let _ = format_tx.send(f);
+                            sent = true;
+                        }
                     }
                     let mut s = log.lock().unwrap_or_else(|p| p.into_inner());
-                    s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    s.push_str(&line);
+                    s.push('\n');
                     if s.len() > 8192 {
                         let cut = s.len() - 4096;
                         *s = s[s.ceil_char_boundary(cut)..].to_string();
@@ -725,14 +775,24 @@ fn run_stream(l: &Live) {
             });
         }
         *l.child.lock().unwrap_or_else(|p| p.into_inner()) = Some(child);
-        if let Some(out) = out.as_mut() {
+        // Until the sender comes (a listener can wait long), or ffmpeg stops.
+        let format = loop {
+            match format_rx.recv_timeout(Duration::from_millis(300)) {
+                Ok(f) => break Some(f),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if !l.stopped() => {}
+                Err(_) => break None,
+            }
+        };
+        if let (Some((w, h, fps)), Some(out)) = (format, out.as_mut()) {
+            *l.rate.lock().unwrap_or_else(|p| p.into_inner()) = fps;
+            let size = (w as usize) * (h as usize) * 4;
             let mut first = true;
             loop {
                 let mut buf = l.buffer(size);
                 if out.read_exact(&mut buf).is_err() || l.stopped() {
                     break;
                 }
-                // ffmpeg pads with transparent black: already premultiplied.
+                // Opaque or transparent black: already premultiplied.
                 if let Some(pm) = IntSize::from_wh(w, h).and_then(|s| Pixmap::from_vec(buf, s)) {
                     l.put(pm);
                 }
@@ -755,6 +815,31 @@ fn run_stream(l: &Live) {
             return;
         }
     }
+}
+
+/// The size and rate of the raw pictures ffmpeg sends, from its log line
+/// `Stream #0:0: Video: rawvideo (RGBA …), rgba(…), 1920x1080 [SAR 1:1 …], …, 25 fps, …`.
+fn decoded_format(line: &str) -> Option<(u32, u32, Option<f64>)> {
+    if !line.contains("Video: rawvideo") {
+        return None;
+    }
+    let mut size = None;
+    let mut fps = None;
+    for part in line.split(", ") {
+        let word = part.trim().split(' ').next().unwrap_or("");
+        if size.is_none() {
+            if let Some((w, h)) = word.split_once('x') {
+                if let (Ok(w), Ok(h)) = (w.parse::<u32>(), h.parse::<u32>()) {
+                    size = Some((w, h));
+                }
+            }
+        }
+        if let Some(v) = part.trim().strip_suffix(" fps") {
+            fps = v.trim().parse::<f64>().ok();
+        }
+    }
+    let (w, h) = size.filter(|(w, h)| *w >= 16 && *h >= 16 && *w <= 8192 && *h <= 8192)?;
+    Some((w, h, fps))
 }
 
 /// An NDI source, connected again when it goes away.
@@ -832,12 +917,15 @@ mod tests {
             listen,
             ndi_source: String::new(),
             device: 0,
+            hardware: String::new(),
             width: 1280,
             height: 720,
             fps: 25,
             buffer: 2,
             hw_decode: false,
             enabled: true,
+            port: 0,
+            latency: 120,
         }
     }
 
@@ -855,6 +943,7 @@ mod tests {
             message: Mutex::new(String::new()),
             stop: AtomicBool::new(false),
             child: Mutex::new(None),
+            rate: Mutex::new(None),
         }
     }
 
@@ -907,11 +996,41 @@ mod tests {
     }
 
     #[test]
+    fn the_decoded_format_is_read_from_the_log() {
+        let line = "  Stream #0:0: Video: rawvideo (RGBA / 0x41424752), rgba(pc, gbr/unknown/unknown, progressive), 1280x720 [SAR 1:1 DAR 16:9], q=2-31, 737280 kb/s, 25 fps, 25 tbn";
+        assert_eq!(decoded_format(line), Some((1280, 720, Some(25.0))));
+        assert_eq!(
+            decoded_format("  Stream #0:0: Video: h264, yuv420p, 1920x1080, 50 fps"),
+            None
+        );
+    }
+
+    #[test]
+    fn an_srt_listener_needs_only_its_port() {
+        let mut c = input(InputKind::Srt, "", true);
+        c.port = 10001;
+        let a = c.ffmpeg_args().unwrap();
+        assert!(
+            a.contains(&"srt://0.0.0.0:10001?mode=listener&latency=120000".to_string()),
+            "{a:?}"
+        );
+        // No scaling: the source's own size.
+        assert!(!a.iter().any(|x| x.contains("scale=")));
+        let mut c = input(InputKind::Srt, "srt://cam:9000", false);
+        c.latency = 300;
+        assert!(c
+            .ffmpeg_args()
+            .unwrap()
+            .contains(&"srt://cam:9000?latency=300000".to_string()));
+    }
+
+    #[test]
     fn stream_addresses() {
         let a = input(InputKind::Srt, "srt://0.0.0.0:9000", true)
             .ffmpeg_args()
             .unwrap();
-        assert!(a.contains(&"srt://0.0.0.0:9000?mode=listener".to_string()));
+        // An old listener given by its address keeps it.
+        assert!(a.contains(&"srt://0.0.0.0:9000?mode=listener&latency=120000".to_string()));
         let a = input(InputKind::Rtmp, "rtmp://0.0.0.0/live/cam", true)
             .ffmpeg_args()
             .unwrap();
@@ -923,7 +1042,7 @@ mod tests {
         let a = input(InputKind::Udp, "udp://@239.1.1.1:5000", false)
             .ffmpeg_args()
             .unwrap();
-        assert!(a.iter().any(|x| x.contains("scale=1280:720")));
+        assert!(a.windows(2).any(|w| w == ["-f", "rawvideo"]));
     }
 
     #[test]
