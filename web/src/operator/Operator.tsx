@@ -646,7 +646,8 @@ function NextButton({ project, live, target, disabled, onTake }: { project: Proj
         <span className="opx-next-fill" style={{ width: `${done * 100}%` }} />
         <span className="opx-next-top">
           <b className="opx-next-n">{Math.ceil(left - 1e-3)}</b>
-          <span>{t('s · Next')}</span>
+          {/* NEXT keeps its broadcast name. */}
+          <span>s · Next</span>
         </span>
         <span className="opx-next-sub">{auto.to ? t('Auto: {name}', { name: auto.to.name }) : t('Auto: out')}</span>
       </button>
