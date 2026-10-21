@@ -932,7 +932,7 @@ function SyncSection({ hw, det, cfg, editHw, onRefresh }: { hw: HardwareConfig; 
           ))}
         </div>
         <p className="hw-clock-hint">{t(CLOCK_HINTS[sync.reference])}</p>
-        <div className="hw-flow-grid">
+        <div className="hw-sync-grid">
           <label className="set-field hw-num">
             <span className="set-label">{t('PTP domain')}</span>
             <input type="number" min={0} max={127} value={sync.ptpDomain} onChange={(e) => editHw((h) => void (h.sync!.ptpDomain = Math.max(0, Math.min(127, Math.round(+e.target.value) || 0))))} />

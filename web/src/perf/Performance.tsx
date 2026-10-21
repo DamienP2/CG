@@ -138,7 +138,7 @@ function Warnings({ list }: { list: Warning[] }) {
               // The same problem keeps its place from one second to the next.
               <li key={`${w.text}|${JSON.stringify(w.vars)}|${i}`} className={`lv-${w.level}`}>
                 <Icon size={14} />
-                <span>{t(w.text, w.vars)}</span>
+                <span>{t(w.text, translatedVars(w.vars))}</span>
               </li>
             );
           })}
@@ -401,4 +401,9 @@ function withNumber(text: string, n: string) {
       {b}
     </>
   );
+}
+
+/** A reason given in a warning (`why`) is an English sentence too; names stay as they are. */
+function translatedVars(vars: Record<string, string | number>): Record<string, string | number> {
+  return typeof vars.why === 'string' ? { ...vars, why: t(vars.why) } : vars;
 }

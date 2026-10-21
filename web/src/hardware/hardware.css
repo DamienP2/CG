@@ -493,3 +493,8 @@
 .hw-row.sync {
   grid-template-columns: minmax(0, 1fr) auto minmax(180px, 260px);
 }
+.hw-sync-grid {
+  display: grid;
+  grid-template-columns: 140px 140px;
+  gap: 10px 12px;
+}
