@@ -2,9 +2,9 @@
 // the previews show it; the engine's own outputs (SDI, NDI, ST 2110) leave its box empty.
 // Model: crates/cg-core/src/wid/web.rs.
 import { useEffect, useState } from 'react';
-import { Globe } from 'lucide-react';
+import { Globe, RefreshCw } from 'lucide-react';
 import { interpolateText } from '../engine/evaluate';
-import { Btns, Content, defineWidget, Note, Num, Section, Seg, Toggle, type Warning } from './kit';
+import { Btns, Content, defineWidget, Note, Num, OpRow, Section, Seg, Toggle, type Warning } from './kit';
 import { t } from '../i18n';
 
 export interface Config {
@@ -99,6 +99,7 @@ export default defineWidget({
       </>
     );
   },
+  Compact: ({ act }) => <OpRow list={[{ icon: RefreshCw, title: t('Reload the page'), onClick: () => act('reload') }]} />,
   Operator: ({ act }) => (
     <>
       <Btns list={[{ label: t('Reload the page'), cls: 'violet', onClick: () => act('reload') }]} />

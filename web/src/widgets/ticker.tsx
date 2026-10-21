@@ -4,11 +4,11 @@
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useState } from 'react';
-import { ArrowLeftRight } from 'lucide-react';
+import { ArrowLeftRight, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { FontControls, GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
 import { t } from '../i18n';
 
@@ -509,6 +509,29 @@ function QueueRow({ it, i, n, cats, act }: { it: Item; i: number; n: number; cat
   );
 }
 
+/** The Operator's compact row: running / paused, start from the top, pause / resume, next item. */
+function TickerCompact({ l, state, data, act, time }: { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
+  const frame = useFrame();
+  const now = frame + (time.nowMs - Date.now());
+  const k = cfg(l);
+  const st = (state ?? {}) as State;
+  const w = num(l.props.width as number) || 1920;
+  const h = num(l.props.height as number) || 80;
+  const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: l.props.fill ?? [1, 1, 1, 1] });
+  const age = st.started ? 0 : time.ageSecs + (now - time.nowMs) / 1000;
+  const sc = scene(l, k, st, data, lk, w, h, now, age);
+  const paused = !!st.started && !st.running;
+  return (
+    <OpRow
+      list={[
+        { icon: SkipBack, title: t('Start from the top of the queue'), onClick: () => act('start') },
+        paused ? { icon: Play, title: t('Resume'), tone: 'green', onClick: () => act('resume') } : { icon: Pause, title: t('Pause'), tone: 'amber', disabled: sc.ended, onClick: () => act('pause') },
+        k.mode !== 'crawl' && { icon: SkipForward, title: t('Next item'), onClick: () => act('next') },
+      ]}
+    />
+  );
+}
+
 function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
   const frame = useFrame();
   const now = frame + (time.nowMs - Date.now());
@@ -782,6 +805,7 @@ export default defineWidget({
     );
   },
   Operator: ({ layer, state, data, act, time }) => <TickerOperator l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
+  Compact: ({ layer, state, data, act, time }) => <TickerCompact l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
   warnings: (layer, { data, state, r }) => {
     const l = layer as unknown as TL;
     return warningsOf(l, data, state, num((r?.width as number) ?? (l.props.width as number) ?? 1920), num((r?.height as number) ?? (l.props.height as number) ?? 80));

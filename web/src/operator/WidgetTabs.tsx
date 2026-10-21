@@ -1,6 +1,7 @@
 import { Pause, Play, RotateCcw } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
+import { defaultData } from '../engine/evaluate';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type Template } from '../engine/types';
@@ -39,14 +40,10 @@ export interface Parts {
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** The widget has controls: its own (spec widgets) or start / pause (timed layers). */
-export function hasControls(l: Layer): boolean {
+/** The widget has controls with this data: its own (spec widgets) or start / pause (timed layers). */
+export function hasControls(l: Layer, data: Record<string, string> = {}): boolean {
   const def = widgetOf(l.type);
-  if (def?.Operator) {
-    // A picture has controls only as a sequence of frames.
-    if (l.type === 'image') return Array.isArray((l as unknown as { frames?: unknown[] }).frames) && !!(l as unknown as { frames: unknown[] }).frames.length;
-    return true;
-  }
+  if (def?.Compact) return def.controls ? def.controls(l as never, data) : true;
   return isTimed(l) && l.type !== 'text';
 }
 
@@ -56,6 +53,7 @@ export function widgetParts(tpl: Template): Parts {
   const hit = partsCache.get(tpl);
   if (hit) return hit;
   const layers = tpl.layers.filter((l) => l.visible !== false);
+  const defaults = defaultData(tpl);
   const { content, layers: exposed } = exposedFields(tpl.fields, tpl.layers);
   const json = new Map(layers.map((l) => [l.id, JSON.stringify(l)]));
   const users = (f: Field) =>
@@ -66,7 +64,7 @@ export function widgetParts(tpl: Template): Parts {
   const parts = new Map<string, WidgetPart>();
   const part = (l: Layer) => {
     let p = parts.get(l.id);
-    if (!p) parts.set(l.id, (p = { layer: l, fields: [], datasets: [], fed: [], bound: [], controls: hasControls(l) }));
+    if (!p) parts.set(l.id, (p = { layer: l, fields: [], datasets: [], fed: [], bound: [], controls: hasControls(l, defaults) }));
     return p;
   };
   const shared: Field[] = [];
@@ -92,7 +90,7 @@ export function widgetParts(tpl: Template): Parts {
       if (use.source && use.texts.some((x) => x.id === l.id)) p.fed.push(ds);
     }
   }
-  for (const l of layers) if (hasControls(l)) part(l);
+  for (const l of layers) if (hasControls(l, defaults)) part(l);
   // In the order of the layers.
   const widgets = layers.map((l) => parts.get(l.id)).filter((p): p is WidgetPart => !!p);
   const out = { shared, widgets };
@@ -165,31 +163,8 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs }: { la
       clearInterval(h);
     };
   }, []);
-  const Op = def?.Operator;
-  // Its keyboard shortcuts stay with the controls on air: mounted a commit later, its key
-  // listeners (registered by the widget's useKeys) are left out.
-  const [ready, setReady] = useState(false);
-  useEffect(() => setReady(true), []);
-  const orig = useRef<typeof window.addEventListener | null>(null);
-  useLayoutEffect(() => {
-    if (!ready || !Op) return;
-    const add = window.addEventListener;
-    orig.current = add;
-    window.addEventListener = function (this: Window, type: string, fn: EventListenerOrEventListenerObject, opts?: boolean | AddEventListenerOptions) {
-      if (type !== 'keydown') add.call(this, type, fn, opts);
-    } as typeof window.addEventListener;
-    return () => {
-      if (orig.current) window.addEventListener = orig.current;
-    };
-  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (ready && orig.current) {
-      window.addEventListener = orig.current;
-      orig.current = null;
-    }
-  }, [ready]);
-  if (Op) {
-    if (!ready) return <div className="opx-pvctl" />;
+  const Compact = def?.Compact;
+  if (Compact) {
     const act = async (op: string, args?: unknown) => {
       try {
         const state = await api('POST', '/api/widgets/act', { layer, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: ageSecs() });
@@ -200,7 +175,7 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs }: { la
     };
     return (
       <div className="opx-pvctl">
-        <Op layer={layer as never} state={run.widgets[layer.id]} data={data} act={act} time={{ nowMs: Date.now() + offset, ageSecs: ageSecs(), defaultTz: tz, fps }} />
+        <Compact layer={layer as never} state={run.widgets[layer.id]} data={data} act={act} time={{ nowMs: Date.now() + offset, ageSecs: ageSecs(), defaultTz: tz, fps }} />
       </div>
     );
   }

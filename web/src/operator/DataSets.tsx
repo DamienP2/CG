@@ -847,12 +847,7 @@ export function DataSetSource({
     <div className="ods ods-src">
       <div className="ods-bar">
         <Rows3 size={14} className="ods-icon" />
-        <strong>{ds.name}</strong>
-        {sourceName !== ds.name && (
-          <span className="muted small" title={t("Data source")}>
-            {sourceName}
-          </span>
-        )}
+        <strong title={ds.name}>{sourceName}</strong>
         <span className="spacer" />
         {use.lines && (
           <div

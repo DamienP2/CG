@@ -3,12 +3,12 @@
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
 import { useState } from 'react';
-import { ScrollText } from 'lucide-react';
+import { Pause, Play, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
-import { Area, Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { Area, Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw } from './table-text';
 import { t } from '../i18n';
 
@@ -730,6 +730,32 @@ export default defineWidget({
           />
         </Section>
       </>
+    );
+  },
+  // One row: remaining time, start / pause / resume, next card, reset.
+  Compact: ({ layer, state, data, act, time }) => {
+    const frame = useFrame();
+    const now = frame + (time.nowMs - Date.now());
+    const l = layer as unknown as CL;
+    const k = cfg(l);
+    const st = (state ?? {}) as State;
+    const [w, h] = sizeOf(l);
+    const g = geo(k, entriesOf(k, data), w, h);
+    const ageNow = st.started ? 0 : Math.max(0, time.ageSecs + (now - time.nowMs) / 1000);
+    const f = progress(k, st, g.x, now, ageNow);
+    const rem = remaining(k, st, g.x, now, ageNow);
+    const status = f >= 1 - 1e-9 ? 'done' : !st.started ? 'running' : st.running ? 'running' : f > 0 ? 'paused' : 'idle';
+    const travelArg = { travel: g.x };
+    const s = Math.max(0, Math.ceil(rem));
+    return (
+      <OpRow
+        value={`${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`}
+        list={[
+          status === 'running' ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause', travelArg) } : status === 'paused' ? { icon: Play, title: t('Resume'), tone: 'green', onClick: () => act('resume', travelArg) } : { icon: Play, title: t('Start'), tone: 'green', onClick: () => act('start', travelArg) },
+          k.mode === 'pages' && { icon: SkipForward, title: t('Next card'), onClick: () => act('next', travelArg) },
+          { icon: RotateCcw, title: t('Reset'), onClick: () => act('reset') },
+        ]}
+      />
     );
   },
   Operator: ({ layer, state, data, act, time }) => {

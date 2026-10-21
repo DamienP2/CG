@@ -6,12 +6,12 @@
 // is a pure function of the elapsed time (time on air, or the operator's
 // timestamps): the state never counts.
 import { useEffect, useRef, type CSSProperties } from 'react';
-import { Keyboard } from 'lucide-react';
+import { Eraser, Keyboard, Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, OpRow, Section, Seg, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 import { t } from '../i18n';
 
@@ -425,6 +425,32 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
 
 const PHASE_COL: Record<string, string> = { typing: '#22c55e', paused: '#f59e0b', erasing: '#ff3b5c', hold: '#a594ff', done: '#a3a9bd', cleared: '#6b7290' };
 
+/** The Operator's compact row: start, pause / resume, next text, clear, reset. */
+function Compact({ layer, state, data, act, time }: { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
+  const now = useFrame();
+  const st = (state ?? {}) as State;
+  const offset = time.nowMs - Date.now();
+  const ageRef = useRef({ age: time.ageSecs, at: Date.now() });
+  if (ageRef.current.age !== time.ageSecs) ageRef.current = { age: time.ageSecs, at: Date.now() };
+  const age = ageRef.current.age + (now - ageRef.current.at) / 1000;
+  const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now + offset, age);
+  const mode = st.mode ?? 'auto';
+  const running = mode === 'auto' || mode === 'run';
+  const cur = { cur: R.idx };
+  return (
+    <OpRow
+      value={R.list.length > 1 ? `${R.idx + 1}/${R.list.length}` : undefined}
+      list={[
+        { icon: Play, title: t('Start'), tone: 'green', onClick: () => act('start', cur) },
+        mode === 'paused' ? { icon: Play, title: t('Resume'), tone: 'violet', onClick: () => act('resume', cur) } : { icon: Pause, title: t('Pause'), disabled: !running, onClick: () => act('pause', cur) },
+        R.list.length > 1 && { icon: SkipForward, title: t('Next text'), onClick: () => act('next', cur) },
+        { icon: Eraser, title: t('Clear'), onClick: () => act('clear', cur) },
+        { icon: RotateCcw, title: t('Reset'), onClick: () => act('reset', cur) },
+      ]}
+    />
+  );
+}
+
 function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
   const now = useFrame();
   const st = (state ?? {}) as State;
@@ -617,6 +643,7 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
+  Compact: ({ layer, state, data, act, time }) => <Compact layer={layer} state={state} data={data} act={act} time={time} />,
   warnings: (layer, { data, state, r }) => {
     const out: Warning[] = [];
     const c = cfg(layer);

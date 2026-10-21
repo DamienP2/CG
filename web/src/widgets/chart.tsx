@@ -2,12 +2,12 @@
 // Same picture as crates/cg-render/src/wid/chart.rs; layout mirrored in chart-layout.tsx; actions in crates/cg-core/src/wid/chart.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useEffect } from 'react';
-import { ChartColumn } from 'lucide-react';
+import { ChartColumn, ChevronLeft, ChevronRight, ChevronsRight, RefreshCw } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { t, tn } from '../i18n';
 import { GroupRow } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
 import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Config as LConfig, type Out, type Prim, type State as LState } from './chart-layout';
 
 /** Settings of the layer (flattened into it; every field optional). */
@@ -487,6 +487,25 @@ export default defineWidget({
           />
         </Section>
       </>
+    );
+  },
+  // One row: the reveal step, back / next / all, reload the data.
+  Compact: ({ layer, state, data, act }) => {
+    const c = cfg(layer);
+    const s = st(state);
+    const P = parse(c, shownGrid(c, s, data));
+    const n = steps(c, s, P);
+    const step = Math.min(Math.max(1, s.step), n);
+    return (
+      <OpRow
+        value={n ? `${step}/${n}` : undefined}
+        list={[
+          !!n && { icon: ChevronLeft, title: t('Back'), disabled: step <= 1, onClick: () => act('prev') },
+          !!n && { icon: ChevronRight, title: t('Next step'), tone: 'green', disabled: step >= n, onClick: () => act('next') },
+          !!n && { icon: ChevronsRight, title: t('Show all'), disabled: step >= n, onClick: () => act('showAll') },
+          { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') },
+        ]}
+      />
     );
   },
   Operator: ({ layer, state, data, act, item, time }) => {

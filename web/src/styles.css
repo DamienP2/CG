@@ -12831,67 +12831,60 @@ a.lib-nav-item {
 .opx-wbar > .opx-btn {
   height: 32px;
 }
-/* The widget's controls in the bar: its buttons, compact (they drive the preview). */
+/* The widget's controls in the bar (they drive the preview). */
 .opx-pvctl {
-  --op-1: #151722;
-  --op-2: #1c1f2c;
-  --op-3: #252938;
-  --op-4: #2f3446;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
   min-width: 0;
-}
-.opx-pvctl .wk-note,
-.opx-pvctl .wk-readout span {
-  display: none;
-}
-.opx-pvctl .wk-readout b {
-  font-size: 15px;
-}
-.opx-pvctl .wk-btn {
-  height: 28px;
-  padding: 0 10px;
-  font-size: 11px;
-}
-.opx-pvctl .wk-row {
-  min-height: 28px;
-}
-.opx-pvctl .opx-sq {
-  width: 28px;
-  height: 28px;
 }
 .opx-ds-stack {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
-.opx-pvctl {
-  flex: 1 1 auto;
-}
-.opx-pvctl .wk-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: auto;
-  min-height: 28px;
-}
-.opx-pvctl .wk-row > .wk-gut,
-.opx-pvctl .wk-tog > span {
-  display: none;
-}
-.opx-pvctl .wk-row > .prop-label {
-  width: auto;
-  min-width: 0;
-  font-size: 11px;
-}
-/* Shortcuts act on air only: not shown on the preview's controls. */
-.opx-pvctl .kc,
-.opx-pvctl .wk-msg {
-  display: none;
-}
 .opx-next-unit {
   text-transform: none;
   margin-left: -3px;
+}
+
+/* A widget's compact controls: a small readout, icon buttons (preview bar, On air panel). */
+.wk-oprow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.wk-oprow-v {
+  font: 700 13px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  padding: 0 6px 0 2px;
+  white-space: nowrap;
+}
+.wk-oprow .opx-sq {
+  width: 28px;
+  height: 28px;
+}
+.wk-oprow .opx-sq.tagged {
+  width: auto;
+  padding: 0 7px;
+  display: inline-flex;
+  gap: 3px;
+  font: 700 10.5px/1 var(--mono);
+}
+.wk-oprow .opx-sq.violet {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.wk-oprow .opx-sq:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.opx-wrow {
+  padding: 6px 10px;
+  min-height: 40px;
+}
+.opx-wrow .opx-widget-name {
+  flex: 1;
 }

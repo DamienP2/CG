@@ -3,13 +3,13 @@
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { api, useApp } from '../store';
-import { Film, Image, Radio } from 'lucide-react';
+import { Film, Image, Pause, Play, Radio, RotateCcw } from 'lucide-react';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { inputMessage, useInputs, useLiveFrame } from '../engine/liveInputs';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, OpRow, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
 import { t, tn } from '../i18n';
 
 export interface Crop {
@@ -502,6 +502,20 @@ export default defineWidget({
     );
   },
 
+  // A sequence of frames: play / pause, restart (a still picture has no controls).
+  controls: (layer) => cfg(layer as unknown as ImgLayer).frames.length > 0,
+  Compact: ({ layer, state, act }) => {
+    const st = (state ?? {}) as State;
+    if (!cfg(layer as unknown as ImgLayer).frames.length) return null;
+    return (
+      <OpRow
+        list={[
+          st.playing ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act('play') },
+          { icon: RotateCcw, title: t('Restart'), onClick: () => act('restart') },
+        ]}
+      />
+    );
+  },
   // A sequence started by hand: the operator plays it.
   Operator: ({ layer, state, act }) => {
     const k = cfg(layer as unknown as ImgLayer);

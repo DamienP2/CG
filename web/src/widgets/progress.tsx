@@ -7,13 +7,13 @@ import * as T from './timer-fmt';
 import { display as counterDisplay, partsOf } from './counter';
 import { useDesigner } from '../designer/designerStore';
 import { Dropdown } from '../ui/Dropdown';
-import { SlidersHorizontal } from 'lucide-react';
+import { Minus, Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
 import type { Data, Layer } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, OpRow, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { t } from '../i18n';
 
 export interface Config {
@@ -638,6 +638,31 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
 
 // -------------------------------------------------------------- operator --
 
+/** The Operator's compact row: the percentage, − / + one step, reset. */
+function Compact({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } }) {
+  useFrame();
+  const got = useRef({ age: time.ageSecs, at: Date.now() });
+  if (got.current.age !== time.ageSecs) got.current = { age: time.ageSecs, at: Date.now() };
+  const e = effOf(layer, data);
+  const c = e.c;
+  const st = state as State | undefined;
+  const serverOffset = useApp((s) => s.serverOffset) ?? 0;
+  const now = Date.now() + (item ? serverOffset : 0);
+  const v = e.shown(st, now, got.current.age + (Date.now() - got.current.at) / 1000);
+  const [f, bad] = e.frac(v);
+  const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
+  return (
+    <OpRow
+      value={bad ? '—' : `${fmtNum(f * 100, c.decimals)}\u00a0%`}
+      list={[
+        { icon: Minus, title: `− ${stepTxt}`, onClick: () => act('dec') },
+        { icon: Plus, title: `+ ${stepTxt}`, tone: 'green', onClick: () => act('inc') },
+        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+      ]}
+    />
+  );
+}
+
 function Operator({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } }) {
   useFrame();
   const [input, setInput] = useState('');
@@ -760,6 +785,7 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <View layer={layer} r={r} w={w} h={h} data={data} nowMs={time.nowMs} ageSecs={time.ageSecs} state={state} />,
   Inspector: ({ layer, data, edit }) => <Inspector layer={layer} data={data} edit={edit} />,
   Operator: ({ layer, state, data, act, item, time }) => <Operator layer={layer} state={state} data={data} act={act} item={item} time={time} />,
+  Compact: ({ layer, state, data, act, item, time }) => <Compact layer={layer} state={state} data={data} act={act} item={item} time={time} />,
   warnings: (l, { data, state }) => warnings(l, data, state),
 });
 

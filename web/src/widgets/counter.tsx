@@ -8,11 +8,11 @@
 // displayed. The operator's value holds until the source sends another one;
 // the freeze holds the display while the source keeps being read.
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Hash } from 'lucide-react';
+import { Hash, Minus, Plus, Snowflake } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 import { t } from '../i18n';
 
@@ -608,6 +608,25 @@ function Flip({ from, to, text, k, active, x, baseline, asc: a, size, cellW, fon
 
 // ------------------------------------------------------------- operator --
 
+/** The Operator's compact row: the value shown, − / + one step, freeze. */
+function Compact({ layer, state, data, act, time }: { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
+  const now = useFrame() + (time.nowMs - Date.now());
+  const st = (state ?? {}) as State;
+  const p = partsOf(layer);
+  const [v] = display(p, st, data, now, time.ageSecs, null);
+  const stepTxt = format({ ...p.fmt, plus: false, compact: false }, p.c.step);
+  return (
+    <OpRow
+      value={v}
+      list={[
+        { icon: Minus, title: `− ${stepTxt}`, onClick: () => act('dec') },
+        { icon: Plus, title: `+ ${stepTxt}`, tone: 'green', onClick: () => act('inc') },
+        { icon: Snowflake, title: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), tone: st.frozen ? 'violet' : undefined, onClick: () => act('freeze') },
+      ]}
+    />
+  );
+}
+
 function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
   const now = useFrame() + (time.nowMs - Date.now());
   const st = (state ?? {}) as State;
@@ -843,6 +862,7 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
+  Compact: ({ layer, state, data, act, time }) => <Compact layer={layer} state={state} data={data} act={act} time={time} />,
   warnings: (layer, { data, state }) => {
     const out: Warning[] = [];
     const st = (state ?? {}) as State;

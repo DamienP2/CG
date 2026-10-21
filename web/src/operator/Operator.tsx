@@ -9,7 +9,6 @@ import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evalua
 import { linesKey, oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
-import { Warnings } from '../widgets/kit';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
@@ -341,6 +340,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const part = (item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0];
   // The data part only when the widget reads data (a source or a data set).
   const hasData = !!part && (part.datasets.length > 0 || part.bound.length > 0);
+  // Nothing to type for it (a table fed by a data set…): the data takes the width.
+  const hasContent = parts.shared.length > 0 || !part || part.fields.length > 0 || !!part.exposed || part.fed.length > 0;
   // What Update would change on air, by widget.
   const onAirNow = item ? onAirByItem.get(item.id) : undefined;
   const sent = template ? updateData(template, draft, readMode) : {};
@@ -512,9 +513,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
               </header>
               {parts.widgets.length > 1 && (
                 <div className="opx-head opx-tabs opx-wtabs">
-                  {parts.widgets.map((p) => (
+                  {parts.widgets.map((p, i) => (
                     <button key={p.layer.id} className={p === part ? 'on' : ''} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
-                      {p.layer.name}
+                      {tabName(parts.widgets, i)}
                       {partChanged(p) && <i className="opx-chg" />}
                     </button>
                   ))}
@@ -534,14 +535,17 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   )}
                 </div>
               )}
-              <div className="opx-edit" style={{ gridTemplateColumns: hasData ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
+              <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
+                {hasContent && (
                 <div className="opx-fields-col">
                   <div className="opx-fields">
                     <ValuesPane template={template} fields={[...parts.shared, ...(part?.fields ?? [])]} exposed={part?.exposed ? [part.exposed] : []} fedLayer={part?.fed.length ? part.layer : undefined} layerId={part?.layer.id} partIds={new Set(parts.widgets.map((p) => p.layer.id))} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} fitWarnings={fitWarnings} onDraft={editDraft} />
                   </div>
                 </div>
+                )}
                 {hasData && part && (
                   <>
+                    {hasContent && (
                     <div
                       className="opx-vgap"
                       title={t('Drag to resize · double-click: half and half')}
@@ -554,6 +558,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                         window.addEventListener('pointerup', up);
                       }}
                     />
+                    )}
                     <DataBlock project={project} template={template} fields={part.bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
                       {part.datasets.map((ds) =>
                         datasetUse(template, ds).source ? (
@@ -841,6 +846,14 @@ function FitWarning({ w, named }: { w: TextWarning; named?: boolean }) {
   );
 }
 
+/** A widget's tab: its layer's name, numbered when several widgets have that name (Image, Image 2…). */
+function tabName(widgets: WidgetPart[], i: number) {
+  const name = widgets[i].layer.name;
+  const same = widgets.filter((w) => w.layer.name === name);
+  const n = same.indexOf(widgets[i]);
+  return same.length > 1 && n > 0 ? `${name} ${n + 1}` : name;
+}
+
 /** The preview of the selected graphic, held at its On air point; its widgets run once the preview's controls were used. */
 function PreviewScene({ template, data, fps, run }: { template: Template; data: Record<string, string>; fps: number; run: PreviewRun }) {
   const hold = holdFrame(template);
@@ -1100,27 +1113,30 @@ function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, chi
   );
 }
 
-/** Internal controls of one graphic on air: widgets, number values, triggers, continue / update / out. */
-/** Operator controls of a spec widget of the graphic on air (web/src/widgets). */
+/**
+ * The controls of a widget of the graphic on air (web/src/widgets), on one row: its name, a small
+ * readout, icon buttons. Its full panel stays mounted, hidden, for its keyboard shortcuts.
+ */
 function SpecControls({ layer, item, act, fps }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number }) {
   const def = widgetOf(layer.type)!;
-  // A picture without a sequence of frames has no controls.
-  const Op = hasControls(layer) ? def.Operator : undefined;
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const state = item.widgets?.[layer.id];
-  const warnings = (def.warnings?.(layer as never, { data: item.data, state }) ?? []).filter((w) => w.op);
-  const Icon = def.icon;
-  // A widget without controls shows only its alerts for the Operator.
-  if (!Op && !warnings.length) return null;
+  const Compact = def.Compact;
+  const Op = def.Operator;
+  if (!Compact) return null;
+  const time = { nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps };
   return (
-    <div className="opx-spec">
-      <div className="opx-spec-head">
-        <Icon size={13} />
+    <div className="opx-widget opx-wrow">
+      <span className="opx-widget-name">
         <strong>{layer.name}</strong>
-      </div>
-      <Warnings list={warnings} />
-      {Op && <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={{ nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps }} />}
+      </span>
+      <Compact layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} />
+      {Op && (
+        <div hidden>
+          <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1257,7 +1273,7 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
       </div>
       {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
-        .filter((l) => l.visible && (widgetOf(l.type)?.Operator || widgetOf(l.type)?.warnings))
+        .filter((l) => l.visible && !!widgetOf(l.type)?.Compact && hasControls(l, item.data))
         .map((l) => (
           <SpecControls key={l.id} layer={l} item={item} fps={project.frameRate.num / project.frameRate.den || 50} act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })} />
         ))}
@@ -1267,13 +1283,13 @@ function AirControls({ project, zone, item, command, nextRowOf }: { project: Pro
           const c = item.clocks?.[l.id];
           const running = c ? c.pausedAt == null : !l.manualStart;
           return (
-            <div key={l.id} className="opx-widget">
-              <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
-                {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-              </button>
+            <div key={l.id} className="opx-widget opx-wrow">
               <span className="opx-widget-name">
                 <strong>{l.name}</strong>
               </span>
+              <button className={`opx-sq ${running ? '' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
+                {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
+              </button>
               <button className="opx-sq" title={t('Back to the start')} onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
                 <RotateCcw size={13} />
               </button>

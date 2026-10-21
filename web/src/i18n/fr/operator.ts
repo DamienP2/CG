@@ -481,4 +481,9 @@ export const operator: Record<string, string> = {
   'Remove this row': 'Retirer cette ligne',
   'Column {n}': 'Colonne {n}',
   'Remove the last column': 'Retirer la dernière colonne',
+  // Compact widget controls (tooltips).
+  'Next card': 'Carte suivante',
+  'Previous view': 'Vue précédente',
+  'Next item': 'Élément suivant',
+  'Split': 'Temps intermédiaire',
 };

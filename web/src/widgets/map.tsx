@@ -5,11 +5,11 @@
 // crates/cg-core/src/wid/map.rs; geometry and logic in ./map-geo.ts.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState } from 'react';
-import { Map as MapIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Map as MapIcon, RotateCcw } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { t, tc, tn } from '../i18n';
-import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
 import { col, ellipse, mix, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
   cfg,
@@ -667,6 +667,23 @@ function paint(p: Pt, k: K, s: State, data: Data, now: number, w: number, h: num
 /** The layers the operator turns on and off, by name (translated where shown). */
 const LAYER_NAMES = { markers: 'Markers', routes: 'Routes', zones: 'Zones', labels: 'Labels' } as const;
 
+/** The Operator's compact row: the view shown, previous / next view, reset. */
+function Compact({ layer, state, act }: { layer: Config; state: unknown; act: (op: string, args?: unknown) => void }) {
+  const k = cfg(layer);
+  const s = (state ?? {}) as State;
+  const cur = s.cur;
+  return (
+    <OpRow
+      value={cur != null ? k.views[cur]?.name : undefined}
+      list={[
+        k.views.length > 0 && { icon: ChevronLeft, title: t('Previous view'), onClick: () => act('prev') },
+        k.views.length > 0 && { icon: ChevronRight, title: t('Next view'), tone: 'green', onClick: () => act('next') },
+        { icon: RotateCcw, title: t('Reset'), onClick: () => act('reset') },
+      ]}
+    />
+  );
+}
+
 function Operator({ layer, state, act }: { layer: Config; state: unknown; act: (op: string, args?: unknown) => void }) {
   const now = useFrame();
   const k = cfg(layer);
@@ -1035,6 +1052,7 @@ export default defineWidget({
     );
   },
   Operator: ({ layer, state, act }) => <Operator layer={layer} state={state} act={act} />,
+  Compact: ({ layer, state, act }) => <Compact layer={layer} state={state} act={act} />,
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;

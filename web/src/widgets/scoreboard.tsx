@@ -3,12 +3,12 @@
 // Same picture as crates/cg-render/src/wid/scoreboard.rs (line for line);
 // rules and actions in crates/cg-core/src/wid/scoreboard.rs.
 import { useState } from 'react';
-import { Trophy } from 'lucide-react';
+import { Minus, Pause, Play, Plus, Trophy, Undo2 } from 'lucide-react';
 import { interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { t } from '../i18n';
 import { AssetPicker } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, getPath, Num, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, getPath, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
 import { col, ink, mix, poly, rrect, tf, ellipse, Pt, type Cmd } from './scoreboard-paint';
 
 export type Sport = 'football' | 'rugby' | 'basketball' | 'handball' | 'volleyball' | 'tennis' | 'generic';
@@ -870,6 +870,37 @@ const sizeAt = (k: K, s: State, data: Data, now: number, h: number) => board(new
 
 // --------------------------------------------------------------- operator --
 
+/** The Operator's compact row: the score, − / + per team, undo, the clock. */
+function Compact({ layer, state, data, act }: { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void }) {
+  const now = useFrame();
+  const k = cfg(layer);
+  const s = (state ?? {}) as State;
+  const pr = P(k);
+  const n = teamCount(k);
+  const order = Array.from({ length: n }, (_, i) => (s.swapped ? n - 1 - i : i));
+  const sc = scores(k, s, data, now);
+  const tn = tennisOf(s);
+  const ck = clockOn(k, s) ? clockText(k, s, now) : null;
+  const hasClock = pr.kind === 'points' && k.clock.dir !== 'none';
+  const score = pr.kind === 'tennis' ? `${tn.games.join('–')} · ${[0, 1].map((i) => tennisPts(tn, i)).join('–')}` : sc.join('–');
+  return (
+    <OpRow
+      value={ck ? `${score} · ${ck[0]}` : score}
+      list={[
+        ...order.flatMap((i) => {
+          const sh = shortOf(team(k, i));
+          return [
+            { icon: Minus, tag: sh, title: pr.kind === 'tennis' ? t('Remove a point in this game') : `${sh} −${pr.pts[0].v}`, onClick: () => act('sub', { team: i }) },
+            { icon: Plus, tag: sh, tone: 'green' as const, title: pr.kind === 'points' ? `${sh} ${t(pr.pts[0].label)}` : t('POINT {team}', { team: sh }), onClick: () => act('add', { team: i, pts: 0 }) },
+          ];
+        }),
+        { icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') },
+        hasClock && (s.clock?.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('clockPause') } : { icon: Play, title: t('Start'), tone: 'green', onClick: () => act('clockStart') }),
+      ]}
+    />
+  );
+}
+
 function Operator({ layer, state, data, act }: { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void }) {
   const now = useFrame();
   const k = cfg(layer);
@@ -1267,6 +1298,7 @@ export default defineWidget({
     );
   },
   Operator: ({ layer, state, data, act }) => <Operator layer={layer} state={state} data={data} act={act} />,
+  Compact: ({ layer, state, data, act }) => <Compact layer={layer} state={state} data={data} act={act} />,
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;
