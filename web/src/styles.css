@@ -12900,3 +12900,12 @@ a.lib-nav-item {
   min-width: 0;
   font-size: 11px;
 }
+/* Shortcuts act on air only: not shown on the preview's controls. */
+.opx-pvctl .kc,
+.opx-pvctl .wk-msg {
+  display: none;
+}
+.opx-next-unit {
+  text-transform: none;
+  margin-left: -3px;
+}

@@ -674,7 +674,8 @@ function NextButton({ project, live, target, disabled, onTake }: { project: Proj
         <span className="opx-next-top">
           <b className="opx-next-n">{Math.ceil(left - 1e-3)}</b>
           {/* NEXT keeps its broadcast name. */}
-          <span>s · Next</span>
+          <span className="opx-next-unit">s</span>
+          <span>· Next</span>
         </span>
         <span className="opx-next-sub">{auto.to ? t('Auto: {name}', { name: auto.to.name }) : t('Auto: out')}</span>
       </button>

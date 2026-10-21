@@ -1,5 +1,5 @@
 import { Pause, Play, RotateCcw } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
@@ -166,7 +166,30 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs }: { la
     };
   }, []);
   const Op = def?.Operator;
+  // Its keyboard shortcuts stay with the controls on air: mounted a commit later, its key
+  // listeners (registered by the widget's useKeys) are left out.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  const orig = useRef<typeof window.addEventListener | null>(null);
+  useLayoutEffect(() => {
+    if (!ready || !Op) return;
+    const add = window.addEventListener;
+    orig.current = add;
+    window.addEventListener = function (this: Window, type: string, fn: EventListenerOrEventListenerObject, opts?: boolean | AddEventListenerOptions) {
+      if (type !== 'keydown') add.call(this, type, fn, opts);
+    } as typeof window.addEventListener;
+    return () => {
+      if (orig.current) window.addEventListener = orig.current;
+    };
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (ready && orig.current) {
+      window.addEventListener = orig.current;
+      orig.current = null;
+    }
+  }, [ready]);
   if (Op) {
+    if (!ready) return <div className="opx-pvctl" />;
     const act = async (op: string, args?: unknown) => {
       try {
         const state = await api('POST', '/api/widgets/act', { layer, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: ageSecs() });

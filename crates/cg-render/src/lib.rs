@@ -1543,6 +1543,58 @@ mod tests {
     }
 
     #[test]
+    fn an_update_cross_fades() {
+        let project = sample::demo_project();
+        let mut state = ChannelState::default();
+        let data =
+            |name: &str| std::collections::BTreeMap::from([("name".to_string(), name.to_string())]);
+        state
+            .apply(
+                &project,
+                Command::Take {
+                    zone: Some("lower-third".into()),
+                    layer: None,
+                    template_id: "lower-third".into(),
+                    data: Some(data("A")),
+                    rundown_id: None,
+                },
+            )
+            .unwrap();
+        for _ in 0..200 {
+            state.tick(1.0);
+        }
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let old = r.render_channel(&project, &state, OUT, "UTC");
+        let update = |fade| Command::Update {
+            zone: Some("lower-third".into()),
+            layer: None,
+            data: data("Wolfgang Amadeus Mozart"),
+            fade,
+        };
+        let mut cut = state.clone();
+        cut.apply(&project, update(false)).unwrap();
+        let new = r.render_channel(&project, &cut, OUT, "UTC");
+        assert_ne!(old.data, new.data);
+        // Halfway through the fade: half the old picture plus half the new one.
+        state.apply(&project, update(true)).unwrap();
+        let f = state
+            .layers
+            .values_mut()
+            .next()
+            .unwrap()
+            .fade
+            .as_mut()
+            .unwrap();
+        f.frame = f.length / 2.0;
+        let mid = r.render_channel(&project, &state, OUT, "UTC");
+        let worst = (0..mid.data.len())
+            .map(|i| (mid.data[i] as i32 - (old.data[i] as i32 + new.data[i] as i32) / 2).abs())
+            .max()
+            .unwrap();
+        assert!(worst <= 2, "off by {worst}");
+    }
+
+    #[test]
     fn svg_pictures_are_drawn() {
         let dir = std::env::temp_dir().join("cg-render-svg-test");
         std::fs::create_dir_all(&dir).unwrap();
