@@ -17,6 +17,8 @@ interface Release {
 interface UpdateInfo {
   current: string;
   platform: string;
+  /** The release file to upload (`Strata-<version>-…`). */
+  package?: string;
   repo: string;
   hasToken: boolean;
   autoCheck: boolean;
@@ -260,7 +262,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         <div>
           <strong>{t('Offline update')}</strong>
           <span className="muted small">
-            {t('Upload the archive from the release page — for servers without internet access:')} <code>pulse-cg-&lt;version&gt;-{info.platform}</code>
+            {t('Upload the file from the release page — for servers without internet access:')} <code>{info.package ?? `pulse-cg-<version>-${info.platform}`}</code>
           </span>
         </div>
         <label className="check small">
@@ -273,7 +275,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         <input
           ref={fileRef}
           type="file"
-          accept=".gz,.tgz,.zip,application/gzip,application/zip"
+          accept=".gz,.tgz,.zip,.pkg,.msi,application/gzip,application/zip"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];

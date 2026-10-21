@@ -1,6 +1,8 @@
 name: Release
 
-# Builds self-contained server packages for Linux, macOS and Windows.
+# Builds the release files: Strata for macOS (.dmg and .pkg), Windows (.msi)
+# and Ubuntu (server .tar.gz), and the Premiere Pro panel for macOS (.pkg)
+# and Windows (.msi). Servers update themselves from these same files.
 # Push a tag `v*` to publish a GitHub release, or run manually for artifacts.
 on:
   push:
@@ -30,18 +32,17 @@ jobs:
           name: web-dist
           path: web/dist
 
+  # The Ubuntu server package and the Windows installer (macOS: below).
   build:
     needs: web
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Static musl binaries: run on any distribution.
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, platform: linux-x86_64, pkg: linux }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, platform: linux-arm64, pkg: linux }
-          - { os: macos-latest, target: aarch64-apple-darwin, platform: macos-arm64, pkg: macos }
-          - { os: macos-latest, target: x86_64-apple-darwin, platform: macos-x86_64, pkg: macos }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc, platform: windows-x86_64, pkg: windows }
+          # glibc (Ubuntu 22.04 and later): loads the DeckLink driver, which
+          # a static binary cannot.
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu, platform: linux-x86_64, pkg: linux, name: ubuntu-x64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, platform: windows-x86_64, pkg: windows, name: windows-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -60,55 +61,43 @@ jobs:
           key: ${{ matrix.target }}
           # A tag's cache serves no other run (caches are scoped to their ref): restore only.
           save-if: false
-      - name: musl C toolchain (ring, used for HTTPS update checks)
-        if: matrix.pkg == 'linux'
-        run: |
-          sudo apt-get update -q && sudo apt-get install -y -q musl-tools
-          echo "CC_$(echo '${{ matrix.target }}' | tr '-' '_')=musl-gcc" >> "$GITHUB_ENV"
       - name: Build
         # The tray app ships with the Windows installer (macOS builds it in macos-installer).
         run: cargo build --release --locked -p cg-server ${{ matrix.pkg == 'windows' && '-p cg-tray' || '' }} --target ${{ matrix.target }}
       - name: NDI runtime
-        if: matrix.pkg != 'linux'
+        if: matrix.pkg == 'windows'
         shell: bash
-        run: packaging/ndi/fetch-runtime.sh ${{ matrix.pkg }} dist/ndi
+        run: packaging/ndi/fetch-runtime.sh windows dist/ndi
       - name: ffmpeg
         shell: bash
         run: packaging/ffmpeg/fetch.sh ${{ matrix.platform }} dist/ffmpeg
-      - name: Package
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          [ "$GITHUB_REF_TYPE" = tag ] || VERSION=dev-${GITHUB_SHA::7}
-          NAME=pulse-cg-$VERSION-${{ matrix.platform }}
-          mkdir -p "dist/$NAME"
-          EXT=""; [ "${{ matrix.pkg }}" = windows ] && EXT=.exe
-          cp "target/${{ matrix.target }}/release/cg-server$EXT" "dist/$NAME/"
-          find packaging/${{ matrix.pkg }} -maxdepth 1 -type f -exec cp {} "dist/$NAME/" \;
-          cp docs/INSTALL.md assets/fonts/OFL.txt "dist/$NAME/"
-          cp docs/outputs.example.json "dist/$NAME/"
-          # NDI runtime next to the server (lib/ on macOS).
-          if [ -f dist/ndi/libndi.dylib ] || [ -f dist/ndi/Processing.NDI.Lib.x64.dll ]; then
-            if [ "${{ matrix.pkg }}" = macos ]; then mkdir -p "dist/$NAME/lib" && cp dist/ndi/* "dist/$NAME/lib/"; else cp dist/ndi/* "dist/$NAME/"; fi
-          fi
-          # ffmpeg in bin/ next to the server.
-          if [ -f dist/ffmpeg/ffmpeg ] || [ -f dist/ffmpeg/ffmpeg.exe ]; then
-            mkdir -p "dist/$NAME/bin" && cp dist/ffmpeg/* "dist/$NAME/bin/"
-          fi
-          ls -la "dist/$NAME" "dist/$NAME/bin" "dist/$NAME/lib" 2>/dev/null || true
-          cd dist
-          if [ "${{ matrix.pkg }}" = windows ]; then
-            7z a "$NAME.zip" "$NAME" >/dev/null
-          else
-            tar czf "$NAME.tar.gz" "$NAME"
-          fi
-      - name: Windows installer (MSI)
-        if: matrix.pkg == 'windows'
+      - name: Version
         shell: bash
         run: |
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           [ "$GITHUB_REF_TYPE" = tag ] && VERSION=${GITHUB_REF_NAME#v}
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
+      - name: Ubuntu server package
+        if: matrix.pkg == 'linux'
+        shell: bash
+        run: |
+          NAME=Strata-$SUFFIX-${{ matrix.name }}
+          mkdir -p "dist/$NAME"
+          cp "target/${{ matrix.target }}/release/cg-server" "dist/$NAME/"
+          find packaging/linux -maxdepth 1 -type f -exec cp {} "dist/$NAME/" \;
+          cp docs/INSTALL.md docs/SYNC.md assets/fonts/OFL.txt docs/outputs.example.json "dist/$NAME/"
+          # ffmpeg in bin/ next to the server.
+          if [ -f dist/ffmpeg/ffmpeg ]; then
+            mkdir -p "dist/$NAME/bin" && cp dist/ffmpeg/* "dist/$NAME/bin/"
+          fi
+          ls -la "dist/$NAME" "dist/$NAME/bin" 2>/dev/null || true
+          (cd dist && tar czf "$NAME.tar.gz" "$NAME")
+      - name: Windows installer (MSI)
+        if: matrix.pkg == 'windows'
+        shell: bash
+        run: |
           dotnet tool install --global wix --version 5.0.2
           export PATH="$PATH:$HOME/.dotnet/tools"
           wix extension add --global WixToolset.Util.wixext/5.0.2 WixToolset.Firewall.wixext/5.0.2
@@ -117,17 +106,16 @@ jobs:
           wix build packaging/windows/msi/pulse-cg.wxs -arch x64 \
             -ext WixToolset.Util.wixext -ext WixToolset.Firewall.wixext \
             -d Version="$VERSION" -d BinDir="target/${{ matrix.target }}/release" -d DocsDir=. "${NDI[@]}" \
-            -o "dist/Strata-$SUFFIX-windows-x64.msi"
+            -o "dist/Strata-$SUFFIX-${{ matrix.name }}.msi"
       - uses: actions/upload-artifact@v4
         with:
-          name: pulse-cg-${{ matrix.platform }}
+          name: pulse-cg-${{ matrix.name }}
           path: |
-            dist/*.*z*
+            dist/*.tar.gz
             dist/*.msi
 
   macos-installer:
-    # After the per-platform builds: fewer macOS jobs waiting for a machine at once.
-    needs: [web, build]
+    needs: web
     runs-on: macos-latest
     env:
       # Secrets cannot be tested in `if:` directly.
@@ -211,13 +199,13 @@ jobs:
             dist/*.dmg
             dist/*.pkg
 
-  # The Premiere Pro panel: zip (manual install), macOS package and Windows
-  # MSI, both per user. Installed once: it then updates from the server.
+  # The Premiere Pro panel: macOS package and Windows MSI, both per user.
+  # Installed once: it then updates from the server.
   premiere-panel:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
       MACOS_INSTALLER_IDENTITY: ${{ secrets.MACOS_INSTALLER_IDENTITY }}
@@ -234,9 +222,6 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
           packaging/premiere/stage.sh dist/premiere
-      - name: Zip
-        if: runner.os == 'Linux'
-        run: (cd dist/premiere && zip -qr "../Strata-Premiere-$SUFFIX.zip" .)
       - name: macOS package
         if: runner.os == 'macOS'
         run: packaging/premiere/build-pkg.sh "$VERSION" "dist/Strata-Premiere-$SUFFIX-macos.pkg"
@@ -254,7 +239,6 @@ jobs:
         with:
           name: pulse-cg-premiere-${{ runner.os }}
           path: |
-            dist/*.zip
             dist/*.pkg
             dist/*.msi
 

@@ -30,9 +30,11 @@ pub fn prioritize(work: Work) {
     #[cfg(target_os = "linux")]
     {
         if matches!(work, Work::Clock) {
-            let param = libc::sched_param { sched_priority: 10 };
-            // SAFETY: the calling thread's own scheduling; fails without the right.
+            // SAFETY: a plain C struct (musl's has more fields than glibc's),
+            // then the calling thread's own scheduling; fails without the right.
             unsafe {
+                let mut param: libc::sched_param = std::mem::zeroed();
+                param.sched_priority = 10;
                 libc::pthread_setschedparam(libc::pthread_self(), libc::SCHED_FIFO, &param);
             }
         }

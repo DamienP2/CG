@@ -102,6 +102,5 @@ tops de sa première sortie SDI : la carte suit la référence (genlock)
 branchée sur son entrée REF, sinon son propre quartz. Si la carte ne donne
 plus de tops, le canal continue sur l'horloge de la machine.
 
-Les paquets Linux sont des binaires statiques (musl) qui ne peuvent pas
-charger le pilote : pour le SDI sous Linux, compilez le serveur pour glibc
-(`cargo build --release -p cg-server`). Voir `crates/cg-output/src/sdi.rs`.
+Le paquet Ubuntu (glibc) charge le pilote comme les installateurs macOS et
+Windows ; un serveur compilé en statique (musl) ne le peut pas. Voir `crates/cg-output/src/sdi.rs`.

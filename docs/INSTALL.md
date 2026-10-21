@@ -4,11 +4,11 @@ Le serveur tient dans **un seul exécutable**, `cg-server`. Il contient le moteu
 
 | OS | Paquet | Service | Données | Journaux |
 | --- | --- | --- | --- | --- |
-| Linux x86_64 / arm64 (toutes distributions, binaire statique) | `pulse-cg-<version>-linux-*.tar.gz` | systemd `pulse-cg` (compte système dédié) | `/var/lib/pulse-cg` | `journalctl -u pulse-cg -f` |
-| macOS 11 ou plus récent (Apple Silicon / Intel) | **`Strata-<version>-macos-universal.dmg`** ou `pulse-cg-<version>-macos-*.tar.gz` | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
-| Windows Server 2016 ou plus récent / Windows 10+ x64 | **`Strata-<version>-windows-x64.msi`** ou `pulse-cg-<version>-windows-x86_64.zip` | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
+| Ubuntu 22.04 ou plus récent x86_64 (serveur, sans interface graphique) | **`Strata-<version>-ubuntu-x64.tar.gz`** | systemd `pulse-cg` (compte système dédié) | `/var/lib/pulse-cg` | `journalctl -u pulse-cg -f` |
+| macOS 11 ou plus récent (Apple Silicon / Intel) | **`Strata-<version>-macos-universal.dmg`** (ou le `.pkg` seul) | launchd `com.pulsecg.server` | `/Library/Application Support/PulseCG` | `/Library/Logs/PulseCG/cg-server.log` |
+| Windows Server 2016 ou plus récent / Windows 10+ x64 | **`Strata-<version>-windows-x64.msi`** | service Windows `pulse-cg` (démarrage auto, redémarrage sur échec) | `C:\ProgramData\PulseCG` | `C:\ProgramData\PulseCG\logs\cg-server.log` |
 
-Les paquets sont produits par la CI (`.github/workflows/release.yml`) à chaque tag `v*`.
+Les paquets sont produits par la CI (`.github/workflows/release.yml`) à chaque tag `v*`, avec le panneau Premiere Pro (`Strata-Premiere-<version>-macos.pkg` et `-windows.msi`).
 
 ## Windows : installateur MSI (recommandé)
 
@@ -39,10 +39,10 @@ Le serveur tourne comme service système (launchd) et démarre avec le Mac ; l'a
 
 Désinstallation : **Applications ▸ Strata ▸ Désinstaller Strata**, le menu *Uninstall Strata…* de l'icône, ou en ligne de commande `sudo /usr/local/pulse-cg/uninstall.sh` (`--purge` pour effacer aussi les données).
 
-## Linux
+## Ubuntu (serveur)
 
 ```bash
-tar xzf pulse-cg-*-linux-x86_64.tar.gz && cd pulse-cg-*/
+tar xzf Strata-*-ubuntu-x64.tar.gz && cd Strata-*/
 sudo ./install.sh                      # options : --bind 0.0.0.0:80 --data-dir /srv/pulse-cg
 ```
 Le binaire est copié dans `/opt/pulse-cg` (lien `/usr/local/bin/cg-server`) ; le service tourne sous l'utilisateur `pulse-cg`, en priorité élevée (`Nice=-10`), et peut écouter sur un port < 1024.
@@ -50,7 +50,6 @@ Désinstallation : `sudo ./uninstall.sh` (`--purge` pour supprimer aussi les don
 
 ## Archives sans installateur (macOS / Windows)
 
-Les archives `.tar.gz` / `.zip` restent disponibles pour une installation scriptée : `sudo ./install.sh` sur macOS, `install.cmd` ou `.\install.ps1` (PowerShell administrateur) sur Windows.
 
 ## L'application « Strata » (macOS et Windows)
 
@@ -95,7 +94,7 @@ Les sorties ST 2110 / SDI se configurent dans la page **Réglages** (`/settings`
 La carte **Mises à jour** de la page **Réglages** (admins) met le serveur à jour sur place : les données, les comptes et les réglages ne bougent pas.
 
 - **En ligne** : *Vérifier* interroge les releases GitHub du projet. Le dépôt étant privé, il faut saisir une fois un **token GitHub fine-grained** avec l'accès en lecture seule *Contents* sur ce dépôt. Le token reste sur le serveur, dans `<données>/update/`. La vérification automatique (toutes les 6 heures) ne fait que signaler une nouvelle version ; l'installation reste toujours une décision manuelle.
-- **Hors ligne** : téléchargez l'archive `pulse-cg-<version>-<plateforme>.tar.gz` (ou `.zip` sous Windows) depuis la page de la release, puis déposez-la avec *Importer un paquet*.
+- **Hors ligne** : téléchargez le fichier de votre plateforme depuis la page de la release (`Strata-<version>-macos-universal.pkg`, `-windows-x64.msi` ou `-ubuntu-x64.tar.gz`), puis déposez-le avec *Importer un paquet*. Le serveur en extrait le programme (avec `pkgutil` sur macOS, une installation administrative de `msiexec` sur Windows) sans rien installer d'autre.
 
 Le serveur :
 

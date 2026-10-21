@@ -240,7 +240,7 @@ export const home: Record<string, string> = {
   'Update settings saved': 'Réglages de mise à jour enregistrés',
   'Updates': 'Mises à jour',
   'Upload package': 'Importer un paquet',
-  'Upload the archive from the release page — for servers without internet access:': 'Importez l’archive de la page de la version, pour les serveurs sans accès à Internet :',
+  'Upload the file from the release page — for servers without internet access:': 'Importez le fichier de la page de la version, pour les serveurs sans accès à Internet :',
   'Uploaded': 'Importées',
   'Upper port': 'Port haut',
   'User name': 'Nom d’utilisateur',

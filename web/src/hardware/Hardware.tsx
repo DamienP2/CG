@@ -165,7 +165,7 @@ function Detection({ det }: { det: HardwareInfo | null }) {
         {det.decklinkSupport ? <CircleCheck size={16} /> : <TriangleAlert size={16} />}
         <div>
           <strong>{det.decklinkSupport ? t('This server drives DeckLink cards') : t('This server is built without DeckLink support')}</strong>
-          <span>{det.decklinkSupport ? t('SDI outputs and inputs start with the engine.') : t('SDI outputs and inputs can be set up, but report “DeckLink support is not built” until a server with it is installed (Linux packages are built without it).')}</span>
+          <span>{det.decklinkSupport ? t('SDI outputs and inputs start with the engine.') : t('SDI outputs and inputs can be set up, but report “DeckLink support is not built” until a server with it is installed.')}</span>
         </div>
       </div>
       {det.decklinkDevices && det.decklinkDevices.length > 0 ? (

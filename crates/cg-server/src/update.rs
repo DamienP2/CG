@@ -5,8 +5,10 @@
 //! from a release archive uploaded by an admin (servers without internet).
 //! Either way the server:
 //!
-//! 1. extracts `cg-server` from the platform archive (`.tar.gz` / `.zip`) and
-//!    checks the SHA-256 published by GitHub when there is one;
+//! 1. extracts `cg-server` from the platform package (Ubuntu `.tar.gz`,
+//!    macOS `.pkg` through pkgutil, Windows `.msi` through an administrative
+//!    install of msiexec; older `.tar.gz` / `.zip` archives too) and checks
+//!    the SHA-256 published by GitHub when there is one;
 //! 2. runs `<new> --version`, which proves the binary runs on this machine;
 //! 3. keeps the running binary as `cg-server.previous` and swaps the new one
 //!    in (atomic rename; the running process keeps its old image);
@@ -29,7 +31,8 @@ use sha2::{Digest, Sha256};
 
 pub const DEFAULT_REPO: &str = "DamienP2/CG";
 
-/// Name of this build's release archive: `pulse-cg-<version>-<PLATFORM>.*`.
+/// This build's platform (older release archives were named after it:
+/// `pulse-cg-<version>-<PLATFORM>.*`).
 pub const PLATFORM: &str = if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
     "linux-arm64"
 } else if cfg!(target_os = "linux") {
@@ -40,6 +43,21 @@ pub const PLATFORM: &str = if cfg!(all(target_os = "linux", target_arch = "aarch
     "macos-x86_64"
 } else {
     "windows-x86_64"
+};
+
+/// The release files that carry this platform's server, by preference: the
+/// installer or server package of the release, then the archive older
+/// releases had.
+pub const PACKAGES: &[&str] = if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+    &["-ubuntu-x64.tar.gz", "-linux-x86_64.tar.gz"]
+} else if cfg!(target_os = "linux") {
+    &["-linux-arm64.tar.gz"]
+} else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+    &["-macos-universal.pkg", "-macos-arm64.tar.gz"]
+} else if cfg!(target_os = "macos") {
+    &["-macos-universal.pkg", "-macos-x86_64.tar.gz"]
+} else {
+    &["-windows-x64.msi", "-windows-x86_64.zip"]
 };
 
 const EXE: &str = if cfg!(windows) {
@@ -234,6 +252,8 @@ pub fn fail(e: &anyhow::Error) {
 pub struct Info {
     pub current: &'static str,
     pub platform: &'static str,
+    /// The release file to upload for an offline update (`Strata-<version>…`).
+    pub package: String,
     pub repo: String,
     pub has_token: bool,
     pub auto_check: bool,
@@ -250,6 +270,7 @@ pub fn info(data_dir: &Path) -> Info {
     Info {
         current: current_version(),
         platform: PLATFORM,
+        package: format!("Strata-<version>{}", PACKAGES[0]),
         repo: s.repo,
         has_token: !s.token.is_empty(),
         auto_check: s.auto_check,
@@ -347,12 +368,7 @@ pub fn check(data_dir: &Path) -> Result<Release> {
         }
         let body = r.body_mut().read_to_string()?;
         let gh: GhRelease = serde_json::from_str(&body).context("unexpected answer from GitHub")?;
-        let suffix_tgz = format!("-{PLATFORM}.tar.gz");
-        let suffix_zip = format!("-{PLATFORM}.zip");
-        let asset = gh
-            .assets
-            .into_iter()
-            .find(|a| a.name.ends_with(&suffix_tgz) || a.name.ends_with(&suffix_zip))
+        let asset = pick_package(gh.assets)
             .ok_or_else(|| anyhow!("release {} has no package for {PLATFORM}", gh.tag_name))?;
         Ok(Release {
             version: gh.tag_name.trim_start_matches('v').to_string(),
@@ -375,6 +391,16 @@ pub fn check(data_dir: &Path) -> Result<Release> {
         Err(e) => fail(e),
     }
     res
+}
+
+/// The release file for this platform (see [`PACKAGES`]).
+fn pick_package(assets: Vec<GhAsset>) -> Option<GhAsset> {
+    let rank = |a: &GhAsset| PACKAGES.iter().position(|p| a.name.ends_with(p));
+    assets
+        .into_iter()
+        .filter_map(|a| Some((rank(&a)?, a)))
+        .min_by_key(|(r, _)| *r)
+        .map(|(_, a)| a)
 }
 
 /// Downloads a release archive, reporting progress.
@@ -468,6 +494,109 @@ pub fn install_latest(data_dir: &Path) -> Result<()> {
 
 // ------------------------------------------------------------- packages ----
 
+/// A file of a release package: an archive, or the installer of this
+/// platform. None when it is not one; Some(None) when the file is not in it.
+fn from_package(bytes: &[u8], want: impl Fn(&str) -> bool) -> Result<Option<Option<Vec<u8>>>> {
+    if let Some(found) = from_archive(bytes, &want)? {
+        return Ok(Some(found));
+    }
+    let Some(kind) = Installer::of(bytes) else {
+        return Ok(None);
+    };
+    let dir = kind.unpack(bytes)?;
+    find_file(&dir.0, &dir.0, &want).map(Some)
+}
+
+/// macOS (xar) and Windows (OLE compound file) installers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Installer {
+    Pkg,
+    Msi,
+}
+
+/// A temporary folder, removed when dropped.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl Installer {
+    fn of(bytes: &[u8]) -> Option<Self> {
+        if bytes.starts_with(b"xar!") {
+            Some(Installer::Pkg)
+        } else if bytes.starts_with(&[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]) {
+            Some(Installer::Msi)
+        } else {
+            None
+        }
+    }
+
+    /// Unpacks it with the system's own tool, without installing anything.
+    fn unpack(self, bytes: &[u8]) -> Result<TempDir> {
+        let (ext, os) = match self {
+            Installer::Pkg => ("pkg", "macos"),
+            Installer::Msi => ("msi", "windows"),
+        };
+        if std::env::consts::OS != os {
+            bail!("a .{ext} package is for {os}: upload the package of this platform ({PLATFORM})");
+        }
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let tmp =
+            TempDir(std::env::temp_dir().join(format!("strata-update-{}-{n}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&tmp.0);
+        std::fs::create_dir_all(&tmp.0)?;
+        let file = tmp.0.join(format!("package.{ext}"));
+        std::fs::write(&file, bytes)?;
+        let out = tmp.0.join("unpacked");
+        let status = match self {
+            // The payloads come out as plain files.
+            Installer::Pkg => std::process::Command::new("/usr/sbin/pkgutil")
+                .arg("--expand-full")
+                .arg(&file)
+                .arg(&out)
+                .status(),
+            // An administrative install only copies the files out.
+            Installer::Msi => std::process::Command::new("msiexec")
+                .arg("/a")
+                .arg(&file)
+                .arg("/qn")
+                .arg(format!("TARGETDIR={}", out.display()))
+                .status(),
+        }
+        .with_context(|| format!("cannot unpack the .{ext} package"))?;
+        if !status.success() {
+            bail!("cannot unpack the .{ext} package ({status})");
+        }
+        Ok(tmp)
+    }
+}
+
+/// The first file under `dir` whose path (relative to `root`, with `/`)
+/// `want` accepts.
+fn find_file(root: &Path, dir: &Path, want: &impl Fn(&str) -> bool) -> Result<Option<Vec<u8>>> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            if let Some(found) = find_file(root, &path, want)? {
+                return Ok(Some(found));
+            }
+        } else if kind.is_file() {
+            let rel = path.strip_prefix(root).unwrap_or(&path);
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            if want(&rel) {
+                return Ok(Some(std::fs::read(&path)?));
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// A file of a release archive (`.tar.gz` / `.zip`); None when it is not one.
 fn from_archive(bytes: &[u8], want: impl Fn(&str) -> bool) -> Result<Option<Option<Vec<u8>>>> {
     if bytes.starts_with(&[0x1f, 0x8b]) {
@@ -499,12 +628,12 @@ fn from_archive(bytes: &[u8], want: impl Fn(&str) -> bool) -> Result<Option<Opti
     Ok(None)
 }
 
-/// `cg-server` from a release archive (`.tar.gz` / `.zip`) or a bare binary.
+/// `cg-server` from a release package (archive or installer) or a bare binary.
 pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
     let is_exe = |name: &str| Path::new(name).file_name().and_then(|n| n.to_str()) == Some(EXE);
-    match from_archive(bytes, is_exe)? {
+    match from_package(bytes, is_exe)? {
         Some(Some(b)) => return Ok(b),
-        Some(None) => bail!("no {EXE} in this archive"),
+        Some(None) => bail!("no {EXE} in this package"),
         None => {}
     }
     // ELF, Mach-O (thin or universal) or PE.
@@ -517,7 +646,10 @@ pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
     if magic.iter().any(|m| bytes.starts_with(m)) {
         return Ok(bytes.to_vec());
     }
-    bail!("unknown package: upload the pulse-cg-<version>-{PLATFORM} archive (.tar.gz or .zip)")
+    bail!(
+        "unknown package: upload the Strata release file of this platform ({})",
+        PACKAGES[0].trim_start_matches('-')
+    )
 }
 
 const FFMPEG: &str = if cfg!(windows) {
@@ -526,7 +658,7 @@ const FFMPEG: &str = if cfg!(windows) {
     "ffmpeg"
 };
 
-/// Installs the ffmpeg a release archive carries (`bin/ffmpeg`) when the
+/// Installs the ffmpeg a release package carries (`bin/ffmpeg`) when the
 /// server has none next to it yet: installs from before it was bundled get
 /// it with their next update. Best effort.
 pub fn add_ffmpeg(bytes: &[u8]) {
@@ -541,7 +673,7 @@ pub fn add_ffmpeg(bytes: &[u8]) {
         return;
     }
     let want = |n: &str| n.replace('\\', "/").ends_with(&format!("bin/{FFMPEG}"));
-    let Ok(Some(Some(data))) = from_archive(bytes, want) else {
+    let Ok(Some(Some(data))) = from_package(bytes, want) else {
         return;
     };
     let staged = bin.join(format!("{FFMPEG}.new"));
@@ -863,5 +995,81 @@ mod tests {
         let ff = from_archive(&archive, |n| n.ends_with(&format!("bin/{FFMPEG}"))).unwrap();
         assert_eq!(ff, Some(Some(b"ffmpeg".to_vec())));
         assert!(extract_binary(b"not a package").is_err());
+    }
+
+    #[test]
+    fn the_package_of_this_platform_is_picked() {
+        let asset = |id, name: &str| GhAsset {
+            id,
+            name: name.into(),
+            size: 1,
+            digest: None,
+        };
+        let names = [
+            "Strata-Premiere-9.9.9-macos.pkg",
+            "Strata-9.9.9-macos-universal.dmg",
+            "Strata-9.9.9-macos-universal.pkg",
+            "Strata-9.9.9-windows-x64.msi",
+            "Strata-Premiere-9.9.9-windows.msi",
+            "Strata-9.9.9-ubuntu-x64.tar.gz",
+        ];
+        let assets = names
+            .iter()
+            .enumerate()
+            .map(|(i, n)| asset(i as u64, n))
+            .collect();
+        let picked = pick_package(assets).map(|a| a.name);
+        if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
+            assert_eq!(picked.as_deref(), Some("Strata-9.9.9-ubuntu-x64.tar.gz"));
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(picked.as_deref(), Some("Strata-9.9.9-macos-universal.pkg"));
+        } else if cfg!(windows) {
+            assert_eq!(picked.as_deref(), Some("Strata-9.9.9-windows-x64.msi"));
+        }
+        // An older release: its archive.
+        let old = vec![
+            asset(1, &format!("pulse-cg-9.9.8-{PLATFORM}.tar.gz")),
+            asset(2, &format!("pulse-cg-9.9.8-{PLATFORM}.zip")),
+        ];
+        assert!(pick_package(old).is_some());
+    }
+
+    #[test]
+    fn installers_are_recognised_and_searched() {
+        assert_eq!(Installer::of(b"xar!\x00\x1c"), Some(Installer::Pkg));
+        assert_eq!(
+            Installer::of(&[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0]),
+            Some(Installer::Msi)
+        );
+        assert_eq!(Installer::of(b"\x7fELF"), None);
+        // The other platform's installer is refused with a clear message.
+        let other = if cfg!(target_os = "macos") {
+            &[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1][..]
+        } else {
+            &b"xar!...."[..]
+        };
+        if !cfg!(windows) || other.starts_with(b"xar!") {
+            let e = extract_binary(other).unwrap_err().to_string();
+            assert!(e.contains("is for"), "{e}");
+        }
+        // An unpacked installer: the server and ffmpeg are found by path.
+        let dir = std::env::temp_dir().join(format!("strata-find-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let deep = dir.join("Strata.pkg/Payload/usr/local/pulse-cg");
+        std::fs::create_dir_all(deep.join("bin")).unwrap();
+        std::fs::write(deep.join("INSTALL.md"), b"doc").unwrap();
+        std::fs::write(deep.join(EXE), b"server").unwrap();
+        std::fs::write(deep.join("bin").join(FFMPEG), b"ffmpeg").unwrap();
+        let exe = |n: &str| Path::new(n).file_name().and_then(|n| n.to_str()) == Some(EXE);
+        assert_eq!(
+            find_file(&dir, &dir, &exe).unwrap(),
+            Some(b"server".to_vec())
+        );
+        let ff = |n: &str| n.ends_with(&format!("bin/{FFMPEG}"));
+        assert_eq!(
+            find_file(&dir, &dir, &ff).unwrap(),
+            Some(b"ffmpeg".to_vec())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
