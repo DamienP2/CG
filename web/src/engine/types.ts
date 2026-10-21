@@ -500,7 +500,9 @@ export interface ChannelInfo {
   frameRate: FrameRate;
   projectId: string | null;
   outputs: string[];
-  renditions: { id: string; name: string; width: number; height: number }[];
+  renditions: { id: string; name: string; width: number; height: number; slate?: string }[];
+  /** Still picture the outputs show while no project is loaded ("" = none). */
+  slate?: string;
 }
 
 export type Role = 'admin' | 'designer' | 'operator' | 'viewer';

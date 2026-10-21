@@ -21,6 +21,9 @@ use crate::{OutputError, OutputSink};
 pub struct NdiConfig {
     #[serde(default)]
     pub id: String,
+    /// Off: kept in the settings, not started.
+    #[serde(default = "crate::on")]
+    pub enabled: bool,
     /// Source name seen by receivers (shown as "HOST (name)").
     pub name: String,
     /// Comma-separated NDI groups ("" = public).

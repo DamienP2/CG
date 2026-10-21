@@ -144,6 +144,14 @@ impl Track {
         self.hist.push_back(v);
         v
     }
+    /// Mean of the last `k` seconds (steadier than one second alone).
+    fn avg(&self, k: usize) -> f64 {
+        let n = self.hist.len().min(k);
+        if n == 0 {
+            return 0.0;
+        }
+        self.hist.iter().rev().take(n).sum::<f64>() / n as f64
+    }
     fn sum(&self) -> f64 {
         self.hist.iter().sum()
     }
@@ -319,7 +327,7 @@ impl Perf {
                 out.pictures.insert(
                     key.clone(),
                     Rates {
-                        fps: n / dt,
+                        fps: tr.get(format!("{key}#n")).avg(3) / dt,
                         ms: if n > 0.0 { us / n / 1000.0 } else { 0.0 },
                         max_ms: max10 / 1000.0,
                         count10: rep10,
@@ -343,10 +351,11 @@ impl Perf {
                     if pid != 0 {
                         pids.push((ok.clone(), pid));
                     }
+                    let fps = tr.get(format!("{ok}#n")).avg(3) / dt;
                     out.outputs.insert(
                         ok,
                         Rates {
-                            fps: n / dt,
+                            fps,
                             ms: if n > 0.0 { busy / n / 1000.0 } else { 0.0 },
                             count10: drop10,
                             cpu: busy / 1e6 / dt,
@@ -376,7 +385,7 @@ impl Perf {
             }
             for i in &inputs {
                 let key = format!("input:{}", i.id);
-                let n = tr.get(format!("{key}#n")).total(i.received);
+                tr.get(format!("{key}#n")).total(i.received);
                 tr.get(format!("{key}#drop")).total(i.dropped);
                 let drop10 = tr.get(format!("{key}#drop")).sum();
                 if let Some(pid) = i.pid {
@@ -385,7 +394,7 @@ impl Perf {
                 out.inputs.insert(
                     i.id.clone(),
                     Rates {
-                        fps: n / dt,
+                        fps: tr.get(format!("{key}#n")).avg(3) / dt,
                         count10: drop10,
                         ..Default::default()
                     },
@@ -980,29 +989,52 @@ pub async fn logs_download(CurrentUser(me): CurrentUser) -> ApiResult<impl IntoR
 mod tests {
     use super::*;
 
+    fn o_sent(p: &PictureStats) {
+        for o in lock(&p.outputs).iter() {
+            o.sent(Duration::from_millis(2), true);
+        }
+    }
+
     #[test]
     fn counts_become_rates() {
         let perf = Perf::default();
         let p = perf.picture("news", "main", "Main", 1920, 1080);
         let o = p.output("ndi-1", "ndi", "NEWS");
         perf.sample(1.0, vec![]);
-        for _ in 0..50 {
-            p.rendered(Duration::from_millis(4));
-            o.sent(Duration::from_millis(2), true);
+        // Three steady seconds at 50 frames.
+        for _ in 0..3 {
+            for _ in 0..50 {
+                p.rendered(Duration::from_millis(4));
+                o.sent(Duration::from_millis(2), true);
+            }
+            perf.sample(1.0, vec![]);
         }
         p.repeated();
         o.dropped();
         perf.sample(1.0, vec![]);
         let s = perf.sampled();
+        // The rate is the mean of the last three seconds: 50, 50, then none.
         let r = &s.pictures["news/main"];
-        assert_eq!(r.fps, 50.0);
-        assert!((r.ms - 4.0).abs() < 0.01 && (r.cpu - 0.2).abs() < 0.01);
+        assert!((r.fps - 100.0 / 3.0).abs() < 0.01, "{}", r.fps);
         assert_eq!(r.count10, 1.0);
         let o = &s.outputs["news/main/ndi-1"];
-        assert_eq!((o.fps, o.count10), (50.0, 1.0));
-        assert!((o.cpu - 0.1).abs() < 0.01);
-        // A second later, nothing more: no frames, the drop still counts.
-        perf.sample(1.0, vec![]);
+        assert_eq!(o.count10, 1.0);
+        // Time and load are those of the last second that had frames.
+        let s0 = {
+            for _ in 0..50 {
+                p.rendered(Duration::from_millis(4));
+                o_sent(&p);
+            }
+            perf.sample(1.0, vec![]);
+            perf.sampled()
+        };
+        let r = &s0.pictures["news/main"];
+        assert!((r.ms - 4.0).abs() < 0.01 && (r.cpu - 0.2).abs() < 0.01);
+        assert!((s0.outputs["news/main/ndi-1"].cpu - 0.1).abs() < 0.01);
+        // Seconds later, nothing more: no frames, the drop still counts.
+        for _ in 0..3 {
+            perf.sample(1.0, vec![]);
+        }
         let s = perf.sampled();
         assert_eq!(s.pictures["news/main"].fps, 0.0);
         assert_eq!(s.outputs["news/main/ndi-1"].count10, 1.0);

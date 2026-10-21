@@ -29,6 +29,11 @@ pub enum OutputError {
     Closed,
 }
 
+/// Outputs are on unless switched off (serde default).
+pub fn on() -> bool {
+    true
+}
+
 /// Anything that consumes rendered frames at the channel frame rate.
 pub trait OutputSink: Send {
     fn name(&self) -> &str;

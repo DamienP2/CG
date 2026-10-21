@@ -29,7 +29,7 @@ pub enum Protocol {
     Hls,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Codec {
     #[default]
@@ -42,6 +42,9 @@ pub enum Codec {
 pub struct StreamConfig {
     #[serde(default)]
     pub id: String,
+    /// Off: kept in the settings, not started.
+    #[serde(default = "crate::on")]
+    pub enabled: bool,
     pub name: String,
     #[serde(default)]
     pub protocol: Protocol,
@@ -63,6 +66,108 @@ pub struct StreamConfig {
     /// A silent stereo track.
     #[serde(default = "yes")]
     pub audio: bool,
+    /// Encode on the graphics card when this machine has an encoder ffmpeg
+    /// can use (VideoToolbox on a Mac, NVENC, Quick Sync, AMF), else on the
+    /// processor.
+    #[serde(default)]
+    pub hw_encode: bool,
+}
+
+/// The encoder of a stream: a hardware one this machine has, when asked
+/// for, else x264 / x265.
+pub fn encoder(codec: Codec, hardware: bool) -> &'static str {
+    if hardware {
+        if let Some(e) = hardware_encoder(codec) {
+            return e;
+        }
+        tracing::warn!(
+            ?codec,
+            "no hardware encoder usable here: encoding on the processor"
+        );
+    }
+    match codec {
+        Codec::H264 => "libx264",
+        Codec::Hevc => "libx265",
+    }
+}
+
+/// The first hardware encoder that really encodes here (a build may list
+/// NVENC without an NVIDIA card): each one tried once, on a few frames.
+fn hardware_encoder(codec: Codec) -> Option<&'static str> {
+    static FOUND: std::sync::OnceLock<
+        Mutex<std::collections::HashMap<Codec, Option<&'static str>>>,
+    > = std::sync::OnceLock::new();
+    let found = FOUND.get_or_init(Default::default);
+    let mut found = found.lock().unwrap_or_else(|p| p.into_inner());
+    *found.entry(codec).or_insert_with(|| {
+        let candidates: &[&'static str] = match (codec, cfg!(target_os = "macos")) {
+            (Codec::H264, true) => &["h264_videotoolbox"],
+            (Codec::Hevc, true) => &["hevc_videotoolbox"],
+            (Codec::H264, false) => &["h264_nvenc", "h264_qsv", "h264_amf"],
+            (Codec::Hevc, false) => &["hevc_nvenc", "hevc_qsv", "hevc_amf"],
+        };
+        let works = |e: &str| {
+            ffmpeg::command()
+                .args([
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=black:s=320x180:r=25",
+                    "-frames:v",
+                    "10",
+                ])
+                .args(["-pix_fmt", "nv12", "-c:v", e, "-f", "null", "-"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let e = candidates.iter().copied().find(|e| works(e));
+        tracing::info!(?codec, encoder = e.unwrap_or("none"), "hardware encoder");
+        e
+    })
+}
+
+/// Settings of an encoder for live streaming (low latency, constant rate).
+fn encoder_args(encoder: &str) -> Vec<&'static str> {
+    match encoder {
+        "libx264" => vec![
+            "-preset",
+            "veryfast",
+            "-tune",
+            "zerolatency",
+            "-sc_threshold",
+            "0",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        "libx265" => vec![
+            "-preset",
+            "veryfast",
+            "-tune",
+            "zerolatency",
+            "-pix_fmt",
+            "yuv420p",
+        ],
+        e if e.ends_with("_videotoolbox") => {
+            vec!["-realtime", "1", "-allow_sw", "1", "-pix_fmt", "nv12"]
+        }
+        e if e.ends_with("_nvenc") => vec![
+            "-preset", "p2", "-tune", "ll", "-rc", "cbr", "-pix_fmt", "nv12",
+        ],
+        e if e.ends_with("_qsv") => vec!["-preset", "veryfast", "-pix_fmt", "nv12"],
+        e if e.ends_with("_amf") => vec![
+            "-usage",
+            "lowlatency",
+            "-quality",
+            "speed",
+            "-rc",
+            "cbr",
+            "-pix_fmt",
+            "nv12",
+        ],
+        _ => vec!["-pix_fmt", "yuv420p"],
+    }
 }
 
 fn default_bitrate() -> u32 {
@@ -124,6 +229,7 @@ pub fn args(
     height: u32,
     rate: (u32, u32),
     hls_dir: Option<&std::path::Path>,
+    encoder: &str,
 ) -> Result<Vec<String>, String> {
     let target = c.target()?;
     let fps = rate.0 as f64 / rate.1.max(1) as f64;
@@ -155,35 +261,9 @@ pub fn args(
         );
         a.extend(["-map", "0:v", "-map", "1:a"].map(String::from));
     }
-    match c.codec {
-        Codec::H264 => a.extend(
-            [
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-tune",
-                "zerolatency",
-                "-sc_threshold",
-                "0",
-            ]
-            .map(String::from),
-        ),
-        Codec::Hevc => a.extend(
-            [
-                "-c:v",
-                "libx265",
-                "-preset",
-                "veryfast",
-                "-tune",
-                "zerolatency",
-            ]
-            .map(String::from),
-        ),
-    }
+    a.extend(["-c:v".to_string(), encoder.to_string()]);
+    a.extend(encoder_args(encoder).into_iter().map(String::from));
     a.extend([
-        "-pix_fmt".into(),
-        "yuv420p".into(),
         "-b:v".into(),
         format!("{b}k"),
         "-maxrate".into(),
@@ -274,8 +354,10 @@ impl StreamSender {
         rate: (u32, u32),
         hls_dir: Option<PathBuf>,
     ) -> Result<Self, OutputError> {
-        let args = args(&config, width, height, rate, hls_dir.as_deref())
+        let enc = encoder(config.codec, config.hw_encode);
+        let args = args(&config, width, height, rate, hls_dir.as_deref(), enc)
             .map_err(OutputError::Unsupported)?;
+        tracing::info!(name = config.name, encoder = enc, "stream encoder");
         if let Some(dir) = &hls_dir {
             let _ = std::fs::remove_dir_all(dir);
             std::fs::create_dir_all(dir)?;
@@ -494,6 +576,8 @@ mod tests {
             codec: Codec::H264,
             background: "#000000".into(),
             audio: true,
+            hw_encode: false,
+            enabled: true,
         }
     }
 
@@ -516,10 +600,28 @@ mod tests {
             1080,
             (50, 1),
             None,
+            "libx264",
         )
         .unwrap();
         assert!(a.windows(2).any(|w| w == ["-f", "flv"]) && a.contains(&"100".to_string()));
-        assert!(args(&cfg(Protocol::Hls, ""), 1280, 720, (25, 1), None).is_err());
+        assert!(args(&cfg(Protocol::Hls, ""), 1280, 720, (25, 1), None, "libx264").is_err());
+        // A Mac's encoder: real time, constant rate, the picture as it takes it.
+        let a = args(
+            &cfg(Protocol::Srt, "srt://h:1"),
+            1920,
+            1080,
+            (50, 1),
+            None,
+            "h264_videotoolbox",
+        )
+        .unwrap();
+        let has = |w: [&str; 2]| a.windows(2).any(|x| x == w);
+        assert!(
+            has(["-c:v", "h264_videotoolbox"])
+                && has(["-realtime", "1"])
+                && has(["-pix_fmt", "nv12"])
+        );
+        assert!(has(["-b:v", "6000k"]) && !a.iter().any(|x| x == "zerolatency"));
     }
 
     #[test]

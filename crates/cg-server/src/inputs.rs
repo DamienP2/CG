@@ -45,6 +45,9 @@ pub enum InputKind {
 pub struct InputConfig {
     #[serde(default)]
     pub id: String,
+    /// Off: kept in the settings, not started.
+    #[serde(default = "cg_output::on")]
+    pub enabled: bool,
     pub name: String,
     #[serde(default)]
     pub kind: InputKind,
@@ -322,8 +325,10 @@ impl Inputs {
     /// Runs the configured inputs: new and changed ones start, removed ones stop.
     pub fn apply(&self, configs: &[InputConfig]) {
         let mut map = self.live.write().unwrap_or_else(|p| p.into_inner());
+        // Switched off: stopped like removed ones.
+        let configs: Vec<&InputConfig> = configs.iter().filter(|c| c.enabled).collect();
         map.retain(|id, l| {
-            let keep = configs.iter().any(|c| &c.id == id && *c == l.config);
+            let keep = configs.iter().any(|c| &c.id == id && **c == l.config);
             if !keep {
                 l.halt();
             }
@@ -499,7 +504,11 @@ pub async fn list(
                     .cloned()
                     .unwrap_or_else(|| InputStatus {
                         id: c.id.clone(),
-                        message: "Not started (save the settings)".into(),
+                        message: if c.enabled {
+                            "Not started (save the settings)".into()
+                        } else {
+                            "Off".into()
+                        },
                         ..Default::default()
                     }),
             })
@@ -828,6 +837,7 @@ mod tests {
             fps: 25,
             buffer: 2,
             hw_decode: false,
+            enabled: true,
         }
     }
 
@@ -1025,6 +1035,8 @@ mod tests {
                 codec: cg_output::stream::Codec::H264,
                 background: "#0000ff".into(),
                 audio: false,
+                hw_encode: false,
+                enabled: true,
             },
             320,
             180,

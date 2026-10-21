@@ -105,6 +105,9 @@ pub struct Rendition {
     pub height: u32,
     #[serde(default)]
     pub outputs: OutputsConfig,
+    /// Still picture (`/assets/…`) its outputs show while no project is loaded.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub slate: String,
 }
 
 /// One independent output channel (a studio, a control room…): its own
@@ -128,6 +131,17 @@ pub struct ChannelConfig {
     /// Location id ("" = none).
     #[serde(default)]
     pub location: String,
+    /// Still picture (`/assets/…`) the main picture shows while no project is loaded.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub slate: String,
+    /// Frames rendered ahead of when they are sent (each on its own thread):
+    /// absorbs a slow frame now and then, at the cost of that much delay.
+    #[serde(default = "default_render_ahead")]
+    pub render_ahead: u32,
+}
+
+fn default_render_ahead() -> u32 {
+    2
 }
 
 impl ChannelConfig {
@@ -143,6 +157,17 @@ impl ChannelConfig {
             .collect()
     }
 
+    /// The still picture of a picture of the channel ("" = none).
+    pub fn slate_of(&self, picture: &str) -> &str {
+        if picture == "main" {
+            return &self.slate;
+        }
+        self.renditions
+            .iter()
+            .find(|r| r.id == picture)
+            .map_or("", |r| r.slate.as_str())
+    }
+
     pub fn new(id: &str, name: &str) -> Self {
         Self {
             id: id.into(),
@@ -154,6 +179,8 @@ impl ChannelConfig {
             outputs: OutputsConfig::default(),
             renditions: Vec::new(),
             location: String::new(),
+            slate: String::new(),
+            render_ahead: default_render_ahead(),
         }
     }
 

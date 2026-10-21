@@ -94,6 +94,9 @@ pub struct St2110Config {
     /// Stable id (layout, status, SDP links).
     #[serde(default)]
     pub id: String,
+    /// Off: kept in the settings, not started.
+    #[serde(default = "crate::on")]
+    pub enabled: bool,
     pub name: String,
     #[serde(default)]
     pub encoding: St2110Encoding,
@@ -402,6 +405,7 @@ mod tests {
     #[test]
     fn sdp_contains_format() {
         let cfg = St2110Config {
+            enabled: true,
             id: "a".into(),
             encoding: St2110Encoding::FillKey,
             name: "CG1".into(),
@@ -416,6 +420,7 @@ mod tests {
         assert!(sdp.contains("exactframerate=60000/1001"));
         assert!(sdp.contains("sampling=KEY"));
         let one = St2110Config {
+            enabled: true,
             encoding: St2110Encoding::Ycbcra,
             ..cfg
         };

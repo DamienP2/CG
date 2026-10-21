@@ -1520,15 +1520,16 @@ async fn channel_preview(
         .ok_or_else(|| not_found("rendition"))?;
     let out = cg_render::OutputFormat { width, height };
     let tz = s.config.timezone.clone();
+    let slate = ch.config.slate_of(wanted).trim().to_string();
     let st = s.clone();
-    let bytes = tokio::task::spawn_blocking(move || match project {
-        Some(p) => st
-            .renderer
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .render_channel(&p, &state, out, &tz)
-            .to_png(),
-        None => cg_render::Frame::blank(out.width, out.height).to_png(),
+    let bytes = tokio::task::spawn_blocking(move || {
+        let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
+        match project {
+            Some(p) => r.render_channel(&p, &state, out, &tz).to_png(),
+            // What the outputs show while no project is loaded.
+            None if !slate.is_empty() => r.render_slate(&slate, out).to_png(),
+            None => cg_render::Frame::blank(out.width, out.height).to_png(),
+        }
     })
     .await
     .map_err(internal)?;

@@ -89,6 +89,8 @@ pub struct ChannelInfo {
     /// Extra pictures of the channel (9:16…), each with its HTML5 page
     /// /output/<channel>/<rendition>.
     pub renditions: Vec<RenditionInfo>,
+    /// Still picture shown while no project is loaded ("" = none).
+    pub slate: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,6 +100,7 @@ pub struct RenditionInfo {
     pub name: String,
     pub width: u32,
     pub height: u32,
+    pub slate: String,
 }
 
 pub struct ChannelRt {
@@ -198,8 +201,10 @@ impl ChannelRt {
                     name: r.name.clone(),
                     width: r.width,
                     height: r.height,
+                    slate: r.slate.clone(),
                 })
                 .collect(),
+            slate: c.slate.clone(),
         }
     }
 }
@@ -419,6 +424,16 @@ impl AppState {
         if let Err(e) = cfg.save(&self.data_dir) {
             tracing::warn!("cannot save loaded projects: {e}");
         }
+    }
+
+    /// Tells clients the state the playout clock just made.
+    pub fn publish_channel(&self, ch: &ChannelRt, state: ChannelState) {
+        ch.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = self.events.send(Event::Channel {
+            channel_id: ch.config.id.clone(),
+            state,
+            server_time: now_ms(),
+        });
     }
 
     pub async fn broadcast_channel(&self, ch: &ChannelRt) {

@@ -298,6 +298,33 @@ impl Renderer {
         self.images.clear();
     }
 
+    /// A still picture (`/assets/…`) filling the whole frame, cropped to the
+    /// frame's shape around its centre: what a channel shows while no project
+    /// is loaded. Transparent when the picture cannot be read.
+    pub fn render_slate(&mut self, src: &str, out: OutputFormat) -> Frame {
+        let (w, h) = (out.width.max(1), out.height.max(1));
+        let mut pm = Pixmap::new(w, h).expect("valid size");
+        if let Some(img) = self.image(src) {
+            let k = (w as f32 / img.width() as f32).max(h as f32 / img.height() as f32);
+            let tf = Transform::from_translate(
+                (w as f32 - img.width() as f32 * k) / 2.0,
+                (h as f32 - img.height() as f32 * k) / 2.0,
+            )
+            .pre_scale(k, k);
+            let paint = PixmapPaint {
+                quality: tiny_skia::FilterQuality::Bicubic,
+                ..Default::default()
+            };
+            pm.draw_pixmap(0, 0, img.as_ref(), &paint, tf, None);
+        }
+        Frame {
+            width: w,
+            height: h,
+            data: pm.take(),
+            captured_at: SystemTime::now(),
+        }
+    }
+
     /// Composites every playout layer of a channel, lowest layer first.
     /// `default_tz` is the zone clocks use when they do not set one.
     pub fn render_channel(
@@ -1389,6 +1416,45 @@ fn rounded_rect(w: f32, h: f32, radius: f32) -> Option<tiny_skia::Path> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_slate_fills_the_frame() {
+        let dir = std::env::temp_dir().join(format!("cg-slate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // 4×1: red then blue halves; in a 2×2 frame it is cropped to its middle.
+        let img = image::RgbaImage::from_fn(4, 1, |x, _| {
+            if x < 2 {
+                image::Rgba([255, 0, 0, 255])
+            } else {
+                image::Rgba([0, 0, 255, 255])
+            }
+        });
+        img.save(dir.join("slate.png")).unwrap();
+        let mut r = Renderer::new(&dir);
+        let f = r.render_slate(
+            "/assets/slate.png",
+            OutputFormat {
+                width: 2,
+                height: 2,
+            },
+        );
+        assert_eq!((f.width, f.height), (2, 2));
+        assert!(
+            f.data.chunks(4).all(|p| p[3] == 255),
+            "covers the whole frame"
+        );
+        assert!(f.data[0] > 150 && f.data[6] > 150, "red left, blue right");
+        // No picture: transparent.
+        let f = r.render_slate(
+            "/assets/missing.png",
+            OutputFormat {
+                width: 2,
+                height: 2,
+            },
+        );
+        assert!(f.data.iter().all(|b| *b == 0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
     use cg_core::{sample, Command};
 

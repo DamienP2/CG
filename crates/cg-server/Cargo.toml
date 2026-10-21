@@ -43,5 +43,10 @@ tiny-skia = "0.11"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
+[target.'cfg(unix)'.dependencies]
+# Thread priorities of the playout (src/rt.rs).
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
+windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }

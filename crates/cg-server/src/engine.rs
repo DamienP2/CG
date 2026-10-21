@@ -49,6 +49,8 @@ fn open_outputs(
     hls_root: &std::path::Path,
 ) -> Vec<Opened> {
     let mut sinks = Vec::new();
+    // Switched off: shown as such, not started.
+    let off = |id: &str| status.set(&cfg.id, id, true, "Off");
     let mut opened = |id: &str,
                       name: &str,
                       kind: &'static str,
@@ -72,19 +74,35 @@ fn open_outputs(
         }
     };
     for o in &outputs.st2110 {
+        if !o.enabled {
+            off(&o.id);
+            continue;
+        }
         let r = St2110Sender::start(o.clone(), period).map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "st2110", r);
     }
     for o in &outputs.sdi {
+        if !o.enabled {
+            off(&o.id);
+            continue;
+        }
         let r = DeckLinkOutput::open(o.clone()).map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "sdi", r);
     }
     let rate = (cfg.frame_rate.num, cfg.frame_rate.den);
     for o in &outputs.ndi {
+        if !o.enabled {
+            off(&o.id);
+            continue;
+        }
         let r = NdiSender::open(o.clone(), rate).map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "ndi", r);
     }
     for o in &outputs.streams {
+        if !o.enabled {
+            off(&o.id);
+            continue;
+        }
         let hls = (o.protocol == cg_output::stream::Protocol::Hls).then(|| hls_root.join(&o.id));
         let r = StreamSender::open(o.clone(), size.0, size.1, rate, hls)
             .map(|s| Box::new(s) as Box<dyn OutputSink>);
@@ -126,14 +144,13 @@ pub fn start(state: &Shared) -> Vec<tokio::task::JoinHandle<()>> {
 }
 
 /// The project is `None` when nothing is loaded: outputs keep sending black.
-type RenderJob = (Option<Arc<Project>>, ChannelState);
+/// (tick, project, state).
+type RenderJob = (u64, Option<Arc<Project>>, ChannelState);
 
 // ---------------------------------------------------------------- outputs --
 
 /// A frame and the tick it is for.
 type Timed = (Arc<Frame>, SystemTime);
-/// The last frame a picture rendered, and its number.
-type Latest = Arc<Mutex<Option<(u64, Arc<Frame>)>>>;
 
 /// The next frame for one output's thread: the newest wins.
 #[derive(Default)]
@@ -190,6 +207,7 @@ fn output_loop(
     status: &OutputStatus,
     channel: &str,
 ) {
+    crate::rt::prioritize(crate::rt::Work::Output);
     let Opened { id, mut sink, .. } = o;
     let mut failing = false;
     let mut looked = Instant::now() - Duration::from_secs(5);
@@ -237,76 +255,119 @@ fn output_loop(
 
 // --------------------------------------------------------------- pictures --
 
-/// One picture (main or a rendition) with outputs: its render thread, the
-/// latest frame it finished, and its outputs.
+/// Frames finished by the render threads, by tick.
+type Done = Arc<Mutex<std::collections::BTreeMap<u64, Arc<Frame>>>>;
+
+/// One picture (main or a rendition) with outputs: its render threads, the
+/// frames they finished, and its outputs. The frame of tick n is sent at tick
+/// n + `ahead`: a frame that takes a little longer than one period to render
+/// (a big picture loading, a busy moment) is still on time.
 struct Picture {
     jobs: mpsc::SyncSender<RenderJob>,
-    /// (render number, frame).
-    latest: Latest,
-    sent: u64,
+    done: Done,
+    ahead: u64,
+    /// The last frame sent (its tick), sent again when the next is late.
+    last: Option<(u64, Arc<Frame>)>,
     stats: Arc<PictureStats>,
     outputs: Vec<OutputThread>,
-    render: std::thread::JoinHandle<()>,
+    renders: Vec<std::thread::JoinHandle<()>>,
 }
 
 impl Picture {
-    /// Gives every output the latest frame (the same as last tick if the
-    /// next one is not ready yet).
-    fn dispatch(&mut self, at: SystemTime) {
-        let Some((n, frame)) = lock(&self.latest).clone() else {
+    /// Gives every output the frame of this tick: the newest one rendered
+    /// for it or before, else the last one again.
+    fn dispatch(&mut self, tick: u64, at: SystemTime) {
+        let Some(due) = tick.checked_sub(self.ahead) else {
             return;
         };
-        if n == self.sent {
-            self.stats.repeated();
+        let newest = {
+            let mut done = lock(&self.done);
+            let later = done.split_off(&(due + 1));
+            let ready = std::mem::replace(&mut *done, later);
+            ready.into_iter().next_back()
+        };
+        match newest {
+            Some((n, f)) if self.last.as_ref().is_none_or(|(m, _)| n > *m) => {
+                if n < due {
+                    self.stats.repeated();
+                }
+                self.last = Some((n, f));
+            }
+            _ => {
+                if self.last.is_some() {
+                    self.stats.repeated();
+                }
+            }
         }
-        self.sent = n;
-        for o in &self.outputs {
-            o.send(frame.clone(), at);
+        if let Some((_, frame)) = &self.last {
+            for o in &self.outputs {
+                o.send(frame.clone(), at);
+            }
         }
     }
 
-    /// Asks for the next frame; the renderer, if still busy, skips this one.
+    /// Asks for a frame; skipped when the render threads are that far behind.
     fn request(&self, job: RenderJob) {
         let _ = self.jobs.try_send(job);
     }
 
     fn close(self) {
         drop(self.jobs);
-        let _ = self.render.join();
+        for r in self.renders {
+            let _ = r.join();
+        }
         for o in self.outputs {
             o.close();
         }
     }
 }
 
+/// One render thread: takes the next job, renders it, files the frame under its tick.
+#[allow(clippy::too_many_arguments)]
 fn render_loop(
     mut renderer: Renderer,
     out: OutputFormat,
     tz: String,
-    rx: mpsc::Receiver<RenderJob>,
-    latest: Latest,
+    slate: String,
+    rx: Arc<Mutex<mpsc::Receiver<RenderJob>>>,
+    done: Done,
     stats: Arc<PictureStats>,
 ) {
-    let mut n = 0u64;
-    let mut blank: Option<Arc<Frame>> = None;
-    while let Ok((project, channel)) = rx.recv() {
+    crate::rt::prioritize(crate::rt::Work::Render);
+    // Nothing loaded: the slate (or nothing), the same frame every time.
+    let mut idle: Option<Arc<Frame>> = None;
+    loop {
+        let job = lock(&rx).recv();
+        let Ok((tick, project, channel)) = job else {
+            return;
+        };
         let t = Instant::now();
         let frame = match project {
             Some(p) => Arc::new(renderer.render_channel(&p, &channel, out, &tz)),
-            // Nothing loaded: the same black frame every time.
-            None => blank
-                .get_or_insert_with(|| Arc::new(Frame::blank(out.width, out.height)))
+            None => idle
+                .get_or_insert_with(|| {
+                    Arc::new(if slate.trim().is_empty() {
+                        Frame::blank(out.width, out.height)
+                    } else {
+                        renderer.render_slate(slate.trim(), out)
+                    })
+                })
                 .clone(),
         };
         stats.rendered(t.elapsed());
-        n += 1;
-        *lock(&latest) = Some((n, frame));
+        let mut d = lock(&done);
+        d.insert(tick, frame);
+        // Never more than a few waiting (nothing sends them while stopping).
+        while d.len() > 8 {
+            d.pop_first();
+        }
     }
 }
 
-/// Opens a channel's outputs and starts a render thread per picture that has some.
+/// Opens a channel's outputs and starts the render threads of each picture that has some.
 fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
     let period = cfg.frame_rate.frame_duration();
+    let ahead = cfg.render_ahead.clamp(1, 4);
     let mut pictures = Vec::new();
     for (id, width, height, outputs) in cfg.pictures() {
         let hls = state.hls_dir().join(&cfg.id).join(id);
@@ -334,30 +395,38 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
                 OutputThread::start(o, s, state.output_status.clone(), cfg.id.clone())
             })
             .collect();
+        // As many threads as frames ahead: each frame has a period per thread to render.
         let (jobs, rx) = mpsc::sync_channel::<RenderJob>(1);
-        let latest = Arc::new(Mutex::new(None));
-        let render = std::thread::Builder::new()
-            .name(format!("cg-render-{}-{id}", cfg.id))
-            .spawn({
-                let assets = state.assets_dir();
-                let out = OutputFormat { width, height };
-                let tz = state.config.timezone.clone();
-                let live = state.inputs.clone();
-                let (latest, stats) = (latest.clone(), stats.clone());
-                move || {
-                    let mut r = Renderer::new(assets);
-                    r.set_live(live);
-                    render_loop(r, out, tz, rx, latest, stats)
-                }
+        let rx = Arc::new(Mutex::new(rx));
+        let done: Done = Default::default();
+        let renders = (0..ahead)
+            .map(|k| {
+                std::thread::Builder::new()
+                    .name(format!("cg-render-{}-{id}-{k}", cfg.id))
+                    .spawn({
+                        let assets = state.assets_dir();
+                        let out = OutputFormat { width, height };
+                        let tz = state.config.timezone.clone();
+                        let slate = cfg.slate_of(id).to_string();
+                        let live = state.inputs.clone();
+                        let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
+                        move || {
+                            let mut r = Renderer::new(assets);
+                            r.set_live(live);
+                            render_loop(r, out, tz, slate, rx, done, stats)
+                        }
+                    })
+                    .expect("spawn render thread")
             })
-            .expect("spawn render thread");
+            .collect();
         pictures.push(Picture {
             jobs,
-            latest,
-            sent: 0,
+            done,
+            ahead: ahead as u64,
+            last: None,
             stats,
             outputs,
-            render,
+            renders,
         });
     }
     pictures
@@ -443,6 +512,7 @@ fn clock(
     stop: &AtomicBool,
     stats: &ClockStats,
 ) {
+    crate::rt::prioritize(crate::rt::Work::Clock);
     let period = ch.config.frame_rate.frame_duration();
     let secs = period.as_secs_f64();
     let (start, wall) = (Instant::now(), SystemTime::now());
@@ -464,11 +534,11 @@ fn clock(
         // Frame times on the clock's own steady scale (RTP timestamps).
         let at = wall + Duration::from_secs_f64(n as f64 * secs);
         for p in &mut pictures {
-            p.dispatch(at);
+            p.dispatch(n, at);
         }
-        let job = rt.block_on(advance(state, ch, &mut saved_at));
+        let (project, snapshot) = rt.block_on(advance(state, ch, &mut saved_at));
         for p in &pictures {
-            p.request(job.clone());
+            p.request((n, project.clone(), snapshot.clone()));
         }
     }
     for p in pictures {
@@ -477,7 +547,11 @@ fn clock(
 }
 
 /// One tick of the channel: timelines, automatic steps, clients told.
-async fn advance(state: &Shared, ch: &ChannelRt, saved_at: &mut Instant) -> RenderJob {
+async fn advance(
+    state: &Shared,
+    ch: &ChannelRt,
+    saved_at: &mut Instant,
+) -> (Option<Arc<Project>>, ChannelState) {
     let channel_fps = ch.config.frame_rate.as_f64().max(1.0);
     let pid = ch.project_id.read().await.clone();
     let project = match pid.clone() {
@@ -522,7 +596,8 @@ async fn advance(state: &Shared, ch: &ChannelRt, saved_at: &mut Instant) -> Rend
         (changed, st.clone())
     };
     if changed {
-        state.broadcast_channel(ch).await;
+        // The state just made, without locking it again.
+        state.publish_channel(ch, snapshot.clone());
     }
     // What is on air, on disk at most once a second (a restart puts it back).
     if saved_at.elapsed() >= Duration::from_secs(1) && ch.dirty.swap(false, Ordering::Relaxed) {
@@ -584,6 +659,55 @@ mod tests {
         assert_eq!(got.first(), Some(&1));
         assert_eq!(got.last(), Some(&10));
         assert!(got.len() < 10 && got.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    /// Frames rendered ahead go out in tick order; a missing one repeats the last.
+    #[test]
+    fn frames_rendered_ahead_go_out_in_order() {
+        let got = Arc::new(Mutex::new(Vec::new()));
+        struct Record(Arc<Mutex<Vec<u64>>>);
+        impl OutputSink for Record {
+            fn name(&self) -> &str {
+                "rec"
+            }
+            fn push(&mut self, f: &Arc<Frame>, _: SystemTime) -> Result<(), OutputError> {
+                lock(&self.0).push(f.width as u64);
+                Ok(())
+            }
+        }
+        let perf = crate::perf::Perf::default();
+        let stats = perf.picture("c", "main", "Main", 1, 1);
+        let out = OutputThread::start(
+            Opened {
+                id: "o".into(),
+                kind: "ndi",
+                name: "O".into(),
+                sink: Box::new(Record(got.clone())),
+            },
+            stats.output("o", "ndi", "O"),
+            Arc::new(OutputStatus::default()),
+            "c".into(),
+        );
+        let (jobs, _rx) = mpsc::sync_channel(1);
+        let mut pic = Picture {
+            jobs,
+            done: Default::default(),
+            ahead: 2,
+            last: None,
+            stats,
+            outputs: vec![out],
+            renders: Vec::new(),
+        };
+        // Frames of ticks 1, 2 and 4 (3 never came), each `width` wide = its tick.
+        for t in [1u64, 2, 4] {
+            lock(&pic.done).insert(t, Arc::new(Frame::blank(t as u32, 1)));
+        }
+        for tick in 3..=6 {
+            pic.dispatch(tick, SystemTime::now());
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        pic.close();
+        assert_eq!(*lock(&got), vec![1, 2, 2, 4]);
     }
 
     #[test]

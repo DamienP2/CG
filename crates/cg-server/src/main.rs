@@ -15,6 +15,7 @@ mod paths;
 mod perf;
 mod premiere;
 mod render;
+mod rt;
 mod service;
 mod state;
 mod update;

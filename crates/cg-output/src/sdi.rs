@@ -20,6 +20,9 @@ use crate::{OutputError, OutputSink};
 pub struct SdiConfig {
     #[serde(default)]
     pub id: String,
+    /// Off: kept in the settings, not started.
+    #[serde(default = "crate::on")]
+    pub enabled: bool,
     pub name: String,
     /// DeckLink device index (as listed by Desktop Video).
     pub device: u32,

@@ -33,6 +33,8 @@ export function Output({ channelId, rendition }: { channelId: string; rendition?
     <div style={{ position: 'fixed', inset: 0, background: bg, overflow: 'hidden' }}>
       <Viewport width={picture.width} height={picture.height} scale={scale}>
         {project && <Program project={project} live={live[channelId]} width={picture.width} height={picture.height} />}
+        {/* No project loaded: the picture's still image, filling the frame (as on the other outputs). */}
+        {!channel.projectId && picture.slate && <img src={picture.slate} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />}
       </Viewport>
     </div>
   );
