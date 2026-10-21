@@ -880,8 +880,7 @@ export function DataSetSource({
           : t("The text shows row {row}: click a row to choose another.", {
               row: total ? chosen : "—",
             })}
-        {pending &&
-          ` ${operate ? t("Update sends it on air.") : t("Not on air yet.")}`}
+        {pending && operate && ` ${t("Update sends it on air.")}`}
       </p>
       <div className="ods-rows">
         {stage === undefined && (

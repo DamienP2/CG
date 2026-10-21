@@ -462,4 +462,17 @@ export const operator: Record<string, string> = {
   'Remove the format “{name}”?': 'Retirer le format « {name} » ?',
   'Every format and destination of the channel runs at this rate.': 'Tous les formats et destinations du canal tournent à cette cadence.',
   'output|On': 'Activée',
+  // Operator: values and exposed properties (Exposed.tsx), data sets feeding Texts
+  'Data source': 'Source de données',
+  'What the text shows: every row, or the chosen one': 'Ce que montre le texte : toutes les lignes, ou celle choisie',
+  'One row': 'Une ligne',
+  'The text shows the only row.': 'Le texte montre l’unique ligne.',
+  'The text shows all {n} rows.': 'Le texte montre les {n} lignes.',
+  'The text shows all the rows.': 'Le texte montre toutes les lignes.',
+  'The text shows row {row}: click a row to choose another.': 'Le texte montre la ligne {row} : cliquez sur une ligne pour en choisir une autre.',
+  'Update sends it on air.': 'Update l’envoie à l’antenne.',
+  'Click: the text shows this row': 'Clic : le texte montre cette ligne',
+  'Fed by a data source': 'Alimenté par une source de données',
+  'From {dataset}: all the rows': 'Depuis {dataset} : toutes les lignes',
+  'From {dataset}: row {row}': 'Depuis {dataset} : ligne {row}',
 };
