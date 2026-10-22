@@ -86,3 +86,15 @@ LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR
 CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT
 SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.
+
+----------------------------------------------------------------------------
+The other bundled families are released under the same SIL Open Font
+License 1.1 (text above), by their authors:
+
+Barlow Condensed — Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow)
+Bebas Neue — Copyright 2010 Dharma Type (https://github.com/dharmatype/Bebas-Neue)
+JetBrains Mono — Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+Montserrat — Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)
+Playfair Display — Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair)
+Space Grotesk — Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)
+Titillium Web — Copyright 2009-2011 Accademia di Belle Arti di Urbino and students of MA course of Visual design

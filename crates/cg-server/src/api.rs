@@ -594,9 +594,32 @@ async fn create_from_example(
 ) -> ApiResult<Json<ProjectSummary>> {
     let _edit = s.edits.lock().await;
     require(me.can_create_projects())?;
-    let mut p = crate::examples::project(&id).ok_or_else(|| not_found("example"))?;
+    let (mut p, sources) = crate::examples::project(&id).ok_or_else(|| not_found("example"))?;
     p.id = cg_core::new_id();
     p.rundown.iter_mut().for_each(|r| r.id = cg_core::new_id());
+    // The shared data sources it reads, with their sample value, unless
+    // they exist already (they are never replaced).
+    let mut added = false;
+    for ex in sources {
+        let sid = ex.source.id.clone();
+        if s.data.get(&sid).is_some() {
+            continue;
+        }
+        let mut src = ex.source;
+        src.project = None;
+        s.data.put(src).map_err(internal)?;
+        added = true;
+        match ex.value {
+            Some(v) => {
+                let changed = s.data.record(&sid, Ok((v, 0)));
+                crate::datasources::updated(&s, &sid, changed).await;
+            }
+            None => s.data.refresh(&sid),
+        }
+    }
+    if added {
+        s.changed("sources");
+    }
     let p = s.save_project(p).await.map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }

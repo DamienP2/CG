@@ -10,7 +10,7 @@
    "Tableau",
    "Devises"
   ],
-  "description": "Un habillage d’économie au look terminal : ticker des indices avec flèches de hausse et de baisse choisies par l’opérateur, graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
+  "description": "Un habillage d’économie au look terminal : ticker des indices avec flèches de hausse et de baisse, alimenté par une source de données (ou saisi par l’opérateur), graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
   "en": {
    "name": "Stock markets",
    "description": "A terminal-style business package: index ticker with up / down arrows chosen by the operator, intraday chart (data pasted as CSV), stock quote card whose colour follows the sign of the change, market table (negatives in red) and rotating currencies."
@@ -20,7 +20,7 @@
  "project": {
   "id": "ex-06-bourse",
   "name": "Bourse et marchés",
-  "description": "Un habillage d’économie au look terminal : ticker des indices avec flèches de hausse et de baisse choisies par l’opérateur, graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
+  "description": "Un habillage d’économie au look terminal : ticker des indices avec flèches de hausse et de baisse, alimenté par une source de données (ou saisi par l’opérateur), graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
   "width": 1920,
   "height": 1080,
   "frameRate": {
@@ -45,7 +45,11 @@
       "key": "q1",
       "label": "Valeur 1",
       "kind": "text",
-      "default": "CAC 40   7 512,30   +0,84 %"
+      "default": "CAC 40   7 512,30   +0,84 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[0].ligne"
+      }
      },
      {
       "key": "d1",
@@ -61,13 +65,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[0].sens"
+      }
      },
      {
       "key": "q2",
       "label": "Valeur 2",
       "kind": "text",
-      "default": "DAX   18 120,55   −0,62 %"
+      "default": "DAX   18 120,55   −0,62 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[1].ligne"
+      }
      },
      {
       "key": "d2",
@@ -83,13 +95,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[1].sens"
+      }
      },
      {
       "key": "q3",
       "label": "Valeur 3",
       "kind": "text",
-      "default": "FTSE 100   8 204,10   +0,31 %"
+      "default": "FTSE 100   8 204,10   +0,31 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[2].ligne"
+      }
      },
      {
       "key": "d3",
@@ -105,13 +125,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[2].sens"
+      }
      },
      {
       "key": "q4",
       "label": "Valeur 4",
       "kind": "text",
-      "default": "EURO STOXX 50   4 982,77   +0,45 %"
+      "default": "EURO STOXX 50   4 982,77   +0,45 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[3].ligne"
+      }
      },
      {
       "key": "d4",
@@ -127,13 +155,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[3].sens"
+      }
      },
      {
       "key": "q5",
       "label": "Valeur 5",
       "kind": "text",
-      "default": "DOW JONES   39 412,08   −0,18 %"
+      "default": "DOW JONES   39 412,08   −0,18 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[4].ligne"
+      }
      },
      {
       "key": "d5",
@@ -149,13 +185,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[4].sens"
+      }
      },
      {
       "key": "q6",
       "label": "Valeur 6",
       "kind": "text",
-      "default": "NASDAQ   16 870,40   +1,12 %"
+      "default": "NASDAQ   16 870,40   +1,12 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[5].ligne"
+      }
      },
      {
       "key": "d6",
@@ -171,13 +215,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[5].sens"
+      }
      },
      {
       "key": "q7",
       "label": "Valeur 7",
       "kind": "text",
-      "default": "NIKKEI   38 640,95   −0,95 %"
+      "default": "NIKKEI   38 640,95   −0,95 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[6].ligne"
+      }
      },
      {
       "key": "d7",
@@ -193,13 +245,21 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[6].sens"
+      }
      },
      {
       "key": "q8",
       "label": "Valeur 8",
       "kind": "text",
-      "default": "BRENT   82,14 $   +1,40 %"
+      "default": "BRENT   82,14 $   +1,40 %",
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[7].ligne"
+      }
      },
      {
       "key": "d8",
@@ -215,7 +275,11 @@
         "▼",
         "Baisse"
        ]
-      ]
+      ],
+      "binding": {
+       "source": "bourse-indices",
+       "path": "indices[7].sens"
+      }
      }
     ],
     "layers": [
@@ -1100,7 +1164,7 @@
      },
      {
       "id": "chart-20",
-      "name": "Fond",
+      "name": "Hausse · Fond",
       "parent": "chart-19",
       "type": "rect",
       "visible": true,
@@ -1123,7 +1187,7 @@
      },
      {
       "id": "chart-21",
-      "name": "Variation",
+      "name": "Hausse · Variation",
       "parent": "chart-19",
       "type": "counter",
       "visible": true,
@@ -1175,7 +1239,7 @@
      },
      {
       "id": "chart-23",
-      "name": "Fond",
+      "name": "Baisse · Fond",
       "parent": "chart-22",
       "type": "rect",
       "visible": true,
@@ -1198,7 +1262,7 @@
      },
      {
       "id": "chart-24",
-      "name": "Variation",
+      "name": "Baisse · Variation",
       "parent": "chart-22",
       "type": "counter",
       "visible": true,
@@ -1517,7 +1581,7 @@
      },
      {
       "id": "chart-28",
-      "name": "Séparateur",
+      "name": "Repères · Séparateur",
       "parent": "chart-27",
       "type": "rect",
       "visible": true,
@@ -1600,7 +1664,7 @@
      },
      {
       "id": "chart-31",
-      "name": "Séparateur",
+      "name": "Repères · Séparateur",
       "parent": "chart-27",
       "type": "rect",
       "visible": true,
@@ -1683,7 +1747,7 @@
      },
      {
       "id": "chart-34",
-      "name": "Séparateur",
+      "name": "Repères · Séparateur",
       "parent": "chart-27",
       "type": "rect",
       "visible": true,
@@ -2010,7 +2074,7 @@
      },
      {
       "id": "quote-2",
-      "name": "Fond",
+      "name": "Fiche · Fond",
       "parent": "quote-1",
       "type": "rect",
       "visible": true,
@@ -2360,7 +2424,7 @@
      },
      {
       "id": "quote-10",
-      "name": "Fond",
+      "name": "Hausse · Fond",
       "parent": "quote-9",
       "type": "rect",
       "visible": true,
@@ -2383,7 +2447,7 @@
      },
      {
       "id": "quote-11",
-      "name": "Variation",
+      "name": "Hausse · Variation",
       "parent": "quote-9",
       "type": "counter",
       "visible": true,
@@ -2435,7 +2499,7 @@
      },
      {
       "id": "quote-13",
-      "name": "Fond",
+      "name": "Baisse · Fond",
       "parent": "quote-12",
       "type": "rect",
       "visible": true,
@@ -2458,7 +2522,7 @@
      },
      {
       "id": "quote-14",
-      "name": "Variation",
+      "name": "Baisse · Variation",
       "parent": "quote-12",
       "type": "counter",
       "visible": true,
@@ -2607,7 +2671,7 @@
      },
      {
       "id": "quote-19",
-      "name": "Position",
+      "name": "Fiche · Position",
       "parent": "quote-1",
       "type": "progress",
       "visible": true,
@@ -2634,7 +2698,7 @@
      },
      {
       "id": "quote-20",
-      "name": "Position",
+      "name": "Fiche · Position",
       "parent": "quote-1",
       "type": "progress",
       "visible": true,
@@ -3935,5 +3999,49 @@
   ],
   "formats": [],
   "language": "fr"
- }
+ },
+ "sources": [
+  {
+   "id": "bourse-indices",
+   "name": "Bourse · indices",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "indices": [
+     {
+      "ligne": "CAC 40   7 512,30   +0,84 %",
+      "sens": "▲"
+     },
+     {
+      "ligne": "DAX   18 120,55   −0,62 %",
+      "sens": "▼"
+     },
+     {
+      "ligne": "FTSE 100   8 204,10   +0,31 %",
+      "sens": "▲"
+     },
+     {
+      "ligne": "EURO STOXX 50   4 982,77   +0,45 %",
+      "sens": "▲"
+     },
+     {
+      "ligne": "DOW JONES   39 412,08   −0,18 %",
+      "sens": "▼"
+     },
+     {
+      "ligne": "NASDAQ   16 870,40   +1,12 %",
+      "sens": "▲"
+     },
+     {
+      "ligne": "NIKKEI   38 640,95   −0,95 %",
+      "sens": "▼"
+     },
+     {
+      "ligne": "BRENT   82,14 $   +1,40 %",
+      "sens": "▲"
+     }
+    ]
+   }
+  }
+ ]
 }

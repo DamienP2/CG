@@ -1943,7 +1943,7 @@
      },
      {
       "id": "lineup-26",
-      "name": "Surface",
+      "name": "Terrain · Surface",
       "parent": "lineup-16",
       "type": "rect",
       "visible": true,
@@ -1972,7 +1972,7 @@
      },
      {
       "id": "lineup-27",
-      "name": "Petite surface",
+      "name": "Terrain · Petite surface",
       "parent": "lineup-16",
       "type": "rect",
       "visible": true,
@@ -2001,7 +2001,7 @@
      },
      {
       "id": "lineup-28",
-      "name": "Surface",
+      "name": "Terrain · Surface",
       "parent": "lineup-16",
       "type": "rect",
       "visible": true,
@@ -2030,7 +2030,7 @@
      },
      {
       "id": "lineup-29",
-      "name": "Petite surface",
+      "name": "Terrain · Petite surface",
       "parent": "lineup-16",
       "type": "rect",
       "visible": true,
@@ -2167,7 +2167,7 @@
      },
      {
       "id": "lineup-31",
-      "name": "Maillot",
+      "name": "Joueur 1 · Maillot",
       "parent": "lineup-30",
       "type": "ellipse",
       "visible": true,
@@ -2198,7 +2198,7 @@
      },
      {
       "id": "lineup-32",
-      "name": "Numéro",
+      "name": "Joueur 1 · Numéro",
       "parent": "lineup-30",
       "type": "text",
       "visible": true,
@@ -2228,7 +2228,7 @@
      },
      {
       "id": "lineup-33",
-      "name": "Nom",
+      "name": "Joueur 1 · Nom",
       "parent": "lineup-30",
       "type": "text",
       "visible": true,
@@ -2370,7 +2370,7 @@
      },
      {
       "id": "lineup-35",
-      "name": "Maillot",
+      "name": "Joueur 2 · Maillot",
       "parent": "lineup-34",
       "type": "ellipse",
       "visible": true,
@@ -2401,7 +2401,7 @@
      },
      {
       "id": "lineup-36",
-      "name": "Numéro",
+      "name": "Joueur 2 · Numéro",
       "parent": "lineup-34",
       "type": "text",
       "visible": true,
@@ -2431,7 +2431,7 @@
      },
      {
       "id": "lineup-37",
-      "name": "Nom",
+      "name": "Joueur 2 · Nom",
       "parent": "lineup-34",
       "type": "text",
       "visible": true,
@@ -2573,7 +2573,7 @@
      },
      {
       "id": "lineup-39",
-      "name": "Maillot",
+      "name": "Joueur 3 · Maillot",
       "parent": "lineup-38",
       "type": "ellipse",
       "visible": true,
@@ -2604,7 +2604,7 @@
      },
      {
       "id": "lineup-40",
-      "name": "Numéro",
+      "name": "Joueur 3 · Numéro",
       "parent": "lineup-38",
       "type": "text",
       "visible": true,
@@ -2634,7 +2634,7 @@
      },
      {
       "id": "lineup-41",
-      "name": "Nom",
+      "name": "Joueur 3 · Nom",
       "parent": "lineup-38",
       "type": "text",
       "visible": true,
@@ -2776,7 +2776,7 @@
      },
      {
       "id": "lineup-43",
-      "name": "Maillot",
+      "name": "Joueur 4 · Maillot",
       "parent": "lineup-42",
       "type": "ellipse",
       "visible": true,
@@ -2807,7 +2807,7 @@
      },
      {
       "id": "lineup-44",
-      "name": "Numéro",
+      "name": "Joueur 4 · Numéro",
       "parent": "lineup-42",
       "type": "text",
       "visible": true,
@@ -2837,7 +2837,7 @@
      },
      {
       "id": "lineup-45",
-      "name": "Nom",
+      "name": "Joueur 4 · Nom",
       "parent": "lineup-42",
       "type": "text",
       "visible": true,
@@ -2979,7 +2979,7 @@
      },
      {
       "id": "lineup-47",
-      "name": "Maillot",
+      "name": "Joueur 5 · Maillot",
       "parent": "lineup-46",
       "type": "ellipse",
       "visible": true,
@@ -3010,7 +3010,7 @@
      },
      {
       "id": "lineup-48",
-      "name": "Numéro",
+      "name": "Joueur 5 · Numéro",
       "parent": "lineup-46",
       "type": "text",
       "visible": true,
@@ -3040,7 +3040,7 @@
      },
      {
       "id": "lineup-49",
-      "name": "Nom",
+      "name": "Joueur 5 · Nom",
       "parent": "lineup-46",
       "type": "text",
       "visible": true,
@@ -3182,7 +3182,7 @@
      },
      {
       "id": "lineup-51",
-      "name": "Maillot",
+      "name": "Joueur 6 · Maillot",
       "parent": "lineup-50",
       "type": "ellipse",
       "visible": true,
@@ -3213,7 +3213,7 @@
      },
      {
       "id": "lineup-52",
-      "name": "Numéro",
+      "name": "Joueur 6 · Numéro",
       "parent": "lineup-50",
       "type": "text",
       "visible": true,
@@ -3243,7 +3243,7 @@
      },
      {
       "id": "lineup-53",
-      "name": "Nom",
+      "name": "Joueur 6 · Nom",
       "parent": "lineup-50",
       "type": "text",
       "visible": true,
@@ -3385,7 +3385,7 @@
      },
      {
       "id": "lineup-55",
-      "name": "Maillot",
+      "name": "Joueur 7 · Maillot",
       "parent": "lineup-54",
       "type": "ellipse",
       "visible": true,
@@ -3416,7 +3416,7 @@
      },
      {
       "id": "lineup-56",
-      "name": "Numéro",
+      "name": "Joueur 7 · Numéro",
       "parent": "lineup-54",
       "type": "text",
       "visible": true,
@@ -3446,7 +3446,7 @@
      },
      {
       "id": "lineup-57",
-      "name": "Nom",
+      "name": "Joueur 7 · Nom",
       "parent": "lineup-54",
       "type": "text",
       "visible": true,
@@ -3588,7 +3588,7 @@
      },
      {
       "id": "lineup-59",
-      "name": "Maillot",
+      "name": "Joueur 8 · Maillot",
       "parent": "lineup-58",
       "type": "ellipse",
       "visible": true,
@@ -3619,7 +3619,7 @@
      },
      {
       "id": "lineup-60",
-      "name": "Numéro",
+      "name": "Joueur 8 · Numéro",
       "parent": "lineup-58",
       "type": "text",
       "visible": true,
@@ -3649,7 +3649,7 @@
      },
      {
       "id": "lineup-61",
-      "name": "Nom",
+      "name": "Joueur 8 · Nom",
       "parent": "lineup-58",
       "type": "text",
       "visible": true,
@@ -3791,7 +3791,7 @@
      },
      {
       "id": "lineup-63",
-      "name": "Maillot",
+      "name": "Joueur 9 · Maillot",
       "parent": "lineup-62",
       "type": "ellipse",
       "visible": true,
@@ -3822,7 +3822,7 @@
      },
      {
       "id": "lineup-64",
-      "name": "Numéro",
+      "name": "Joueur 9 · Numéro",
       "parent": "lineup-62",
       "type": "text",
       "visible": true,
@@ -3852,7 +3852,7 @@
      },
      {
       "id": "lineup-65",
-      "name": "Nom",
+      "name": "Joueur 9 · Nom",
       "parent": "lineup-62",
       "type": "text",
       "visible": true,
@@ -3994,7 +3994,7 @@
      },
      {
       "id": "lineup-67",
-      "name": "Maillot",
+      "name": "Joueur 10 · Maillot",
       "parent": "lineup-66",
       "type": "ellipse",
       "visible": true,
@@ -4025,7 +4025,7 @@
      },
      {
       "id": "lineup-68",
-      "name": "Numéro",
+      "name": "Joueur 10 · Numéro",
       "parent": "lineup-66",
       "type": "text",
       "visible": true,
@@ -4055,7 +4055,7 @@
      },
      {
       "id": "lineup-69",
-      "name": "Nom",
+      "name": "Joueur 10 · Nom",
       "parent": "lineup-66",
       "type": "text",
       "visible": true,
@@ -4197,7 +4197,7 @@
      },
      {
       "id": "lineup-71",
-      "name": "Maillot",
+      "name": "Joueur 11 · Maillot",
       "parent": "lineup-70",
       "type": "ellipse",
       "visible": true,
@@ -4228,7 +4228,7 @@
      },
      {
       "id": "lineup-72",
-      "name": "Numéro",
+      "name": "Joueur 11 · Numéro",
       "parent": "lineup-70",
       "type": "text",
       "visible": true,
@@ -4258,7 +4258,7 @@
      },
      {
       "id": "lineup-73",
-      "name": "Nom",
+      "name": "Joueur 11 · Nom",
       "parent": "lineup-70",
       "type": "text",
       "visible": true,
@@ -5927,7 +5927,7 @@
      },
      {
       "id": "sub-2",
-      "name": "Entête",
+      "name": "Remplacement · Entête",
       "parent": "sub-1",
       "type": "rect",
       "visible": true,
@@ -5973,7 +5973,7 @@
      },
      {
       "id": "sub-4",
-      "name": "Entête",
+      "name": "Remplacement · Entête",
       "parent": "sub-1",
       "type": "text",
       "visible": true,
@@ -6677,7 +6677,7 @@
      },
      {
       "id": "stats-6",
-      "name": "Domicile",
+      "name": "Panneau · Domicile",
       "parent": "stats-1",
       "type": "text",
       "visible": true,
@@ -6708,7 +6708,7 @@
      },
      {
       "id": "stats-7",
-      "name": "Extérieur",
+      "name": "Panneau · Extérieur",
       "parent": "stats-1",
       "type": "text",
       "visible": true,
@@ -6878,7 +6878,7 @@
      },
      {
       "id": "stats-10",
-      "name": "Domicile",
+      "name": "Ligne 1 · Domicile",
       "parent": "stats-9",
       "type": "text",
       "visible": true,
@@ -6908,7 +6908,7 @@
      },
      {
       "id": "stats-11",
-      "name": "Libellé",
+      "name": "Ligne 1 · Libellé",
       "parent": "stats-9",
       "type": "text",
       "visible": true,
@@ -6939,7 +6939,7 @@
      },
      {
       "id": "stats-12",
-      "name": "Extérieur",
+      "name": "Ligne 1 · Extérieur",
       "parent": "stats-9",
       "type": "text",
       "visible": true,
@@ -6969,7 +6969,7 @@
      },
      {
       "id": "stats-13",
-      "name": "Ext",
+      "name": "Ligne 1 · Ext",
       "parent": "stats-9",
       "type": "rect",
       "visible": true,
@@ -7040,7 +7040,7 @@
      },
      {
       "id": "stats-14",
-      "name": "Dom",
+      "name": "Ligne 1 · Dom",
       "parent": "stats-9",
       "type": "rect",
       "visible": true,
@@ -7219,7 +7219,7 @@
      },
      {
       "id": "stats-16",
-      "name": "Domicile",
+      "name": "Ligne 2 · Domicile",
       "parent": "stats-15",
       "type": "text",
       "visible": true,
@@ -7249,7 +7249,7 @@
      },
      {
       "id": "stats-17",
-      "name": "Libellé",
+      "name": "Ligne 2 · Libellé",
       "parent": "stats-15",
       "type": "text",
       "visible": true,
@@ -7280,7 +7280,7 @@
      },
      {
       "id": "stats-18",
-      "name": "Extérieur",
+      "name": "Ligne 2 · Extérieur",
       "parent": "stats-15",
       "type": "text",
       "visible": true,
@@ -7310,7 +7310,7 @@
      },
      {
       "id": "stats-19",
-      "name": "Ext",
+      "name": "Ligne 2 · Ext",
       "parent": "stats-15",
       "type": "rect",
       "visible": true,
@@ -7381,7 +7381,7 @@
      },
      {
       "id": "stats-20",
-      "name": "Dom",
+      "name": "Ligne 2 · Dom",
       "parent": "stats-15",
       "type": "rect",
       "visible": true,
@@ -7560,7 +7560,7 @@
      },
      {
       "id": "stats-22",
-      "name": "Domicile",
+      "name": "Ligne 3 · Domicile",
       "parent": "stats-21",
       "type": "text",
       "visible": true,
@@ -7590,7 +7590,7 @@
      },
      {
       "id": "stats-23",
-      "name": "Libellé",
+      "name": "Ligne 3 · Libellé",
       "parent": "stats-21",
       "type": "text",
       "visible": true,
@@ -7621,7 +7621,7 @@
      },
      {
       "id": "stats-24",
-      "name": "Extérieur",
+      "name": "Ligne 3 · Extérieur",
       "parent": "stats-21",
       "type": "text",
       "visible": true,
@@ -7651,7 +7651,7 @@
      },
      {
       "id": "stats-25",
-      "name": "Ext",
+      "name": "Ligne 3 · Ext",
       "parent": "stats-21",
       "type": "rect",
       "visible": true,
@@ -7722,7 +7722,7 @@
      },
      {
       "id": "stats-26",
-      "name": "Dom",
+      "name": "Ligne 3 · Dom",
       "parent": "stats-21",
       "type": "rect",
       "visible": true,
@@ -7901,7 +7901,7 @@
      },
      {
       "id": "stats-28",
-      "name": "Domicile",
+      "name": "Ligne 4 · Domicile",
       "parent": "stats-27",
       "type": "text",
       "visible": true,
@@ -7931,7 +7931,7 @@
      },
      {
       "id": "stats-29",
-      "name": "Libellé",
+      "name": "Ligne 4 · Libellé",
       "parent": "stats-27",
       "type": "text",
       "visible": true,
@@ -7962,7 +7962,7 @@
      },
      {
       "id": "stats-30",
-      "name": "Extérieur",
+      "name": "Ligne 4 · Extérieur",
       "parent": "stats-27",
       "type": "text",
       "visible": true,
@@ -7992,7 +7992,7 @@
      },
      {
       "id": "stats-31",
-      "name": "Ext",
+      "name": "Ligne 4 · Ext",
       "parent": "stats-27",
       "type": "rect",
       "visible": true,
@@ -8063,7 +8063,7 @@
      },
      {
       "id": "stats-32",
-      "name": "Dom",
+      "name": "Ligne 4 · Dom",
       "parent": "stats-27",
       "type": "rect",
       "visible": true,
@@ -8242,7 +8242,7 @@
      },
      {
       "id": "stats-34",
-      "name": "Domicile",
+      "name": "Ligne 5 · Domicile",
       "parent": "stats-33",
       "type": "text",
       "visible": true,
@@ -8272,7 +8272,7 @@
      },
      {
       "id": "stats-35",
-      "name": "Libellé",
+      "name": "Ligne 5 · Libellé",
       "parent": "stats-33",
       "type": "text",
       "visible": true,
@@ -8303,7 +8303,7 @@
      },
      {
       "id": "stats-36",
-      "name": "Extérieur",
+      "name": "Ligne 5 · Extérieur",
       "parent": "stats-33",
       "type": "text",
       "visible": true,
@@ -8333,7 +8333,7 @@
      },
      {
       "id": "stats-37",
-      "name": "Ext",
+      "name": "Ligne 5 · Ext",
       "parent": "stats-33",
       "type": "rect",
       "visible": true,
@@ -8404,7 +8404,7 @@
      },
      {
       "id": "stats-38",
-      "name": "Dom",
+      "name": "Ligne 5 · Dom",
       "parent": "stats-33",
       "type": "rect",
       "visible": true,
@@ -8583,7 +8583,7 @@
      },
      {
       "id": "stats-40",
-      "name": "Domicile",
+      "name": "Ligne 6 · Domicile",
       "parent": "stats-39",
       "type": "text",
       "visible": true,
@@ -8613,7 +8613,7 @@
      },
      {
       "id": "stats-41",
-      "name": "Libellé",
+      "name": "Ligne 6 · Libellé",
       "parent": "stats-39",
       "type": "text",
       "visible": true,
@@ -8644,7 +8644,7 @@
      },
      {
       "id": "stats-42",
-      "name": "Extérieur",
+      "name": "Ligne 6 · Extérieur",
       "parent": "stats-39",
       "type": "text",
       "visible": true,
@@ -8674,7 +8674,7 @@
      },
      {
       "id": "stats-43",
-      "name": "Ext",
+      "name": "Ligne 6 · Ext",
       "parent": "stats-39",
       "type": "rect",
       "visible": true,
@@ -8745,7 +8745,7 @@
      },
      {
       "id": "stats-44",
-      "name": "Dom",
+      "name": "Ligne 6 · Dom",
       "parent": "stats-39",
       "type": "rect",
       "visible": true,

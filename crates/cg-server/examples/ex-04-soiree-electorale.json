@@ -10,7 +10,7 @@
    "Projection",
    "Participation"
   ],
-  "description": "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
+  "description": "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages, lus dans une source de données que l’automatisation met à jour), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
   "en": {
    "name": "Election night",
    "description": "An editorial election night on a paper background: results by candidate, a hemicycle whose arcs are computed from the seats, a map of the regions coloured by leading candidate, projection banner, live turnout and count, analyst lower thirds."
@@ -20,7 +20,7 @@
  "project": {
   "id": "ex-04-soiree-electorale",
   "name": "Soirée électorale",
-  "description": "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
+  "description": "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages, lus dans une source de données que l’automatisation met à jour), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
   "width": 1920,
   "height": 1080,
   "frameRate": {
@@ -63,7 +63,11 @@
       "key": "n1",
       "label": "Candidat 1",
       "kind": "text",
-      "default": "Hélène Marchal"
+      "default": "Hélène Marchal",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[0].nom"
+      }
      },
      {
       "key": "i1",
@@ -75,7 +79,11 @@
       "key": "pa1",
       "label": "Parti 1",
       "kind": "text",
-      "default": "Alliance centrale"
+      "default": "Alliance centrale",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[0].parti"
+      }
      },
      {
       "key": "c1",
@@ -89,13 +97,21 @@
       "kind": "number",
       "default": "27.8",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[0].score"
+      }
      },
      {
       "key": "n2",
       "label": "Candidat 2",
       "kind": "text",
-      "default": "Bastien Roux"
+      "default": "Bastien Roux",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[1].nom"
+      }
      },
      {
       "key": "i2",
@@ -107,7 +123,11 @@
       "key": "pa2",
       "label": "Parti 2",
       "kind": "text",
-      "default": "Union de la droite"
+      "default": "Union de la droite",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[1].parti"
+      }
      },
      {
       "key": "c2",
@@ -121,13 +141,21 @@
       "kind": "number",
       "default": "22.1",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[1].score"
+      }
      },
      {
       "key": "n3",
       "label": "Candidat 3",
       "kind": "text",
-      "default": "Nadia Ferhat"
+      "default": "Nadia Ferhat",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[2].nom"
+      }
      },
      {
       "key": "i3",
@@ -139,7 +167,11 @@
       "key": "pa3",
       "label": "Parti 3",
       "kind": "text",
-      "default": "Gauche unie"
+      "default": "Gauche unie",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[2].parti"
+      }
      },
      {
       "key": "c3",
@@ -153,13 +185,21 @@
       "kind": "number",
       "default": "19.6",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[2].score"
+      }
      },
      {
       "key": "n4",
       "label": "Candidat 4",
       "kind": "text",
-      "default": "Julien Moreau"
+      "default": "Julien Moreau",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[3].nom"
+      }
      },
      {
       "key": "i4",
@@ -171,7 +211,11 @@
       "key": "pa4",
       "label": "Parti 4",
       "kind": "text",
-      "default": "Parti de la Nation"
+      "default": "Parti de la Nation",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[3].parti"
+      }
      },
      {
       "key": "c4",
@@ -185,13 +229,21 @@
       "kind": "number",
       "default": "15.3",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[3].score"
+      }
      },
      {
       "key": "n5",
       "label": "Candidat 5",
       "kind": "text",
-      "default": "Camille Dufresne"
+      "default": "Camille Dufresne",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[4].nom"
+      }
      },
      {
       "key": "i5",
@@ -203,7 +255,11 @@
       "key": "pa5",
       "label": "Parti 5",
       "kind": "text",
-      "default": "Les Écologistes"
+      "default": "Les Écologistes",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[4].parti"
+      }
      },
      {
       "key": "c5",
@@ -217,13 +273,21 @@
       "kind": "number",
       "default": "8.9",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[4].score"
+      }
      },
      {
       "key": "n6",
       "label": "Candidat 6",
       "kind": "text",
-      "default": "Thomas Lenoir"
+      "default": "Thomas Lenoir",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[5].nom"
+      }
      },
      {
       "key": "i6",
@@ -235,7 +299,11 @@
       "key": "pa6",
       "label": "Parti 6",
       "kind": "text",
-      "default": "Nouvelle République"
+      "default": "Nouvelle République",
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[5].parti"
+      }
      },
      {
       "key": "c6",
@@ -249,7 +317,11 @@
       "kind": "number",
       "default": "6.3",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "candidats[5].score"
+      }
      }
     ],
     "layers": [
@@ -625,7 +697,7 @@
      },
      {
       "id": "results-9",
-      "name": "Pastille",
+      "name": "Candidat 1 · Pastille",
       "parent": "results-8",
       "type": "ellipse",
       "visible": true,
@@ -649,7 +721,7 @@
      },
      {
       "id": "results-10",
-      "name": "Initiales",
+      "name": "Candidat 1 · Initiales",
       "parent": "results-8",
       "type": "text",
       "visible": true,
@@ -680,7 +752,7 @@
      },
      {
       "id": "results-11",
-      "name": "Nom",
+      "name": "Candidat 1 · Nom",
       "parent": "results-8",
       "type": "text",
       "visible": true,
@@ -710,7 +782,7 @@
      },
      {
       "id": "results-12",
-      "name": "Parti",
+      "name": "Candidat 1 · Parti",
       "parent": "results-8",
       "type": "text",
       "visible": true,
@@ -740,7 +812,7 @@
      },
      {
       "id": "results-13",
-      "name": "Barre",
+      "name": "Candidat 1 · Barre",
       "parent": "results-8",
       "type": "progress",
       "visible": true,
@@ -769,7 +841,7 @@
      },
      {
       "id": "results-14",
-      "name": "Score",
+      "name": "Candidat 1 · Score",
       "parent": "results-8",
       "type": "counter",
       "visible": true,
@@ -806,7 +878,7 @@
      },
      {
       "id": "results-15",
-      "name": "Séparateur",
+      "name": "Candidat 1 · Séparateur",
       "parent": "results-8",
       "type": "rect",
       "visible": true,
@@ -936,7 +1008,7 @@
      },
      {
       "id": "results-17",
-      "name": "Pastille",
+      "name": "Candidat 2 · Pastille",
       "parent": "results-16",
       "type": "ellipse",
       "visible": true,
@@ -960,7 +1032,7 @@
      },
      {
       "id": "results-18",
-      "name": "Initiales",
+      "name": "Candidat 2 · Initiales",
       "parent": "results-16",
       "type": "text",
       "visible": true,
@@ -991,7 +1063,7 @@
      },
      {
       "id": "results-19",
-      "name": "Nom",
+      "name": "Candidat 2 · Nom",
       "parent": "results-16",
       "type": "text",
       "visible": true,
@@ -1021,7 +1093,7 @@
      },
      {
       "id": "results-20",
-      "name": "Parti",
+      "name": "Candidat 2 · Parti",
       "parent": "results-16",
       "type": "text",
       "visible": true,
@@ -1051,7 +1123,7 @@
      },
      {
       "id": "results-21",
-      "name": "Barre",
+      "name": "Candidat 2 · Barre",
       "parent": "results-16",
       "type": "progress",
       "visible": true,
@@ -1080,7 +1152,7 @@
      },
      {
       "id": "results-22",
-      "name": "Score",
+      "name": "Candidat 2 · Score",
       "parent": "results-16",
       "type": "counter",
       "visible": true,
@@ -1117,7 +1189,7 @@
      },
      {
       "id": "results-23",
-      "name": "Séparateur",
+      "name": "Candidat 2 · Séparateur",
       "parent": "results-16",
       "type": "rect",
       "visible": true,
@@ -1247,7 +1319,7 @@
      },
      {
       "id": "results-25",
-      "name": "Pastille",
+      "name": "Candidat 3 · Pastille",
       "parent": "results-24",
       "type": "ellipse",
       "visible": true,
@@ -1271,7 +1343,7 @@
      },
      {
       "id": "results-26",
-      "name": "Initiales",
+      "name": "Candidat 3 · Initiales",
       "parent": "results-24",
       "type": "text",
       "visible": true,
@@ -1302,7 +1374,7 @@
      },
      {
       "id": "results-27",
-      "name": "Nom",
+      "name": "Candidat 3 · Nom",
       "parent": "results-24",
       "type": "text",
       "visible": true,
@@ -1332,7 +1404,7 @@
      },
      {
       "id": "results-28",
-      "name": "Parti",
+      "name": "Candidat 3 · Parti",
       "parent": "results-24",
       "type": "text",
       "visible": true,
@@ -1362,7 +1434,7 @@
      },
      {
       "id": "results-29",
-      "name": "Barre",
+      "name": "Candidat 3 · Barre",
       "parent": "results-24",
       "type": "progress",
       "visible": true,
@@ -1391,7 +1463,7 @@
      },
      {
       "id": "results-30",
-      "name": "Score",
+      "name": "Candidat 3 · Score",
       "parent": "results-24",
       "type": "counter",
       "visible": true,
@@ -1428,7 +1500,7 @@
      },
      {
       "id": "results-31",
-      "name": "Séparateur",
+      "name": "Candidat 3 · Séparateur",
       "parent": "results-24",
       "type": "rect",
       "visible": true,
@@ -1558,7 +1630,7 @@
      },
      {
       "id": "results-33",
-      "name": "Pastille",
+      "name": "Candidat 4 · Pastille",
       "parent": "results-32",
       "type": "ellipse",
       "visible": true,
@@ -1582,7 +1654,7 @@
      },
      {
       "id": "results-34",
-      "name": "Initiales",
+      "name": "Candidat 4 · Initiales",
       "parent": "results-32",
       "type": "text",
       "visible": true,
@@ -1613,7 +1685,7 @@
      },
      {
       "id": "results-35",
-      "name": "Nom",
+      "name": "Candidat 4 · Nom",
       "parent": "results-32",
       "type": "text",
       "visible": true,
@@ -1643,7 +1715,7 @@
      },
      {
       "id": "results-36",
-      "name": "Parti",
+      "name": "Candidat 4 · Parti",
       "parent": "results-32",
       "type": "text",
       "visible": true,
@@ -1673,7 +1745,7 @@
      },
      {
       "id": "results-37",
-      "name": "Barre",
+      "name": "Candidat 4 · Barre",
       "parent": "results-32",
       "type": "progress",
       "visible": true,
@@ -1702,7 +1774,7 @@
      },
      {
       "id": "results-38",
-      "name": "Score",
+      "name": "Candidat 4 · Score",
       "parent": "results-32",
       "type": "counter",
       "visible": true,
@@ -1739,7 +1811,7 @@
      },
      {
       "id": "results-39",
-      "name": "Séparateur",
+      "name": "Candidat 4 · Séparateur",
       "parent": "results-32",
       "type": "rect",
       "visible": true,
@@ -1869,7 +1941,7 @@
      },
      {
       "id": "results-41",
-      "name": "Pastille",
+      "name": "Candidat 5 · Pastille",
       "parent": "results-40",
       "type": "ellipse",
       "visible": true,
@@ -1893,7 +1965,7 @@
      },
      {
       "id": "results-42",
-      "name": "Initiales",
+      "name": "Candidat 5 · Initiales",
       "parent": "results-40",
       "type": "text",
       "visible": true,
@@ -1924,7 +1996,7 @@
      },
      {
       "id": "results-43",
-      "name": "Nom",
+      "name": "Candidat 5 · Nom",
       "parent": "results-40",
       "type": "text",
       "visible": true,
@@ -1954,7 +2026,7 @@
      },
      {
       "id": "results-44",
-      "name": "Parti",
+      "name": "Candidat 5 · Parti",
       "parent": "results-40",
       "type": "text",
       "visible": true,
@@ -1984,7 +2056,7 @@
      },
      {
       "id": "results-45",
-      "name": "Barre",
+      "name": "Candidat 5 · Barre",
       "parent": "results-40",
       "type": "progress",
       "visible": true,
@@ -2013,7 +2085,7 @@
      },
      {
       "id": "results-46",
-      "name": "Score",
+      "name": "Candidat 5 · Score",
       "parent": "results-40",
       "type": "counter",
       "visible": true,
@@ -2050,7 +2122,7 @@
      },
      {
       "id": "results-47",
-      "name": "Séparateur",
+      "name": "Candidat 5 · Séparateur",
       "parent": "results-40",
       "type": "rect",
       "visible": true,
@@ -2180,7 +2252,7 @@
      },
      {
       "id": "results-49",
-      "name": "Pastille",
+      "name": "Candidat 6 · Pastille",
       "parent": "results-48",
       "type": "ellipse",
       "visible": true,
@@ -2204,7 +2276,7 @@
      },
      {
       "id": "results-50",
-      "name": "Initiales",
+      "name": "Candidat 6 · Initiales",
       "parent": "results-48",
       "type": "text",
       "visible": true,
@@ -2235,7 +2307,7 @@
      },
      {
       "id": "results-51",
-      "name": "Nom",
+      "name": "Candidat 6 · Nom",
       "parent": "results-48",
       "type": "text",
       "visible": true,
@@ -2265,7 +2337,7 @@
      },
      {
       "id": "results-52",
-      "name": "Parti",
+      "name": "Candidat 6 · Parti",
       "parent": "results-48",
       "type": "text",
       "visible": true,
@@ -2295,7 +2367,7 @@
      },
      {
       "id": "results-53",
-      "name": "Barre",
+      "name": "Candidat 6 · Barre",
       "parent": "results-48",
       "type": "progress",
       "visible": true,
@@ -2324,7 +2396,7 @@
      },
      {
       "id": "results-54",
-      "name": "Score",
+      "name": "Candidat 6 · Score",
       "parent": "results-48",
       "type": "counter",
       "visible": true,
@@ -3140,7 +3212,7 @@
      },
      {
       "id": "seats-14",
-      "name": "Sièges",
+      "name": "Panneau · Sièges",
       "parent": "seats-1",
       "type": "text",
       "visible": true,
@@ -3331,7 +3403,7 @@
      },
      {
       "id": "seats-18",
-      "name": "Couleur",
+      "name": "Légende 1 · Couleur",
       "parent": "seats-17",
       "type": "rect",
       "visible": true,
@@ -3355,7 +3427,7 @@
      },
      {
       "id": "seats-19",
-      "name": "Groupe",
+      "name": "Légende 1 · Groupe",
       "parent": "seats-17",
       "type": "text",
       "visible": true,
@@ -3385,7 +3457,7 @@
      },
      {
       "id": "seats-20",
-      "name": "Sièges",
+      "name": "Légende 1 · Sièges",
       "parent": "seats-17",
       "type": "counter",
       "visible": true,
@@ -3528,7 +3600,7 @@
      },
      {
       "id": "seats-22",
-      "name": "Couleur",
+      "name": "Légende 2 · Couleur",
       "parent": "seats-21",
       "type": "rect",
       "visible": true,
@@ -3552,7 +3624,7 @@
      },
      {
       "id": "seats-23",
-      "name": "Groupe",
+      "name": "Légende 2 · Groupe",
       "parent": "seats-21",
       "type": "text",
       "visible": true,
@@ -3582,7 +3654,7 @@
      },
      {
       "id": "seats-24",
-      "name": "Sièges",
+      "name": "Légende 2 · Sièges",
       "parent": "seats-21",
       "type": "counter",
       "visible": true,
@@ -3725,7 +3797,7 @@
      },
      {
       "id": "seats-26",
-      "name": "Couleur",
+      "name": "Légende 3 · Couleur",
       "parent": "seats-25",
       "type": "rect",
       "visible": true,
@@ -3749,7 +3821,7 @@
      },
      {
       "id": "seats-27",
-      "name": "Groupe",
+      "name": "Légende 3 · Groupe",
       "parent": "seats-25",
       "type": "text",
       "visible": true,
@@ -3779,7 +3851,7 @@
      },
      {
       "id": "seats-28",
-      "name": "Sièges",
+      "name": "Légende 3 · Sièges",
       "parent": "seats-25",
       "type": "counter",
       "visible": true,
@@ -3922,7 +3994,7 @@
      },
      {
       "id": "seats-30",
-      "name": "Couleur",
+      "name": "Légende 4 · Couleur",
       "parent": "seats-29",
       "type": "rect",
       "visible": true,
@@ -3946,7 +4018,7 @@
      },
      {
       "id": "seats-31",
-      "name": "Groupe",
+      "name": "Légende 4 · Groupe",
       "parent": "seats-29",
       "type": "text",
       "visible": true,
@@ -3976,7 +4048,7 @@
      },
      {
       "id": "seats-32",
-      "name": "Sièges",
+      "name": "Légende 4 · Sièges",
       "parent": "seats-29",
       "type": "counter",
       "visible": true,
@@ -4119,7 +4191,7 @@
      },
      {
       "id": "seats-34",
-      "name": "Couleur",
+      "name": "Légende 5 · Couleur",
       "parent": "seats-33",
       "type": "rect",
       "visible": true,
@@ -4143,7 +4215,7 @@
      },
      {
       "id": "seats-35",
-      "name": "Groupe",
+      "name": "Légende 5 · Groupe",
       "parent": "seats-33",
       "type": "text",
       "visible": true,
@@ -4173,7 +4245,7 @@
      },
      {
       "id": "seats-36",
-      "name": "Sièges",
+      "name": "Légende 5 · Sièges",
       "parent": "seats-33",
       "type": "counter",
       "visible": true,
@@ -5396,7 +5468,7 @@
      },
      {
       "id": "map-7",
-      "name": "Couleur",
+      "name": "Légende 1 · Couleur",
       "parent": "map-6",
       "type": "rect",
       "visible": true,
@@ -5419,7 +5491,7 @@
      },
      {
       "id": "map-8",
-      "name": "Nom",
+      "name": "Légende 1 · Nom",
       "parent": "map-6",
       "type": "text",
       "visible": true,
@@ -5449,7 +5521,7 @@
      },
      {
       "id": "map-9",
-      "name": "Parti",
+      "name": "Légende 1 · Parti",
       "parent": "map-6",
       "type": "text",
       "visible": true,
@@ -5587,7 +5659,7 @@
      },
      {
       "id": "map-11",
-      "name": "Couleur",
+      "name": "Légende 2 · Couleur",
       "parent": "map-10",
       "type": "rect",
       "visible": true,
@@ -5610,7 +5682,7 @@
      },
      {
       "id": "map-12",
-      "name": "Nom",
+      "name": "Légende 2 · Nom",
       "parent": "map-10",
       "type": "text",
       "visible": true,
@@ -5640,7 +5712,7 @@
      },
      {
       "id": "map-13",
-      "name": "Parti",
+      "name": "Légende 2 · Parti",
       "parent": "map-10",
       "type": "text",
       "visible": true,
@@ -5778,7 +5850,7 @@
      },
      {
       "id": "map-15",
-      "name": "Couleur",
+      "name": "Légende 3 · Couleur",
       "parent": "map-14",
       "type": "rect",
       "visible": true,
@@ -5801,7 +5873,7 @@
      },
      {
       "id": "map-16",
-      "name": "Nom",
+      "name": "Légende 3 · Nom",
       "parent": "map-14",
       "type": "text",
       "visible": true,
@@ -5831,7 +5903,7 @@
      },
      {
       "id": "map-17",
-      "name": "Parti",
+      "name": "Légende 3 · Parti",
       "parent": "map-14",
       "type": "text",
       "visible": true,
@@ -5969,7 +6041,7 @@
      },
      {
       "id": "map-19",
-      "name": "Couleur",
+      "name": "Légende 4 · Couleur",
       "parent": "map-18",
       "type": "rect",
       "visible": true,
@@ -5992,7 +6064,7 @@
      },
      {
       "id": "map-20",
-      "name": "Nom",
+      "name": "Légende 4 · Nom",
       "parent": "map-18",
       "type": "text",
       "visible": true,
@@ -6022,7 +6094,7 @@
      },
      {
       "id": "map-21",
-      "name": "Parti",
+      "name": "Légende 4 · Parti",
       "parent": "map-18",
       "type": "text",
       "visible": true,
@@ -7093,7 +7165,11 @@
       "kind": "number",
       "default": "61.3",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "participation"
+      }
      },
      {
       "key": "delta",
@@ -7107,7 +7183,11 @@
       "kind": "number",
       "default": "87.4",
       "min": 0,
-      "max": 100
+      "max": 100,
+      "binding": {
+       "source": "election-resultats",
+       "path": "depouilles"
+      }
      }
     ],
     "layers": [
@@ -8058,5 +8138,51 @@
   ],
   "formats": [],
   "language": "fr"
- }
+ },
+ "sources": [
+  {
+   "id": "election-resultats",
+   "name": "Élection · résultats nationaux",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "tour": "Premier tour",
+    "estimation": "20:00",
+    "depouilles": 87.4,
+    "participation": 61.3,
+    "candidats": [
+     {
+      "nom": "Hélène Marchal",
+      "parti": "Alliance centrale",
+      "score": 27.8
+     },
+     {
+      "nom": "Bastien Roux",
+      "parti": "Union de la droite",
+      "score": 22.1
+     },
+     {
+      "nom": "Nadia Ferhat",
+      "parti": "Gauche unie",
+      "score": 19.6
+     },
+     {
+      "nom": "Julien Moreau",
+      "parti": "Parti de la Nation",
+      "score": 15.3
+     },
+     {
+      "nom": "Camille Dufresne",
+      "parti": "Les Écologistes",
+      "score": 8.9
+     },
+     {
+      "nom": "Thomas Lenoir",
+      "parti": "Nouvelle République",
+      "score": 6.3
+     }
+    ]
+   }
+  }
+ ]
 }

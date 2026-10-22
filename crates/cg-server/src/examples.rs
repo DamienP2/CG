@@ -1,7 +1,9 @@
 //! The example projects: complete, on-air ready channel packages (news,
 //! sport, elections, weather, gaming…), embedded in the server. Each one
-//! is `examples/ex-NN-slug.json`, `{"meta": ExampleInfo, "project": Project}`,
-//! written by tools/examples/*.py; build.rs lists them.
+//! is `examples/ex-NN-slug.json`, `{"meta": ExampleInfo, "project": Project,
+//! "sources": [ExampleSource]}`, written by tools/examples/*.py; build.rs
+//! lists them. The data sources its fields read are created with the
+//! project (when missing), with a sample value, so it works out of the box.
 
 use cg_core::Project;
 use serde::{Deserialize, Serialize};
@@ -44,10 +46,22 @@ pub struct ExampleSummary {
     pub formats: Vec<String>,
 }
 
+/// A shared data source an example reads, with a sample value (a push
+/// source keeps it until automation sends another one).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ExampleSource {
+    #[serde(flatten)]
+    pub source: crate::datasources::Source,
+    #[serde(default)]
+    pub value: Option<serde_json::Value>,
+}
+
 #[derive(Deserialize)]
 struct ExampleFile {
     meta: ExampleInfo,
     project: Project,
+    #[serde(default)]
+    sources: Vec<ExampleSource>,
 }
 
 const FILES: &[&str] = include!(concat!(env!("OUT_DIR"), "/examples.rs"));
@@ -74,9 +88,12 @@ pub fn list() -> Vec<ExampleSummary> {
         .collect()
 }
 
-/// A copy of an example, ready to be saved as a new project.
-pub fn project(id: &str) -> Option<Project> {
-    all().find(|d| d.meta.id == id).map(|d| d.project)
+/// A copy of an example, ready to be saved as a new project, and the data
+/// sources it reads.
+pub fn project(id: &str) -> Option<(Project, Vec<ExampleSource>)> {
+    all()
+        .find(|d| d.meta.id == id)
+        .map(|d| (d.project, d.sources))
 }
 
 /// The example and the template of its card.
@@ -100,7 +117,7 @@ mod tests {
     fn coverage(frame: &cg_render::Frame) -> f64 {
         let px = &frame.data;
         let n = px.len() / 4;
-        let painted = px.chunks_exact(4).filter(|p| p[3] > 0).count();
+        let painted = px.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count();
         painted as f64 / n.max(1) as f64
     }
 
@@ -128,6 +145,22 @@ mod tests {
             assert_eq!(&p.id, id, "the project id is the example id");
             let zones: Vec<&str> = p.zones.iter().map(|z| z.id.as_str()).collect();
             assert!(!p.templates.is_empty(), "{id}: no template");
+            // The sources its fields and data sets read come with it.
+            let sources: Vec<&str> = d.sources.iter().map(|s| s.source.id.as_str()).collect();
+            for t in &p.templates {
+                let used = t
+                    .fields
+                    .iter()
+                    .filter_map(|f| f.binding.as_ref().map(|b| b.source.as_str()))
+                    .chain(t.datasets.iter().map(|d| d.source.as_str()));
+                for src in used {
+                    assert!(
+                        sources.contains(&src),
+                        "{id}: {} reads the data source {src}, not in the example's sources",
+                        t.name
+                    );
+                }
+            }
             if let Some(c) = &d.meta.cover {
                 assert!(p.template(c).is_some(), "{id}: cover {c} is not a template");
             }
@@ -159,34 +192,45 @@ mod tests {
                     "{id}: template {} has no on-air point",
                     t.name
                 );
-                // The graphics sit in their zone (they are cut to it on air).
+                // The graphics sit in their zone in every format (they are cut
+                // to it on air).
                 let zone = p.zones.iter().find(|z| z.id == t.zone).unwrap();
-                let area = zone.area(cg_core::MAIN_FORMAT, false);
-                for l in t.layers.iter().filter(|l| l.parent.is_none()) {
-                    let n = |prop: cg_core::Prop| {
-                        l.props
-                            .get(&prop)
-                            .and_then(|v| v.as_number())
-                            .unwrap_or(0.0)
-                    };
-                    let (x, y, w, h) = (
-                        n(cg_core::Prop::X),
-                        n(cg_core::Prop::Y),
-                        n(cg_core::Prop::Width),
-                        n(cg_core::Prop::Height),
-                    );
-                    let (ax, ay) = (area.x * p.width as f64, area.y * p.height as f64);
-                    let (aw, ah) = (area.width * p.width as f64, area.height * p.height as f64);
-                    assert!(
-                        x >= ax - 2.0
-                            && y >= ay - 2.0
-                            && x + w <= ax + aw + 2.0
-                            && y + h <= ay + ah + 2.0,
-                        "{id}: {} / {} out of its zone {}",
-                        t.name,
-                        l.name,
-                        zone.name
-                    );
+                let formats = std::iter::once((cg_core::MAIN_FORMAT, p.width, p.height))
+                    .chain(p.formats.iter().map(|f| (f.id.as_str(), f.width, f.height)));
+                for (f, fw, fh) in formats {
+                    let area = zone.area(f, fh > fw);
+                    for l in t.layers.iter().filter(|l| l.parent.is_none()) {
+                        let over = l.overrides.get(f);
+                        if over.and_then(|o| o.visible) == Some(false)
+                            || (!l.visible && over.and_then(|o| o.visible) != Some(true))
+                        {
+                            continue;
+                        }
+                        let n = |prop: cg_core::Prop| {
+                            over.and_then(|o| o.props.get(&prop))
+                                .or(l.props.get(&prop))
+                                .and_then(|v| v.as_number())
+                                .unwrap_or(0.0)
+                        };
+                        let (x, y, w, h) = (
+                            n(cg_core::Prop::X),
+                            n(cg_core::Prop::Y),
+                            n(cg_core::Prop::Width),
+                            n(cg_core::Prop::Height),
+                        );
+                        let (ax, ay) = (area.x * fw as f64, area.y * fh as f64);
+                        let (aw, ah) = (area.width * fw as f64, area.height * fh as f64);
+                        assert!(
+                            x >= ax - 2.0
+                                && y >= ay - 2.0
+                                && x + w <= ax + aw + 2.0
+                                && y + h <= ay + ah + 2.0,
+                            "{id}: {} / {} out of its zone {} ({f})",
+                            t.name,
+                            l.name,
+                            zone.name
+                        );
+                    }
                 }
                 let data = t.default_data();
                 let hold = t.hold_frame();

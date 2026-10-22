@@ -7,6 +7,7 @@ import json
 import os
 import sys
 
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from kit import *  # noqa: E402,F403
 
@@ -193,7 +194,7 @@ def ex02():
     INK, GRAPH, YEL, RED, GREY = '#0d0e11', '#16181d', '#ffd60a', '#ff2a2a', '#a7adb8'
     p = Package(
         'ex-02-info-continu', 'Info en continu 24/7', 'Info',
-        ['Bandeau permanent', 'Alerte info', 'Direct', 'Rubriques', '9:16'],
+        ['Bandeau permanent', 'Alerte info', 'Direct', 'Rubriques'],
         "L'antenne d'une chaîne d'info en continu : bandeau permanent (rubrique, titre, heure et fil info), ALERTE INFO qui clignote, logo, direct avec lieu, titres de rubrique et synthés. Graphite et jaune signal, Barlow Condensed. Bandeau, alerte, logo et direct ont leur version 9:16 pour les réseaux sociaux.",
         en=('24/7 news channel', 'A rolling news channel on air: permanent strap (section, headline, clock and news wire), flashing NEWS ALERT, logo, live tag, section titles and lower thirds. Strap, alert, logo and live tag also exist in 9:16 for social networks.'),
         cover='bandeau')
@@ -213,7 +214,7 @@ def ex02():
     t.field('headline', 'Titre', 'Budget 2027 : le gouvernement engage sa responsabilité à l’Assemblée')
     t.field('wire', 'Fil info', 'Grève SNCF : trafic perturbé jeudi sur les lignes TER\nLe prix de l’électricité baissera de 4 % au 1er février\nLigue des champions : Brest affronte le Real Madrid mardi\nIntempéries : 4 000 foyers privés d’électricité en Bretagne', kind='multiline')
     g = t.group('Bandeau', 0, 856, 1920, 188)
-    t.override(g, y=1478)
+    t.override(g, y=1478, width=1080)
     tab = t.rect('Rubrique fond', 96, 0, 200, 38, hexc(YEL), g, tracks=inout('cropRight', 0, 1, 40, 8, 14, 10, 8))
     t.override(tab, x=60)
     sec = t.text('Rubrique', '{{section}}', 112, 0, 600, 38, 25, g, color=hexc(INK), weight=700, family=COND, spacing=1.5, upper=True,
@@ -248,7 +249,7 @@ def ex02():
     t.field('headline', 'Titre', 'Explosion dans une usine chimique près de Rouen, un périmètre de sécurité mis en place')
     t.field('time', 'Heure', '14:32')
     g = t.group('Alerte', 0, 676, 1920, 150)
-    t.override(g, y=1170)
+    t.override(g, y=1170, width=1080)
     blink = keys((0, hexc(RED)), (24, hexc(RED), 'hold'), (30, hexc('#b80f0f'), 'hold'), (36, hexc(RED), 'hold'), (42, hexc('#b80f0f'), 'hold'), (48, hexc(RED), 'hold'))
     rb = t.rect('Rouge', 0, 0, 1824, 64, hexc(RED), g, tracks=merge(inout('cropRight', 0, 1, 80, 0, 18, 12, 6), {'fill': blink}))
     t.override(rb, width=1020)
@@ -586,7 +587,7 @@ def ex04():
     p = Package(
         'ex-04-soiree-electorale', 'Soirée électorale', 'Élections',
         ['Résultats', 'Hémicycle', 'Carte des régions', 'Projection', 'Participation'],
-        "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
+        "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages, lus dans une source de données que l'automatisation met à jour), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
         en=('Election night', 'An editorial election night on a paper background: results by candidate, a hemicycle whose arcs are computed from the seats, a map of the regions coloured by leading candidate, projection banner, live turnout and count, analyst lower thirds.'),
         cover='results')
     p.zone('full', 'Plein écran', 50, '#94a3b8')
@@ -595,13 +596,25 @@ def ex04():
     p.playlist('soir', 'Soirée')
     p.playlist('analyse', 'Plateau')
 
+    # Results as an automation (the ministry feed, a newsroom system) pushes them:
+    # PUT /api/data/sources/election-resultats/value with this JSON.
+    p.source('election-resultats', 'Élection · résultats nationaux', {
+        'tour': 'Premier tour', 'estimation': '20:00', 'depouilles': 87.4, 'participation': 61.3,
+        'candidats': [{'nom': n_, 'parti': pa_, 'score': v_} for n_, pa_, _, v_ in CANDS]})
+
+    def bound(t, key, path):
+        t.t['fields'][-1]['binding'] = {'source': 'election-resultats', 'path': path}
+
     def cand_fields(t):
         for i, (n_, pa_, c_, v_) in enumerate(CANDS, 1):
             t.field(f'n{i}', f'Candidat {i}', n_)
+            bound(t, f'n{i}', f'candidats[{i - 1}].nom')
             t.field(f'i{i}', f'Initiales {i}', initials(n_))
             t.field(f'pa{i}', f'Parti {i}', pa_)
+            bound(t, f'pa{i}', f'candidats[{i - 1}].parti')
             t.field(f'c{i}', f'Couleur {i}', c_, kind='color')
             t.field(f'p{i}', f'Score {i} (%)', v_, kind='number', min=0, max=100)
+            bound(t, f'p{i}', f'candidats[{i - 1}].score')
 
     # -- Résultats ---------------------------------------------------------------------------
     t = p.template('results', 'Résultats par candidat', 'full', duration=160, on_air=120)
@@ -724,8 +737,10 @@ def ex04():
     t = p.template('turnout', 'Participation et dépouillement', 'corner', duration=120, on_air=90)
     t.field('label', 'Libellé', 'PARTICIPATION À 17 H')
     t.field('turnout', 'Participation (%)', '61.3', kind='number', min=0, max=100)
+    bound(t, 'turnout', 'participation')
     t.field('delta', 'Comparaison', '+2,1 pts par rapport à 2022')
     t.field('counted', 'Dépouillés (%)', '87.4', kind='number', min=0, max=100)
+    bound(t, 'counted', 'depouilles')
     g = t.group('Participation', 1360, 70, 464, 236, tracks=merge(inout('opacity', 1, 0, 90, 0, 12, 8), inout('x', 1360, 1420, 90, 0, 22, 8)))
     t.rect('Papier', 0, 0, 464, 236, hexc(PAPER), g, radius=4, shadow=(hexc('#000000', 0.3), 0, 10, 30))
     t.rect('Filet', 0, 0, 464, 6, hexc(BLUE), g, corners=(4, 4, 0, 0))
@@ -801,7 +816,7 @@ def ex05():
     SKY1, SKY2, CARD, SUN, COLD, WARM = '#1d6fd6', '#0a2a5e', '#ffffff', '#ffcc33', '#7fd6ff', '#ff7a3d'
     p = Package(
         'ex-05-meteo', 'Météo', 'Météo',
-        ['Carte', 'Villes', 'Semaine', 'Vigilance', 'Icônes', '9:16'],
+        ['Carte', 'Villes', 'Semaine', 'Vigilance', 'Icônes'],
         "Un bulletin météo complet : carte de France des températures par région (échelle de couleurs), cartes des villes avec icônes au choix (soleil, éclaircies, nuages, pluie, orage, neige), prévisions sur sept jours, bandeau de vigilance jaune, orange ou rouge et synthé du présentateur. Bleu ciel et verre dépoli, Montserrat. Version 9:16 pour les réseaux sociaux.",
         en=('Weather', 'A complete weather bulletin: temperature map of France by region, city cards with selectable icons (sun, sunny spells, clouds, rain, storm, snow), seven-day forecast, yellow / orange / red warning banner and presenter lower third. Also in 9:16 for social networks.'),
         cover='cities')
@@ -898,7 +913,7 @@ def ex05():
         t.field(f'mx{i}', f'Max {i}', mx_, kind='number', min=-30, max=50)
         t.field(f'mn{i}', f'Min {i}', mn_, kind='number', min=-30, max=50)
     g = t.group('Semaine', 96, 730, 1728, 280, tracks=merge(inout('opacity', 1, 0, 90, 0, 12, 8), inout('y', 730, 780, 90, 0, 24, 8)))
-    t.override(g, x=40, y=1400, width=1000, height=440)
+    t.override(g, x=44, y=1400, width=992, height=440)
     pl = t.rect('Verre', 0, 0, 1728, 280, hexc(SKY2, 0.78), g, radius=18, grad=('#0a2a5ecc', 180), stroke=(hexc('#ffffff', 0.25), 1.5))
     t.override(pl, width=1000, height=440)
     vf = t.rect('Ville fond', 0, 0, 260, 280, hexc(SUN), g, corners=(18, 0, 0, 18))
@@ -932,7 +947,7 @@ def ex05():
     t.field('where', 'Départements', 'Gironde, Landes, Pyrénées-Atlantiques, Gers et Lot-et-Garonne')
     t.field('until', 'Validité', 'Jusqu’à jeudi 6' + N + 'h')
     g = t.group('Vigilance', 96, 60, 1728, 120, clip=True, tracks=inout('cropRight', 0, 1, 60, 0, 22, 12))
-    t.override(g, x=40, y=120, width=1000, height=200)
+    t.override(g, x=44, y=120, width=992, height=200)
     pl = t.rect('Fond', 0, 0, 1728, 120, hexc('#0b1d3d', 0.92), g, radius=14)
     t.override(pl, width=1000, height=200)
     chips = {}
@@ -993,7 +1008,7 @@ def ex06():
     p = Package(
         'ex-06-bourse', 'Bourse et marchés', 'Économie',
         ['Ticker des indices', 'Graphique', 'Fiche valeur', 'Tableau', 'Devises'],
-        "Un habillage d'économie au look terminal : ticker des indices avec flèches de hausse et de baisse choisies par l'opérateur, graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
+        "Un habillage d'économie au look terminal : ticker des indices avec flèches de hausse et de baisse, alimenté par une source de données (ou saisi par l'opérateur), graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
         en=('Stock markets', 'A terminal-style business package: index ticker with up / down arrows chosen by the operator, intraday chart (data pasted as CSV), stock quote card whose colour follows the sign of the change, market table (negatives in red) and rotating currencies.'),
         cover='chart')
     p.zone('ticker', 'Ticker', 40, '#f5a524', (0, 0.905, 1, 0.07))
@@ -1006,9 +1021,12 @@ def ex06():
     t = p.template('ticker', 'Ticker des indices', 'ticker', duration=60, on_air=30)
     Q = [('CAC 40   7 512,30   +0,84 %', 'u'), ('DAX   18 120,55   −0,62 %', 'd'), ('FTSE 100   8 204,10   +0,31 %', 'u'), ('EURO STOXX 50   4 982,77   +0,45 %', 'u'),
          ('DOW JONES   39 412,08   −0,18 %', 'd'), ('NASDAQ   16 870,40   +1,12 %', 'u'), ('NIKKEI   38 640,95   −0,95 %', 'd'), ('BRENT   82,14 $   +1,40 %', 'u')]
+    p.source('bourse-indices', 'Bourse · indices', {'indices': [{'ligne': q_, 'sens': '▲' if d_ == 'u' else '▼'} for q_, d_ in Q]})
     for i, (q_, d_) in enumerate(Q, 1):
         t.field(f'q{i}', f'Valeur {i}', q_)
+        t.t['fields'][-1]['binding'] = {'source': 'bourse-indices', 'path': f'indices[{i - 1}].ligne'}
         t.field(f'd{i}', f'Sens {i}', '▲' if d_ == 'u' else '▼', options=[['▲', 'Hausse'], ['▼', 'Baisse']])
+        t.t['fields'][-1]['binding'] = {'source': 'bourse-indices', 'path': f'indices[{i - 1}].sens'}
     g = t.group('Ticker', 0, 990, 1920, 56, tracks=inout('y', 990, 1080, 30, 0, 18, 12))
     t.rect('Barre', 0, 0, 1920, 56, hexc(BG, 0.96), g)
     t.rect('Filet', 0, 0, 1920, 2, hexc(AMBER), g)
@@ -1140,7 +1158,7 @@ def ex07():
     AUB, AUB2, CORAL, CREAM, GOLD, ROSE = '#1a0f24', '#2b1839', '#ff5a4e', '#fff3e3', '#f2b84b', '#ffb4a8'
     p = Package(
         'ex-07-talk-show', 'Talk-show', 'Divertissement',
-        ['Invités', 'Thème', 'Réseaux sociaux', 'Logo', 'Citation', 'Vote QR', '9:16'],
+        ['Invités', 'Thème', 'Réseaux sociaux', 'Logo', 'Citation', 'Vote QR'],
         "L'habillage chaleureux d'une émission de plateau : synthés des invités dont le cartouche suit le nom, bandeau du thème, comptes sociaux, logo de l'émission, citation plein écran, vote par QR code et « À suivre ». Aubergine, corail et crème, Playfair Display et Montserrat. Chaque graphique a sa mise en page 9:16 pour les extraits sur les réseaux.",
         en=('Talk show', 'A warm studio show package: guest lower thirds whose plate follows the name, topic banner, social handles, show logo, full-screen quote, QR code vote and "Coming up". Every graphic also has a 9:16 layout for social clips.'),
         cover='guest')
@@ -1148,7 +1166,7 @@ def ex07():
     p.zone('lower', 'Synthé', 20, '#7c5cff', (0.05, 0.68, 0.65, 0.26), vertical=(0.05, 0.66, 0.9, 0.2))
     p.zone('topic', 'Thème', 25, '#22c55e', (0.05, 0.05, 0.62, 0.11), vertical=(0.05, 0.12, 0.9, 0.11))
     p.zone('bug', 'Logo', 60, '#38bdf8', (0.79, 0.05, 0.16, 0.11), vertical=(0.6, 0.035, 0.35, 0.07))
-    p.zone('corner', 'Coin', 30, '#e879f9', (0.70, 0.38, 0.26, 0.56), vertical=(0.15, 0.30, 0.7, 0.32))
+    p.zone('corner', 'Coin', 30, '#e879f9', (0.70, 0.38, 0.26, 0.56), vertical=(0.1, 0.28, 0.8, 0.36))
     p.zone('full', 'Plein écran', 50, '#94a3b8')
     p.playlist('plateau', 'Plateau')
     p.playlist('social', 'Réseaux')

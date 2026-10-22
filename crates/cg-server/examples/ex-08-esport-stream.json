@@ -2480,7 +2480,7 @@
      },
      {
       "id": "soon-30",
-      "name": "Fond",
+      "name": "Compte à rebours · Fond",
       "parent": "soon-29",
       "type": "rect",
       "visible": true,
@@ -2717,7 +2717,7 @@
      },
      {
       "id": "soon-35",
-      "name": "Ligne",
+      "name": "Programme · Ligne",
       "parent": "soon-33",
       "type": "rect",
       "visible": true,
@@ -2747,7 +2747,7 @@
      },
      {
       "id": "soon-36",
-      "name": "Heure",
+      "name": "Programme · Heure",
       "parent": "soon-33",
       "type": "text",
       "visible": true,
@@ -2777,7 +2777,7 @@
      },
      {
       "id": "soon-37",
-      "name": "Match",
+      "name": "Programme · Match",
       "parent": "soon-33",
       "type": "text",
       "visible": true,
@@ -2807,7 +2807,7 @@
      },
      {
       "id": "soon-38",
-      "name": "Ligne",
+      "name": "Programme · Ligne",
       "parent": "soon-33",
       "type": "rect",
       "visible": true,
@@ -2837,7 +2837,7 @@
      },
      {
       "id": "soon-39",
-      "name": "Heure",
+      "name": "Programme · Heure",
       "parent": "soon-33",
       "type": "text",
       "visible": true,
@@ -2867,7 +2867,7 @@
      },
      {
       "id": "soon-40",
-      "name": "Match",
+      "name": "Programme · Match",
       "parent": "soon-33",
       "type": "text",
       "visible": true,
@@ -2897,7 +2897,7 @@
      },
      {
       "id": "soon-41",
-      "name": "Ligne",
+      "name": "Programme · Ligne",
       "parent": "soon-33",
       "type": "rect",
       "visible": true,
@@ -2927,7 +2927,7 @@
      },
      {
       "id": "soon-42",
-      "name": "Heure",
+      "name": "Programme · Heure",
       "parent": "soon-33",
       "type": "text",
       "visible": true,
@@ -2957,7 +2957,7 @@
      },
      {
       "id": "soon-43",
-      "name": "Match",
+      "name": "Programme · Match",
       "parent": "soon-33",
       "type": "text",
       "visible": true,

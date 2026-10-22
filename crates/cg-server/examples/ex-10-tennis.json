@@ -519,7 +519,7 @@
      },
      {
       "id": "player-8",
-      "name": "Séparateur",
+      "name": "Fiche · Séparateur",
       "parent": "player-1",
       "type": "rect",
       "visible": true,
@@ -602,7 +602,7 @@
      },
      {
       "id": "player-11",
-      "name": "Séparateur",
+      "name": "Fiche · Séparateur",
       "parent": "player-1",
       "type": "rect",
       "visible": true,
@@ -685,7 +685,7 @@
      },
      {
       "id": "player-14",
-      "name": "Séparateur",
+      "name": "Fiche · Séparateur",
       "parent": "player-1",
       "type": "rect",
       "visible": true,
@@ -768,7 +768,7 @@
      },
      {
       "id": "player-17",
-      "name": "Séparateur",
+      "name": "Fiche · Séparateur",
       "parent": "player-1",
       "type": "rect",
       "visible": true,
@@ -1608,7 +1608,7 @@
      },
      {
       "id": "stats-17",
-      "name": "A",
+      "name": "Ligne 1 · A",
       "parent": "stats-16",
       "type": "text",
       "visible": true,
@@ -1638,7 +1638,7 @@
      },
      {
       "id": "stats-18",
-      "name": "Libellé",
+      "name": "Ligne 1 · Libellé",
       "parent": "stats-16",
       "type": "text",
       "visible": true,
@@ -1669,7 +1669,7 @@
      },
      {
       "id": "stats-19",
-      "name": "B",
+      "name": "Ligne 1 · B",
       "parent": "stats-16",
       "type": "text",
       "visible": true,
@@ -1699,7 +1699,7 @@
      },
      {
       "id": "stats-20",
-      "name": "Piste B",
+      "name": "Ligne 1 · Piste B",
       "parent": "stats-16",
       "type": "rect",
       "visible": true,
@@ -1768,7 +1768,7 @@
      },
      {
       "id": "stats-21",
-      "name": "Piste A",
+      "name": "Ligne 1 · Piste A",
       "parent": "stats-16",
       "type": "rect",
       "visible": true,
@@ -1945,7 +1945,7 @@
      },
      {
       "id": "stats-23",
-      "name": "A",
+      "name": "Ligne 2 · A",
       "parent": "stats-22",
       "type": "text",
       "visible": true,
@@ -1975,7 +1975,7 @@
      },
      {
       "id": "stats-24",
-      "name": "Libellé",
+      "name": "Ligne 2 · Libellé",
       "parent": "stats-22",
       "type": "text",
       "visible": true,
@@ -2006,7 +2006,7 @@
      },
      {
       "id": "stats-25",
-      "name": "B",
+      "name": "Ligne 2 · B",
       "parent": "stats-22",
       "type": "text",
       "visible": true,
@@ -2036,7 +2036,7 @@
      },
      {
       "id": "stats-26",
-      "name": "Piste B",
+      "name": "Ligne 2 · Piste B",
       "parent": "stats-22",
       "type": "rect",
       "visible": true,
@@ -2105,7 +2105,7 @@
      },
      {
       "id": "stats-27",
-      "name": "Piste A",
+      "name": "Ligne 2 · Piste A",
       "parent": "stats-22",
       "type": "rect",
       "visible": true,
@@ -2282,7 +2282,7 @@
      },
      {
       "id": "stats-29",
-      "name": "A",
+      "name": "Ligne 3 · A",
       "parent": "stats-28",
       "type": "text",
       "visible": true,
@@ -2312,7 +2312,7 @@
      },
      {
       "id": "stats-30",
-      "name": "Libellé",
+      "name": "Ligne 3 · Libellé",
       "parent": "stats-28",
       "type": "text",
       "visible": true,
@@ -2343,7 +2343,7 @@
      },
      {
       "id": "stats-31",
-      "name": "B",
+      "name": "Ligne 3 · B",
       "parent": "stats-28",
       "type": "text",
       "visible": true,
@@ -2373,7 +2373,7 @@
      },
      {
       "id": "stats-32",
-      "name": "Piste B",
+      "name": "Ligne 3 · Piste B",
       "parent": "stats-28",
       "type": "rect",
       "visible": true,
@@ -2442,7 +2442,7 @@
      },
      {
       "id": "stats-33",
-      "name": "Piste A",
+      "name": "Ligne 3 · Piste A",
       "parent": "stats-28",
       "type": "rect",
       "visible": true,
@@ -2619,7 +2619,7 @@
      },
      {
       "id": "stats-35",
-      "name": "A",
+      "name": "Ligne 4 · A",
       "parent": "stats-34",
       "type": "text",
       "visible": true,
@@ -2649,7 +2649,7 @@
      },
      {
       "id": "stats-36",
-      "name": "Libellé",
+      "name": "Ligne 4 · Libellé",
       "parent": "stats-34",
       "type": "text",
       "visible": true,
@@ -2680,7 +2680,7 @@
      },
      {
       "id": "stats-37",
-      "name": "B",
+      "name": "Ligne 4 · B",
       "parent": "stats-34",
       "type": "text",
       "visible": true,
@@ -2710,7 +2710,7 @@
      },
      {
       "id": "stats-38",
-      "name": "Piste B",
+      "name": "Ligne 4 · Piste B",
       "parent": "stats-34",
       "type": "rect",
       "visible": true,
@@ -2779,7 +2779,7 @@
      },
      {
       "id": "stats-39",
-      "name": "Piste A",
+      "name": "Ligne 4 · Piste A",
       "parent": "stats-34",
       "type": "rect",
       "visible": true,
@@ -2956,7 +2956,7 @@
      },
      {
       "id": "stats-41",
-      "name": "A",
+      "name": "Ligne 5 · A",
       "parent": "stats-40",
       "type": "text",
       "visible": true,
@@ -2986,7 +2986,7 @@
      },
      {
       "id": "stats-42",
-      "name": "Libellé",
+      "name": "Ligne 5 · Libellé",
       "parent": "stats-40",
       "type": "text",
       "visible": true,
@@ -3017,7 +3017,7 @@
      },
      {
       "id": "stats-43",
-      "name": "B",
+      "name": "Ligne 5 · B",
       "parent": "stats-40",
       "type": "text",
       "visible": true,
@@ -3047,7 +3047,7 @@
      },
      {
       "id": "stats-44",
-      "name": "Piste B",
+      "name": "Ligne 5 · Piste B",
       "parent": "stats-40",
       "type": "rect",
       "visible": true,
@@ -3116,7 +3116,7 @@
      },
      {
       "id": "stats-45",
-      "name": "Piste A",
+      "name": "Ligne 5 · Piste A",
       "parent": "stats-40",
       "type": "rect",
       "visible": true,
@@ -3293,7 +3293,7 @@
      },
      {
       "id": "stats-47",
-      "name": "A",
+      "name": "Ligne 6 · A",
       "parent": "stats-46",
       "type": "text",
       "visible": true,
@@ -3323,7 +3323,7 @@
      },
      {
       "id": "stats-48",
-      "name": "Libellé",
+      "name": "Ligne 6 · Libellé",
       "parent": "stats-46",
       "type": "text",
       "visible": true,
@@ -3354,7 +3354,7 @@
      },
      {
       "id": "stats-49",
-      "name": "B",
+      "name": "Ligne 6 · B",
       "parent": "stats-46",
       "type": "text",
       "visible": true,
@@ -3384,7 +3384,7 @@
      },
      {
       "id": "stats-50",
-      "name": "Piste B",
+      "name": "Ligne 6 · Piste B",
       "parent": "stats-46",
       "type": "rect",
       "visible": true,
@@ -3453,7 +3453,7 @@
      },
      {
       "id": "stats-51",
-      "name": "Piste A",
+      "name": "Ligne 6 · Piste A",
       "parent": "stats-46",
       "type": "rect",
       "visible": true,
@@ -3630,7 +3630,7 @@
      },
      {
       "id": "stats-53",
-      "name": "A",
+      "name": "Ligne 7 · A",
       "parent": "stats-52",
       "type": "text",
       "visible": true,
@@ -3660,7 +3660,7 @@
      },
      {
       "id": "stats-54",
-      "name": "Libellé",
+      "name": "Ligne 7 · Libellé",
       "parent": "stats-52",
       "type": "text",
       "visible": true,
@@ -3691,7 +3691,7 @@
      },
      {
       "id": "stats-55",
-      "name": "B",
+      "name": "Ligne 7 · B",
       "parent": "stats-52",
       "type": "text",
       "visible": true,
@@ -3721,7 +3721,7 @@
      },
      {
       "id": "stats-56",
-      "name": "Piste B",
+      "name": "Ligne 7 · Piste B",
       "parent": "stats-52",
       "type": "rect",
       "visible": true,
@@ -3790,7 +3790,7 @@
      },
      {
       "id": "stats-57",
-      "name": "Piste A",
+      "name": "Ligne 7 · Piste A",
       "parent": "stats-52",
       "type": "rect",
       "visible": true,
@@ -6492,7 +6492,7 @@
      },
      {
       "id": "h2h-7",
-      "name": "A",
+      "name": "Entête · A",
       "parent": "h2h-5",
       "type": "text",
       "visible": true,
@@ -6524,7 +6524,7 @@
      },
      {
       "id": "h2h-8",
-      "name": "B",
+      "name": "Entête · B",
       "parent": "h2h-5",
       "type": "text",
       "visible": true,
@@ -6556,7 +6556,7 @@
      },
      {
       "id": "h2h-9",
-      "name": "VS",
+      "name": "Entête · VS",
       "parent": "h2h-5",
       "type": "ellipse",
       "visible": true,
@@ -6578,7 +6578,7 @@
      },
      {
       "id": "h2h-10",
-      "name": "VS",
+      "name": "Entête · VS",
       "parent": "h2h-5",
       "type": "text",
       "visible": true,
@@ -6778,7 +6778,7 @@
      },
      {
       "id": "h2h-14",
-      "name": "Fond",
+      "name": "Comparaison · Fond",
       "parent": "h2h-13",
       "type": "rect",
       "visible": true,
@@ -6801,7 +6801,7 @@
      },
      {
       "id": "h2h-15",
-      "name": "A",
+      "name": "Comparaison · A",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -6831,7 +6831,7 @@
      },
      {
       "id": "h2h-16",
-      "name": "Libellé",
+      "name": "Comparaison · Libellé",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -6862,7 +6862,7 @@
      },
      {
       "id": "h2h-17",
-      "name": "B",
+      "name": "Comparaison · B",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -6892,7 +6892,7 @@
      },
      {
       "id": "h2h-18",
-      "name": "Séparateur",
+      "name": "Comparaison · Séparateur",
       "parent": "h2h-13",
       "type": "rect",
       "visible": true,
@@ -6914,7 +6914,7 @@
      },
      {
       "id": "h2h-19",
-      "name": "A",
+      "name": "Comparaison · A",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -6944,7 +6944,7 @@
      },
      {
       "id": "h2h-20",
-      "name": "Libellé",
+      "name": "Comparaison · Libellé",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -6975,7 +6975,7 @@
      },
      {
       "id": "h2h-21",
-      "name": "B",
+      "name": "Comparaison · B",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7005,7 +7005,7 @@
      },
      {
       "id": "h2h-22",
-      "name": "Séparateur",
+      "name": "Comparaison · Séparateur",
       "parent": "h2h-13",
       "type": "rect",
       "visible": true,
@@ -7027,7 +7027,7 @@
      },
      {
       "id": "h2h-23",
-      "name": "A",
+      "name": "Comparaison · A",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7057,7 +7057,7 @@
      },
      {
       "id": "h2h-24",
-      "name": "Libellé",
+      "name": "Comparaison · Libellé",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7088,7 +7088,7 @@
      },
      {
       "id": "h2h-25",
-      "name": "B",
+      "name": "Comparaison · B",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7118,7 +7118,7 @@
      },
      {
       "id": "h2h-26",
-      "name": "Séparateur",
+      "name": "Comparaison · Séparateur",
       "parent": "h2h-13",
       "type": "rect",
       "visible": true,
@@ -7140,7 +7140,7 @@
      },
      {
       "id": "h2h-27",
-      "name": "A",
+      "name": "Comparaison · A",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7170,7 +7170,7 @@
      },
      {
       "id": "h2h-28",
-      "name": "Libellé",
+      "name": "Comparaison · Libellé",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7201,7 +7201,7 @@
      },
      {
       "id": "h2h-29",
-      "name": "B",
+      "name": "Comparaison · B",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7231,7 +7231,7 @@
      },
      {
       "id": "h2h-30",
-      "name": "Séparateur",
+      "name": "Comparaison · Séparateur",
       "parent": "h2h-13",
       "type": "rect",
       "visible": true,
@@ -7253,7 +7253,7 @@
      },
      {
       "id": "h2h-31",
-      "name": "A",
+      "name": "Comparaison · A",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7283,7 +7283,7 @@
      },
      {
       "id": "h2h-32",
-      "name": "Libellé",
+      "name": "Comparaison · Libellé",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,
@@ -7314,7 +7314,7 @@
      },
      {
       "id": "h2h-33",
-      "name": "B",
+      "name": "Comparaison · B",
       "parent": "h2h-13",
       "type": "text",
       "visible": true,

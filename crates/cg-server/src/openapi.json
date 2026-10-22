@@ -642,7 +642,7 @@
      "Projects"
     ],
     "summary": "Create a project from an example",
-    "description": "Adds a copy of the example to the projects.\n\n**Rights:** admin, designer.",
+    "description": "Adds a copy of the example to the projects, and creates the shared data sources its fields read (with a sample value) when they do not exist yet.\n\n**Rights:** admin, designer.",
     "responses": {
      "200": {
       "description": "OK",

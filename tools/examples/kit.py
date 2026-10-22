@@ -1,7 +1,8 @@
 """kit.py: shared helpers to write the example projects of Strata.
 
 Each example is one file, crates/cg-server/examples/ex-NN-slug.json:
-    {"meta": {id, name, category, tags, description, cover?, en?}, "project": Project}
+    {"meta": {id, name, category, tags, description, cover?, en?}, "project": Project,
+     "sources": [{id, name, type: 'push', format: 'json', value: <sample JSON>}…]}   (sources optional)
 The server embeds every ex-*.json of that folder (crates/cg-server/build.rs).
 Scripts: set_a.py (01-10) and set_b.py (11-20); run `python3 tools/examples/set_a.py`.
 
@@ -14,6 +15,7 @@ API (stable):
     p.playlist(id, name, auto_next=False, loop=False)
     t = p.template(tid, name, zone, duration=100, on_air=50)   -> T (frames, 50 fps)
     p.item(name, tid, playlist, data=None, zone=None, auto_secs=None)
+    p.source(id, name, value, kind='push', fmt='json')   shared data source + sample value (see write())
     p.guides(action_safe=0.035, title_safe=0.05, vertical=[], horizontal=[], exclusions=[])
     p.write()                          writes the JSON (returns the path)
 
@@ -76,7 +78,7 @@ GEO = 'Montserrat'
 GROTESK = 'Space Grotesk'
 
 NBSP = ' '
-NNBSP = ' '
+NNBSP = ' '  # kept for older scripts: U+202F is missing from several bundled fonts
 
 
 # ----------------------------------------------------------------- colours --
@@ -385,6 +387,13 @@ class T:
         return self.layer(kind, name, parent, {'x': x, 'y': y, 'width': w, 'height': h, **(props or {})}, tracks, **attrs)
 
     def done(self):
+        # Layers repeated in several groups (rows, cards…) are named after their group, so the
+        # Operator's tabs read « Joueur 3 · Nom » rather than eleven « Nom ».
+        names = [l['name'] for l in self.t['layers']]
+        for l in self.t['layers']:
+            par = self._by_id.get(l.get('parent') or '')
+            if par and names.count(l['name']) > 1 and not l['name'].startswith(par['name']):
+                l['name'] = f"{par['name']} · {l['name']}"
         return self.t
 
 
@@ -393,7 +402,7 @@ class T:
 def fr(s):
     """French typography: no-break space before : ; ! ? % and inside « », ’ apostrophe."""
     import re
-    s = s.replace("'", '’')
+    s = s.replace("'", '’').replace('\u202f', NBSP)
     s = re.sub(r' ([:;!?%»])', NBSP + r'\1', s)
     s = s.replace('« ', '«' + NBSP)
     return s
@@ -427,6 +436,19 @@ class Package:
                   'frameRate': {'num': FPS, 'den': 1}, 'templates': [], 'rundown': [], 'zones': [],
                   'playlists': [], 'formats': [], 'language': 'fr'}
         self._templates = []
+        self.sources = []
+
+    def source(self, sid, name, value, kind='push', fmt='json', **extra):
+        """A shared data source the example reads (field bindings, data sets), created with the
+        project when missing, holding `value` (sample JSON) until automation pushes another one.
+        kind='push' (format json|csv|xml) or a fetched one: kind='json'|'csv'|'rss'|'xml' with url=…"""
+        src = {'id': sid, 'name': name, 'type': kind, **extra}
+        if kind == 'push':
+            src['format'] = fmt
+        if value is not None:
+            src['value'] = value
+        self.sources.append(src)
+        return sid
 
     def zone(self, zid, name, layer, color, area=(0, 0, 1, 1), vertical=None, transition='sequential'):
         box = lambda a: dict(zip(('x', 'y', 'width', 'height'), [float(v) for v in a]))
@@ -476,6 +498,9 @@ class Package:
         path = os.path.join(OUT, self.meta['id'] + '.json')
         with open(path, 'w') as fh:
             meta = dict(self.meta, name=fr(self.meta['name']), description=fr(self.meta['description']))
-            json.dump({'meta': meta, 'project': _fr_tree(self.p)}, fh, ensure_ascii=False, indent=1)
+            out = {'meta': meta, 'project': _fr_tree(self.p)}
+            if self.sources:
+                out['sources'] = self.sources
+            json.dump(out, fh, ensure_ascii=False, indent=1)
             fh.write('\n')
         return path

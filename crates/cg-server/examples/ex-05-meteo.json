@@ -8,8 +8,7 @@
    "Villes",
    "Semaine",
    "Vigilance",
-   "Icônes",
-   "9:16"
+   "Icônes"
   ],
   "description": "Un bulletin météo complet : carte de France des températures par région (échelle de couleurs), cartes des villes avec icônes au choix (soleil, éclaircies, nuages, pluie, orage, neige), prévisions sur sept jours, bandeau de vigilance jaune, orange ou rouge et synthé du présentateur. Bleu ciel et verre dépoli, Montserrat. Version 9:16 pour les réseaux sociaux.",
   "en": {
@@ -527,7 +526,7 @@
      },
      {
       "id": "map-8",
-      "name": "Échelle",
+      "name": "Texte · Échelle",
       "parent": "map-4",
       "type": "group",
       "visible": true,
@@ -552,7 +551,7 @@
      },
      {
       "id": "map-9",
-      "name": "Échelle",
+      "name": "Texte · Échelle · Échelle",
       "parent": "map-8",
       "type": "rect",
       "visible": true,
@@ -597,7 +596,7 @@
      },
      {
       "id": "map-10",
-      "name": "Graduation",
+      "name": "Texte · Échelle · Graduation",
       "parent": "map-8",
       "type": "text",
       "visible": true,
@@ -634,7 +633,7 @@
      },
      {
       "id": "map-11",
-      "name": "Graduation",
+      "name": "Texte · Échelle · Graduation",
       "parent": "map-8",
       "type": "text",
       "visible": true,
@@ -671,7 +670,7 @@
      },
      {
       "id": "map-12",
-      "name": "Graduation",
+      "name": "Texte · Échelle · Graduation",
       "parent": "map-8",
       "type": "text",
       "visible": true,
@@ -708,7 +707,7 @@
      },
      {
       "id": "map-13",
-      "name": "Graduation",
+      "name": "Texte · Échelle · Graduation",
       "parent": "map-8",
       "type": "text",
       "visible": true,
@@ -1505,7 +1504,7 @@
      },
      {
       "id": "cities-2",
-      "name": "Verre",
+      "name": "Ville 1 · Verre",
       "parent": "cities-1",
       "type": "rect",
       "visible": true,
@@ -1548,7 +1547,7 @@
      },
      {
       "id": "cities-3",
-      "name": "Ville",
+      "name": "Ville 1 · Ville",
       "parent": "cities-1",
       "type": "text",
       "visible": true,
@@ -1588,7 +1587,7 @@
      },
      {
       "id": "cities-4",
-      "name": "Temps",
+      "name": "Ville 1 · Temps",
       "parent": "cities-1",
       "type": "text",
       "visible": true,
@@ -1628,7 +1627,7 @@
      },
      {
       "id": "cities-5",
-      "name": "Icône",
+      "name": "Ville 1 · Icône",
       "parent": "cities-1",
       "type": "group",
       "visible": true,
@@ -1650,7 +1649,7 @@
      },
      {
       "id": "cities-6",
-      "name": "Icône 1",
+      "name": "Ville 1 · Icône · Icône 1",
       "parent": "cities-5",
       "type": "group",
       "visible": true,
@@ -1667,7 +1666,7 @@
      },
      {
       "id": "cities-7",
-      "name": "Halo",
+      "name": "Ville 1 · Icône · Icône 1 · Halo",
       "parent": "cities-6",
       "type": "ellipse",
       "visible": true,
@@ -1693,7 +1692,7 @@
      },
      {
       "id": "cities-8",
-      "name": "Soleil",
+      "name": "Ville 1 · Icône · Icône 1 · Soleil",
       "parent": "cities-6",
       "type": "ellipse",
       "visible": true,
@@ -1719,7 +1718,7 @@
      },
      {
       "id": "cities-9",
-      "name": "Icône 2",
+      "name": "Ville 1 · Icône · Icône 2",
       "parent": "cities-5",
       "type": "group",
       "visible": true,
@@ -1736,7 +1735,7 @@
      },
      {
       "id": "cities-10",
-      "name": "Halo",
+      "name": "Ville 1 · Icône · Icône 2 · Halo",
       "parent": "cities-9",
       "type": "ellipse",
       "visible": true,
@@ -1762,7 +1761,7 @@
      },
      {
       "id": "cities-11",
-      "name": "Soleil",
+      "name": "Ville 1 · Icône · Icône 2 · Soleil",
       "parent": "cities-9",
       "type": "ellipse",
       "visible": true,
@@ -1788,7 +1787,7 @@
      },
      {
       "id": "cities-12",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône · Icône 2 · Nuage 1",
       "parent": "cities-9",
       "type": "ellipse",
       "visible": true,
@@ -1810,7 +1809,7 @@
      },
      {
       "id": "cities-13",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône · Icône 2 · Nuage 2",
       "parent": "cities-9",
       "type": "ellipse",
       "visible": true,
@@ -1832,7 +1831,7 @@
      },
      {
       "id": "cities-14",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône · Icône 2 · Nuage 3",
       "parent": "cities-9",
       "type": "ellipse",
       "visible": true,
@@ -1854,7 +1853,7 @@
      },
      {
       "id": "cities-15",
-      "name": "Base",
+      "name": "Ville 1 · Icône · Icône 2 · Base",
       "parent": "cities-9",
       "type": "rect",
       "visible": true,
@@ -1877,7 +1876,7 @@
      },
      {
       "id": "cities-16",
-      "name": "Icône 3",
+      "name": "Ville 1 · Icône · Icône 3",
       "parent": "cities-5",
       "type": "group",
       "visible": true,
@@ -1894,7 +1893,7 @@
      },
      {
       "id": "cities-17",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-16",
       "type": "ellipse",
       "visible": true,
@@ -1916,7 +1915,7 @@
      },
      {
       "id": "cities-18",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-16",
       "type": "ellipse",
       "visible": true,
@@ -1938,7 +1937,7 @@
      },
      {
       "id": "cities-19",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-16",
       "type": "ellipse",
       "visible": true,
@@ -1960,7 +1959,7 @@
      },
      {
       "id": "cities-20",
-      "name": "Base",
+      "name": "Ville 1 · Icône · Icône 3 · Base",
       "parent": "cities-16",
       "type": "rect",
       "visible": true,
@@ -1983,7 +1982,7 @@
      },
      {
       "id": "cities-21",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-16",
       "type": "ellipse",
       "visible": true,
@@ -2005,7 +2004,7 @@
      },
      {
       "id": "cities-22",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-16",
       "type": "ellipse",
       "visible": true,
@@ -2027,7 +2026,7 @@
      },
      {
       "id": "cities-23",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-16",
       "type": "ellipse",
       "visible": true,
@@ -2049,7 +2048,7 @@
      },
      {
       "id": "cities-24",
-      "name": "Base",
+      "name": "Ville 1 · Icône · Icône 3 · Base",
       "parent": "cities-16",
       "type": "rect",
       "visible": true,
@@ -2072,7 +2071,7 @@
      },
      {
       "id": "cities-25",
-      "name": "Icône 4",
+      "name": "Ville 1 · Icône · Icône 4",
       "parent": "cities-5",
       "type": "group",
       "visible": true,
@@ -2089,7 +2088,7 @@
      },
      {
       "id": "cities-26",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône · Icône 4 · Nuage 1",
       "parent": "cities-25",
       "type": "ellipse",
       "visible": true,
@@ -2111,7 +2110,7 @@
      },
      {
       "id": "cities-27",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône · Icône 4 · Nuage 2",
       "parent": "cities-25",
       "type": "ellipse",
       "visible": true,
@@ -2133,7 +2132,7 @@
      },
      {
       "id": "cities-28",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône · Icône 4 · Nuage 3",
       "parent": "cities-25",
       "type": "ellipse",
       "visible": true,
@@ -2155,7 +2154,7 @@
      },
      {
       "id": "cities-29",
-      "name": "Base",
+      "name": "Ville 1 · Icône · Icône 4 · Base",
       "parent": "cities-25",
       "type": "rect",
       "visible": true,
@@ -2178,7 +2177,7 @@
      },
      {
       "id": "cities-30",
-      "name": "Goutte",
+      "name": "Ville 1 · Icône · Icône 4 · Goutte",
       "parent": "cities-25",
       "type": "rect",
       "visible": true,
@@ -2202,7 +2201,7 @@
      },
      {
       "id": "cities-31",
-      "name": "Goutte",
+      "name": "Ville 1 · Icône · Icône 4 · Goutte",
       "parent": "cities-25",
       "type": "rect",
       "visible": true,
@@ -2226,7 +2225,7 @@
      },
      {
       "id": "cities-32",
-      "name": "Goutte",
+      "name": "Ville 1 · Icône · Icône 4 · Goutte",
       "parent": "cities-25",
       "type": "rect",
       "visible": true,
@@ -2250,7 +2249,7 @@
      },
      {
       "id": "cities-33",
-      "name": "Icône 5",
+      "name": "Ville 1 · Icône · Icône 5",
       "parent": "cities-5",
       "type": "group",
       "visible": true,
@@ -2267,7 +2266,7 @@
      },
      {
       "id": "cities-34",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône · Icône 5 · Nuage 1",
       "parent": "cities-33",
       "type": "ellipse",
       "visible": true,
@@ -2289,7 +2288,7 @@
      },
      {
       "id": "cities-35",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône · Icône 5 · Nuage 2",
       "parent": "cities-33",
       "type": "ellipse",
       "visible": true,
@@ -2311,7 +2310,7 @@
      },
      {
       "id": "cities-36",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône · Icône 5 · Nuage 3",
       "parent": "cities-33",
       "type": "ellipse",
       "visible": true,
@@ -2333,7 +2332,7 @@
      },
      {
       "id": "cities-37",
-      "name": "Base",
+      "name": "Ville 1 · Icône · Icône 5 · Base",
       "parent": "cities-33",
       "type": "rect",
       "visible": true,
@@ -2356,7 +2355,7 @@
      },
      {
       "id": "cities-38",
-      "name": "Éclair",
+      "name": "Ville 1 · Icône · Icône 5 · Éclair",
       "parent": "cities-33",
       "type": "polygon",
       "visible": true,
@@ -2409,7 +2408,7 @@
      },
      {
       "id": "cities-39",
-      "name": "Icône 6",
+      "name": "Ville 1 · Icône · Icône 6",
       "parent": "cities-5",
       "type": "group",
       "visible": true,
@@ -2426,7 +2425,7 @@
      },
      {
       "id": "cities-40",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône · Icône 6 · Nuage 1",
       "parent": "cities-39",
       "type": "ellipse",
       "visible": true,
@@ -2448,7 +2447,7 @@
      },
      {
       "id": "cities-41",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône · Icône 6 · Nuage 2",
       "parent": "cities-39",
       "type": "ellipse",
       "visible": true,
@@ -2470,7 +2469,7 @@
      },
      {
       "id": "cities-42",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône · Icône 6 · Nuage 3",
       "parent": "cities-39",
       "type": "ellipse",
       "visible": true,
@@ -2492,7 +2491,7 @@
      },
      {
       "id": "cities-43",
-      "name": "Base",
+      "name": "Ville 1 · Icône · Icône 6 · Base",
       "parent": "cities-39",
       "type": "rect",
       "visible": true,
@@ -2515,7 +2514,7 @@
      },
      {
       "id": "cities-44",
-      "name": "Flocon",
+      "name": "Ville 1 · Icône · Icône 6 · Flocon",
       "parent": "cities-39",
       "type": "ellipse",
       "visible": true,
@@ -2537,7 +2536,7 @@
      },
      {
       "id": "cities-45",
-      "name": "Flocon",
+      "name": "Ville 1 · Icône · Icône 6 · Flocon",
       "parent": "cities-39",
       "type": "ellipse",
       "visible": true,
@@ -2559,7 +2558,7 @@
      },
      {
       "id": "cities-46",
-      "name": "Flocon",
+      "name": "Ville 1 · Icône · Icône 6 · Flocon",
       "parent": "cities-39",
       "type": "ellipse",
       "visible": true,
@@ -2581,7 +2580,7 @@
      },
      {
       "id": "cities-47",
-      "name": "Icône 9:16",
+      "name": "Ville 1 · Icône 9:16",
       "parent": "cities-1",
       "type": "group",
       "visible": false,
@@ -2603,7 +2602,7 @@
      },
      {
       "id": "cities-48",
-      "name": "Icône 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 1",
       "parent": "cities-47",
       "type": "group",
       "visible": true,
@@ -2620,7 +2619,7 @@
      },
      {
       "id": "cities-49",
-      "name": "Halo",
+      "name": "Ville 1 · Icône 9:16 · Icône 1 · Halo",
       "parent": "cities-48",
       "type": "ellipse",
       "visible": true,
@@ -2646,7 +2645,7 @@
      },
      {
       "id": "cities-50",
-      "name": "Soleil",
+      "name": "Ville 1 · Icône 9:16 · Icône 1 · Soleil",
       "parent": "cities-48",
       "type": "ellipse",
       "visible": true,
@@ -2672,7 +2671,7 @@
      },
      {
       "id": "cities-51",
-      "name": "Icône 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 2",
       "parent": "cities-47",
       "type": "group",
       "visible": true,
@@ -2689,7 +2688,7 @@
      },
      {
       "id": "cities-52",
-      "name": "Halo",
+      "name": "Ville 1 · Icône 9:16 · Icône 2 · Halo",
       "parent": "cities-51",
       "type": "ellipse",
       "visible": true,
@@ -2715,7 +2714,7 @@
      },
      {
       "id": "cities-53",
-      "name": "Soleil",
+      "name": "Ville 1 · Icône 9:16 · Icône 2 · Soleil",
       "parent": "cities-51",
       "type": "ellipse",
       "visible": true,
@@ -2741,7 +2740,7 @@
      },
      {
       "id": "cities-54",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 2 · Nuage 1",
       "parent": "cities-51",
       "type": "ellipse",
       "visible": true,
@@ -2763,7 +2762,7 @@
      },
      {
       "id": "cities-55",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 2 · Nuage 2",
       "parent": "cities-51",
       "type": "ellipse",
       "visible": true,
@@ -2785,7 +2784,7 @@
      },
      {
       "id": "cities-56",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 2 · Nuage 3",
       "parent": "cities-51",
       "type": "ellipse",
       "visible": true,
@@ -2807,7 +2806,7 @@
      },
      {
       "id": "cities-57",
-      "name": "Base",
+      "name": "Ville 1 · Icône 9:16 · Icône 2 · Base",
       "parent": "cities-51",
       "type": "rect",
       "visible": true,
@@ -2830,7 +2829,7 @@
      },
      {
       "id": "cities-58",
-      "name": "Icône 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 3",
       "parent": "cities-47",
       "type": "group",
       "visible": true,
@@ -2847,7 +2846,7 @@
      },
      {
       "id": "cities-59",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-58",
       "type": "ellipse",
       "visible": true,
@@ -2869,7 +2868,7 @@
      },
      {
       "id": "cities-60",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-58",
       "type": "ellipse",
       "visible": true,
@@ -2891,7 +2890,7 @@
      },
      {
       "id": "cities-61",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-58",
       "type": "ellipse",
       "visible": true,
@@ -2913,7 +2912,7 @@
      },
      {
       "id": "cities-62",
-      "name": "Base",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-58",
       "type": "rect",
       "visible": true,
@@ -2936,7 +2935,7 @@
      },
      {
       "id": "cities-63",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-58",
       "type": "ellipse",
       "visible": true,
@@ -2958,7 +2957,7 @@
      },
      {
       "id": "cities-64",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-58",
       "type": "ellipse",
       "visible": true,
@@ -2980,7 +2979,7 @@
      },
      {
       "id": "cities-65",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-58",
       "type": "ellipse",
       "visible": true,
@@ -3002,7 +3001,7 @@
      },
      {
       "id": "cities-66",
-      "name": "Base",
+      "name": "Ville 1 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-58",
       "type": "rect",
       "visible": true,
@@ -3025,7 +3024,7 @@
      },
      {
       "id": "cities-67",
-      "name": "Icône 4",
+      "name": "Ville 1 · Icône 9:16 · Icône 4",
       "parent": "cities-47",
       "type": "group",
       "visible": true,
@@ -3042,7 +3041,7 @@
      },
      {
       "id": "cities-68",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Nuage 1",
       "parent": "cities-67",
       "type": "ellipse",
       "visible": true,
@@ -3064,7 +3063,7 @@
      },
      {
       "id": "cities-69",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Nuage 2",
       "parent": "cities-67",
       "type": "ellipse",
       "visible": true,
@@ -3086,7 +3085,7 @@
      },
      {
       "id": "cities-70",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Nuage 3",
       "parent": "cities-67",
       "type": "ellipse",
       "visible": true,
@@ -3108,7 +3107,7 @@
      },
      {
       "id": "cities-71",
-      "name": "Base",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Base",
       "parent": "cities-67",
       "type": "rect",
       "visible": true,
@@ -3131,7 +3130,7 @@
      },
      {
       "id": "cities-72",
-      "name": "Goutte",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-67",
       "type": "rect",
       "visible": true,
@@ -3155,7 +3154,7 @@
      },
      {
       "id": "cities-73",
-      "name": "Goutte",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-67",
       "type": "rect",
       "visible": true,
@@ -3179,7 +3178,7 @@
      },
      {
       "id": "cities-74",
-      "name": "Goutte",
+      "name": "Ville 1 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-67",
       "type": "rect",
       "visible": true,
@@ -3203,7 +3202,7 @@
      },
      {
       "id": "cities-75",
-      "name": "Icône 5",
+      "name": "Ville 1 · Icône 9:16 · Icône 5",
       "parent": "cities-47",
       "type": "group",
       "visible": true,
@@ -3220,7 +3219,7 @@
      },
      {
       "id": "cities-76",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 5 · Nuage 1",
       "parent": "cities-75",
       "type": "ellipse",
       "visible": true,
@@ -3242,7 +3241,7 @@
      },
      {
       "id": "cities-77",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 5 · Nuage 2",
       "parent": "cities-75",
       "type": "ellipse",
       "visible": true,
@@ -3264,7 +3263,7 @@
      },
      {
       "id": "cities-78",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 5 · Nuage 3",
       "parent": "cities-75",
       "type": "ellipse",
       "visible": true,
@@ -3286,7 +3285,7 @@
      },
      {
       "id": "cities-79",
-      "name": "Base",
+      "name": "Ville 1 · Icône 9:16 · Icône 5 · Base",
       "parent": "cities-75",
       "type": "rect",
       "visible": true,
@@ -3309,7 +3308,7 @@
      },
      {
       "id": "cities-80",
-      "name": "Éclair",
+      "name": "Ville 1 · Icône 9:16 · Icône 5 · Éclair",
       "parent": "cities-75",
       "type": "polygon",
       "visible": true,
@@ -3362,7 +3361,7 @@
      },
      {
       "id": "cities-81",
-      "name": "Icône 6",
+      "name": "Ville 1 · Icône 9:16 · Icône 6",
       "parent": "cities-47",
       "type": "group",
       "visible": true,
@@ -3379,7 +3378,7 @@
      },
      {
       "id": "cities-82",
-      "name": "Nuage 1",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Nuage 1",
       "parent": "cities-81",
       "type": "ellipse",
       "visible": true,
@@ -3401,7 +3400,7 @@
      },
      {
       "id": "cities-83",
-      "name": "Nuage 2",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Nuage 2",
       "parent": "cities-81",
       "type": "ellipse",
       "visible": true,
@@ -3423,7 +3422,7 @@
      },
      {
       "id": "cities-84",
-      "name": "Nuage 3",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Nuage 3",
       "parent": "cities-81",
       "type": "ellipse",
       "visible": true,
@@ -3445,7 +3444,7 @@
      },
      {
       "id": "cities-85",
-      "name": "Base",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Base",
       "parent": "cities-81",
       "type": "rect",
       "visible": true,
@@ -3468,7 +3467,7 @@
      },
      {
       "id": "cities-86",
-      "name": "Flocon",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-81",
       "type": "ellipse",
       "visible": true,
@@ -3490,7 +3489,7 @@
      },
      {
       "id": "cities-87",
-      "name": "Flocon",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-81",
       "type": "ellipse",
       "visible": true,
@@ -3512,7 +3511,7 @@
      },
      {
       "id": "cities-88",
-      "name": "Flocon",
+      "name": "Ville 1 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-81",
       "type": "ellipse",
       "visible": true,
@@ -3534,7 +3533,7 @@
      },
      {
       "id": "cities-89",
-      "name": "Max",
+      "name": "Ville 1 · Max",
       "parent": "cities-1",
       "type": "counter",
       "visible": true,
@@ -3580,7 +3579,7 @@
      },
      {
       "id": "cities-90",
-      "name": "Min",
+      "name": "Ville 1 · Min",
       "parent": "cities-1",
       "type": "counter",
       "visible": true,
@@ -3836,7 +3835,7 @@
      },
      {
       "id": "cities-92",
-      "name": "Verre",
+      "name": "Ville 2 · Verre",
       "parent": "cities-91",
       "type": "rect",
       "visible": true,
@@ -3879,7 +3878,7 @@
      },
      {
       "id": "cities-93",
-      "name": "Ville",
+      "name": "Ville 2 · Ville",
       "parent": "cities-91",
       "type": "text",
       "visible": true,
@@ -3919,7 +3918,7 @@
      },
      {
       "id": "cities-94",
-      "name": "Temps",
+      "name": "Ville 2 · Temps",
       "parent": "cities-91",
       "type": "text",
       "visible": true,
@@ -3959,7 +3958,7 @@
      },
      {
       "id": "cities-95",
-      "name": "Icône",
+      "name": "Ville 2 · Icône",
       "parent": "cities-91",
       "type": "group",
       "visible": true,
@@ -3981,7 +3980,7 @@
      },
      {
       "id": "cities-96",
-      "name": "Icône 1",
+      "name": "Ville 2 · Icône · Icône 1",
       "parent": "cities-95",
       "type": "group",
       "visible": true,
@@ -3998,7 +3997,7 @@
      },
      {
       "id": "cities-97",
-      "name": "Halo",
+      "name": "Ville 2 · Icône · Icône 1 · Halo",
       "parent": "cities-96",
       "type": "ellipse",
       "visible": true,
@@ -4024,7 +4023,7 @@
      },
      {
       "id": "cities-98",
-      "name": "Soleil",
+      "name": "Ville 2 · Icône · Icône 1 · Soleil",
       "parent": "cities-96",
       "type": "ellipse",
       "visible": true,
@@ -4050,7 +4049,7 @@
      },
      {
       "id": "cities-99",
-      "name": "Icône 2",
+      "name": "Ville 2 · Icône · Icône 2",
       "parent": "cities-95",
       "type": "group",
       "visible": true,
@@ -4067,7 +4066,7 @@
      },
      {
       "id": "cities-100",
-      "name": "Halo",
+      "name": "Ville 2 · Icône · Icône 2 · Halo",
       "parent": "cities-99",
       "type": "ellipse",
       "visible": true,
@@ -4093,7 +4092,7 @@
      },
      {
       "id": "cities-101",
-      "name": "Soleil",
+      "name": "Ville 2 · Icône · Icône 2 · Soleil",
       "parent": "cities-99",
       "type": "ellipse",
       "visible": true,
@@ -4119,7 +4118,7 @@
      },
      {
       "id": "cities-102",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône · Icône 2 · Nuage 1",
       "parent": "cities-99",
       "type": "ellipse",
       "visible": true,
@@ -4141,7 +4140,7 @@
      },
      {
       "id": "cities-103",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône · Icône 2 · Nuage 2",
       "parent": "cities-99",
       "type": "ellipse",
       "visible": true,
@@ -4163,7 +4162,7 @@
      },
      {
       "id": "cities-104",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône · Icône 2 · Nuage 3",
       "parent": "cities-99",
       "type": "ellipse",
       "visible": true,
@@ -4185,7 +4184,7 @@
      },
      {
       "id": "cities-105",
-      "name": "Base",
+      "name": "Ville 2 · Icône · Icône 2 · Base",
       "parent": "cities-99",
       "type": "rect",
       "visible": true,
@@ -4208,7 +4207,7 @@
      },
      {
       "id": "cities-106",
-      "name": "Icône 3",
+      "name": "Ville 2 · Icône · Icône 3",
       "parent": "cities-95",
       "type": "group",
       "visible": true,
@@ -4225,7 +4224,7 @@
      },
      {
       "id": "cities-107",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-106",
       "type": "ellipse",
       "visible": true,
@@ -4247,7 +4246,7 @@
      },
      {
       "id": "cities-108",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-106",
       "type": "ellipse",
       "visible": true,
@@ -4269,7 +4268,7 @@
      },
      {
       "id": "cities-109",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-106",
       "type": "ellipse",
       "visible": true,
@@ -4291,7 +4290,7 @@
      },
      {
       "id": "cities-110",
-      "name": "Base",
+      "name": "Ville 2 · Icône · Icône 3 · Base",
       "parent": "cities-106",
       "type": "rect",
       "visible": true,
@@ -4314,7 +4313,7 @@
      },
      {
       "id": "cities-111",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-106",
       "type": "ellipse",
       "visible": true,
@@ -4336,7 +4335,7 @@
      },
      {
       "id": "cities-112",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-106",
       "type": "ellipse",
       "visible": true,
@@ -4358,7 +4357,7 @@
      },
      {
       "id": "cities-113",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-106",
       "type": "ellipse",
       "visible": true,
@@ -4380,7 +4379,7 @@
      },
      {
       "id": "cities-114",
-      "name": "Base",
+      "name": "Ville 2 · Icône · Icône 3 · Base",
       "parent": "cities-106",
       "type": "rect",
       "visible": true,
@@ -4403,7 +4402,7 @@
      },
      {
       "id": "cities-115",
-      "name": "Icône 4",
+      "name": "Ville 2 · Icône · Icône 4",
       "parent": "cities-95",
       "type": "group",
       "visible": true,
@@ -4420,7 +4419,7 @@
      },
      {
       "id": "cities-116",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône · Icône 4 · Nuage 1",
       "parent": "cities-115",
       "type": "ellipse",
       "visible": true,
@@ -4442,7 +4441,7 @@
      },
      {
       "id": "cities-117",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône · Icône 4 · Nuage 2",
       "parent": "cities-115",
       "type": "ellipse",
       "visible": true,
@@ -4464,7 +4463,7 @@
      },
      {
       "id": "cities-118",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône · Icône 4 · Nuage 3",
       "parent": "cities-115",
       "type": "ellipse",
       "visible": true,
@@ -4486,7 +4485,7 @@
      },
      {
       "id": "cities-119",
-      "name": "Base",
+      "name": "Ville 2 · Icône · Icône 4 · Base",
       "parent": "cities-115",
       "type": "rect",
       "visible": true,
@@ -4509,7 +4508,7 @@
      },
      {
       "id": "cities-120",
-      "name": "Goutte",
+      "name": "Ville 2 · Icône · Icône 4 · Goutte",
       "parent": "cities-115",
       "type": "rect",
       "visible": true,
@@ -4533,7 +4532,7 @@
      },
      {
       "id": "cities-121",
-      "name": "Goutte",
+      "name": "Ville 2 · Icône · Icône 4 · Goutte",
       "parent": "cities-115",
       "type": "rect",
       "visible": true,
@@ -4557,7 +4556,7 @@
      },
      {
       "id": "cities-122",
-      "name": "Goutte",
+      "name": "Ville 2 · Icône · Icône 4 · Goutte",
       "parent": "cities-115",
       "type": "rect",
       "visible": true,
@@ -4581,7 +4580,7 @@
      },
      {
       "id": "cities-123",
-      "name": "Icône 5",
+      "name": "Ville 2 · Icône · Icône 5",
       "parent": "cities-95",
       "type": "group",
       "visible": true,
@@ -4598,7 +4597,7 @@
      },
      {
       "id": "cities-124",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône · Icône 5 · Nuage 1",
       "parent": "cities-123",
       "type": "ellipse",
       "visible": true,
@@ -4620,7 +4619,7 @@
      },
      {
       "id": "cities-125",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône · Icône 5 · Nuage 2",
       "parent": "cities-123",
       "type": "ellipse",
       "visible": true,
@@ -4642,7 +4641,7 @@
      },
      {
       "id": "cities-126",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône · Icône 5 · Nuage 3",
       "parent": "cities-123",
       "type": "ellipse",
       "visible": true,
@@ -4664,7 +4663,7 @@
      },
      {
       "id": "cities-127",
-      "name": "Base",
+      "name": "Ville 2 · Icône · Icône 5 · Base",
       "parent": "cities-123",
       "type": "rect",
       "visible": true,
@@ -4687,7 +4686,7 @@
      },
      {
       "id": "cities-128",
-      "name": "Éclair",
+      "name": "Ville 2 · Icône · Icône 5 · Éclair",
       "parent": "cities-123",
       "type": "polygon",
       "visible": true,
@@ -4740,7 +4739,7 @@
      },
      {
       "id": "cities-129",
-      "name": "Icône 6",
+      "name": "Ville 2 · Icône · Icône 6",
       "parent": "cities-95",
       "type": "group",
       "visible": true,
@@ -4757,7 +4756,7 @@
      },
      {
       "id": "cities-130",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône · Icône 6 · Nuage 1",
       "parent": "cities-129",
       "type": "ellipse",
       "visible": true,
@@ -4779,7 +4778,7 @@
      },
      {
       "id": "cities-131",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône · Icône 6 · Nuage 2",
       "parent": "cities-129",
       "type": "ellipse",
       "visible": true,
@@ -4801,7 +4800,7 @@
      },
      {
       "id": "cities-132",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône · Icône 6 · Nuage 3",
       "parent": "cities-129",
       "type": "ellipse",
       "visible": true,
@@ -4823,7 +4822,7 @@
      },
      {
       "id": "cities-133",
-      "name": "Base",
+      "name": "Ville 2 · Icône · Icône 6 · Base",
       "parent": "cities-129",
       "type": "rect",
       "visible": true,
@@ -4846,7 +4845,7 @@
      },
      {
       "id": "cities-134",
-      "name": "Flocon",
+      "name": "Ville 2 · Icône · Icône 6 · Flocon",
       "parent": "cities-129",
       "type": "ellipse",
       "visible": true,
@@ -4868,7 +4867,7 @@
      },
      {
       "id": "cities-135",
-      "name": "Flocon",
+      "name": "Ville 2 · Icône · Icône 6 · Flocon",
       "parent": "cities-129",
       "type": "ellipse",
       "visible": true,
@@ -4890,7 +4889,7 @@
      },
      {
       "id": "cities-136",
-      "name": "Flocon",
+      "name": "Ville 2 · Icône · Icône 6 · Flocon",
       "parent": "cities-129",
       "type": "ellipse",
       "visible": true,
@@ -4912,7 +4911,7 @@
      },
      {
       "id": "cities-137",
-      "name": "Icône 9:16",
+      "name": "Ville 2 · Icône 9:16",
       "parent": "cities-91",
       "type": "group",
       "visible": false,
@@ -4934,7 +4933,7 @@
      },
      {
       "id": "cities-138",
-      "name": "Icône 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 1",
       "parent": "cities-137",
       "type": "group",
       "visible": true,
@@ -4951,7 +4950,7 @@
      },
      {
       "id": "cities-139",
-      "name": "Halo",
+      "name": "Ville 2 · Icône 9:16 · Icône 1 · Halo",
       "parent": "cities-138",
       "type": "ellipse",
       "visible": true,
@@ -4977,7 +4976,7 @@
      },
      {
       "id": "cities-140",
-      "name": "Soleil",
+      "name": "Ville 2 · Icône 9:16 · Icône 1 · Soleil",
       "parent": "cities-138",
       "type": "ellipse",
       "visible": true,
@@ -5003,7 +5002,7 @@
      },
      {
       "id": "cities-141",
-      "name": "Icône 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 2",
       "parent": "cities-137",
       "type": "group",
       "visible": true,
@@ -5020,7 +5019,7 @@
      },
      {
       "id": "cities-142",
-      "name": "Halo",
+      "name": "Ville 2 · Icône 9:16 · Icône 2 · Halo",
       "parent": "cities-141",
       "type": "ellipse",
       "visible": true,
@@ -5046,7 +5045,7 @@
      },
      {
       "id": "cities-143",
-      "name": "Soleil",
+      "name": "Ville 2 · Icône 9:16 · Icône 2 · Soleil",
       "parent": "cities-141",
       "type": "ellipse",
       "visible": true,
@@ -5072,7 +5071,7 @@
      },
      {
       "id": "cities-144",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 2 · Nuage 1",
       "parent": "cities-141",
       "type": "ellipse",
       "visible": true,
@@ -5094,7 +5093,7 @@
      },
      {
       "id": "cities-145",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 2 · Nuage 2",
       "parent": "cities-141",
       "type": "ellipse",
       "visible": true,
@@ -5116,7 +5115,7 @@
      },
      {
       "id": "cities-146",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 2 · Nuage 3",
       "parent": "cities-141",
       "type": "ellipse",
       "visible": true,
@@ -5138,7 +5137,7 @@
      },
      {
       "id": "cities-147",
-      "name": "Base",
+      "name": "Ville 2 · Icône 9:16 · Icône 2 · Base",
       "parent": "cities-141",
       "type": "rect",
       "visible": true,
@@ -5161,7 +5160,7 @@
      },
      {
       "id": "cities-148",
-      "name": "Icône 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 3",
       "parent": "cities-137",
       "type": "group",
       "visible": true,
@@ -5178,7 +5177,7 @@
      },
      {
       "id": "cities-149",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-148",
       "type": "ellipse",
       "visible": true,
@@ -5200,7 +5199,7 @@
      },
      {
       "id": "cities-150",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-148",
       "type": "ellipse",
       "visible": true,
@@ -5222,7 +5221,7 @@
      },
      {
       "id": "cities-151",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-148",
       "type": "ellipse",
       "visible": true,
@@ -5244,7 +5243,7 @@
      },
      {
       "id": "cities-152",
-      "name": "Base",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-148",
       "type": "rect",
       "visible": true,
@@ -5267,7 +5266,7 @@
      },
      {
       "id": "cities-153",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-148",
       "type": "ellipse",
       "visible": true,
@@ -5289,7 +5288,7 @@
      },
      {
       "id": "cities-154",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-148",
       "type": "ellipse",
       "visible": true,
@@ -5311,7 +5310,7 @@
      },
      {
       "id": "cities-155",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-148",
       "type": "ellipse",
       "visible": true,
@@ -5333,7 +5332,7 @@
      },
      {
       "id": "cities-156",
-      "name": "Base",
+      "name": "Ville 2 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-148",
       "type": "rect",
       "visible": true,
@@ -5356,7 +5355,7 @@
      },
      {
       "id": "cities-157",
-      "name": "Icône 4",
+      "name": "Ville 2 · Icône 9:16 · Icône 4",
       "parent": "cities-137",
       "type": "group",
       "visible": true,
@@ -5373,7 +5372,7 @@
      },
      {
       "id": "cities-158",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Nuage 1",
       "parent": "cities-157",
       "type": "ellipse",
       "visible": true,
@@ -5395,7 +5394,7 @@
      },
      {
       "id": "cities-159",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Nuage 2",
       "parent": "cities-157",
       "type": "ellipse",
       "visible": true,
@@ -5417,7 +5416,7 @@
      },
      {
       "id": "cities-160",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Nuage 3",
       "parent": "cities-157",
       "type": "ellipse",
       "visible": true,
@@ -5439,7 +5438,7 @@
      },
      {
       "id": "cities-161",
-      "name": "Base",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Base",
       "parent": "cities-157",
       "type": "rect",
       "visible": true,
@@ -5462,7 +5461,7 @@
      },
      {
       "id": "cities-162",
-      "name": "Goutte",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-157",
       "type": "rect",
       "visible": true,
@@ -5486,7 +5485,7 @@
      },
      {
       "id": "cities-163",
-      "name": "Goutte",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-157",
       "type": "rect",
       "visible": true,
@@ -5510,7 +5509,7 @@
      },
      {
       "id": "cities-164",
-      "name": "Goutte",
+      "name": "Ville 2 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-157",
       "type": "rect",
       "visible": true,
@@ -5534,7 +5533,7 @@
      },
      {
       "id": "cities-165",
-      "name": "Icône 5",
+      "name": "Ville 2 · Icône 9:16 · Icône 5",
       "parent": "cities-137",
       "type": "group",
       "visible": true,
@@ -5551,7 +5550,7 @@
      },
      {
       "id": "cities-166",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 5 · Nuage 1",
       "parent": "cities-165",
       "type": "ellipse",
       "visible": true,
@@ -5573,7 +5572,7 @@
      },
      {
       "id": "cities-167",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 5 · Nuage 2",
       "parent": "cities-165",
       "type": "ellipse",
       "visible": true,
@@ -5595,7 +5594,7 @@
      },
      {
       "id": "cities-168",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 5 · Nuage 3",
       "parent": "cities-165",
       "type": "ellipse",
       "visible": true,
@@ -5617,7 +5616,7 @@
      },
      {
       "id": "cities-169",
-      "name": "Base",
+      "name": "Ville 2 · Icône 9:16 · Icône 5 · Base",
       "parent": "cities-165",
       "type": "rect",
       "visible": true,
@@ -5640,7 +5639,7 @@
      },
      {
       "id": "cities-170",
-      "name": "Éclair",
+      "name": "Ville 2 · Icône 9:16 · Icône 5 · Éclair",
       "parent": "cities-165",
       "type": "polygon",
       "visible": true,
@@ -5693,7 +5692,7 @@
      },
      {
       "id": "cities-171",
-      "name": "Icône 6",
+      "name": "Ville 2 · Icône 9:16 · Icône 6",
       "parent": "cities-137",
       "type": "group",
       "visible": true,
@@ -5710,7 +5709,7 @@
      },
      {
       "id": "cities-172",
-      "name": "Nuage 1",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Nuage 1",
       "parent": "cities-171",
       "type": "ellipse",
       "visible": true,
@@ -5732,7 +5731,7 @@
      },
      {
       "id": "cities-173",
-      "name": "Nuage 2",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Nuage 2",
       "parent": "cities-171",
       "type": "ellipse",
       "visible": true,
@@ -5754,7 +5753,7 @@
      },
      {
       "id": "cities-174",
-      "name": "Nuage 3",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Nuage 3",
       "parent": "cities-171",
       "type": "ellipse",
       "visible": true,
@@ -5776,7 +5775,7 @@
      },
      {
       "id": "cities-175",
-      "name": "Base",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Base",
       "parent": "cities-171",
       "type": "rect",
       "visible": true,
@@ -5799,7 +5798,7 @@
      },
      {
       "id": "cities-176",
-      "name": "Flocon",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-171",
       "type": "ellipse",
       "visible": true,
@@ -5821,7 +5820,7 @@
      },
      {
       "id": "cities-177",
-      "name": "Flocon",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-171",
       "type": "ellipse",
       "visible": true,
@@ -5843,7 +5842,7 @@
      },
      {
       "id": "cities-178",
-      "name": "Flocon",
+      "name": "Ville 2 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-171",
       "type": "ellipse",
       "visible": true,
@@ -5865,7 +5864,7 @@
      },
      {
       "id": "cities-179",
-      "name": "Max",
+      "name": "Ville 2 · Max",
       "parent": "cities-91",
       "type": "counter",
       "visible": true,
@@ -5911,7 +5910,7 @@
      },
      {
       "id": "cities-180",
-      "name": "Min",
+      "name": "Ville 2 · Min",
       "parent": "cities-91",
       "type": "counter",
       "visible": true,
@@ -6167,7 +6166,7 @@
      },
      {
       "id": "cities-182",
-      "name": "Verre",
+      "name": "Ville 3 · Verre",
       "parent": "cities-181",
       "type": "rect",
       "visible": true,
@@ -6210,7 +6209,7 @@
      },
      {
       "id": "cities-183",
-      "name": "Ville",
+      "name": "Ville 3 · Ville",
       "parent": "cities-181",
       "type": "text",
       "visible": true,
@@ -6250,7 +6249,7 @@
      },
      {
       "id": "cities-184",
-      "name": "Temps",
+      "name": "Ville 3 · Temps",
       "parent": "cities-181",
       "type": "text",
       "visible": true,
@@ -6290,7 +6289,7 @@
      },
      {
       "id": "cities-185",
-      "name": "Icône",
+      "name": "Ville 3 · Icône",
       "parent": "cities-181",
       "type": "group",
       "visible": true,
@@ -6312,7 +6311,7 @@
      },
      {
       "id": "cities-186",
-      "name": "Icône 1",
+      "name": "Ville 3 · Icône · Icône 1",
       "parent": "cities-185",
       "type": "group",
       "visible": true,
@@ -6329,7 +6328,7 @@
      },
      {
       "id": "cities-187",
-      "name": "Halo",
+      "name": "Ville 3 · Icône · Icône 1 · Halo",
       "parent": "cities-186",
       "type": "ellipse",
       "visible": true,
@@ -6355,7 +6354,7 @@
      },
      {
       "id": "cities-188",
-      "name": "Soleil",
+      "name": "Ville 3 · Icône · Icône 1 · Soleil",
       "parent": "cities-186",
       "type": "ellipse",
       "visible": true,
@@ -6381,7 +6380,7 @@
      },
      {
       "id": "cities-189",
-      "name": "Icône 2",
+      "name": "Ville 3 · Icône · Icône 2",
       "parent": "cities-185",
       "type": "group",
       "visible": true,
@@ -6398,7 +6397,7 @@
      },
      {
       "id": "cities-190",
-      "name": "Halo",
+      "name": "Ville 3 · Icône · Icône 2 · Halo",
       "parent": "cities-189",
       "type": "ellipse",
       "visible": true,
@@ -6424,7 +6423,7 @@
      },
      {
       "id": "cities-191",
-      "name": "Soleil",
+      "name": "Ville 3 · Icône · Icône 2 · Soleil",
       "parent": "cities-189",
       "type": "ellipse",
       "visible": true,
@@ -6450,7 +6449,7 @@
      },
      {
       "id": "cities-192",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône · Icône 2 · Nuage 1",
       "parent": "cities-189",
       "type": "ellipse",
       "visible": true,
@@ -6472,7 +6471,7 @@
      },
      {
       "id": "cities-193",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône · Icône 2 · Nuage 2",
       "parent": "cities-189",
       "type": "ellipse",
       "visible": true,
@@ -6494,7 +6493,7 @@
      },
      {
       "id": "cities-194",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône · Icône 2 · Nuage 3",
       "parent": "cities-189",
       "type": "ellipse",
       "visible": true,
@@ -6516,7 +6515,7 @@
      },
      {
       "id": "cities-195",
-      "name": "Base",
+      "name": "Ville 3 · Icône · Icône 2 · Base",
       "parent": "cities-189",
       "type": "rect",
       "visible": true,
@@ -6539,7 +6538,7 @@
      },
      {
       "id": "cities-196",
-      "name": "Icône 3",
+      "name": "Ville 3 · Icône · Icône 3",
       "parent": "cities-185",
       "type": "group",
       "visible": true,
@@ -6556,7 +6555,7 @@
      },
      {
       "id": "cities-197",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-196",
       "type": "ellipse",
       "visible": true,
@@ -6578,7 +6577,7 @@
      },
      {
       "id": "cities-198",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-196",
       "type": "ellipse",
       "visible": true,
@@ -6600,7 +6599,7 @@
      },
      {
       "id": "cities-199",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-196",
       "type": "ellipse",
       "visible": true,
@@ -6622,7 +6621,7 @@
      },
      {
       "id": "cities-200",
-      "name": "Base",
+      "name": "Ville 3 · Icône · Icône 3 · Base",
       "parent": "cities-196",
       "type": "rect",
       "visible": true,
@@ -6645,7 +6644,7 @@
      },
      {
       "id": "cities-201",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-196",
       "type": "ellipse",
       "visible": true,
@@ -6667,7 +6666,7 @@
      },
      {
       "id": "cities-202",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-196",
       "type": "ellipse",
       "visible": true,
@@ -6689,7 +6688,7 @@
      },
      {
       "id": "cities-203",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-196",
       "type": "ellipse",
       "visible": true,
@@ -6711,7 +6710,7 @@
      },
      {
       "id": "cities-204",
-      "name": "Base",
+      "name": "Ville 3 · Icône · Icône 3 · Base",
       "parent": "cities-196",
       "type": "rect",
       "visible": true,
@@ -6734,7 +6733,7 @@
      },
      {
       "id": "cities-205",
-      "name": "Icône 4",
+      "name": "Ville 3 · Icône · Icône 4",
       "parent": "cities-185",
       "type": "group",
       "visible": true,
@@ -6751,7 +6750,7 @@
      },
      {
       "id": "cities-206",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône · Icône 4 · Nuage 1",
       "parent": "cities-205",
       "type": "ellipse",
       "visible": true,
@@ -6773,7 +6772,7 @@
      },
      {
       "id": "cities-207",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône · Icône 4 · Nuage 2",
       "parent": "cities-205",
       "type": "ellipse",
       "visible": true,
@@ -6795,7 +6794,7 @@
      },
      {
       "id": "cities-208",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône · Icône 4 · Nuage 3",
       "parent": "cities-205",
       "type": "ellipse",
       "visible": true,
@@ -6817,7 +6816,7 @@
      },
      {
       "id": "cities-209",
-      "name": "Base",
+      "name": "Ville 3 · Icône · Icône 4 · Base",
       "parent": "cities-205",
       "type": "rect",
       "visible": true,
@@ -6840,7 +6839,7 @@
      },
      {
       "id": "cities-210",
-      "name": "Goutte",
+      "name": "Ville 3 · Icône · Icône 4 · Goutte",
       "parent": "cities-205",
       "type": "rect",
       "visible": true,
@@ -6864,7 +6863,7 @@
      },
      {
       "id": "cities-211",
-      "name": "Goutte",
+      "name": "Ville 3 · Icône · Icône 4 · Goutte",
       "parent": "cities-205",
       "type": "rect",
       "visible": true,
@@ -6888,7 +6887,7 @@
      },
      {
       "id": "cities-212",
-      "name": "Goutte",
+      "name": "Ville 3 · Icône · Icône 4 · Goutte",
       "parent": "cities-205",
       "type": "rect",
       "visible": true,
@@ -6912,7 +6911,7 @@
      },
      {
       "id": "cities-213",
-      "name": "Icône 5",
+      "name": "Ville 3 · Icône · Icône 5",
       "parent": "cities-185",
       "type": "group",
       "visible": true,
@@ -6929,7 +6928,7 @@
      },
      {
       "id": "cities-214",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône · Icône 5 · Nuage 1",
       "parent": "cities-213",
       "type": "ellipse",
       "visible": true,
@@ -6951,7 +6950,7 @@
      },
      {
       "id": "cities-215",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône · Icône 5 · Nuage 2",
       "parent": "cities-213",
       "type": "ellipse",
       "visible": true,
@@ -6973,7 +6972,7 @@
      },
      {
       "id": "cities-216",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône · Icône 5 · Nuage 3",
       "parent": "cities-213",
       "type": "ellipse",
       "visible": true,
@@ -6995,7 +6994,7 @@
      },
      {
       "id": "cities-217",
-      "name": "Base",
+      "name": "Ville 3 · Icône · Icône 5 · Base",
       "parent": "cities-213",
       "type": "rect",
       "visible": true,
@@ -7018,7 +7017,7 @@
      },
      {
       "id": "cities-218",
-      "name": "Éclair",
+      "name": "Ville 3 · Icône · Icône 5 · Éclair",
       "parent": "cities-213",
       "type": "polygon",
       "visible": true,
@@ -7071,7 +7070,7 @@
      },
      {
       "id": "cities-219",
-      "name": "Icône 6",
+      "name": "Ville 3 · Icône · Icône 6",
       "parent": "cities-185",
       "type": "group",
       "visible": true,
@@ -7088,7 +7087,7 @@
      },
      {
       "id": "cities-220",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône · Icône 6 · Nuage 1",
       "parent": "cities-219",
       "type": "ellipse",
       "visible": true,
@@ -7110,7 +7109,7 @@
      },
      {
       "id": "cities-221",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône · Icône 6 · Nuage 2",
       "parent": "cities-219",
       "type": "ellipse",
       "visible": true,
@@ -7132,7 +7131,7 @@
      },
      {
       "id": "cities-222",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône · Icône 6 · Nuage 3",
       "parent": "cities-219",
       "type": "ellipse",
       "visible": true,
@@ -7154,7 +7153,7 @@
      },
      {
       "id": "cities-223",
-      "name": "Base",
+      "name": "Ville 3 · Icône · Icône 6 · Base",
       "parent": "cities-219",
       "type": "rect",
       "visible": true,
@@ -7177,7 +7176,7 @@
      },
      {
       "id": "cities-224",
-      "name": "Flocon",
+      "name": "Ville 3 · Icône · Icône 6 · Flocon",
       "parent": "cities-219",
       "type": "ellipse",
       "visible": true,
@@ -7199,7 +7198,7 @@
      },
      {
       "id": "cities-225",
-      "name": "Flocon",
+      "name": "Ville 3 · Icône · Icône 6 · Flocon",
       "parent": "cities-219",
       "type": "ellipse",
       "visible": true,
@@ -7221,7 +7220,7 @@
      },
      {
       "id": "cities-226",
-      "name": "Flocon",
+      "name": "Ville 3 · Icône · Icône 6 · Flocon",
       "parent": "cities-219",
       "type": "ellipse",
       "visible": true,
@@ -7243,7 +7242,7 @@
      },
      {
       "id": "cities-227",
-      "name": "Icône 9:16",
+      "name": "Ville 3 · Icône 9:16",
       "parent": "cities-181",
       "type": "group",
       "visible": false,
@@ -7265,7 +7264,7 @@
      },
      {
       "id": "cities-228",
-      "name": "Icône 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 1",
       "parent": "cities-227",
       "type": "group",
       "visible": true,
@@ -7282,7 +7281,7 @@
      },
      {
       "id": "cities-229",
-      "name": "Halo",
+      "name": "Ville 3 · Icône 9:16 · Icône 1 · Halo",
       "parent": "cities-228",
       "type": "ellipse",
       "visible": true,
@@ -7308,7 +7307,7 @@
      },
      {
       "id": "cities-230",
-      "name": "Soleil",
+      "name": "Ville 3 · Icône 9:16 · Icône 1 · Soleil",
       "parent": "cities-228",
       "type": "ellipse",
       "visible": true,
@@ -7334,7 +7333,7 @@
      },
      {
       "id": "cities-231",
-      "name": "Icône 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 2",
       "parent": "cities-227",
       "type": "group",
       "visible": true,
@@ -7351,7 +7350,7 @@
      },
      {
       "id": "cities-232",
-      "name": "Halo",
+      "name": "Ville 3 · Icône 9:16 · Icône 2 · Halo",
       "parent": "cities-231",
       "type": "ellipse",
       "visible": true,
@@ -7377,7 +7376,7 @@
      },
      {
       "id": "cities-233",
-      "name": "Soleil",
+      "name": "Ville 3 · Icône 9:16 · Icône 2 · Soleil",
       "parent": "cities-231",
       "type": "ellipse",
       "visible": true,
@@ -7403,7 +7402,7 @@
      },
      {
       "id": "cities-234",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 2 · Nuage 1",
       "parent": "cities-231",
       "type": "ellipse",
       "visible": true,
@@ -7425,7 +7424,7 @@
      },
      {
       "id": "cities-235",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 2 · Nuage 2",
       "parent": "cities-231",
       "type": "ellipse",
       "visible": true,
@@ -7447,7 +7446,7 @@
      },
      {
       "id": "cities-236",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 2 · Nuage 3",
       "parent": "cities-231",
       "type": "ellipse",
       "visible": true,
@@ -7469,7 +7468,7 @@
      },
      {
       "id": "cities-237",
-      "name": "Base",
+      "name": "Ville 3 · Icône 9:16 · Icône 2 · Base",
       "parent": "cities-231",
       "type": "rect",
       "visible": true,
@@ -7492,7 +7491,7 @@
      },
      {
       "id": "cities-238",
-      "name": "Icône 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 3",
       "parent": "cities-227",
       "type": "group",
       "visible": true,
@@ -7509,7 +7508,7 @@
      },
      {
       "id": "cities-239",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-238",
       "type": "ellipse",
       "visible": true,
@@ -7531,7 +7530,7 @@
      },
      {
       "id": "cities-240",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-238",
       "type": "ellipse",
       "visible": true,
@@ -7553,7 +7552,7 @@
      },
      {
       "id": "cities-241",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-238",
       "type": "ellipse",
       "visible": true,
@@ -7575,7 +7574,7 @@
      },
      {
       "id": "cities-242",
-      "name": "Base",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-238",
       "type": "rect",
       "visible": true,
@@ -7598,7 +7597,7 @@
      },
      {
       "id": "cities-243",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-238",
       "type": "ellipse",
       "visible": true,
@@ -7620,7 +7619,7 @@
      },
      {
       "id": "cities-244",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-238",
       "type": "ellipse",
       "visible": true,
@@ -7642,7 +7641,7 @@
      },
      {
       "id": "cities-245",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-238",
       "type": "ellipse",
       "visible": true,
@@ -7664,7 +7663,7 @@
      },
      {
       "id": "cities-246",
-      "name": "Base",
+      "name": "Ville 3 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-238",
       "type": "rect",
       "visible": true,
@@ -7687,7 +7686,7 @@
      },
      {
       "id": "cities-247",
-      "name": "Icône 4",
+      "name": "Ville 3 · Icône 9:16 · Icône 4",
       "parent": "cities-227",
       "type": "group",
       "visible": true,
@@ -7704,7 +7703,7 @@
      },
      {
       "id": "cities-248",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Nuage 1",
       "parent": "cities-247",
       "type": "ellipse",
       "visible": true,
@@ -7726,7 +7725,7 @@
      },
      {
       "id": "cities-249",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Nuage 2",
       "parent": "cities-247",
       "type": "ellipse",
       "visible": true,
@@ -7748,7 +7747,7 @@
      },
      {
       "id": "cities-250",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Nuage 3",
       "parent": "cities-247",
       "type": "ellipse",
       "visible": true,
@@ -7770,7 +7769,7 @@
      },
      {
       "id": "cities-251",
-      "name": "Base",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Base",
       "parent": "cities-247",
       "type": "rect",
       "visible": true,
@@ -7793,7 +7792,7 @@
      },
      {
       "id": "cities-252",
-      "name": "Goutte",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-247",
       "type": "rect",
       "visible": true,
@@ -7817,7 +7816,7 @@
      },
      {
       "id": "cities-253",
-      "name": "Goutte",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-247",
       "type": "rect",
       "visible": true,
@@ -7841,7 +7840,7 @@
      },
      {
       "id": "cities-254",
-      "name": "Goutte",
+      "name": "Ville 3 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-247",
       "type": "rect",
       "visible": true,
@@ -7865,7 +7864,7 @@
      },
      {
       "id": "cities-255",
-      "name": "Icône 5",
+      "name": "Ville 3 · Icône 9:16 · Icône 5",
       "parent": "cities-227",
       "type": "group",
       "visible": true,
@@ -7882,7 +7881,7 @@
      },
      {
       "id": "cities-256",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 5 · Nuage 1",
       "parent": "cities-255",
       "type": "ellipse",
       "visible": true,
@@ -7904,7 +7903,7 @@
      },
      {
       "id": "cities-257",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 5 · Nuage 2",
       "parent": "cities-255",
       "type": "ellipse",
       "visible": true,
@@ -7926,7 +7925,7 @@
      },
      {
       "id": "cities-258",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 5 · Nuage 3",
       "parent": "cities-255",
       "type": "ellipse",
       "visible": true,
@@ -7948,7 +7947,7 @@
      },
      {
       "id": "cities-259",
-      "name": "Base",
+      "name": "Ville 3 · Icône 9:16 · Icône 5 · Base",
       "parent": "cities-255",
       "type": "rect",
       "visible": true,
@@ -7971,7 +7970,7 @@
      },
      {
       "id": "cities-260",
-      "name": "Éclair",
+      "name": "Ville 3 · Icône 9:16 · Icône 5 · Éclair",
       "parent": "cities-255",
       "type": "polygon",
       "visible": true,
@@ -8024,7 +8023,7 @@
      },
      {
       "id": "cities-261",
-      "name": "Icône 6",
+      "name": "Ville 3 · Icône 9:16 · Icône 6",
       "parent": "cities-227",
       "type": "group",
       "visible": true,
@@ -8041,7 +8040,7 @@
      },
      {
       "id": "cities-262",
-      "name": "Nuage 1",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Nuage 1",
       "parent": "cities-261",
       "type": "ellipse",
       "visible": true,
@@ -8063,7 +8062,7 @@
      },
      {
       "id": "cities-263",
-      "name": "Nuage 2",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Nuage 2",
       "parent": "cities-261",
       "type": "ellipse",
       "visible": true,
@@ -8085,7 +8084,7 @@
      },
      {
       "id": "cities-264",
-      "name": "Nuage 3",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Nuage 3",
       "parent": "cities-261",
       "type": "ellipse",
       "visible": true,
@@ -8107,7 +8106,7 @@
      },
      {
       "id": "cities-265",
-      "name": "Base",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Base",
       "parent": "cities-261",
       "type": "rect",
       "visible": true,
@@ -8130,7 +8129,7 @@
      },
      {
       "id": "cities-266",
-      "name": "Flocon",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-261",
       "type": "ellipse",
       "visible": true,
@@ -8152,7 +8151,7 @@
      },
      {
       "id": "cities-267",
-      "name": "Flocon",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-261",
       "type": "ellipse",
       "visible": true,
@@ -8174,7 +8173,7 @@
      },
      {
       "id": "cities-268",
-      "name": "Flocon",
+      "name": "Ville 3 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-261",
       "type": "ellipse",
       "visible": true,
@@ -8196,7 +8195,7 @@
      },
      {
       "id": "cities-269",
-      "name": "Max",
+      "name": "Ville 3 · Max",
       "parent": "cities-181",
       "type": "counter",
       "visible": true,
@@ -8242,7 +8241,7 @@
      },
      {
       "id": "cities-270",
-      "name": "Min",
+      "name": "Ville 3 · Min",
       "parent": "cities-181",
       "type": "counter",
       "visible": true,
@@ -8498,7 +8497,7 @@
      },
      {
       "id": "cities-272",
-      "name": "Verre",
+      "name": "Ville 4 · Verre",
       "parent": "cities-271",
       "type": "rect",
       "visible": true,
@@ -8541,7 +8540,7 @@
      },
      {
       "id": "cities-273",
-      "name": "Ville",
+      "name": "Ville 4 · Ville",
       "parent": "cities-271",
       "type": "text",
       "visible": true,
@@ -8581,7 +8580,7 @@
      },
      {
       "id": "cities-274",
-      "name": "Temps",
+      "name": "Ville 4 · Temps",
       "parent": "cities-271",
       "type": "text",
       "visible": true,
@@ -8621,7 +8620,7 @@
      },
      {
       "id": "cities-275",
-      "name": "Icône",
+      "name": "Ville 4 · Icône",
       "parent": "cities-271",
       "type": "group",
       "visible": true,
@@ -8643,7 +8642,7 @@
      },
      {
       "id": "cities-276",
-      "name": "Icône 1",
+      "name": "Ville 4 · Icône · Icône 1",
       "parent": "cities-275",
       "type": "group",
       "visible": true,
@@ -8660,7 +8659,7 @@
      },
      {
       "id": "cities-277",
-      "name": "Halo",
+      "name": "Ville 4 · Icône · Icône 1 · Halo",
       "parent": "cities-276",
       "type": "ellipse",
       "visible": true,
@@ -8686,7 +8685,7 @@
      },
      {
       "id": "cities-278",
-      "name": "Soleil",
+      "name": "Ville 4 · Icône · Icône 1 · Soleil",
       "parent": "cities-276",
       "type": "ellipse",
       "visible": true,
@@ -8712,7 +8711,7 @@
      },
      {
       "id": "cities-279",
-      "name": "Icône 2",
+      "name": "Ville 4 · Icône · Icône 2",
       "parent": "cities-275",
       "type": "group",
       "visible": true,
@@ -8729,7 +8728,7 @@
      },
      {
       "id": "cities-280",
-      "name": "Halo",
+      "name": "Ville 4 · Icône · Icône 2 · Halo",
       "parent": "cities-279",
       "type": "ellipse",
       "visible": true,
@@ -8755,7 +8754,7 @@
      },
      {
       "id": "cities-281",
-      "name": "Soleil",
+      "name": "Ville 4 · Icône · Icône 2 · Soleil",
       "parent": "cities-279",
       "type": "ellipse",
       "visible": true,
@@ -8781,7 +8780,7 @@
      },
      {
       "id": "cities-282",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône · Icône 2 · Nuage 1",
       "parent": "cities-279",
       "type": "ellipse",
       "visible": true,
@@ -8803,7 +8802,7 @@
      },
      {
       "id": "cities-283",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône · Icône 2 · Nuage 2",
       "parent": "cities-279",
       "type": "ellipse",
       "visible": true,
@@ -8825,7 +8824,7 @@
      },
      {
       "id": "cities-284",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône · Icône 2 · Nuage 3",
       "parent": "cities-279",
       "type": "ellipse",
       "visible": true,
@@ -8847,7 +8846,7 @@
      },
      {
       "id": "cities-285",
-      "name": "Base",
+      "name": "Ville 4 · Icône · Icône 2 · Base",
       "parent": "cities-279",
       "type": "rect",
       "visible": true,
@@ -8870,7 +8869,7 @@
      },
      {
       "id": "cities-286",
-      "name": "Icône 3",
+      "name": "Ville 4 · Icône · Icône 3",
       "parent": "cities-275",
       "type": "group",
       "visible": true,
@@ -8887,7 +8886,7 @@
      },
      {
       "id": "cities-287",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-286",
       "type": "ellipse",
       "visible": true,
@@ -8909,7 +8908,7 @@
      },
      {
       "id": "cities-288",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-286",
       "type": "ellipse",
       "visible": true,
@@ -8931,7 +8930,7 @@
      },
      {
       "id": "cities-289",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-286",
       "type": "ellipse",
       "visible": true,
@@ -8953,7 +8952,7 @@
      },
      {
       "id": "cities-290",
-      "name": "Base",
+      "name": "Ville 4 · Icône · Icône 3 · Base",
       "parent": "cities-286",
       "type": "rect",
       "visible": true,
@@ -8976,7 +8975,7 @@
      },
      {
       "id": "cities-291",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône · Icône 3 · Nuage 1",
       "parent": "cities-286",
       "type": "ellipse",
       "visible": true,
@@ -8998,7 +8997,7 @@
      },
      {
       "id": "cities-292",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône · Icône 3 · Nuage 2",
       "parent": "cities-286",
       "type": "ellipse",
       "visible": true,
@@ -9020,7 +9019,7 @@
      },
      {
       "id": "cities-293",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône · Icône 3 · Nuage 3",
       "parent": "cities-286",
       "type": "ellipse",
       "visible": true,
@@ -9042,7 +9041,7 @@
      },
      {
       "id": "cities-294",
-      "name": "Base",
+      "name": "Ville 4 · Icône · Icône 3 · Base",
       "parent": "cities-286",
       "type": "rect",
       "visible": true,
@@ -9065,7 +9064,7 @@
      },
      {
       "id": "cities-295",
-      "name": "Icône 4",
+      "name": "Ville 4 · Icône · Icône 4",
       "parent": "cities-275",
       "type": "group",
       "visible": true,
@@ -9082,7 +9081,7 @@
      },
      {
       "id": "cities-296",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône · Icône 4 · Nuage 1",
       "parent": "cities-295",
       "type": "ellipse",
       "visible": true,
@@ -9104,7 +9103,7 @@
      },
      {
       "id": "cities-297",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône · Icône 4 · Nuage 2",
       "parent": "cities-295",
       "type": "ellipse",
       "visible": true,
@@ -9126,7 +9125,7 @@
      },
      {
       "id": "cities-298",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône · Icône 4 · Nuage 3",
       "parent": "cities-295",
       "type": "ellipse",
       "visible": true,
@@ -9148,7 +9147,7 @@
      },
      {
       "id": "cities-299",
-      "name": "Base",
+      "name": "Ville 4 · Icône · Icône 4 · Base",
       "parent": "cities-295",
       "type": "rect",
       "visible": true,
@@ -9171,7 +9170,7 @@
      },
      {
       "id": "cities-300",
-      "name": "Goutte",
+      "name": "Ville 4 · Icône · Icône 4 · Goutte",
       "parent": "cities-295",
       "type": "rect",
       "visible": true,
@@ -9195,7 +9194,7 @@
      },
      {
       "id": "cities-301",
-      "name": "Goutte",
+      "name": "Ville 4 · Icône · Icône 4 · Goutte",
       "parent": "cities-295",
       "type": "rect",
       "visible": true,
@@ -9219,7 +9218,7 @@
      },
      {
       "id": "cities-302",
-      "name": "Goutte",
+      "name": "Ville 4 · Icône · Icône 4 · Goutte",
       "parent": "cities-295",
       "type": "rect",
       "visible": true,
@@ -9243,7 +9242,7 @@
      },
      {
       "id": "cities-303",
-      "name": "Icône 5",
+      "name": "Ville 4 · Icône · Icône 5",
       "parent": "cities-275",
       "type": "group",
       "visible": true,
@@ -9260,7 +9259,7 @@
      },
      {
       "id": "cities-304",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône · Icône 5 · Nuage 1",
       "parent": "cities-303",
       "type": "ellipse",
       "visible": true,
@@ -9282,7 +9281,7 @@
      },
      {
       "id": "cities-305",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône · Icône 5 · Nuage 2",
       "parent": "cities-303",
       "type": "ellipse",
       "visible": true,
@@ -9304,7 +9303,7 @@
      },
      {
       "id": "cities-306",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône · Icône 5 · Nuage 3",
       "parent": "cities-303",
       "type": "ellipse",
       "visible": true,
@@ -9326,7 +9325,7 @@
      },
      {
       "id": "cities-307",
-      "name": "Base",
+      "name": "Ville 4 · Icône · Icône 5 · Base",
       "parent": "cities-303",
       "type": "rect",
       "visible": true,
@@ -9349,7 +9348,7 @@
      },
      {
       "id": "cities-308",
-      "name": "Éclair",
+      "name": "Ville 4 · Icône · Icône 5 · Éclair",
       "parent": "cities-303",
       "type": "polygon",
       "visible": true,
@@ -9402,7 +9401,7 @@
      },
      {
       "id": "cities-309",
-      "name": "Icône 6",
+      "name": "Ville 4 · Icône · Icône 6",
       "parent": "cities-275",
       "type": "group",
       "visible": true,
@@ -9419,7 +9418,7 @@
      },
      {
       "id": "cities-310",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône · Icône 6 · Nuage 1",
       "parent": "cities-309",
       "type": "ellipse",
       "visible": true,
@@ -9441,7 +9440,7 @@
      },
      {
       "id": "cities-311",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône · Icône 6 · Nuage 2",
       "parent": "cities-309",
       "type": "ellipse",
       "visible": true,
@@ -9463,7 +9462,7 @@
      },
      {
       "id": "cities-312",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône · Icône 6 · Nuage 3",
       "parent": "cities-309",
       "type": "ellipse",
       "visible": true,
@@ -9485,7 +9484,7 @@
      },
      {
       "id": "cities-313",
-      "name": "Base",
+      "name": "Ville 4 · Icône · Icône 6 · Base",
       "parent": "cities-309",
       "type": "rect",
       "visible": true,
@@ -9508,7 +9507,7 @@
      },
      {
       "id": "cities-314",
-      "name": "Flocon",
+      "name": "Ville 4 · Icône · Icône 6 · Flocon",
       "parent": "cities-309",
       "type": "ellipse",
       "visible": true,
@@ -9530,7 +9529,7 @@
      },
      {
       "id": "cities-315",
-      "name": "Flocon",
+      "name": "Ville 4 · Icône · Icône 6 · Flocon",
       "parent": "cities-309",
       "type": "ellipse",
       "visible": true,
@@ -9552,7 +9551,7 @@
      },
      {
       "id": "cities-316",
-      "name": "Flocon",
+      "name": "Ville 4 · Icône · Icône 6 · Flocon",
       "parent": "cities-309",
       "type": "ellipse",
       "visible": true,
@@ -9574,7 +9573,7 @@
      },
      {
       "id": "cities-317",
-      "name": "Icône 9:16",
+      "name": "Ville 4 · Icône 9:16",
       "parent": "cities-271",
       "type": "group",
       "visible": false,
@@ -9596,7 +9595,7 @@
      },
      {
       "id": "cities-318",
-      "name": "Icône 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 1",
       "parent": "cities-317",
       "type": "group",
       "visible": true,
@@ -9613,7 +9612,7 @@
      },
      {
       "id": "cities-319",
-      "name": "Halo",
+      "name": "Ville 4 · Icône 9:16 · Icône 1 · Halo",
       "parent": "cities-318",
       "type": "ellipse",
       "visible": true,
@@ -9639,7 +9638,7 @@
      },
      {
       "id": "cities-320",
-      "name": "Soleil",
+      "name": "Ville 4 · Icône 9:16 · Icône 1 · Soleil",
       "parent": "cities-318",
       "type": "ellipse",
       "visible": true,
@@ -9665,7 +9664,7 @@
      },
      {
       "id": "cities-321",
-      "name": "Icône 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 2",
       "parent": "cities-317",
       "type": "group",
       "visible": true,
@@ -9682,7 +9681,7 @@
      },
      {
       "id": "cities-322",
-      "name": "Halo",
+      "name": "Ville 4 · Icône 9:16 · Icône 2 · Halo",
       "parent": "cities-321",
       "type": "ellipse",
       "visible": true,
@@ -9708,7 +9707,7 @@
      },
      {
       "id": "cities-323",
-      "name": "Soleil",
+      "name": "Ville 4 · Icône 9:16 · Icône 2 · Soleil",
       "parent": "cities-321",
       "type": "ellipse",
       "visible": true,
@@ -9734,7 +9733,7 @@
      },
      {
       "id": "cities-324",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 2 · Nuage 1",
       "parent": "cities-321",
       "type": "ellipse",
       "visible": true,
@@ -9756,7 +9755,7 @@
      },
      {
       "id": "cities-325",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 2 · Nuage 2",
       "parent": "cities-321",
       "type": "ellipse",
       "visible": true,
@@ -9778,7 +9777,7 @@
      },
      {
       "id": "cities-326",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 2 · Nuage 3",
       "parent": "cities-321",
       "type": "ellipse",
       "visible": true,
@@ -9800,7 +9799,7 @@
      },
      {
       "id": "cities-327",
-      "name": "Base",
+      "name": "Ville 4 · Icône 9:16 · Icône 2 · Base",
       "parent": "cities-321",
       "type": "rect",
       "visible": true,
@@ -9823,7 +9822,7 @@
      },
      {
       "id": "cities-328",
-      "name": "Icône 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 3",
       "parent": "cities-317",
       "type": "group",
       "visible": true,
@@ -9840,7 +9839,7 @@
      },
      {
       "id": "cities-329",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-328",
       "type": "ellipse",
       "visible": true,
@@ -9862,7 +9861,7 @@
      },
      {
       "id": "cities-330",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-328",
       "type": "ellipse",
       "visible": true,
@@ -9884,7 +9883,7 @@
      },
      {
       "id": "cities-331",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-328",
       "type": "ellipse",
       "visible": true,
@@ -9906,7 +9905,7 @@
      },
      {
       "id": "cities-332",
-      "name": "Base",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-328",
       "type": "rect",
       "visible": true,
@@ -9929,7 +9928,7 @@
      },
      {
       "id": "cities-333",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Nuage 1",
       "parent": "cities-328",
       "type": "ellipse",
       "visible": true,
@@ -9951,7 +9950,7 @@
      },
      {
       "id": "cities-334",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Nuage 2",
       "parent": "cities-328",
       "type": "ellipse",
       "visible": true,
@@ -9973,7 +9972,7 @@
      },
      {
       "id": "cities-335",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Nuage 3",
       "parent": "cities-328",
       "type": "ellipse",
       "visible": true,
@@ -9995,7 +9994,7 @@
      },
      {
       "id": "cities-336",
-      "name": "Base",
+      "name": "Ville 4 · Icône 9:16 · Icône 3 · Base",
       "parent": "cities-328",
       "type": "rect",
       "visible": true,
@@ -10018,7 +10017,7 @@
      },
      {
       "id": "cities-337",
-      "name": "Icône 4",
+      "name": "Ville 4 · Icône 9:16 · Icône 4",
       "parent": "cities-317",
       "type": "group",
       "visible": true,
@@ -10035,7 +10034,7 @@
      },
      {
       "id": "cities-338",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Nuage 1",
       "parent": "cities-337",
       "type": "ellipse",
       "visible": true,
@@ -10057,7 +10056,7 @@
      },
      {
       "id": "cities-339",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Nuage 2",
       "parent": "cities-337",
       "type": "ellipse",
       "visible": true,
@@ -10079,7 +10078,7 @@
      },
      {
       "id": "cities-340",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Nuage 3",
       "parent": "cities-337",
       "type": "ellipse",
       "visible": true,
@@ -10101,7 +10100,7 @@
      },
      {
       "id": "cities-341",
-      "name": "Base",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Base",
       "parent": "cities-337",
       "type": "rect",
       "visible": true,
@@ -10124,7 +10123,7 @@
      },
      {
       "id": "cities-342",
-      "name": "Goutte",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-337",
       "type": "rect",
       "visible": true,
@@ -10148,7 +10147,7 @@
      },
      {
       "id": "cities-343",
-      "name": "Goutte",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-337",
       "type": "rect",
       "visible": true,
@@ -10172,7 +10171,7 @@
      },
      {
       "id": "cities-344",
-      "name": "Goutte",
+      "name": "Ville 4 · Icône 9:16 · Icône 4 · Goutte",
       "parent": "cities-337",
       "type": "rect",
       "visible": true,
@@ -10196,7 +10195,7 @@
      },
      {
       "id": "cities-345",
-      "name": "Icône 5",
+      "name": "Ville 4 · Icône 9:16 · Icône 5",
       "parent": "cities-317",
       "type": "group",
       "visible": true,
@@ -10213,7 +10212,7 @@
      },
      {
       "id": "cities-346",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 5 · Nuage 1",
       "parent": "cities-345",
       "type": "ellipse",
       "visible": true,
@@ -10235,7 +10234,7 @@
      },
      {
       "id": "cities-347",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 5 · Nuage 2",
       "parent": "cities-345",
       "type": "ellipse",
       "visible": true,
@@ -10257,7 +10256,7 @@
      },
      {
       "id": "cities-348",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 5 · Nuage 3",
       "parent": "cities-345",
       "type": "ellipse",
       "visible": true,
@@ -10279,7 +10278,7 @@
      },
      {
       "id": "cities-349",
-      "name": "Base",
+      "name": "Ville 4 · Icône 9:16 · Icône 5 · Base",
       "parent": "cities-345",
       "type": "rect",
       "visible": true,
@@ -10302,7 +10301,7 @@
      },
      {
       "id": "cities-350",
-      "name": "Éclair",
+      "name": "Ville 4 · Icône 9:16 · Icône 5 · Éclair",
       "parent": "cities-345",
       "type": "polygon",
       "visible": true,
@@ -10355,7 +10354,7 @@
      },
      {
       "id": "cities-351",
-      "name": "Icône 6",
+      "name": "Ville 4 · Icône 9:16 · Icône 6",
       "parent": "cities-317",
       "type": "group",
       "visible": true,
@@ -10372,7 +10371,7 @@
      },
      {
       "id": "cities-352",
-      "name": "Nuage 1",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Nuage 1",
       "parent": "cities-351",
       "type": "ellipse",
       "visible": true,
@@ -10394,7 +10393,7 @@
      },
      {
       "id": "cities-353",
-      "name": "Nuage 2",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Nuage 2",
       "parent": "cities-351",
       "type": "ellipse",
       "visible": true,
@@ -10416,7 +10415,7 @@
      },
      {
       "id": "cities-354",
-      "name": "Nuage 3",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Nuage 3",
       "parent": "cities-351",
       "type": "ellipse",
       "visible": true,
@@ -10438,7 +10437,7 @@
      },
      {
       "id": "cities-355",
-      "name": "Base",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Base",
       "parent": "cities-351",
       "type": "rect",
       "visible": true,
@@ -10461,7 +10460,7 @@
      },
      {
       "id": "cities-356",
-      "name": "Flocon",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-351",
       "type": "ellipse",
       "visible": true,
@@ -10483,7 +10482,7 @@
      },
      {
       "id": "cities-357",
-      "name": "Flocon",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-351",
       "type": "ellipse",
       "visible": true,
@@ -10505,7 +10504,7 @@
      },
      {
       "id": "cities-358",
-      "name": "Flocon",
+      "name": "Ville 4 · Icône 9:16 · Icône 6 · Flocon",
       "parent": "cities-351",
       "type": "ellipse",
       "visible": true,
@@ -10527,7 +10526,7 @@
      },
      {
       "id": "cities-359",
-      "name": "Max",
+      "name": "Ville 4 · Max",
       "parent": "cities-271",
       "type": "counter",
       "visible": true,
@@ -10573,7 +10572,7 @@
      },
      {
       "id": "cities-360",
-      "name": "Min",
+      "name": "Ville 4 · Min",
       "parent": "cities-271",
       "type": "counter",
       "visible": true,
@@ -13595,9 +13594,9 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 40.0,
+         "x": 44.0,
          "y": 1400.0,
-         "width": 1000.0,
+         "width": 992.0,
          "height": 440.0
         }
        }
@@ -13978,7 +13977,7 @@
      },
      {
       "id": "week-7",
-      "name": "Jour",
+      "name": "Jour 1 · Jour",
       "parent": "week-6",
       "type": "text",
       "visible": true,
@@ -14016,7 +14015,7 @@
      },
      {
       "id": "week-8",
-      "name": "Icône",
+      "name": "Jour 1 · Icône",
       "parent": "week-6",
       "type": "group",
       "visible": true,
@@ -14041,7 +14040,7 @@
      },
      {
       "id": "week-9",
-      "name": "Icône 1",
+      "name": "Jour 1 · Icône · Icône 1",
       "parent": "week-8",
       "type": "group",
       "visible": true,
@@ -14058,7 +14057,7 @@
      },
      {
       "id": "week-10",
-      "name": "Halo",
+      "name": "Jour 1 · Icône · Icône 1 · Halo",
       "parent": "week-9",
       "type": "ellipse",
       "visible": true,
@@ -14084,7 +14083,7 @@
      },
      {
       "id": "week-11",
-      "name": "Soleil",
+      "name": "Jour 1 · Icône · Icône 1 · Soleil",
       "parent": "week-9",
       "type": "ellipse",
       "visible": true,
@@ -14110,7 +14109,7 @@
      },
      {
       "id": "week-12",
-      "name": "Icône 2",
+      "name": "Jour 1 · Icône · Icône 2",
       "parent": "week-8",
       "type": "group",
       "visible": true,
@@ -14127,7 +14126,7 @@
      },
      {
       "id": "week-13",
-      "name": "Halo",
+      "name": "Jour 1 · Icône · Icône 2 · Halo",
       "parent": "week-12",
       "type": "ellipse",
       "visible": true,
@@ -14153,7 +14152,7 @@
      },
      {
       "id": "week-14",
-      "name": "Soleil",
+      "name": "Jour 1 · Icône · Icône 2 · Soleil",
       "parent": "week-12",
       "type": "ellipse",
       "visible": true,
@@ -14179,7 +14178,7 @@
      },
      {
       "id": "week-15",
-      "name": "Nuage 1",
+      "name": "Jour 1 · Icône · Icône 2 · Nuage 1",
       "parent": "week-12",
       "type": "ellipse",
       "visible": true,
@@ -14201,7 +14200,7 @@
      },
      {
       "id": "week-16",
-      "name": "Nuage 2",
+      "name": "Jour 1 · Icône · Icône 2 · Nuage 2",
       "parent": "week-12",
       "type": "ellipse",
       "visible": true,
@@ -14223,7 +14222,7 @@
      },
      {
       "id": "week-17",
-      "name": "Nuage 3",
+      "name": "Jour 1 · Icône · Icône 2 · Nuage 3",
       "parent": "week-12",
       "type": "ellipse",
       "visible": true,
@@ -14245,7 +14244,7 @@
      },
      {
       "id": "week-18",
-      "name": "Base",
+      "name": "Jour 1 · Icône · Icône 2 · Base",
       "parent": "week-12",
       "type": "rect",
       "visible": true,
@@ -14268,7 +14267,7 @@
      },
      {
       "id": "week-19",
-      "name": "Icône 3",
+      "name": "Jour 1 · Icône · Icône 3",
       "parent": "week-8",
       "type": "group",
       "visible": true,
@@ -14285,7 +14284,7 @@
      },
      {
       "id": "week-20",
-      "name": "Nuage 1",
+      "name": "Jour 1 · Icône · Icône 3 · Nuage 1",
       "parent": "week-19",
       "type": "ellipse",
       "visible": true,
@@ -14307,7 +14306,7 @@
      },
      {
       "id": "week-21",
-      "name": "Nuage 2",
+      "name": "Jour 1 · Icône · Icône 3 · Nuage 2",
       "parent": "week-19",
       "type": "ellipse",
       "visible": true,
@@ -14329,7 +14328,7 @@
      },
      {
       "id": "week-22",
-      "name": "Nuage 3",
+      "name": "Jour 1 · Icône · Icône 3 · Nuage 3",
       "parent": "week-19",
       "type": "ellipse",
       "visible": true,
@@ -14351,7 +14350,7 @@
      },
      {
       "id": "week-23",
-      "name": "Base",
+      "name": "Jour 1 · Icône · Icône 3 · Base",
       "parent": "week-19",
       "type": "rect",
       "visible": true,
@@ -14374,7 +14373,7 @@
      },
      {
       "id": "week-24",
-      "name": "Nuage 1",
+      "name": "Jour 1 · Icône · Icône 3 · Nuage 1",
       "parent": "week-19",
       "type": "ellipse",
       "visible": true,
@@ -14396,7 +14395,7 @@
      },
      {
       "id": "week-25",
-      "name": "Nuage 2",
+      "name": "Jour 1 · Icône · Icône 3 · Nuage 2",
       "parent": "week-19",
       "type": "ellipse",
       "visible": true,
@@ -14418,7 +14417,7 @@
      },
      {
       "id": "week-26",
-      "name": "Nuage 3",
+      "name": "Jour 1 · Icône · Icône 3 · Nuage 3",
       "parent": "week-19",
       "type": "ellipse",
       "visible": true,
@@ -14440,7 +14439,7 @@
      },
      {
       "id": "week-27",
-      "name": "Base",
+      "name": "Jour 1 · Icône · Icône 3 · Base",
       "parent": "week-19",
       "type": "rect",
       "visible": true,
@@ -14463,7 +14462,7 @@
      },
      {
       "id": "week-28",
-      "name": "Icône 4",
+      "name": "Jour 1 · Icône · Icône 4",
       "parent": "week-8",
       "type": "group",
       "visible": true,
@@ -14480,7 +14479,7 @@
      },
      {
       "id": "week-29",
-      "name": "Nuage 1",
+      "name": "Jour 1 · Icône · Icône 4 · Nuage 1",
       "parent": "week-28",
       "type": "ellipse",
       "visible": true,
@@ -14502,7 +14501,7 @@
      },
      {
       "id": "week-30",
-      "name": "Nuage 2",
+      "name": "Jour 1 · Icône · Icône 4 · Nuage 2",
       "parent": "week-28",
       "type": "ellipse",
       "visible": true,
@@ -14524,7 +14523,7 @@
      },
      {
       "id": "week-31",
-      "name": "Nuage 3",
+      "name": "Jour 1 · Icône · Icône 4 · Nuage 3",
       "parent": "week-28",
       "type": "ellipse",
       "visible": true,
@@ -14546,7 +14545,7 @@
      },
      {
       "id": "week-32",
-      "name": "Base",
+      "name": "Jour 1 · Icône · Icône 4 · Base",
       "parent": "week-28",
       "type": "rect",
       "visible": true,
@@ -14569,7 +14568,7 @@
      },
      {
       "id": "week-33",
-      "name": "Goutte",
+      "name": "Jour 1 · Icône · Icône 4 · Goutte",
       "parent": "week-28",
       "type": "rect",
       "visible": true,
@@ -14593,7 +14592,7 @@
      },
      {
       "id": "week-34",
-      "name": "Goutte",
+      "name": "Jour 1 · Icône · Icône 4 · Goutte",
       "parent": "week-28",
       "type": "rect",
       "visible": true,
@@ -14617,7 +14616,7 @@
      },
      {
       "id": "week-35",
-      "name": "Goutte",
+      "name": "Jour 1 · Icône · Icône 4 · Goutte",
       "parent": "week-28",
       "type": "rect",
       "visible": true,
@@ -14641,7 +14640,7 @@
      },
      {
       "id": "week-36",
-      "name": "Icône 5",
+      "name": "Jour 1 · Icône · Icône 5",
       "parent": "week-8",
       "type": "group",
       "visible": true,
@@ -14658,7 +14657,7 @@
      },
      {
       "id": "week-37",
-      "name": "Nuage 1",
+      "name": "Jour 1 · Icône · Icône 5 · Nuage 1",
       "parent": "week-36",
       "type": "ellipse",
       "visible": true,
@@ -14680,7 +14679,7 @@
      },
      {
       "id": "week-38",
-      "name": "Nuage 2",
+      "name": "Jour 1 · Icône · Icône 5 · Nuage 2",
       "parent": "week-36",
       "type": "ellipse",
       "visible": true,
@@ -14702,7 +14701,7 @@
      },
      {
       "id": "week-39",
-      "name": "Nuage 3",
+      "name": "Jour 1 · Icône · Icône 5 · Nuage 3",
       "parent": "week-36",
       "type": "ellipse",
       "visible": true,
@@ -14724,7 +14723,7 @@
      },
      {
       "id": "week-40",
-      "name": "Base",
+      "name": "Jour 1 · Icône · Icône 5 · Base",
       "parent": "week-36",
       "type": "rect",
       "visible": true,
@@ -14747,7 +14746,7 @@
      },
      {
       "id": "week-41",
-      "name": "Éclair",
+      "name": "Jour 1 · Icône · Icône 5 · Éclair",
       "parent": "week-36",
       "type": "polygon",
       "visible": true,
@@ -14800,7 +14799,7 @@
      },
      {
       "id": "week-42",
-      "name": "Icône 6",
+      "name": "Jour 1 · Icône · Icône 6",
       "parent": "week-8",
       "type": "group",
       "visible": true,
@@ -14817,7 +14816,7 @@
      },
      {
       "id": "week-43",
-      "name": "Nuage 1",
+      "name": "Jour 1 · Icône · Icône 6 · Nuage 1",
       "parent": "week-42",
       "type": "ellipse",
       "visible": true,
@@ -14839,7 +14838,7 @@
      },
      {
       "id": "week-44",
-      "name": "Nuage 2",
+      "name": "Jour 1 · Icône · Icône 6 · Nuage 2",
       "parent": "week-42",
       "type": "ellipse",
       "visible": true,
@@ -14861,7 +14860,7 @@
      },
      {
       "id": "week-45",
-      "name": "Nuage 3",
+      "name": "Jour 1 · Icône · Icône 6 · Nuage 3",
       "parent": "week-42",
       "type": "ellipse",
       "visible": true,
@@ -14883,7 +14882,7 @@
      },
      {
       "id": "week-46",
-      "name": "Base",
+      "name": "Jour 1 · Icône · Icône 6 · Base",
       "parent": "week-42",
       "type": "rect",
       "visible": true,
@@ -14906,7 +14905,7 @@
      },
      {
       "id": "week-47",
-      "name": "Flocon",
+      "name": "Jour 1 · Icône · Icône 6 · Flocon",
       "parent": "week-42",
       "type": "ellipse",
       "visible": true,
@@ -14928,7 +14927,7 @@
      },
      {
       "id": "week-48",
-      "name": "Flocon",
+      "name": "Jour 1 · Icône · Icône 6 · Flocon",
       "parent": "week-42",
       "type": "ellipse",
       "visible": true,
@@ -14950,7 +14949,7 @@
      },
      {
       "id": "week-49",
-      "name": "Flocon",
+      "name": "Jour 1 · Icône · Icône 6 · Flocon",
       "parent": "week-42",
       "type": "ellipse",
       "visible": true,
@@ -14972,7 +14971,7 @@
      },
      {
       "id": "week-50",
-      "name": "Max",
+      "name": "Jour 1 · Max",
       "parent": "week-6",
       "type": "counter",
       "visible": true,
@@ -15015,7 +15014,7 @@
      },
      {
       "id": "week-51",
-      "name": "Min",
+      "name": "Jour 1 · Min",
       "parent": "week-6",
       "type": "counter",
       "visible": true,
@@ -15268,7 +15267,7 @@
      },
      {
       "id": "week-53",
-      "name": "Séparateur",
+      "name": "Jour 2 · Séparateur",
       "parent": "week-52",
       "type": "rect",
       "visible": true,
@@ -15290,7 +15289,7 @@
      },
      {
       "id": "week-54",
-      "name": "Jour",
+      "name": "Jour 2 · Jour",
       "parent": "week-52",
       "type": "text",
       "visible": true,
@@ -15328,7 +15327,7 @@
      },
      {
       "id": "week-55",
-      "name": "Icône",
+      "name": "Jour 2 · Icône",
       "parent": "week-52",
       "type": "group",
       "visible": true,
@@ -15353,7 +15352,7 @@
      },
      {
       "id": "week-56",
-      "name": "Icône 1",
+      "name": "Jour 2 · Icône · Icône 1",
       "parent": "week-55",
       "type": "group",
       "visible": true,
@@ -15370,7 +15369,7 @@
      },
      {
       "id": "week-57",
-      "name": "Halo",
+      "name": "Jour 2 · Icône · Icône 1 · Halo",
       "parent": "week-56",
       "type": "ellipse",
       "visible": true,
@@ -15396,7 +15395,7 @@
      },
      {
       "id": "week-58",
-      "name": "Soleil",
+      "name": "Jour 2 · Icône · Icône 1 · Soleil",
       "parent": "week-56",
       "type": "ellipse",
       "visible": true,
@@ -15422,7 +15421,7 @@
      },
      {
       "id": "week-59",
-      "name": "Icône 2",
+      "name": "Jour 2 · Icône · Icône 2",
       "parent": "week-55",
       "type": "group",
       "visible": true,
@@ -15439,7 +15438,7 @@
      },
      {
       "id": "week-60",
-      "name": "Halo",
+      "name": "Jour 2 · Icône · Icône 2 · Halo",
       "parent": "week-59",
       "type": "ellipse",
       "visible": true,
@@ -15465,7 +15464,7 @@
      },
      {
       "id": "week-61",
-      "name": "Soleil",
+      "name": "Jour 2 · Icône · Icône 2 · Soleil",
       "parent": "week-59",
       "type": "ellipse",
       "visible": true,
@@ -15491,7 +15490,7 @@
      },
      {
       "id": "week-62",
-      "name": "Nuage 1",
+      "name": "Jour 2 · Icône · Icône 2 · Nuage 1",
       "parent": "week-59",
       "type": "ellipse",
       "visible": true,
@@ -15513,7 +15512,7 @@
      },
      {
       "id": "week-63",
-      "name": "Nuage 2",
+      "name": "Jour 2 · Icône · Icône 2 · Nuage 2",
       "parent": "week-59",
       "type": "ellipse",
       "visible": true,
@@ -15535,7 +15534,7 @@
      },
      {
       "id": "week-64",
-      "name": "Nuage 3",
+      "name": "Jour 2 · Icône · Icône 2 · Nuage 3",
       "parent": "week-59",
       "type": "ellipse",
       "visible": true,
@@ -15557,7 +15556,7 @@
      },
      {
       "id": "week-65",
-      "name": "Base",
+      "name": "Jour 2 · Icône · Icône 2 · Base",
       "parent": "week-59",
       "type": "rect",
       "visible": true,
@@ -15580,7 +15579,7 @@
      },
      {
       "id": "week-66",
-      "name": "Icône 3",
+      "name": "Jour 2 · Icône · Icône 3",
       "parent": "week-55",
       "type": "group",
       "visible": true,
@@ -15597,7 +15596,7 @@
      },
      {
       "id": "week-67",
-      "name": "Nuage 1",
+      "name": "Jour 2 · Icône · Icône 3 · Nuage 1",
       "parent": "week-66",
       "type": "ellipse",
       "visible": true,
@@ -15619,7 +15618,7 @@
      },
      {
       "id": "week-68",
-      "name": "Nuage 2",
+      "name": "Jour 2 · Icône · Icône 3 · Nuage 2",
       "parent": "week-66",
       "type": "ellipse",
       "visible": true,
@@ -15641,7 +15640,7 @@
      },
      {
       "id": "week-69",
-      "name": "Nuage 3",
+      "name": "Jour 2 · Icône · Icône 3 · Nuage 3",
       "parent": "week-66",
       "type": "ellipse",
       "visible": true,
@@ -15663,7 +15662,7 @@
      },
      {
       "id": "week-70",
-      "name": "Base",
+      "name": "Jour 2 · Icône · Icône 3 · Base",
       "parent": "week-66",
       "type": "rect",
       "visible": true,
@@ -15686,7 +15685,7 @@
      },
      {
       "id": "week-71",
-      "name": "Nuage 1",
+      "name": "Jour 2 · Icône · Icône 3 · Nuage 1",
       "parent": "week-66",
       "type": "ellipse",
       "visible": true,
@@ -15708,7 +15707,7 @@
      },
      {
       "id": "week-72",
-      "name": "Nuage 2",
+      "name": "Jour 2 · Icône · Icône 3 · Nuage 2",
       "parent": "week-66",
       "type": "ellipse",
       "visible": true,
@@ -15730,7 +15729,7 @@
      },
      {
       "id": "week-73",
-      "name": "Nuage 3",
+      "name": "Jour 2 · Icône · Icône 3 · Nuage 3",
       "parent": "week-66",
       "type": "ellipse",
       "visible": true,
@@ -15752,7 +15751,7 @@
      },
      {
       "id": "week-74",
-      "name": "Base",
+      "name": "Jour 2 · Icône · Icône 3 · Base",
       "parent": "week-66",
       "type": "rect",
       "visible": true,
@@ -15775,7 +15774,7 @@
      },
      {
       "id": "week-75",
-      "name": "Icône 4",
+      "name": "Jour 2 · Icône · Icône 4",
       "parent": "week-55",
       "type": "group",
       "visible": true,
@@ -15792,7 +15791,7 @@
      },
      {
       "id": "week-76",
-      "name": "Nuage 1",
+      "name": "Jour 2 · Icône · Icône 4 · Nuage 1",
       "parent": "week-75",
       "type": "ellipse",
       "visible": true,
@@ -15814,7 +15813,7 @@
      },
      {
       "id": "week-77",
-      "name": "Nuage 2",
+      "name": "Jour 2 · Icône · Icône 4 · Nuage 2",
       "parent": "week-75",
       "type": "ellipse",
       "visible": true,
@@ -15836,7 +15835,7 @@
      },
      {
       "id": "week-78",
-      "name": "Nuage 3",
+      "name": "Jour 2 · Icône · Icône 4 · Nuage 3",
       "parent": "week-75",
       "type": "ellipse",
       "visible": true,
@@ -15858,7 +15857,7 @@
      },
      {
       "id": "week-79",
-      "name": "Base",
+      "name": "Jour 2 · Icône · Icône 4 · Base",
       "parent": "week-75",
       "type": "rect",
       "visible": true,
@@ -15881,7 +15880,7 @@
      },
      {
       "id": "week-80",
-      "name": "Goutte",
+      "name": "Jour 2 · Icône · Icône 4 · Goutte",
       "parent": "week-75",
       "type": "rect",
       "visible": true,
@@ -15905,7 +15904,7 @@
      },
      {
       "id": "week-81",
-      "name": "Goutte",
+      "name": "Jour 2 · Icône · Icône 4 · Goutte",
       "parent": "week-75",
       "type": "rect",
       "visible": true,
@@ -15929,7 +15928,7 @@
      },
      {
       "id": "week-82",
-      "name": "Goutte",
+      "name": "Jour 2 · Icône · Icône 4 · Goutte",
       "parent": "week-75",
       "type": "rect",
       "visible": true,
@@ -15953,7 +15952,7 @@
      },
      {
       "id": "week-83",
-      "name": "Icône 5",
+      "name": "Jour 2 · Icône · Icône 5",
       "parent": "week-55",
       "type": "group",
       "visible": true,
@@ -15970,7 +15969,7 @@
      },
      {
       "id": "week-84",
-      "name": "Nuage 1",
+      "name": "Jour 2 · Icône · Icône 5 · Nuage 1",
       "parent": "week-83",
       "type": "ellipse",
       "visible": true,
@@ -15992,7 +15991,7 @@
      },
      {
       "id": "week-85",
-      "name": "Nuage 2",
+      "name": "Jour 2 · Icône · Icône 5 · Nuage 2",
       "parent": "week-83",
       "type": "ellipse",
       "visible": true,
@@ -16014,7 +16013,7 @@
      },
      {
       "id": "week-86",
-      "name": "Nuage 3",
+      "name": "Jour 2 · Icône · Icône 5 · Nuage 3",
       "parent": "week-83",
       "type": "ellipse",
       "visible": true,
@@ -16036,7 +16035,7 @@
      },
      {
       "id": "week-87",
-      "name": "Base",
+      "name": "Jour 2 · Icône · Icône 5 · Base",
       "parent": "week-83",
       "type": "rect",
       "visible": true,
@@ -16059,7 +16058,7 @@
      },
      {
       "id": "week-88",
-      "name": "Éclair",
+      "name": "Jour 2 · Icône · Icône 5 · Éclair",
       "parent": "week-83",
       "type": "polygon",
       "visible": true,
@@ -16112,7 +16111,7 @@
      },
      {
       "id": "week-89",
-      "name": "Icône 6",
+      "name": "Jour 2 · Icône · Icône 6",
       "parent": "week-55",
       "type": "group",
       "visible": true,
@@ -16129,7 +16128,7 @@
      },
      {
       "id": "week-90",
-      "name": "Nuage 1",
+      "name": "Jour 2 · Icône · Icône 6 · Nuage 1",
       "parent": "week-89",
       "type": "ellipse",
       "visible": true,
@@ -16151,7 +16150,7 @@
      },
      {
       "id": "week-91",
-      "name": "Nuage 2",
+      "name": "Jour 2 · Icône · Icône 6 · Nuage 2",
       "parent": "week-89",
       "type": "ellipse",
       "visible": true,
@@ -16173,7 +16172,7 @@
      },
      {
       "id": "week-92",
-      "name": "Nuage 3",
+      "name": "Jour 2 · Icône · Icône 6 · Nuage 3",
       "parent": "week-89",
       "type": "ellipse",
       "visible": true,
@@ -16195,7 +16194,7 @@
      },
      {
       "id": "week-93",
-      "name": "Base",
+      "name": "Jour 2 · Icône · Icône 6 · Base",
       "parent": "week-89",
       "type": "rect",
       "visible": true,
@@ -16218,7 +16217,7 @@
      },
      {
       "id": "week-94",
-      "name": "Flocon",
+      "name": "Jour 2 · Icône · Icône 6 · Flocon",
       "parent": "week-89",
       "type": "ellipse",
       "visible": true,
@@ -16240,7 +16239,7 @@
      },
      {
       "id": "week-95",
-      "name": "Flocon",
+      "name": "Jour 2 · Icône · Icône 6 · Flocon",
       "parent": "week-89",
       "type": "ellipse",
       "visible": true,
@@ -16262,7 +16261,7 @@
      },
      {
       "id": "week-96",
-      "name": "Flocon",
+      "name": "Jour 2 · Icône · Icône 6 · Flocon",
       "parent": "week-89",
       "type": "ellipse",
       "visible": true,
@@ -16284,7 +16283,7 @@
      },
      {
       "id": "week-97",
-      "name": "Max",
+      "name": "Jour 2 · Max",
       "parent": "week-52",
       "type": "counter",
       "visible": true,
@@ -16327,7 +16326,7 @@
      },
      {
       "id": "week-98",
-      "name": "Min",
+      "name": "Jour 2 · Min",
       "parent": "week-52",
       "type": "counter",
       "visible": true,
@@ -16580,7 +16579,7 @@
      },
      {
       "id": "week-100",
-      "name": "Séparateur",
+      "name": "Jour 3 · Séparateur",
       "parent": "week-99",
       "type": "rect",
       "visible": true,
@@ -16602,7 +16601,7 @@
      },
      {
       "id": "week-101",
-      "name": "Jour",
+      "name": "Jour 3 · Jour",
       "parent": "week-99",
       "type": "text",
       "visible": true,
@@ -16640,7 +16639,7 @@
      },
      {
       "id": "week-102",
-      "name": "Icône",
+      "name": "Jour 3 · Icône",
       "parent": "week-99",
       "type": "group",
       "visible": true,
@@ -16665,7 +16664,7 @@
      },
      {
       "id": "week-103",
-      "name": "Icône 1",
+      "name": "Jour 3 · Icône · Icône 1",
       "parent": "week-102",
       "type": "group",
       "visible": true,
@@ -16682,7 +16681,7 @@
      },
      {
       "id": "week-104",
-      "name": "Halo",
+      "name": "Jour 3 · Icône · Icône 1 · Halo",
       "parent": "week-103",
       "type": "ellipse",
       "visible": true,
@@ -16708,7 +16707,7 @@
      },
      {
       "id": "week-105",
-      "name": "Soleil",
+      "name": "Jour 3 · Icône · Icône 1 · Soleil",
       "parent": "week-103",
       "type": "ellipse",
       "visible": true,
@@ -16734,7 +16733,7 @@
      },
      {
       "id": "week-106",
-      "name": "Icône 2",
+      "name": "Jour 3 · Icône · Icône 2",
       "parent": "week-102",
       "type": "group",
       "visible": true,
@@ -16751,7 +16750,7 @@
      },
      {
       "id": "week-107",
-      "name": "Halo",
+      "name": "Jour 3 · Icône · Icône 2 · Halo",
       "parent": "week-106",
       "type": "ellipse",
       "visible": true,
@@ -16777,7 +16776,7 @@
      },
      {
       "id": "week-108",
-      "name": "Soleil",
+      "name": "Jour 3 · Icône · Icône 2 · Soleil",
       "parent": "week-106",
       "type": "ellipse",
       "visible": true,
@@ -16803,7 +16802,7 @@
      },
      {
       "id": "week-109",
-      "name": "Nuage 1",
+      "name": "Jour 3 · Icône · Icône 2 · Nuage 1",
       "parent": "week-106",
       "type": "ellipse",
       "visible": true,
@@ -16825,7 +16824,7 @@
      },
      {
       "id": "week-110",
-      "name": "Nuage 2",
+      "name": "Jour 3 · Icône · Icône 2 · Nuage 2",
       "parent": "week-106",
       "type": "ellipse",
       "visible": true,
@@ -16847,7 +16846,7 @@
      },
      {
       "id": "week-111",
-      "name": "Nuage 3",
+      "name": "Jour 3 · Icône · Icône 2 · Nuage 3",
       "parent": "week-106",
       "type": "ellipse",
       "visible": true,
@@ -16869,7 +16868,7 @@
      },
      {
       "id": "week-112",
-      "name": "Base",
+      "name": "Jour 3 · Icône · Icône 2 · Base",
       "parent": "week-106",
       "type": "rect",
       "visible": true,
@@ -16892,7 +16891,7 @@
      },
      {
       "id": "week-113",
-      "name": "Icône 3",
+      "name": "Jour 3 · Icône · Icône 3",
       "parent": "week-102",
       "type": "group",
       "visible": true,
@@ -16909,7 +16908,7 @@
      },
      {
       "id": "week-114",
-      "name": "Nuage 1",
+      "name": "Jour 3 · Icône · Icône 3 · Nuage 1",
       "parent": "week-113",
       "type": "ellipse",
       "visible": true,
@@ -16931,7 +16930,7 @@
      },
      {
       "id": "week-115",
-      "name": "Nuage 2",
+      "name": "Jour 3 · Icône · Icône 3 · Nuage 2",
       "parent": "week-113",
       "type": "ellipse",
       "visible": true,
@@ -16953,7 +16952,7 @@
      },
      {
       "id": "week-116",
-      "name": "Nuage 3",
+      "name": "Jour 3 · Icône · Icône 3 · Nuage 3",
       "parent": "week-113",
       "type": "ellipse",
       "visible": true,
@@ -16975,7 +16974,7 @@
      },
      {
       "id": "week-117",
-      "name": "Base",
+      "name": "Jour 3 · Icône · Icône 3 · Base",
       "parent": "week-113",
       "type": "rect",
       "visible": true,
@@ -16998,7 +16997,7 @@
      },
      {
       "id": "week-118",
-      "name": "Nuage 1",
+      "name": "Jour 3 · Icône · Icône 3 · Nuage 1",
       "parent": "week-113",
       "type": "ellipse",
       "visible": true,
@@ -17020,7 +17019,7 @@
      },
      {
       "id": "week-119",
-      "name": "Nuage 2",
+      "name": "Jour 3 · Icône · Icône 3 · Nuage 2",
       "parent": "week-113",
       "type": "ellipse",
       "visible": true,
@@ -17042,7 +17041,7 @@
      },
      {
       "id": "week-120",
-      "name": "Nuage 3",
+      "name": "Jour 3 · Icône · Icône 3 · Nuage 3",
       "parent": "week-113",
       "type": "ellipse",
       "visible": true,
@@ -17064,7 +17063,7 @@
      },
      {
       "id": "week-121",
-      "name": "Base",
+      "name": "Jour 3 · Icône · Icône 3 · Base",
       "parent": "week-113",
       "type": "rect",
       "visible": true,
@@ -17087,7 +17086,7 @@
      },
      {
       "id": "week-122",
-      "name": "Icône 4",
+      "name": "Jour 3 · Icône · Icône 4",
       "parent": "week-102",
       "type": "group",
       "visible": true,
@@ -17104,7 +17103,7 @@
      },
      {
       "id": "week-123",
-      "name": "Nuage 1",
+      "name": "Jour 3 · Icône · Icône 4 · Nuage 1",
       "parent": "week-122",
       "type": "ellipse",
       "visible": true,
@@ -17126,7 +17125,7 @@
      },
      {
       "id": "week-124",
-      "name": "Nuage 2",
+      "name": "Jour 3 · Icône · Icône 4 · Nuage 2",
       "parent": "week-122",
       "type": "ellipse",
       "visible": true,
@@ -17148,7 +17147,7 @@
      },
      {
       "id": "week-125",
-      "name": "Nuage 3",
+      "name": "Jour 3 · Icône · Icône 4 · Nuage 3",
       "parent": "week-122",
       "type": "ellipse",
       "visible": true,
@@ -17170,7 +17169,7 @@
      },
      {
       "id": "week-126",
-      "name": "Base",
+      "name": "Jour 3 · Icône · Icône 4 · Base",
       "parent": "week-122",
       "type": "rect",
       "visible": true,
@@ -17193,7 +17192,7 @@
      },
      {
       "id": "week-127",
-      "name": "Goutte",
+      "name": "Jour 3 · Icône · Icône 4 · Goutte",
       "parent": "week-122",
       "type": "rect",
       "visible": true,
@@ -17217,7 +17216,7 @@
      },
      {
       "id": "week-128",
-      "name": "Goutte",
+      "name": "Jour 3 · Icône · Icône 4 · Goutte",
       "parent": "week-122",
       "type": "rect",
       "visible": true,
@@ -17241,7 +17240,7 @@
      },
      {
       "id": "week-129",
-      "name": "Goutte",
+      "name": "Jour 3 · Icône · Icône 4 · Goutte",
       "parent": "week-122",
       "type": "rect",
       "visible": true,
@@ -17265,7 +17264,7 @@
      },
      {
       "id": "week-130",
-      "name": "Icône 5",
+      "name": "Jour 3 · Icône · Icône 5",
       "parent": "week-102",
       "type": "group",
       "visible": true,
@@ -17282,7 +17281,7 @@
      },
      {
       "id": "week-131",
-      "name": "Nuage 1",
+      "name": "Jour 3 · Icône · Icône 5 · Nuage 1",
       "parent": "week-130",
       "type": "ellipse",
       "visible": true,
@@ -17304,7 +17303,7 @@
      },
      {
       "id": "week-132",
-      "name": "Nuage 2",
+      "name": "Jour 3 · Icône · Icône 5 · Nuage 2",
       "parent": "week-130",
       "type": "ellipse",
       "visible": true,
@@ -17326,7 +17325,7 @@
      },
      {
       "id": "week-133",
-      "name": "Nuage 3",
+      "name": "Jour 3 · Icône · Icône 5 · Nuage 3",
       "parent": "week-130",
       "type": "ellipse",
       "visible": true,
@@ -17348,7 +17347,7 @@
      },
      {
       "id": "week-134",
-      "name": "Base",
+      "name": "Jour 3 · Icône · Icône 5 · Base",
       "parent": "week-130",
       "type": "rect",
       "visible": true,
@@ -17371,7 +17370,7 @@
      },
      {
       "id": "week-135",
-      "name": "Éclair",
+      "name": "Jour 3 · Icône · Icône 5 · Éclair",
       "parent": "week-130",
       "type": "polygon",
       "visible": true,
@@ -17424,7 +17423,7 @@
      },
      {
       "id": "week-136",
-      "name": "Icône 6",
+      "name": "Jour 3 · Icône · Icône 6",
       "parent": "week-102",
       "type": "group",
       "visible": true,
@@ -17441,7 +17440,7 @@
      },
      {
       "id": "week-137",
-      "name": "Nuage 1",
+      "name": "Jour 3 · Icône · Icône 6 · Nuage 1",
       "parent": "week-136",
       "type": "ellipse",
       "visible": true,
@@ -17463,7 +17462,7 @@
      },
      {
       "id": "week-138",
-      "name": "Nuage 2",
+      "name": "Jour 3 · Icône · Icône 6 · Nuage 2",
       "parent": "week-136",
       "type": "ellipse",
       "visible": true,
@@ -17485,7 +17484,7 @@
      },
      {
       "id": "week-139",
-      "name": "Nuage 3",
+      "name": "Jour 3 · Icône · Icône 6 · Nuage 3",
       "parent": "week-136",
       "type": "ellipse",
       "visible": true,
@@ -17507,7 +17506,7 @@
      },
      {
       "id": "week-140",
-      "name": "Base",
+      "name": "Jour 3 · Icône · Icône 6 · Base",
       "parent": "week-136",
       "type": "rect",
       "visible": true,
@@ -17530,7 +17529,7 @@
      },
      {
       "id": "week-141",
-      "name": "Flocon",
+      "name": "Jour 3 · Icône · Icône 6 · Flocon",
       "parent": "week-136",
       "type": "ellipse",
       "visible": true,
@@ -17552,7 +17551,7 @@
      },
      {
       "id": "week-142",
-      "name": "Flocon",
+      "name": "Jour 3 · Icône · Icône 6 · Flocon",
       "parent": "week-136",
       "type": "ellipse",
       "visible": true,
@@ -17574,7 +17573,7 @@
      },
      {
       "id": "week-143",
-      "name": "Flocon",
+      "name": "Jour 3 · Icône · Icône 6 · Flocon",
       "parent": "week-136",
       "type": "ellipse",
       "visible": true,
@@ -17596,7 +17595,7 @@
      },
      {
       "id": "week-144",
-      "name": "Max",
+      "name": "Jour 3 · Max",
       "parent": "week-99",
       "type": "counter",
       "visible": true,
@@ -17639,7 +17638,7 @@
      },
      {
       "id": "week-145",
-      "name": "Min",
+      "name": "Jour 3 · Min",
       "parent": "week-99",
       "type": "counter",
       "visible": true,
@@ -17892,7 +17891,7 @@
      },
      {
       "id": "week-147",
-      "name": "Séparateur",
+      "name": "Jour 4 · Séparateur",
       "parent": "week-146",
       "type": "rect",
       "visible": true,
@@ -17914,7 +17913,7 @@
      },
      {
       "id": "week-148",
-      "name": "Jour",
+      "name": "Jour 4 · Jour",
       "parent": "week-146",
       "type": "text",
       "visible": true,
@@ -17952,7 +17951,7 @@
      },
      {
       "id": "week-149",
-      "name": "Icône",
+      "name": "Jour 4 · Icône",
       "parent": "week-146",
       "type": "group",
       "visible": true,
@@ -17977,7 +17976,7 @@
      },
      {
       "id": "week-150",
-      "name": "Icône 1",
+      "name": "Jour 4 · Icône · Icône 1",
       "parent": "week-149",
       "type": "group",
       "visible": true,
@@ -17994,7 +17993,7 @@
      },
      {
       "id": "week-151",
-      "name": "Halo",
+      "name": "Jour 4 · Icône · Icône 1 · Halo",
       "parent": "week-150",
       "type": "ellipse",
       "visible": true,
@@ -18020,7 +18019,7 @@
      },
      {
       "id": "week-152",
-      "name": "Soleil",
+      "name": "Jour 4 · Icône · Icône 1 · Soleil",
       "parent": "week-150",
       "type": "ellipse",
       "visible": true,
@@ -18046,7 +18045,7 @@
      },
      {
       "id": "week-153",
-      "name": "Icône 2",
+      "name": "Jour 4 · Icône · Icône 2",
       "parent": "week-149",
       "type": "group",
       "visible": true,
@@ -18063,7 +18062,7 @@
      },
      {
       "id": "week-154",
-      "name": "Halo",
+      "name": "Jour 4 · Icône · Icône 2 · Halo",
       "parent": "week-153",
       "type": "ellipse",
       "visible": true,
@@ -18089,7 +18088,7 @@
      },
      {
       "id": "week-155",
-      "name": "Soleil",
+      "name": "Jour 4 · Icône · Icône 2 · Soleil",
       "parent": "week-153",
       "type": "ellipse",
       "visible": true,
@@ -18115,7 +18114,7 @@
      },
      {
       "id": "week-156",
-      "name": "Nuage 1",
+      "name": "Jour 4 · Icône · Icône 2 · Nuage 1",
       "parent": "week-153",
       "type": "ellipse",
       "visible": true,
@@ -18137,7 +18136,7 @@
      },
      {
       "id": "week-157",
-      "name": "Nuage 2",
+      "name": "Jour 4 · Icône · Icône 2 · Nuage 2",
       "parent": "week-153",
       "type": "ellipse",
       "visible": true,
@@ -18159,7 +18158,7 @@
      },
      {
       "id": "week-158",
-      "name": "Nuage 3",
+      "name": "Jour 4 · Icône · Icône 2 · Nuage 3",
       "parent": "week-153",
       "type": "ellipse",
       "visible": true,
@@ -18181,7 +18180,7 @@
      },
      {
       "id": "week-159",
-      "name": "Base",
+      "name": "Jour 4 · Icône · Icône 2 · Base",
       "parent": "week-153",
       "type": "rect",
       "visible": true,
@@ -18204,7 +18203,7 @@
      },
      {
       "id": "week-160",
-      "name": "Icône 3",
+      "name": "Jour 4 · Icône · Icône 3",
       "parent": "week-149",
       "type": "group",
       "visible": true,
@@ -18221,7 +18220,7 @@
      },
      {
       "id": "week-161",
-      "name": "Nuage 1",
+      "name": "Jour 4 · Icône · Icône 3 · Nuage 1",
       "parent": "week-160",
       "type": "ellipse",
       "visible": true,
@@ -18243,7 +18242,7 @@
      },
      {
       "id": "week-162",
-      "name": "Nuage 2",
+      "name": "Jour 4 · Icône · Icône 3 · Nuage 2",
       "parent": "week-160",
       "type": "ellipse",
       "visible": true,
@@ -18265,7 +18264,7 @@
      },
      {
       "id": "week-163",
-      "name": "Nuage 3",
+      "name": "Jour 4 · Icône · Icône 3 · Nuage 3",
       "parent": "week-160",
       "type": "ellipse",
       "visible": true,
@@ -18287,7 +18286,7 @@
      },
      {
       "id": "week-164",
-      "name": "Base",
+      "name": "Jour 4 · Icône · Icône 3 · Base",
       "parent": "week-160",
       "type": "rect",
       "visible": true,
@@ -18310,7 +18309,7 @@
      },
      {
       "id": "week-165",
-      "name": "Nuage 1",
+      "name": "Jour 4 · Icône · Icône 3 · Nuage 1",
       "parent": "week-160",
       "type": "ellipse",
       "visible": true,
@@ -18332,7 +18331,7 @@
      },
      {
       "id": "week-166",
-      "name": "Nuage 2",
+      "name": "Jour 4 · Icône · Icône 3 · Nuage 2",
       "parent": "week-160",
       "type": "ellipse",
       "visible": true,
@@ -18354,7 +18353,7 @@
      },
      {
       "id": "week-167",
-      "name": "Nuage 3",
+      "name": "Jour 4 · Icône · Icône 3 · Nuage 3",
       "parent": "week-160",
       "type": "ellipse",
       "visible": true,
@@ -18376,7 +18375,7 @@
      },
      {
       "id": "week-168",
-      "name": "Base",
+      "name": "Jour 4 · Icône · Icône 3 · Base",
       "parent": "week-160",
       "type": "rect",
       "visible": true,
@@ -18399,7 +18398,7 @@
      },
      {
       "id": "week-169",
-      "name": "Icône 4",
+      "name": "Jour 4 · Icône · Icône 4",
       "parent": "week-149",
       "type": "group",
       "visible": true,
@@ -18416,7 +18415,7 @@
      },
      {
       "id": "week-170",
-      "name": "Nuage 1",
+      "name": "Jour 4 · Icône · Icône 4 · Nuage 1",
       "parent": "week-169",
       "type": "ellipse",
       "visible": true,
@@ -18438,7 +18437,7 @@
      },
      {
       "id": "week-171",
-      "name": "Nuage 2",
+      "name": "Jour 4 · Icône · Icône 4 · Nuage 2",
       "parent": "week-169",
       "type": "ellipse",
       "visible": true,
@@ -18460,7 +18459,7 @@
      },
      {
       "id": "week-172",
-      "name": "Nuage 3",
+      "name": "Jour 4 · Icône · Icône 4 · Nuage 3",
       "parent": "week-169",
       "type": "ellipse",
       "visible": true,
@@ -18482,7 +18481,7 @@
      },
      {
       "id": "week-173",
-      "name": "Base",
+      "name": "Jour 4 · Icône · Icône 4 · Base",
       "parent": "week-169",
       "type": "rect",
       "visible": true,
@@ -18505,7 +18504,7 @@
      },
      {
       "id": "week-174",
-      "name": "Goutte",
+      "name": "Jour 4 · Icône · Icône 4 · Goutte",
       "parent": "week-169",
       "type": "rect",
       "visible": true,
@@ -18529,7 +18528,7 @@
      },
      {
       "id": "week-175",
-      "name": "Goutte",
+      "name": "Jour 4 · Icône · Icône 4 · Goutte",
       "parent": "week-169",
       "type": "rect",
       "visible": true,
@@ -18553,7 +18552,7 @@
      },
      {
       "id": "week-176",
-      "name": "Goutte",
+      "name": "Jour 4 · Icône · Icône 4 · Goutte",
       "parent": "week-169",
       "type": "rect",
       "visible": true,
@@ -18577,7 +18576,7 @@
      },
      {
       "id": "week-177",
-      "name": "Icône 5",
+      "name": "Jour 4 · Icône · Icône 5",
       "parent": "week-149",
       "type": "group",
       "visible": true,
@@ -18594,7 +18593,7 @@
      },
      {
       "id": "week-178",
-      "name": "Nuage 1",
+      "name": "Jour 4 · Icône · Icône 5 · Nuage 1",
       "parent": "week-177",
       "type": "ellipse",
       "visible": true,
@@ -18616,7 +18615,7 @@
      },
      {
       "id": "week-179",
-      "name": "Nuage 2",
+      "name": "Jour 4 · Icône · Icône 5 · Nuage 2",
       "parent": "week-177",
       "type": "ellipse",
       "visible": true,
@@ -18638,7 +18637,7 @@
      },
      {
       "id": "week-180",
-      "name": "Nuage 3",
+      "name": "Jour 4 · Icône · Icône 5 · Nuage 3",
       "parent": "week-177",
       "type": "ellipse",
       "visible": true,
@@ -18660,7 +18659,7 @@
      },
      {
       "id": "week-181",
-      "name": "Base",
+      "name": "Jour 4 · Icône · Icône 5 · Base",
       "parent": "week-177",
       "type": "rect",
       "visible": true,
@@ -18683,7 +18682,7 @@
      },
      {
       "id": "week-182",
-      "name": "Éclair",
+      "name": "Jour 4 · Icône · Icône 5 · Éclair",
       "parent": "week-177",
       "type": "polygon",
       "visible": true,
@@ -18736,7 +18735,7 @@
      },
      {
       "id": "week-183",
-      "name": "Icône 6",
+      "name": "Jour 4 · Icône · Icône 6",
       "parent": "week-149",
       "type": "group",
       "visible": true,
@@ -18753,7 +18752,7 @@
      },
      {
       "id": "week-184",
-      "name": "Nuage 1",
+      "name": "Jour 4 · Icône · Icône 6 · Nuage 1",
       "parent": "week-183",
       "type": "ellipse",
       "visible": true,
@@ -18775,7 +18774,7 @@
      },
      {
       "id": "week-185",
-      "name": "Nuage 2",
+      "name": "Jour 4 · Icône · Icône 6 · Nuage 2",
       "parent": "week-183",
       "type": "ellipse",
       "visible": true,
@@ -18797,7 +18796,7 @@
      },
      {
       "id": "week-186",
-      "name": "Nuage 3",
+      "name": "Jour 4 · Icône · Icône 6 · Nuage 3",
       "parent": "week-183",
       "type": "ellipse",
       "visible": true,
@@ -18819,7 +18818,7 @@
      },
      {
       "id": "week-187",
-      "name": "Base",
+      "name": "Jour 4 · Icône · Icône 6 · Base",
       "parent": "week-183",
       "type": "rect",
       "visible": true,
@@ -18842,7 +18841,7 @@
      },
      {
       "id": "week-188",
-      "name": "Flocon",
+      "name": "Jour 4 · Icône · Icône 6 · Flocon",
       "parent": "week-183",
       "type": "ellipse",
       "visible": true,
@@ -18864,7 +18863,7 @@
      },
      {
       "id": "week-189",
-      "name": "Flocon",
+      "name": "Jour 4 · Icône · Icône 6 · Flocon",
       "parent": "week-183",
       "type": "ellipse",
       "visible": true,
@@ -18886,7 +18885,7 @@
      },
      {
       "id": "week-190",
-      "name": "Flocon",
+      "name": "Jour 4 · Icône · Icône 6 · Flocon",
       "parent": "week-183",
       "type": "ellipse",
       "visible": true,
@@ -18908,7 +18907,7 @@
      },
      {
       "id": "week-191",
-      "name": "Max",
+      "name": "Jour 4 · Max",
       "parent": "week-146",
       "type": "counter",
       "visible": true,
@@ -18951,7 +18950,7 @@
      },
      {
       "id": "week-192",
-      "name": "Min",
+      "name": "Jour 4 · Min",
       "parent": "week-146",
       "type": "counter",
       "visible": true,
@@ -19204,7 +19203,7 @@
      },
      {
       "id": "week-194",
-      "name": "Séparateur",
+      "name": "Jour 5 · Séparateur",
       "parent": "week-193",
       "type": "rect",
       "visible": true,
@@ -19226,7 +19225,7 @@
      },
      {
       "id": "week-195",
-      "name": "Jour",
+      "name": "Jour 5 · Jour",
       "parent": "week-193",
       "type": "text",
       "visible": true,
@@ -19264,7 +19263,7 @@
      },
      {
       "id": "week-196",
-      "name": "Icône",
+      "name": "Jour 5 · Icône",
       "parent": "week-193",
       "type": "group",
       "visible": true,
@@ -19289,7 +19288,7 @@
      },
      {
       "id": "week-197",
-      "name": "Icône 1",
+      "name": "Jour 5 · Icône · Icône 1",
       "parent": "week-196",
       "type": "group",
       "visible": true,
@@ -19306,7 +19305,7 @@
      },
      {
       "id": "week-198",
-      "name": "Halo",
+      "name": "Jour 5 · Icône · Icône 1 · Halo",
       "parent": "week-197",
       "type": "ellipse",
       "visible": true,
@@ -19332,7 +19331,7 @@
      },
      {
       "id": "week-199",
-      "name": "Soleil",
+      "name": "Jour 5 · Icône · Icône 1 · Soleil",
       "parent": "week-197",
       "type": "ellipse",
       "visible": true,
@@ -19358,7 +19357,7 @@
      },
      {
       "id": "week-200",
-      "name": "Icône 2",
+      "name": "Jour 5 · Icône · Icône 2",
       "parent": "week-196",
       "type": "group",
       "visible": true,
@@ -19375,7 +19374,7 @@
      },
      {
       "id": "week-201",
-      "name": "Halo",
+      "name": "Jour 5 · Icône · Icône 2 · Halo",
       "parent": "week-200",
       "type": "ellipse",
       "visible": true,
@@ -19401,7 +19400,7 @@
      },
      {
       "id": "week-202",
-      "name": "Soleil",
+      "name": "Jour 5 · Icône · Icône 2 · Soleil",
       "parent": "week-200",
       "type": "ellipse",
       "visible": true,
@@ -19427,7 +19426,7 @@
      },
      {
       "id": "week-203",
-      "name": "Nuage 1",
+      "name": "Jour 5 · Icône · Icône 2 · Nuage 1",
       "parent": "week-200",
       "type": "ellipse",
       "visible": true,
@@ -19449,7 +19448,7 @@
      },
      {
       "id": "week-204",
-      "name": "Nuage 2",
+      "name": "Jour 5 · Icône · Icône 2 · Nuage 2",
       "parent": "week-200",
       "type": "ellipse",
       "visible": true,
@@ -19471,7 +19470,7 @@
      },
      {
       "id": "week-205",
-      "name": "Nuage 3",
+      "name": "Jour 5 · Icône · Icône 2 · Nuage 3",
       "parent": "week-200",
       "type": "ellipse",
       "visible": true,
@@ -19493,7 +19492,7 @@
      },
      {
       "id": "week-206",
-      "name": "Base",
+      "name": "Jour 5 · Icône · Icône 2 · Base",
       "parent": "week-200",
       "type": "rect",
       "visible": true,
@@ -19516,7 +19515,7 @@
      },
      {
       "id": "week-207",
-      "name": "Icône 3",
+      "name": "Jour 5 · Icône · Icône 3",
       "parent": "week-196",
       "type": "group",
       "visible": true,
@@ -19533,7 +19532,7 @@
      },
      {
       "id": "week-208",
-      "name": "Nuage 1",
+      "name": "Jour 5 · Icône · Icône 3 · Nuage 1",
       "parent": "week-207",
       "type": "ellipse",
       "visible": true,
@@ -19555,7 +19554,7 @@
      },
      {
       "id": "week-209",
-      "name": "Nuage 2",
+      "name": "Jour 5 · Icône · Icône 3 · Nuage 2",
       "parent": "week-207",
       "type": "ellipse",
       "visible": true,
@@ -19577,7 +19576,7 @@
      },
      {
       "id": "week-210",
-      "name": "Nuage 3",
+      "name": "Jour 5 · Icône · Icône 3 · Nuage 3",
       "parent": "week-207",
       "type": "ellipse",
       "visible": true,
@@ -19599,7 +19598,7 @@
      },
      {
       "id": "week-211",
-      "name": "Base",
+      "name": "Jour 5 · Icône · Icône 3 · Base",
       "parent": "week-207",
       "type": "rect",
       "visible": true,
@@ -19622,7 +19621,7 @@
      },
      {
       "id": "week-212",
-      "name": "Nuage 1",
+      "name": "Jour 5 · Icône · Icône 3 · Nuage 1",
       "parent": "week-207",
       "type": "ellipse",
       "visible": true,
@@ -19644,7 +19643,7 @@
      },
      {
       "id": "week-213",
-      "name": "Nuage 2",
+      "name": "Jour 5 · Icône · Icône 3 · Nuage 2",
       "parent": "week-207",
       "type": "ellipse",
       "visible": true,
@@ -19666,7 +19665,7 @@
      },
      {
       "id": "week-214",
-      "name": "Nuage 3",
+      "name": "Jour 5 · Icône · Icône 3 · Nuage 3",
       "parent": "week-207",
       "type": "ellipse",
       "visible": true,
@@ -19688,7 +19687,7 @@
      },
      {
       "id": "week-215",
-      "name": "Base",
+      "name": "Jour 5 · Icône · Icône 3 · Base",
       "parent": "week-207",
       "type": "rect",
       "visible": true,
@@ -19711,7 +19710,7 @@
      },
      {
       "id": "week-216",
-      "name": "Icône 4",
+      "name": "Jour 5 · Icône · Icône 4",
       "parent": "week-196",
       "type": "group",
       "visible": true,
@@ -19728,7 +19727,7 @@
      },
      {
       "id": "week-217",
-      "name": "Nuage 1",
+      "name": "Jour 5 · Icône · Icône 4 · Nuage 1",
       "parent": "week-216",
       "type": "ellipse",
       "visible": true,
@@ -19750,7 +19749,7 @@
      },
      {
       "id": "week-218",
-      "name": "Nuage 2",
+      "name": "Jour 5 · Icône · Icône 4 · Nuage 2",
       "parent": "week-216",
       "type": "ellipse",
       "visible": true,
@@ -19772,7 +19771,7 @@
      },
      {
       "id": "week-219",
-      "name": "Nuage 3",
+      "name": "Jour 5 · Icône · Icône 4 · Nuage 3",
       "parent": "week-216",
       "type": "ellipse",
       "visible": true,
@@ -19794,7 +19793,7 @@
      },
      {
       "id": "week-220",
-      "name": "Base",
+      "name": "Jour 5 · Icône · Icône 4 · Base",
       "parent": "week-216",
       "type": "rect",
       "visible": true,
@@ -19817,7 +19816,7 @@
      },
      {
       "id": "week-221",
-      "name": "Goutte",
+      "name": "Jour 5 · Icône · Icône 4 · Goutte",
       "parent": "week-216",
       "type": "rect",
       "visible": true,
@@ -19841,7 +19840,7 @@
      },
      {
       "id": "week-222",
-      "name": "Goutte",
+      "name": "Jour 5 · Icône · Icône 4 · Goutte",
       "parent": "week-216",
       "type": "rect",
       "visible": true,
@@ -19865,7 +19864,7 @@
      },
      {
       "id": "week-223",
-      "name": "Goutte",
+      "name": "Jour 5 · Icône · Icône 4 · Goutte",
       "parent": "week-216",
       "type": "rect",
       "visible": true,
@@ -19889,7 +19888,7 @@
      },
      {
       "id": "week-224",
-      "name": "Icône 5",
+      "name": "Jour 5 · Icône · Icône 5",
       "parent": "week-196",
       "type": "group",
       "visible": true,
@@ -19906,7 +19905,7 @@
      },
      {
       "id": "week-225",
-      "name": "Nuage 1",
+      "name": "Jour 5 · Icône · Icône 5 · Nuage 1",
       "parent": "week-224",
       "type": "ellipse",
       "visible": true,
@@ -19928,7 +19927,7 @@
      },
      {
       "id": "week-226",
-      "name": "Nuage 2",
+      "name": "Jour 5 · Icône · Icône 5 · Nuage 2",
       "parent": "week-224",
       "type": "ellipse",
       "visible": true,
@@ -19950,7 +19949,7 @@
      },
      {
       "id": "week-227",
-      "name": "Nuage 3",
+      "name": "Jour 5 · Icône · Icône 5 · Nuage 3",
       "parent": "week-224",
       "type": "ellipse",
       "visible": true,
@@ -19972,7 +19971,7 @@
      },
      {
       "id": "week-228",
-      "name": "Base",
+      "name": "Jour 5 · Icône · Icône 5 · Base",
       "parent": "week-224",
       "type": "rect",
       "visible": true,
@@ -19995,7 +19994,7 @@
      },
      {
       "id": "week-229",
-      "name": "Éclair",
+      "name": "Jour 5 · Icône · Icône 5 · Éclair",
       "parent": "week-224",
       "type": "polygon",
       "visible": true,
@@ -20048,7 +20047,7 @@
      },
      {
       "id": "week-230",
-      "name": "Icône 6",
+      "name": "Jour 5 · Icône · Icône 6",
       "parent": "week-196",
       "type": "group",
       "visible": true,
@@ -20065,7 +20064,7 @@
      },
      {
       "id": "week-231",
-      "name": "Nuage 1",
+      "name": "Jour 5 · Icône · Icône 6 · Nuage 1",
       "parent": "week-230",
       "type": "ellipse",
       "visible": true,
@@ -20087,7 +20086,7 @@
      },
      {
       "id": "week-232",
-      "name": "Nuage 2",
+      "name": "Jour 5 · Icône · Icône 6 · Nuage 2",
       "parent": "week-230",
       "type": "ellipse",
       "visible": true,
@@ -20109,7 +20108,7 @@
      },
      {
       "id": "week-233",
-      "name": "Nuage 3",
+      "name": "Jour 5 · Icône · Icône 6 · Nuage 3",
       "parent": "week-230",
       "type": "ellipse",
       "visible": true,
@@ -20131,7 +20130,7 @@
      },
      {
       "id": "week-234",
-      "name": "Base",
+      "name": "Jour 5 · Icône · Icône 6 · Base",
       "parent": "week-230",
       "type": "rect",
       "visible": true,
@@ -20154,7 +20153,7 @@
      },
      {
       "id": "week-235",
-      "name": "Flocon",
+      "name": "Jour 5 · Icône · Icône 6 · Flocon",
       "parent": "week-230",
       "type": "ellipse",
       "visible": true,
@@ -20176,7 +20175,7 @@
      },
      {
       "id": "week-236",
-      "name": "Flocon",
+      "name": "Jour 5 · Icône · Icône 6 · Flocon",
       "parent": "week-230",
       "type": "ellipse",
       "visible": true,
@@ -20198,7 +20197,7 @@
      },
      {
       "id": "week-237",
-      "name": "Flocon",
+      "name": "Jour 5 · Icône · Icône 6 · Flocon",
       "parent": "week-230",
       "type": "ellipse",
       "visible": true,
@@ -20220,7 +20219,7 @@
      },
      {
       "id": "week-238",
-      "name": "Max",
+      "name": "Jour 5 · Max",
       "parent": "week-193",
       "type": "counter",
       "visible": true,
@@ -20263,7 +20262,7 @@
      },
      {
       "id": "week-239",
-      "name": "Min",
+      "name": "Jour 5 · Min",
       "parent": "week-193",
       "type": "counter",
       "visible": true,
@@ -20516,7 +20515,7 @@
      },
      {
       "id": "week-241",
-      "name": "Séparateur",
+      "name": "Jour 6 · Séparateur",
       "parent": "week-240",
       "type": "rect",
       "visible": true,
@@ -20538,7 +20537,7 @@
      },
      {
       "id": "week-242",
-      "name": "Jour",
+      "name": "Jour 6 · Jour",
       "parent": "week-240",
       "type": "text",
       "visible": true,
@@ -20576,7 +20575,7 @@
      },
      {
       "id": "week-243",
-      "name": "Icône",
+      "name": "Jour 6 · Icône",
       "parent": "week-240",
       "type": "group",
       "visible": true,
@@ -20601,7 +20600,7 @@
      },
      {
       "id": "week-244",
-      "name": "Icône 1",
+      "name": "Jour 6 · Icône · Icône 1",
       "parent": "week-243",
       "type": "group",
       "visible": true,
@@ -20618,7 +20617,7 @@
      },
      {
       "id": "week-245",
-      "name": "Halo",
+      "name": "Jour 6 · Icône · Icône 1 · Halo",
       "parent": "week-244",
       "type": "ellipse",
       "visible": true,
@@ -20644,7 +20643,7 @@
      },
      {
       "id": "week-246",
-      "name": "Soleil",
+      "name": "Jour 6 · Icône · Icône 1 · Soleil",
       "parent": "week-244",
       "type": "ellipse",
       "visible": true,
@@ -20670,7 +20669,7 @@
      },
      {
       "id": "week-247",
-      "name": "Icône 2",
+      "name": "Jour 6 · Icône · Icône 2",
       "parent": "week-243",
       "type": "group",
       "visible": true,
@@ -20687,7 +20686,7 @@
      },
      {
       "id": "week-248",
-      "name": "Halo",
+      "name": "Jour 6 · Icône · Icône 2 · Halo",
       "parent": "week-247",
       "type": "ellipse",
       "visible": true,
@@ -20713,7 +20712,7 @@
      },
      {
       "id": "week-249",
-      "name": "Soleil",
+      "name": "Jour 6 · Icône · Icône 2 · Soleil",
       "parent": "week-247",
       "type": "ellipse",
       "visible": true,
@@ -20739,7 +20738,7 @@
      },
      {
       "id": "week-250",
-      "name": "Nuage 1",
+      "name": "Jour 6 · Icône · Icône 2 · Nuage 1",
       "parent": "week-247",
       "type": "ellipse",
       "visible": true,
@@ -20761,7 +20760,7 @@
      },
      {
       "id": "week-251",
-      "name": "Nuage 2",
+      "name": "Jour 6 · Icône · Icône 2 · Nuage 2",
       "parent": "week-247",
       "type": "ellipse",
       "visible": true,
@@ -20783,7 +20782,7 @@
      },
      {
       "id": "week-252",
-      "name": "Nuage 3",
+      "name": "Jour 6 · Icône · Icône 2 · Nuage 3",
       "parent": "week-247",
       "type": "ellipse",
       "visible": true,
@@ -20805,7 +20804,7 @@
      },
      {
       "id": "week-253",
-      "name": "Base",
+      "name": "Jour 6 · Icône · Icône 2 · Base",
       "parent": "week-247",
       "type": "rect",
       "visible": true,
@@ -20828,7 +20827,7 @@
      },
      {
       "id": "week-254",
-      "name": "Icône 3",
+      "name": "Jour 6 · Icône · Icône 3",
       "parent": "week-243",
       "type": "group",
       "visible": true,
@@ -20845,7 +20844,7 @@
      },
      {
       "id": "week-255",
-      "name": "Nuage 1",
+      "name": "Jour 6 · Icône · Icône 3 · Nuage 1",
       "parent": "week-254",
       "type": "ellipse",
       "visible": true,
@@ -20867,7 +20866,7 @@
      },
      {
       "id": "week-256",
-      "name": "Nuage 2",
+      "name": "Jour 6 · Icône · Icône 3 · Nuage 2",
       "parent": "week-254",
       "type": "ellipse",
       "visible": true,
@@ -20889,7 +20888,7 @@
      },
      {
       "id": "week-257",
-      "name": "Nuage 3",
+      "name": "Jour 6 · Icône · Icône 3 · Nuage 3",
       "parent": "week-254",
       "type": "ellipse",
       "visible": true,
@@ -20911,7 +20910,7 @@
      },
      {
       "id": "week-258",
-      "name": "Base",
+      "name": "Jour 6 · Icône · Icône 3 · Base",
       "parent": "week-254",
       "type": "rect",
       "visible": true,
@@ -20934,7 +20933,7 @@
      },
      {
       "id": "week-259",
-      "name": "Nuage 1",
+      "name": "Jour 6 · Icône · Icône 3 · Nuage 1",
       "parent": "week-254",
       "type": "ellipse",
       "visible": true,
@@ -20956,7 +20955,7 @@
      },
      {
       "id": "week-260",
-      "name": "Nuage 2",
+      "name": "Jour 6 · Icône · Icône 3 · Nuage 2",
       "parent": "week-254",
       "type": "ellipse",
       "visible": true,
@@ -20978,7 +20977,7 @@
      },
      {
       "id": "week-261",
-      "name": "Nuage 3",
+      "name": "Jour 6 · Icône · Icône 3 · Nuage 3",
       "parent": "week-254",
       "type": "ellipse",
       "visible": true,
@@ -21000,7 +20999,7 @@
      },
      {
       "id": "week-262",
-      "name": "Base",
+      "name": "Jour 6 · Icône · Icône 3 · Base",
       "parent": "week-254",
       "type": "rect",
       "visible": true,
@@ -21023,7 +21022,7 @@
      },
      {
       "id": "week-263",
-      "name": "Icône 4",
+      "name": "Jour 6 · Icône · Icône 4",
       "parent": "week-243",
       "type": "group",
       "visible": true,
@@ -21040,7 +21039,7 @@
      },
      {
       "id": "week-264",
-      "name": "Nuage 1",
+      "name": "Jour 6 · Icône · Icône 4 · Nuage 1",
       "parent": "week-263",
       "type": "ellipse",
       "visible": true,
@@ -21062,7 +21061,7 @@
      },
      {
       "id": "week-265",
-      "name": "Nuage 2",
+      "name": "Jour 6 · Icône · Icône 4 · Nuage 2",
       "parent": "week-263",
       "type": "ellipse",
       "visible": true,
@@ -21084,7 +21083,7 @@
      },
      {
       "id": "week-266",
-      "name": "Nuage 3",
+      "name": "Jour 6 · Icône · Icône 4 · Nuage 3",
       "parent": "week-263",
       "type": "ellipse",
       "visible": true,
@@ -21106,7 +21105,7 @@
      },
      {
       "id": "week-267",
-      "name": "Base",
+      "name": "Jour 6 · Icône · Icône 4 · Base",
       "parent": "week-263",
       "type": "rect",
       "visible": true,
@@ -21129,7 +21128,7 @@
      },
      {
       "id": "week-268",
-      "name": "Goutte",
+      "name": "Jour 6 · Icône · Icône 4 · Goutte",
       "parent": "week-263",
       "type": "rect",
       "visible": true,
@@ -21153,7 +21152,7 @@
      },
      {
       "id": "week-269",
-      "name": "Goutte",
+      "name": "Jour 6 · Icône · Icône 4 · Goutte",
       "parent": "week-263",
       "type": "rect",
       "visible": true,
@@ -21177,7 +21176,7 @@
      },
      {
       "id": "week-270",
-      "name": "Goutte",
+      "name": "Jour 6 · Icône · Icône 4 · Goutte",
       "parent": "week-263",
       "type": "rect",
       "visible": true,
@@ -21201,7 +21200,7 @@
      },
      {
       "id": "week-271",
-      "name": "Icône 5",
+      "name": "Jour 6 · Icône · Icône 5",
       "parent": "week-243",
       "type": "group",
       "visible": true,
@@ -21218,7 +21217,7 @@
      },
      {
       "id": "week-272",
-      "name": "Nuage 1",
+      "name": "Jour 6 · Icône · Icône 5 · Nuage 1",
       "parent": "week-271",
       "type": "ellipse",
       "visible": true,
@@ -21240,7 +21239,7 @@
      },
      {
       "id": "week-273",
-      "name": "Nuage 2",
+      "name": "Jour 6 · Icône · Icône 5 · Nuage 2",
       "parent": "week-271",
       "type": "ellipse",
       "visible": true,
@@ -21262,7 +21261,7 @@
      },
      {
       "id": "week-274",
-      "name": "Nuage 3",
+      "name": "Jour 6 · Icône · Icône 5 · Nuage 3",
       "parent": "week-271",
       "type": "ellipse",
       "visible": true,
@@ -21284,7 +21283,7 @@
      },
      {
       "id": "week-275",
-      "name": "Base",
+      "name": "Jour 6 · Icône · Icône 5 · Base",
       "parent": "week-271",
       "type": "rect",
       "visible": true,
@@ -21307,7 +21306,7 @@
      },
      {
       "id": "week-276",
-      "name": "Éclair",
+      "name": "Jour 6 · Icône · Icône 5 · Éclair",
       "parent": "week-271",
       "type": "polygon",
       "visible": true,
@@ -21360,7 +21359,7 @@
      },
      {
       "id": "week-277",
-      "name": "Icône 6",
+      "name": "Jour 6 · Icône · Icône 6",
       "parent": "week-243",
       "type": "group",
       "visible": true,
@@ -21377,7 +21376,7 @@
      },
      {
       "id": "week-278",
-      "name": "Nuage 1",
+      "name": "Jour 6 · Icône · Icône 6 · Nuage 1",
       "parent": "week-277",
       "type": "ellipse",
       "visible": true,
@@ -21399,7 +21398,7 @@
      },
      {
       "id": "week-279",
-      "name": "Nuage 2",
+      "name": "Jour 6 · Icône · Icône 6 · Nuage 2",
       "parent": "week-277",
       "type": "ellipse",
       "visible": true,
@@ -21421,7 +21420,7 @@
      },
      {
       "id": "week-280",
-      "name": "Nuage 3",
+      "name": "Jour 6 · Icône · Icône 6 · Nuage 3",
       "parent": "week-277",
       "type": "ellipse",
       "visible": true,
@@ -21443,7 +21442,7 @@
      },
      {
       "id": "week-281",
-      "name": "Base",
+      "name": "Jour 6 · Icône · Icône 6 · Base",
       "parent": "week-277",
       "type": "rect",
       "visible": true,
@@ -21466,7 +21465,7 @@
      },
      {
       "id": "week-282",
-      "name": "Flocon",
+      "name": "Jour 6 · Icône · Icône 6 · Flocon",
       "parent": "week-277",
       "type": "ellipse",
       "visible": true,
@@ -21488,7 +21487,7 @@
      },
      {
       "id": "week-283",
-      "name": "Flocon",
+      "name": "Jour 6 · Icône · Icône 6 · Flocon",
       "parent": "week-277",
       "type": "ellipse",
       "visible": true,
@@ -21510,7 +21509,7 @@
      },
      {
       "id": "week-284",
-      "name": "Flocon",
+      "name": "Jour 6 · Icône · Icône 6 · Flocon",
       "parent": "week-277",
       "type": "ellipse",
       "visible": true,
@@ -21532,7 +21531,7 @@
      },
      {
       "id": "week-285",
-      "name": "Max",
+      "name": "Jour 6 · Max",
       "parent": "week-240",
       "type": "counter",
       "visible": true,
@@ -21575,7 +21574,7 @@
      },
      {
       "id": "week-286",
-      "name": "Min",
+      "name": "Jour 6 · Min",
       "parent": "week-240",
       "type": "counter",
       "visible": true,
@@ -21828,7 +21827,7 @@
      },
      {
       "id": "week-288",
-      "name": "Séparateur",
+      "name": "Jour 7 · Séparateur",
       "parent": "week-287",
       "type": "rect",
       "visible": true,
@@ -21850,7 +21849,7 @@
      },
      {
       "id": "week-289",
-      "name": "Jour",
+      "name": "Jour 7 · Jour",
       "parent": "week-287",
       "type": "text",
       "visible": true,
@@ -21888,7 +21887,7 @@
      },
      {
       "id": "week-290",
-      "name": "Icône",
+      "name": "Jour 7 · Icône",
       "parent": "week-287",
       "type": "group",
       "visible": true,
@@ -21913,7 +21912,7 @@
      },
      {
       "id": "week-291",
-      "name": "Icône 1",
+      "name": "Jour 7 · Icône · Icône 1",
       "parent": "week-290",
       "type": "group",
       "visible": true,
@@ -21930,7 +21929,7 @@
      },
      {
       "id": "week-292",
-      "name": "Halo",
+      "name": "Jour 7 · Icône · Icône 1 · Halo",
       "parent": "week-291",
       "type": "ellipse",
       "visible": true,
@@ -21956,7 +21955,7 @@
      },
      {
       "id": "week-293",
-      "name": "Soleil",
+      "name": "Jour 7 · Icône · Icône 1 · Soleil",
       "parent": "week-291",
       "type": "ellipse",
       "visible": true,
@@ -21982,7 +21981,7 @@
      },
      {
       "id": "week-294",
-      "name": "Icône 2",
+      "name": "Jour 7 · Icône · Icône 2",
       "parent": "week-290",
       "type": "group",
       "visible": true,
@@ -21999,7 +21998,7 @@
      },
      {
       "id": "week-295",
-      "name": "Halo",
+      "name": "Jour 7 · Icône · Icône 2 · Halo",
       "parent": "week-294",
       "type": "ellipse",
       "visible": true,
@@ -22025,7 +22024,7 @@
      },
      {
       "id": "week-296",
-      "name": "Soleil",
+      "name": "Jour 7 · Icône · Icône 2 · Soleil",
       "parent": "week-294",
       "type": "ellipse",
       "visible": true,
@@ -22051,7 +22050,7 @@
      },
      {
       "id": "week-297",
-      "name": "Nuage 1",
+      "name": "Jour 7 · Icône · Icône 2 · Nuage 1",
       "parent": "week-294",
       "type": "ellipse",
       "visible": true,
@@ -22073,7 +22072,7 @@
      },
      {
       "id": "week-298",
-      "name": "Nuage 2",
+      "name": "Jour 7 · Icône · Icône 2 · Nuage 2",
       "parent": "week-294",
       "type": "ellipse",
       "visible": true,
@@ -22095,7 +22094,7 @@
      },
      {
       "id": "week-299",
-      "name": "Nuage 3",
+      "name": "Jour 7 · Icône · Icône 2 · Nuage 3",
       "parent": "week-294",
       "type": "ellipse",
       "visible": true,
@@ -22117,7 +22116,7 @@
      },
      {
       "id": "week-300",
-      "name": "Base",
+      "name": "Jour 7 · Icône · Icône 2 · Base",
       "parent": "week-294",
       "type": "rect",
       "visible": true,
@@ -22140,7 +22139,7 @@
      },
      {
       "id": "week-301",
-      "name": "Icône 3",
+      "name": "Jour 7 · Icône · Icône 3",
       "parent": "week-290",
       "type": "group",
       "visible": true,
@@ -22157,7 +22156,7 @@
      },
      {
       "id": "week-302",
-      "name": "Nuage 1",
+      "name": "Jour 7 · Icône · Icône 3 · Nuage 1",
       "parent": "week-301",
       "type": "ellipse",
       "visible": true,
@@ -22179,7 +22178,7 @@
      },
      {
       "id": "week-303",
-      "name": "Nuage 2",
+      "name": "Jour 7 · Icône · Icône 3 · Nuage 2",
       "parent": "week-301",
       "type": "ellipse",
       "visible": true,
@@ -22201,7 +22200,7 @@
      },
      {
       "id": "week-304",
-      "name": "Nuage 3",
+      "name": "Jour 7 · Icône · Icône 3 · Nuage 3",
       "parent": "week-301",
       "type": "ellipse",
       "visible": true,
@@ -22223,7 +22222,7 @@
      },
      {
       "id": "week-305",
-      "name": "Base",
+      "name": "Jour 7 · Icône · Icône 3 · Base",
       "parent": "week-301",
       "type": "rect",
       "visible": true,
@@ -22246,7 +22245,7 @@
      },
      {
       "id": "week-306",
-      "name": "Nuage 1",
+      "name": "Jour 7 · Icône · Icône 3 · Nuage 1",
       "parent": "week-301",
       "type": "ellipse",
       "visible": true,
@@ -22268,7 +22267,7 @@
      },
      {
       "id": "week-307",
-      "name": "Nuage 2",
+      "name": "Jour 7 · Icône · Icône 3 · Nuage 2",
       "parent": "week-301",
       "type": "ellipse",
       "visible": true,
@@ -22290,7 +22289,7 @@
      },
      {
       "id": "week-308",
-      "name": "Nuage 3",
+      "name": "Jour 7 · Icône · Icône 3 · Nuage 3",
       "parent": "week-301",
       "type": "ellipse",
       "visible": true,
@@ -22312,7 +22311,7 @@
      },
      {
       "id": "week-309",
-      "name": "Base",
+      "name": "Jour 7 · Icône · Icône 3 · Base",
       "parent": "week-301",
       "type": "rect",
       "visible": true,
@@ -22335,7 +22334,7 @@
      },
      {
       "id": "week-310",
-      "name": "Icône 4",
+      "name": "Jour 7 · Icône · Icône 4",
       "parent": "week-290",
       "type": "group",
       "visible": true,
@@ -22352,7 +22351,7 @@
      },
      {
       "id": "week-311",
-      "name": "Nuage 1",
+      "name": "Jour 7 · Icône · Icône 4 · Nuage 1",
       "parent": "week-310",
       "type": "ellipse",
       "visible": true,
@@ -22374,7 +22373,7 @@
      },
      {
       "id": "week-312",
-      "name": "Nuage 2",
+      "name": "Jour 7 · Icône · Icône 4 · Nuage 2",
       "parent": "week-310",
       "type": "ellipse",
       "visible": true,
@@ -22396,7 +22395,7 @@
      },
      {
       "id": "week-313",
-      "name": "Nuage 3",
+      "name": "Jour 7 · Icône · Icône 4 · Nuage 3",
       "parent": "week-310",
       "type": "ellipse",
       "visible": true,
@@ -22418,7 +22417,7 @@
      },
      {
       "id": "week-314",
-      "name": "Base",
+      "name": "Jour 7 · Icône · Icône 4 · Base",
       "parent": "week-310",
       "type": "rect",
       "visible": true,
@@ -22441,7 +22440,7 @@
      },
      {
       "id": "week-315",
-      "name": "Goutte",
+      "name": "Jour 7 · Icône · Icône 4 · Goutte",
       "parent": "week-310",
       "type": "rect",
       "visible": true,
@@ -22465,7 +22464,7 @@
      },
      {
       "id": "week-316",
-      "name": "Goutte",
+      "name": "Jour 7 · Icône · Icône 4 · Goutte",
       "parent": "week-310",
       "type": "rect",
       "visible": true,
@@ -22489,7 +22488,7 @@
      },
      {
       "id": "week-317",
-      "name": "Goutte",
+      "name": "Jour 7 · Icône · Icône 4 · Goutte",
       "parent": "week-310",
       "type": "rect",
       "visible": true,
@@ -22513,7 +22512,7 @@
      },
      {
       "id": "week-318",
-      "name": "Icône 5",
+      "name": "Jour 7 · Icône · Icône 5",
       "parent": "week-290",
       "type": "group",
       "visible": true,
@@ -22530,7 +22529,7 @@
      },
      {
       "id": "week-319",
-      "name": "Nuage 1",
+      "name": "Jour 7 · Icône · Icône 5 · Nuage 1",
       "parent": "week-318",
       "type": "ellipse",
       "visible": true,
@@ -22552,7 +22551,7 @@
      },
      {
       "id": "week-320",
-      "name": "Nuage 2",
+      "name": "Jour 7 · Icône · Icône 5 · Nuage 2",
       "parent": "week-318",
       "type": "ellipse",
       "visible": true,
@@ -22574,7 +22573,7 @@
      },
      {
       "id": "week-321",
-      "name": "Nuage 3",
+      "name": "Jour 7 · Icône · Icône 5 · Nuage 3",
       "parent": "week-318",
       "type": "ellipse",
       "visible": true,
@@ -22596,7 +22595,7 @@
      },
      {
       "id": "week-322",
-      "name": "Base",
+      "name": "Jour 7 · Icône · Icône 5 · Base",
       "parent": "week-318",
       "type": "rect",
       "visible": true,
@@ -22619,7 +22618,7 @@
      },
      {
       "id": "week-323",
-      "name": "Éclair",
+      "name": "Jour 7 · Icône · Icône 5 · Éclair",
       "parent": "week-318",
       "type": "polygon",
       "visible": true,
@@ -22672,7 +22671,7 @@
      },
      {
       "id": "week-324",
-      "name": "Icône 6",
+      "name": "Jour 7 · Icône · Icône 6",
       "parent": "week-290",
       "type": "group",
       "visible": true,
@@ -22689,7 +22688,7 @@
      },
      {
       "id": "week-325",
-      "name": "Nuage 1",
+      "name": "Jour 7 · Icône · Icône 6 · Nuage 1",
       "parent": "week-324",
       "type": "ellipse",
       "visible": true,
@@ -22711,7 +22710,7 @@
      },
      {
       "id": "week-326",
-      "name": "Nuage 2",
+      "name": "Jour 7 · Icône · Icône 6 · Nuage 2",
       "parent": "week-324",
       "type": "ellipse",
       "visible": true,
@@ -22733,7 +22732,7 @@
      },
      {
       "id": "week-327",
-      "name": "Nuage 3",
+      "name": "Jour 7 · Icône · Icône 6 · Nuage 3",
       "parent": "week-324",
       "type": "ellipse",
       "visible": true,
@@ -22755,7 +22754,7 @@
      },
      {
       "id": "week-328",
-      "name": "Base",
+      "name": "Jour 7 · Icône · Icône 6 · Base",
       "parent": "week-324",
       "type": "rect",
       "visible": true,
@@ -22778,7 +22777,7 @@
      },
      {
       "id": "week-329",
-      "name": "Flocon",
+      "name": "Jour 7 · Icône · Icône 6 · Flocon",
       "parent": "week-324",
       "type": "ellipse",
       "visible": true,
@@ -22800,7 +22799,7 @@
      },
      {
       "id": "week-330",
-      "name": "Flocon",
+      "name": "Jour 7 · Icône · Icône 6 · Flocon",
       "parent": "week-324",
       "type": "ellipse",
       "visible": true,
@@ -22822,7 +22821,7 @@
      },
      {
       "id": "week-331",
-      "name": "Flocon",
+      "name": "Jour 7 · Icône · Icône 6 · Flocon",
       "parent": "week-324",
       "type": "ellipse",
       "visible": true,
@@ -22844,7 +22843,7 @@
      },
      {
       "id": "week-332",
-      "name": "Max",
+      "name": "Jour 7 · Max",
       "parent": "week-287",
       "type": "counter",
       "visible": true,
@@ -22887,7 +22886,7 @@
      },
      {
       "id": "week-333",
-      "name": "Min",
+      "name": "Jour 7 · Min",
       "parent": "week-287",
       "type": "counter",
       "visible": true,
@@ -25213,9 +25212,9 @@
       "overrides": {
        "vertical": {
         "props": {
-         "x": 40.0,
+         "x": 44.0,
          "y": 120.0,
-         "width": 1000.0,
+         "width": 992.0,
          "height": 200.0
         }
        }
@@ -25279,7 +25278,7 @@
      },
      {
       "id": "alert-4",
-      "name": "Pastille",
+      "name": "Vigilance Jaune · Pastille",
       "parent": "alert-3",
       "type": "rect",
       "visible": true,
@@ -25316,7 +25315,7 @@
      },
      {
       "id": "alert-5",
-      "name": "Niveau",
+      "name": "Vigilance Jaune · Niveau",
       "parent": "alert-3",
       "type": "text",
       "visible": true,
@@ -25383,7 +25382,7 @@
      },
      {
       "id": "alert-7",
-      "name": "Pastille",
+      "name": "Vigilance Orange · Pastille",
       "parent": "alert-6",
       "type": "rect",
       "visible": true,
@@ -25420,7 +25419,7 @@
      },
      {
       "id": "alert-8",
-      "name": "Niveau",
+      "name": "Vigilance Orange · Niveau",
       "parent": "alert-6",
       "type": "text",
       "visible": true,
@@ -25487,7 +25486,7 @@
      },
      {
       "id": "alert-10",
-      "name": "Pastille",
+      "name": "Vigilance Rouge · Pastille",
       "parent": "alert-9",
       "type": "rect",
       "visible": true,
@@ -25524,7 +25523,7 @@
      },
      {
       "id": "alert-11",
-      "name": "Niveau",
+      "name": "Vigilance Rouge · Niveau",
       "parent": "alert-9",
       "type": "text",
       "visible": true,
@@ -25992,7 +25991,7 @@
      },
      {
       "id": "presenter-3",
-      "name": "Soleil",
+      "name": "Synthé · Soleil",
       "parent": "presenter-1",
       "type": "group",
       "visible": true,
@@ -26035,7 +26034,7 @@
      },
      {
       "id": "presenter-5",
-      "name": "Soleil",
+      "name": "Synthé · Soleil · Soleil",
       "parent": "presenter-3",
       "type": "ellipse",
       "visible": true,

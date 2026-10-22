@@ -4229,7 +4229,7 @@
      },
      {
       "id": "menu-4",
-      "name": "Titre",
+      "name": "Panneau · Titre",
       "parent": "menu-1",
       "type": "text",
       "visible": true,
@@ -4414,7 +4414,7 @@
      },
      {
       "id": "menu-6",
-      "name": "Numéro",
+      "name": "Titre 1 · Numéro",
       "parent": "menu-5",
       "type": "text",
       "visible": true,
@@ -4445,7 +4445,7 @@
      },
      {
       "id": "menu-7",
-      "name": "Rubrique",
+      "name": "Titre 1 · Rubrique",
       "parent": "menu-5",
       "type": "text",
       "visible": true,
@@ -4476,7 +4476,7 @@
      },
      {
       "id": "menu-8",
-      "name": "Titre",
+      "name": "Titre 1 · Titre",
       "parent": "menu-5",
       "type": "text",
       "visible": true,
@@ -4509,7 +4509,7 @@
      },
      {
       "id": "menu-9",
-      "name": "Séparateur",
+      "name": "Titre 1 · Séparateur",
       "parent": "menu-5",
       "type": "rect",
       "visible": true,
@@ -4639,7 +4639,7 @@
      },
      {
       "id": "menu-11",
-      "name": "Numéro",
+      "name": "Titre 2 · Numéro",
       "parent": "menu-10",
       "type": "text",
       "visible": true,
@@ -4670,7 +4670,7 @@
      },
      {
       "id": "menu-12",
-      "name": "Rubrique",
+      "name": "Titre 2 · Rubrique",
       "parent": "menu-10",
       "type": "text",
       "visible": true,
@@ -4701,7 +4701,7 @@
      },
      {
       "id": "menu-13",
-      "name": "Titre",
+      "name": "Titre 2 · Titre",
       "parent": "menu-10",
       "type": "text",
       "visible": true,
@@ -4734,7 +4734,7 @@
      },
      {
       "id": "menu-14",
-      "name": "Séparateur",
+      "name": "Titre 2 · Séparateur",
       "parent": "menu-10",
       "type": "rect",
       "visible": true,
@@ -4864,7 +4864,7 @@
      },
      {
       "id": "menu-16",
-      "name": "Numéro",
+      "name": "Titre 3 · Numéro",
       "parent": "menu-15",
       "type": "text",
       "visible": true,
@@ -4895,7 +4895,7 @@
      },
      {
       "id": "menu-17",
-      "name": "Rubrique",
+      "name": "Titre 3 · Rubrique",
       "parent": "menu-15",
       "type": "text",
       "visible": true,
@@ -4926,7 +4926,7 @@
      },
      {
       "id": "menu-18",
-      "name": "Titre",
+      "name": "Titre 3 · Titre",
       "parent": "menu-15",
       "type": "text",
       "visible": true,
@@ -4959,7 +4959,7 @@
      },
      {
       "id": "menu-19",
-      "name": "Séparateur",
+      "name": "Titre 3 · Séparateur",
       "parent": "menu-15",
       "type": "rect",
       "visible": true,
@@ -5089,7 +5089,7 @@
      },
      {
       "id": "menu-21",
-      "name": "Numéro",
+      "name": "Titre 4 · Numéro",
       "parent": "menu-20",
       "type": "text",
       "visible": true,
@@ -5120,7 +5120,7 @@
      },
      {
       "id": "menu-22",
-      "name": "Rubrique",
+      "name": "Titre 4 · Rubrique",
       "parent": "menu-20",
       "type": "text",
       "visible": true,
@@ -5151,7 +5151,7 @@
      },
      {
       "id": "menu-23",
-      "name": "Titre",
+      "name": "Titre 4 · Titre",
       "parent": "menu-20",
       "type": "text",
       "visible": true,

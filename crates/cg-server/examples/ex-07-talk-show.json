@@ -9,8 +9,7 @@
    "Réseaux sociaux",
    "Logo",
    "Citation",
-   "Vote QR",
-   "9:16"
+   "Vote QR"
   ],
   "description": "L’habillage chaleureux d’une émission de plateau : synthés des invités dont le cartouche suit le nom, bandeau du thème, comptes sociaux, logo de l’émission, citation plein écran, vote par QR code et « À suivre ». Aubergine, corail et crème, Playfair Display et Montserrat. Chaque graphique a sa mise en page 9:16 pour les extraits sur les réseaux.",
   "en": {
@@ -1175,7 +1174,7 @@
      },
      {
       "id": "social-2",
-      "name": "Pilule",
+      "name": "Compte 1 · Pilule",
       "parent": "social-1",
       "type": "rect",
       "visible": true,
@@ -1198,7 +1197,7 @@
      },
      {
       "id": "social-3",
-      "name": "Pastille",
+      "name": "Compte 1 · Pastille",
       "parent": "social-1",
       "type": "ellipse",
       "visible": true,
@@ -1220,7 +1219,7 @@
      },
      {
       "id": "social-4",
-      "name": "Réseau",
+      "name": "Compte 1 · Réseau",
       "parent": "social-1",
       "type": "text",
       "visible": true,
@@ -1250,7 +1249,7 @@
      },
      {
       "id": "social-5",
-      "name": "Compte",
+      "name": "Compte 1 · Compte",
       "parent": "social-1",
       "type": "text",
       "visible": true,
@@ -1490,7 +1489,7 @@
      },
      {
       "id": "social-7",
-      "name": "Pilule",
+      "name": "Compte 2 · Pilule",
       "parent": "social-6",
       "type": "rect",
       "visible": true,
@@ -1513,7 +1512,7 @@
      },
      {
       "id": "social-8",
-      "name": "Pastille",
+      "name": "Compte 2 · Pastille",
       "parent": "social-6",
       "type": "ellipse",
       "visible": true,
@@ -1535,7 +1534,7 @@
      },
      {
       "id": "social-9",
-      "name": "Réseau",
+      "name": "Compte 2 · Réseau",
       "parent": "social-6",
       "type": "text",
       "visible": true,
@@ -1565,7 +1564,7 @@
      },
      {
       "id": "social-10",
-      "name": "Compte",
+      "name": "Compte 2 · Compte",
       "parent": "social-6",
       "type": "text",
       "visible": true,
@@ -1805,7 +1804,7 @@
      },
      {
       "id": "social-12",
-      "name": "Pilule",
+      "name": "Compte 3 · Pilule",
       "parent": "social-11",
       "type": "rect",
       "visible": true,
@@ -1828,7 +1827,7 @@
      },
      {
       "id": "social-13",
-      "name": "Pastille",
+      "name": "Compte 3 · Pastille",
       "parent": "social-11",
       "type": "ellipse",
       "visible": true,
@@ -1850,7 +1849,7 @@
      },
      {
       "id": "social-14",
-      "name": "Réseau",
+      "name": "Compte 3 · Réseau",
       "parent": "social-11",
       "type": "text",
       "visible": true,
@@ -1880,7 +1879,7 @@
      },
      {
       "id": "social-15",
-      "name": "Compte",
+      "name": "Compte 3 · Compte",
       "parent": "social-11",
       "type": "text",
       "visible": true,
@@ -3728,10 +3727,10 @@
       "height": 0.56
      },
      "vertical": {
-      "x": 0.15,
-      "y": 0.3,
-      "width": 0.7,
-      "height": 0.32
+      "x": 0.1,
+      "y": 0.28,
+      "width": 0.8,
+      "height": 0.36
      }
     }
    },

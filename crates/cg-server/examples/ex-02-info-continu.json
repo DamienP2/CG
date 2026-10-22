@@ -7,8 +7,7 @@
    "Bandeau permanent",
    "Alerte info",
    "Direct",
-   "Rubriques",
-   "9:16"
+   "Rubriques"
   ],
   "description": "L’antenne d’une chaîne d’info en continu : bandeau permanent (rubrique, titre, heure et fil info), ALERTE INFO qui clignote, logo, direct avec lieu, titres de rubrique et synthés. Graphite et jaune signal, Barlow Condensed. Bandeau, alerte, logo et direct ont leur version 9:16 pour les réseaux sociaux.",
   "en": {
@@ -80,7 +79,8 @@
       "overrides": {
        "vertical": {
         "props": {
-         "y": 1478.0
+         "y": 1478.0,
+         "width": 1080.0
         }
        }
       }
@@ -975,7 +975,8 @@
       "overrides": {
        "vertical": {
         "props": {
-         "y": 1170.0
+         "y": 1170.0,
+         "width": 1080.0
         }
        }
       }
