@@ -148,7 +148,7 @@ function UserMenu() {
 function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'hardware' | 'performance' | 'mos' | 'users' | 'api' | 'settings' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
-    document.title = 'Strata';
+    document.title = 'Strata Graphics';
   }, []);
   const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
     <button className={route.page === page ? 'on' : ''} title={label} onClick={() => navigate(path)}>
@@ -204,7 +204,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
     if (useApp.getState().projectId !== projectId) openProject(projectId);
   }, [projectId, openProject]);
   useEffect(() => {
-    document.title = summary ? `${summary.name} · Strata` : 'Strata';
+    document.title = summary ? `${summary.name} · Strata Graphics` : 'Strata Graphics';
   }, [summary?.name]);
 
   // Pages a role cannot see.

@@ -1,9 +1,7 @@
 /*
  * The Strata name and the Le Figaro AudioVisuel signature (the F with its
  * quill, then "Audio" bold and "Visuel" light, as on the Le Figaro
- * Audiovisuel logo, the two words joined). Strata and the signature are set
- * apart by space only: in the top bar, a rule separates the brand from the
- * project name.
+ * Audiovisuel logo, the two words joined).
  */
 
 /** The F with its quill, from the LE FIGARO wordmark. */
@@ -38,13 +36,22 @@ export function AudioVisuel({ height }: { height: number }) {
   );
 }
 
-/** Strata, then F AudioVisuel (top bar). `stacked`: Strata above its signature (login page). */
+/** The module of Strata this app is. */
+export const MODULE = 'Graphics';
+
+/**
+ * « Strata Graphics » with the F AudioVisuel signature, small, under it (top
+ * bar). `stacked`: centred and larger (login page).
+ */
 export function Brand({ stacked = false }: { stacked?: boolean }) {
-  // On the login page the signature stays smaller than the Strata name.
-  const k = stacked ? 1.15 : 1;
+  // The signature stays well below the name.
+  const k = stacked ? 1.15 : 0.62;
   return (
-    <div className={`brand ${stacked ? 'stacked' : ''}`} aria-label="Strata, Le Figaro AudioVisuel">
-      <span className="brand-name">Strata</span>
+    <div className={`brand ${stacked ? 'stacked' : ''}`} aria-label={`Strata ${MODULE}, Le Figaro AudioVisuel`}>
+      <span className="brand-lockup">
+        <span className="brand-name">Strata</span>
+        <span className="brand-module">{MODULE}</span>
+      </span>
       <span className="brand-sign">
         <FigaroF height={14 * k} />
         <AudioVisuel height={11 * k} />
