@@ -1,22 +1,26 @@
 import { useEffect, useState } from 'react';
-import { useApp } from '../store';
+import { clientNow, useApp } from '../store';
 import { TimeContext } from './Scene';
 import type { Layer } from './types';
 
-/** Client clock that ticks every animation frame while `active`. */
+/**
+ * Client clock that ticks every animation frame while `active`: the frame's
+ * own time stamp (not when its callback happens to run), so what moves by the
+ * clock steps evenly from frame to frame.
+ */
 export function useTicker(active: boolean): number {
-  const [now, setNow] = useState(Date.now);
+  const [now, setNow] = useState(clientNow);
   useEffect(() => {
     if (!active) return;
     let raf = 0;
-    const tick = () => {
-      setNow(Date.now());
+    const tick = (t: number) => {
+      setNow(performance.timeOrigin + t);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [active]);
-  return active ? now : Date.now();
+  return active ? now : clientNow();
 }
 
 /** Provides widget time (server clock + time on air) to a scene. */

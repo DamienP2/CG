@@ -153,8 +153,10 @@ pub fn start(state: &Shared) -> Vec<tokio::task::JoinHandle<()>> {
 }
 
 /// The project is `None` when nothing is loaded: outputs keep sending black.
-/// (tick, project, state).
-type RenderJob = (u64, Option<Arc<Project>>, ChannelState);
+/// (tick, project, state, when the frame is shown: Unix ms — widgets that
+/// move by the clock, a ticker, a timer, are drawn at that instant, not when
+/// the frame happens to be rendered).
+type RenderJob = (u64, Option<Arc<Project>>, ChannelState, f64);
 
 // ---------------------------------------------------------------- outputs --
 
@@ -349,12 +351,12 @@ fn render_loop(
     let mut idle: Option<Arc<Frame>> = None;
     loop {
         let job = lock(&rx).recv();
-        let Ok((tick, project, channel)) = job else {
+        let Ok((tick, project, channel, shown_ms)) = job else {
             return;
         };
         let t = Instant::now();
         let frame = match project {
-            Some(p) => Arc::new(renderer.render_channel(&p, &channel, out, &tz)),
+            Some(p) => Arc::new(renderer.render_channel_at(&p, &channel, out, &tz, shown_ms)),
             None => idle
                 .get_or_insert_with(|| {
                     Arc::new(match &slate {
@@ -568,7 +570,12 @@ fn clock(
         }
         let (project, snapshot) = rt.block_on(advance(state, ch, &mut saved_at));
         for p in &pictures {
-            p.request((n, project.clone(), snapshot.clone()));
+            // Shown `ahead` ticks from now.
+            let shown = at + period * p.ahead as u32;
+            let shown_ms = shown
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0.0, |d| d.as_secs_f64() * 1000.0);
+            p.request((n, project.clone(), snapshot.clone(), shown_ms));
         }
     }
     for p in pictures {

@@ -350,6 +350,20 @@ impl Renderer {
         out: OutputFormat,
         default_tz: &str,
     ) -> Frame {
+        self.render_channel_at(project, state, out, default_tz, now_ms() as f64)
+    }
+
+    /// The channel as shown at `shown_ms` (Unix ms): what moves by the clock
+    /// (a ticker, a timer) is drawn at that instant, so frames rendered ahead
+    /// or in parallel still step evenly.
+    pub fn render_channel_at(
+        &mut self,
+        project: &Project,
+        state: &ChannelState,
+        out: OutputFormat,
+        default_tz: &str,
+        shown_ms: f64,
+    ) -> Frame {
         self.refresh_fonts();
         let mut pm = Pixmap::new(out.width.max(1), out.height.max(1)).expect("valid size");
         // The project layout (16:9, 9:16…) closest to this output's shape.
@@ -363,7 +377,7 @@ impl Renderer {
         )
         .pre_scale(scale, scale);
         let fps = project.frame_rate.as_f64().max(1.0);
-        let now = now_ms();
+        let now = shown_ms.round() as i64;
         let portrait = dh > dw;
         for (layer, item) in &state.layers {
             if let Some(t) = project.template(&item.template_id) {

@@ -81,6 +81,25 @@ interface AppStore {
 }
 
 let socket: WebSocket | null = null;
+
+/** The client's clock, on the same steady scale as the animation frames. */
+export const clientNow = () => performance.timeOrigin + performance.now();
+
+/*
+ * Server clock − client clock. Each message gives it minus its trip over the
+ * network, which varies by a few ms from one to the next: the least delayed
+ * of the last ones is kept, and it changes only by a real step, so what moves
+ * by the clock (a ticker) never jumps back and forth.
+ */
+const offsetSamples: number[] = [];
+let steadyOffset: number | null = null;
+function clockOffset(serverTime: number, now: number): number {
+  offsetSamples.push(serverTime - now);
+  if (offsetSamples.length > 64) offsetSamples.shift();
+  const best = Math.max(...offsetSamples);
+  if (steadyOffset === null || Math.abs(best - steadyOffset) > 30) steadyOffset = best;
+  return steadyOffset;
+}
 let toastId = 0;
 
 export class ApiError extends Error {
@@ -224,10 +243,10 @@ export const useApp = create<AppStore>((set, get) => {
         };
         ws.onmessage = (ev) => {
           const msg = JSON.parse(ev.data) as ServerEvent;
-          const now = Date.now();
+          const now = clientNow();
           switch (msg.type) {
             case 'hello': {
-              set({ channels: msg.channels, timezone: msg.timezone, serverOffset: msg.serverTime - now });
+              set({ channels: msg.channels, timezone: msg.timezone, serverOffset: clockOffset(msg.serverTime, now) });
               if (!outputChannel) {
                 set({ projects: msg.projects });
                 api<Folders>('GET', '/api/folders').then((folders) => set({ folders }), () => {});
@@ -263,7 +282,7 @@ export const useApp = create<AppStore>((set, get) => {
               set({ channels: msg.channels });
               break;
             case 'channel':
-              set({ live: { ...get().live, [msg.channelId]: { state: msg.state, at: now } }, serverOffset: msg.serverTime - now });
+              set({ live: { ...get().live, [msg.channelId]: { state: msg.state, at: now } }, serverOffset: clockOffset(msg.serverTime, now) });
               break;
             case 'lock':
               lockEvents.dispatchEvent(new CustomEvent('lock', { detail: msg }));
