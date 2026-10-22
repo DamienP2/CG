@@ -4,7 +4,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { Globe, RefreshCw } from 'lucide-react';
 import type { Data } from '../engine/types';
-import { Btns, Content, defineWidget, Note, Num, OpRow, Section, Seg, Toggle, type Warning } from './kit';
+import { Btns, Content, defineWidget, Num, OpRow, Section, Seg, Toggle, type Warning } from './kit';
 import { t } from '../i18n';
 
 export interface Config {
@@ -107,6 +107,9 @@ function View({ layer, w, h, data, state, nowMs, designer }: { layer: WebLayer; 
   const wantId = idOf(want);
   const shownId = idOf(shown);
   const frames = useRef(new Map<string, HTMLIFrameElement>());
+  // Frames showing the proxy's error page (by key): never counted as loaded.
+  const failed = useRef(new Set<string>());
+  const [, bump] = useReducer((x: number) => x + 1, 0);
   const loadedId = useRef('');
   useEffect(() => {
     if (wantId === shownId) return setLoading(null);
@@ -135,14 +138,22 @@ function View({ layer, w, h, data, state, nowMs, designer }: { layer: WebLayer; 
     const on = (e: MessageEvent) => {
       const m = e.data as { strataWeb?: string; msg?: string } | null;
       if (!m || m.strataWeb !== 'error') return;
-      if (![...frames.current.values()].some((f) => f.contentWindow === e.source)) return;
+      const hit = [...frames.current.entries()].find(([, f]) => f.contentWindow === e.source);
+      if (!hit) return;
+      failed.current.add(hit[0]);
       report(layer.id, { s: 'error', msg: m.msg });
+      bump();
     };
     addEventListener('message', on);
     return () => removeEventListener('message', on);
   }, [layer.id]);
   const loaded = (f: Frame) => {
     loadedId.current = idOf(f);
+    if (failed.current.has(f.key)) {
+      // A reload that failed keeps the page shown.
+      if (loading && f.key === loading.key) setLoading(null);
+      return;
+    }
     if (status.get(layer.id)?.s !== 'error' || idOf(f) === wantId) report(layer.id, { s: 'ok' });
     if (loading && f.key === loading.key) {
       setShown(loading);
@@ -157,7 +168,8 @@ function View({ layer, w, h, data, state, nowMs, designer }: { layer: WebLayer; 
       title={layer.id}
       onLoad={() => loaded(f)}
       {...(f.doc != null ? { srcDoc: f.doc, sandbox: 'allow-scripts' } : { src: f.src, sandbox: k.proxy ? 'allow-scripts allow-forms allow-popups' : 'allow-scripts allow-same-origin allow-forms allow-popups', referrerPolicy: 'no-referrer' as const })}
-      style={style(hidden)}
+      // The error page is for the Designer: on air the frame stays empty (the Operator's dot says why).
+      style={style(hidden || (!designer && failed.current.has(f.key)))}
     />
   );
   return (
@@ -227,18 +239,12 @@ export default defineWidget({
               ]}
             />
           )}
-          <Note>{t('Shown by browsers only: the HTML5 outputs and the previews. The SDI, NDI and ST 2110 outputs leave its box empty.')}</Note>
         </Section>
       </>
     );
   },
   Compact: ({ layer, act }) => <Compact layer={layer as unknown as WebLayer} act={act} />,
-  Operator: ({ act }) => (
-    <>
-      <Btns list={[{ label: t('Reload the page'), cls: 'violet', onClick: () => act('reload') }]} />
-      <Note>{t('On the HTML5 outputs only.')}</Note>
-    </>
-  ),
+  Operator: ({ act }) => <Btns list={[{ label: t('Reload the page'), cls: 'violet', onClick: () => act('reload') }]} />,
   warnings: (l) => {
     const k = cfg(l as unknown as WebLayer);
     const out: Warning[] = [{ level: 'info', op: true, text: t('Web page: HTML5 outputs and previews only (not SDI, NDI, ST 2110).') }];
