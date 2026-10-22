@@ -66,11 +66,7 @@ impl Bar {
 
 fn path_mask(d: &Draw, p: &Path) -> Option<Mask> {
     match d.mask {
-        Some(m) => {
-            let mut m = m.clone();
-            m.intersect_path(p, FillRule::Winding, true, d.tf);
-            Some(m)
-        }
+        Some(m) => Some(crate::mask::intersect(m, p, d.tf)),
         None => {
             let mut m = Mask::new(d.pm.width(), d.pm.height())?;
             m.fill_path(p, FillRule::Winding, true, d.tf);
@@ -216,6 +212,14 @@ fn radial_tick(cx: f32, cy: f32, r0: f32, r1: f32, a: f32) -> Option<Path> {
     }
     pb.close();
     pb.finish()
+}
+
+/// Drawn from the value shown (and the widget it follows).
+pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
+    let e = eff_with(d.layer, d.data, d.follow)?;
+    let v = e.shown(st, d.time.now_ms, d.time.age_secs);
+    let follow = d.follow.map(|(a, b)| (a.to_bits(), b.map(f64::to_bits)));
+    Some(crate::cache::Motion::of(&(v.to_bits(), follow)))
 }
 
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {

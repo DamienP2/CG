@@ -166,6 +166,69 @@ impl Ctx<'_> {
     }
 }
 
+/// The clocks: one, or one per city (zone, label).
+fn clocks(e: &Eff) -> Vec<(Option<ZoneSel>, String)> {
+    let c = e.c;
+    if !e.timed() && c.cities && !c.city_list.is_empty() {
+        c.city_list
+            .iter()
+            .map(|ct| {
+                let label = if ct.label.trim().is_empty() {
+                    ct.zone.clone()
+                } else {
+                    ct.label.clone()
+                };
+                (
+                    Some(ZoneSel::named(&ct.zone)),
+                    if c.affix.upper {
+                        label.to_uppercase()
+                    } else {
+                        label
+                    },
+                )
+            })
+            .collect()
+    } else {
+        vec![(None, String::new())]
+    }
+}
+
+/// A digital clock is drawn from what it shows (`display`, its value
+/// aside), the blinks of its separator and of its value, and its banner at
+/// zero: the same picture for the second it shows. An analog one moves.
+pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
+    use crate::cache::Motion;
+    let LayerKind::Clock { .. } = &d.layer.kind else {
+        return None;
+    };
+    let e = eff(d.layer, d.data)?;
+    let c = e.c;
+    if c.face == Face::Analog {
+        return Some(Motion::Moving);
+    }
+    let now = d.time.now_ms;
+    let at = At {
+        now,
+        age_ms: (d.time.age_secs * 1000.0) as i64,
+        fps: d.fps,
+        default_tz: d.time.default_tz,
+    };
+    let sep_off = c.sep_blink && now.rem_euclid(1000) >= 500;
+    let mut shown = Vec::new();
+    for (z, _) in clocks(&e) {
+        let mut disp = display(&e, st, at, z.as_ref());
+        if shown.is_empty() && banner(&e, &disp, now).is_some() {
+            return Some(Motion::Moving);
+        }
+        let blink_off = disp.blink && now.rem_euclid(1000) >= 600;
+        // Not drawn: the value itself and when it reaches zero (the banner).
+        disp.v = None;
+        disp.zero_at = None;
+        shown.push(format!("{disp:?}{blink_off}"));
+    }
+    Some(Motion::of(&(sep_off, shown)))
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Clock { font: fs, .. } = &d.layer.kind else {
         return false;
@@ -202,30 +265,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     } else {
         1.0
     };
-    // The clocks: one, or one per city.
-    let zones: Vec<(Option<ZoneSel>, String)> = if !e.timed() && c.cities && !c.city_list.is_empty()
-    {
-        c.city_list
-            .iter()
-            .map(|ct| {
-                let label = if ct.label.trim().is_empty() {
-                    ct.zone.clone()
-                } else {
-                    ct.label.clone()
-                };
-                (
-                    Some(ZoneSel::named(&ct.zone)),
-                    if c.affix.upper {
-                        label.to_uppercase()
-                    } else {
-                        label
-                    },
-                )
-            })
-            .collect()
-    } else {
-        vec![(None, String::new())]
-    };
+    let zones = clocks(&e);
     if c.face == Face::Analog {
         draw_analog(d, &cx, st, at, &zones, fs.align, fs.vertical_align);
         return true;

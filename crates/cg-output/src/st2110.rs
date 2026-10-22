@@ -29,6 +29,8 @@ use crate::{OutputError, OutputSink};
 /// RTP payload bytes per packet. 1200 = 240 pgroups (480 px), fits a 1500 MTU
 /// with RTP + RFC 4175 headers and divides 1920/1280/3840 line widths.
 const PAYLOAD_BYTES: usize = 1200;
+/// RTP header (12 bytes) and RFC 4175 payload header (8, one line segment).
+const HEADER_BYTES: usize = 20;
 const RTP_CLOCK: f64 = 90_000.0;
 
 /// How the picture and its alpha travel.
@@ -303,6 +305,60 @@ pub fn packetize_into(
     }
 }
 
+/// The packets of the picture sent last (`out`) made the packets of `frame`
+/// (same size), whose rows `rows` changed: those lines packed again, in
+/// place, then every packet restamped. False when the layout differs
+/// (`packetize_into` is then needed).
+pub fn repacketize(
+    frame: &Frame,
+    essence: Essence,
+    rows: &[bool],
+    seq: &mut u32,
+    timestamp: u32,
+    out: &mut Packets,
+    line: &mut Vec<u8>,
+) -> bool {
+    let (w, h) = (frame.width as usize, frame.height as usize);
+    if rows.len() != h || h == 0 || !out.ends.len().is_multiple_of(h) {
+        return false;
+    }
+    let per_line = out.ends.len() / h;
+    for (y, _) in rows.iter().enumerate().filter(|(_, c)| **c) {
+        essence.pack(&frame.data[y * w * 4..(y + 1) * w * 4], line);
+        let mut offset = 0;
+        for k in y * per_line..(y + 1) * per_line {
+            let start = if k == 0 { 0 } else { out.ends[k - 1] } + HEADER_BYTES;
+            let end = out.ends[k];
+            let len = end - start;
+            if offset + len > line.len() {
+                return false;
+            }
+            out.buf[start..end].copy_from_slice(&line[offset..offset + len]);
+            offset += len;
+        }
+        if offset != line.len() {
+            return false;
+        }
+    }
+    restamp(out, seq, timestamp);
+    true
+}
+
+/// The packets of the picture sent last, for the same picture again: only
+/// their sequence numbers and timestamp change (what `packetize_into` would
+/// make, without converting the picture again).
+pub fn restamp(out: &mut Packets, seq: &mut u32, timestamp: u32) {
+    let mut start = 0;
+    for &end in &out.ends {
+        let p = &mut out.buf[start..end];
+        p[2..4].copy_from_slice(&(*seq as u16).to_be_bytes());
+        p[4..8].copy_from_slice(&timestamp.to_be_bytes());
+        p[12..14].copy_from_slice(&((*seq >> 16) as u16).to_be_bytes());
+        *seq = seq.wrapping_add(1);
+        start = end;
+    }
+}
+
 pub fn packetize(
     frame: &Frame,
     essence: Essence,
@@ -409,6 +465,7 @@ fn run(send: Sending, rx: Receiver<(Arc<Frame>, SystemTime)>, busy: &AtomicU64) 
     } = send;
     let mut seq = 0u32;
     let (mut packets, mut line) = (Packets::default(), Vec::new());
+    let mut last: Option<Arc<Frame>> = None;
     let (mut frames, mut stats_at) = (0u32, Instant::now());
     while let Ok((frame, at)) = rx.recv() {
         let start = Instant::now();
@@ -425,7 +482,32 @@ fn run(send: Sending, rx: Receiver<(Arc<Frame>, SystemTime)>, busy: &AtomicU64) 
         // Fill and key threads derive the same timestamp from the frame's
         // capture time so receivers can pair them.
         let ts = rtp_timestamp(frame_time(at) + tai);
-        packetize_into(&frame, essence, pt, &mut seq, ts, &mut packets, &mut line);
+        // The same picture as the last one (nothing moved): its packets
+        // again; else only the lines that changed are packed again.
+        if last.as_ref().is_some_and(|l| Arc::ptr_eq(l, &frame)) {
+            restamp(&mut packets, &mut seq, ts);
+        } else {
+            let again = crate::changed_rows(&frame, last.as_deref()).is_some_and(|rows| {
+                let before = seq;
+                let done = repacketize(
+                    &frame,
+                    essence,
+                    &rows,
+                    &mut seq,
+                    ts,
+                    &mut packets,
+                    &mut line,
+                );
+                if !done {
+                    seq = before;
+                }
+                done
+            });
+            if !again {
+                packetize_into(&frame, essence, pt, &mut seq, ts, &mut packets, &mut line);
+            }
+            last = Some(frame.clone());
+        }
         // Pace across what is left of ~90% of the frame period.
         let budget = period.mul_f64(0.9).saturating_sub(start.elapsed());
         let send_start = Instant::now();
@@ -501,6 +583,51 @@ mod tests {
         assert_eq!(pkts.get(0).len(), 12 + 8 + 1200);
         // Second packet of line 0 starts at pixel 480.
         assert_eq!(u16::from_be_bytes([pkts.get(1)[18], pkts.get(1)[19]]), 480);
+    }
+
+    #[test]
+    fn changed_lines_only_are_packed_again() {
+        let mut old = Frame::blank(64, 6);
+        for (i, b) in old.data.iter_mut().enumerate() {
+            *b = (i * 7 % 251) as u8;
+        }
+        let mut new = old.clone();
+        for b in &mut new.data[64 * 4 * 2..64 * 4 * 4] {
+            *b = b.wrapping_add(3);
+        }
+        let rows = crate::changed_rows(&new, Some(&old)).unwrap();
+        assert_eq!(rows, [false, false, true, true, false, false]);
+        for essence in [Essence::Fill, Essence::Key, Essence::Rgba, Essence::Ycbcra] {
+            let mut seq = 0xfffe;
+            let mut line = Vec::new();
+            let mut again = packetize(&old, essence, 96, &mut seq, 1234);
+            let mut seq2 = seq;
+            assert!(repacketize(
+                &new, essence, &rows, &mut seq2, 5678, &mut again, &mut line
+            ));
+            let want = packetize(&new, essence, 96, &mut seq, 5678);
+            assert_eq!(seq, seq2);
+            assert_eq!(again.buf, want.buf);
+            assert_eq!(again.ends, want.ends);
+        }
+    }
+
+    #[test]
+    fn the_same_picture_again_is_only_restamped() {
+        let mut f = Frame::blank(64, 4);
+        for (i, b) in f.data.iter_mut().enumerate() {
+            *b = (i * 7 % 251) as u8;
+        }
+        for essence in [Essence::Fill, Essence::Rgba, Essence::Ycbcra] {
+            let mut seq = 0xfffe;
+            let mut again = packetize(&f, essence, 96, &mut seq, 1234);
+            let mut seq2 = seq;
+            restamp(&mut again, &mut seq2, 5678);
+            let want = packetize(&f, essence, 96, &mut seq, 5678);
+            assert_eq!(seq, seq2);
+            assert_eq!(again.buf, want.buf);
+            assert_eq!(again.ends, want.ends);
+        }
     }
 
     #[test]

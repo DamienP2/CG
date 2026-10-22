@@ -30,6 +30,7 @@ use tiny_skia::{
 
 use ab_glyph::FontArc;
 
+use crate::cache::Motion;
 use crate::text as tx;
 use crate::{build_mask, paint_for, Renderer};
 
@@ -240,5 +241,46 @@ pub(crate) fn draw(d: &mut Draw) -> bool {
         // No browser here: its box stays empty on these outputs.
         "web" => true,
         _ => false,
+    }
+}
+
+/// A widget drawn in two steps (the map: under the markers, then the
+/// markers): how each depends on time. See `Renderer::sub_step`.
+pub(crate) fn split_motions(d: &mut Draw) -> Option<(Motion, Motion)> {
+    match &d.layer.kind {
+        cg_core::LayerKind::Map { .. } => {
+            let st: cg_core::wid::map::State =
+                serde_json::from_value(d.state.clone()).unwrap_or_default();
+            map::motions(d, &st)
+        }
+        _ => None,
+    }
+}
+
+/// How a spec widget's picture depends on time (the frames kept, `cache`):
+/// None when `draw` would leave the layer to the generic code. Each module's
+/// `motion` reads time exactly as its `draw` does; a widget without one
+/// moves.
+pub(crate) fn motion(d: &mut Draw) -> Option<Motion> {
+    let id = cg_core::wid::widget_id(&d.layer.kind)?;
+    fn state<T: serde::de::DeserializeOwned + Default>(v: &serde_json::Value) -> T {
+        serde_json::from_value(v.clone()).unwrap_or_default()
+    }
+    let raw = d.state;
+    match id {
+        // Nothing of time in their drawing.
+        "quad" | "polygon" | "ellipse" | "qrcode" | "web" => Some(Motion::Still),
+        "text" => text::motion(d),
+        "image" => image::motion(d, &state(raw)),
+        "pen" => pen::motion(d),
+        "timer" => timer::motion(d, &state(raw)),
+        "table" => table::motion(d, &state(raw)),
+        "counter" => counter::motion(d, &state(raw)),
+        "progress" => progress::motion(d, &state(raw)),
+        "chart" => chart::motion(d, &state(raw)),
+        "scoreboard" => scoreboard::motion(d, &state(raw)),
+        "map" => map::motions(d, &state(raw)).map(|(under, _)| under),
+        // Tickers, credits, typewriters: by the time on air.
+        _ => Some(Motion::Moving),
     }
 }

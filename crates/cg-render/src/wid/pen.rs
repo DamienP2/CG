@@ -24,6 +24,18 @@ fn poly_path(pts: &[Pt], close: bool) -> Option<tiny_skia::Path> {
     pb.finish()
 }
 
+/// Drawn by its In / Out progress (still once drawn).
+pub(crate) fn motion(d: &mut Draw) -> Option<crate::cache::Motion> {
+    let LayerKind::Pen { x: c } = &d.layer.kind else {
+        return None;
+    };
+    if segments(c, d.w, d.h).is_empty() {
+        return Some(crate::cache::Motion::Still);
+    }
+    let (a, b) = progress(c, d.frame, d.hold, d.fps, d.time.age_secs);
+    Some(crate::cache::Motion::of(&(a.to_bits(), b.to_bits())))
+}
+
 pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     let LayerKind::Pen { x: c } = &d.layer.kind else {
         return false;

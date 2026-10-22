@@ -7,8 +7,8 @@ use cg_core::wid::ticker::{
 };
 use cg_core::{Color, FontStyle, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
-    FillRule, GradientStop, LinearGradient, Mask, MaskType, Paint, PathBuilder, Pixmap, Point,
-    Rect, SpreadMode, Transform,
+    FillRule, GradientStop, LinearGradient, Mask, Paint, PathBuilder, Point, Rect, SpreadMode,
+    Transform,
 };
 
 use super::table::{rect, with_alpha};
@@ -22,7 +22,6 @@ pub(crate) fn zone_mask(
     (x, y, w, h): (f32, f32, f32, f32),
     fade: Option<(bool, f32)>,
 ) -> Option<Mask> {
-    let mut pm = Pixmap::new(d.pm.width(), d.pm.height())?;
     let r = Rect::from_xywh(x, y, w.max(0.01), h.max(0.01))?;
     let mut paint = Paint::default();
     paint.set_color_rgba8(0, 0, 0, 255);
@@ -51,11 +50,7 @@ pub(crate) fn zone_mask(
             paint.shader = sh;
         }
     }
-    pm.fill_rect(r, &paint, d.tf, None);
-    if let Some(m) = d.mask {
-        pm.apply_mask(m);
-    }
-    Some(Mask::from_pixmap(pm.as_ref(), MaskType::Alpha))
+    crate::mask::painted(d.pm.width(), d.pm.height(), r, &paint, d.tf, d.mask)
 }
 
 /// Everything an item needs to be measured and drawn.

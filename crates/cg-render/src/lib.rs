@@ -7,6 +7,8 @@
 // Drawing functions take the canvas, the box, the style and the time: many arguments by nature.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
+mod cache;
+mod mask;
 pub mod sequence;
 mod shadow;
 pub mod slate;
@@ -26,6 +28,7 @@ use cg_core::{
 };
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 
+pub use cache::FrameCache;
 pub use text::{fonts_changed, FontFamily, FontStore, BUNDLED_FONTS};
 pub use wid::qrcode::qr_modules_ec;
 
@@ -132,6 +135,71 @@ pub struct Renderer {
     assets_dir: PathBuf,
     images: HashMap<String, Option<Pixmap>>,
     live: Option<Arc<dyn LiveInputs>>,
+    /// Frames kept and layouts remembered (off: everything drawn from scratch).
+    caching: bool,
+    /// Bumped when the pictures are read again (`invalidate_assets`).
+    assets_generation: u64,
+    /// A web picture was asked for while drawing and is not there yet: the
+    /// frame shows without it and is not kept.
+    pending: bool,
+    /// The frame being drawn, step by step (see `cache`).
+    steps: Steps,
+    /// A frame-sized picture for the drop shadows (cleared before each use).
+    scratch: Option<Pixmap>,
+}
+
+/// Where a frame being drawn is, in its steps (see `cache`).
+#[derive(Default)]
+struct Steps {
+    /// Planning: the steps met so far (None while drawing).
+    plan: Option<Vec<cache::Op>>,
+    /// Planning: the graphic on air the steps belong to.
+    item: usize,
+    /// Planning: inside a Lottie group the operator controls (its own clock).
+    clocked: u32,
+    /// Drawing: the steps of the plan (empty: the frame is drawn whole).
+    ops: Vec<cache::Op>,
+    /// Drawing: the step reached.
+    at: usize,
+    /// Drawing: the steps already in the picture.
+    skip: usize,
+    /// Drawing: the picture before this step is kept.
+    keep: Option<(usize, Option<Pixmap>)>,
+    /// Inside a step drawn as one (a drop shadow, a cross-fade).
+    whole: u32,
+    /// Drawing a layer in two steps (`sub_step`) whose first one is in the
+    /// picture already: the widget draws only the second.
+    under: bool,
+    /// Drawing a layer in two steps: its second one not begun yet.
+    split: bool,
+}
+
+/// Values of the layers changed by a template's logic graph, by layer id.
+type Logic = HashMap<String, std::collections::BTreeMap<Prop, Value>>;
+
+/// A graphic on air, prepared for drawing only when it is drawn (or planned).
+struct OnAir<'p> {
+    layer: u32,
+    item: &'p cg_core::PlayoutItem,
+    template: &'p Template,
+    /// Laid out for the format, with the operator's settings.
+    set: std::cell::OnceCell<std::borrow::Cow<'p, Template>>,
+    logic: std::cell::OnceCell<Logic>,
+}
+
+/// `t` laid out for `format`, with the settings in `data`.
+fn prepared<'p>(t: &'p Template, format: &str, data: &Data) -> std::borrow::Cow<'p, Template> {
+    use std::borrow::Cow;
+    match t.in_format(format) {
+        Cow::Borrowed(t) => t.with_settings(data),
+        Cow::Owned(laid) => {
+            let set = match laid.with_settings(data) {
+                Cow::Owned(t) => Some(t),
+                Cow::Borrowed(_) => None,
+            };
+            Cow::Owned(set.unwrap_or(laid))
+        }
+    }
 }
 
 struct Ctx<'a> {
@@ -140,7 +208,7 @@ struct Ctx<'a> {
     data: &'a Data,
     time: TimeCtx<'a>,
     /// Values of the layers changed by the template's logic graph.
-    logic: HashMap<String, std::collections::BTreeMap<Prop, Value>>,
+    logic: &'a Logic,
     /// The graphic on air (widget clocks the operator controls), and the
     /// project frame rate its ages are counted in.
     item: Option<&'a cg_core::PlayoutItem>,
@@ -157,7 +225,7 @@ impl<'a> Ctx<'a> {
             frame,
             data: self.data,
             time: self.time,
-            logic: self.logic.clone(),
+            logic: self.logic,
             item: self.item,
             fps: self.fps,
             lang: self.lang,
@@ -174,6 +242,16 @@ impl<'a> Ctx<'a> {
             None => self.time,
         }
     }
+}
+
+/// What drawing a step does (see `Renderer::enter_step`).
+enum Enter {
+    /// The step and its children are in the picture already.
+    Done,
+    /// The step is, some of its children may not be.
+    Children,
+    /// To draw.
+    Draw,
 }
 
 /// Output raster of a channel. Projects designed for another size are
@@ -201,7 +279,18 @@ impl Renderer {
             assets_dir,
             images: HashMap::new(),
             live: None,
+            caching: true,
+            assets_generation: 0,
+            pending: false,
+            steps: Steps::default(),
+            scratch: None,
         }
+    }
+
+    /// Caches on (the default) or off: with them off every frame is drawn
+    /// whole, from scratch (to compare, and to measure).
+    pub fn set_cache(&mut self, on: bool) {
+        self.caching = on;
     }
 
     /// Where the Video widget finds the pictures of the live inputs.
@@ -224,12 +313,7 @@ impl Renderer {
     }
 
     /// Runs the template's logic graph; returns the layers it changed.
-    fn logic_values(
-        &mut self,
-        t: &Template,
-        frame: f64,
-        data: &Data,
-    ) -> HashMap<String, std::collections::BTreeMap<Prop, Value>> {
+    fn logic_values(&mut self, t: &Template, frame: f64, data: &Data) -> Logic {
         if t.logic.is_empty() {
             return HashMap::new();
         }
@@ -312,6 +396,7 @@ impl Renderer {
     /// Forgets cached images (call after an asset upload).
     pub fn invalidate_assets(&mut self) {
         self.images.clear();
+        self.assets_generation += 1;
     }
 
     /// A still picture (`/assets/…`) filling the whole frame, cropped to the
@@ -364,8 +449,47 @@ impl Renderer {
         default_tz: &str,
         shown_ms: f64,
     ) -> Frame {
+        let frame = self.channel(project, None, state, out, default_tz, shown_ms);
+        Arc::try_unwrap(frame).unwrap_or_else(|f| (*f).clone())
+    }
+
+    /// The channel as shown at `shown_ms`, for the engine: when nothing can
+    /// have changed since the frame `cache` kept, that frame again (the same
+    /// `Arc`); else only what changed is drawn, on the kept picture of what
+    /// did not (see `cache`). The same pixels as [`Self::render_channel_at`].
+    pub fn render_channel_cached(
+        &mut self,
+        project: &Arc<Project>,
+        state: &ChannelState,
+        out: OutputFormat,
+        default_tz: &str,
+        shown_ms: f64,
+        cache: &FrameCache,
+    ) -> Arc<Frame> {
+        self.channel(
+            project,
+            Some((project, cache)),
+            state,
+            out,
+            default_tz,
+            shown_ms,
+        )
+    }
+
+    fn channel(
+        &mut self,
+        project: &Project,
+        cache: Option<(&Arc<Project>, &FrameCache)>,
+        state: &ChannelState,
+        out: OutputFormat,
+        default_tz: &str,
+        shown_ms: f64,
+    ) -> Arc<Frame> {
         self.refresh_fonts();
-        let mut pm = Pixmap::new(out.width.max(1), out.height.max(1)).expect("valid size");
+        self.pending = false;
+        self.steps = Steps::default();
+        // The picture drawn on: blank, or the one kept of the first steps.
+        let mut pm = None;
         // The project layout (16:9, 9:16…) closest to this output's shape.
         let (format, dw, dh) = project.format_for(out.width, out.height);
         let sx = out.width as f32 / dw.max(1) as f32;
@@ -379,103 +503,215 @@ impl Renderer {
         let fps = project.frame_rate.as_f64().max(1.0);
         let now = shown_ms.round() as i64;
         let portrait = dh > dw;
-        for (layer, item) in &state.layers {
-            if let Some(t) = project.template(&item.template_id) {
-                let laid = t.in_format(format);
-                // Settings the Operator was given (mask, font, logo…).
-                let t = laid.with_settings(&item.data);
-                // Only what is inside the zone shows on air.
-                let zone_mask = project
-                    .zone_at(*layer)
-                    .map(|z| z.area(format, portrait))
-                    .filter(|a| !a.is_full())
-                    .and_then(|a| {
-                        Rect::from_xywh(
-                            (a.x * dw as f64) as f32,
-                            (a.y * dh as f64) as f32,
-                            (a.width * dw as f64) as f32,
-                            (a.height * dh as f64) as f32,
-                        )
-                    })
-                    .map(|r| build_mask(&pm, None, r, root));
-                let time = TimeCtx {
-                    now_ms: now,
-                    age_secs: item.age / fps,
-                    default_tz,
+        // The graphics on air, lowest first, laid out for this format with
+        // the settings the Operator was given (mask, font, logo…) when drawn.
+        let on_air: Vec<OnAir> = state
+            .layers
+            .iter()
+            .filter_map(|(l, item)| {
+                project.template(&item.template_id).map(|t| OnAir {
+                    layer: *l,
+                    item,
+                    template: t,
+                    set: Default::default(),
+                    logic: Default::default(),
+                })
+            })
+            .collect();
+        macro_rules! ctx {
+            ($i:expr) => {{
+                let a = &on_air[$i];
+                let t = a
+                    .set
+                    .get_or_init(|| prepared(a.template, format, &a.item.data));
+                let logic = match a.logic.get() {
+                    Some(l) => l,
+                    None => {
+                        let l = self.logic_values(t, a.item.frame, &a.item.data);
+                        a.logic.get_or_init(|| l)
+                    }
                 };
-                let logic = self.logic_values(&t, item.frame, &item.data);
-                let ctx = Ctx {
-                    template: &t,
-                    frame: item.frame,
-                    data: &item.data,
-                    time,
+                Ctx {
+                    template: t,
+                    frame: a.item.frame,
+                    data: &a.item.data,
+                    time: TimeCtx {
+                        now_ms: now,
+                        age_secs: a.item.age / fps,
+                        default_tz,
+                    },
                     logic,
-                    item: Some(item),
+                    item: Some(a.item),
                     fps,
                     lang: &project.language,
-                };
-                match item.fade.as_ref().filter(|f| f.opacity() > 0.0) {
-                    None => self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref()),
-                    // A cross-fade (Update, data set row): the graphic with
-                    // the old values and with the new ones, each drawn
-                    // whole, then mixed (old × k + new × (1 − k)): what both
-                    // cover stays opaque, the rest fades in or out.
-                    Some(f) => {
-                        let k = f.opacity();
-                        let (w, h) = (pm.width(), pm.height());
-                        let mut new = Pixmap::new(w, h).expect("valid size");
-                        self.draw_children(&mut new, &ctx, None, root, 1.0, zone_mask.as_ref());
-                        let t_old = laid.with_settings(&f.data);
-                        let logic = self.logic_values(&t_old, item.frame, &f.data);
-                        let old_ctx = Ctx {
-                            template: &t_old,
-                            data: &f.data,
-                            logic,
-                            ..ctx
-                        };
-                        let mut old = Pixmap::new(w, h).expect("valid size");
-                        self.draw_children(&mut old, &old_ctx, None, root, 1.0, zone_mask.as_ref());
-                        let mut mix = Pixmap::new(w, h).expect("valid size");
-                        let paint = |opacity: f32, blend_mode| PixmapPaint {
-                            opacity,
-                            blend_mode,
-                            ..Default::default()
-                        };
-                        let id = Transform::identity();
-                        mix.draw_pixmap(
-                            0,
-                            0,
-                            new.as_ref(),
-                            &paint(1.0 - k, tiny_skia::BlendMode::SourceOver),
-                            id,
-                            None,
-                        );
-                        mix.draw_pixmap(
-                            0,
-                            0,
-                            old.as_ref(),
-                            &paint(k, tiny_skia::BlendMode::Plus),
-                            id,
-                            None,
-                        );
-                        pm.draw_pixmap(
-                            0,
-                            0,
-                            mix.as_ref(),
-                            &paint(1.0, tiny_skia::BlendMode::SourceOver),
-                            id,
-                            None,
-                        );
-                    }
+                }
+            }};
+        }
+        fn fading(item: &cg_core::PlayoutItem) -> Option<(f32, &Data)> {
+            item.fade
+                .as_ref()
+                .filter(|f| f.opacity() > 0.0)
+                .map(|f| (f.opacity(), &f.data))
+        }
+        // Planned: what is the same as in the frames kept.
+        let mut planned = None;
+        if let Some((arc, kept)) = cache.filter(|_| self.caching) {
+            let mut scene = cache::Scene {
+                project: arc.clone(),
+                out,
+                tz: default_tz.to_string(),
+                fonts: self.font_generation,
+                assets: self.assets_generation,
+                items: on_air
+                    .iter()
+                    .map(|a| {
+                        let mut item = a.item.clone();
+                        item.age = 0.0;
+                        item.held = 0.0;
+                        (a.layer, item)
+                    })
+                    .collect(),
+                ops: Vec::new(),
+            };
+            self.steps.plan = Some(Vec::new());
+            for (i, a) in on_air.iter().enumerate() {
+                self.steps.item = i;
+                if fading(a.item).is_some() {
+                    // A cross-fade: the graphic drawn twice, as one step.
+                    self.plan_step(cache::Motion::Moving);
+                } else if let Some(ops) = kept.still_steps(&scene, i) {
+                    // The same graphic as in the frame before, nothing of it moving.
+                    self.steps.plan.get_or_insert_with(Vec::new).extend(ops);
+                } else {
+                    let ctx = ctx!(i);
+                    // Nothing is drawn while planning (only the widgets' inputs are read).
+                    let mut nowhere = Pixmap::new(1, 1).expect("valid size");
+                    self.draw_children(&mut nowhere, &ctx, None, root, 1.0, None);
+                }
+            }
+            scene.ops = self.steps.plan.take().unwrap_or_default();
+            match kept.plan(&scene) {
+                cache::Plan::Same(frame) => {
+                    self.steps = Steps::default();
+                    return frame;
+                }
+                cache::Plan::Draw {
+                    from,
+                    picture,
+                    keep,
+                } => {
+                    pm = picture.map(|p| (*p).clone());
+                    self.steps.skip = from;
+                    self.steps.keep = keep.map(|k| (k, None));
+                    self.steps.ops = scene.ops.clone();
+                }
+            }
+            planned = Some((kept, scene));
+        }
+        let mut pm = pm.unwrap_or_else(|| {
+            Pixmap::new(out.width.max(1), out.height.max(1)).expect("valid size")
+        });
+        // The step after the last one of each graphic.
+        let mut item_end = vec![0; on_air.len()];
+        for (i, op) in self.steps.ops.iter().enumerate() {
+            item_end[op.item] = i + 1;
+        }
+        for i in 0..on_air.len() {
+            // Every step of this graphic is in the picture already.
+            if item_end[i] > self.steps.at && item_end[i] <= self.steps.skip {
+                self.steps.at = item_end[i];
+                continue;
+            }
+            let (layer, item) = (on_air[i].layer, on_air[i].item);
+            let ctx = &ctx!(i);
+            // Only what is inside the zone shows on air.
+            let zone_mask = project
+                .zone_at(layer)
+                .map(|z| z.area(format, portrait))
+                .filter(|a| !a.is_full())
+                .and_then(|a| {
+                    Rect::from_xywh(
+                        (a.x * dw as f64) as f32,
+                        (a.y * dh as f64) as f32,
+                        (a.width * dw as f64) as f32,
+                        (a.height * dh as f64) as f32,
+                    )
+                })
+                .map(|r| build_mask(&pm, None, r, root));
+            match fading(item) {
+                None => self.draw_children(&mut pm, ctx, None, root, 1.0, zone_mask.as_ref()),
+                // A cross-fade (Update, data set row): the graphic with
+                // the old values and with the new ones, each drawn
+                // whole, then mixed (old × k + new × (1 − k)): what both
+                // cover stays opaque, the rest fades in or out.
+                Some((k, old_data)) => {
+                    self.enter_step(&pm);
+                    self.steps.whole += 1;
+                    let (w, h) = (pm.width(), pm.height());
+                    let mut new = Pixmap::new(w, h).expect("valid size");
+                    self.draw_children(&mut new, ctx, None, root, 1.0, zone_mask.as_ref());
+                    let t_old = prepared(on_air[i].template, format, old_data);
+                    let logic = self.logic_values(&t_old, item.frame, old_data);
+                    let old_ctx = Ctx {
+                        template: &t_old,
+                        data: old_data,
+                        logic: &logic,
+                        ..ctx.at_frame(ctx.frame)
+                    };
+                    let mut old = Pixmap::new(w, h).expect("valid size");
+                    self.draw_children(&mut old, &old_ctx, None, root, 1.0, zone_mask.as_ref());
+                    let mut mix = Pixmap::new(w, h).expect("valid size");
+                    let paint = |opacity: f32, blend_mode| PixmapPaint {
+                        opacity,
+                        blend_mode,
+                        ..Default::default()
+                    };
+                    let id = Transform::identity();
+                    mix.draw_pixmap(
+                        0,
+                        0,
+                        new.as_ref(),
+                        &paint(1.0 - k, tiny_skia::BlendMode::SourceOver),
+                        id,
+                        None,
+                    );
+                    mix.draw_pixmap(
+                        0,
+                        0,
+                        old.as_ref(),
+                        &paint(k, tiny_skia::BlendMode::Plus),
+                        id,
+                        None,
+                    );
+                    pm.draw_pixmap(
+                        0,
+                        0,
+                        mix.as_ref(),
+                        &paint(1.0, tiny_skia::BlendMode::SourceOver),
+                        id,
+                        None,
+                    );
+                    self.steps.whole -= 1;
                 }
             }
         }
-        Frame {
+        let keep = self.steps.keep.take();
+        self.steps = Steps::default();
+        let frame = Arc::new(Frame {
             width: out.width,
             height: out.height,
             data: pm.take(),
             captured_at: SystemTime::now(),
+        });
+        if let Some((kept, scene)) = planned {
+            if let Some((at, Some(picture))) = keep {
+                kept.keep_start(&scene, at, picture);
+            }
+            if scene.still() && !self.pending {
+                kept.keep_still(&scene, frame.clone());
+            }
         }
+        frame
     }
 
     /// Renders a single template at `frame` (used for thumbnails / previews).
@@ -509,7 +745,7 @@ impl Renderer {
             frame,
             data,
             time,
-            logic,
+            logic: &logic,
             item: None,
             fps: project.frame_rate.as_f64().max(1.0),
             lang: &project.language,
@@ -544,6 +780,48 @@ impl Renderer {
         }
     }
 
+    /// Planning: a step of the frame, with how it moves; its index.
+    fn plan_step(&mut self, motion: cache::Motion) -> usize {
+        let motion = if self.steps.clocked > 0 {
+            cache::Motion::Moving
+        } else {
+            motion
+        };
+        let item = self.steps.item;
+        let plan = self.steps.plan.get_or_insert_with(Vec::new);
+        plan.push(cache::Op {
+            motion,
+            span: 1,
+            item,
+        });
+        plan.len() - 1
+    }
+
+    /// Drawing: a step begins (a layer, before its children).
+    fn enter_step(&mut self, pm: &Pixmap) -> Enter {
+        let s = &mut self.steps;
+        if s.whole > 0 {
+            return Enter::Draw;
+        }
+        let at = s.at;
+        if at < s.skip {
+            let span = s.ops.get(at).map_or(1, |o| o.span);
+            if at + span <= s.skip {
+                s.at += span;
+                return Enter::Done;
+            }
+            s.at += 1;
+            return Enter::Children;
+        }
+        if let Some((k, slot)) = &mut s.keep {
+            if *k == at && slot.is_none() && !self.pending {
+                *slot = Some(pm.clone());
+            }
+        }
+        s.at += 1;
+        Enter::Draw
+    }
+
     fn draw_children(
         &mut self,
         pm: &mut Pixmap,
@@ -553,18 +831,25 @@ impl Renderer {
         parent_opacity: f32,
         mask: Option<&Mask>,
     ) {
+        let planning = self.steps.plan.is_some();
         // The layers of a Lottie group the operator controls follow its clock.
         let remapped;
+        let mut clocked = false;
         let ctx = match (parent, ctx.item) {
             (Some(id), Some(item)) => {
-                let f = ctx
-                    .template
-                    .layers
-                    .iter()
-                    .find(|l| l.id == id)
-                    .map_or(ctx.frame, |g| {
-                        item.lottie_frame(g, ctx.frame, ctx.template.hold_frame())
-                    });
+                let group = ctx.template.layers.iter().find(|l| l.id == id);
+                clocked = group.is_some_and(|g| {
+                    matches!(
+                        g.kind,
+                        LayerKind::Group {
+                            lottie: Some(_),
+                            ..
+                        }
+                    ) && (item.clocks.contains_key(&g.id) || g.manual_start)
+                });
+                let f = group.map_or(ctx.frame, |g| {
+                    item.lottie_frame(g, ctx.frame, ctx.template.hold_frame())
+                });
                 if f == ctx.frame {
                     ctx
                 } else {
@@ -574,6 +859,11 @@ impl Renderer {
             }
             _ => ctx,
         };
+        // Its own clock moves (the operator's age): planned as moving.
+        let clocked = clocked && planning;
+        if clocked {
+            self.steps.clocked += 1;
+        }
         let children: Vec<_> = ctx
             .template
             .layers
@@ -599,23 +889,62 @@ impl Renderer {
             // Crop (reveal mask) in layer space, intersected with the parent mask.
             let crop = crop_rect(&r, w, h);
             let clip_children = matches!(layer.kind, LayerKind::Group { clip: true, .. });
-            let own_mask = if crop.is_some() || clip_children {
-                let rect =
-                    crop.unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, w.max(0.0), h.max(0.0)));
-                match rect {
-                    Some(rect) => Some(build_mask(pm, mask, rect, tf)),
+            let own_rect = if crop.is_some() || clip_children {
+                match crop.unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, w.max(0.0), h.max(0.0))) {
+                    Some(rect) => Some(rect),
                     None => continue, // fully cropped
                 }
             } else {
                 None
             };
+            let is_group = matches!(layer.kind, LayerKind::Group { .. });
+            let shadowed = layer.drop_shadow && !matches!(layer.kind, LayerKind::Text { .. });
+
+            if planning {
+                if shadowed {
+                    // The layer and its children are one step (drawn together).
+                    let outer = self.steps.plan.replace(Vec::new());
+                    let (own, then) = self.layer_motion(pm, ctx, &r, tf, opacity);
+                    let own = then.map_or(own, |t| own.and(t));
+                    if is_group {
+                        self.draw_children(pm, ctx, Some(&layer.id), tf, 1.0, None);
+                    }
+                    let inner = std::mem::replace(&mut self.steps.plan, outer).unwrap_or_default();
+                    let m = inner.iter().fold(own, |m, o| m.and(o.motion));
+                    self.plan_step(m);
+                    continue;
+                }
+                let (m, then) = self.layer_motion(pm, ctx, &r, tf, opacity);
+                let i = self.plan_step(m);
+                if let Some(then) = then {
+                    self.plan_step(then);
+                    if let Some(plan) = self.steps.plan.as_mut() {
+                        plan[i].span = 2;
+                    }
+                }
+                if is_group {
+                    self.draw_children(pm, ctx, Some(&layer.id), tf, opacity, None);
+                    if let Some(plan) = self.steps.plan.as_mut() {
+                        plan[i].span = plan.len() - i;
+                    }
+                }
+                continue;
+            }
+
+            let own_drawn = match self.enter_step(pm) {
+                Enter::Done => continue,
+                Enter::Children => true,
+                Enter::Draw => false,
+            };
+            let own_mask = own_rect.map(|rect| build_mask(pm, mask, rect, tf));
             let m = own_mask.as_ref().or(mask);
 
             // A drop shadow (not for a Text: it has its own): the layer and its children drawn
             // alone, their shadow under them, all at the layer's opacity, cut by its crop.
-            if layer.drop_shadow && !matches!(layer.kind, LayerKind::Text { .. }) {
+            if shadowed {
                 // A group's own clip cuts its children, not its shadow (CSS overflow vs filter).
                 let cut = if crop.is_some() { m } else { mask };
+                self.steps.whole += 1;
                 self.draw_shadowed(
                     pm,
                     ctx,
@@ -625,10 +954,42 @@ impl Renderer {
                     cut,
                     clip_children.then_some((w, h)),
                 );
+                self.steps.whole -= 1;
                 continue;
             }
-            self.draw_layer(pm, ctx, &r, tf, opacity, m);
-            if matches!(layer.kind, LayerKind::Group { .. }) {
+            // A layer drawn in two steps (planned so): its second one may be to draw.
+            let split = !is_group
+                && self.steps.whole == 0
+                && self
+                    .steps
+                    .ops
+                    .get(self.steps.at.wrapping_sub(1))
+                    .is_some_and(|o| o.span == 2);
+            if !own_drawn || split {
+                self.steps.under = own_drawn;
+                self.steps.split = split;
+                self.draw_layer(pm, ctx, &r, tf, opacity, m);
+                self.steps.under = false;
+                if std::mem::take(&mut self.steps.split) {
+                    // The widget did not get to its second step: the steps go on
+                    // counted, and no picture is kept (it would not be the one
+                    // between them).
+                    self.steps.at += 1;
+                    if self
+                        .steps
+                        .keep
+                        .as_ref()
+                        .is_some_and(|(k, _)| *k < self.steps.at)
+                    {
+                        if let Some((_, slot)) = &mut self.steps.keep {
+                            if slot.is_none() {
+                                self.steps.keep = None;
+                            }
+                        }
+                    }
+                }
+            }
+            if is_group {
                 // Group crop always applies to children; plain clip only when requested.
                 let child_mask = if clip_children || crop.is_some() {
                     m
@@ -638,6 +999,68 @@ impl Renderer {
                 self.draw_children(pm, ctx, Some(&layer.id), tf, opacity, child_mask);
             }
         }
+        if clocked {
+            self.steps.clocked -= 1;
+        }
+    }
+
+    /// How a layer's own picture (not its children's) depends on time; a
+    /// layer drawn in two steps (`sub_step`): how each does.
+    fn layer_motion(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        tf: Transform,
+        opacity: f32,
+    ) -> (cache::Motion, Option<cache::Motion>) {
+        use cache::Motion;
+        if cg_core::wid::widget_id(&r.layer.kind).is_some() {
+            if let Some((a, b)) = self.widget(pm, ctx, r, tf, opacity, None, wid::split_motions) {
+                return (a, Some(b));
+            }
+            let motion = self.widget(pm, ctx, r, tf, opacity, None, wid::motion);
+            if let Some(m) = motion {
+                return (m, None);
+            }
+        }
+        // The generic drawing (lib.rs), when the widget code leaves it the layer.
+        let scrolling = r.layer.kind.scrolling_as();
+        let m = match scrolling.as_ref().unwrap_or(&r.layer.kind) {
+            LayerKind::Group { .. }
+            | LayerKind::Rect { .. }
+            | LayerKind::Ellipse { .. }
+            | LayerKind::Text { .. }
+            | LayerKind::Image { .. }
+            | LayerKind::QrCode { .. }
+            | LayerKind::Polygon { .. }
+            | LayerKind::Pen { .. }
+            | LayerKind::Table { .. }
+            | LayerKind::Credits { .. }
+            | LayerKind::Chart { .. }
+            | LayerKind::Map { .. }
+            | LayerKind::Scoreboard { .. }
+            | LayerKind::Web { .. } => Motion::Still,
+            // Clocks, tickers, rolls, counters… (by the time on air).
+            _ => Motion::Moving,
+        };
+        (m, None)
+    }
+
+    /// Drawing: the second step of a layer drawn in two (the map's markers
+    /// over its base map), begun. Called by the widget between the two.
+    pub(crate) fn sub_step(&mut self, pm: &Pixmap) {
+        let s = &mut self.steps;
+        if s.whole > 0 || s.plan.is_some() || !s.split {
+            return;
+        }
+        s.split = false;
+        if let Some((k, slot)) = &mut s.keep {
+            if *k == s.at && slot.is_none() && !self.pending {
+                *slot = Some(pm.clone());
+            }
+        }
+        s.at += 1;
     }
 
     /// A layer with its drop shadow (`Layer::drop_shadow`), as the HTML5 renderer's CSS
@@ -652,8 +1075,17 @@ impl Renderer {
         mask: Option<&Mask>,
         clip: Option<(f32, f32)>,
     ) {
-        let Some(mut content) = Pixmap::new(pm.width(), pm.height()) else {
-            return;
+        // A frame-sized picture, cleared (kept between shadows: no 8 MB
+        // allocation each time).
+        let mut content = match self.scratch.take() {
+            Some(mut c) if (c.width(), c.height()) == (pm.width(), pm.height()) => {
+                c.fill(tiny_skia::Color::TRANSPARENT);
+                c
+            }
+            _ => match Pixmap::new(pm.width(), pm.height()) {
+                Some(c) => c,
+                None => return,
+            },
         };
         self.draw_layer(&mut content, ctx, r, tf, 1.0, None);
         if matches!(r.layer.kind, LayerKind::Group { .. }) {
@@ -666,9 +1098,11 @@ impl Renderer {
         let (dx, dy) = (tf.sx * ox + tf.kx * oy, tf.ky * ox + tf.sy * oy);
         let scale = (tf.sx * tf.sy - tf.kx * tf.ky).abs().sqrt();
         let sigma = r.num(Prop::ShadowBlur).max(0.0) as f32 * scale / 2.0;
-        let Some((out, x, y)) =
-            shadow::compose(&content, r.color(Prop::ShadowColor), dx, dy, sigma)
-        else {
+        let composed = shadow::compose(&content, r.color(Prop::ShadowColor), dx, dy, sigma);
+        if self.caching {
+            self.scratch = Some(content);
+        }
+        let Some((out, x, y)) = composed else {
             return;
         };
         let paint = PixmapPaint {
@@ -676,6 +1110,61 @@ impl Renderer {
             ..PixmapPaint::default()
         };
         pm.draw_pixmap(x, y, out.as_ref(), &paint, Transform::identity(), mask);
+    }
+
+    /// Calls `f` (a widget's drawing or motion, src/wid) with the layer's inputs.
+    fn widget<R>(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        tf: Transform,
+        opacity: f32,
+        mask: Option<&Mask>,
+        f: fn(&mut wid::Draw) -> R,
+    ) -> R {
+        let (w, h) = (r.num(Prop::Width) as f32, r.num(Prop::Height) as f32);
+        let time = ctx.time_for(r.layer);
+        let null = serde_json::Value::Null;
+        let state = ctx
+            .item
+            .and_then(|i| i.widgets.get(&r.layer.id))
+            .unwrap_or(&null);
+        let mut d = wid::Draw {
+            rd: self,
+            pm,
+            r,
+            layer: r.layer,
+            tf,
+            mask,
+            opacity,
+            w,
+            h,
+            time,
+            data: ctx.data,
+            frame: ctx.frame,
+            hold: ctx.template.hold_frame(),
+            fps: ctx.fps,
+            state,
+            lang: ctx.lang,
+            runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
+            follow: match &r.layer.kind {
+                LayerKind::Progress { x: c, .. } => {
+                    let none = Default::default();
+                    cg_core::wid::progress::followed(
+                        &ctx.template.layers,
+                        c,
+                        ctx.item.map_or(&none, |i| &i.widgets),
+                        ctx.data,
+                        time.now_ms,
+                        time.age_secs,
+                        time.default_tz,
+                    )
+                }
+                _ => None,
+            },
+        };
+        f(&mut d)
     }
 
     fn draw_layer(
@@ -690,49 +1179,10 @@ impl Renderer {
         let (w, h) = (r.num(Prop::Width) as f32, r.num(Prop::Height) as f32);
         let time = ctx.time_for(r.layer);
         // The widgets of the spec draw themselves (src/wid).
-        if cg_core::wid::widget_id(&r.layer.kind).is_some() {
-            let null = serde_json::Value::Null;
-            let state = ctx
-                .item
-                .and_then(|i| i.widgets.get(&r.layer.id))
-                .unwrap_or(&null);
-            let mut d = wid::Draw {
-                rd: self,
-                pm,
-                r,
-                layer: r.layer,
-                tf,
-                mask,
-                opacity,
-                w,
-                h,
-                time,
-                data: ctx.data,
-                frame: ctx.frame,
-                hold: ctx.template.hold_frame(),
-                fps: ctx.fps,
-                state,
-                lang: ctx.lang,
-                runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
-                follow: match &r.layer.kind {
-                    LayerKind::Progress { x: c, .. } => {
-                        let none = Default::default();
-                        cg_core::wid::progress::followed(
-                            &ctx.template.layers,
-                            c,
-                            ctx.item.map_or(&none, |i| &i.widgets),
-                            ctx.data,
-                            time.now_ms,
-                            time.age_secs,
-                            time.default_tz,
-                        )
-                    }
-                    _ => None,
-                },
-            };
-            if wid::draw(&mut d) {
-                return;
-            }
+        if cg_core::wid::widget_id(&r.layer.kind).is_some()
+            && self.widget(pm, ctx, r, tf, opacity, mask, wid::draw)
+        {
+            return;
         }
         let fill = paint_for(r.color(Prop::Fill), opacity);
         let stroke_w = r.num(Prop::StrokeWidth) as f32;
@@ -1435,6 +1885,7 @@ impl Renderer {
                 // A web picture not fetched yet: asked for, and looked for again.
                 if is_url(src) {
                     fetch_url(src, false);
+                    self.pending = true;
                     return None;
                 }
                 tracing::warn!(src, "image not found or unreadable");
@@ -1558,11 +2009,7 @@ fn crop_rect(r: &ResolvedLayer, w: f32, h: f32) -> Option<Option<Rect>> {
 fn build_mask(pm: &Pixmap, parent: Option<&Mask>, rect: Rect, tf: Transform) -> Mask {
     let path = PathBuilder::from_rect(rect);
     match parent {
-        Some(p) => {
-            let mut m = p.clone();
-            m.intersect_path(&path, FillRule::Winding, true, tf);
-            m
-        }
+        Some(p) => mask::intersect(p, &path, tf),
         None => {
             let mut m = Mask::new(pm.width(), pm.height()).expect("valid size");
             m.fill_path(&path, FillRule::Winding, true, tf);

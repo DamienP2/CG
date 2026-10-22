@@ -106,6 +106,27 @@ fn draw_text(d: &mut Draw, family: &str, t: &PText) {
     );
 }
 
+/// Drawn from its layout (what the time changes in it: the intro, tweens).
+pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
+    let LayerKind::Chart { x: c } = &d.layer.kind else {
+        return None;
+    };
+    let grid = shown_grid(c, st, d.data);
+    let c = with_data(c, d.data);
+    let out = layout(&Input {
+        cfg: &c,
+        st,
+        grid: &grid,
+        w: d.w,
+        h: d.h,
+        fs: d.num(Prop::FontSize),
+        age_ms: (d.time.age_secs * 1000.0) as f32,
+        now: d.time.now_ms,
+        lang: d.lang,
+    });
+    Some(crate::cache::Motion::of(&format!("{:?}", out.prims)))
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Chart { x: c } = &d.layer.kind else {
         return false;

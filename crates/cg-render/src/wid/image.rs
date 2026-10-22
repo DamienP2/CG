@@ -153,6 +153,19 @@ const SLATE_PULSE: [(f32, f32); 7] = [
     (0.75, 0.08),
 ];
 
+/// A live input or a sequence moves; a picture does not.
+pub(crate) fn motion(d: &mut Draw, _st: &State) -> Option<crate::cache::Motion> {
+    let LayerKind::Image { x: c, .. } = &d.layer.kind else {
+        return None;
+    };
+    let c: &Config = c;
+    Some(if !c.input.trim().is_empty() || !c.frames.is_empty() {
+        crate::cache::Motion::Moving
+    } else {
+        crate::cache::Motion::Still
+    })
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Image {
         src,
@@ -253,15 +266,15 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         d.pm.fill_path(&frame_path, &paint, FillRule::Winding, tf, Some(&fmask));
     } else {
         let (win, pic) = place(c, (iw, ih), (f[2], f[3]), fit_now, cr);
-        let mut m = fmask.clone();
-        if let Some(r) = Rect::from_xywh(
+        let m = match Rect::from_xywh(
             f[0] + win[0],
             f[1] + win[1],
             win[2].max(0.01),
             win[3].max(0.01),
         ) {
-            m.intersect_path(&PathBuilder::from_rect(r), FillRule::Winding, true, tf);
-        }
+            Some(r) => crate::mask::intersect(&fmask, &PathBuilder::from_rect(r), tf),
+            None => fmask.clone(),
+        };
         let img_tf = tf.pre_concat(
             Transform::from_translate(f[0] + pic[0], f[1] + pic[1])
                 .pre_scale(pic[2] / iw.max(1.0), pic[3] / ih.max(1.0)),

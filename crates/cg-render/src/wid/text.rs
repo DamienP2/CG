@@ -21,6 +21,18 @@ use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
 use super::{rrect, Draw};
 use crate::text::{self as tx, FitOpts};
 
+/// A scrolling text moves; any other does not (see `draw`: only the scroll reads the time).
+pub(crate) fn motion(d: &mut Draw) -> Option<crate::cache::Motion> {
+    let LayerKind::Text { scroll, .. } = &d.layer.kind else {
+        return None;
+    };
+    Some(if scroll.is_none() {
+        crate::cache::Motion::Still
+    } else {
+        crate::cache::Motion::Moving
+    })
+}
+
 pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     let LayerKind::Text {
         font_family,

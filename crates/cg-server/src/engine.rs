@@ -23,7 +23,7 @@ use cg_output::st2110::St2110Sender;
 use cg_output::stream::StreamSender;
 use cg_output::{FrameClock, OutputError, OutputSink};
 use cg_render::slate::Slate;
-use cg_render::{Frame, OutputFormat, Renderer};
+use cg_render::{Frame, FrameCache, OutputFormat, Renderer};
 
 use crate::config::ChannelConfig;
 use crate::hardware::ClockReference;
@@ -336,6 +336,9 @@ impl Picture {
 }
 
 /// One render thread: takes the next job, renders it, files the frame under its tick.
+/// `cache` is shared by the picture's render threads: a frame where nothing
+/// moved is the same `Arc` again (the outputs then skip their conversion),
+/// and only what moves is drawn over the kept picture of what does not.
 #[allow(clippy::too_many_arguments)]
 fn render_loop(
     mut renderer: Renderer,
@@ -345,6 +348,7 @@ fn render_loop(
     rx: Arc<Mutex<mpsc::Receiver<RenderJob>>>,
     done: Done,
     stats: Arc<PictureStats>,
+    cache: Arc<FrameCache>,
 ) {
     crate::rt::prioritize(crate::rt::Work::Render);
     // Nothing loaded: the slate (or nothing), drawn once, the same frame every time.
@@ -356,7 +360,7 @@ fn render_loop(
         };
         let t = Instant::now();
         let frame = match project {
-            Some(p) => Arc::new(renderer.render_channel_at(&p, &channel, out, &tz, shown_ms)),
+            Some(p) => renderer.render_channel_cached(&p, &channel, out, &tz, shown_ms, &cache),
             None => idle
                 .get_or_insert_with(|| {
                     Arc::new(match &slate {
@@ -412,6 +416,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
         let (jobs, rx) = mpsc::sync_channel::<RenderJob>(1);
         let rx = Arc::new(Mutex::new(rx));
         let done: Done = Default::default();
+        let cache = Arc::new(FrameCache::new());
         let renders = (0..ahead)
             .map(|k| {
                 std::thread::Builder::new()
@@ -423,10 +428,11 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
                         let slate = cfg.slate_of(id);
                         let live = state.inputs.clone();
                         let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
+                        let cache = cache.clone();
                         move || {
                             let mut r = Renderer::new(assets);
                             r.set_live(live);
-                            render_loop(r, out, tz, slate, rx, done, stats)
+                            render_loop(r, out, tz, slate, rx, done, stats, cache)
                         }
                     })
                     .expect("spawn render thread")

@@ -173,6 +173,10 @@ impl DeckLinkOutput {
 /// fill is then the picture over black).
 fn swizzle(rgba: &[u8], out: &mut Vec<u8>, opaque: bool) {
     out.resize(rgba.len() / 4 * 4, 0);
+    swizzle_into(rgba, out, opaque);
+}
+
+fn swizzle_into(rgba: &[u8], out: &mut [u8], opaque: bool) {
     let dst = out.as_chunks_mut::<4>().0;
     for (d, s) in dst.iter_mut().zip(rgba.as_chunks::<4>().0) {
         *d = [s[2], s[1], s[0], if opaque { 255 } else { s[3] }];
@@ -187,6 +191,7 @@ fn send(
     opaque: bool,
 ) {
     let mut bgra = Vec::new();
+    let mut last: Option<Arc<Frame>> = None;
     let (mut failed, mut warned_at) = (0u32, None::<Instant>);
     loop {
         let frame = {
@@ -216,7 +221,21 @@ fn send(
             }
             continue;
         }
-        swizzle(&frame.data, &mut bgra, opaque);
+        // The same picture as the last one (nothing moved): converted already.
+        // Else only the rows that changed since the last one.
+        if !last.as_ref().is_some_and(|l| Arc::ptr_eq(l, &frame)) {
+            match crate::changed_rows(&frame, last.as_deref()) {
+                Some(rows) if bgra.len() == frame.data.len() => {
+                    let w = frame.width as usize * 4;
+                    for (y, _) in rows.iter().enumerate().filter(|(_, c)| **c) {
+                        let r = y * w..(y + 1) * w;
+                        swizzle_into(&frame.data[r.clone()], &mut bgra[r], opaque);
+                    }
+                }
+                _ => swizzle(&frame.data, &mut bgra, opaque),
+            }
+            last = Some(frame.clone());
+        }
         match card.push(&bgra, card.width as usize * 4) {
             Pushed::Queued | Pushed::Dropped => failed = 0,
             Pushed::Failed => {

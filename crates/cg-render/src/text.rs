@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::rc::Rc;
 
 use ab_glyph::{Font, FontArc, OutlineCurve, ScaleFont};
 use cg_core::{TextAlign, VerticalAlign};
@@ -110,6 +111,8 @@ pub struct FontStore {
     extra_dir: Option<std::path::PathBuf>,
     /// Font drawing a character the main font lacks (see [`FontStore::fallback`]).
     fallbacks: HashMap<char, Option<fontdb::ID>>,
+    /// Fonts by (family, weight), as [`FontStore::font`] found them.
+    queried: HashMap<(String, u16), Option<FontArc>>,
 }
 
 /// A font family available to templates.
@@ -153,6 +156,7 @@ impl FontStore {
             cache: HashMap::new(),
             extra_dir: extra_dir.map(Path::to_path_buf),
             fallbacks: HashMap::new(),
+            queried: HashMap::new(),
         }
     }
 
@@ -219,6 +223,17 @@ impl FontStore {
     }
 
     pub fn font(&mut self, family: &str, weight: u16) -> Option<FontArc> {
+        // The answer for a family and weight never changes for this database
+        // (a new font makes a new store): asked once.
+        if let Some(f) = self.queried.get(&(family.to_string(), weight)) {
+            return f.clone();
+        }
+        let f = self.query(family, weight);
+        self.queried.insert((family.to_string(), weight), f.clone());
+        f
+    }
+
+    fn query(&mut self, family: &str, weight: u16) -> Option<FontArc> {
         let families = [fontdb::Family::Name(family), fontdb::Family::SansSerif];
         let query = fontdb::Query {
             families: &families,
@@ -499,8 +514,8 @@ pub fn layout_text(font: &FontArc, text: &str, style: &TextStyle) -> Option<SkPa
             }
         }
         for (j, g) in glyphs.iter().enumerate() {
-            if let Some(outline) = font.outline(*g) {
-                append_outline(&mut pb, &outline.curves, x, baseline, s);
+            if let Some(curves) = outline(font, *g) {
+                append_outline(&mut pb, &curves, x, baseline, s);
             }
             x += scaled.h_advance(*g) + style.letter_spacing;
             if j + 1 < glyphs.len() {
@@ -509,6 +524,35 @@ pub fn layout_text(font: &FontArc, text: &str, style: &TextStyle) -> Option<SkPa
         }
     }
     pb.finish()
+}
+
+/// Outlines of the glyphs met, by font and glyph (fonts kept alive here, so
+/// that their address stays theirs). Read from the font file once, not at
+/// every frame.
+type Outlines = HashMap<
+    usize,
+    (
+        FontArc,
+        HashMap<ab_glyph::GlyphId, Option<Rc<[OutlineCurve]>>>,
+    ),
+>;
+
+thread_local! {
+    static OUTLINES: std::cell::RefCell<Outlines> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// The outline of glyph `g` (None: nothing to draw), as `font.outline(g)` has it.
+pub(crate) fn outline(font: &FontArc, g: ab_glyph::GlyphId) -> Option<Rc<[OutlineCurve]>> {
+    OUTLINES.with(|o| {
+        let mut o = o.borrow_mut();
+        let (_, glyphs) = o
+            .entry(font.font_data().as_ptr() as usize)
+            .or_insert_with(|| (font.clone(), HashMap::new()));
+        glyphs
+            .entry(g)
+            .or_insert_with(|| font.outline(g).map(|o| o.curves.into()))
+            .clone()
+    })
 }
 
 fn append_outline(pb: &mut PathBuilder, curves: &[OutlineCurve], ox: f32, baseline: f32, s: f32) {
@@ -594,7 +638,7 @@ pub fn invisible(c: char) -> bool {
 /// Has `font` something to draw for `c` (an outline or a picture)?
 pub fn covers(font: &FontArc, c: char) -> bool {
     let g = font.glyph_id(c);
-    g.0 != 0 && (font.outline(g).is_some() || font.glyph_raster_image2(g, 64).is_some())
+    g.0 != 0 && (outline(font, g).is_some() || font.glyph_raster_image2(g, 64).is_some())
 }
 
 impl FontStore {
@@ -687,7 +731,7 @@ impl Chain {
                 continue;
             }
             let main = &self.fonts[0];
-            if main.glyph_id(c).0 != 0 && main.outline(main.glyph_id(c)).is_some() {
+            if main.glyph_id(c).0 != 0 && outline(main, main.glyph_id(c)).is_some() {
                 continue;
             }
             if let Some(f) = store.fallback(c) {
@@ -785,10 +829,10 @@ pub fn run_outline(
     let mut pictures = Vec::new();
     for g in glyphs {
         let font = &chain.fonts[g.font];
-        match font.outline(g.id) {
-            Some(o) => {
+        match outline(font, g.id) {
+            Some(curves) => {
                 let upem = font.units_per_em().unwrap_or(1000.0);
-                append_outline(pb, &o.curves, x0 + g.x, baseline, size / upem);
+                append_outline(pb, &curves, x0 + g.x, baseline, size / upem);
             }
             None if !g.ch.is_whitespace() => pictures.push(*g),
             None => {}

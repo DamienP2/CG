@@ -30,6 +30,27 @@ pub enum OutputError {
     Closed,
 }
 
+/// The rows of `new` that are not the same in `old` (true: changed), for an
+/// output to convert only those again; None when all are to be (no picture
+/// before, another size).
+pub fn changed_rows(new: &Frame, old: Option<&Frame>) -> Option<Vec<bool>> {
+    let old = old?;
+    if (old.width, old.height) != (new.width, new.height) || old.data.len() != new.data.len() {
+        return None;
+    }
+    let row = new.width as usize * 4;
+    if row == 0 {
+        return None;
+    }
+    Some(
+        new.data
+            .chunks_exact(row)
+            .zip(old.data.chunks_exact(row))
+            .map(|(a, b)| a != b)
+            .collect(),
+    )
+}
+
 /// Outputs are on unless switched off (serde default).
 pub fn on() -> bool {
     true

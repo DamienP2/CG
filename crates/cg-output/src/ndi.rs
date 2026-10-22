@@ -253,6 +253,8 @@ pub struct NdiSender {
     instance: Instance,
     rate: (i32, i32),
     buf: Arc<Vec<u8>>,
+    /// The picture `buf` was made from (the same again: not converted again).
+    last: Option<Arc<Frame>>,
 }
 
 // The instance is used from the render thread that owns the sender only.
@@ -290,22 +292,32 @@ impl NdiSender {
             instance,
             rate: (rate.0 as i32, rate.1 as i32),
             buf: Arc::new(Vec::new()),
+            last: None,
         })
     }
 }
 
 /// NDI takes straight (not premultiplied) alpha.
 pub fn unpremultiply(rgba: &[u8], out: &mut Vec<u8>, alpha: bool) {
-    out.clear();
-    out.reserve(rgba.len());
-    for p in rgba.as_chunks::<4>().0 {
+    out.resize(rgba.len(), 0);
+    unpremultiply_into(rgba, out, alpha);
+}
+
+/// The same into a buffer of the same length.
+fn unpremultiply_into(rgba: &[u8], out: &mut [u8], alpha: bool) {
+    for (p, o) in rgba
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(out.as_chunks_mut::<4>().0)
+    {
         let a = p[3] as u32;
-        if !alpha || a == 255 || a == 0 {
-            out.extend_from_slice(&[p[0], p[1], p[2], if alpha { p[3] } else { 255 }]);
+        *o = if !alpha || a == 255 || a == 0 {
+            [p[0], p[1], p[2], if alpha { p[3] } else { 255 }]
         } else {
             let f = |c: u8| ((c as u32 * 255 + a / 2) / a).min(255) as u8;
-            out.extend_from_slice(&[f(p[0]), f(p[1]), f(p[2]), p[3]]);
-        }
+            [f(p[0]), f(p[1]), f(p[2]), p[3]]
+        };
     }
 }
 
@@ -315,8 +327,23 @@ impl OutputSink for NdiSender {
     }
 
     fn push(&mut self, frame: &Arc<Frame>, _at: std::time::SystemTime) -> Result<(), OutputError> {
-        let buf = Arc::make_mut(&mut self.buf);
-        unpremultiply(&frame.data, buf, self.config.alpha);
+        // The same picture again (nothing moved): converted already; else
+        // only the rows that changed since the last one.
+        if !self.last.as_ref().is_some_and(|l| Arc::ptr_eq(l, frame)) {
+            let buf = Arc::make_mut(&mut self.buf);
+            match crate::changed_rows(frame, self.last.as_deref()) {
+                Some(rows) if buf.len() == frame.data.len() => {
+                    let w = frame.width as usize * 4;
+                    for (y, _) in rows.iter().enumerate().filter(|(_, c)| **c) {
+                        let r = y * w..(y + 1) * w;
+                        unpremultiply_into(&frame.data[r.clone()], &mut buf[r], self.config.alpha);
+                    }
+                }
+                _ => unpremultiply(&frame.data, buf, self.config.alpha),
+            }
+            self.last = Some(frame.clone());
+        }
+        let buf = &self.buf;
         let video = VideoFrameV2 {
             xres: frame.width as i32,
             yres: frame.height as i32,

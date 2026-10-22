@@ -3,6 +3,8 @@
 //! `web/src/widgets/scoreboard-paint.tsx` (same primitives as SVG) so the
 //! two renderers draw the same picture from the same drawing code.
 
+use std::hash::Hash;
+
 use cg_core::wid::shape::Cmd;
 use cg_core::{Color, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -200,6 +202,12 @@ pub(crate) struct Pt<'x, 'a, 'b> {
     pub d: &'x mut Draw<'a, 'b>,
     /// Measure only (layout pass).
     pub dry: bool,
+    /// Painted already (the picture kept has it): nothing is painted, clips
+    /// are still made.
+    pub skip: bool,
+    /// Recording: nothing is painted, every painting is summed up here
+    /// (what it paints, where, how): the same sum, the same picture.
+    pub rec: Option<std::collections::hash_map::DefaultHasher>,
     pub alpha: f32,
     /// Font family of the texts.
     pub font: String,
@@ -213,11 +221,39 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
         Pt {
             d,
             dry,
+            skip: false,
+            rec: None,
             alpha: 1.0,
             font: "Inter".into(),
             mask,
             stack: Vec::new(),
         }
+    }
+
+    /// Recording: sums up a painting (its kind, its numbers, the opacity
+    /// and font then); true when recording (nothing to paint).
+    fn record(&mut self, tag: &str, cmds: &[Cmd], nums: &[f32], text: &str) -> bool {
+        let Some(h) = self.rec.as_mut() else {
+            return false;
+        };
+        tag.hash(h);
+        for c in cmds {
+            match *c {
+                Cmd::Move(x, y) => (0u8, x.to_bits(), y.to_bits()).hash(h),
+                Cmd::Line(x, y) => (1u8, x.to_bits(), y.to_bits()).hash(h),
+                Cmd::Cubic(a, b, c, d, e, f) => (2u8, [a, b, c, d, e, f].map(f32::to_bits)).hash(h),
+                Cmd::Close => 3u8.hash(h),
+            }
+        }
+        cmds.len().hash(h);
+        for n in nums {
+            n.to_bits().hash(h);
+        }
+        nums.len().hash(h);
+        text.hash(h);
+        self.alpha.to_bits().hash(h);
+        self.font.hash(h);
+        true
     }
 
     fn paint(&self, c: Color) -> Paint<'static> {
@@ -227,16 +263,12 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
     /// Clips what follows to the path, until `pop`.
     pub fn clip(&mut self, cmds: &[Cmd]) {
         self.stack.push(self.mask.clone());
-        if self.dry {
+        if self.record("clip", cmds, &[], "") || self.dry {
             return;
         }
         let Some(p) = path(cmds) else { return };
         let m = match &self.mask {
-            Some(m) => {
-                let mut m = m.clone();
-                m.intersect_path(&p, FillRule::Winding, true, self.d.tf);
-                m
-            }
+            Some(m) => crate::mask::intersect(m, &p, self.d.tf),
             None => {
                 let mut m = Mask::new(self.d.pm.width(), self.d.pm.height()).expect("mask");
                 m.fill_path(&p, FillRule::Winding, true, self.d.tf);
@@ -247,13 +279,14 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
     }
 
     pub fn pop(&mut self) {
+        self.record("pop", &[], &[], "");
         if let Some(m) = self.stack.pop() {
             self.mask = m;
         }
     }
 
     pub fn fill_c(&mut self, cmds: &[Cmd], c: Color) {
-        if self.dry || c.0[3] <= 0.0 {
+        if self.record("fill", cmds, &c.0, "") || self.dry || self.skip || c.0[3] <= 0.0 {
             return;
         }
         let Some(p) = path(cmds) else { return };
@@ -275,7 +308,12 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
         p2: (f32, f32),
         stops: &[(f32, Color)],
     ) {
-        if self.dry {
+        let mut nums = vec![p1.0, p1.1, p2.0, p2.1];
+        for (o, c) in stops {
+            nums.push(*o);
+            nums.extend(c.0);
+        }
+        if self.record("fill_lin", cmds, &nums, "") || self.dry || self.skip {
             return;
         }
         let Some(p) = path(cmds) else { return };
@@ -327,7 +365,23 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
         round: bool,
         dash: Option<(f32, f32)>,
     ) {
-        if self.dry || width <= 0.0 || c.0[3] <= 0.0 {
+        let (on, off) = dash.unwrap_or((-1.0, -1.0));
+        let nums = [
+            c.0[0],
+            c.0[1],
+            c.0[2],
+            c.0[3],
+            width,
+            f32::from(u8::from(round)),
+            on,
+            off,
+        ];
+        if self.record("stroke", cmds, &nums, "")
+            || self.dry
+            || self.skip
+            || width <= 0.0
+            || c.0[3] <= 0.0
+        {
             return;
         }
         let Some(p) = path(cmds) else { return };
@@ -416,7 +470,28 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
     }
 
     pub fn text_c(&mut self, s: &str, x: f32, cy: f32, c: Color, o: T) {
-        if self.dry || s.is_empty() || c.0[3] <= 0.0 || o.sy.abs() < 0.01 {
+        let nums = [
+            x,
+            cy,
+            c.0[0],
+            c.0[1],
+            c.0[2],
+            c.0[3],
+            o.size,
+            f32::from(o.weight),
+            f32::from(o.anchor),
+            o.ls,
+            o.sx,
+            o.sy,
+            o.skew,
+        ];
+        if self.record("text", &[], &nums, s)
+            || self.dry
+            || self.skip
+            || s.is_empty()
+            || c.0[3] <= 0.0
+            || o.sy.abs() < 0.01
+        {
             return;
         }
         let Some(p) = self.text_path(s, x, cy, o) else {
@@ -431,7 +506,27 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
     /// Text with a halo (outline under the fill).
     #[allow(clippy::too_many_arguments)]
     pub fn text_halo(&mut self, s: &str, x: f32, cy: f32, c: Color, halo: Color, hw: f32, o: T) {
-        if self.dry || s.is_empty() {
+        let nums = [
+            x,
+            cy,
+            c.0[0],
+            c.0[1],
+            c.0[2],
+            c.0[3],
+            halo.0[0],
+            halo.0[1],
+            halo.0[2],
+            halo.0[3],
+            hw,
+            o.size,
+            f32::from(o.weight),
+            f32::from(o.anchor),
+            o.ls,
+            o.sx,
+            o.sy,
+            o.skew,
+        ];
+        if self.record("halo", &[], &nums, s) || self.dry || self.skip || s.is_empty() {
             return;
         }
         let Some(p) = self.text_path(s, x, cy, o) else {
@@ -454,8 +549,15 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
 
     /// A picture fitted (contain) in the box.
     pub fn image(&mut self, src: &str, x: f32, y: f32, w: f32, h: f32) -> bool {
+        if self.record("image", &[], &[x, y, w, h], src) {
+            // Whether it is there decides what is drawn instead.
+            return self.d.image_size(src).is_some();
+        }
         if self.dry {
             return true;
+        }
+        if self.skip {
+            return self.d.image_size(src).is_some();
         }
         let Some((iw, ih)) = self.d.image_size(src) else {
             return false;

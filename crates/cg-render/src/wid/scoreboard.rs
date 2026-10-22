@@ -934,6 +934,31 @@ pub(crate) fn board(
     (w0, total_h)
 }
 
+/// Drawn from what `board` paints: recorded (nothing painted), summed up:
+/// the clocks, the animations of a score change or an event change it while
+/// they run; a board at rest is the same.
+pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
+    let LayerKind::Scoreboard { x: c } = &d.layer.kind else {
+        return None;
+    };
+    let now = d.time.now_ms;
+    let data = d.data;
+    let (w, h) = (d.w, d.h);
+    let lang = d.lang.to_string();
+    let (bw, bh) = {
+        let mut p = Pt::new(d, true);
+        p.font = c.font.clone();
+        board(&mut p, c, st, data, now, 100.0, &lang)
+    };
+    let row = (100.0 * (w / bw.max(1.0)).min(h / bh.max(1.0))).max(1.0);
+    let mut p = Pt::new(d, true);
+    p.font = c.font.clone();
+    p.rec = Some(Default::default());
+    board(&mut p, c, st, data, now, row, &lang);
+    p.rec
+        .map(|h| crate::cache::Motion::Key(std::hash::Hasher::finish(&h)))
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Scoreboard { x: c } = &d.layer.kind else {
         return false;

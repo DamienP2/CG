@@ -456,6 +456,43 @@ fn row_look(c: &Config, st: &State, row: &MRow) -> RowLook {
     }
 }
 
+/// Still once its page is in: what reads the time is the page shown (auto
+/// pages), the cascade of its rows coming in, and a looping scroll.
+pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
+    use crate::cache::Motion;
+    let LayerKind::Table { x: c } = &d.layer.kind else {
+        return None;
+    };
+    let m = model(c, d.data);
+    let pages = page_count(c, &m);
+    let st = &live(c, st, d.time.now_ms, d.time.age_secs);
+    let (page, at) = current_page(st, pages, d.time.now_ms);
+    let since = if at > 0 {
+        (d.time.now_ms - at) as f64 / 1000.0
+    } else {
+        d.time.age_secs
+    } as f32;
+    let scroll = c.page_mode == PageMode::Scroll;
+    let per = c.per_page.max(1) as usize;
+    if !m.rows.is_empty() {
+        if scroll && m.rows.len() > per {
+            return Some(Motion::Moving);
+        }
+        if !scroll && c.cascade.on {
+            let n = m.rows.iter().skip(page * per).take(per).count();
+            let arrived = (0..n).all(|i| {
+                let t = (since * 1000.0 - i as f32 * c.cascade.offset as f32)
+                    / (c.cascade.dur as f32).max(1.0);
+                ease_out(t) >= 1.0
+            });
+            if !arrived {
+                return Some(Motion::Moving);
+            }
+        }
+    }
+    Some(Motion::of(&page))
+}
+
 /// Draws the layer; false = not handled here (the generic code draws it).
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Table { x: c } = &d.layer.kind else {

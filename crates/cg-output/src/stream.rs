@@ -303,8 +303,31 @@ pub fn args(
 
 /// The premultiplied RGBA picture over `bg`, as RGB.
 pub fn over_background(frame: &Frame, bg: [u8; 3], out: &mut Vec<u8>) {
-    let px = frame.data.as_chunks::<4>().0;
-    out.resize(px.len() * 3, 0);
+    out.resize(frame.data.len() / 4 * 3, 0);
+    over_background_into(&frame.data, bg, out);
+}
+
+/// The same into `out`, which holds the conversion of `from` (when Some):
+/// only the rows that differ from it are converted again.
+pub fn over_background_from(frame: &Frame, from: Option<&Frame>, bg: [u8; 3], out: &mut Vec<u8>) {
+    let len = frame.data.len() / 4 * 3;
+    let rows = crate::changed_rows(frame, from).filter(|_| out.len() == len);
+    let Some(rows) = rows else {
+        return over_background(frame, bg, out);
+    };
+    let (w, w3) = (frame.width as usize * 4, frame.width as usize * 3);
+    for (y, _) in rows.iter().enumerate().filter(|(_, c)| **c) {
+        over_background_into(
+            &frame.data[y * w..(y + 1) * w],
+            bg,
+            &mut out[y * w3..(y + 1) * w3],
+        );
+    }
+}
+
+/// The same for pixels `rgba` into `out` (3 bytes a pixel).
+fn over_background_into(rgba: &[u8], bg: [u8; 3], out: &mut [u8]) {
+    let px = rgba.as_chunks::<4>().0;
     for (p, o) in px.iter().zip(out.as_chunks_mut::<3>().0) {
         match p[3] {
             // Most of a graphics picture: nothing, or opaque.
@@ -332,9 +355,15 @@ fn hex_rgb(s: &str) -> [u8; 3] {
 
 pub struct StreamSender {
     config: StreamConfig,
-    tx: Option<SyncSender<Vec<u8>>>,
+    tx: Option<SyncSender<Arc<Vec<u8>>>>,
     /// Buffers ffmpeg is done with, used again (no 6 MB allocation a frame).
-    spare: Receiver<Vec<u8>>,
+    spare: Receiver<Arc<Vec<u8>>>,
+    /// The picture sent last and its conversion (the same picture again,
+    /// nothing moved: sent again as it is).
+    last: Option<(Arc<Frame>, Arc<Vec<u8>>)>,
+    /// The picture each buffer in use holds (by its address): one coming
+    /// back is converted again only where the new picture differs.
+    made: Vec<(usize, Arc<Frame>)>,
     error: Arc<Mutex<Option<String>>>,
     bg: [u8; 3],
     worker: Option<std::thread::JoinHandle<()>>,
@@ -370,8 +399,8 @@ impl StreamSender {
             .map_err(|e| {
                 OutputError::Unsupported(format!("ffmpeg is needed for stream outputs ({e})"))
             })?;
-        let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(2);
-        let (back, spare) = mpsc::sync_channel::<Vec<u8>>(3);
+        let (tx, rx) = mpsc::sync_channel::<Arc<Vec<u8>>>(2);
+        let (back, spare) = mpsc::sync_channel::<Arc<Vec<u8>>>(3);
         let error = Arc::new(Mutex::new(None));
         let child = Slot::default();
         let worker = std::thread::Builder::new()
@@ -386,6 +415,8 @@ impl StreamSender {
             config,
             tx: Some(tx),
             spare,
+            last: None,
+            made: Vec::new(),
             error,
             worker: Some(worker),
             child,
@@ -396,8 +427,8 @@ impl StreamSender {
 /// Feeds ffmpeg until the output is closed, starting it again when it stops.
 fn run(
     args: Vec<String>,
-    rx: Receiver<Vec<u8>>,
-    back: SyncSender<Vec<u8>>,
+    rx: Receiver<Arc<Vec<u8>>>,
+    back: SyncSender<Arc<Vec<u8>>>,
     error: Arc<Mutex<Option<String>>>,
     name: String,
     slot: Slot,
@@ -491,7 +522,7 @@ fn run(
 }
 
 /// Throws frames away for `d`; false when the output was closed meanwhile.
-fn wait(rx: &Receiver<Vec<u8>>, d: Duration) -> bool {
+fn wait(rx: &Receiver<Arc<Vec<u8>>>, d: Duration) -> bool {
     let until = std::time::Instant::now() + d;
     loop {
         let left = until.saturating_duration_since(std::time::Instant::now());
@@ -518,8 +549,38 @@ impl OutputSink for StreamSender {
         let Some(tx) = &self.tx else {
             return Err(OutputError::Closed);
         };
-        let mut buf = self.spare.try_recv().unwrap_or_default();
-        over_background(frame, self.bg, &mut buf);
+        let buf = match self.last.take() {
+            // The same picture again (nothing moved): sent as converted.
+            Some((f, b)) if Arc::ptr_eq(&f, frame) => {
+                self.last = Some((f, b.clone()));
+                b
+            }
+            last => {
+                // A buffer ffmpeg is done with (not the last one, still ours).
+                let mut buf = Vec::new();
+                while let Ok(b) = self.spare.try_recv() {
+                    if let Ok(b) = Arc::try_unwrap(b) {
+                        buf = b;
+                        break;
+                    }
+                }
+                drop(last);
+                let at = buf.as_ptr() as usize;
+                let held = self.made.iter().position(|(p, _)| *p == at);
+                let from = held.map(|i| self.made.swap_remove(i).1);
+                over_background_from(frame, from.as_deref(), self.bg, &mut buf);
+                // (An address freed and taken again by a new buffer: its old picture forgotten.)
+                let at = buf.as_ptr() as usize;
+                self.made.retain(|(p, _)| *p != at);
+                self.made.push((at, frame.clone()));
+                if self.made.len() > 8 {
+                    self.made.remove(0);
+                }
+                let buf = Arc::new(buf);
+                self.last = Some((frame.clone(), buf.clone()));
+                buf
+            }
+        };
         match tx.try_send(buf) {
             Ok(()) => Ok(()),
             // ffmpeg is behind: this frame is skipped.
@@ -564,6 +625,36 @@ impl Drop for StreamSender {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A picture with something in every row (premultiplied).
+    pub(crate) fn picture(w: u32, h: u32, seed: usize) -> Frame {
+        let mut f = Frame::blank(w, h);
+        for (i, p) in f.data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let a = ((i * 37 + seed) % 256) as u8;
+            let c = |k: usize| (((i * k + seed) % 256) as u16 * a as u16 / 255) as u8;
+            *p = [c(7), c(11), c(13), a];
+        }
+        f
+    }
+
+    #[test]
+    fn only_rows_that_changed_are_converted_again() {
+        let old = picture(33, 9, 1);
+        let mut new = old.clone();
+        for b in &mut new.data[33 * 4 * 3..33 * 4 * 5] {
+            *b /= 2;
+        }
+        let mut got = Vec::new();
+        over_background(&old, [10, 20, 30], &mut got);
+        let mut want = Vec::new();
+        over_background(&new, [10, 20, 30], &mut want);
+        over_background_from(&new, Some(&old), [10, 20, 30], &mut got);
+        assert_eq!(got, want);
+        // A buffer of another size, or of no known picture: converted whole.
+        let mut other = vec![7; 3];
+        over_background_from(&new, Some(&old), [10, 20, 30], &mut other);
+        assert_eq!(other, want);
+    }
 
     fn cfg(protocol: Protocol, url: &str) -> StreamConfig {
         StreamConfig {

@@ -118,6 +118,30 @@ pub(crate) fn reels(a: Option<&Anim>, v: f64, decimals: usize, now: i64, curve: 
     }
 }
 
+/// Still once at rest on its value: drawn from the value shown, the
+/// transition to it (while it runs: moving) and its colour.
+pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
+    use crate::cache::Motion;
+    let p = parts(d.layer)?;
+    let LayerKind::Counter { .. } = &d.layer.kind else {
+        return None;
+    };
+    let now = d.time.now_ms;
+    // As `draw` (it also keeps the counter's memory up to date while the
+    // frames kept are shown instead of drawn).
+    let (v, anim) = {
+        let mut m = mems().lock().unwrap_or_else(|e| e.into_inner());
+        let mem = m.entry(d.layer.id.clone()).or_default();
+        display(&p, st, d.data, now, d.time.age_secs, Some(mem))
+    };
+    if anim.is_some_and(|a| a.progress(now) < 1.0) {
+        return Some(Motion::Moving);
+    }
+    let col = color_for(p.c, v, anim.as_ref(), now);
+    let ends = anim.map(|a| (a.from.to_bits(), a.to.to_bits()));
+    Some(Motion::of(&(v.to_bits(), ends, col)))
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let Some(p) = parts(d.layer) else {
         return false;

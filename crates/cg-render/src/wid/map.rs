@@ -391,7 +391,7 @@ pub(crate) fn paint(
         ring.extend((0..=36).map(|i| [-180.0, 90.0 - i as f64 * 5.0]));
         p.fill(&rings(pj, &cam, &[&ring], true, &offs), &cl.water);
     }
-    if c.graticule {
+    if c.graticule && !p.skip {
         let mut lines: Vec<Vec<Ll>> = Vec::new();
         for k in 0..=12 {
             let lo = -180.0 + k as f64 * 30.0;
@@ -414,13 +414,15 @@ pub(crate) fn paint(
         bc.0[3] *= 0.22;
         p.stroke_c(&rings(pj, &cam, &refs, false, &offs), bc, 1.0, false, None);
     }
-    // Land
-    let land: Vec<&[Ll]> = wd.land.iter().map(|r| r.as_slice()).collect();
-    let land_cmds = rings(pj, &cam, &land, true, &offs);
-    p.fill(&land_cmds, &cl.land);
-    p.stroke(&land_cmds, &hex_mix(&cl.land, "#ffffff", 0.18), 1.2, true);
-    let lakes: Vec<&[Ll]> = wd.lakes.iter().map(|r| r.as_slice()).collect();
-    p.fill(&rings(pj, &cam, &lakes, true, &offs), &cl.water);
+    // Land (not even projected when the picture has it: `skip`).
+    if !p.skip {
+        let land: Vec<&[Ll]> = wd.land.iter().map(|r| r.as_slice()).collect();
+        let land_cmds = rings(pj, &cam, &land, true, &offs);
+        p.fill(&land_cmds, &cl.land);
+        p.stroke(&land_cmds, &hex_mix(&cl.land, "#ffffff", 0.18), 1.2, true);
+        let lakes: Vec<&[Ll]> = wd.lakes.iter().map(|r| r.as_slice()).collect();
+        p.fill(&rings(pj, &cam, &lakes, true, &offs), &cl.water);
+    }
 
     // Zones
     let zone_on = st.layer(c, "zones") && v.zoom <= 10.0;
@@ -429,7 +431,7 @@ pub(crate) fn paint(
     } else {
         Default::default()
     };
-    if zone_on {
+    if zone_on && !p.skip {
         let a0 = p.alpha;
         let hl = st.highlight.as_str();
         let pulse = ((now.rem_euclid(1100)) as f64 / 1100.0 * 2.0 * PI).sin() * 0.5 + 0.5;
@@ -457,7 +459,7 @@ pub(crate) fn paint(
         }
         p.alpha = a0;
     }
-    if c.show_borders {
+    if c.show_borders && !p.skip {
         let b: Vec<&[Ll]> = wd.borders.iter().map(|r| r.as_slice()).collect();
         p.stroke_c(
             &rings(pj, &cam, &b, false, &offs),
@@ -477,7 +479,7 @@ pub(crate) fn paint(
         && py > -30000.0 * ppm
         && px < w + 30000.0 * ppm
         && py < h + 30000.0 * ppm;
-    if v.zoom >= 9.0 && near {
+    if v.zoom >= 9.0 && near && !p.skip {
         let dp = &wd.paris;
         let mw = |m: f64, min: f64| f((m * ppm).max(min));
         let one = |r: &[Ll], close: bool| rings(pj, &cam, &[r], close, &[0.0]);
@@ -539,7 +541,7 @@ pub(crate) fn paint(
         }
     };
     let rw = c.route_w as f32;
-    if st.layer(c, "routes") {
+    if st.layer(c, "routes") && !p.skip {
         for rt in &c.routes {
             if !st.route_on(rt) {
                 continue;
@@ -655,6 +657,10 @@ pub(crate) fn paint(
             }
         }
     }
+
+    // The second step: what is over the base map.
+    p.skip = false;
+    p.d.rd.sub_step(p.d.pm);
 
     // Markers, then label candidates (markers first).
     let mut cands: Vec<Cand> = Vec::new();
@@ -1038,6 +1044,49 @@ pub(crate) fn paint(
     hidden
 }
 
+/// Still unless something of it is on its way: a flight to a view, the
+/// pulse of a highlighted zone, of a dot marker or of the place gone to, a
+/// route drawing (the only things `paint` reads the time for).
+/// The map is drawn in two steps: what is under the markers (the base map,
+/// zones, routes), then the markers, labels and legend. Each moves when
+/// something of it is on its way.
+pub(crate) fn motions(
+    d: &mut Draw,
+    st: &State,
+) -> Option<(crate::cache::Motion, crate::cache::Motion)> {
+    use crate::cache::Motion;
+    let LayerKind::Map { x: c } = &d.layer.kind else {
+        return None;
+    };
+    let now = d.time.now_ms;
+    let (v, flying) = view_at(c, st, now, d.w as f64);
+    let pulse = st.layer(c, "zones")
+        && v.zoom <= 10.0
+        && !st.highlight.is_empty()
+        && c.zones.level.list().iter().any(|r| r.id == st.highlight);
+    let dots = st.layer(c, "markers")
+        && c.markers
+            .iter()
+            .any(|m| st.marker_on(m) && m.icon == MarkerIcon::Dot);
+    let routes = st.layer(c, "routes")
+        && c.routes
+            .iter()
+            .any(|r| st.route_on(r) && route_progress(st, r, now) < 1.0);
+    // At rest *now* (a flight or a route may still be to come: not `Still`).
+    let at_rest = |moving: bool| {
+        if moving {
+            Motion::Moving
+        } else {
+            Motion::of("at rest")
+        }
+    };
+    let flying = flying.is_some();
+    Some((
+        at_rest(flying || pulse || routes),
+        at_rest(flying || st.goto.is_some() || dots),
+    ))
+}
+
 pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Map { x: c } = &d.layer.kind else {
         return false;
@@ -1046,7 +1095,10 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let data = d.data;
     let (w, h) = (d.w as f64, d.h as f64);
     let lang = d.lang.to_string();
+    // The base map is in the picture already (kept): only what is over it is drawn.
+    let under = std::mem::take(&mut d.rd.steps.under);
     let mut p = Pt::new(d, false);
+    p.skip = under;
     paint(&mut p, c, st, data, now, w, h, false, &lang);
     true
 }
