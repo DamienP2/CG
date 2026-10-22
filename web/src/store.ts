@@ -93,11 +93,18 @@ export const clientNow = () => performance.timeOrigin + performance.now();
  */
 const offsetSamples: number[] = [];
 let steadyOffset: number | null = null;
+/** For the HTML5 output's diagnostics (`?debug`): messages received and how late each one came. */
+export const clockStats = { arrivals: [] as { at: number; delay: number }[], offset: 0, steps: 0 };
 function clockOffset(serverTime: number, now: number): number {
+  const before = steadyOffset;
+  clockStats.arrivals.push({ at: now, delay: now - serverTime });
+  if (clockStats.arrivals.length > 400) clockStats.arrivals.splice(0, 100);
   offsetSamples.push(serverTime - now);
   if (offsetSamples.length > 64) offsetSamples.shift();
   const best = Math.max(...offsetSamples);
   if (steadyOffset === null || Math.abs(best - steadyOffset) > 30) steadyOffset = best;
+  if (before !== null && before !== steadyOffset) clockStats.steps++;
+  clockStats.offset = steadyOffset;
   return steadyOffset;
 }
 let toastId = 0;
