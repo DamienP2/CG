@@ -46,6 +46,11 @@ pub enum SlateStyle {
     Transparent,
 }
 
+/// The signature's width and its quill above the letters, in units of
+/// `slate_signature.svg` (its letters are 104 high).
+const SIG_W: f32 = 910.0;
+const QUILL: f32 = 31.2;
+
 /// What a channel picture shows while no project is loaded.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Slate {
@@ -569,7 +574,7 @@ impl<'a> Painter<'a> {
     fn wordmark(&mut self, size: f32, max_w: f32) -> Wordmark {
         let at = |p: &mut Self, size: f32| Wordmark {
             strata: p.run("Strata", ty(size, 800).spaced(-0.04)),
-            module: p.run(MODULE, ty(size, 600).spaced(-0.02)),
+            module: p.run(MODULE, ty(size, 400).spaced(-0.02)),
             gap: 0.25 * size,
             size,
         };
@@ -654,16 +659,20 @@ impl<'a> Painter<'a> {
 
     // ------------------------------------------------------ components --
 
-    /// The F AudioVisuel signature, `h` high, its top left at (x, y).
+    /// The F AudioVisuel signature, its letters `h` high, their top left at
+    /// (x, y); the F's quill rises above.
     fn signature(&mut self, x: f32, y: f32, h: f32, opacity: f32) {
         const SVG: &str = include_str!("slate_signature.svg");
         let Ok(tree) = resvg::usvg::Tree::from_str(SVG, &resvg::usvg::Options::default()) else {
             return;
         };
         let k = h / 104.0;
+        let y = y - QUILL * k;
         let (x0, y0) = (x.floor(), y.floor());
-        let Some(mut sig) = Pixmap::new((900.0 * k + 2.0).ceil() as u32, (h + 2.0).ceil() as u32)
-        else {
+        let Some(mut sig) = Pixmap::new(
+            (SIG_W * k + 2.0).ceil() as u32,
+            ((104.0 + QUILL) * k + 2.0).ceil() as u32,
+        ) else {
             return;
         };
         resvg::render(
@@ -687,13 +696,13 @@ impl<'a> Painter<'a> {
 
     /// Width of the signature `h` high.
     fn sig_w(h: f32) -> f32 {
-        h * 900.0 / 104.0
+        h * SIG_W / 104.0
     }
 
     /// The signature at the bottom of a box, centred (an SVG stretched
     /// across a flex column), smaller when the box is narrow.
     fn signature_in(&mut self, b: Bx, h: f32, opacity: f32) {
-        let h = h.min(b.w * 104.0 / 900.0);
+        let h = h.min(b.w * 104.0 / SIG_W);
         let x = b.x + (b.w - Self::sig_w(h)) / 2.0;
         self.signature(x, b.bottom() - h, h, opacity);
     }
