@@ -34,7 +34,7 @@ export interface WidgetPart {
 }
 
 export interface Parts {
-  /** Values used by several widgets, or by none (the template's own variables). */
+  /** Values used by several widgets, or by the Logic only. */
   shared: Field[];
   widgets: WidgetPart[];
 }
@@ -69,8 +69,11 @@ export function widgetParts(tpl: Template): Parts {
     return p;
   };
   const shared: Field[] = [];
+  const logic = JSON.stringify(tpl.logic ?? null);
   for (const f of content) {
     const u = users(f);
+    // A value nothing shows any more (its widget was deleted in the Designer): not asked for.
+    if (!u.length && !logic.includes(`"${f.key}"`)) continue;
     if (u.length === 1) {
       const p = part(u[0]);
       p.fields.push(f);

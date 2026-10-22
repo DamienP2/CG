@@ -5545,8 +5545,8 @@ a.btn {
   border: none;
   background: none;
   border-radius: 5px;
-  color: var(--text-3);
-  opacity: 0.55;
+  color: var(--text-2);
+  opacity: 0.9;
   cursor: pointer;
   padding: 0;
 }
@@ -9587,6 +9587,11 @@ body.cv-moving * {
   color: var(--text-3);
   opacity: 0.5;
 }
+/* Exposure: plainly visible, even off. */
+.pp-op {
+  color: var(--text-2);
+  opacity: 0.9;
+}
 .pp-tl:hover,
 .pp-op:hover {
   opacity: 1;
@@ -9597,9 +9602,9 @@ body.cv-moving * {
   opacity: 1;
 }
 .pp-op.on {
-  color: #38bdf8;
+  color: #7dd3fc;
   opacity: 1;
-  background: rgba(56, 189, 248, 0.14);
+  background: rgba(56, 189, 248, 0.28);
 }
 .pp-op-space,
 .wk-gut {
