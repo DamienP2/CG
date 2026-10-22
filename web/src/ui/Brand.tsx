@@ -61,10 +61,13 @@ export function Brand({ stacked = false }: { stacked?: boolean }) {
         <span className="brand-name">Strata</span>
         <span className="brand-module">{MODULE}</span>
       </span>
-      <span className="brand-sign">
-        <FigaroF height={11 * k} />
-        <AudioVisuel height={11 * k} />
-      </span>
+      {/* The signature on the login page only: too small in the top bar. */}
+      {stacked && (
+        <span className="brand-sign">
+          <FigaroF height={11 * k} />
+          <AudioVisuel height={11 * k} />
+        </span>
+      )}
     </div>
   );
 }
