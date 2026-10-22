@@ -177,7 +177,7 @@
      },
      {
       "id": "km-5",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -199,7 +199,7 @@
      },
      {
       "id": "km-6",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -221,7 +221,7 @@
      },
      {
       "id": "km-7",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -243,7 +243,7 @@
      },
      {
       "id": "km-8",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -265,7 +265,7 @@
      },
      {
       "id": "km-9",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -287,7 +287,7 @@
      },
      {
       "id": "km-10",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -309,7 +309,7 @@
      },
      {
       "id": "km-11",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -331,7 +331,7 @@
      },
      {
       "id": "km-12",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -353,7 +353,7 @@
      },
      {
       "id": "km-13",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -375,7 +375,7 @@
      },
      {
       "id": "km-14",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -397,7 +397,7 @@
      },
      {
       "id": "km-15",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -419,7 +419,7 @@
      },
      {
       "id": "km-16",
-      "name": "Damier",
+      "name": "Bloc · Damier",
       "parent": "km-2",
       "type": "rect",
       "visible": true,
@@ -463,7 +463,7 @@
      },
      {
       "id": "km-18",
-      "name": "Km",
+      "name": "Bloc · Km",
       "parent": "km-2",
       "type": "counter",
       "visible": true,
@@ -767,7 +767,7 @@
      },
      {
       "id": "profile-6",
-      "name": "Libellé",
+      "name": "Profil · Libellé",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -798,7 +798,7 @@
      },
      {
       "id": "profile-7",
-      "name": "Valeur",
+      "name": "Profil · Valeur",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -828,7 +828,7 @@
      },
      {
       "id": "profile-8",
-      "name": "Libellé",
+      "name": "Profil · Libellé",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -859,7 +859,7 @@
      },
      {
       "id": "profile-9",
-      "name": "Valeur",
+      "name": "Profil · Valeur",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -1149,7 +1149,7 @@
      },
      {
       "id": "profile-20",
-      "name": "Relief",
+      "name": "Profil · Relief",
       "parent": "profile-1",
       "type": "group",
       "visible": true,
@@ -1212,7 +1212,7 @@
      },
      {
       "id": "profile-21",
-      "name": "Relief",
+      "name": "Profil · Relief · Relief",
       "parent": "profile-20",
       "type": "polygon",
       "visible": true,
@@ -1620,7 +1620,7 @@
      },
      {
       "id": "profile-24",
-      "name": "Catégorie",
+      "name": "Col 1 · Catégorie",
       "parent": "profile-23",
       "type": "rect",
       "visible": true,
@@ -1649,7 +1649,7 @@
      },
      {
       "id": "profile-25",
-      "name": "Cat",
+      "name": "Col 1 · Cat",
       "parent": "profile-23",
       "type": "text",
       "visible": true,
@@ -1679,7 +1679,7 @@
      },
      {
       "id": "profile-26",
-      "name": "Nom",
+      "name": "Col 1 · Nom",
       "parent": "profile-23",
       "type": "text",
       "visible": true,
@@ -1709,7 +1709,7 @@
      },
      {
       "id": "profile-27",
-      "name": "Altitude",
+      "name": "Col 1 · Altitude",
       "parent": "profile-23",
       "type": "text",
       "visible": true,
@@ -1839,7 +1839,7 @@
      },
      {
       "id": "profile-29",
-      "name": "Catégorie",
+      "name": "Col 2 · Catégorie",
       "parent": "profile-28",
       "type": "rect",
       "visible": true,
@@ -1868,7 +1868,7 @@
      },
      {
       "id": "profile-30",
-      "name": "Cat",
+      "name": "Col 2 · Cat",
       "parent": "profile-28",
       "type": "text",
       "visible": true,
@@ -1898,7 +1898,7 @@
      },
      {
       "id": "profile-31",
-      "name": "Nom",
+      "name": "Col 2 · Nom",
       "parent": "profile-28",
       "type": "text",
       "visible": true,
@@ -1928,7 +1928,7 @@
      },
      {
       "id": "profile-32",
-      "name": "Altitude",
+      "name": "Col 2 · Altitude",
       "parent": "profile-28",
       "type": "text",
       "visible": true,
@@ -2058,7 +2058,7 @@
      },
      {
       "id": "profile-34",
-      "name": "Catégorie",
+      "name": "Col 3 · Catégorie",
       "parent": "profile-33",
       "type": "rect",
       "visible": true,
@@ -2087,7 +2087,7 @@
      },
      {
       "id": "profile-35",
-      "name": "Cat",
+      "name": "Col 3 · Cat",
       "parent": "profile-33",
       "type": "text",
       "visible": true,
@@ -2117,7 +2117,7 @@
      },
      {
       "id": "profile-36",
-      "name": "Nom",
+      "name": "Col 3 · Nom",
       "parent": "profile-33",
       "type": "text",
       "visible": true,
@@ -2147,7 +2147,7 @@
      },
      {
       "id": "profile-37",
-      "name": "Altitude",
+      "name": "Col 3 · Altitude",
       "parent": "profile-33",
       "type": "text",
       "visible": true,
@@ -2277,7 +2277,7 @@
      },
      {
       "id": "profile-39",
-      "name": "Catégorie",
+      "name": "Col 4 · Catégorie",
       "parent": "profile-38",
       "type": "rect",
       "visible": true,
@@ -2306,7 +2306,7 @@
      },
      {
       "id": "profile-40",
-      "name": "Cat",
+      "name": "Col 4 · Cat",
       "parent": "profile-38",
       "type": "text",
       "visible": true,
@@ -2336,7 +2336,7 @@
      },
      {
       "id": "profile-41",
-      "name": "Nom",
+      "name": "Col 4 · Nom",
       "parent": "profile-38",
       "type": "text",
       "visible": true,
@@ -2366,7 +2366,7 @@
      },
      {
       "id": "profile-42",
-      "name": "Altitude",
+      "name": "Col 4 · Altitude",
       "parent": "profile-38",
       "type": "text",
       "visible": true,
@@ -2396,7 +2396,7 @@
      },
      {
       "id": "profile-43",
-      "name": "Tic",
+      "name": "Profil · Tic",
       "parent": "profile-1",
       "type": "rect",
       "visible": true,
@@ -2418,7 +2418,7 @@
      },
      {
       "id": "profile-44",
-      "name": "Km",
+      "name": "Profil · Km",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -2448,7 +2448,7 @@
      },
      {
       "id": "profile-45",
-      "name": "Tic",
+      "name": "Profil · Tic",
       "parent": "profile-1",
       "type": "rect",
       "visible": true,
@@ -2470,7 +2470,7 @@
      },
      {
       "id": "profile-46",
-      "name": "Km",
+      "name": "Profil · Km",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -2500,7 +2500,7 @@
      },
      {
       "id": "profile-47",
-      "name": "Tic",
+      "name": "Profil · Tic",
       "parent": "profile-1",
       "type": "rect",
       "visible": true,
@@ -2522,7 +2522,7 @@
      },
      {
       "id": "profile-48",
-      "name": "Km",
+      "name": "Profil · Km",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -2552,7 +2552,7 @@
      },
      {
       "id": "profile-49",
-      "name": "Tic",
+      "name": "Profil · Tic",
       "parent": "profile-1",
       "type": "rect",
       "visible": true,
@@ -2574,7 +2574,7 @@
      },
      {
       "id": "profile-50",
-      "name": "Km",
+      "name": "Profil · Km",
       "parent": "profile-1",
       "type": "text",
       "visible": true,
@@ -3002,7 +3002,7 @@
      },
      {
       "id": "gaps-6",
-      "name": "Plot",
+      "name": "Groupe 1 · Plot",
       "parent": "gaps-5",
       "type": "rect",
       "visible": true,
@@ -3025,7 +3025,7 @@
      },
      {
       "id": "gaps-7",
-      "name": "Groupe",
+      "name": "Groupe 1 · Groupe",
       "parent": "gaps-5",
       "type": "text",
       "visible": true,
@@ -3186,7 +3186,7 @@
      },
      {
       "id": "gaps-10",
-      "name": "Plot",
+      "name": "Groupe 2 · Plot",
       "parent": "gaps-9",
       "type": "rect",
       "visible": true,
@@ -3209,7 +3209,7 @@
      },
      {
       "id": "gaps-11",
-      "name": "Groupe",
+      "name": "Groupe 2 · Groupe",
       "parent": "gaps-9",
       "type": "text",
       "visible": true,
@@ -3239,7 +3239,7 @@
      },
      {
       "id": "gaps-12",
-      "name": "Trait",
+      "name": "Groupe 2 · Trait",
       "parent": "gaps-9",
       "type": "rect",
       "visible": true,
@@ -3261,7 +3261,7 @@
      },
      {
       "id": "gaps-13",
-      "name": "Écart",
+      "name": "Groupe 2 · Écart",
       "parent": "gaps-9",
       "type": "text",
       "visible": true,
@@ -3391,7 +3391,7 @@
      },
      {
       "id": "gaps-15",
-      "name": "Plot",
+      "name": "Groupe 3 · Plot",
       "parent": "gaps-14",
       "type": "rect",
       "visible": true,
@@ -3414,7 +3414,7 @@
      },
      {
       "id": "gaps-16",
-      "name": "Groupe",
+      "name": "Groupe 3 · Groupe",
       "parent": "gaps-14",
       "type": "text",
       "visible": true,
@@ -3444,7 +3444,7 @@
      },
      {
       "id": "gaps-17",
-      "name": "Trait",
+      "name": "Groupe 3 · Trait",
       "parent": "gaps-14",
       "type": "rect",
       "visible": true,
@@ -3466,7 +3466,7 @@
      },
      {
       "id": "gaps-18",
-      "name": "Écart",
+      "name": "Groupe 3 · Écart",
       "parent": "gaps-14",
       "type": "text",
       "visible": true,
@@ -3528,7 +3528,11 @@
       "key": "rows",
       "label": "Classement",
       "kind": "table",
-      "default": "[[\"Rang\", \"Coureur\", \"Équipe\", \"Temps\"], [\"1\", \"Tadej Pogačar\", \"UAE Team Emirates\", \"58 h 12 min 40 s\"], [\"2\", \"Jonas Vingegaard\", \"Visma-Lease a Bike\", \"+ 1:52\"], [\"3\", \"Remco Evenepoel\", \"Soudal Quick-Step\", \"+ 3:16\"], [\"4\", \"Primož Roglič\", \"Red Bull-Bora\", \"+ 4:40\"], [\"5\", \"Carlos Rodríguez\", \"Ineos Grenadiers\", \"+ 6:05\"], [\"6\", \"Lenny Martinez\", \"Bahrain Victorious\", \"+ 7:31\"], [\"7\", \"Mikel Landa\", \"Soudal Quick-Step\", \"+ 8:02\"], [\"8\", \"Felix Gall\", \"Decathlon AG2R\", \"+ 9:47\"]]"
+      "default": "[[\"Rang\", \"Coureur\", \"Équipe\", \"Temps\"], [\"1\", \"Tadej Pogačar\", \"UAE Team Emirates\", \"58 h 12 min 40 s\"], [\"2\", \"Jonas Vingegaard\", \"Visma-Lease a Bike\", \"+ 1:52\"], [\"3\", \"Remco Evenepoel\", \"Soudal Quick-Step\", \"+ 3:16\"], [\"4\", \"Primož Roglič\", \"Red Bull-Bora\", \"+ 4:40\"], [\"5\", \"Carlos Rodríguez\", \"Ineos Grenadiers\", \"+ 6:05\"], [\"6\", \"Lenny Martinez\", \"Bahrain Victorious\", \"+ 7:31\"], [\"7\", \"Mikel Landa\", \"Soudal Quick-Step\", \"+ 8:02\"], [\"8\", \"Felix Gall\", \"Decathlon AG2R\", \"+ 9:47\"]]",
+      "binding": {
+       "source": "grande-boucle-classement",
+       "path": "general"
+      }
      }
     ],
     "layers": [
@@ -3859,16 +3863,7 @@
     ],
     "zone": "full",
     "revision": 1,
-    "markerModel": 2,
-    "datasets": [
-     {
-      "key": "gc",
-      "name": "Classement général (flux des temps)",
-      "source": "grande-boucle-classement",
-      "list": "general",
-      "change": "outIn"
-     }
-    ]
+    "markerModel": 2
    },
    {
     "id": "rider",
@@ -4034,7 +4029,7 @@
      },
      {
       "id": "rider-3",
-      "name": "Maillot",
+      "name": "Coureur · Maillot",
       "parent": "rider-1",
       "type": "group",
       "visible": true,
@@ -4121,7 +4116,7 @@
      },
      {
       "id": "rider-5",
-      "name": "Maillot",
+      "name": "Coureur · Maillot · Maillot",
       "parent": "rider-3",
       "type": "polygon",
       "visible": true,
@@ -4196,7 +4191,7 @@
      },
      {
       "id": "rider-6",
-      "name": "Maillot",
+      "name": "Coureur · Maillot",
       "parent": "rider-1",
       "type": "text",
       "visible": true,
@@ -4501,7 +4496,7 @@
      },
      {
       "id": "rider-10",
-      "name": "Valeur",
+      "name": "Stat 1 · Valeur",
       "parent": "rider-9",
       "type": "text",
       "visible": true,
@@ -4531,7 +4526,7 @@
      },
      {
       "id": "rider-11",
-      "name": "Libellé",
+      "name": "Stat 1 · Libellé",
       "parent": "rider-9",
       "type": "text",
       "visible": true,
@@ -4617,7 +4612,7 @@
      },
      {
       "id": "rider-13",
-      "name": "Valeur",
+      "name": "Stat 2 · Valeur",
       "parent": "rider-12",
       "type": "text",
       "visible": true,
@@ -4647,7 +4642,7 @@
      },
      {
       "id": "rider-14",
-      "name": "Libellé",
+      "name": "Stat 2 · Libellé",
       "parent": "rider-12",
       "type": "text",
       "visible": true,
@@ -4733,7 +4728,7 @@
      },
      {
       "id": "rider-16",
-      "name": "Valeur",
+      "name": "Stat 3 · Valeur",
       "parent": "rider-15",
       "type": "text",
       "visible": true,
@@ -4763,7 +4758,7 @@
      },
      {
       "id": "rider-17",
-      "name": "Libellé",
+      "name": "Stat 3 · Libellé",
       "parent": "rider-15",
       "type": "text",
       "visible": true,
@@ -5290,5 +5285,99 @@
    "titleSafe": 0.05,
    "exclusions": []
   }
- }
+ },
+ "sources": [
+  {
+   "id": "grande-boucle-course",
+   "name": "Grande Boucle · course en direct",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "race": {
+     "kmToGo": 42.6,
+     "groups": [
+      {
+       "name": "Échappée",
+       "riders": 6,
+       "gap": "0:00"
+      },
+      {
+       "name": "Contre-attaque",
+       "riders": 3,
+       "gap": "+ 0:48"
+      },
+      {
+       "name": "Peloton",
+       "riders": 98,
+       "gap": "+ 2:45"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "id": "grande-boucle-classement",
+   "name": "Grande Boucle · classement général",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "general": [
+     [
+      "Rang",
+      "Coureur",
+      "Équipe",
+      "Temps"
+     ],
+     [
+      "1",
+      "Tadej Pogačar",
+      "UAE Team Emirates",
+      "58 h 12 min 40 s"
+     ],
+     [
+      "2",
+      "Jonas Vingegaard",
+      "Visma-Lease a Bike",
+      "+ 1:52"
+     ],
+     [
+      "3",
+      "Remco Evenepoel",
+      "Soudal Quick-Step",
+      "+ 3:16"
+     ],
+     [
+      "4",
+      "Primož Roglič",
+      "Red Bull-Bora",
+      "+ 4:40"
+     ],
+     [
+      "5",
+      "Carlos Rodríguez",
+      "Ineos Grenadiers",
+      "+ 6:05"
+     ],
+     [
+      "6",
+      "Lenny Martinez",
+      "Bahrain Victorious",
+      "+ 7:31"
+     ],
+     [
+      "7",
+      "Mikel Landa",
+      "Soudal Quick-Step",
+      "+ 8:02"
+     ],
+     [
+      "8",
+      "Felix Gall",
+      "Decathlon AG2R",
+      "+ 9:47"
+     ]
+    ]
+   }
+  }
+ ]
 }

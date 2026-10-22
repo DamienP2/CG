@@ -44,7 +44,10 @@ def frame(t, name, x, y, w, h, parent=None, tracks=None, **props):
 
 
 def place(t, lid, x, y, s=1.0, fmt='vertical'):
-    t.override(lid, fmt, x=x, y=y, scaleX=s, scaleY=s)
+    """Moves and scales a still group in another format; its box is scaled too
+    (anchor top left, not clipped), so the zone check sees what is drawn."""
+    pr = t.layer_ref(lid)['props']
+    t.override(lid, fmt, x=x, y=y, scaleX=s, scaleY=s, width=pr['width'] * s, height=pr['height'] * s)
 
 
 def vfull(t, g, backs=(), s=0.5625):
@@ -143,7 +146,7 @@ def ex11():
                 cover='guest')
     p.vertical()
     p.zone('bug', 'Épisode', 30, '#ff5a3c', area=(0.03, 0.04, 0.34, 0.08), vertical=(0.05, 0.065, 0.9, 0.06))
-    p.zone('social', 'Réseaux', 31, '#f5a524', area=(0.64, 0.04, 0.33, 0.1), vertical=(0.05, 0.14, 0.9, 0.07))
+    p.zone('social', 'Réseaux', 31, '#f5a524', area=(0.64, 0.04, 0.33, 0.1), vertical=(0.05, 0.14, 0.9, 0.076))
     p.zone('lower', 'Synthé', 10, '#7c5cff', area=(0.04, 0.66, 0.62, 0.3), vertical=(0.04, 0.6, 0.92, 0.2))
     p.zone('cta', 'Appel à l’action', 20, '#22c55e', area=(0.6, 0.68, 0.37, 0.28), vertical=(0.05, 0.44, 0.9, 0.14))
     p.zone('full', 'Plein écran', 50, '#38bdf8')
@@ -192,7 +195,7 @@ def ex11():
            tracks=wipe(60, t_in=6, length=20), **band(CREAM, pad=34, radius=38))
     t.text('Fonction', '{{role}}   <c=' + CORAL + '>{{handle}}</c>', 150, 120, 1000, 60, 26, g, color=hexc(CREAM), weight=600,
            lineHeight=1.95, tracks=merge(inout('y', 120, 150, 60, 12, 20), fade(60, 12, 12)), **band(hexs(PANEL, 0.94), pad=28, radius=24))
-    place(t, g, 44, 1190, 0.92)
+    place(t, g, 44, 1190, 0.86)
 
     # --- Chapter -------------------------------------------------------
     t = p.template('chapter', 'Chapitre', 'lower', duration=120, on_air=70)
@@ -318,6 +321,14 @@ def ex11():
     p.item('Abonnez-vous', 'cta', 'show')
     p.item('J’aime', 'like', 'show')
     p.item('Écran de fin', 'end', 'end')
+    p.source('horschamp-chapitres', 'Hors Champ · chapitres', {'chapters': [
+        {'num': '1', 'total': '7', 'title': fr('L’enfance au piano'), 'time': '02:15'},
+        {'num': '2', 'total': '7', 'title': fr('Le conservatoire'), 'time': '11:40'},
+        {'num': '3', 'total': '7', 'title': fr('Les années Morricone'), 'time': '24:10'},
+        {'num': '4', 'total': '7', 'title': fr('Écrire pour l’image'), 'time': '37:05'},
+        {'num': '5', 'total': '7', 'title': fr('Hollywood, puis retour'), 'time': '49:30'},
+        {'num': '6', 'total': '7', 'title': fr('La musique des séries'), 'time': '58:12'},
+        {'num': '7', 'total': '7', 'title': fr('Vos questions'), 'time': '1:06:40'}]})
     return p
 
 
@@ -340,7 +351,7 @@ def ex12():
                 cover='artist')
     p.vertical()
     p.zone('stage', 'Scène', 30, '#d4ff3a', area=(0.025, 0.035, 0.42, 0.09), vertical=(0.04, 0.05, 0.92, 0.06))
-    p.zone('sponsor', 'Partenaire', 31, '#f5a524', area=(0.68, 0.035, 0.3, 0.09), vertical=(0.04, 0.12, 0.92, 0.06))
+    p.zone('sponsor', 'Partenaire', 31, '#f5a524', area=(0.68, 0.035, 0.3, 0.09), vertical=(0.04, 0.12, 0.92, 0.066))
     p.zone('lower', 'Synthé', 10, '#7c5cff', area=(0.03, 0.6, 0.7, 0.37), vertical=(0.03, 0.58, 0.94, 0.2))
     p.zone('next', 'Prochain concert', 20, '#22c55e', area=(0.65, 0.66, 0.33, 0.31), vertical=(0.06, 0.36, 0.88, 0.24))
     p.zone('full', 'Plein écran', 50, '#38bdf8')
@@ -398,7 +409,7 @@ def ex12():
     t.field('line', 'Ligne', fr('Nouvel album « Ash » · Première date de la tournée'))
     g = frame(t, 'Intro', 0, 0, 1920, 1080)
     v = t.rect('Voile', 0, 0, 1920, 1080, hexc(K, 0.92), g, grad=(hexs(K, 0.15), 0), tracks=fade(100, 0, 12, 14))
-    vfull(t, g, [v], 0.62)
+    vfull(t, g, [v], 0.5625)
     for i, (y, h, d) in enumerate(((330, 14, 0), (362, 6, 4), (980, 10, 8))):
         t.rect('Trait %d' % (i + 1), -200, y, 2400, h, hexc(LIME), g, shape='parallelogram', skew=-30,
                tracks=merge(inout('x', -200, -2600, 100, d, 22, delay_out=0), fade(100, d, 4)))
@@ -472,6 +483,10 @@ def ex12():
     p.item('Ibeyi · Deathless', 'artist', 'night', {'song': fr('Deathless · avec Kamasi Washington')})
     p.item('Prochain : Justice', 'next', 'night')
     p.item('Justice · Genesis', 'artist', 'night', {'artist': 'JUSTICE', 'song': 'Genesis (DJ set)'})
+    p.source('festival-programme', 'Rives Électriques · programme', {'sets': [
+        {'artist': 'JUSTICE (DJ SET)', 'stage': fr('SCÈNE ÉCLIPSE'), 'time': '23:40:00'},
+        {'artist': 'KIDDY SMILE', 'stage': 'LA SERRE', 'time': '01:00:00'},
+        {'artist': 'JENNIFER CARDINI', 'stage': 'LA SERRE', 'time': '02:15:00'}]})
     return p
 
 
@@ -707,8 +722,8 @@ def ex14():
 
     # --- Audience question -------------------------------------------
     t = p.template('qa', 'Question du public', 'full', duration=130, on_air=80)
-    t.field('question', 'Question', fr('Comment garantir la confidentialité des données quand le modèle tourne sur le téléphone ?'), kind='multiline')
-    t.field('who', 'Posée par', 'Mathis, Lyon · via l’appli')
+    t.field('q_question', 'Question', fr('Comment garantir la confidentialité des données quand le modèle tourne sur le téléphone ?'), kind='multiline')
+    t.field('q_who', 'Posée par', 'Mathis, Lyon · via l’appli')
     t.field('url', 'Lien des questions', 'https://horizon26.events/questions')
     dataset(t, 'q', 'Questions validées', 'horizon26-questions', 'questions')
     g = t.group('Q&R', 96, 600, 1728, 400)
@@ -716,9 +731,9 @@ def ex14():
     t.rect('Verre', 0, 0, 1728, 400, hexc(PANEL, 0.9), c, **GLASS)
     t.rect('Pastille', 44, 44, 220, 40, hexc(BLUE), c, radius=20, grad=(VIOLET, 90))
     t.text('Étiquette', 'QUESTION DU PUBLIC', 44, 44, 220, 40, 15, c, color=hexc(WHT), family=MONO, weight=700, align='center', spacing=1)
-    t.text('Question', '{{question}}', 44, 106, 1280, 200, 50, c, color=hexc(WHT), family=GROTESK, weight=700, wrap=True,
+    t.text('Question', '{{q_question}}', 44, 106, 1280, 200, 50, c, color=hexc(WHT), family=GROTESK, weight=700, wrap=True,
            lineHeight=1.18, valign='top', tracks=merge(fade(80, 8, 14), inout('y', 106, 130, 80, 8, 22)))
-    t.text('Auteur', '— {{who}}', 46, 320, 1200, 40, 24, c, color=hexc(MUTE), weight=500, tracks=fade(80, 16, 14))
+    t.text('Auteur', '— {{q_who}}', 46, 320, 1200, 40, 24, c, color=hexc(MUTE), weight=500, tracks=fade(80, 16, 14))
     t.rect('Séparateur', 1380, 44, 1.5, 312, hexc('#ffffff', 0.12), c)
     t.rect('Blanc', 1430, 64, 250, 250, hexc(WHT), c, radius=12)
     t.qr('QR', '{{url}}', 1442, 76, 226, c, fill=hexc(NAVY), modStyle='rounded', finderStyle='rounded', quiet=1)
@@ -798,6 +813,11 @@ def ex14():
     p.item('Slides', 'slides', 'keynote')
     p.item(fr('Chiffre · ×3,2'), 'stat', 'keynote')
     p.item('Question de Mathis', 'qa', 'keynote')
+    p.source('horizon26-questions', 'Horizon 26 · questions validées', {'questions': [
+        {'question': fr('Comment garantir la confidentialité des données quand le modèle tourne sur le téléphone ?'),
+         'who': 'Mathis, Lyon · via l’appli'},
+        {'question': fr('Quelle consommation d’énergie pour une heure d’usage intensif ?'), 'who': 'Clara, Nantes · via l’appli'},
+        {'question': fr('Le modèle sera-t-il publié en open source ?'), 'who': 'Yanis, Paris · dans la salle'}]})
     return p
 
 
@@ -957,6 +977,13 @@ def ex15():
     p.item(fr('Révélation · Réalisation'), 'reveal', 'ceremony')
     p.item('Applaudissements', 'applause', 'ceremony')
     p.item(fr('Lauréate · Céline Sciamma'), 'lower', 'ceremony')
+    p.source('etoiles-or-nommes', 'Étoiles d’or · nommés', {'categories': [
+        {'name': 'Meilleure réalisation', 'nominees': [{'name': n, 'work': fr(w)} for n, w in NOMS]},
+        {'name': 'Meilleure actrice', 'nominees': [{'name': 'Adèle Exarchopoulos', 'work': 'Les Remparts'},
+                                                   {'name': 'Léa Drucker', 'work': fr('Le Ciel d’après')},
+                                                   {'name': 'Virginie Efira', 'work': fr('Marées basses')},
+                                                   {'name': 'Sandrine Kiberlain', 'work': 'La Traversée'},
+                                                   {'name': 'Noémie Merlant', 'work': 'Les Oiseaux de feu'}]}]})
     return p
 
 
@@ -1000,32 +1027,32 @@ def ex16():
 
     # --- Question + 4 answers ------------------------------------------
     t = p.template('question', 'Question', 'board', duration=140, on_air=90)
-    t.field('num', 'Numéro', 'QUESTION 7')
-    t.field('q', 'Question', fr('Quel peintre a réalisé « Impression, soleil levant » en 1872 ?'), kind='multiline')
+    t.field('quiz_num', 'Numéro', 'QUESTION 7')
+    t.field('quiz_q', 'Question', fr('Quel peintre a réalisé « Impression, soleil levant » en 1872 ?'), kind='multiline')
     for k, a in zip('ABCD', ('Édouard Manet', 'Claude Monet', 'Auguste Renoir', 'Paul Cézanne')):
-        t.field('a' + k, 'Réponse ' + k, a)
+        t.field('quiz_a' + k, 'Réponse ' + k, a)
     for k in 'ABCD':
-        t.field('ok' + k, 'Bonne réponse ' + k, 'true' if k == 'B' else 'false', kind='boolean')
+        t.field('quiz_ok' + k, 'Bonne réponse ' + k, 'true' if k == 'B' else 'false', kind='boolean')
     t.field('lock', 'Réponse verrouillée (A–D)', 'B')
     dataset(t, 'quiz', 'Questions de la manche', 'grand-defi-questions', 'questions')
     t.pause(46, 'Réponses à l’écran')
     g = frame(t, 'Question', 60, 510, 1800, 540)
     qp = plate(t, 'Question', 0, 0, 1800, 170, g, tracks=merge(inout('scaleX', 1, 0.2, 90, 0, 18), fade(90, 0, 8)))
     t.rect('Onglet', 760, -40, 280, 40, hexc(ORANGE), qp, corners=(12, 12, 0, 0))
-    t.text('Numéro', '{{num}}', 760, -40, 280, 40, 22, qp, color=hexc(D1), family=TECH, weight=900, align='center', spacing=5)
-    t.text('Question', '{{q}}', 90, 3, 1620, 164, 50, qp, family=TECH, weight=700, align='center', wrap=True, lineHeight=1.12)
+    t.text('Numéro', '{{quiz_num}}', 760, -40, 280, 40, 22, qp, color=hexc(D1), family=TECH, weight=900, align='center', spacing=5)
+    t.text('Question', '{{quiz_q}}', 90, 3, 1620, 164, 50, qp, family=TECH, weight=700, align='center', wrap=True, lineHeight=1.12)
     for i, k in enumerate('ABCD'):
         x, y = (0 if i % 2 == 0 else 920), (200 if i < 2 else 320)
         d = 10 + i * 4
         a = t.group('Réponse ' + k, x, y, 880, 100, g, tracks=merge(fade(90, d, 8), inout('x', x, x + (-80 if i % 2 == 0 else 80), 90, d, 16)))
         plate(t, 'Plaque', 0, 0, 880, 100, a)
-        ok = t.group('Bonne réponse', 0, 0, 880, 100, a, bindings={'opacity': 'ok' + k})
+        ok = t.group('Bonne réponse', 0, 0, 880, 100, a, bindings={'opacity': 'quiz_ok' + k})
         flash = t.group('Allumage', 0, 0, 880, 100, ok, tracks={'opacity': keys((0, 0, 'hold'), (46, 0, 'linear'), (50, 1, 'linear'),
                                                                                     (54, 0.3, 'linear'), (58, 1, 'linear'), (62, 0.3, 'linear'),
                                                                                     (66, 1, 'linear'))})
         plate(t, 'Verte', 0, 0, 880, 100, flash, fill=GREEN, fill2='#0f8f58', edge=WHT)
         t.text('Lettre', k + ' :', 52, 0, 80, 100, 36, a, color=hexc(ORANGE), family=TECH, weight=900)
-        t.text('Réponse', '{{a%s}}' % k, 130, 0, 700, 100, 38, a, family=TECH, weight=700)
+        t.text('Réponse', '{{quiz_a%s}}' % k, 130, 0, 700, 100, 38, a, family=TECH, weight=700)
 
     # --- Timer ring ---------------------------------------------------------
     t = p.template('timer', 'Chrono 30 s', 'timer', duration=80, on_air=30)
@@ -1117,10 +1144,20 @@ def ex16():
     p.item(fr('Inès Morvan'), 'lower', 'round2')
     p.item('Question 7 · Monet', 'question', 'round2')
     p.item('Chrono 30 s', 'timer', 'round2')
-    p.item('Question 8 · Fleuves', 'question', 'round2', {'num': 'QUESTION 8', 'q': fr('Quel est le plus long fleuve de France ?'),
-                                                        'aA': 'La Seine', 'aB': 'Le Rhône', 'aC': 'La Loire', 'aD': 'La Garonne',
-                                                        'okA': 'false', 'okB': 'false', 'okC': 'true', 'okD': 'false'})
+    p.item('Question 8 · Fleuves', 'question', 'round2', {'quiz__row': '2', 'quiz_num': 'QUESTION 8', 'quiz_q': fr('Quel est le plus long fleuve de France ?'),
+                                                        'quiz_aA': 'La Seine', 'quiz_aB': 'Le Rhône', 'quiz_aC': 'La Loire',
+                                                        'quiz_aD': 'La Garonne', 'quiz_okA': 'false', 'quiz_okB': 'false',
+                                                        'quiz_okC': 'true', 'quiz_okD': 'false'})
     p.item('Vainqueur', 'winner', 'final')
+    p.source('grand-defi-questions', 'Le Grand Défi · questions', {'questions': [
+        {'num': 'QUESTION 7', 'q': fr('Quel peintre a réalisé « Impression, soleil levant » en 1872 ?'), 'aA': 'Édouard Manet',
+         'aB': 'Claude Monet', 'aC': 'Auguste Renoir', 'aD': 'Paul Cézanne', 'okA': 'false', 'okB': 'true', 'okC': 'false', 'okD': 'false'},
+        {'num': 'QUESTION 8', 'q': fr('Quel est le plus long fleuve de France ?'), 'aA': 'La Seine', 'aB': 'Le Rhône',
+         'aC': 'La Loire', 'aD': 'La Garonne', 'okA': 'false', 'okB': 'false', 'okC': 'true', 'okD': 'false'},
+        {'num': 'QUESTION 9', 'q': fr('En quelle année a eu lieu la première Coupe du monde de football ?'), 'aA': '1924',
+         'aB': '1930', 'aC': '1934', 'aD': '1938', 'okA': 'false', 'okB': 'true', 'okC': 'false', 'okD': 'false'}]})
+    p.source('grand-defi-scores', 'Le Grand Défi · scores', {'players': [
+        {'name': n, 'score': sc} for n, c, sc, col in PL]})
     return p
 
 
@@ -1293,6 +1330,11 @@ def ex17():
     p.item('Elie Okobo (Monaco)', 'player', 'game', {'num': '25', 'first': 'Elie', 'last': 'Okobo', 'info': fr('MENEUR · 1,91 M · 27 ANS'),
                                                     'pts': '18', 'reb': '3', 'ast': '9', 'eff': '21', 'color': AWAY})
     p.item(fr('Fin du 3e quart-temps'), 'quarter', 'game')
+    p.source('elite-basket-live', 'Elite Basket · match en direct', {
+        'game': {'home': {'name': 'Paris Basketball', 'score': 78}, 'away': {'name': 'AS Monaco', 'score': 74}, 'period': 'Q3'},
+        'players': [{'number': 1, 'name': 'Tyson Ward', 'pts': 24, 'reb': 6, 'ast': 8, 'eff': 27},
+                    {'number': 7, 'name': 'Nadir Hifi', 'pts': 15, 'reb': 2, 'ast': 5, 'eff': 14},
+                    {'number': 25, 'name': 'Elie Okobo', 'pts': 18, 'reb': 3, 'ast': 9, 'eff': 21}]})
     return p
 
 
@@ -1422,7 +1464,7 @@ def ex18():
         ['4', 'Primož Roglič', 'Red Bull-Bora', '+ 4:40'], ['5', 'Carlos Rodríguez', 'Ineos Grenadiers', '+ 6:05'],
         ['6', 'Lenny Martinez', 'Bahrain Victorious', '+ 7:31'], ['7', 'Mikel Landa', 'Soudal Quick-Step', '+ 8:02'],
         ['8', 'Felix Gall', 'Decathlon AG2R', '+ 9:47']]), kind='table')
-    dataset(t, 'gc', 'Classement général (flux des temps)', 'grande-boucle-classement', 'general')
+    bind(t, 'rows', 'grande-boucle-classement', 'general')
     g = t.group('Classement', 260, 110, 1400, 860, tracks=merge(fade(120, 0, 10, 12, 8), inout('y', 110, 160, 120, 0, 18, 12, 8)))
     t.rect('Fond', 0, 0, 1400, 860, hexc(K, 0.95), g)
     t.rect('Maillot', 0, 0, 1400, 120, hexc(YEL), g)
@@ -1500,6 +1542,16 @@ def ex18():
                                                       'team': 'Bahrain Victorious', 'nat': 'FRA', 's1': '64', 'l1': 'POINTS MONTAGNE',
                                                       's2': '6e', 'l2': fr('AU GÉNÉRAL'), 's3': '2', 'l3': 'COLS EN TÊTE'})
     p.item(fr('Classement général'), 'gc', 'stage')
+    p.source('grande-boucle-course', 'Grande Boucle · course en direct', {'race': {
+        'kmToGo': 42.6, 'groups': [{'name': fr('Échappée'), 'riders': 6, 'gap': '0:00'},
+                                   {'name': 'Contre-attaque', 'riders': 3, 'gap': '+ 0:48'},
+                                   {'name': 'Peloton', 'riders': 98, 'gap': '+ 2:45'}]}})
+    p.source('grande-boucle-classement', 'Grande Boucle · classement général', {'general': [
+        ['Rang', 'Coureur', 'Équipe', 'Temps'], ['1', fr('Tadej Pogačar'), 'UAE Team Emirates', '58 h 12 min 40 s'],
+        ['2', 'Jonas Vingegaard', 'Visma-Lease a Bike', '+ 1:52'], ['3', 'Remco Evenepoel', 'Soudal Quick-Step', '+ 3:16'],
+        ['4', fr('Primož Roglič'), 'Red Bull-Bora', '+ 4:40'], ['5', 'Carlos Rodríguez', 'Ineos Grenadiers', '+ 6:05'],
+        ['6', 'Lenny Martinez', 'Bahrain Victorious', '+ 7:31'], ['7', 'Mikel Landa', 'Soudal Quick-Step', '+ 8:02'],
+        ['8', 'Felix Gall', 'Decathlon AG2R', '+ 9:47']]})
     return p
 
 
@@ -1697,6 +1749,13 @@ def ex19():
     p.item(fr('Sujet · Pesquet en plateau'), 'topic', 'morning', {'tag': fr('L’INVITÉ'), 'title': fr('Thomas Pesquet : « La Lune, c’est pour 2028 »'),
                                                                    'sub': fr('L’astronaute est notre invité à 8 h 10')})
     p.item('Horoscope', 'horoscope', 'morning')
+    p.source('matinale-trafic', 'Matinale · info trafic', {'items': [
+        {'title': fr('A86 : bouchon de 6 km à Nanterre')},
+        {'title': fr('Périphérique intérieur : ralentissements porte de Bagnolet')},
+        {'title': fr('RER B : trafic interrompu entre Gare du Nord et Aéroport CDG')},
+        {'title': fr('A7 : circulation fluide vers Lyon')}]})
+    p.source('matinale-messages', 'Matinale · messages des téléspectateurs', {'posts': [
+        {'name': n, 'handle': h, 'text': fr(txt), 'likes': int(likes)} for n, h, txt, likes, col in POSTS]})
     return p
 
 
@@ -1855,6 +1914,14 @@ def ex20():
     p.item('Code LIVE20', 'promo', 'live')
     p.item('Sneakers Pas de Côté', 'product', 'live', {'brand': fr('PAS DE CÔTÉ'), 'name': 'Sneakers en cuir recyclé', 'variant': fr('Blanc cassé · du 36 au 46'),
                                                       'was': fr('139 €'), 'price': '89', 'cents': ',00 €', 'off': '-36 %', 'sku': 'PDC-SN-310'})
+    p.source('droplive-stats', 'Drop Live · audience et commandes', {
+        'live': {'viewers': 12840},
+        'orders': [{'text': fr('Julie (Lyon) vient de commander le trench')}, {'text': 'Karim (Lille) en a pris 2'},
+                   {'text': fr('Emma (Nantes) vient de commander le trench')},
+                   {'text': fr('Léo (Bordeaux) l’a ajouté à son panier')}]})
+    p.source('droplive-catalogue', 'Drop Live · catalogue', {'products': [
+        {'sku': 'ML-TR-042', 'name': fr('Trench oversize en coton bio'), 'price': '129', 'was': fr('189 €'), 'stock': 37},
+        {'sku': 'PDC-SN-310', 'name': 'Sneakers en cuir recyclé', 'price': '89', 'was': fr('139 €'), 'stock': 112}]})
     return p
 
 

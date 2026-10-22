@@ -2203,7 +2203,7 @@
      },
      {
       "id": "map-2",
-      "name": "Carte",
+      "name": "Lieu · Carte",
       "parent": "map-1",
       "type": "group",
       "visible": true,
@@ -2273,7 +2273,7 @@
      },
      {
       "id": "map-4",
-      "name": "Carte",
+      "name": "Lieu · Carte · Carte",
       "parent": "map-2",
       "type": "map",
       "visible": true,
@@ -2372,7 +2372,7 @@
      },
      {
       "id": "map-6",
-      "name": "Lieu",
+      "name": "Lieu · Carte · Lieu",
       "parent": "map-2",
       "type": "text",
       "visible": true,

@@ -340,7 +340,7 @@
      },
      {
       "id": "player-2",
-      "name": "Numéro",
+      "name": "Joueur · Numéro",
       "parent": "player-1",
       "type": "group",
       "visible": true,
@@ -444,7 +444,7 @@
      },
      {
       "id": "player-5",
-      "name": "Numéro",
+      "name": "Joueur · Numéro · Numéro",
       "parent": "player-2",
       "type": "text",
       "visible": true,
@@ -904,7 +904,7 @@
      },
      {
       "id": "player-13",
-      "name": "Case",
+      "name": "Stat POINTS · Case",
       "parent": "player-12",
       "type": "rect",
       "visible": true,
@@ -926,7 +926,7 @@
      },
      {
       "id": "player-14",
-      "name": "Valeur",
+      "name": "Stat POINTS · Valeur",
       "parent": "player-12",
       "type": "counter",
       "visible": true,
@@ -962,7 +962,7 @@
      },
      {
       "id": "player-15",
-      "name": "Libellé",
+      "name": "Stat POINTS · Libellé",
       "parent": "player-12",
       "type": "text",
       "visible": true,
@@ -1094,7 +1094,7 @@
      },
      {
       "id": "player-17",
-      "name": "Case",
+      "name": "Stat REBONDS · Case",
       "parent": "player-16",
       "type": "rect",
       "visible": true,
@@ -1116,7 +1116,7 @@
      },
      {
       "id": "player-18",
-      "name": "Valeur",
+      "name": "Stat REBONDS · Valeur",
       "parent": "player-16",
       "type": "counter",
       "visible": true,
@@ -1152,7 +1152,7 @@
      },
      {
       "id": "player-19",
-      "name": "Libellé",
+      "name": "Stat REBONDS · Libellé",
       "parent": "player-16",
       "type": "text",
       "visible": true,
@@ -1284,7 +1284,7 @@
      },
      {
       "id": "player-21",
-      "name": "Case",
+      "name": "Stat PASSES D. · Case",
       "parent": "player-20",
       "type": "rect",
       "visible": true,
@@ -1306,7 +1306,7 @@
      },
      {
       "id": "player-22",
-      "name": "Valeur",
+      "name": "Stat PASSES D. · Valeur",
       "parent": "player-20",
       "type": "counter",
       "visible": true,
@@ -1342,7 +1342,7 @@
      },
      {
       "id": "player-23",
-      "name": "Libellé",
+      "name": "Stat PASSES D. · Libellé",
       "parent": "player-20",
       "type": "text",
       "visible": true,
@@ -1474,7 +1474,7 @@
      },
      {
       "id": "player-25",
-      "name": "Case",
+      "name": "Stat ÉVAL. · Case",
       "parent": "player-24",
       "type": "rect",
       "visible": true,
@@ -1496,7 +1496,7 @@
      },
      {
       "id": "player-26",
-      "name": "Valeur",
+      "name": "Stat ÉVAL. · Valeur",
       "parent": "player-24",
       "type": "counter",
       "visible": true,
@@ -1532,7 +1532,7 @@
      },
      {
       "id": "player-27",
-      "name": "Libellé",
+      "name": "Stat ÉVAL. · Libellé",
       "parent": "player-24",
       "type": "text",
       "visible": true,
@@ -2596,7 +2596,7 @@
      },
      {
       "id": "compare-10",
-      "name": "Libellé",
+      "name": "Ligne 1 · Libellé",
       "parent": "compare-9",
       "type": "text",
       "visible": true,
@@ -2627,7 +2627,7 @@
      },
      {
       "id": "compare-11",
-      "name": "Valeur 1",
+      "name": "Ligne 1 · Valeur 1",
       "parent": "compare-9",
       "type": "text",
       "visible": true,
@@ -2658,7 +2658,7 @@
      },
      {
       "id": "compare-12",
-      "name": "Valeur 2",
+      "name": "Ligne 1 · Valeur 2",
       "parent": "compare-9",
       "type": "text",
       "visible": true,
@@ -2689,7 +2689,7 @@
      },
      {
       "id": "compare-13",
-      "name": "Barre 1",
+      "name": "Ligne 1 · Barre 1",
       "parent": "compare-9",
       "type": "progress",
       "visible": true,
@@ -2716,7 +2716,7 @@
      },
      {
       "id": "compare-14",
-      "name": "Barre 2",
+      "name": "Ligne 1 · Barre 2",
       "parent": "compare-9",
       "type": "progress",
       "visible": true,
@@ -2842,7 +2842,7 @@
      },
      {
       "id": "compare-16",
-      "name": "Libellé",
+      "name": "Ligne 2 · Libellé",
       "parent": "compare-15",
       "type": "text",
       "visible": true,
@@ -2873,7 +2873,7 @@
      },
      {
       "id": "compare-17",
-      "name": "Valeur 1",
+      "name": "Ligne 2 · Valeur 1",
       "parent": "compare-15",
       "type": "text",
       "visible": true,
@@ -2904,7 +2904,7 @@
      },
      {
       "id": "compare-18",
-      "name": "Valeur 2",
+      "name": "Ligne 2 · Valeur 2",
       "parent": "compare-15",
       "type": "text",
       "visible": true,
@@ -2935,7 +2935,7 @@
      },
      {
       "id": "compare-19",
-      "name": "Barre 1",
+      "name": "Ligne 2 · Barre 1",
       "parent": "compare-15",
       "type": "progress",
       "visible": true,
@@ -2962,7 +2962,7 @@
      },
      {
       "id": "compare-20",
-      "name": "Barre 2",
+      "name": "Ligne 2 · Barre 2",
       "parent": "compare-15",
       "type": "progress",
       "visible": true,
@@ -3088,7 +3088,7 @@
      },
      {
       "id": "compare-22",
-      "name": "Libellé",
+      "name": "Ligne 3 · Libellé",
       "parent": "compare-21",
       "type": "text",
       "visible": true,
@@ -3119,7 +3119,7 @@
      },
      {
       "id": "compare-23",
-      "name": "Valeur 1",
+      "name": "Ligne 3 · Valeur 1",
       "parent": "compare-21",
       "type": "text",
       "visible": true,
@@ -3150,7 +3150,7 @@
      },
      {
       "id": "compare-24",
-      "name": "Valeur 2",
+      "name": "Ligne 3 · Valeur 2",
       "parent": "compare-21",
       "type": "text",
       "visible": true,
@@ -3181,7 +3181,7 @@
      },
      {
       "id": "compare-25",
-      "name": "Barre 1",
+      "name": "Ligne 3 · Barre 1",
       "parent": "compare-21",
       "type": "progress",
       "visible": true,
@@ -3208,7 +3208,7 @@
      },
      {
       "id": "compare-26",
-      "name": "Barre 2",
+      "name": "Ligne 3 · Barre 2",
       "parent": "compare-21",
       "type": "progress",
       "visible": true,
@@ -3334,7 +3334,7 @@
      },
      {
       "id": "compare-28",
-      "name": "Libellé",
+      "name": "Ligne 4 · Libellé",
       "parent": "compare-27",
       "type": "text",
       "visible": true,
@@ -3365,7 +3365,7 @@
      },
      {
       "id": "compare-29",
-      "name": "Valeur 1",
+      "name": "Ligne 4 · Valeur 1",
       "parent": "compare-27",
       "type": "text",
       "visible": true,
@@ -3396,7 +3396,7 @@
      },
      {
       "id": "compare-30",
-      "name": "Valeur 2",
+      "name": "Ligne 4 · Valeur 2",
       "parent": "compare-27",
       "type": "text",
       "visible": true,
@@ -3427,7 +3427,7 @@
      },
      {
       "id": "compare-31",
-      "name": "Barre 1",
+      "name": "Ligne 4 · Barre 1",
       "parent": "compare-27",
       "type": "progress",
       "visible": true,
@@ -3454,7 +3454,7 @@
      },
      {
       "id": "compare-32",
-      "name": "Barre 2",
+      "name": "Ligne 4 · Barre 2",
       "parent": "compare-27",
       "type": "progress",
       "visible": true,
@@ -3580,7 +3580,7 @@
      },
      {
       "id": "compare-34",
-      "name": "Libellé",
+      "name": "Ligne 5 · Libellé",
       "parent": "compare-33",
       "type": "text",
       "visible": true,
@@ -3611,7 +3611,7 @@
      },
      {
       "id": "compare-35",
-      "name": "Valeur 1",
+      "name": "Ligne 5 · Valeur 1",
       "parent": "compare-33",
       "type": "text",
       "visible": true,
@@ -3642,7 +3642,7 @@
      },
      {
       "id": "compare-36",
-      "name": "Valeur 2",
+      "name": "Ligne 5 · Valeur 2",
       "parent": "compare-33",
       "type": "text",
       "visible": true,
@@ -3673,7 +3673,7 @@
      },
      {
       "id": "compare-37",
-      "name": "Barre 1",
+      "name": "Ligne 5 · Barre 1",
       "parent": "compare-33",
       "type": "progress",
       "visible": true,
@@ -3700,7 +3700,7 @@
      },
      {
       "id": "compare-38",
-      "name": "Barre 2",
+      "name": "Ligne 5 · Barre 2",
       "parent": "compare-33",
       "type": "progress",
       "visible": true,
@@ -4271,7 +4271,7 @@
      },
      {
       "id": "five-7",
-      "name": "Carte",
+      "name": "Joueur 1 · Carte",
       "parent": "five-6",
       "type": "rect",
       "visible": true,
@@ -4293,7 +4293,7 @@
      },
      {
       "id": "five-8",
-      "name": "Haut",
+      "name": "Joueur 1 · Haut",
       "parent": "five-6",
       "type": "rect",
       "visible": true,
@@ -4315,7 +4315,7 @@
      },
      {
       "id": "five-9",
-      "name": "Numéro",
+      "name": "Joueur 1 · Numéro",
       "parent": "five-6",
       "type": "text",
       "visible": true,
@@ -4346,7 +4346,7 @@
      },
      {
       "id": "five-10",
-      "name": "Numéro net",
+      "name": "Joueur 1 · Numéro net",
       "parent": "five-6",
       "type": "text",
       "visible": true,
@@ -4377,7 +4377,7 @@
      },
      {
       "id": "five-11",
-      "name": "Joueur",
+      "name": "Joueur 1 · Joueur",
       "parent": "five-6",
       "type": "text",
       "visible": true,
@@ -4408,7 +4408,7 @@
      },
      {
       "id": "five-12",
-      "name": "Poste",
+      "name": "Joueur 1 · Poste",
       "parent": "five-6",
       "type": "text",
       "visible": true,
@@ -4539,7 +4539,7 @@
      },
      {
       "id": "five-14",
-      "name": "Carte",
+      "name": "Joueur 2 · Carte",
       "parent": "five-13",
       "type": "rect",
       "visible": true,
@@ -4561,7 +4561,7 @@
      },
      {
       "id": "five-15",
-      "name": "Haut",
+      "name": "Joueur 2 · Haut",
       "parent": "five-13",
       "type": "rect",
       "visible": true,
@@ -4583,7 +4583,7 @@
      },
      {
       "id": "five-16",
-      "name": "Numéro",
+      "name": "Joueur 2 · Numéro",
       "parent": "five-13",
       "type": "text",
       "visible": true,
@@ -4614,7 +4614,7 @@
      },
      {
       "id": "five-17",
-      "name": "Numéro net",
+      "name": "Joueur 2 · Numéro net",
       "parent": "five-13",
       "type": "text",
       "visible": true,
@@ -4645,7 +4645,7 @@
      },
      {
       "id": "five-18",
-      "name": "Joueur",
+      "name": "Joueur 2 · Joueur",
       "parent": "five-13",
       "type": "text",
       "visible": true,
@@ -4676,7 +4676,7 @@
      },
      {
       "id": "five-19",
-      "name": "Poste",
+      "name": "Joueur 2 · Poste",
       "parent": "five-13",
       "type": "text",
       "visible": true,
@@ -4807,7 +4807,7 @@
      },
      {
       "id": "five-21",
-      "name": "Carte",
+      "name": "Joueur 3 · Carte",
       "parent": "five-20",
       "type": "rect",
       "visible": true,
@@ -4829,7 +4829,7 @@
      },
      {
       "id": "five-22",
-      "name": "Haut",
+      "name": "Joueur 3 · Haut",
       "parent": "five-20",
       "type": "rect",
       "visible": true,
@@ -4851,7 +4851,7 @@
      },
      {
       "id": "five-23",
-      "name": "Numéro",
+      "name": "Joueur 3 · Numéro",
       "parent": "five-20",
       "type": "text",
       "visible": true,
@@ -4882,7 +4882,7 @@
      },
      {
       "id": "five-24",
-      "name": "Numéro net",
+      "name": "Joueur 3 · Numéro net",
       "parent": "five-20",
       "type": "text",
       "visible": true,
@@ -4913,7 +4913,7 @@
      },
      {
       "id": "five-25",
-      "name": "Joueur",
+      "name": "Joueur 3 · Joueur",
       "parent": "five-20",
       "type": "text",
       "visible": true,
@@ -4944,7 +4944,7 @@
      },
      {
       "id": "five-26",
-      "name": "Poste",
+      "name": "Joueur 3 · Poste",
       "parent": "five-20",
       "type": "text",
       "visible": true,
@@ -5075,7 +5075,7 @@
      },
      {
       "id": "five-28",
-      "name": "Carte",
+      "name": "Joueur 4 · Carte",
       "parent": "five-27",
       "type": "rect",
       "visible": true,
@@ -5097,7 +5097,7 @@
      },
      {
       "id": "five-29",
-      "name": "Haut",
+      "name": "Joueur 4 · Haut",
       "parent": "five-27",
       "type": "rect",
       "visible": true,
@@ -5119,7 +5119,7 @@
      },
      {
       "id": "five-30",
-      "name": "Numéro",
+      "name": "Joueur 4 · Numéro",
       "parent": "five-27",
       "type": "text",
       "visible": true,
@@ -5150,7 +5150,7 @@
      },
      {
       "id": "five-31",
-      "name": "Numéro net",
+      "name": "Joueur 4 · Numéro net",
       "parent": "five-27",
       "type": "text",
       "visible": true,
@@ -5181,7 +5181,7 @@
      },
      {
       "id": "five-32",
-      "name": "Joueur",
+      "name": "Joueur 4 · Joueur",
       "parent": "five-27",
       "type": "text",
       "visible": true,
@@ -5212,7 +5212,7 @@
      },
      {
       "id": "five-33",
-      "name": "Poste",
+      "name": "Joueur 4 · Poste",
       "parent": "five-27",
       "type": "text",
       "visible": true,
@@ -5343,7 +5343,7 @@
      },
      {
       "id": "five-35",
-      "name": "Carte",
+      "name": "Joueur 5 · Carte",
       "parent": "five-34",
       "type": "rect",
       "visible": true,
@@ -5365,7 +5365,7 @@
      },
      {
       "id": "five-36",
-      "name": "Haut",
+      "name": "Joueur 5 · Haut",
       "parent": "five-34",
       "type": "rect",
       "visible": true,
@@ -5387,7 +5387,7 @@
      },
      {
       "id": "five-37",
-      "name": "Numéro",
+      "name": "Joueur 5 · Numéro",
       "parent": "five-34",
       "type": "text",
       "visible": true,
@@ -5418,7 +5418,7 @@
      },
      {
       "id": "five-38",
-      "name": "Numéro net",
+      "name": "Joueur 5 · Numéro net",
       "parent": "five-34",
       "type": "text",
       "visible": true,
@@ -5449,7 +5449,7 @@
      },
      {
       "id": "five-39",
-      "name": "Joueur",
+      "name": "Joueur 5 · Joueur",
       "parent": "five-34",
       "type": "text",
       "visible": true,
@@ -5480,7 +5480,7 @@
      },
      {
       "id": "five-40",
-      "name": "Poste",
+      "name": "Joueur 5 · Poste",
       "parent": "five-34",
       "type": "text",
       "visible": true,
@@ -5716,5 +5716,52 @@
    "titleSafe": 0.05,
    "exclusions": []
   }
- }
+ },
+ "sources": [
+  {
+   "id": "elite-basket-live",
+   "name": "Elite Basket · match en direct",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "game": {
+     "home": {
+      "name": "Paris Basketball",
+      "score": 78
+     },
+     "away": {
+      "name": "AS Monaco",
+      "score": 74
+     },
+     "period": "Q3"
+    },
+    "players": [
+     {
+      "number": 1,
+      "name": "Tyson Ward",
+      "pts": 24,
+      "reb": 6,
+      "ast": 8,
+      "eff": 27
+     },
+     {
+      "number": 7,
+      "name": "Nadir Hifi",
+      "pts": 15,
+      "reb": 2,
+      "ast": 5,
+      "eff": 14
+     },
+     {
+      "number": 25,
+      "name": "Elie Okobo",
+      "pts": 18,
+      "reb": 3,
+      "ast": 9,
+      "eff": 21
+     }
+    ]
+   }
+  }
+ ]
 }

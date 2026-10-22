@@ -48,61 +48,61 @@
     ],
     "fields": [
      {
-      "key": "num",
+      "key": "quiz_num",
       "label": "Numéro",
       "kind": "text",
       "default": "QUESTION 7"
      },
      {
-      "key": "q",
+      "key": "quiz_q",
       "label": "Question",
       "kind": "multiline",
       "default": "Quel peintre a réalisé « Impression, soleil levant » en 1872 ?"
      },
      {
-      "key": "aA",
+      "key": "quiz_aA",
       "label": "Réponse A",
       "kind": "text",
       "default": "Édouard Manet"
      },
      {
-      "key": "aB",
+      "key": "quiz_aB",
       "label": "Réponse B",
       "kind": "text",
       "default": "Claude Monet"
      },
      {
-      "key": "aC",
+      "key": "quiz_aC",
       "label": "Réponse C",
       "kind": "text",
       "default": "Auguste Renoir"
      },
      {
-      "key": "aD",
+      "key": "quiz_aD",
       "label": "Réponse D",
       "kind": "text",
       "default": "Paul Cézanne"
      },
      {
-      "key": "okA",
+      "key": "quiz_okA",
       "label": "Bonne réponse A",
       "kind": "boolean",
       "default": "false"
      },
      {
-      "key": "okB",
+      "key": "quiz_okB",
       "label": "Bonne réponse B",
       "kind": "boolean",
       "default": "true"
      },
      {
-      "key": "okC",
+      "key": "quiz_okC",
       "label": "Bonne réponse C",
       "kind": "boolean",
       "default": "false"
      },
      {
-      "key": "okD",
+      "key": "quiz_okD",
       "label": "Bonne réponse D",
       "kind": "boolean",
       "default": "false"
@@ -222,7 +222,7 @@
      },
      {
       "id": "question-3",
-      "name": "Tranche",
+      "name": "Question · Tranche",
       "parent": "question-2",
       "type": "polygon",
       "visible": true,
@@ -273,7 +273,7 @@
      },
      {
       "id": "question-4",
-      "name": "Plaque",
+      "name": "Question · Plaque",
       "parent": "question-2",
       "type": "polygon",
       "visible": true,
@@ -379,7 +379,7 @@
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{num}}",
+      "text": "{{quiz_num}}",
       "fontFamily": "Titillium Web",
       "fontWeight": 900,
       "align": "center",
@@ -409,7 +409,7 @@
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{q}}",
+      "text": "{{quiz_q}}",
       "fontFamily": "Titillium Web",
       "fontWeight": 700,
       "align": "center",
@@ -521,7 +521,7 @@
      },
      {
       "id": "question-9",
-      "name": "Plaque",
+      "name": "Réponse A · Plaque",
       "parent": "question-8",
       "type": "group",
       "visible": true,
@@ -538,7 +538,7 @@
      },
      {
       "id": "question-10",
-      "name": "Tranche",
+      "name": "Réponse A · Plaque · Tranche",
       "parent": "question-9",
       "type": "polygon",
       "visible": true,
@@ -589,7 +589,7 @@
      },
      {
       "id": "question-11",
-      "name": "Plaque",
+      "name": "Réponse A · Plaque · Plaque",
       "parent": "question-9",
       "type": "polygon",
       "visible": true,
@@ -645,7 +645,7 @@
      },
      {
       "id": "question-12",
-      "name": "Bonne réponse",
+      "name": "Réponse A · Bonne réponse",
       "parent": "question-8",
       "type": "group",
       "visible": true,
@@ -658,13 +658,13 @@
       },
       "tracks": {},
       "bindings": {
-       "opacity": "okA"
+       "opacity": "quiz_okA"
       },
       "clip": false
      },
      {
       "id": "question-13",
-      "name": "Allumage",
+      "name": "Réponse A · Bonne réponse · Allumage",
       "parent": "question-12",
       "type": "group",
       "visible": true,
@@ -733,7 +733,7 @@
      },
      {
       "id": "question-14",
-      "name": "Verte",
+      "name": "Réponse A · Bonne réponse · Allumage · Verte",
       "parent": "question-13",
       "type": "group",
       "visible": true,
@@ -750,7 +750,7 @@
      },
      {
       "id": "question-15",
-      "name": "Tranche",
+      "name": "Réponse A · Bonne réponse · Allumage · Verte · Tranche",
       "parent": "question-14",
       "type": "polygon",
       "visible": true,
@@ -801,7 +801,7 @@
      },
      {
       "id": "question-16",
-      "name": "Plaque",
+      "name": "Réponse A · Bonne réponse · Allumage · Verte · Plaque",
       "parent": "question-14",
       "type": "polygon",
       "visible": true,
@@ -857,7 +857,7 @@
      },
      {
       "id": "question-17",
-      "name": "Lettre",
+      "name": "Réponse A · Lettre",
       "parent": "question-8",
       "type": "text",
       "visible": true,
@@ -887,7 +887,7 @@
      },
      {
       "id": "question-18",
-      "name": "Réponse",
+      "name": "Réponse A · Réponse",
       "parent": "question-8",
       "type": "text",
       "visible": true,
@@ -907,7 +907,7 @@
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{aA}}",
+      "text": "{{quiz_aA}}",
       "fontFamily": "Titillium Web",
       "fontWeight": 700,
       "align": "left",
@@ -1017,7 +1017,7 @@
      },
      {
       "id": "question-20",
-      "name": "Plaque",
+      "name": "Réponse B · Plaque",
       "parent": "question-19",
       "type": "group",
       "visible": true,
@@ -1034,7 +1034,7 @@
      },
      {
       "id": "question-21",
-      "name": "Tranche",
+      "name": "Réponse B · Plaque · Tranche",
       "parent": "question-20",
       "type": "polygon",
       "visible": true,
@@ -1085,7 +1085,7 @@
      },
      {
       "id": "question-22",
-      "name": "Plaque",
+      "name": "Réponse B · Plaque · Plaque",
       "parent": "question-20",
       "type": "polygon",
       "visible": true,
@@ -1141,7 +1141,7 @@
      },
      {
       "id": "question-23",
-      "name": "Bonne réponse",
+      "name": "Réponse B · Bonne réponse",
       "parent": "question-19",
       "type": "group",
       "visible": true,
@@ -1154,13 +1154,13 @@
       },
       "tracks": {},
       "bindings": {
-       "opacity": "okB"
+       "opacity": "quiz_okB"
       },
       "clip": false
      },
      {
       "id": "question-24",
-      "name": "Allumage",
+      "name": "Réponse B · Bonne réponse · Allumage",
       "parent": "question-23",
       "type": "group",
       "visible": true,
@@ -1229,7 +1229,7 @@
      },
      {
       "id": "question-25",
-      "name": "Verte",
+      "name": "Réponse B · Bonne réponse · Allumage · Verte",
       "parent": "question-24",
       "type": "group",
       "visible": true,
@@ -1246,7 +1246,7 @@
      },
      {
       "id": "question-26",
-      "name": "Tranche",
+      "name": "Réponse B · Bonne réponse · Allumage · Verte · Tranche",
       "parent": "question-25",
       "type": "polygon",
       "visible": true,
@@ -1297,7 +1297,7 @@
      },
      {
       "id": "question-27",
-      "name": "Plaque",
+      "name": "Réponse B · Bonne réponse · Allumage · Verte · Plaque",
       "parent": "question-25",
       "type": "polygon",
       "visible": true,
@@ -1353,7 +1353,7 @@
      },
      {
       "id": "question-28",
-      "name": "Lettre",
+      "name": "Réponse B · Lettre",
       "parent": "question-19",
       "type": "text",
       "visible": true,
@@ -1383,7 +1383,7 @@
      },
      {
       "id": "question-29",
-      "name": "Réponse",
+      "name": "Réponse B · Réponse",
       "parent": "question-19",
       "type": "text",
       "visible": true,
@@ -1403,7 +1403,7 @@
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{aB}}",
+      "text": "{{quiz_aB}}",
       "fontFamily": "Titillium Web",
       "fontWeight": 700,
       "align": "left",
@@ -1513,7 +1513,7 @@
      },
      {
       "id": "question-31",
-      "name": "Plaque",
+      "name": "Réponse C · Plaque",
       "parent": "question-30",
       "type": "group",
       "visible": true,
@@ -1530,7 +1530,7 @@
      },
      {
       "id": "question-32",
-      "name": "Tranche",
+      "name": "Réponse C · Plaque · Tranche",
       "parent": "question-31",
       "type": "polygon",
       "visible": true,
@@ -1581,7 +1581,7 @@
      },
      {
       "id": "question-33",
-      "name": "Plaque",
+      "name": "Réponse C · Plaque · Plaque",
       "parent": "question-31",
       "type": "polygon",
       "visible": true,
@@ -1637,7 +1637,7 @@
      },
      {
       "id": "question-34",
-      "name": "Bonne réponse",
+      "name": "Réponse C · Bonne réponse",
       "parent": "question-30",
       "type": "group",
       "visible": true,
@@ -1650,13 +1650,13 @@
       },
       "tracks": {},
       "bindings": {
-       "opacity": "okC"
+       "opacity": "quiz_okC"
       },
       "clip": false
      },
      {
       "id": "question-35",
-      "name": "Allumage",
+      "name": "Réponse C · Bonne réponse · Allumage",
       "parent": "question-34",
       "type": "group",
       "visible": true,
@@ -1725,7 +1725,7 @@
      },
      {
       "id": "question-36",
-      "name": "Verte",
+      "name": "Réponse C · Bonne réponse · Allumage · Verte",
       "parent": "question-35",
       "type": "group",
       "visible": true,
@@ -1742,7 +1742,7 @@
      },
      {
       "id": "question-37",
-      "name": "Tranche",
+      "name": "Réponse C · Bonne réponse · Allumage · Verte · Tranche",
       "parent": "question-36",
       "type": "polygon",
       "visible": true,
@@ -1793,7 +1793,7 @@
      },
      {
       "id": "question-38",
-      "name": "Plaque",
+      "name": "Réponse C · Bonne réponse · Allumage · Verte · Plaque",
       "parent": "question-36",
       "type": "polygon",
       "visible": true,
@@ -1849,7 +1849,7 @@
      },
      {
       "id": "question-39",
-      "name": "Lettre",
+      "name": "Réponse C · Lettre",
       "parent": "question-30",
       "type": "text",
       "visible": true,
@@ -1879,7 +1879,7 @@
      },
      {
       "id": "question-40",
-      "name": "Réponse",
+      "name": "Réponse C · Réponse",
       "parent": "question-30",
       "type": "text",
       "visible": true,
@@ -1899,7 +1899,7 @@
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{aC}}",
+      "text": "{{quiz_aC}}",
       "fontFamily": "Titillium Web",
       "fontWeight": 700,
       "align": "left",
@@ -2009,7 +2009,7 @@
      },
      {
       "id": "question-42",
-      "name": "Plaque",
+      "name": "Réponse D · Plaque",
       "parent": "question-41",
       "type": "group",
       "visible": true,
@@ -2026,7 +2026,7 @@
      },
      {
       "id": "question-43",
-      "name": "Tranche",
+      "name": "Réponse D · Plaque · Tranche",
       "parent": "question-42",
       "type": "polygon",
       "visible": true,
@@ -2077,7 +2077,7 @@
      },
      {
       "id": "question-44",
-      "name": "Plaque",
+      "name": "Réponse D · Plaque · Plaque",
       "parent": "question-42",
       "type": "polygon",
       "visible": true,
@@ -2133,7 +2133,7 @@
      },
      {
       "id": "question-45",
-      "name": "Bonne réponse",
+      "name": "Réponse D · Bonne réponse",
       "parent": "question-41",
       "type": "group",
       "visible": true,
@@ -2146,13 +2146,13 @@
       },
       "tracks": {},
       "bindings": {
-       "opacity": "okD"
+       "opacity": "quiz_okD"
       },
       "clip": false
      },
      {
       "id": "question-46",
-      "name": "Allumage",
+      "name": "Réponse D · Bonne réponse · Allumage",
       "parent": "question-45",
       "type": "group",
       "visible": true,
@@ -2221,7 +2221,7 @@
      },
      {
       "id": "question-47",
-      "name": "Verte",
+      "name": "Réponse D · Bonne réponse · Allumage · Verte",
       "parent": "question-46",
       "type": "group",
       "visible": true,
@@ -2238,7 +2238,7 @@
      },
      {
       "id": "question-48",
-      "name": "Tranche",
+      "name": "Réponse D · Bonne réponse · Allumage · Verte · Tranche",
       "parent": "question-47",
       "type": "polygon",
       "visible": true,
@@ -2289,7 +2289,7 @@
      },
      {
       "id": "question-49",
-      "name": "Plaque",
+      "name": "Réponse D · Bonne réponse · Allumage · Verte · Plaque",
       "parent": "question-47",
       "type": "polygon",
       "visible": true,
@@ -2345,7 +2345,7 @@
      },
      {
       "id": "question-50",
-      "name": "Lettre",
+      "name": "Réponse D · Lettre",
       "parent": "question-41",
       "type": "text",
       "visible": true,
@@ -2375,7 +2375,7 @@
      },
      {
       "id": "question-51",
-      "name": "Réponse",
+      "name": "Réponse D · Réponse",
       "parent": "question-41",
       "type": "text",
       "visible": true,
@@ -2395,7 +2395,7 @@
       },
       "tracks": {},
       "bindings": {},
-      "text": "{{aD}}",
+      "text": "{{quiz_aD}}",
       "fontFamily": "Titillium Web",
       "fontWeight": 700,
       "align": "left",
@@ -2943,7 +2943,7 @@
      },
      {
       "id": "scores-4",
-      "name": "Plaque",
+      "name": "Candidat 1 · Plaque",
       "parent": "scores-3",
       "type": "group",
       "visible": true,
@@ -2960,7 +2960,7 @@
      },
      {
       "id": "scores-5",
-      "name": "Tranche",
+      "name": "Candidat 1 · Plaque · Tranche",
       "parent": "scores-4",
       "type": "polygon",
       "visible": true,
@@ -3011,7 +3011,7 @@
      },
      {
       "id": "scores-6",
-      "name": "Plaque",
+      "name": "Candidat 1 · Plaque · Plaque",
       "parent": "scores-4",
       "type": "polygon",
       "visible": true,
@@ -3067,7 +3067,7 @@
      },
      {
       "id": "scores-7",
-      "name": "Couleur",
+      "name": "Candidat 1 · Couleur",
       "parent": "scores-3",
       "type": "ellipse",
       "visible": true,
@@ -3089,7 +3089,7 @@
      },
      {
       "id": "scores-8",
-      "name": "Nom",
+      "name": "Candidat 1 · Nom",
       "parent": "scores-3",
       "type": "text",
       "visible": true,
@@ -3119,7 +3119,7 @@
      },
      {
       "id": "scores-9",
-      "name": "Score",
+      "name": "Candidat 1 · Score",
       "parent": "scores-3",
       "type": "counter",
       "visible": true,
@@ -3254,7 +3254,7 @@
      },
      {
       "id": "scores-11",
-      "name": "Plaque",
+      "name": "Candidat 2 · Plaque",
       "parent": "scores-10",
       "type": "group",
       "visible": true,
@@ -3271,7 +3271,7 @@
      },
      {
       "id": "scores-12",
-      "name": "Tranche",
+      "name": "Candidat 2 · Plaque · Tranche",
       "parent": "scores-11",
       "type": "polygon",
       "visible": true,
@@ -3322,7 +3322,7 @@
      },
      {
       "id": "scores-13",
-      "name": "Plaque",
+      "name": "Candidat 2 · Plaque · Plaque",
       "parent": "scores-11",
       "type": "polygon",
       "visible": true,
@@ -3378,7 +3378,7 @@
      },
      {
       "id": "scores-14",
-      "name": "Couleur",
+      "name": "Candidat 2 · Couleur",
       "parent": "scores-10",
       "type": "ellipse",
       "visible": true,
@@ -3400,7 +3400,7 @@
      },
      {
       "id": "scores-15",
-      "name": "Nom",
+      "name": "Candidat 2 · Nom",
       "parent": "scores-10",
       "type": "text",
       "visible": true,
@@ -3430,7 +3430,7 @@
      },
      {
       "id": "scores-16",
-      "name": "Score",
+      "name": "Candidat 2 · Score",
       "parent": "scores-10",
       "type": "counter",
       "visible": true,
@@ -3565,7 +3565,7 @@
      },
      {
       "id": "scores-18",
-      "name": "Plaque",
+      "name": "Candidat 3 · Plaque",
       "parent": "scores-17",
       "type": "group",
       "visible": true,
@@ -3582,7 +3582,7 @@
      },
      {
       "id": "scores-19",
-      "name": "Tranche",
+      "name": "Candidat 3 · Plaque · Tranche",
       "parent": "scores-18",
       "type": "polygon",
       "visible": true,
@@ -3633,7 +3633,7 @@
      },
      {
       "id": "scores-20",
-      "name": "Plaque",
+      "name": "Candidat 3 · Plaque · Plaque",
       "parent": "scores-18",
       "type": "polygon",
       "visible": true,
@@ -3689,7 +3689,7 @@
      },
      {
       "id": "scores-21",
-      "name": "Couleur",
+      "name": "Candidat 3 · Couleur",
       "parent": "scores-17",
       "type": "ellipse",
       "visible": true,
@@ -3711,7 +3711,7 @@
      },
      {
       "id": "scores-22",
-      "name": "Nom",
+      "name": "Candidat 3 · Nom",
       "parent": "scores-17",
       "type": "text",
       "visible": true,
@@ -3741,7 +3741,7 @@
      },
      {
       "id": "scores-23",
-      "name": "Score",
+      "name": "Candidat 3 · Score",
       "parent": "scores-17",
       "type": "counter",
       "visible": true,
@@ -3876,7 +3876,7 @@
      },
      {
       "id": "scores-25",
-      "name": "Plaque",
+      "name": "Candidat 4 · Plaque",
       "parent": "scores-24",
       "type": "group",
       "visible": true,
@@ -3893,7 +3893,7 @@
      },
      {
       "id": "scores-26",
-      "name": "Tranche",
+      "name": "Candidat 4 · Plaque · Tranche",
       "parent": "scores-25",
       "type": "polygon",
       "visible": true,
@@ -3944,7 +3944,7 @@
      },
      {
       "id": "scores-27",
-      "name": "Plaque",
+      "name": "Candidat 4 · Plaque · Plaque",
       "parent": "scores-25",
       "type": "polygon",
       "visible": true,
@@ -4000,7 +4000,7 @@
      },
      {
       "id": "scores-28",
-      "name": "Couleur",
+      "name": "Candidat 4 · Couleur",
       "parent": "scores-24",
       "type": "ellipse",
       "visible": true,
@@ -4022,7 +4022,7 @@
      },
      {
       "id": "scores-29",
-      "name": "Nom",
+      "name": "Candidat 4 · Nom",
       "parent": "scores-24",
       "type": "text",
       "visible": true,
@@ -4052,7 +4052,7 @@
      },
      {
       "id": "scores-30",
-      "name": "Score",
+      "name": "Candidat 4 · Score",
       "parent": "scores-24",
       "type": "counter",
       "visible": true,
@@ -4473,7 +4473,7 @@
      },
      {
       "id": "round-6",
-      "name": "Règle",
+      "name": "Manche · Règle",
       "parent": "round-1",
       "type": "group",
       "visible": true,
@@ -4680,7 +4680,7 @@
      },
      {
       "id": "round-9",
-      "name": "Règle",
+      "name": "Manche · Règle",
       "parent": "round-1",
       "type": "text",
       "visible": true,
@@ -4850,7 +4850,7 @@
      },
      {
       "id": "lower-2",
-      "name": "Nom",
+      "name": "Candidat · Nom",
       "parent": "lower-1",
       "type": "group",
       "visible": true,
@@ -5043,7 +5043,7 @@
      },
      {
       "id": "lower-5",
-      "name": "Nom",
+      "name": "Candidat · Nom",
       "parent": "lower-1",
       "type": "text",
       "visible": true,
@@ -7615,16 +7615,17 @@
     "playlist": "round2",
     "layer": 10,
     "data": {
-     "num": "QUESTION 8",
-     "q": "Quel est le plus long fleuve de France ?",
-     "aA": "La Seine",
-     "aB": "Le Rhône",
-     "aC": "La Loire",
-     "aD": "La Garonne",
-     "okA": "false",
-     "okB": "false",
-     "okC": "true",
-     "okD": "false"
+     "quiz__row": "2",
+     "quiz_num": "QUESTION 8",
+     "quiz_q": "Quel est le plus long fleuve de France ?",
+     "quiz_aA": "La Seine",
+     "quiz_aB": "Le Rhône",
+     "quiz_aC": "La Loire",
+     "quiz_aD": "La Garonne",
+     "quiz_okA": "false",
+     "quiz_okB": "false",
+     "quiz_okC": "true",
+     "quiz_okD": "false"
     }
    },
    {
@@ -7733,5 +7734,79 @@
    "titleSafe": 0.05,
    "exclusions": []
   }
- }
+ },
+ "sources": [
+  {
+   "id": "grand-defi-questions",
+   "name": "Le Grand Défi · questions",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "questions": [
+     {
+      "num": "QUESTION 7",
+      "q": "Quel peintre a réalisé « Impression, soleil levant » en 1872 ?",
+      "aA": "Édouard Manet",
+      "aB": "Claude Monet",
+      "aC": "Auguste Renoir",
+      "aD": "Paul Cézanne",
+      "okA": "false",
+      "okB": "true",
+      "okC": "false",
+      "okD": "false"
+     },
+     {
+      "num": "QUESTION 8",
+      "q": "Quel est le plus long fleuve de France ?",
+      "aA": "La Seine",
+      "aB": "Le Rhône",
+      "aC": "La Loire",
+      "aD": "La Garonne",
+      "okA": "false",
+      "okB": "false",
+      "okC": "true",
+      "okD": "false"
+     },
+     {
+      "num": "QUESTION 9",
+      "q": "En quelle année a eu lieu la première Coupe du monde de football ?",
+      "aA": "1924",
+      "aB": "1930",
+      "aC": "1934",
+      "aD": "1938",
+      "okA": "false",
+      "okB": "true",
+      "okC": "false",
+      "okD": "false"
+     }
+    ]
+   }
+  },
+  {
+   "id": "grand-defi-scores",
+   "name": "Le Grand Défi · scores",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "players": [
+     {
+      "name": "Inès",
+      "score": 340
+     },
+     {
+      "name": "Karim",
+      "score": 280
+     },
+     {
+      "name": "Léa",
+      "score": 210
+     },
+     {
+      "name": "Hugo",
+      "score": 150
+     }
+    ]
+   }
+  }
+ ]
 }

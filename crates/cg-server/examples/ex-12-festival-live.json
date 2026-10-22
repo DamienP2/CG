@@ -74,7 +74,9 @@
          "x": 43.0,
          "y": 96.0,
          "scaleX": 1.2,
-         "scaleY": 1.2
+         "scaleY": 1.2,
+         "width": 912.0,
+         "height": 88.8
         }
        }
       }
@@ -285,7 +287,7 @@
      },
      {
       "id": "stage-7",
-      "name": "Scène",
+      "name": "Bloc · Scène",
       "parent": "stage-2",
       "type": "text",
       "visible": true,
@@ -398,7 +400,9 @@
          "x": 43.0,
          "y": 230.0,
          "scaleX": 1.6,
-         "scaleY": 1.6
+         "scaleY": 1.6,
+         "width": 848.0,
+         "height": 118.4
         }
        }
       }
@@ -636,7 +640,9 @@
          "x": 40.0,
          "y": 1130.0,
          "scaleX": 0.8,
-         "scaleY": 0.8
+         "scaleY": 0.8,
+         "width": 1000.0,
+         "height": 240.0
         }
        }
       }
@@ -699,7 +705,7 @@
      },
      {
       "id": "artist-3",
-      "name": "Live",
+      "name": "Étiquette · Live",
       "parent": "artist-2",
       "type": "rect",
       "visible": true,
@@ -723,7 +729,7 @@
      },
      {
       "id": "artist-4",
-      "name": "Live",
+      "name": "Étiquette · Live",
       "parent": "artist-2",
       "type": "text",
       "visible": true,
@@ -1110,9 +1116,11 @@
        "vertical": {
         "props": {
          "x": 0.0,
-         "y": 625.2,
-         "scaleX": 0.62,
-         "scaleY": 0.62
+         "y": 656.25,
+         "scaleX": 0.5625,
+         "scaleY": 0.5625,
+         "width": 1080.0,
+         "height": 607.5
         }
        }
       }
@@ -1178,9 +1186,9 @@
        "vertical": {
         "props": {
          "x": 0.0,
-         "y": -1008.3870967741937,
+         "y": -1166.6666666666667,
          "width": 1920.0,
-         "height": 3096.7741935483873
+         "height": 3413.3333333333335
         }
        }
       }
@@ -1945,7 +1953,9 @@
          "x": 0.0,
          "y": 656.25,
          "scaleX": 0.5625,
-         "scaleY": 0.5625
+         "scaleY": 0.5625,
+         "width": 1080.0,
+         "height": 607.5
         }
        }
       }
@@ -2517,7 +2527,9 @@
          "x": 110.0,
          "y": 760.0,
          "scaleX": 1.48,
-         "scaleY": 1.48
+         "scaleY": 1.48,
+         "width": 858.4,
+         "height": 384.8
         }
        }
       }
@@ -3003,7 +3015,7 @@
       "x": 0.04,
       "y": 0.12,
       "width": 0.92,
-      "height": 0.06
+      "height": 0.066
      }
     }
    },
@@ -3087,5 +3099,32 @@
    "titleSafe": 0.05,
    "exclusions": []
   }
- }
+ },
+ "sources": [
+  {
+   "id": "festival-programme",
+   "name": "Rives Électriques · programme",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "sets": [
+     {
+      "artist": "JUSTICE (DJ SET)",
+      "stage": "SCÈNE ÉCLIPSE",
+      "time": "23:40:00"
+     },
+     {
+      "artist": "KIDDY SMILE",
+      "stage": "LA SERRE",
+      "time": "01:00:00"
+     },
+     {
+      "artist": "JENNIFER CARDINI",
+      "stage": "LA SERRE",
+      "time": "02:15:00"
+     }
+    ]
+   }
+  }
+ ]
 }

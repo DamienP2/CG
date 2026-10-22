@@ -412,7 +412,7 @@
      },
      {
       "id": "strip-11",
-      "name": "Trafic",
+      "name": "Barre · Trafic",
       "parent": "strip-2",
       "type": "rect",
       "visible": true,
@@ -435,7 +435,7 @@
      },
      {
       "id": "strip-12",
-      "name": "Trafic",
+      "name": "Barre · Trafic",
       "parent": "strip-2",
       "type": "text",
       "visible": true,
@@ -891,7 +891,7 @@
      },
      {
       "id": "topic-7",
-      "name": "Étiquette",
+      "name": "Sujet · Étiquette",
       "parent": "topic-1",
       "type": "group",
       "visible": true,
@@ -1024,7 +1024,7 @@
      },
      {
       "id": "topic-9",
-      "name": "Étiquette",
+      "name": "Sujet · Étiquette · Étiquette",
       "parent": "topic-7",
       "type": "text",
       "visible": true,
@@ -1657,7 +1657,7 @@
      },
      {
       "id": "social-9",
-      "name": "Carte",
+      "name": "Message 1 · Carte",
       "parent": "social-8",
       "type": "rect",
       "visible": true,
@@ -1690,7 +1690,7 @@
      },
      {
       "id": "social-10",
-      "name": "Avatar",
+      "name": "Message 1 · Avatar",
       "parent": "social-8",
       "type": "ellipse",
       "visible": true,
@@ -1712,7 +1712,7 @@
      },
      {
       "id": "social-11",
-      "name": "Initiale",
+      "name": "Message 1 · Initiale",
       "parent": "social-8",
       "type": "text",
       "visible": true,
@@ -1744,7 +1744,7 @@
      },
      {
       "id": "social-12",
-      "name": "Nom",
+      "name": "Message 1 · Nom",
       "parent": "social-8",
       "type": "text",
       "visible": true,
@@ -1774,7 +1774,7 @@
      },
      {
       "id": "social-13",
-      "name": "Compte",
+      "name": "Message 1 · Compte",
       "parent": "social-8",
       "type": "text",
       "visible": true,
@@ -1804,7 +1804,7 @@
      },
      {
       "id": "social-14",
-      "name": "Message",
+      "name": "Message 1 · Message",
       "parent": "social-8",
       "type": "text",
       "visible": true,
@@ -1836,7 +1836,7 @@
      },
      {
       "id": "social-15",
-      "name": "Filet",
+      "name": "Message 1 · Filet",
       "parent": "social-8",
       "type": "rect",
       "visible": true,
@@ -1858,7 +1858,7 @@
      },
      {
       "id": "social-16",
-      "name": "Cœur",
+      "name": "Message 1 · Cœur",
       "parent": "social-8",
       "type": "ellipse",
       "visible": true,
@@ -1880,7 +1880,7 @@
      },
      {
       "id": "social-17",
-      "name": "J’aime",
+      "name": "Message 1 · J’aime",
       "parent": "social-8",
       "type": "counter",
       "visible": true,
@@ -2015,7 +2015,7 @@
      },
      {
       "id": "social-19",
-      "name": "Carte",
+      "name": "Message 2 · Carte",
       "parent": "social-18",
       "type": "rect",
       "visible": true,
@@ -2048,7 +2048,7 @@
      },
      {
       "id": "social-20",
-      "name": "Avatar",
+      "name": "Message 2 · Avatar",
       "parent": "social-18",
       "type": "ellipse",
       "visible": true,
@@ -2070,7 +2070,7 @@
      },
      {
       "id": "social-21",
-      "name": "Initiale",
+      "name": "Message 2 · Initiale",
       "parent": "social-18",
       "type": "text",
       "visible": true,
@@ -2102,7 +2102,7 @@
      },
      {
       "id": "social-22",
-      "name": "Nom",
+      "name": "Message 2 · Nom",
       "parent": "social-18",
       "type": "text",
       "visible": true,
@@ -2132,7 +2132,7 @@
      },
      {
       "id": "social-23",
-      "name": "Compte",
+      "name": "Message 2 · Compte",
       "parent": "social-18",
       "type": "text",
       "visible": true,
@@ -2162,7 +2162,7 @@
      },
      {
       "id": "social-24",
-      "name": "Message",
+      "name": "Message 2 · Message",
       "parent": "social-18",
       "type": "text",
       "visible": true,
@@ -2194,7 +2194,7 @@
      },
      {
       "id": "social-25",
-      "name": "Filet",
+      "name": "Message 2 · Filet",
       "parent": "social-18",
       "type": "rect",
       "visible": true,
@@ -2216,7 +2216,7 @@
      },
      {
       "id": "social-26",
-      "name": "Cœur",
+      "name": "Message 2 · Cœur",
       "parent": "social-18",
       "type": "ellipse",
       "visible": true,
@@ -2238,7 +2238,7 @@
      },
      {
       "id": "social-27",
-      "name": "J’aime",
+      "name": "Message 2 · J’aime",
       "parent": "social-18",
       "type": "counter",
       "visible": true,
@@ -2373,7 +2373,7 @@
      },
      {
       "id": "social-29",
-      "name": "Carte",
+      "name": "Message 3 · Carte",
       "parent": "social-28",
       "type": "rect",
       "visible": true,
@@ -2406,7 +2406,7 @@
      },
      {
       "id": "social-30",
-      "name": "Avatar",
+      "name": "Message 3 · Avatar",
       "parent": "social-28",
       "type": "ellipse",
       "visible": true,
@@ -2428,7 +2428,7 @@
      },
      {
       "id": "social-31",
-      "name": "Initiale",
+      "name": "Message 3 · Initiale",
       "parent": "social-28",
       "type": "text",
       "visible": true,
@@ -2460,7 +2460,7 @@
      },
      {
       "id": "social-32",
-      "name": "Nom",
+      "name": "Message 3 · Nom",
       "parent": "social-28",
       "type": "text",
       "visible": true,
@@ -2490,7 +2490,7 @@
      },
      {
       "id": "social-33",
-      "name": "Compte",
+      "name": "Message 3 · Compte",
       "parent": "social-28",
       "type": "text",
       "visible": true,
@@ -2520,7 +2520,7 @@
      },
      {
       "id": "social-34",
-      "name": "Message",
+      "name": "Message 3 · Message",
       "parent": "social-28",
       "type": "text",
       "visible": true,
@@ -2552,7 +2552,7 @@
      },
      {
       "id": "social-35",
-      "name": "Filet",
+      "name": "Message 3 · Filet",
       "parent": "social-28",
       "type": "rect",
       "visible": true,
@@ -2574,7 +2574,7 @@
      },
      {
       "id": "social-36",
-      "name": "Cœur",
+      "name": "Message 3 · Cœur",
       "parent": "social-28",
       "type": "ellipse",
       "visible": true,
@@ -2596,7 +2596,7 @@
      },
      {
       "id": "social-37",
-      "name": "J’aime",
+      "name": "Message 3 · J’aime",
       "parent": "social-28",
       "type": "counter",
       "visible": true,
@@ -2739,7 +2739,7 @@
      },
      {
       "id": "weather-3",
-      "name": "Soleil",
+      "name": "Météo · Soleil",
       "parent": "weather-1",
       "type": "ellipse",
       "visible": true,
@@ -2838,7 +2838,7 @@
      },
      {
       "id": "weather-6",
-      "name": "Soleil",
+      "name": "Météo · Soleil",
       "parent": "weather-1",
       "type": "group",
       "visible": true,
@@ -3178,7 +3178,7 @@
      },
      {
       "id": "weather-12",
-      "name": "Carte",
+      "name": "Météo · Carte",
       "parent": "weather-1",
       "type": "group",
       "visible": true,
@@ -3278,7 +3278,7 @@
      },
      {
       "id": "weather-13",
-      "name": "Carte",
+      "name": "Météo · Carte · Carte",
       "parent": "weather-12",
       "type": "rect",
       "visible": true,
@@ -3987,7 +3987,7 @@
      },
      {
       "id": "horoscope-8",
-      "name": "Carte",
+      "name": "Bélier · Carte",
       "parent": "horoscope-7",
       "type": "rect",
       "visible": true,
@@ -4020,7 +4020,7 @@
      },
      {
       "id": "horoscope-9",
-      "name": "Signe",
+      "name": "Bélier · Signe",
       "parent": "horoscope-7",
       "type": "text",
       "visible": true,
@@ -4051,7 +4051,7 @@
      },
      {
       "id": "horoscope-10",
-      "name": "Texte",
+      "name": "Bélier · Texte",
       "parent": "horoscope-7",
       "type": "text",
       "visible": true,
@@ -4083,7 +4083,7 @@
      },
      {
       "id": "horoscope-11",
-      "name": "Humeur",
+      "name": "Bélier · Humeur",
       "parent": "horoscope-7",
       "type": "progress",
       "visible": true,
@@ -4213,7 +4213,7 @@
      },
      {
       "id": "horoscope-13",
-      "name": "Carte",
+      "name": "Taureau · Carte",
       "parent": "horoscope-12",
       "type": "rect",
       "visible": true,
@@ -4246,7 +4246,7 @@
      },
      {
       "id": "horoscope-14",
-      "name": "Signe",
+      "name": "Taureau · Signe",
       "parent": "horoscope-12",
       "type": "text",
       "visible": true,
@@ -4277,7 +4277,7 @@
      },
      {
       "id": "horoscope-15",
-      "name": "Texte",
+      "name": "Taureau · Texte",
       "parent": "horoscope-12",
       "type": "text",
       "visible": true,
@@ -4309,7 +4309,7 @@
      },
      {
       "id": "horoscope-16",
-      "name": "Humeur",
+      "name": "Taureau · Humeur",
       "parent": "horoscope-12",
       "type": "progress",
       "visible": true,
@@ -4439,7 +4439,7 @@
      },
      {
       "id": "horoscope-18",
-      "name": "Carte",
+      "name": "Gémeaux · Carte",
       "parent": "horoscope-17",
       "type": "rect",
       "visible": true,
@@ -4472,7 +4472,7 @@
      },
      {
       "id": "horoscope-19",
-      "name": "Signe",
+      "name": "Gémeaux · Signe",
       "parent": "horoscope-17",
       "type": "text",
       "visible": true,
@@ -4503,7 +4503,7 @@
      },
      {
       "id": "horoscope-20",
-      "name": "Texte",
+      "name": "Gémeaux · Texte",
       "parent": "horoscope-17",
       "type": "text",
       "visible": true,
@@ -4535,7 +4535,7 @@
      },
      {
       "id": "horoscope-21",
-      "name": "Humeur",
+      "name": "Gémeaux · Humeur",
       "parent": "horoscope-17",
       "type": "progress",
       "visible": true,
@@ -4665,7 +4665,7 @@
      },
      {
       "id": "horoscope-23",
-      "name": "Carte",
+      "name": "Cancer · Carte",
       "parent": "horoscope-22",
       "type": "rect",
       "visible": true,
@@ -4698,7 +4698,7 @@
      },
      {
       "id": "horoscope-24",
-      "name": "Signe",
+      "name": "Cancer · Signe",
       "parent": "horoscope-22",
       "type": "text",
       "visible": true,
@@ -4729,7 +4729,7 @@
      },
      {
       "id": "horoscope-25",
-      "name": "Texte",
+      "name": "Cancer · Texte",
       "parent": "horoscope-22",
       "type": "text",
       "visible": true,
@@ -4761,7 +4761,7 @@
      },
      {
       "id": "horoscope-26",
-      "name": "Humeur",
+      "name": "Cancer · Humeur",
       "parent": "horoscope-22",
       "type": "progress",
       "visible": true,
@@ -4891,7 +4891,7 @@
      },
      {
       "id": "horoscope-28",
-      "name": "Carte",
+      "name": "Lion · Carte",
       "parent": "horoscope-27",
       "type": "rect",
       "visible": true,
@@ -4924,7 +4924,7 @@
      },
      {
       "id": "horoscope-29",
-      "name": "Signe",
+      "name": "Lion · Signe",
       "parent": "horoscope-27",
       "type": "text",
       "visible": true,
@@ -4955,7 +4955,7 @@
      },
      {
       "id": "horoscope-30",
-      "name": "Texte",
+      "name": "Lion · Texte",
       "parent": "horoscope-27",
       "type": "text",
       "visible": true,
@@ -4987,7 +4987,7 @@
      },
      {
       "id": "horoscope-31",
-      "name": "Humeur",
+      "name": "Lion · Humeur",
       "parent": "horoscope-27",
       "type": "progress",
       "visible": true,
@@ -5117,7 +5117,7 @@
      },
      {
       "id": "horoscope-33",
-      "name": "Carte",
+      "name": "Vierge · Carte",
       "parent": "horoscope-32",
       "type": "rect",
       "visible": true,
@@ -5150,7 +5150,7 @@
      },
      {
       "id": "horoscope-34",
-      "name": "Signe",
+      "name": "Vierge · Signe",
       "parent": "horoscope-32",
       "type": "text",
       "visible": true,
@@ -5181,7 +5181,7 @@
      },
      {
       "id": "horoscope-35",
-      "name": "Texte",
+      "name": "Vierge · Texte",
       "parent": "horoscope-32",
       "type": "text",
       "visible": true,
@@ -5213,7 +5213,7 @@
      },
      {
       "id": "horoscope-36",
-      "name": "Humeur",
+      "name": "Vierge · Humeur",
       "parent": "horoscope-32",
       "type": "progress",
       "visible": true,
@@ -5343,7 +5343,7 @@
      },
      {
       "id": "horoscope-38",
-      "name": "Carte",
+      "name": "Balance · Carte",
       "parent": "horoscope-37",
       "type": "rect",
       "visible": true,
@@ -5376,7 +5376,7 @@
      },
      {
       "id": "horoscope-39",
-      "name": "Signe",
+      "name": "Balance · Signe",
       "parent": "horoscope-37",
       "type": "text",
       "visible": true,
@@ -5407,7 +5407,7 @@
      },
      {
       "id": "horoscope-40",
-      "name": "Texte",
+      "name": "Balance · Texte",
       "parent": "horoscope-37",
       "type": "text",
       "visible": true,
@@ -5439,7 +5439,7 @@
      },
      {
       "id": "horoscope-41",
-      "name": "Humeur",
+      "name": "Balance · Humeur",
       "parent": "horoscope-37",
       "type": "progress",
       "visible": true,
@@ -5569,7 +5569,7 @@
      },
      {
       "id": "horoscope-43",
-      "name": "Carte",
+      "name": "Scorpion · Carte",
       "parent": "horoscope-42",
       "type": "rect",
       "visible": true,
@@ -5602,7 +5602,7 @@
      },
      {
       "id": "horoscope-44",
-      "name": "Signe",
+      "name": "Scorpion · Signe",
       "parent": "horoscope-42",
       "type": "text",
       "visible": true,
@@ -5633,7 +5633,7 @@
      },
      {
       "id": "horoscope-45",
-      "name": "Texte",
+      "name": "Scorpion · Texte",
       "parent": "horoscope-42",
       "type": "text",
       "visible": true,
@@ -5665,7 +5665,7 @@
      },
      {
       "id": "horoscope-46",
-      "name": "Humeur",
+      "name": "Scorpion · Humeur",
       "parent": "horoscope-42",
       "type": "progress",
       "visible": true,
@@ -5795,7 +5795,7 @@
      },
      {
       "id": "horoscope-48",
-      "name": "Carte",
+      "name": "Sagittaire · Carte",
       "parent": "horoscope-47",
       "type": "rect",
       "visible": true,
@@ -5828,7 +5828,7 @@
      },
      {
       "id": "horoscope-49",
-      "name": "Signe",
+      "name": "Sagittaire · Signe",
       "parent": "horoscope-47",
       "type": "text",
       "visible": true,
@@ -5859,7 +5859,7 @@
      },
      {
       "id": "horoscope-50",
-      "name": "Texte",
+      "name": "Sagittaire · Texte",
       "parent": "horoscope-47",
       "type": "text",
       "visible": true,
@@ -5891,7 +5891,7 @@
      },
      {
       "id": "horoscope-51",
-      "name": "Humeur",
+      "name": "Sagittaire · Humeur",
       "parent": "horoscope-47",
       "type": "progress",
       "visible": true,
@@ -6021,7 +6021,7 @@
      },
      {
       "id": "horoscope-53",
-      "name": "Carte",
+      "name": "Capricorne · Carte",
       "parent": "horoscope-52",
       "type": "rect",
       "visible": true,
@@ -6054,7 +6054,7 @@
      },
      {
       "id": "horoscope-54",
-      "name": "Signe",
+      "name": "Capricorne · Signe",
       "parent": "horoscope-52",
       "type": "text",
       "visible": true,
@@ -6085,7 +6085,7 @@
      },
      {
       "id": "horoscope-55",
-      "name": "Texte",
+      "name": "Capricorne · Texte",
       "parent": "horoscope-52",
       "type": "text",
       "visible": true,
@@ -6117,7 +6117,7 @@
      },
      {
       "id": "horoscope-56",
-      "name": "Humeur",
+      "name": "Capricorne · Humeur",
       "parent": "horoscope-52",
       "type": "progress",
       "visible": true,
@@ -6247,7 +6247,7 @@
      },
      {
       "id": "horoscope-58",
-      "name": "Carte",
+      "name": "Verseau · Carte",
       "parent": "horoscope-57",
       "type": "rect",
       "visible": true,
@@ -6280,7 +6280,7 @@
      },
      {
       "id": "horoscope-59",
-      "name": "Signe",
+      "name": "Verseau · Signe",
       "parent": "horoscope-57",
       "type": "text",
       "visible": true,
@@ -6311,7 +6311,7 @@
      },
      {
       "id": "horoscope-60",
-      "name": "Texte",
+      "name": "Verseau · Texte",
       "parent": "horoscope-57",
       "type": "text",
       "visible": true,
@@ -6343,7 +6343,7 @@
      },
      {
       "id": "horoscope-61",
-      "name": "Humeur",
+      "name": "Verseau · Humeur",
       "parent": "horoscope-57",
       "type": "progress",
       "visible": true,
@@ -6473,7 +6473,7 @@
      },
      {
       "id": "horoscope-63",
-      "name": "Carte",
+      "name": "Poissons · Carte",
       "parent": "horoscope-62",
       "type": "rect",
       "visible": true,
@@ -6506,7 +6506,7 @@
      },
      {
       "id": "horoscope-64",
-      "name": "Signe",
+      "name": "Poissons · Signe",
       "parent": "horoscope-62",
       "type": "text",
       "visible": true,
@@ -6537,7 +6537,7 @@
      },
      {
       "id": "horoscope-65",
-      "name": "Texte",
+      "name": "Poissons · Texte",
       "parent": "horoscope-62",
       "type": "text",
       "visible": true,
@@ -6569,7 +6569,7 @@
      },
      {
       "id": "horoscope-66",
-      "name": "Humeur",
+      "name": "Poissons · Humeur",
       "parent": "horoscope-62",
       "type": "progress",
       "visible": true,
@@ -6656,7 +6656,7 @@
      },
      {
       "id": "agenda-2",
-      "name": "Carte",
+      "name": "Programme · Carte",
       "parent": "agenda-1",
       "type": "group",
       "visible": true,
@@ -6742,7 +6742,7 @@
      },
      {
       "id": "agenda-3",
-      "name": "Carte",
+      "name": "Programme · Carte · Carte",
       "parent": "agenda-2",
       "type": "rect",
       "visible": true,
@@ -6835,7 +6835,7 @@
      },
      {
       "id": "agenda-6",
-      "name": "Programme",
+      "name": "Programme · Carte · Programme",
       "parent": "agenda-2",
       "type": "table",
       "visible": true,
@@ -7101,5 +7101,57 @@
    "titleSafe": 0.05,
    "exclusions": []
   }
- }
+ },
+ "sources": [
+  {
+   "id": "matinale-trafic",
+   "name": "Matinale · info trafic",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "items": [
+     {
+      "title": "A86 : bouchon de 6 km à Nanterre"
+     },
+     {
+      "title": "Périphérique intérieur : ralentissements porte de Bagnolet"
+     },
+     {
+      "title": "RER B : trafic interrompu entre Gare du Nord et Aéroport CDG"
+     },
+     {
+      "title": "A7 : circulation fluide vers Lyon"
+     }
+    ]
+   }
+  },
+  {
+   "id": "matinale-messages",
+   "name": "Matinale · messages des téléspectateurs",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "posts": [
+     {
+      "name": "Margaux",
+      "handle": "@margaux_b",
+      "text": "Déjà 3 cafés et toujours pas réveillée… merci pour la bonne humeur de l’équipe ce matin !",
+      "likes": 248
+     },
+     {
+      "name": "Rachid",
+      "handle": "@rachid.k",
+      "text": "Sur l’A86 depuis 40 minutes, heureusement que vous êtes là pour passer le temps 😅",
+      "likes": 131
+     },
+     {
+      "name": "Lucie",
+      "handle": "@lulu_dij",
+      "text": "Bonjour de Dijon ! Il fait déjà 22° à 7 h, on prépare les glaces pour cet après-midi.",
+      "likes": 97
+     }
+    ]
+   }
+  }
+ ]
 }

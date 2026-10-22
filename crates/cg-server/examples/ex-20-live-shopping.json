@@ -90,7 +90,9 @@
          "x": 44.0,
          "y": 60.0,
          "scaleX": 1.08,
-         "scaleY": 1.08
+         "scaleY": 1.08,
+         "width": 972.0000000000001,
+         "height": 129.60000000000002
         }
        }
       }
@@ -352,7 +354,7 @@
      },
      {
       "id": "host-9",
-      "name": "Live",
+      "name": "Pilule · Live",
       "parent": "host-2",
       "type": "rect",
       "visible": true,
@@ -455,7 +457,7 @@
      },
      {
       "id": "host-11",
-      "name": "Live",
+      "name": "Pilule · Live",
       "parent": "host-2",
       "type": "text",
       "visible": true,
@@ -668,7 +670,9 @@
          "x": 195.0,
          "y": 590.0,
          "scaleX": 1.0,
-         "scaleY": 1.0
+         "scaleY": 1.0,
+         "width": 690.0,
+         "height": 760.0
         }
        }
       }
@@ -999,7 +1003,7 @@
      },
      {
       "id": "product-9",
-      "name": "Remise",
+      "name": "Visuel · Remise",
       "parent": "product-4",
       "type": "rect",
       "visible": true,
@@ -1105,7 +1109,7 @@
      },
      {
       "id": "product-10",
-      "name": "Remise",
+      "name": "Visuel · Remise",
       "parent": "product-4",
       "type": "text",
       "visible": true,
@@ -1249,7 +1253,7 @@
      },
      {
       "id": "product-12",
-      "name": "Produit",
+      "name": "Carte · Produit",
       "parent": "product-2",
       "type": "text",
       "visible": true,
@@ -1365,7 +1369,7 @@
      },
      {
       "id": "product-16",
-      "name": "Prix",
+      "name": "Carte · Prix",
       "parent": "product-2",
       "type": "group",
       "visible": true,
@@ -1465,7 +1469,7 @@
      },
      {
       "id": "product-17",
-      "name": "Prix",
+      "name": "Carte · Prix · Prix",
       "parent": "product-16",
       "type": "text",
       "visible": true,
@@ -1565,7 +1569,9 @@
          "x": 64.0,
          "y": 1405.0,
          "scaleX": 1.38,
-         "scaleY": 1.38
+         "scaleY": 1.38,
+         "width": 952.1999999999999,
+         "height": 234.6
         }
        }
       }
@@ -1805,7 +1811,7 @@
      },
      {
       "id": "offer-7",
-      "name": "Stock",
+      "name": "Carte · Stock",
       "parent": "offer-2",
       "type": "text",
       "visible": true,
@@ -1835,7 +1841,7 @@
      },
      {
       "id": "offer-8",
-      "name": "Stock",
+      "name": "Carte · Stock",
       "parent": "offer-2",
       "type": "progress",
       "visible": true,
@@ -1923,7 +1929,9 @@
          "x": 44.0,
          "y": 232.0,
          "scaleX": 0.74,
-         "scaleY": 0.74
+         "scaleY": 0.74,
+         "width": 266.4,
+         "height": 325.6
         }
        }
       }
@@ -2111,7 +2119,7 @@
      },
      {
       "id": "qr-6",
-      "name": "QR",
+      "name": "Carte · QR",
       "parent": "qr-2",
       "type": "qrCode",
       "visible": true,
@@ -2221,7 +2229,9 @@
          "x": 40.0,
          "y": 1665.0,
          "scaleX": 1.0,
-         "scaleY": 1.0
+         "scaleY": 1.0,
+         "width": 1000.0,
+         "height": 100.0
         }
        }
       }
@@ -2419,7 +2429,7 @@
      },
      {
       "id": "buyers-7",
-      "name": "Achats",
+      "name": "Pilule · Achats",
       "parent": "buyers-2",
       "type": "ticker",
       "visible": true,
@@ -2515,7 +2525,9 @@
          "x": 64.0,
          "y": 1405.0,
          "scaleX": 1.38,
-         "scaleY": 1.38
+         "scaleY": 1.38,
+         "width": 952.1999999999999,
+         "height": 234.6
         }
        }
       }
@@ -2705,7 +2717,7 @@
      },
      {
       "id": "promo-6",
-      "name": "Code",
+      "name": "Carte · Code",
       "parent": "promo-2",
       "type": "text",
       "visible": true,
@@ -3067,5 +3079,56 @@
     }
    ]
   }
- }
+ },
+ "sources": [
+  {
+   "id": "droplive-stats",
+   "name": "Drop Live · audience et commandes",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "live": {
+     "viewers": 12840
+    },
+    "orders": [
+     {
+      "text": "Julie (Lyon) vient de commander le trench"
+     },
+     {
+      "text": "Karim (Lille) en a pris 2"
+     },
+     {
+      "text": "Emma (Nantes) vient de commander le trench"
+     },
+     {
+      "text": "Léo (Bordeaux) l’a ajouté à son panier"
+     }
+    ]
+   }
+  },
+  {
+   "id": "droplive-catalogue",
+   "name": "Drop Live · catalogue",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "products": [
+     {
+      "sku": "ML-TR-042",
+      "name": "Trench oversize en coton bio",
+      "price": "129",
+      "was": "189 €",
+      "stock": 37
+     },
+     {
+      "sku": "PDC-SN-310",
+      "name": "Sneakers en cuir recyclé",
+      "price": "89",
+      "was": "139 €",
+      "stock": 112
+     }
+    ]
+   }
+  }
+ ]
 }

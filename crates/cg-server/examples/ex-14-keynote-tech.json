@@ -163,7 +163,7 @@
      },
      {
       "id": "session-4",
-      "name": "En scène",
+      "name": "Barre · En scène",
       "parent": "session-2",
       "type": "rect",
       "visible": true,
@@ -186,7 +186,7 @@
      },
      {
       "id": "session-5",
-      "name": "En scène",
+      "name": "Barre · En scène",
       "parent": "session-2",
       "type": "text",
       "visible": true,
@@ -1116,7 +1116,7 @@
      },
      {
       "id": "slides-7",
-      "name": "QR",
+      "name": "Carte · QR",
       "parent": "slides-2",
       "type": "qrCode",
       "visible": true,
@@ -1191,13 +1191,13 @@
     ],
     "fields": [
      {
-      "key": "question",
+      "key": "q_question",
       "label": "Question",
       "kind": "multiline",
       "default": "Comment garantir la confidentialité des données quand le modèle tourne sur le téléphone ?"
      },
      {
-      "key": "who",
+      "key": "q_who",
       "label": "Posée par",
       "kind": "text",
       "default": "Mathis, Lyon · via l’appli"
@@ -1517,7 +1517,7 @@
        ]
       },
       "bindings": {},
-      "text": "{{question}}",
+      "text": "{{q_question}}",
       "fontFamily": "Space Grotesk",
       "fontWeight": 700,
       "align": "left",
@@ -1587,7 +1587,7 @@
        ]
       },
       "bindings": {},
-      "text": "— {{who}}",
+      "text": "— {{q_who}}",
       "fontFamily": "Inter",
       "fontWeight": 500,
       "align": "left",
@@ -3965,5 +3965,29 @@
    "titleSafe": 0.05,
    "exclusions": []
   }
- }
+ },
+ "sources": [
+  {
+   "id": "horizon26-questions",
+   "name": "Horizon 26 · questions validées",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "questions": [
+     {
+      "question": "Comment garantir la confidentialité des données quand le modèle tourne sur le téléphone ?",
+      "who": "Mathis, Lyon · via l’appli"
+     },
+     {
+      "question": "Quelle consommation d’énergie pour une heure d’usage intensif ?",
+      "who": "Clara, Nantes · via l’appli"
+     },
+     {
+      "question": "Le modèle sera-t-il publié en open source ?",
+      "who": "Yanis, Paris · dans la salle"
+     }
+    ]
+   }
+  }
+ ]
 }

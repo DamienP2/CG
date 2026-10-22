@@ -82,7 +82,9 @@
          "x": 54.0,
          "y": 125.0,
          "scaleX": 1.65,
-         "scaleY": 1.65
+         "scaleY": 1.65,
+         "width": 924.0,
+         "height": 105.6
         }
        }
       }
@@ -376,7 +378,9 @@
          "x": 60.0,
          "y": 280.0,
          "scaleX": 1.6,
-         "scaleY": 1.6
+         "scaleY": 1.6,
+         "width": 960.0,
+         "height": 134.4
         }
        }
       }
@@ -653,8 +657,10 @@
         "props": {
          "x": 44.0,
          "y": 1190.0,
-         "scaleX": 0.92,
-         "scaleY": 0.92
+         "scaleX": 0.86,
+         "scaleY": 0.86,
+         "width": 989.0,
+         "height": 172.0
         }
        }
       }
@@ -1094,7 +1100,9 @@
          "x": 50.0,
          "y": 1200.0,
          "scaleX": 0.98,
-         "scaleY": 0.98
+         "scaleY": 0.98,
+         "width": 980.0,
+         "height": 196.0
         }
        }
       }
@@ -1624,7 +1632,9 @@
          "x": 70.0,
          "y": 870.0,
          "scaleX": 1.32,
-         "scaleY": 1.32
+         "scaleY": 1.32,
+         "width": 937.2,
+         "height": 232.32000000000002
         }
        }
       }
@@ -2241,7 +2251,7 @@
      },
      {
       "id": "cta-14",
-      "name": "Cloche",
+      "name": "Carte · Cloche",
       "parent": "cta-2",
       "type": "group",
       "visible": true,
@@ -2388,7 +2398,7 @@
      },
      {
       "id": "cta-17",
-      "name": "Cloche",
+      "name": "Balancier · Cloche",
       "parent": "cta-16",
       "type": "polygon",
       "visible": true,
@@ -2535,7 +2545,9 @@
          "x": 110.0,
          "y": 900.0,
          "scaleX": 1.6,
-         "scaleY": 1.6
+         "scaleY": 1.6,
+         "width": 864.0,
+         "height": 192.0
         }
        }
       }
@@ -3682,7 +3694,7 @@
      },
      {
       "id": "end-8",
-      "name": "Étiquette",
+      "name": "Case 1 · Étiquette",
       "parent": "end-7",
       "type": "text",
       "visible": true,
@@ -3713,7 +3725,7 @@
      },
      {
       "id": "end-9",
-      "name": "Cadre",
+      "name": "Case 1 · Cadre",
       "parent": "end-7",
       "type": "rect",
       "visible": true,
@@ -3747,7 +3759,7 @@
      },
      {
       "id": "end-10",
-      "name": "Lecture",
+      "name": "Case 1 · Lecture",
       "parent": "end-7",
       "type": "polygon",
       "visible": true,
@@ -3927,7 +3939,7 @@
      },
      {
       "id": "end-12",
-      "name": "Étiquette",
+      "name": "Case 2 · Étiquette",
       "parent": "end-11",
       "type": "text",
       "visible": true,
@@ -3958,7 +3970,7 @@
      },
      {
       "id": "end-13",
-      "name": "Cadre",
+      "name": "Case 2 · Cadre",
       "parent": "end-11",
       "type": "rect",
       "visible": true,
@@ -3992,7 +4004,7 @@
      },
      {
       "id": "end-14",
-      "name": "Lecture",
+      "name": "Case 2 · Lecture",
       "parent": "end-11",
       "type": "polygon",
       "visible": true,
@@ -4271,7 +4283,7 @@
      },
      {
       "id": "end-20",
-      "name": "Lecture",
+      "name": "Pied · Lecture",
       "parent": "end-18",
       "type": "polygon",
       "visible": true,
@@ -4512,7 +4524,7 @@
       "x": 0.05,
       "y": 0.14,
       "width": 0.9,
-      "height": 0.07
+      "height": 0.076
      }
     }
    },
@@ -4609,5 +4621,59 @@
     }
    ]
   }
- }
+ },
+ "sources": [
+  {
+   "id": "horschamp-chapitres",
+   "name": "Hors Champ · chapitres",
+   "type": "push",
+   "format": "json",
+   "value": {
+    "chapters": [
+     {
+      "num": "1",
+      "total": "7",
+      "title": "L’enfance au piano",
+      "time": "02:15"
+     },
+     {
+      "num": "2",
+      "total": "7",
+      "title": "Le conservatoire",
+      "time": "11:40"
+     },
+     {
+      "num": "3",
+      "total": "7",
+      "title": "Les années Morricone",
+      "time": "24:10"
+     },
+     {
+      "num": "4",
+      "total": "7",
+      "title": "Écrire pour l’image",
+      "time": "37:05"
+     },
+     {
+      "num": "5",
+      "total": "7",
+      "title": "Hollywood, puis retour",
+      "time": "49:30"
+     },
+     {
+      "num": "6",
+      "total": "7",
+      "title": "La musique des séries",
+      "time": "58:12"
+     },
+     {
+      "num": "7",
+      "total": "7",
+      "title": "Vos questions",
+      "time": "1:06:40"
+     }
+    ]
+   }
+  }
+ ]
 }
