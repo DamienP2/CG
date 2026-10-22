@@ -361,6 +361,49 @@ export function Num(p: { label?: ReactNode; path?: string; expose?: Expose; expo
   );
 }
 
+/**
+ * A slider and its number field on one row. `onRelease`: the slider gives its value when let go
+ * (a live control: one action per move, not one per pixel); the field gives it when typed.
+ */
+export function SliderNum({ value, onChange, min, max, step = 1, precision = 0, unit, title, onRelease }: { value: number; onChange: (v: number) => void; min: number; max: number; step?: number; precision?: number; unit?: string; title?: string; onRelease?: boolean }) {
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? value;
+  const done = () => {
+    if (drag !== null && drag !== value) onChange(drag);
+    setDrag(null);
+  };
+  return (
+    <span className="wk-slnum" title={title}>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={Math.min(max, Math.max(min, shown))}
+        onChange={(e) => (onRelease ? setDrag(+e.target.value) : onChange(+e.target.value))}
+        onPointerUp={done}
+        onKeyUp={done}
+        onBlur={done}
+        onKeyDown={(e) => e.stopPropagation()}
+      />
+      <span className="pp-field">
+        <NumberField value={shown} min={min} max={max} step={step} precision={precision} onChange={(v) => (setDrag(null), onChange(v))} />
+      </span>
+      {unit && <span className="wk-unit">{unit}</span>}
+    </span>
+  );
+}
+
+/** Slider with its number field (typed, wheel, arrows), on a row of the properties. */
+export function RangeNum(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: number; onChange?: (v: number) => void; min: number; max: number; step?: number; precision?: number; unit?: string; onRelease?: boolean }) {
+  const [v, set] = useBind<number>(p.path, p.value, p.onChange);
+  return (
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
+      <SliderNum value={Number(v ?? 0)} min={p.min} max={p.max} step={p.step} precision={p.precision} unit={p.unit} onRelease={p.onRelease} onChange={(x) => set(x, true)} />
+    </Row>
+  );
+}
+
 /** `#rrggbb[aa]` colour. */
 /**
  * A colour. With `none` (what an empty colour means: "None", "Text colour"…)

@@ -1418,6 +1418,11 @@ impl Renderer {
         if !self.images.contains_key(src) {
             let loaded = load_image(&self.assets_dir, src);
             if loaded.is_none() {
+                // A web picture not fetched yet: asked for, and looked for again.
+                if is_url(src) {
+                    fetch_url(src, false);
+                    return None;
+                }
                 tracing::warn!(src, "image not found or unreadable");
             }
             self.images.insert(src.to_string(), loaded);
@@ -1426,7 +1431,48 @@ impl Renderer {
     }
 }
 
+/// A picture at a web address (`http://`, `https://`).
+pub fn is_url(src: &str) -> bool {
+    let s = src.trim().to_ascii_lowercase();
+    s.starts_with("http://") || s.starts_with("https://")
+}
+
+/// Where a web picture is kept once fetched (`<assets>/.web/<hash>`).
+pub fn url_cache_path(assets_dir: &Path, url: &str) -> std::path::PathBuf {
+    // FNV-1a: the same name on every run.
+    let h = url.trim().bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x0100_0000_01b3)
+    });
+    assets_dir.join(".web").join(format!("{h:016x}"))
+}
+
+/// Fetches a web picture into its cache file (`again`: even if it is there).
+type UrlFetcher = dyn Fn(&str, bool) + Send + Sync;
+static URL_FETCHER: std::sync::OnceLock<Box<UrlFetcher>> = std::sync::OnceLock::new();
+
+/// The host (the server) fetches the web pictures the renderers ask for.
+pub fn set_url_fetcher(f: Box<UrlFetcher>) {
+    let _ = URL_FETCHER.set(f);
+}
+
+/// Asks the host for a web picture (nothing without a host).
+pub fn fetch_url(url: &str, again: bool) {
+    if let Some(f) = URL_FETCHER.get() {
+        f(url.trim(), again);
+    }
+}
+
 fn load_image(assets_dir: &Path, src: &str) -> Option<Pixmap> {
+    if is_url(src) {
+        let path = url_cache_path(assets_dir, src);
+        let data = std::fs::read(&path).ok()?;
+        let head = String::from_utf8_lossy(&data[..data.len().min(256)]).to_ascii_lowercase();
+        if head.contains("<svg") {
+            return load_svg(&path);
+        }
+        let img = image::load_from_memory(&data).ok()?.to_rgba8();
+        return premultiplied(img);
+    }
     let name = src.trim().strip_prefix("/assets/")?;
     if name.contains("..") {
         return None;
@@ -1435,7 +1481,10 @@ fn load_image(assets_dir: &Path, src: &str) -> Option<Pixmap> {
     if name.to_ascii_lowercase().ends_with(".svg") {
         return load_svg(&path);
     }
-    let img = image::open(path).ok()?.to_rgba8();
+    premultiplied(image::open(path).ok()?.to_rgba8())
+}
+
+fn premultiplied(img: image::RgbaImage) -> Option<Pixmap> {
     let (w, h) = img.dimensions();
     let mut data = img.into_raw();
     for px in data.as_chunks_mut::<4>().0 {
@@ -1550,6 +1599,22 @@ fn rounded_rect(w: f32, h: f32, radius: f32) -> Option<tiny_skia::Path> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_web_picture_is_read_from_its_cache() {
+        let dir = std::env::temp_dir().join(format!("cg-web-{}", std::process::id()));
+        let url = "https://example.com/logo.png?v=2";
+        assert!(is_url(url) && !is_url("/assets/a.png"));
+        let path = url_cache_path(&dir, url);
+        assert!(load_image(&dir, url).is_none());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        image::RgbaImage::from_pixel(3, 2, image::Rgba([255, 0, 0, 255]))
+            .save_with_format(&path, image::ImageFormat::Png)
+            .unwrap();
+        let pm = load_image(&dir, url).expect("read from the cache");
+        assert_eq!((pm.width(), pm.height()), (3, 2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_slate_fills_the_frame() {
         let dir = std::env::temp_dir().join(format!("cg-slate-{}", std::process::id()));

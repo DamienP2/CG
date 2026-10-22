@@ -22,6 +22,7 @@ mod state;
 mod sync;
 mod update;
 mod web;
+mod webimages;
 mod webproxy;
 
 use std::collections::BTreeMap;

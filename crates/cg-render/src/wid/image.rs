@@ -35,6 +35,10 @@ fn reload(d: &mut Draw, st: &State, src: &str) {
     }
     map.insert(key, st.reload);
     drop(seen);
+    // A web picture: fetched again.
+    if crate::is_url(src) {
+        crate::fetch_url(src, true);
+    }
     d.rd.images.remove(src);
     let prefix = format!("{src}|");
     if let Some(m) = TINTED.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {

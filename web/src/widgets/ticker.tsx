@@ -2,16 +2,14 @@
 // text / symbol / picture, categories, title block, edge fade, end of list. The queue lives in the operator's
 // state (seeded from the layer's items); its edits apply at the next pass, without a jump.
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
-import { Dropdown } from '../ui/Dropdown';
 import { useState } from 'react';
-import { ArrowLeftRight, Check, List, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowLeftRight, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
-import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
-import { FitLine, FONT_CSS, OpLine, tw, useLiveTime } from './table-text';
-import { NumberField } from '../ui/fields';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, SliderNum, Text, Toggle, useKeys, type Warning } from './kit';
+import { FitLine, FONT_CSS, tw, useLiveTime } from './table-text';
 import { t, tc } from '../i18n';
 
 export interface Item {
@@ -68,7 +66,6 @@ export interface State {
 
 type TL = Config & FontStyle & { text: string; separator: string; speed: number; props: Record<string, unknown>; manualStart?: boolean; name?: string };
 const PAD = 30;
-const MODE_LABEL = { crawl: 'Crawl', roll: 'Roll', flip: 'Flip' } as const;
 
 export function cfg(c: Config) {
   return {
@@ -489,30 +486,6 @@ function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<stri
 }
 
 // ------------------------------------------------------------ operator --
-function QueueRow({ it, i, n, cats, act }: { it: Item; i: number; n: number; cats: string[]; act: (op: string, args?: unknown) => void }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const commit = () => {
-    if (draft !== null && draft !== it.text) act('edit', { index: i, text: draft });
-    setDraft(null);
-  };
-  return (
-    <div className={`wk-item ${it.on === false ? 'off' : ''}`}>
-      <input type="checkbox" checked={it.on !== false} title={t('On / off')} onChange={(e) => act('toggle', { index: i, on: e.target.checked })} />
-      <span className="dd-cell" style={{ flex: '0 0 92px', width: 92 }}>
-        <Dropdown value={it.cat ?? ''} options={[{ value: '', label: '—' }, ...cats.map((c) => ({ value: c, label: c }))]} onChange={(v) => act('edit', { index: i, cat: v })} />
-      </span>
-      <input value={draft ?? it.text ?? ''} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && commit())} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
-      <button className="wk-x" title={t('Up')} disabled={!i} onClick={() => act('move', { from: i, to: i - 1 })}>
-        ↑
-      </button>
-      <button className="wk-x" title={t('Remove')} onClick={() => act('delete', { index: i })}>
-        ✕
-      </button>
-      {void n}
-    </div>
-  );
-}
-
 type OpP = { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
 
 /** The scene at this frame, for the Operator's rows. */
@@ -530,145 +503,85 @@ function useScene({ l, state, data, time }: OpP) {
 /** The category of an urgent item: one named URGENT, if any. */
 const urgentCat = (k: K) => k.cats.find((c) => c.name.trim().toUpperCase() === 'URGENT')?.name ?? '';
 
-/** The Operator's compact row: start from the top, pause / resume (start when manual), next item, an urgent item inserted after the current one. */
+/** A priority item, typed then inserted now (crawl: the next free slot, nothing on screen jumps). */
+function Priority({ k, act, bare }: { k: K; act: OpP['act']; bare?: boolean }) {
+  const [text, setText] = useState('');
+  const insert = () => {
+    if (!text.trim()) return;
+    act('insert', { text: text.trim(), cat: urgentCat(k), when: 'now' });
+    setText('');
+  };
+  const input = <input className="wk-prio" placeholder={t('Priority item')} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && insert())} />;
+  const btn = <Btns list={[{ label: bare ? '⚡' : t('⚡ Insert'), cls: `violet ${bare ? 'sq' : ''}`, title: bare ? t('⚡ Insert') : undefined, disabled: !text.trim(), onClick: insert }]} />;
+  return bare ? (
+    <>
+      {input}
+      {btn}
+    </>
+  ) : (
+    <Row label={t('Priority')}>
+      {input}
+      {btn}
+    </Row>
+  );
+}
+
+/** The live speed (px/s, as in the Designer; not in flip, one item at a time). */
+const LiveSpeed = ({ l, st, act, unit }: { l: TL; st: State; act: OpP['act']; unit?: boolean }) => <SliderNum value={Math.round(speedOf(l, st))} min={SPEED[0]} max={SPEED[1]} step={5} unit={unit ? 'px/s' : undefined} title={unit ? undefined : `${t('Speed')} (px/s)`} onRelease onChange={(v) => act('speed', { px: v })} />;
+
+/** The Operator's row (preview bar, On air panel): start from the top, start / pause, next item, the speed, a priority item. */
 function TickerCompact(p: OpP) {
   const { l, act, item } = p;
   const { k, st, sc } = useScene(p);
-  const [urgent, setUrgent] = useState('');
   const paused = !!st.started && !st.running;
-  // Manual launch: it waits for the operator.
+  // Manual launch (or held in the preview): it waits for the operator.
   const waiting = !!l.manualStart && !st.started;
-  const insert = () => {
-    if (!urgent.trim()) return;
-    act('insert', { text: urgent.trim(), cat: urgentCat(k), when: 'after' });
-    setUrgent('');
-  };
+  const running = !waiting && !paused && !sc.ended;
   return (
-    <div className="wk-oprow">
-      <OpRow
-        noMore
+    <div className="wk-opbig">
+      <Btns
         list={[
-          { icon: SkipBack, title: t('Start from the top of the queue'), confirm: item && !waiting ? t('{name} is on air: start again from the top of the queue?', { name: l.name ?? '' }) : undefined, onClick: () => act('start') },
-          waiting ? { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('resume') } : paused ? { icon: Play, title: tc('action', 'Resume'), tone: 'green', onClick: () => act('resume') } : { icon: Pause, title: t('Pause'), tone: 'amber', disabled: sc.ended, onClick: () => act('pause') },
-          k.mode !== 'crawl' && { icon: SkipForward, title: t('Next item'), onClick: () => act('next') },
+          { label: <SkipBack size={16} fill="currentColor" />, cls: 'big sq', title: t('Start from the top of the queue'), confirm: item && !waiting ? t('{name} is on air: start again from the top of the queue?', { name: l.name ?? '' }) : undefined, onClick: () => act('start') },
+          { label: paused ? t('▶ Resume') : t('▶ Start'), cls: 'big green', disabled: running || sc.ended, onClick: () => act('resume') },
+          { label: t('❚❚ Pause'), cls: 'big amber', disabled: !running, onClick: () => act('pause') },
+          { label: <SkipForward size={16} fill="currentColor" />, cls: 'big sq', title: t('Next item'), disabled: k.mode === 'crawl', onClick: () => act('next') },
         ]}
       />
-      <input title={t('Urgent item')} placeholder={t('Priority item')} value={urgent} style={{ width: 180, height: 28 }} onChange={(e) => setUrgent(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && insert())} />
-      <OpRow list={[{ icon: Check, title: t('Insert after the current one'), tone: 'violet', disabled: !urgent.trim(), onClick: insert }]} />
-    </div>
-  );
-}
-
-/** Under ⋯: the speed (px/s, as in the Designer; not in flip, one item at a time), the queue to edit. */
-function TickerMore(p: OpP) {
-  const { l, act } = p;
-  const { k, st } = useScene(p);
-  const [open, setOpen] = useState(false);
-  const [add, setAdd] = useState('');
-  const q = queueOf(l, st);
-  const cats = k.cats.map((c) => c.name);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, minWidth: 0 }}>
-      <OpLine
-        list={[]}
-        field={
-          k.mode !== 'flip' && (
-            <span className="pp-field" title={t('Speed')}>
-              <NumberField value={Math.round(speedOf(l, st))} min={SPEED[0]} max={SPEED[1]} step={5} suffix="px/s" onChange={(v) => act('speed', { px: v })} />
-            </span>
-          )
-        }
-        after={[{ icon: List, title: t('Queue'), tone: open ? 'violet' : undefined, onClick: () => setOpen(!open) }]}
-      />
-      {open && (
-        <div className="wk-list">
-          {q.map((it, i) => (
-            <QueueRow key={`${i}-${it.text}`} it={it} i={i} n={q.length} cats={cats} act={act} />
-          ))}
-          <div className="wk-item">
-            <input placeholder={t('New item')} value={add} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && add.trim() && (act('add', { text: add }), setAdd('')))} onChange={(e) => setAdd(e.target.value)} />
-            <button className="opx-btn small" disabled={!add.trim()} onClick={() => (act('add', { text: add }), setAdd(''))}>
-              + {t('Add item')}
-            </button>
-          </div>
-        </div>
+      {k.mode !== 'flip' && (
+        <span className="wk-opbig-f">
+          <span className="wk-oplabel">{t('Speed')}</span>
+          <LiveSpeed l={l} st={st} act={act} />
+        </span>
       )}
+      <span className="wk-opbig-f">
+        <Priority k={k} act={act} bare />
+      </span>
     </div>
   );
 }
 
-function TickerOperator({ l, state, data, act, time }: { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number; fps?: number } }) {
-  const { now, age: aired } = useLiveTime(time);
-  const k = cfg(l);
-  const st = (state ?? {}) as State;
-  const [prio, setPrio] = useState({ text: '', cat: k.cats.find((c) => c.name === 'URGENT')?.name ?? '', keep: false });
-  const [add, setAdd] = useState('');
-  const w = num(l.props.width as number) || 1920;
-  const h = num(l.props.height as number) || 80;
-  const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: l.props.fill ?? [1, 1, 1, 1] });
-  const age = st.started ? 0 : aired;
-  const sc = scene(l, k, st, data, lk, w, h, now, age);
-  const status = sc.ended ? 'ENDED' : !st.started ? 'AUTO' : st.running ? 'RUNNING' : 'PAUSED';
-  const color = { RUNNING: 'var(--pvw, #22c55e)', AUTO: 'var(--pvw, #22c55e)', PAUSED: 'var(--warn, #f59e0b)', ENDED: 'var(--text-3, #888)' }[status];
-  const v = speedOf(l, st);
-  const lim = limitOf(k);
-  const q = queueOf(l, st);
-  const cats = k.cats.map((c) => c.name);
+/** The Designer's Operator section (and the keys of the widget selected on air): start, pause, next, the speed, a priority item. */
+function TickerOperator(p: OpP) {
+  const { l, act } = p;
+  const { k, st, sc } = useScene(p);
   // Space stays the Operator's CONTINUE.
   useKeys({ p: () => act(sc.ended ? 'start' : st.started && !st.running ? 'resume' : 'pause'), ArrowRight: () => k.mode !== 'crawl' && act('next'), '+': () => k.mode !== 'flip' && act('speed', { delta: 20 }), '-': () => k.mode !== 'flip' && act('speed', { delta: -20 }) });
-  let onAir: Item | undefined;
-  if (!sc.crawl) onAir = segs(sc.placed, sc.pos, sc.pos + 1).find((g) => g.x <= sc.pos + 1e-9)?.item;
   const paused = !!st.started && !st.running;
   return (
     <>
-      <Readout sub={t('{mode} · {speed} px/s ({perFrame} px/frame) · pass {pass}/{passes} · {n} active item(s)', { mode: t(MODE_LABEL[k.mode]).toUpperCase(), speed: Math.round(v), perFrame: (v / (time.fps ?? 25)).toFixed(1), pass: Math.max(1, sc.pass), passes: lim ?? '∞', n: sc.q.length })}>
-        <i style={{ color, fontStyle: 'normal' }}>{t(status)}</i>
-      </Readout>
-      {onAir && (
-        <Note>
-          {t('On air:')} <b>{(onAir.text ?? '').slice(0, 70)}</b>
-        </Note>
-      )}
       <Btns
         list={[
           { label: t('▶ Start'), cls: 'big green', title: t('Start from the top of the queue'), onClick: () => act('start') },
           paused || (l.manualStart && !st.started) ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'P', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'P', disabled: sc.ended, onClick: () => act('pause') },
-          { label: t('Next item ⏭'), cls: 'big', keyHint: '→', disabled: k.mode === 'crawl', title: t('Flip / roll: go to the next item'), onClick: () => act('next') },
+          { label: t('⏭ Next'), cls: 'big', keyHint: '→', disabled: k.mode === 'crawl', title: t('Next item'), onClick: () => act('next') },
         ]}
       />
       {k.mode !== 'flip' && (
-        <Btns
-          label={t('Speed live')}
-          list={[
-            { label: t('− Slower'), keyHint: '-', onClick: () => act('speed', { delta: -20 }) },
-            { label: t('+ Faster'), keyHint: '+', onClick: () => act('speed', { delta: 20 }) },
-          ]}
-        />
+        <Row label={t('Speed')}>
+          <LiveSpeed l={l} st={st} act={act} unit />
+        </Row>
       )}
-      <Text label={t('Priority')} value={prio.text} placeholder={t('Priority item')} onChange={(s) => setPrio({ ...prio, text: s })} />
-      <Select label={t('Category')} value={prio.cat} options={[['', '—'], ...cats.map((c) => [c, c] as [string, string])]} onChange={(c) => setPrio({ ...prio, cat: c })} />
-      <Toggle value={prio.keep} text={t('Also keep it in the queue')} onChange={(b) => setPrio({ ...prio, keep: b })} />
-      <Btns
-        list={[
-          { label: t('⚡ Insert now'), cls: 'red', disabled: !prio.text.trim(), onClick: () => act('insert', { ...prio, when: 'now' }) },
-          { label: t('After current'), cls: 'violet', disabled: !prio.text.trim(), onClick: () => act('insert', { ...prio, when: 'after' }) },
-        ]}
-      />
-      {k.mode === 'crawl' && <Note>{t('Crawl: the priority item takes the next free slot, right after the item entering the zone (nothing on screen jumps).')}</Note>}
-      <Note>{t('QUEUE · on/off · category · text · ↑ reorder · ✕ delete')}</Note>
-      <div className="wk-list">
-        {q.map((it, i) => (
-          <QueueRow key={`${i}-${it.text}`} it={it} i={i} n={q.length} cats={cats} act={act} />
-        ))}
-        <div className="wk-item">
-          <input placeholder={t('New item')} value={add} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && add.trim() && (act('add', { text: add }), setAdd('')))} onChange={(e) => setAdd(e.target.value)} />
-          <button className="opx-btn small" disabled={!add.trim()} onClick={() => (act('add', { text: add }), setAdd(''))}>
-            + {t('Add item')}
-          </button>
-        </div>
-      </div>
-      <Note>{t('Edits, order and on/off apply at the next pass — no jump, no gap.')}</Note>
-      <Btns list={[{ label: t('Clear the queue'), cls: 'ghost', confirm: t('Remove every item of the queue? What is on air finishes.'), onClick: () => act('clear') }]} />
+      <Priority k={k} act={act} />
     </>
   );
 }
@@ -834,7 +747,7 @@ export default defineWidget({
               ]}
             />
           )}
-          {k.mode !== 'flip' && <Num label={t('Speed')} path="speed" value={l.speed ?? 140} min={SPEED[0]} max={SPEED[1]} step={5} unit="px/s" />}
+          {k.mode !== 'flip' && <RangeNum label={t('Speed')} path="speed" value={l.speed ?? 140} min={SPEED[0]} max={SPEED[1]} step={5} unit="px/s" />}
           {k.mode !== 'crawl' && <Num label={k.mode === 'flip' ? t('Per item') : tc('ticker', 'Hold')} path="itemDur" value={k.itemDur} min={k.mode === 'flip' ? 0.5 : 0} max={60} step={0.5} precision={1} unit="s" />}
           {k.mode === 'flip' && (
             <>
@@ -889,7 +802,6 @@ export default defineWidget({
   },
   Operator: ({ layer, state, data, act, time }) => <TickerOperator l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
   Compact: ({ layer, state, data, act, time, item }) => <TickerCompact l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
-  More: ({ layer, state, data, act, time, item }) => <TickerMore l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
   // The Operator's preview holds it until its Play: nothing has entered yet.
   plays: () => 'start',
   warnings: (layer, { data, state, r }) => {

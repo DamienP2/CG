@@ -144,6 +144,7 @@ fn short(e: &OutputError) -> String {
 /// (`state.closing`), after their outputs have stopped.
 pub fn start(state: &Shared) -> Vec<tokio::task::JoinHandle<()>> {
     cg_output::ndi::set_library_path(&state.config.ndi_library);
+    crate::webimages::install(state.assets_dir());
     state
         .channels
         .values()

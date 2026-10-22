@@ -278,6 +278,8 @@ function Slate({ F }: { F: Rect }) {
 }
 
 /** The picture read again after `reload` operator reloads (another URL: never the cached copy). */
+/** The picture is at a web address (reloading it fetches it again). */
+const webPicture = (l: ImgLayer, data: Record<string, string> = {}) => /^https?:\/\//i.test(interpolateText(l.src, data).trim());
 const reloaded = (src: string, n: number) => (n > 0 && src ? `${src}${src.includes('?') ? '&' : '?'}reload=${n}` : src);
 
 /** What is shown: the picture, the fallback (missing), or the slate. `reload`: the operator's reloads. */
@@ -554,21 +556,22 @@ export default defineWidget({
   },
 
   // A sequence (animation, video file): time left, play / pause (it freezes), restart; a still picture: reload. A live input: none.
-  controls: (layer) => {
+  // A sequence: play / pause; a picture at a web address: reload.
+  controls: (layer, data) => {
     const k = cfg(layer as unknown as ImgLayer);
-    return !k.input.trim() && (k.frames.length > 0 || !k.video);
+    return !k.input.trim() && (k.frames.length > 0 || (!k.video && webPicture(layer as unknown as ImgLayer, data)));
   },
   // A sequence: the Operator's preview holds it on its first frame until its Play.
   plays: (layer) => {
     const k = cfg(layer as unknown as ImgLayer);
     return !k.input.trim() && k.frames.length > 0 && 'start';
   },
-  Compact: ({ layer, state, act, time, item }) => {
+  Compact: ({ layer, state, data, act, time, item }) => {
     const k = cfg(layer as unknown as ImgLayer);
     const st = (state ?? {}) as State;
     const now = useNow(time, item, k.frames.length > 0);
     if (k.input.trim()) return null;
-    if (!k.frames.length) return k.video ? null : <OpRow list={[{ icon: RefreshCw, title: t('Reload the picture'), onClick: () => act('reload') }]} />;
+    if (!k.frames.length) return k.video || !webPicture(layer as unknown as ImgLayer, data) ? null : <OpRow list={[{ icon: RefreshCw, title: t('Reload the picture'), onClick: () => act('reload') }]} />;
     const s = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs);
     // The preview holds it on its first frame until a control is used: its Play starts it from there.
     const held = !item && state == null;
@@ -583,12 +586,12 @@ export default defineWidget({
       />
     );
   },
-  Operator: ({ layer, state, act, time, item }) => {
+  Operator: ({ layer, state, data, act, time, item }) => {
     const k = cfg(layer as unknown as ImgLayer);
     const st = (state ?? {}) as State;
     const now = useNow(time, item, k.frames.length > 0);
     if (k.input.trim()) return null;
-    if (!k.frames.length) return k.video ? null : <Btns list={[{ label: t('Reload'), cls: 'violet', title: t('Reload the picture'), onClick: () => act('reload') }]} />;
+    if (!k.frames.length) return k.video || !webPicture(layer as unknown as ImgLayer, data) ? null : <Btns list={[{ label: t('Reload'), cls: 'violet', title: t('Reload the picture'), onClick: () => act('reload') }]} />;
     // The preview and the Designer's try-out hold it until a control is used.
     const running = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs).running && (!!item || state != null);
     return (

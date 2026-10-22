@@ -2,7 +2,7 @@
 // library (project and shared pictures, search, upload, drop) as a grid.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Sparkles, Upload, X } from 'lucide-react';
+import { Link2, Search, Sparkles, Upload, X } from 'lucide-react';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
 import { t } from '../i18n';
 
@@ -68,6 +68,9 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(value);
   const [drag, setDrag] = useState(false);
+  // A picture at a web address, fetched on the fly.
+  const [url, setUrl] = useState(() => (/^https?:\/\//i.test(value) ? value : ''));
+  const isUrl = (v: string) => /^https?:\/\/\S+$/i.test(v.trim());
   const [busy, setBusy] = useState(0);
   const sizes = useRef(new Map<string, string>());
   const [, bump] = useState(0);
@@ -145,6 +148,27 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
             <Search size={13} />
             <input autoFocus value={q} placeholder={t('Search')} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
           </label>
+          {kind === 'image' && (
+            <label className={`lib-search lib-url ${url && !isUrl(url) ? 'bad' : ''}`} title={t('A picture at a web address, fetched when shown')}>
+              <Link2 size={13} />
+              <input
+                value={url}
+                placeholder={t('Paste a URL')}
+                onChange={(e) => setUrl(e.target.value)}
+                onPaste={(e) => {
+                  const v = e.clipboardData.getData('text').trim();
+                  if (isUrl(v)) {
+                    e.preventDefault();
+                    onChoose(v);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter' && isUrl(url)) onChoose(url.trim());
+                }}
+              />
+            </label>
+          )}
           <label className="btn">
             <Upload size={13} /> {busy ? t('Uploading…') : t('Upload')}
             <input

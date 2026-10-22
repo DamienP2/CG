@@ -16,8 +16,10 @@ import { holdFrame } from "../engine/evaluate";
 import {
   usedDatasets,
   columnKey,
+  countKey,
   linesKey,
   rowKey,
+  tableKey,
   type Command,
   type Data,
   type DataSet,
@@ -132,6 +134,20 @@ export interface DatasetUse {
   lines: boolean;
   /** The Texts reading it. */
   texts: Layer[];
+  /** Only tickers read it, all its rows: no row to choose or step through. */
+  whole: boolean;
+}
+/** A ticker reading all the rows of `ds` (its whole table): it goes through them by itself, whatever the row. */
+export function readsAllRows(l: Layer, ds: DataSet): boolean {
+  if (l.type !== "ticker") return false;
+  const keys =
+    JSON.stringify(l).match(
+      new RegExp(`${ds.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_\\w+`, "g"),
+    ) ?? [];
+  return (
+    keys.length > 0 &&
+    keys.every((k) => k === tableKey(ds.key) || k === countKey(ds.key))
+  );
 }
 const useCache = new WeakMap<object, Map<string, DatasetUse>>();
 export function datasetUse(t: Template, ds: DataSet): DatasetUse {
@@ -155,13 +171,20 @@ export function datasetUse(t: Template, ds: DataSet): DatasetUse {
     row,
     lines,
     texts,
+    whole:
+      readers.length > 0 &&
+      readers.every((l) => readsAllRows(l, ds)) &&
+      !JSON.stringify([t.fields, t.logic ?? null]).includes(`${ds.key}_`),
   };
   m.set(ds.key, out);
   return out;
 }
-/** The data sets stepped through by the operator (rows, auto, loop, NEXT row), not the ones only feeding Texts. */
+/** The data sets stepped through by the operator (rows, auto, loop, NEXT row), not the ones only feeding Texts or read whole by tickers. */
 export const steppedDatasets = (t: Template) =>
-  usedDatasets(t).filter((d) => !datasetUse(t, d).source);
+  usedDatasets(t).filter((d) => {
+    const use = datasetUse(t, d);
+    return !use.source && !use.whole;
+  });
 /** What goes with a take of a graphic: the data sets feeding Texts never go on by themselves. */
 export function sourcePatch(t: Template): Data {
   const out: Data = {};

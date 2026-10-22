@@ -6,7 +6,7 @@ import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { KeyScope, MoreToggle } from '../widgets/kit';
 import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type Template } from '../engine/types';
-import { datasetUse } from './DataSets';
+import { datasetUse, readsAllRows } from './DataSets';
 import { exposedFields, type ExposedLayer } from './Exposed';
 import { t, tc } from '../i18n';
 
@@ -89,6 +89,8 @@ export function widgetParts(tpl: Template): Parts {
     const use = datasetUse(tpl, ds);
     for (const l of layers) {
       if (!json.get(l.id)!.includes(`${ds.key}_`)) continue;
+      // A ticker goes through all the rows by itself: nothing to choose in its tab.
+      if (readsAllRows(l, ds)) continue;
       const p = part(l);
       p.datasets.push(ds);
       if (use.source && use.texts.some((x) => x.id === l.id)) p.fed.push(ds);

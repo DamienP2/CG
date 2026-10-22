@@ -9905,6 +9905,12 @@ body.cv-moving * {
   background: var(--bg);
   color: var(--text-3);
 }
+.lib-url {
+  width: 240px;
+}
+.lib-url.bad {
+  border-color: var(--live);
+}
 .lib-search input {
   flex: 1;
   min-width: 0;
@@ -12929,9 +12935,84 @@ a.lib-nav-item {
   opacity: 0.35;
   cursor: default;
 }
+/* A slider and its number field (kit SliderNum). */
+.wk-slnum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.wk-slnum > input[type='range'] {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent);
+}
+.wk-slnum > .pp-field {
+  flex: 0 0 64px;
+  width: 64px;
+}
+.wk-unit {
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* A widget's row of big buttons, a slider, a field (preview bar, On air panel). */
+.wk-opbig {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.wk-opbig-f {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.wk-opbig .wk-slnum {
+  flex: none;
+}
+.wk-opbig .wk-slnum > input[type='range'] {
+  flex: none;
+  width: 110px;
+}
+.wk-oplabel {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.wk-opbig .wk-prio {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+}
+/* The priority item: on the row, or the whole next row when it wraps. */
+.wk-opbig > .wk-opbig-f:last-child {
+  flex: 1 1 200px;
+  max-width: 420px;
+}
+.opx-pvctl:has(> .wk-opbig) {
+  flex: 1 1 auto;
+}
+.wk-btn.sq {
+  padding: 0;
+  width: 32px;
+  justify-content: center;
+}
+.wk-btn.big.sq {
+  width: 48px;
+}
 .opx-wrow {
   padding: 6px 10px;
   min-height: 40px;
+}
+/* On air: big controls under the widget's name. */
+.opx-wrow:has(> .wk-opbig) {
+  flex-wrap: wrap;
+}
+.opx-wrow > .wk-opbig {
+  flex: 1 1 100%;
 }
 /* The widget whose keyboard shortcuts are on (a click on its row). */
 .opx-wrow.sel {
