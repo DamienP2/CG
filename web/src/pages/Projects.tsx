@@ -5,7 +5,7 @@ import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
 import { projectPath, projectTab, type ProjectPage } from '../router';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { t, tn } from '../i18n';
+import { lang, t, tn } from '../i18n';
 import { NavItem, NavSection } from './SidePage';
 import { useMetrics, type ChannelMetrics } from '../engine/metrics';
 import { Bar } from '../perf/bits';
@@ -138,28 +138,32 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
 type View = { kind: 'all' } | { kind: 'unfiled' } | { kind: 'folder'; name: string };
 type Sort = 'name' | 'templates';
 
-interface DemoInfo {
+interface ExampleInfo {
   id: string;
   name: string;
-  level: number;
+  category: string;
   tags: string[];
   description: string;
+  en?: { name: string; description: string };
+  templates: string[];
+  formats: string[];
 }
 
-/** The bank of demo projects: a copy of one becomes a project of the user. */
-function DemoBank({ onClose }: { onClose: () => void }) {
+/** The example projects: a copy of one becomes a project of the user. */
+function ExampleBank({ onClose }: { onClose: () => void }) {
   const toast = useApp((s) => s.toast);
-  const [demos, setDemos] = useState<DemoInfo[] | null>(null);
+  const [examples, setExamples] = useState<ExampleInfo[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const french = lang().startsWith('fr');
   useEffect(() => {
-    api<DemoInfo[]>('GET', '/api/demos')
-      .then(setDemos)
+    api<ExampleInfo[]>('GET', '/api/examples')
+      .then(setExamples)
       .catch((e) => toast((e as Error).message, 'error'));
   }, []);
-  const create = async (d: DemoInfo) => {
+  const create = async (d: ExampleInfo) => {
     setBusy(d.id);
     try {
-      const p = await api<ProjectSummary>('POST', `/api/demos/${encodeURIComponent(d.id)}`);
+      const p = await api<ProjectSummary>('POST', `/api/examples/${encodeURIComponent(d.id)}`);
       toast(t('“{name}” added to your projects', { name: p.name }), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -169,40 +173,49 @@ function DemoBank({ onClose }: { onClose: () => void }) {
   };
   return (
     <div className="modal-back" onPointerDown={onClose}>
-      <div className="modal wide demo-bank" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="modal wide example-bank" onPointerDown={(e) => e.stopPropagation()}>
         <header>
           <GraduationCap size={18} />
-          <h2>{t('Demo projects')}</h2>
+          <h2>{t('Examples')}</h2>
           <div className="spacer" />
           <button className="icon-btn ghost" title={t('Close')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
-        <p className="hint">{t('From a single lower third to a multi-format live show: each one shows features you can reuse. Add a copy, open it in the Designer and take its graphics in the Operator.')}</p>
-        <div className="demo-grid">
-          {demos === null && <p className="muted">{t('Loading…')}</p>}
-          {demos?.map((d, i) => (
-            <div key={d.id} className="demo-card">
-              <div className="demo-top">
-                <span className="demo-num">{String(i + 1).padStart(2, '0')}</span>
-                <span className="demo-level" title={t('Level {n} of 5', { n: d.level })}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <span key={n} className={n <= d.level ? 'on' : ''} />
-                  ))}
-                </span>
+        <p className="hint">{t('Complete graphics packages ready for air: news, sport, elections, weather, gaming… Add a copy, adapt it to your brand in the Designer and take its graphics in the Operator.')}</p>
+        <div className="example-grid">
+          {examples === null && <p className="muted">{t('Loading…')}</p>}
+          {examples?.map((d) => {
+            const name = (!french && d.en?.name) || d.name;
+            const description = (!french && d.en?.description) || d.description;
+            return (
+              <div key={d.id} className="example-card">
+                <div className="example-cover">
+                  <img src={`/api/examples/${encodeURIComponent(d.id)}/cover.png`} alt="" loading="lazy" />
+                  <span className="example-num">{d.id.match(/^ex-(\d+)/)?.[1] ?? ''}</span>
+                </div>
+                <div className="example-body">
+                  <div className="example-top">
+                    <strong>{name.replace(/^\d+ · /, '')}</strong>
+                    {d.category && <span className="example-cat">{d.category}</span>}
+                  </div>
+                  <p>{description}</p>
+                  <div className="example-tags">
+                    <span>{tn(d.templates.length, '{n} template', '{n} templates')}</span>
+                    {d.formats.map((f) => (
+                      <span key={f}>{f}</span>
+                    ))}
+                    {d.tags.map((x) => (
+                      <span key={x}>{x}</span>
+                    ))}
+                  </div>
+                  <button className="btn primary small" disabled={busy !== null} onClick={() => create(d)}>
+                    <Plus size={13} /> {busy === d.id ? t('Adding…') : t('Add to my projects')}
+                  </button>
+                </div>
               </div>
-              <strong>{d.name.replace(/^\d+ · /, '')}</strong>
-              <p>{d.description}</p>
-              <div className="demo-tags">
-                {d.tags.map((t) => (
-                  <span key={t}>{t}</span>
-                ))}
-              </div>
-              <button className="btn primary small" disabled={busy !== null} onClick={() => create(d)}>
-                <Plus size={13} /> {busy === d.id ? t('Adding…') : t('Add to my projects')}
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -215,7 +228,7 @@ export function Projects() {
   const user = auth?.user;
   const design = can.design(user);
   const [dialog, setDialog] = useState<{ from?: ProjectSummary } | null>(null);
-  const [demos, setDemos] = useState(false);
+  const [examples, setExamples] = useState(false);
   const [view, setView] = useState<View>({ kind: 'all' });
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('name');
@@ -493,8 +506,8 @@ export function Projects() {
             <div className="spacer" />
             {design && (
               <>
-                <button className="btn" title={t('Ten ready-made projects, from simple to complete')} onClick={() => setDemos(true)}>
-                  <GraduationCap size={14} /> {t('Demo projects')}
+                <button className="btn" title={t('Ready-to-air graphics packages to start from')} onClick={() => setExamples(true)}>
+                  <GraduationCap size={14} /> {t('Examples')}
                 </button>
                 <label className="btn" title={t('Import a .pulsecg.json file')}>
                   <Upload size={14} /> {t('Import')}
@@ -710,7 +723,7 @@ export function Projects() {
           </div>
         </div>
       </main>
-      {demos && <DemoBank onClose={() => setDemos(false)} />}
+      {examples && <ExampleBank onClose={() => setExamples(false)} />}
       {dialog && <NewProject from={dialog.from} folder={view.kind === 'folder' ? view.name : undefined} onClose={() => setDialog(null)} />}
     </div>
   );

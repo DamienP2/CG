@@ -32,6 +32,76 @@ pub const BUNDLED_FONTS: &[(&str, &[u8])] = &[
         "Inter-ExtraBold.otf",
         include_bytes!("../../../assets/fonts/Inter-ExtraBold.otf"),
     ),
+    // Broadcast families (SIL OFL 1.1, Google Fonts): condensed, display,
+    // serif and monospaced faces used by the example projects.
+    (
+        "BarlowCondensed-Medium.ttf",
+        include_bytes!("../../../assets/fonts/BarlowCondensed-Medium.ttf"),
+    ),
+    (
+        "BarlowCondensed-SemiBold.ttf",
+        include_bytes!("../../../assets/fonts/BarlowCondensed-SemiBold.ttf"),
+    ),
+    (
+        "BarlowCondensed-Bold.ttf",
+        include_bytes!("../../../assets/fonts/BarlowCondensed-Bold.ttf"),
+    ),
+    (
+        "BarlowCondensed-ExtraBold.ttf",
+        include_bytes!("../../../assets/fonts/BarlowCondensed-ExtraBold.ttf"),
+    ),
+    (
+        "BebasNeue-Regular.ttf",
+        include_bytes!("../../../assets/fonts/BebasNeue-Regular.ttf"),
+    ),
+    (
+        "JetBrainsMono-Medium.ttf",
+        include_bytes!("../../../assets/fonts/JetBrainsMono-Medium.ttf"),
+    ),
+    (
+        "JetBrainsMono-Bold.ttf",
+        include_bytes!("../../../assets/fonts/JetBrainsMono-Bold.ttf"),
+    ),
+    (
+        "Montserrat-SemiBold.ttf",
+        include_bytes!("../../../assets/fonts/Montserrat-SemiBold.ttf"),
+    ),
+    (
+        "Montserrat-ExtraBold.ttf",
+        include_bytes!("../../../assets/fonts/Montserrat-ExtraBold.ttf"),
+    ),
+    (
+        "PlayfairDisplay-SemiBold.ttf",
+        include_bytes!("../../../assets/fonts/PlayfairDisplay-SemiBold.ttf"),
+    ),
+    (
+        "PlayfairDisplay-Bold.ttf",
+        include_bytes!("../../../assets/fonts/PlayfairDisplay-Bold.ttf"),
+    ),
+    (
+        "PlayfairDisplay-ExtraBold.ttf",
+        include_bytes!("../../../assets/fonts/PlayfairDisplay-ExtraBold.ttf"),
+    ),
+    (
+        "SpaceGrotesk-Medium.ttf",
+        include_bytes!("../../../assets/fonts/SpaceGrotesk-Medium.ttf"),
+    ),
+    (
+        "SpaceGrotesk-Bold.ttf",
+        include_bytes!("../../../assets/fonts/SpaceGrotesk-Bold.ttf"),
+    ),
+    (
+        "TitilliumWeb-SemiBold.ttf",
+        include_bytes!("../../../assets/fonts/TitilliumWeb-SemiBold.ttf"),
+    ),
+    (
+        "TitilliumWeb-Bold.ttf",
+        include_bytes!("../../../assets/fonts/TitilliumWeb-Bold.ttf"),
+    ),
+    (
+        "TitilliumWeb-Black.ttf",
+        include_bytes!("../../../assets/fonts/TitilliumWeb-Black.ttf"),
+    ),
 ];
 
 pub struct FontStore {

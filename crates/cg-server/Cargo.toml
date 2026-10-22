@@ -2,6 +2,8 @@
 name = "cg-server"
 version.workspace = true
 edition.workspace = true
+# examples/ holds the example projects (JSON), not cargo examples.
+autoexamples = false
 
 [[bin]]
 name = "cg-server"

@@ -44,8 +44,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/keys/{id}", axum::routing::delete(delete_key))
         .route("/api/openapi.json", get(openapi))
         .route("/api/projects", get(list_projects).post(create_project))
-        .route("/api/demos", get(list_demos))
-        .route("/api/demos/{id}", post(create_from_demo))
+        .route("/api/examples", get(list_examples))
+        .route("/api/examples/{id}", post(create_from_example))
+        .route("/api/examples/{id}/cover.png", get(example_cover))
         .route("/api/projects/import", post(import_project))
         .route(
             "/api/projects/{id}",
@@ -578,24 +579,51 @@ async fn create_project(
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
-/// The bank of demo projects.
-async fn list_demos(CurrentUser(_me): CurrentUser) -> Json<Vec<crate::demos::DemoInfo>> {
-    Json(crate::demos::list())
+/// The example projects.
+async fn list_examples(
+    CurrentUser(_me): CurrentUser,
+) -> Json<Vec<crate::examples::ExampleSummary>> {
+    Json(crate::examples::list())
 }
 
-/// A new project made from a demo.
-async fn create_from_demo(
+/// A new project made from an example.
+async fn create_from_example(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ProjectSummary>> {
     let _edit = s.edits.lock().await;
     require(me.can_create_projects())?;
-    let mut p = crate::demos::project(&id).ok_or_else(|| not_found("demo project"))?;
+    let mut p = crate::examples::project(&id).ok_or_else(|| not_found("example"))?;
     p.id = cg_core::new_id();
     p.rundown.iter_mut().for_each(|r| r.id = cg_core::new_id());
     let p = s.save_project(p).await.map_err(internal)?;
     Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
+/// The picture of an example's card: its cover template on air.
+async fn example_cover(
+    State(s): State<Shared>,
+    CurrentUser(_me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let (p, template) = crate::examples::cover(&id).ok_or_else(|| not_found("example"))?;
+    let st = s.clone();
+    let bytes = tokio::task::spawn_blocking(move || {
+        let data = template.default_data();
+        let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
+        r.render_template(
+            &p,
+            &template,
+            cg_core::MAIN_FORMAT,
+            template.hold_frame(),
+            &data,
+        )
+        .to_png()
+    })
+    .await
+    .map_err(internal)?;
+    Ok(png(bytes))
 }
 
 /// Copies the files of a directory (not recursive). A missing source is empty.

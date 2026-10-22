@@ -555,6 +555,136 @@
     }
    }
   },
+  "/api/examples": {
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "List the example projects",
+    "description": "Complete graphics packages ready for air (news, sport, elections, weather, finance, gaming…) to start a project from: id, name, category, tags, description (French, with `en` in English), the names of their templates and their other formats.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "id": {
+            "type": "string"
+           },
+           "name": {
+            "type": "string"
+           },
+           "category": {
+            "type": "string"
+           },
+           "tags": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           },
+           "description": {
+            "type": "string"
+           },
+           "cover": {
+            "type": "string"
+           },
+           "en": {
+            "type": "object",
+            "properties": {
+             "name": {
+              "type": "string"
+             },
+             "description": {
+              "type": "string"
+             }
+            }
+           },
+           "templates": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           },
+           "formats": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/examples/{id}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Example id (ex-01-…)"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Create a project from an example",
+    "description": "Adds a copy of the example to the projects.\n\n**Rights:** admin, designer.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectSummary"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/examples/{id}/cover.png": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Example id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Projects"
+    ],
+    "summary": "Picture of an example",
+    "description": "Its cover template on air, PNG with alpha at the project size.",
+    "responses": {
+     "200": {
+      "description": "PNG",
+      "content": {
+       "image/png": {}
+      }
+     }
+    }
+   }
+  },
   "/api/projects/{id}": {
    "parameters": [
     {
