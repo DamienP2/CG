@@ -716,6 +716,11 @@ export default defineWidget({
     const k = cfg(l);
     return !!k.link.trim() || model(k, data).rows.length > 0;
   },
+  // Auto pages: the Operator's preview holds them on the page shown until their Play.
+  plays: (l, data) => {
+    const k = cfg(l);
+    return k.pageMode === 'pages' && k.autoPages && k.autoSecs > 0 && pageCount(k, model(k, data)) > 1 && 'onAir';
+  },
   Overlay: ({ layer, scale, edit }) => {
     const k = cfg(layer);
     const top = (k.title.on ? titleH(k) + k.gap : 0) + (k.headerRow ? headerH(k) + k.gap : 0);
@@ -724,7 +729,7 @@ export default defineWidget({
   warnings: (layer, { data, state, r }) => warningsOf(layer as unknown as TL, data, state, vnum(r?.width ?? (layer.props.width as number) ?? 0), vnum(r?.height ?? (layer.props.height as number) ?? 0)),
 });
 
-type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } };
+type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
 /** The table on air now (the Designer's auto pages and highlight until the operator acts). */
 function useTable({ layer, state, data, time }: OpP) {
@@ -751,13 +756,15 @@ function TableCompact(p: OpP) {
   const { act } = p;
   const { k, m, st, pages, page, scroll } = useTable(p);
   const turns = !scroll && pages > 1;
+  // Held by the preview: its auto pages wait for their Play.
+  const held = !!p.time.held;
   return (
     <OpLine
       value={scroll || !m.rows.length ? undefined : `${page + 1}/${pages}`}
       list={[
         !scroll && { icon: ChevronLeft, title: t('Previous'), disabled: pages < 2, onClick: () => act('prev') },
         !scroll && { icon: ChevronRight, title: t('Next'), disabled: pages < 2, onClick: () => act('next') },
-        turns && (st.auto && !st.pausedAt ? { icon: Pause, title: t('Pause auto pages'), tone: 'amber' as const, onClick: () => act('pause') } : st.auto ? { icon: Play, title: tc('action', 'Resume'), tone: 'green' as const, onClick: () => act('resume') } : { icon: Play, title: t('Auto pages'), onClick: () => act('auto', { seconds: st.interval || k.autoSecs || 6 }) }),
+        turns && (st.auto && !st.pausedAt && !held ? { icon: Pause, title: t('Pause auto pages'), tone: 'amber' as const, onClick: () => act('pause') } : st.auto ? { icon: Play, title: tc('action', 'Resume'), tone: 'green' as const, onClick: () => act('resume') } : { icon: Play, title: t('Auto pages'), onClick: () => act('auto', { seconds: st.interval || k.autoSecs || 6 }) }),
       ]}
       field={m.rows.length ? <HlPick m={m} value={st.hl ?? ''} onChange={(v) => act('highlight', { row: v })} /> : undefined}
       after={[!!k.link.trim() && { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') }]}

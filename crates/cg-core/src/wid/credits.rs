@@ -810,7 +810,8 @@ fn prop(layer: &Layer, p: crate::model::Prop, d: f64) -> f32 {
 
 /// Applies an operator action (`op`, with its `args`) to the state.
 /// start · pause · resume · reset · next (card) · remaining {seconds, travel?} ·
-/// adjust {seconds: ±} · endAt {time: "hh:mm[:ss]", tz?} · finish {seconds?: 3}
+/// duration {seconds} (the whole roll) · adjust {seconds: ±} ·
+/// endAt {time: "hh:mm[:ss]", tz?} · finish {seconds?: 3}
 /// (to the end in a few seconds, from where it is).
 /// `travel`: px measured by the caller (a crawl's width needs fonts; else estimated).
 pub fn act(
@@ -918,6 +919,15 @@ pub fn act(
                 .and_then(|v| v.as_f64())
                 .unwrap_or(f64::NAN);
             set_remaining(st, r)?;
+        }
+        "duration" => {
+            let d = args
+                .get("seconds")
+                .and_then(|v| v.as_f64())
+                .filter(|d| *d > 0.0)
+                .ok_or("type the duration as mm:ss")?;
+            // The whole roll lasts that long: from where it is, what is left takes its share.
+            set_remaining(st, if done { d } else { (1.0 - f) * d })?;
         }
         "adjust" => {
             let d = args
@@ -1106,6 +1116,45 @@ mod tests {
         )
         .unwrap();
         assert!((remaining(&c, &st, x, 99_000, 0.0) - 17.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn duration_sets_the_whole_roll_from_where_it_is() {
+        let c = Config {
+            entries: parse(TEXT),
+            duration: 60.0,
+            ..Config::default()
+        };
+        let l = layer(c.clone());
+        let d = Data::new();
+        let x = 1000.0;
+        let travel = |s: f64| serde_json::json!({"seconds": s, "travel": x});
+        // Not started yet: the next start lasts that long.
+        let mut st = State::default();
+        act(&l, &mut st, "reset", &serde_json::Value::Null, &ctx(&d, 0)).unwrap();
+        act(&l, &mut st, "duration", &travel(120.0), &ctx(&d, 0)).unwrap();
+        act(
+            &l,
+            &mut st,
+            "start",
+            &serde_json::Value::Null,
+            &ctx(&d, 1_000),
+        )
+        .unwrap();
+        assert!((remaining(&c, &st, x, 1_000, 0.0) - 120.0).abs() < 1e-6);
+        // Half way: same place, the other half takes half of the new duration.
+        act(&l, &mut st, "duration", &travel(60.0), &ctx(&d, 61_000)).unwrap();
+        assert!((progress(&c, &st, x, 61_000, 0.0) - 0.5).abs() < 1e-9);
+        assert!((remaining(&c, &st, x, 61_000, 0.0) - 30.0).abs() < 1e-6);
+        assert!(st.running);
+        assert!(act(
+            &l,
+            &mut st,
+            "duration",
+            &serde_json::json!({"seconds": null}),
+            &ctx(&d, 61_000)
+        )
+        .is_err());
     }
 
     #[test]

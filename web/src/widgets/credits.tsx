@@ -3,8 +3,9 @@
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
 import { useEffect, useState } from 'react';
-import { ChevronLast, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
+import { ChevronLast, Pause, Play, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
+import { parseDuration } from '../engine/widgets';
 import type { Data } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
@@ -581,16 +582,24 @@ function useRun({ layer, state, data, time }: OpP) {
 
 function CreditsCompact(p: OpP) {
   const { act, item, time } = p;
-  const { l, k, rem, status, now, travel } = useRun(p);
+  const { l, k, st, g, rem, status, now, travel } = useRun(p);
   const tz = time.defaultTz || undefined;
   return (
     <OpLine
       value={mss(rem)}
       list={[status === 'running' ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause', travel) } : status === 'paused' ? { icon: Play, title: tc('action', 'Resume'), tone: 'green', onClick: () => act('resume', travel) } : { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('start', travel) }]}
-      field={<OpField width={80} title={t('End at')} value={status === 'done' ? '' : fmtClock(now + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />}
+      field={
+        <>
+          {/* The time of the whole roll (its speed); what is left takes its share. */}
+          <OpField width={62} title={t('Duration')} value={mss(Math.round(1 / Math.max(1e-9, realRate(k, st, g.x))))} placeholder="mm:ss" onSubmit={(v) => {
+              const s = parseDuration(v);
+              // Not a duration: the field shows the current one again.
+              if (s != null && s > 0) act('duration', { seconds: s, ...travel });
+            }} />
+          <OpField width={80} title={t('End at')} value={status === 'done' ? '' : fmtClock(now + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />
+        </>
+      }
       after={[
-        { icon: Minus, title: '−10 s', tag: '10 s', disabled: status === 'done', onClick: () => act('adjust', { seconds: -10, ...travel }) },
-        { icon: Plus, title: '+10 s', tag: '10 s', disabled: status === 'done', onClick: () => act('adjust', { seconds: 10, ...travel }) },
         k.mode === 'pages' && { icon: SkipForward, title: tc('credits', 'Next card'), onClick: () => act('next', travel) },
         { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the start of the credits?', { name: (l as { name?: string }).name ?? '' }) : undefined, onClick: () => act('reset') },
       ]}
@@ -884,9 +893,11 @@ export default defineWidget({
       </>
     );
   },
-  // One row: remaining time, start / pause / resume, the end time, ±10 s, next card, reset.
+  // One row: remaining time, start / pause / resume, the duration, the end time, next card, reset.
   Compact: (p) => <CreditsCompact {...p} />,
   More: (p) => <CreditsMore {...p} />,
+  // The Operator's preview holds it until its Play: not started yet.
+  plays: () => 'start',
   Operator: (p) => <CreditsOperator {...p} />,
   warnings: (layer, { data, state, r }) => {
     const l = layer as unknown as CL;

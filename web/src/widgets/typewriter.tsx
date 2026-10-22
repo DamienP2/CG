@@ -429,7 +429,7 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
 
 const PHASE_COL: Record<string, string> = { typing: '#22c55e', paused: '#f59e0b', erasing: '#ff3b5c', hold: '#a594ff', done: '#a3a9bd', cleared: '#6b7290' };
 
-type OpP = { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
+type OpP = { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
 /** The Operator's compact row: start, pause / resume, next text, show all, clear. */
 function Compact({ layer, state, data, act, item, time }: OpP) {
@@ -437,7 +437,8 @@ function Compact({ layer, state, data, act, item, time }: OpP) {
   const st = (state ?? {}) as State;
   const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now, age);
   const mode = st.mode ?? 'auto';
-  const running = mode === 'auto' || mode === 'run';
+  // Held by the preview, nothing typed yet: it waits for its Start.
+  const running = (mode === 'auto' && !time.held) || mode === 'run';
   const cur = { cur: R.idx };
   return (
     <OpRow
@@ -656,6 +657,8 @@ export default defineWidget({
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
   Compact: ({ layer, state, data, act, time, item }) => <Compact layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  // The Operator's preview holds it until its Start: nothing typed yet.
+  plays: () => 'start',
   warnings: (layer, { data, state, r }) => {
     const out: Warning[] = [];
     const list = textsOf(layer, data);

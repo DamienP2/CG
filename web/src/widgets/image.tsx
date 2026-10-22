@@ -558,6 +558,11 @@ export default defineWidget({
     const k = cfg(layer as unknown as ImgLayer);
     return !k.input.trim() && (k.frames.length > 0 || !k.video);
   },
+  // A sequence: the Operator's preview holds it on its first frame until its Play.
+  plays: (layer) => {
+    const k = cfg(layer as unknown as ImgLayer);
+    return !k.input.trim() && k.frames.length > 0 && 'start';
+  },
   Compact: ({ layer, state, act, time, item }) => {
     const k = cfg(layer as unknown as ImgLayer);
     const st = (state ?? {}) as State;
@@ -565,13 +570,14 @@ export default defineWidget({
     if (k.input.trim()) return null;
     if (!k.frames.length) return k.video ? null : <OpRow list={[{ icon: RefreshCw, title: t('Reload the picture'), onClick: () => act('reload') }]} />;
     const s = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs);
-    // The preview holds it until a control is used.
-    const running = s.running && (!!item || state != null);
+    // The preview holds it on its first frame until a control is used: its Play starts it from there.
+    const held = !item && state == null;
+    const running = s.running && !held;
     return (
       <OpRow
         value={left(s.remaining)}
         list={[
-          running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act('play') },
+          running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act(held ? 'restart' : 'play') },
           { icon: RotateCcw, title: t('Restart'), onClick: () => act('restart') },
         ]}
       />

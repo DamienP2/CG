@@ -945,7 +945,7 @@ function Operator({ layer, state, data, act, item, time }: { layer: L; state: un
   );
 }
 
-type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string; fps?: number } };
+type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string; fps?: number; held?: boolean } };
 
 /** What the compact controls show now (time on air advancing between two updates). */
 function useNow({ layer, state, data, item, time }: OpP) {
@@ -957,7 +957,8 @@ function useNow({ layer, state, data, item, time }: OpP) {
   const e = T.eff(layer, data);
   const st = state as State | undefined;
   const tz = time.defaultTz;
-  const ageMs = got.current.age * 1000 + (Date.now() - got.current.at);
+  // Held by the preview: its time on air stands still.
+  const ageMs = got.current.age * 1000 + (time.held ? 0 : Date.now() - got.current.at);
   const r = T.run(e, st, now, ageMs, tz);
   const d = T.display(e, st, { now, ageMs, fps: time.fps ?? 25, defaultTz: tz });
   return { e, r, d, now, tz };
@@ -970,7 +971,8 @@ function Compact(p: OpP) {
   const tgt = T.isTarget(e);
   const st0 = T.started(e, r);
   const paused = r.pausedAt != null;
-  const running = st0 && !paused;
+  // Held by the preview, it waits for its Play.
+  const running = st0 && !paused && !p.time.held;
   const shown = T.segText(d.segs, e.c.sep);
   const target = tgt ? T.targetOf(e, r, now, tz) : null;
   // V: type the value (on air, while this widget's row is selected).
@@ -1073,6 +1075,11 @@ const timerDef = () =>
     Compact: (p) => <Compact layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     More: (p) => <More layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     controls: (l, data) => T.timed(T.eff(l as L, data)),
+    // The Operator's preview holds it at its start value until its Play (a countdown to a time follows the clock).
+    plays: (l, data) => {
+      const e = T.eff(l as L, data);
+      return T.timed(e) && !T.isTarget(e) && 'start';
+    },
     warnings: (l, { data, state }) => warnings(l as L, data, state),
   });
 

@@ -4,13 +4,14 @@
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useState } from 'react';
-import { ArrowLeftRight, Check, List, Minus, Pause, Play, Plus, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowLeftRight, Check, List, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
 import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Note, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
-import { FitLine, FONT_CSS, tw, useLiveTime } from './table-text';
+import { FitLine, FONT_CSS, OpLine, tw, useLiveTime } from './table-text';
+import { NumberField } from '../ui/fields';
 import { t, tc } from '../i18n';
 
 export interface Item {
@@ -558,7 +559,7 @@ function TickerCompact(p: OpP) {
   );
 }
 
-/** Under ⋯: the speed (not in flip, one item at a time), the queue to edit. */
+/** Under ⋯: the speed (px/s, as in the Designer; not in flip, one item at a time), the queue to edit. */
 function TickerMore(p: OpP) {
   const { l, act } = p;
   const { k, st } = useScene(p);
@@ -568,12 +569,16 @@ function TickerMore(p: OpP) {
   const cats = k.cats.map((c) => c.name);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 6, minWidth: 0 }}>
-      <OpRow
-        list={[
-          k.mode !== 'flip' && { icon: Minus, title: t('Slower'), onClick: () => act('speed', { delta: -20 }) },
-          k.mode !== 'flip' && { icon: Plus, title: t('Faster'), onClick: () => act('speed', { delta: 20 }) },
-          { icon: List, title: t('Queue'), tone: open ? 'violet' : undefined, onClick: () => setOpen(!open) },
-        ]}
+      <OpLine
+        list={[]}
+        field={
+          k.mode !== 'flip' && (
+            <span className="pp-field" title={t('Speed')}>
+              <NumberField value={Math.round(speedOf(l, st))} min={SPEED[0]} max={SPEED[1]} step={5} suffix="px/s" onChange={(v) => act('speed', { px: v })} />
+            </span>
+          )
+        }
+        after={[{ icon: List, title: t('Queue'), tone: open ? 'violet' : undefined, onClick: () => setOpen(!open) }]}
       />
       {open && (
         <div className="wk-list">
@@ -885,6 +890,8 @@ export default defineWidget({
   Operator: ({ layer, state, data, act, time }) => <TickerOperator l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
   Compact: ({ layer, state, data, act, time, item }) => <TickerCompact l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
   More: ({ layer, state, data, act, time, item }) => <TickerMore l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
+  // The Operator's preview holds it until its Play: nothing has entered yet.
+  plays: () => 'start',
   warnings: (layer, { data, state, r }) => {
     const l = layer as unknown as TL;
     return warningsOf(l, data, state, num((r?.width as number) ?? (l.props.width as number) ?? 1920), num((r?.height as number) ?? (l.props.height as number) ?? 80));
