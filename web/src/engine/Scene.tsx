@@ -7,6 +7,7 @@ import { Sparkles } from 'lucide-react';
 import { t } from '../i18n';
 import { withSettings } from './settings';
 import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
+import { TimeContext, useLayerTime, type Motion } from './LiveTime';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
@@ -15,13 +16,10 @@ import { fitText, type Fitted } from './textFit';
 import { useFonts } from './fonts';
 import { widgetOf } from '../widgets';
 
-/** Time seen by widgets; provided per playout layer (or by the designer). */
-export const TimeContext = createContext<W.TimeCtx>({ nowMs: Date.now(), ageSecs: 0, defaultTz: '' });
+export { TimeContext } from './LiveTime';
 
-/** Layers whose look depends on the clock: their scene re-renders every frame. */
+/** Layers whose look depends on the clock: they alone are redrawn on each frame (useLayerTime). */
 export const LIVE_TYPES: ReadonlySet<LayerType> = new Set(['clock', 'ticker', 'roll', 'counter', 'progress', 'rotator', 'typewriter', 'slideshow', 'barChart']);
-
-export const hasLiveWidgets = (t: Template) => t.layers.some((l) => l.visible && (LIVE_TYPES.has(l.type) || !!widgetOf(l.type)?.live?.(l as never)));
 
 interface SceneProps {
   template: Template;
@@ -34,7 +32,11 @@ interface SceneProps {
 export const LINE_HEIGHT = 1.2;
 
 /** Layers changed by the template's logic graph (resolved values). */
-const LogicContext = createContext<Map<string, Resolved>>(new Map());
+const NO_LOGIC = new Map<string, Resolved>();
+const LogicContext = createContext<Map<string, Resolved>>(NO_LOGIC);
+
+/** How a legacy widget moves (see Motion): a clock with the wall clock, the others with their time on air. */
+const legacyMotion = (l: Layer): Motion => (l.type === 'clock' ? 'wall' : LIVE_TYPES.has(l.type) ? 'age' : false);
 
 /** How a text layer fits its box with these values (also for the Designer's and the Operator's warnings). */
 export function fitLayer(layer: Layer & { type: 'text' }, r: Resolved, text: string): Fitted {
@@ -243,9 +245,11 @@ function QrCode({ content, w, h, fill, background }: { content: string; w: numbe
 
 /** Content of a widget layer; reads the time context so only it re-renders. */
 function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: number; data: Data; hold: number }) {
-  const base = useContext(TimeContext);
+  const base = useLayerTime(legacyMotion(layer));
   const time = base.layerAge ? { ...base, ageSecs: base.layerAge(layer) } : base;
-  const r = useContext(LogicContext).get(layer.id) ?? resolveLayer(layer, frame, data, hold);
+  // Resolved once per frame of the timeline, not on each redraw of a moving widget.
+  const resolved = useMemo(() => resolveLayer(layer, frame, data, hold), [layer, frame, data, hold]);
+  const r = useContext(LogicContext).get(layer.id) ?? resolved;
   const w = num(r.width);
   const h = num(r.height);
   const age = time.ageSecs;
@@ -352,10 +356,14 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
 
 /** A spec widget (web/src/widgets) drawing its layer; reads the time context so only it re-renders. */
 function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; frame: number; data: Data; hold: number; interactive?: boolean }) {
-  const base = useContext(TimeContext);
-  const time = base.layerAge ? { ...base, ageSecs: base.layerAge(layer) } : base;
-  const r = useContext(LogicContext).get(layer.id) ?? resolveLayer(layer, frame, data, hold);
   const def = widgetOf(layer.type)!;
+  // Only a widget that moves is redrawn on each frame; one moving with its time only, without an operator state, stands still with it.
+  const still = useContext(TimeContext);
+  const base = useLayerTime(!def.live?.(layer as never) ? false : def.ageOnly && still.widgetState?.(layer.id) == null ? 'age' : 'wall');
+  const time = base.layerAge ? { ...base, ageSecs: base.layerAge(layer) } : base;
+  // Resolved once per frame of the timeline, not on each redraw of a moving widget.
+  const resolved = useMemo(() => resolveLayer(layer, frame, data, hold), [layer, frame, data, hold]);
+  const r = useContext(LogicContext).get(layer.id) ?? resolved;
   const Render = def.Render!;
   return (
     <Boundary resetKey={layer}>
@@ -366,6 +374,7 @@ function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; f
 
 const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold, interactive }: { layer: Layer; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
   const logic = useContext(LogicContext).get(layer.id);
+  const framed = useContext(FramedContext);
   const self = layer;
   const { style, text, src, squeeze = 1, fit } = layerStyle(layer, frame, data, hold, logic);
   const kids = childrenOf.get(self.id) ?? [];
@@ -382,7 +391,7 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
       {layer.type === 'group' && layer.lottie !== undefined ? (
         <LottieKids group={layer} kids={kids} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ) : (
-        kids.map((k) => <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />)
+        kids.map((k) => <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={framed.has(k.id) ? frame : hold} data={data} hold={hold} interactive={interactive} />)
       )}
       {interactive && layer.type === 'group' && layer.lottie !== undefined && !kids.length && <LottiePlaceholder />}
     </div>
@@ -391,11 +400,13 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
 
 /** The layers of a Lottie group: at the group's own clock when the operator controls it (reads the time context so only it re-renders). */
 function LottieKids({ group, kids, childrenOf, frame, data, hold, interactive }: { group: Layer; kids: Layer[]; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
-  const f = W.lottieFrame(group, frame, hold, useContext(TimeContext));
+  // Played by its own clock (the operator controls it): redrawn on each frame while that clock runs.
+  const f = W.lottieFrame(group, frame, hold, useLayerTime(useContext(TimeContext).clocked?.(group) ? 'age' : false));
+  const framed = useContext(FramedContext);
   return (
     <>
       {kids.map((k) => (
-        <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={f} data={data} hold={hold} interactive={interactive} />
+        <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={framed.has(k.id) ? f : hold} data={data} hold={hold} interactive={interactive} />
       ))}
     </>
   );
@@ -410,6 +421,25 @@ function LottiePlaceholder() {
       <div style={{ font: '500 18px Inter, sans-serif', opacity: 0.7 }}>{t('Choose a .json, .lottie or .zip file on the right')}</div>
     </div>
   );
+}
+
+/** The layers whose look changes with the playhead: animated properties, a pen drawing in, a Lottie, a logic target, or one of these inside. */
+const FramedContext = createContext<ReadonlySet<string>>(new Set());
+
+function framedLayers(layers: Layer[], childrenOf: Map<string | null, Layer[]>, logic: Template['logic']): Set<string> {
+  const targets = new Set(logic?.nodes.flatMap((n) => (n.type === 'target' ? [n.layer] : [])) ?? []);
+  const out = new Set<string>();
+  const seen = new Set<string>();
+  const visit = (l: Layer): boolean => {
+    if (seen.has(l.id)) return out.has(l.id);
+    seen.add(l.id);
+    let on = l.type === 'pen' || (l.type === 'group' && l.lottie !== undefined) || targets.has(l.id) || Object.values(l.tracks ?? {}).some((t) => (t?.length ?? 0) > 0);
+    for (const k of childrenOf.get(l.id) ?? []) on = visit(k) || on;
+    if (on) out.add(l.id);
+    return on;
+  };
+  layers.forEach(visit);
+  return out;
 }
 
 export function childrenMap(layers: Layer[], includeHidden = false): Map<string | null, Layer[]> {
@@ -429,25 +459,32 @@ export function childrenMap(layers: Layer[], includeHidden = false): Map<string 
 export const Scene = memo(function Scene({ template, frame, data, interactive }: SceneProps) {
   // Settings exposed to the Operator, set from the data.
   template = withSettings(template, data);
-  const childrenOf = childrenMap(template.layers);
+  // Kept from one frame to the next: the layers that do not change are not drawn again.
+  const childrenOf = useMemo(() => childrenMap(template.layers), [template.layers]);
+  const framed = useMemo(() => framedLayers(template.layers, childrenOf, template.logic), [template.layers, childrenOf, template.logic]);
   const hold = holdFrame(template);
   // Text measured by the logic changes when fonts finish loading.
-  useFonts((s) => s.ready);
+  const fontsReady = useFonts((s) => s.ready);
   // Relations: resolve every layer, run the graph, keep the changed ones.
-  const logic = new Map<string, Resolved>();
-  if (template.logic?.nodes.length) {
+  const logic = useMemo(() => {
+    if (!template.logic?.nodes.length) return NO_LOGIC;
+    const out = new Map<string, Resolved>();
     const values = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, data, hold)]));
     applyLogic(template.logic, values, data, measureLayer(template.layers, data, interpolateText));
-    for (const n of template.logic.nodes) if (n.type === 'target' && values.has(n.layer)) logic.set(n.layer, values.get(n.layer)!);
-  }
+    for (const n of template.logic.nodes) if (n.type === 'target' && values.has(n.layer)) out.set(n.layer, values.get(n.layer)!);
+    return out;
+  }, [template, frame, data, hold, fontsReady]); // eslint-disable-line react-hooks/exhaustive-deps
   const rich = useMemo(() => typedKeys(template), [template.fields]);
   return (
     <RichKeys.Provider value={rich}>
       <SceneLayers.Provider value={template.layers}>
       <LogicContext.Provider value={logic}>
+      <FramedContext.Provider value={framed}>
         {(childrenOf.get(null) ?? []).map((l) => (
-          <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
+          // A layer that does not change with the playhead (nor anything inside it) is drawn once, not on each frame of the timeline.
+          <LayerNode key={l.id} layer={l} childrenOf={childrenOf} frame={framed.has(l.id) ? frame : hold} data={data} hold={hold} interactive={interactive} />
         ))}
+      </FramedContext.Provider>
       </LogicContext.Provider>
       </SceneLayers.Provider>
     </RichKeys.Provider>

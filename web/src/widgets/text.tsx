@@ -615,6 +615,7 @@ export default defineWidget({
   content: ['text'],
   // A scrolling text moves with its time on air.
   live: (l) => !!l.scroll && l.scroll !== 'none',
+  ageOnly: true,
   Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} ageSecs={time.ageSecs} />,
   Inspector: ({ layer, data, template, edit }) => <Inspector layer={layer} data={data} template={template} edit={edit} />,
   warnings: (layer, { data }) => {

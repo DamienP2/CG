@@ -56,13 +56,27 @@ export function OpField({ value, title, width, placeholder, onSubmit, inputRef }
  * Operator gives them when it draws (its updates), they advance from there.
  */
 export function useLiveTime(time: { nowMs: number; ageSecs: number; held?: boolean }) {
-  const frame = useFrame();
+  // Held by the preview (no state yet, its time standing still): nothing moves, no redraw on each frame.
+  const frame = useFrame(!time.held);
   const ref = useRef({ nowMs: time.nowMs, off: time.nowMs - Date.now(), age: time.ageSecs, at: Date.now() });
   const r = ref.current;
   if (r.nowMs !== time.nowMs) Object.assign(r, { nowMs: time.nowMs, off: time.nowMs - Date.now() });
   if (r.age !== time.ageSecs) Object.assign(r, { age: time.ageSecs, at: Date.now() });
   // Held by the preview: its time on air stands still.
   return { now: frame + r.off, age: time.held ? r.age : r.age + Math.max(0, frame - r.at) / 1000 };
+}
+
+/** useLiveTime without a redraw on each frame: reads the time now and on air when called (see useFrameValue). */
+export function useLiveClock(time: { nowMs: number; ageSecs: number; held?: boolean }): () => { now: number; age: number } {
+  const ref = useRef({ nowMs: time.nowMs, off: time.nowMs - Date.now(), age: time.ageSecs, at: Date.now() });
+  const r = ref.current;
+  if (r.nowMs !== time.nowMs) Object.assign(r, { nowMs: time.nowMs, off: time.nowMs - Date.now() });
+  if (r.age !== time.ageSecs) Object.assign(r, { age: time.ageSecs, at: Date.now() });
+  const held = !!time.held;
+  return () => {
+    const frame = Date.now();
+    return { now: frame + r.off, age: held ? r.age : r.age + Math.max(0, frame - r.at) / 1000 };
+  };
 }
 
 type Btn = OpBtn | false | null | undefined;

@@ -129,7 +129,7 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
         .then((s) => alive && setStatus(s))
         .catch(() => {});
     poll();
-    const h = setInterval(poll, 2000);
+    const h = setInterval(() => document.hidden || void poll(), 2000);
     return () => {
       alive = false;
       clearInterval(h);

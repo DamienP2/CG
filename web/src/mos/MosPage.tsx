@@ -36,7 +36,7 @@ export function MosPage() {
   useEffect(() => {
     const load = () => api<MosStatus>('GET', '/api/mos/status').then(setStatus).catch(() => {});
     load();
-    const h = setInterval(load, 3000);
+    const h = setInterval(() => document.hidden || void load(), 3000);
     return () => clearInterval(h);
   }, []);
   if (!cfg) return <div className="loading">{t('Loading…')}</div>;

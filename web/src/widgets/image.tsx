@@ -148,7 +148,7 @@ function useNow(time: TimeCtx, item: PlayoutItem | undefined, active: boolean) {
   const onAir = !!item && active;
   useEffect(() => {
     if (!onAir) return;
-    const h = setInterval(() => tick((n) => n + 1), 250);
+    const h = setInterval(() => document.hidden || tick((n) => n + 1), 250);
     return () => clearInterval(h);
   }, [onAir]);
   const anchor = useRef({ time, at: Date.now() });

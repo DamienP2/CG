@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { zoneArea } from '../engine/zones';
 import type { Area, Zone } from '../engine/types';
 import { useApp } from '../store';
@@ -13,7 +13,8 @@ const MIN = 0.02;
  * of the open template is highlighted; drag a zone by its name tab, resize
  * it with its handles. Layers stay clickable through the zones.
  */
-export function ZoneOverlay({ zones, format, width, height, scale, current, only }: { zones: Zone[]; format: string; width: number; height: number; scale: number; current: string; /** Show only this zone (all are kept when saving). */ only?: string }) {
+// Memoised: not drawn again on each frame of the playback (its props stay).
+export const ZoneOverlay = memo(function ZoneOverlay({ zones, format, width, height, scale, current, only }: { zones: Zone[]; format: string; width: number; height: number; scale: number; current: string; /** Show only this zone (all are kept when saving). */ only?: string }) {
   const saveZones = useApp((s) => s.saveZones);
   const [active, setActive] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ id: string; area: Area } | null>(null);
@@ -93,7 +94,7 @@ export function ZoneOverlay({ zones, format, width, height, scale, current, only
         })}
     </div>
   );
-}
+});
 
 function round(a: Area): Area {
   const r = (v: number) => Math.round(v * 10000) / 10000;

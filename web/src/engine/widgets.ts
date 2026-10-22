@@ -3,6 +3,7 @@
 // HTML5 output matches the Rust renderer.
 import { interpolateText } from './evaluate';
 import type { ClockMode, Data, Layer, PlayoutItem } from './types';
+import { lineWidth } from './textFit';
 
 export interface TimeCtx {
   /** Wall-clock time (server clock), Unix ms. */
@@ -373,15 +374,15 @@ export function clockHands(timezone: string, ctx: TimeCtx): [number, number, num
 
 // --- text measurement (ticker strip length) ---------------------------------
 
-let measureCtx: CanvasRenderingContext2D | null = null;
-
 export function textWidth(text: string, family: string, weight: number, size: number, letterSpacing: number): number {
-  measureCtx ??= document.createElement('canvas').getContext('2d');
-  if (!measureCtx) return text.length * size * 0.5;
-  measureCtx.font = `${weight} ${size}px "${family}", Inter, system-ui, sans-serif`;
+  if (typeof document === 'undefined' || !hasCanvas()) return text.length * size * 0.5;
   const chars = [...text].length;
-  return measureCtx.measureText(text).width + Math.max(0, chars - 1) * letterSpacing;
+  // Measured once per font and text (see lineWidth).
+  return lineWidth(`${weight} ${size}px "${family}", Inter, system-ui, sans-serif`, text) + Math.max(0, chars - 1) * letterSpacing;
 }
+
+let canvasOk: boolean | undefined;
+const hasCanvas = () => (canvasOk ??= !!document.createElement('canvas').getContext('2d'));
 
 // --- QR codes (modules computed by the server so both renderers match) -----
 

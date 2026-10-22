@@ -273,7 +273,7 @@ export function DataSetPanel({
   const [, tick] = useState(0);
   useEffect(() => {
     if (!auto || !onAir) return;
-    const h = setInterval(() => tick((n) => n + 1), 200);
+    const h = setInterval(() => document.hidden || tick((n) => n + 1), 200);
     return () => clearInterval(h);
   }, [auto, !!onAir]); // eslint-disable-line react-hooks/exhaustive-deps
   let progress = 0;
@@ -540,7 +540,7 @@ export function DataSetHand({
   };
   useEffect(() => {
     if (!manual.some(([, m]) => m.startsWith("until:"))) return;
-    const h = setInterval(() => tick((n) => n + 1), 500);
+    const h = setInterval(() => document.hidden || tick((n) => n + 1), 500);
     return () => clearInterval(h);
   }, [manual.length]); // eslint-disable-line react-hooks/exhaustive-deps
 

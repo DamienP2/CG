@@ -9,10 +9,12 @@ import { Dropdown } from '../ui/Dropdown';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Database, Ellipsis, Radio, WandSparkles, type LucideIcon } from 'lucide-react';
 import { useDesigner } from '../designer/designerStore';
+import { useShallow } from 'zustand/react/shallow';
 import { fieldUsed, formatSetting, newFieldKey, settingKind } from '../engine/settings';
 import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evaluate';
 import type { Data, FieldKind, Layer, LayerType, PlayoutItem, Prop, Template, Value } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
+import { onFrames } from '../engine/frameClock';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { alertDialog, confirmDialog, promptDialog } from '../ui/dialogs';
 import { t } from '../i18n';
@@ -97,8 +99,14 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   create: () => Partial<LayerOf<T>> & { props?: Partial<Record<Prop, Value>> };
   /** Its Fill / Stroke are in its own groups: Properties > Contents leaves them out. */
   ownsLook?: boolean;
-  /** Its look changes with time: the scene re-renders every frame. */
+  /** Its look changes with time: the widget is redrawn on every frame while its time runs. */
   live?: (l: LayerOf<T>) => boolean;
+  /**
+   * A live widget whose look changes only with its time on air (or its operator state): with that
+   * time standing still and no state (the Designer at rest), it is not redrawn on every frame.
+   * Without it, it is (a clock, a cursor blinking, a value easing to a new one…).
+   */
+  ageOnly?: boolean;
   /** Layer keys of its content (wired by the Data canvas with {{key}}). */
   content?: string[];
   /** Draws the layer inside its box (absolute position, w × h). */
@@ -249,7 +257,7 @@ export function Row({ label, children, title, lead, tail, expose, exposeValue, e
 /** The radio button exposing settings of the layer to the Operator: one click exposes, one click stops. */
 export function ExposeSetting({ paths, label, value, options }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][] }) {
   const { obj } = useContext(BindContext);
-  const { template, update } = useDesigner();
+  const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const layer = obj as Layer | undefined;
   if (!template || !layer?.id || !template.layers.some((l) => l.id === layer.id)) return <span className="wk-gut" />;
   const sb = layer.settingBindings ?? {};
@@ -465,7 +473,7 @@ export const wiredKeys = (s: string) => [...String(s ?? '').matchAll(/\{\{(\w+)\
 export function useExposable(path: string | undefined, value: string | undefined, onChange: ((v: string) => void) | undefined, kind: FieldKind, expose?: boolean) {
   const [v, set] = useBind<string>(path, value, onChange);
   const { data, obj } = useContext(BindContext);
-  const { template, update } = useDesigner();
+  const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const raw = String(v ?? '');
   const layer = obj as { id?: string; name?: string };
   const single = /^\{\{(\w+)\}\}$/.exec(raw.trim());
@@ -801,20 +809,47 @@ export function parseCsv(text: string): string[][] {
 
 // ------------------------------------------------------------- operator --
 
-/** Re-renders the component every animation frame (live readouts). */
+/**
+ * How many times a second the readouts of the Operator's controls redraw (useFrame): 30 is as
+ * smooth as a readout needs; controls mounted hidden (for their keys) need far fewer.
+ */
+export const ReadoutFps = createContext(30);
+
+/** Re-renders the component every animation frame while `active`, at most ReadoutFps a second (live readouts): the time now (Date.now()). */
 export function useFrame(active = true): number {
+  const fps = useContext(ReadoutFps);
   const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!active) return;
-    let raf = 0;
-    const tick = () => {
-      setNow(Date.now());
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [active]);
-  return now;
+  useEffect(() => (active ? onFrames(() => setNow(Date.now()), fps) : undefined), [active, fps]);
+  return active ? now : Date.now();
+}
+
+/**
+ * A value read from the time on each frame (at most ReadoutFps a second, while `active`) that
+ * redraws the component only when it changes (Object.is): a readout that changes once a
+ * second, a state that flips at the end of a list…, without drawing the whole row each frame.
+ */
+export function useFrameValue<T>(compute: () => T, active = true): T {
+  const fps = useContext(ReadoutFps);
+  const value = compute();
+  const fn = useRef(compute);
+  fn.current = compute;
+  const last = useRef(value);
+  last.current = value;
+  const [, redraw] = useState(0);
+  useEffect(
+    () =>
+      active
+        ? onFrames(() => {
+            const v = fn.current();
+            if (!Object.is(v, last.current)) {
+              last.current = v;
+              redraw((n) => n + 1);
+            }
+          }, fps)
+        : undefined,
+    [active, fps],
+  );
+  return value;
 }
 
 /**

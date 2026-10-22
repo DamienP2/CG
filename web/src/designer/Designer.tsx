@@ -5,6 +5,7 @@ import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
 import { LockOverlay, useEditLock } from './Collab';
 import { Stage } from './Stage';
@@ -250,7 +251,8 @@ const BG_LABELS = {
 } as const;
 
 function TemplateList({ project }: { project: Project }) {
-  const { template, load, format, update } = useDesigner();
+  // Not the playhead: the list is not drawn again on each frame of the playback.
+  const { template, load, format, update } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format, update: s.update })));
   // The template whose name is being edited (a click on the open template's name).
   const [renaming, setRenaming] = useState<string | null>(null);
   const { saveTemplate, deleteTemplate, toast } = useApp();
@@ -375,7 +377,10 @@ const MIN_LEFT = 320;
 
 export function Designer() {
   const project = useApp((s) => s.project);
-  const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner();
+  // Not the playhead: the Designer is not drawn again on each frame of the playback (the stage and the timeline follow it).
+  const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner(
+    useShallow((s) => ({ template: s.template, load: s.load, update: s.update, undo: s.undo, redo: s.redo, past: s.past, future: s.future, selected: s.selected, select: s.select, format: s.format })),
+  );
   const [zonesOpen, setZonesOpen] = useState(false);
   // The top bar's slot for undo, redo and the history.
   const [topSlot, setTopSlot] = useState<HTMLElement | null>(null);

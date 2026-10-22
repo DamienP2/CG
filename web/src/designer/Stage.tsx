@@ -1,13 +1,14 @@
 import { useTableEditor } from '../widgets/table-editor-store';
+import { useShallow } from 'zustand/react/shallow';
 import { settingDefaults } from '../engine/settings';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { LiveTime, useTicker } from '../engine/LiveTime';
-import { hasLiveWidgets, Scene, Viewport } from '../engine/Scene';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { LiveTime, type Ticking } from '../engine/LiveTime';
+import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, num, propValue } from '../engine/evaluate';
 import { designTemplates } from '../engine/drafts';
 import { inFormat } from '../engine/formats';
 import { areaClip, zoneArea } from '../engine/zones';
-import type { Project, Template } from '../engine/types';
+import type { Layer, Project, Template } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
 import { widgetOf } from '../widgets';
@@ -23,13 +24,16 @@ interface Box {
   height: number;
 }
 
+/** The boxes as they were when they did not change (no new state, no redraw). */
+const same = (was: Box[], now: Box[]) => (was.length === now.length && was.every((b, i) => b.id === now[i].id && b.left === now[i].left && b.top === now[i].top && b.width === now[i].width && b.height === now[i].height) ? was : now);
+
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 /** The canvas, at the size of the format being edited. */
 export function Stage({ project: _project, size, showZones, background }: { project: Project; size: { width: number; height: number }; showZones: boolean; background: string }) {
   const project = { ..._project, width: size.width, height: size.height };
-  const { template, frame, previewData, selected, format } = useDesigner();
+  const { template, frame, previewData, selected, format } = useDesigner(useShallow((s) => ({ template: s.template, frame: s.frame, previewData: s.previewData, selected: s.selected, format: s.format })));
   // Bound fields show their live value, like on air.
   const bound = useBoundData(template, previewData);
   const data = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
@@ -42,8 +46,12 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   const widgetRun = useDesigner((s) => s.widgetRun);
   const widgetState = useDesigner((s) => s.widgetState);
   const running = Object.values(widgetRun).some((r) => r.pausedAge === undefined);
-  const now = useTicker((!!template && hasLiveWidgets(template)) || running);
   const fps = project.frameRate.num / project.frameRate.den || 1;
+  // Only the widgets that move redraw on each frame: all of them while a try-out runs, else those moving with the wall clock (a clock…).
+  const ticking: Ticking = running ? 'all' : 'wall';
+  const layerAge = useCallback((l: Layer, age: number, now: number) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : age), [widgetRun]);
+  const clocked = useCallback((l: Layer) => !!widgetRun[l.id], [widgetRun]);
+  const stateOf = useCallback((id: string) => widgetState[id], [widgetState]);
   // Snapping targets, read by the drag handler.
   const [guides] = useProjectGuides(_project);
   const view = useGuidesView();
@@ -71,19 +79,26 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       const r = el.getBoundingClientRect();
       return { id, left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height };
     };
-    setGhosts(
-      [...root.querySelectorAll<HTMLElement>('[data-layer-id]')]
-        .filter((el) => !selected.includes(el.dataset.layerId!))
-        .map((el) => box(el.dataset.layerId!, el))
-        .filter((b) => b.width > 0 && b.height > 0),
+    // Kept when nothing moved (a playback where these layers stand still): the stage is not drawn twice per frame.
+    setGhosts((was) =>
+      same(
+        was,
+        [...root.querySelectorAll<HTMLElement>('[data-layer-id]')]
+          .filter((el) => !selected.includes(el.dataset.layerId!))
+          .map((el) => box(el.dataset.layerId!, el))
+          .filter((b) => b.width > 0 && b.height > 0),
+      ),
     );
-    setBoxes(
-      selected.flatMap((id) => {
-        const el = root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
-        if (!el) return [];
-        const r = el.getBoundingClientRect();
-        return [{ id, left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height }];
-      }),
+    setBoxes((was) =>
+      same(
+        was,
+        selected.flatMap((id) => {
+          const el = root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`);
+          if (!el) return [];
+          const r = el.getBoundingClientRect();
+          return [{ id, left: r.left - origin.left, top: r.top - origin.top, width: r.width, height: r.height }];
+        }),
+      ),
     );
   }, [selected, template, frame, scale, previewData]);
 
@@ -228,7 +243,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
 
   // Program, fill or key, for the whole stage (canvas toolbar).
   const shown = stageViewStyle(view.stageView, background);
-  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={shown.background} filter={shown.filter} showZones={showZones} wrapRef={wrapRef} now={now} fps={fps} />;
+  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={shown.background} filter={shown.filter} showZones={showZones} wrapRef={wrapRef} ticking={running ? 'all' : false} fps={fps} />;
 
   return (
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
@@ -236,7 +251,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
         <div ref={sceneRef} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} style={{ position: 'relative' }}>
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-            <LiveTime ageSecs={frame / fps} clientNow={now} layerAge={(l) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : frame / fps)} clocked={(l) => !!widgetRun[l.id]} widgetState={(id) => widgetState[id]} fps={fps} lang={_project.language || 'fr'}>
+            <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
               <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
                 <Scene template={template} frame={frame} data={data} interactive />
               </div>
@@ -271,7 +286,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
 
 /** Handles of a spec widget (web/src/widgets) over its selection box. */
 function WidgetOverlay({ layerId, box, frame }: { layerId: string; box: Box; frame: number }) {
-  const { template, update } = useDesigner();
+  const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const layer = template && findLayer(template, layerId);
   const Ov = layer && widgetOf(layer.type)?.Overlay;
   if (!layer || !Ov) return null;
@@ -299,7 +314,7 @@ function Overview({
   filter,
   showZones,
   wrapRef,
-  now,
+  ticking,
   fps,
 }: {
   project: Project;
@@ -310,7 +325,7 @@ function Overview({
   filter?: string;
   showZones: boolean;
   wrapRef: React.RefObject<HTMLDivElement | null>;
-  now: number;
+  ticking: Ticking;
   fps: number;
 }) {
   const load = useDesigner((s) => s.load);
@@ -336,7 +351,7 @@ function Overview({
               const z = zones.get(tpl.zone);
               return (
                 <div key={tpl.id} className="overview-tpl" data-template-id={tpl.id} title={t('{name} — click to open', { name: tpl.name })} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
-                  <OverviewScene template={tpl} format={format} now={now} fps={fps} lang={project.language || 'fr'} />
+                  <OverviewScene template={tpl} format={format} ticking={ticking} fps={fps} lang={project.language || 'fr'} />
                 </div>
               );
             })}
@@ -356,14 +371,14 @@ function Overview({
  * One template of the overview, drawn as the open template draws it: its
  * default values, bound fields and data sets read like on air, its settings.
  */
-function OverviewScene({ template, format, now, fps, lang }: { template: Template; format: string; now: number; fps: number; lang?: string }) {
+function OverviewScene({ template, format, ticking, fps, lang }: { template: Template; format: string; ticking: Ticking; fps: number; lang?: string }) {
   const defaults = useMemo(() => defaultData(template), [template]);
   const bound = useBoundData(template, defaults);
   const data = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
   const shown = useMemo(() => inFormat(template, format), [template, format]);
   const hold = holdFrame(template);
   return (
-    <LiveTime ageSecs={hold / fps} clientNow={now} fps={fps} lang={lang}>
+    <LiveTime ageSecs={hold / fps} ticking={ticking} fps={fps} lang={lang}>
       <Scene template={shown} frame={hold} data={data} interactive />
     </LiveTime>
   );

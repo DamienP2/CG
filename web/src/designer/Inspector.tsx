@@ -1,4 +1,5 @@
 import { Boundary } from '../ui/Boundary';
+import { useShallow } from 'zustand/react/shallow';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick } from '../ui/FontPick';
 import { AssetLibrary, AssetPicker } from './AssetPicker';
@@ -196,7 +197,7 @@ const TRANSFORM_ROWS: RowSpec[] = [
  * playhead (filled when there is one).
  */
 export function TimelineButton({ layer, props }: { layer: Layer; props: Prop[] }) {
-  const { frame, update } = useDesigner();
+  const { frame, update } = useDesigner(useShallow((s) => ({ frame: s.frame, update: s.update })));
   const on = props.every((p) => onTimeline(layer).has(p));
   const here = props.some((p) => (layer.tracks[p] ?? []).some((k) => Math.abs(k.frame - frame) < 0.5));
   return (
@@ -230,7 +231,7 @@ function LogicBadge({ layer, props }: { layer: Layer; props: Prop[] }) {
 
 /** (•) at the end of a row: exposes the property to the Operator (a variable he sets), or stops. */
 export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) {
-  const { update, template } = useDesigner();
+  const { update, template } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template })));
   if (!template) return <span className="pp-op-space" />;
   const bound = props.map((p) => layer.bindings[p]).filter((k): k is string => !!k);
   const on = bound.length > 0;
@@ -275,7 +276,7 @@ export function ExposeButton({ layer, props }: { layer: Layer; props: Prop[] }) 
 const DrivenContext = createContext<Map<string, Value>>(new Map());
 
 function useDrivenValues(layer: Layer): Map<string, Value> {
-  const { template, frame, previewData } = useDesigner();
+  const { template, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, frame: s.frame, previewData: s.previewData })));
   const bound = useBoundData(template, previewData);
   return useMemo(() => {
     const out = new Map<string, Value>();
@@ -306,7 +307,7 @@ function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { val
 
 /** A property row: ◀ ◆ ▶, name, animate, its fields (X / Y…). */
 export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
-  const { frame, update, format, updateBase } = useDesigner();
+  const { frame, update, format, updateBase } = useDesigner(useShallow((s) => ({ frame: s.frame, update: s.update, format: s.format, updateBase: s.updateBase })));
   const driven = useContext(DrivenContext);
   const locked = !!spec.lock && !!layer[spec.lock];
   const overridden = format !== MAIN_FORMAT && spec.props.some((p) => isOverridden(layer, format, p));
@@ -358,7 +359,7 @@ export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
 
 /** Colour row in the same layout. */
 export function ColorGroupRow({ layer, prop, label }: { layer: Layer; prop: 'fill' | 'stroke' | 'shadowColor' | 'fill2'; label: string }) {
-  const { frame, update } = useDesigner();
+  const { frame, update } = useDesigner(useShallow((s) => ({ frame: s.frame, update: s.update })));
   const driven = useContext(DrivenContext).get(prop);
   return (
     <div className={`pp-row ${isAnimated(layer, prop) ? 'animated' : ''}`}>
@@ -402,7 +403,7 @@ export function fieldKey(label: string, taken: Set<string>): string {
 
 /** Dot on a property changed in the current format; click to inherit again. */
 function OverrideMark({ layer, prop }: { layer: Layer; prop: Prop }) {
-  const { format, updateBase } = useDesigner();
+  const { format, updateBase } = useDesigner(useShallow((s) => ({ format: s.format, updateBase: s.updateBase })));
   if (format === MAIN_FORMAT || !isOverridden(layer, format, prop)) return null;
   return (
     <button className="override-mark" title={t('Changed in this format — click to use the main layout again')} onClick={() => updateBase((tpl) => resetOverride(findLayer(tpl, layer.id)!, format, prop))}>
@@ -750,7 +751,7 @@ const FILL_LABEL: Partial<Record<LayerType, string>> = {
 
 /** In another format than main: what is specific to it, and a reset. */
 function FormatNote({ layer }: { layer: Layer }) {
-  const { format, updateBase } = useDesigner();
+  const { format, updateBase } = useDesigner(useShallow((s) => ({ format: s.format, updateBase: s.updateBase })));
   const project = useApp((s) => s.project);
   if (format === MAIN_FORMAT || !project) return null;
   const name = project.formats.find((f) => f.id === format)?.name ?? format;
@@ -787,7 +788,7 @@ function WiredValue({ value, multiline }: { value: string; multiline?: boolean }
 }
 
 function LayerGeneral({ layer }: { layer: Layer }) {
-  const { update, template, previewData } = useDesigner();
+  const { update, template, previewData } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template, previewData: s.previewData })));
   const data = useBoundData(template, previewData);
   if (!template) return null;
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
@@ -933,7 +934,7 @@ function LottieSource({ layer }: { layer: Layer }) {
 
 /** Settings of a spec widget (web/src/widgets), its warnings and its Operator controls to try. */
 function SpecInspector({ layer }: { layer: Layer }) {
-  const { update, template, previewData } = useDesigner();
+  const { update, template, previewData } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template, previewData: s.previewData })));
   const data = useBoundData(template, previewData);
   const state = useDesigner((s) => s.widgetState[layer.id]);
   const actWidget = useDesigner((s) => s.actWidget);
@@ -1006,7 +1007,7 @@ function RowStep({ ds }: { ds: DataSet }) {
 }
 
 function LayerInspector({ layer }: { layer: Layer }) {
-  const { update } = useDesigner();
+  const { update } = useDesigner(useShallow((s) => ({ update: s.update })));
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const textLike = TEXT_LIKE.has(layer.type);
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
@@ -1099,7 +1100,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
  * colour, offset and blur, animatable like the other properties. Drawn by both renderers.
  */
 function EffectsGroup({ layer }: { layer: Layer }) {
-  const { update } = useDesigner();
+  const { update } = useDesigner(useShallow((s) => ({ update: s.update })));
   const set = (path: string, v: unknown, coalesce?: boolean) => update((t) => setPath(findLayer(t, layer.id)!, path, v), coalesce ? `${path}-${layer.id}` : undefined);
   return (
     <Bound obj={layer} set={set}>
@@ -1148,7 +1149,7 @@ export function EasingCurve({ easing, size = 120 }: { easing: Easing; size?: num
 
 /** The easing of the stretch between two keyframes (clicked in the timeline): nothing else. */
 function SegmentInspector() {
-  const { template, selectedSegment: seg, update } = useDesigner();
+  const { template, selectedSegment: seg, update } = useDesigner(useShallow((s) => ({ template: s.template, selectedSegment: s.selectedSegment, update: s.update })));
   if (!template || !seg) return null;
   const layer = findLayer(template, seg.layerId);
   const k = seg.props.map((p) => layer?.tracks[p]?.find((x) => x.frame === seg.frame)).find(Boolean);
@@ -1269,7 +1270,7 @@ const OVERFLOWS: { value: TextOverflow; label: string; hint: string }[] = [
 
 /** What a text does when it is too long for its box, and how it does now with the preview values. */
 function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edit: (fn: (l: Layer) => void, key?: string) => void }) {
-  const { frame, previewData, template } = useDesigner();
+  const { frame, previewData, template } = useDesigner(useShallow((s) => ({ frame: s.frame, previewData: s.previewData, template: s.template })));
   const data = useBoundData(template, previewData);
   const mode = layer.overflow ?? 'fit';
   const fit = fitLayer(layer, resolveLayer(layer, frame, data, template ? holdFrame(template) : 0), layerText(layer, data));
@@ -1318,7 +1319,7 @@ function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edi
 }
 
 function TemplateInspector({ template }: { template: Template }) {
-  const { update } = useDesigner();
+  const { update } = useDesigner(useShallow((s) => ({ update: s.update })));
   const fps = useApp((s) => s.project?.frameRate);
   const project = useApp((s) => s.project);
   const zones = project?.zones ?? [];
@@ -1369,7 +1370,7 @@ function TemplateInspector({ template }: { template: Template }) {
 }
 
 export function Inspector() {
-  const { template, selected, selectedSegment } = useDesigner();
+  const { template, selected, selectedSegment } = useDesigner(useShallow((s) => ({ template: s.template, selected: s.selected, selectedSegment: s.selectedSegment })));
   const editSafe = useGuidesView((s) => s.editSafe);
   const project = useApp((s) => s.project);
   if (editSafe && project)

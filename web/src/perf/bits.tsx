@@ -6,7 +6,10 @@ export function Bar({ value, max = 100, tone, mark, className = '' }: { value: n
   const w = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <span className={`perf-bar tone-${tone} ${className}`}>
-      <span className="perf-bar-fill" style={{ width: `${w}%` }} />
+      {/* Moved, not resized: the browser eases it without laying the page out again on each frame. */}
+      <span className="perf-bar-track">
+        <span className="perf-bar-fill" style={{ transform: `translateX(${w - 100}%)` }} />
+      </span>
       {mark !== undefined && max > 0 && <span className="perf-bar-mark" style={{ left: `${Math.min(100, (mark / max) * 100)}%` }} />}
     </span>
   );

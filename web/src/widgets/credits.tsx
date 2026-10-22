@@ -2,7 +2,7 @@
 // logos, spaces) with an import from text, 1 / 2 / 3 columns, styles per level, speed from a total duration or
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { ChevronLast, Pause, Play, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import { parseDuration } from '../engine/widgets';
@@ -364,7 +364,8 @@ function TextBox({ s, t, align, box, cut, family }: { s: St; t: string; align: '
   if (!t.trim()) return null;
   return <FitLine text={styled(s, t)} size={s.size} weight={s.weight} ls={lsOf(s)} align={align} box={box} color={hex(s.color, '#fff')} family={family} fit={cut ? { overflow: 'ellipsis', minSize: s.size, minSqueeze: 100 } : undefined} />;
 }
-function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
+// Memoised: a block rolling by keeps its props (it is slid by its parent), it is not drawn again on each frame.
+const BlockView = memo(function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
   const { section: ss, role: rs, name: ns } = k.st;
   const al = k.align;
   if (b.body.t === 'space') return null;
@@ -398,13 +399,14 @@ function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
       ))}
     </>
   );
-}
+});
 
 function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
-  const k = cfg(layer);
+  // Redrawn on each frame: the layout is kept (laid out again when a font loads).
+  const fonts = useFonts((s) => s.ready);
+  const k = useMemo(() => cfg(layer), [layer]);
   const st = (state ?? {}) as State;
-  const es = entriesOf(k, data);
-  const g = geo(k, es, w, h);
+  const g = useMemo(() => geo(k, entriesOf(k, data), w, h), [k, data, w, h, fonts]); // eslint-disable-line react-hooks/exhaustive-deps
   const vert = k.mode !== 'crawl';
   const f = k.fadeSize;
   const mask = k.fade ? `linear-gradient(${vert ? '180deg' : '90deg'},transparent 0,#000 ${f}px,#000 calc(100% - ${f}px),transparent 100%)` : undefined;
@@ -416,7 +418,12 @@ function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: n
     g.bl.forEach((b, i) => {
       const y = off + b.y;
       if (y > h || y + b.h < 0) return;
-      out.push(<BlockView key={i} k={k} b={b} y0={y} w={w} />);
+      // Slid as one (a transform): on each frame nothing is laid out again.
+      out.push(
+        <div key={i} style={{ transform: `translateY(${y}px)` }}>
+          <BlockView k={k} b={b} y0={0} w={w} />
+        </div>,
+      );
     });
   } else if (k.mode === 'crawl') {
     const off = g.a - p * g.x;
@@ -697,6 +704,7 @@ export default defineWidget({
   ownsLook: true,
   content: ['entries', 'link'],
   live: () => true,
+  ageOnly: true,
   Render: ({ layer, w, h, data, time, state }) => <CreditsRender layer={layer} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => {
     const l = layer as unknown as CL;

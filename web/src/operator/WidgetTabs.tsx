@@ -185,7 +185,7 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
   const live = useRef(true);
   useEffect(() => {
     live.current = true;
-    const h = setInterval(() => tick((n) => n + 1), 500);
+    const h = setInterval(() => document.hidden || tick((n) => n + 1), 500);
     return () => {
       live.current = false;
       clearInterval(h);

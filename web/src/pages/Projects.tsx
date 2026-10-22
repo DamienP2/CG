@@ -743,7 +743,7 @@ function ProjectAir({ chans }: { chans: ChannelMetrics[] }) {
   return (
     <span
       className={`project-air tone-${tone} ${onAir ? 'live' : ''}`}
-      style={{ ['--load' as string]: `${Math.min(100, load)}%` }}
+      style={{ ['--load-k' as string]: Math.min(100, load) / 100 }}
       title={t('Frame rate of the slowest picture · render time, % of the frame time')}
     >
       <span className="project-air-state">{onAir ? t('On air') : t('Loaded')}</span>

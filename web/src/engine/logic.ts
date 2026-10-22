@@ -1,6 +1,7 @@
 // Relations between values — mirror of crates/cg-core/src/logic.rs.
 import { COLOR_PROPS, type Data, type Layer, type Logic, type LogicNode, type Prop, type TextMetric } from './types';
 import { parseHex, transformText, type Resolved } from './evaluate';
+import { lineWidth } from './textFit';
 
 export type LVal = number | string;
 
@@ -182,8 +183,6 @@ export function nodeValues(logic: Logic, values: Map<string, Resolved>, data: Da
   return out;
 }
 
-let ctx2d: CanvasRenderingContext2D | null = null;
-
 /** Text measurement with the browser's fonts (same files as the server's). */
 export function measureLayer(layers: Layer[], data: Data, interpolate: (t: string, d: Data) => string): Measure {
   return (id, v, metric) => {
@@ -197,10 +196,9 @@ export function measureLayer(layers: Layer[], data: Data, interpolate: (t: strin
     if (metric === 'chars') return [...text].length;
     if (metric === 'height') return text ? lines.length * size * (l.lineHeight ?? 1.2) : 0;
     if (!text) return 0;
-    ctx2d ??= document.createElement('canvas').getContext('2d');
-    if (!ctx2d) return 0;
-    ctx2d.font = `${l.fontWeight} ${size}px "${l.fontFamily}", Inter, system-ui, sans-serif`;
+    const font = `${l.fontWeight} ${size}px "${l.fontFamily}", Inter, system-ui, sans-serif`;
     const ls = typeof v.letterSpacing === 'number' ? v.letterSpacing : 0;
-    return Math.max(...lines.map((line) => ctx2d!.measureText(line).width + Math.max(0, [...line].length - 1) * ls));
+    // Measured once per font and line (lineWidth), not on each frame.
+    return Math.max(...lines.map((line) => lineWidth(font, line) + Math.max(0, [...line].length - 1) * ls));
   };
 }

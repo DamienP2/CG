@@ -1,4 +1,5 @@
 import { widgetOf } from '../widgets';
+import { useShallow } from 'zustand/react/shallow';
 import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
@@ -362,7 +363,7 @@ export function DataCanvas() {
 }
 
 function Canvas({ template, onClose }: { template: Template; onClose: () => void }) {
-  const { update, previewData, frame } = useDesigner();
+  const { update, previewData, frame } = useDesigner(useShallow((s) => ({ update: s.update, previewData: s.previewData, frame: s.frame })));
   const projectId = useApp((s) => s.project?.id);
   // Lookups by id: every source; the palette: this project's and the shared ones.
   const sources = useSources();

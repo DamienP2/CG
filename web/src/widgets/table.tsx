@@ -701,6 +701,7 @@ export default defineWidget({
     const k = cfg(l);
     return k.cascade.on || k.pageMode === 'scroll';
   },
+  ageOnly: true,
   Render: ({ layer, r, w, data, time, state, lang }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} lang={lang} />,
   Inspector: ({ layer }) => <TableCard layer={layer as unknown as TL} />,
   quiet: true,

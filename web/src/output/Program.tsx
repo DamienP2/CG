@@ -1,10 +1,10 @@
-import { useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import { formatFor, inFormat } from '../engine/formats';
 import { LiveTime, useTicker } from '../engine/LiveTime';
-import { hasLiveWidgets, Scene } from '../engine/Scene';
+import { Scene } from '../engine/Scene';
 import { layerAgeFrames } from '../engine/widgets';
 import { areaClip, zoneArea } from '../engine/zones';
-import type { PlayoutItem, Project, Template } from '../engine/types';
+import type { Layer, PlayoutItem, Project, Template } from '../engine/types';
 import type { Live } from '../store';
 
 /**
@@ -12,17 +12,13 @@ import type { Live } from '../store';
  * picture: the project format closest to that shape (16:9, 9:16…) is used
  * and letterboxed, like the Rust renderer does for SDI / ST 2110.
  */
-export function Program({ project, live, width, height }: { project: Project; live: Live | undefined; width: number; height: number }) {
+export const Program = memo(function Program({ project, live, width, height, maxFps }: { project: Project; live: Live | undefined; width: number; height: number; /** A monitor: at most this many frames a second (the HTML5 output: every frame). */ maxFps?: number }) {
   const format = formatFor(project, width, height);
   // Templates laid out in that format, computed once per project change.
   const templates = useMemo(() => new Map<string, Template>(project.templates.map((t) => [t.id, inFormat(t, format.id)])), [project, format.id]);
   const items = Object.entries(live?.state.layers ?? {}).sort(([a], [b]) => Number(a) - Number(b));
-  const now = useTicker(
-    items.some(([, item]) => {
-      const t = templates.get(item.templateId);
-      return moving(item) || (!!t && hasLiveWidgets(t));
-    }),
-  );
+  // Redrawn on each frame while a timeline or a fade moves; the widgets that move by themselves (a ticker…) redraw alone.
+  const now = useTicker(items.some(([, item]) => moving(item)), maxFps);
   const fps = project.frameRate.num / project.frameRate.den || 1;
   // Frames shown last, by playout layer: never step back when a state
   // arrives a little behind what was extrapolated.
@@ -59,13 +55,13 @@ export function Program({ project, live, width, height }: { project: Project; li
         const t = templates.get(item.templateId);
         if (!t) return null;
         // The server only sends states when timelines move: extrapolate time on air.
-        const age = (item.age ?? 0) / fps + since;
+        const age = (item.age ?? 0) / fps;
         const frame = frameOf(layer, item);
         const fade = item.fade ? Math.min(item.fade.length, item.fade.frame + since * fps) : null;
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
-            <LiveTime ageSecs={age} clientNow={now} layerAge={item.clocks || t.layers.some((l) => l.manualStart) ? (l) => layerAgeFrames(item, age * fps, l) / fps : undefined} clocked={(l) => !!item.clocks?.[l.id] || !!l.manualStart} widgetState={(id) => item.widgets?.[id]} fps={fps} lang={project.language}>
+            <LayerTime item={item} template={t} ageSecs={age} since={live?.at ?? now} now={now} maxFps={maxFps} fps={fps} lang={project.language}>
               {/*
                * A row or an Update fading: the graphic with the new values fades in while the one with
                * the old values fades out, added up (plus-lighter): what both cover stays opaque.
@@ -85,11 +81,25 @@ export function Program({ project, live, width, height }: { project: Project; li
                   </div>
                 );
               })()}
-            </LiveTime>
+            </LayerTime>
           </div>
         );
       })}
     </div>
+  );
+});
+
+/** The time of one playout layer: on air, it runs on from the last state received. */
+function LayerTime({ item, template, ageSecs, since, now, maxFps, fps, lang, children }: { item: PlayoutItem; template: Template; ageSecs: number; since: number; now: number; maxFps?: number; fps: number; lang?: string; children: React.ReactNode }) {
+  // Kept while the item is the same: the widgets that do not move are not drawn again.
+  const manual = useMemo(() => template.layers.some((l) => l.manualStart), [template]);
+  const layerAge = useMemo(() => (item.clocks || manual ? (l: Layer, age: number) => layerAgeFrames(item, age * fps, l) / fps : undefined), [item, manual, fps]);
+  const clocked = useCallback((l: Layer) => !!item.clocks?.[l.id] || !!l.manualStart, [item]);
+  const widgetState = useCallback((id: string) => item.widgets?.[id], [item]);
+  return (
+    <LiveTime ageSecs={ageSecs} since={since} clientNow={now} ticking="all" maxFps={maxFps} layerAge={layerAge} clocked={clocked} widgetState={widgetState} fps={fps} lang={lang}>
+      {children}
+    </LiveTime>
   );
 }
 

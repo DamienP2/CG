@@ -37,11 +37,32 @@ export interface FitOptions {
 
 let ctx: CanvasRenderingContext2D | null = null;
 
+/*
+ * Widths measured, by font and line: a text moving or redrawn on each frame
+ * (a ticker, a readout) is measured once, not on every frame. Forgotten when
+ * a font finishes loading (the widths change) and when it grows too big.
+ */
+const widths = new Map<string, number>();
+if (typeof document !== 'undefined' && document.fonts) document.fonts.addEventListener('loadingdone', () => widths.clear());
+
+/** The width of one line of text in a CSS `font` (canvas measure, without letter spacing); 0 without a canvas. */
+export function lineWidth(font: string, line: string): number {
+  const key = `${font}\u0000${line}`;
+  let w = widths.get(key);
+  if (w === undefined) {
+    ctx ??= document.createElement('canvas').getContext('2d');
+    if (!ctx) return 0;
+    ctx.font = font;
+    w = ctx.measureText(line).width;
+    if (widths.size >= 4000) widths.clear();
+    widths.set(key, w);
+  }
+  return w;
+}
+
 export function textWidth(text: string, o: Pick<FitOptions, 'fontFamily' | 'fontWeight' | 'letterSpacing'>, size: number): number {
-  ctx ??= document.createElement('canvas').getContext('2d');
-  if (!ctx) return 0;
-  ctx.font = `${o.fontWeight} ${size}px "${o.fontFamily}", Inter, system-ui, sans-serif`;
-  return Math.max(0, ...text.split('\n').map((line) => ctx!.measureText(line).width + Math.max(0, [...line].length - 1) * o.letterSpacing));
+  const font = `${o.fontWeight} ${size}px "${o.fontFamily}", Inter, system-ui, sans-serif`;
+  return Math.max(0, ...text.split('\n').map((line) => lineWidth(font, line) + Math.max(0, [...line].length - 1) * o.letterSpacing));
 }
 
 /** Breaks lines at spaces so that none is wider than `maxW` (like the Rust wrap_text). */

@@ -2,14 +2,15 @@
 // text / symbol / picture, categories, title block, edge fade, end of list. The queue lives in the operator's
 // state (seeded from the layer's items); its edits apply at the next pass, without a jump.
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ArrowLeftRight, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
-import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, SliderNum, Text, Toggle, useKeys, type Warning } from './kit';
-import { FitLine, FONT_CSS, tw, useLiveTime } from './table-text';
+import { useFonts } from '../engine/fonts';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, SliderNum, Text, Toggle, useFrameValue, useKeys, type Warning } from './kit';
+import { FitLine, FONT_CSS, tw, useLiveClock } from './table-text';
 import { t, tc } from '../i18n';
 
 export interface Item {
@@ -330,7 +331,8 @@ function measure(k: K, l: TL, lk: Look) {
   return { catOf, chipW, itemW, sepW };
 }
 
-function ItemView({ it, x, h, k, lk, ms }: { it: Item; x: number; h: number; k: K; lk: Look; ms: ReturnType<typeof measure> }) {
+// Memoised: an item sliding by keeps its props, it is not drawn again on each frame.
+const ItemView = memo(function ItemView({ it, x, h, k, lk, ms }: { it: Item; x: number; h: number; k: K; lk: Look; ms: ReturnType<typeof measure> }) {
   const c = ms.catOf(it);
   const { cs, cp, cg } = chip(lk.size);
   const cw = ms.chipW(it);
@@ -345,8 +347,8 @@ function ItemView({ it, x, h, k, lk, ms }: { it: Item; x: number; h: number; k: 
       {void k}
     </>
   );
-}
-function SepView({ x, w, h, k, l, lk }: { x: number; w: number; h: number; k: K; l: TL; lk: Look }) {
+});
+const SepView = memo(function SepView({ x, w, h, k, l, lk }: { x: number; w: number; h: number; k: K; l: TL; lk: Look }) {
   const color = k.sepColor || lk.color;
   const box = { position: 'absolute' as const, left: x, top: 0, width: w, height: h, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'pre' as const };
   if (k.sepType === 'none') return null;
@@ -356,7 +358,7 @@ function SepView({ x, w, h, k, l, lk }: { x: number; w: number; h: number; k: K;
   }
   if (k.sepType === 'symbol') return <div style={{ ...box, font: `900 ${Math.round(lk.size * 0.7)}px ${FONT_CSS}`, lineHeight: 1.2, color }}>{k.sepSymbol}</div>;
   return <div style={{ ...box, alignItems: lk.ai, fontFamily: `"${lk.family}", ${FONT_CSS}`, fontWeight: lk.weight, fontSize: lk.size, letterSpacing: lk.ls, lineHeight: 1.2, color }}>{upc(l.separator ?? '', lk.upper)}</div>;
-}
+});
 
 function lookOf(l: TL, r: Record<string, unknown>): Look {
   return {
@@ -370,30 +372,56 @@ function lookOf(l: TL, r: Record<string, unknown>): Look {
   };
 }
 
-/** Everything the picture and the Operator need at `now`. */
-function scene(l: TL, k: K, st: State, data: Data, lk: Look, w: number, h: number, now: number, age: number) {
+/** What the picture is whatever the time: the measures and the tape (kept from one frame to the next). */
+function sceneBase(l: TL, k: K, st: State, data: Data, lk: Look, w: number, h: number) {
   const ms = measure(k, l, lk);
   const zx = k.title.on ? Math.max(0, Math.min(k.title.w, w - 40)) : 0;
   const zw = Math.max(40, w - zx);
-  const e = clockOf(l, k, st, now, age);
   const q = expand(queueOf(l, st), data);
   const crawl = k.mode === 'crawl';
   const gap = k.spacing + ms.sepW;
   const placed = crawl ? resolve(runsOf(l, st), data, (i) => ms.itemW(i) + gap, zw, k.startFull ? 0 : zw, limitOf(k)) : resolve(runsOf(l, st), data, () => 1, 0, 0, limitOf(k));
   const P = periodOf(l, k, st, h);
-  const pos = crawl ? e : Math.floor(e / P);
-  const end = tapeEnd(placed);
-  const ended = end !== undefined && (crawl ? pos >= end : pos >= end);
-  return { ms, zx, zw, e, q, crawl, gap, placed, P, pos, ended, pass: passAt(placed, pos) };
+  return { ms, zx, zw, q, crawl, gap, placed, P, end: tapeEnd(placed) };
+}
+
+/** The picture at `now`: where the tape is. */
+function sceneAt(b: ReturnType<typeof sceneBase>, l: TL, k: K, st: State, now: number, age: number) {
+  const e = clockOf(l, k, st, now, age);
+  const pos = b.crawl ? e : Math.floor(e / b.P);
+  const ended = b.end !== undefined && pos >= b.end;
+  return { ...b, e, pos, ended, pass: passAt(b.placed, pos) };
+}
+
+/** Everything the picture and the Operator need at `now`. */
+function scene(l: TL, k: K, st: State, data: Data, lk: Look, w: number, h: number, now: number, age: number) {
+  return sceneAt(sceneBase(l, k, st, data, lk, w, h), l, k, st, now, age);
 }
 
 // ------------------------------------------------------------- render --
 function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<string, unknown>; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
-  const k = cfg(l);
-  const st = (state ?? {}) as State;
-  const lk = lookOf(l, r);
-  const sc = scene(l, k, st, data, lk, w, h, time.nowMs, time.ageSecs);
+  // Redrawn on each frame: what does not depend on the time is kept (measured again when a font loads).
+  const fonts = useFonts((s) => s.ready);
+  const k = useMemo(() => cfg(l), [l]);
+  const st = useMemo(() => (state ?? {}) as State, [state]);
+  const look = lookOf(l, r);
+  const lk = useMemo(() => look, [look.ai, look.family, look.weight, look.size, look.ls, look.upper, look.color]); // eslint-disable-line react-hooks/exhaustive-deps
+  const base = useMemo(() => sceneBase(l, k, st, data, lk, w, h), [l, k, st, data, lk, w, h, fonts]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sc = sceneAt(base, l, k, st, time.nowMs, time.ageSecs);
   const { ms, zx, zw, e, crawl, gap, placed, P } = sc;
+  const ts = Math.round(lk.size * 0.95);
+  // The title does not move: the same element from one frame to the next (not drawn again).
+  const title = useMemo(
+    () =>
+      k.title.on &&
+      zx > 0 && (
+        <>
+          <div style={{ position: 'absolute', left: 0, top: 0, width: zx, height: h, background: cssBg(k.title.bg), clipPath: `polygon(0 0,100% 0,calc(100% - ${Math.min(22, zx)}px) 100%,0 100%)` }} />
+          <FitLine text={k.title.text} size={ts} weight={900} ls={ts * 0.06} align="center" box={[0, 0, Math.max(1, zx - 16), h]} color={cssBg(k.title.color)} fit={{ overflow: 'shrink', minSize: ts * 0.5, minSqueeze: 70 }} />
+        </>
+      ),
+    [k, zx, h, ts, fonts],
+  );
   const empty = !sc.q.length;
   if (empty && k.emptyMode === 'hide') return null;
   const fw = crawl ? Math.min(k.fadeW, zw / 3) : Math.min(k.fadeW, h * 0.2);
@@ -408,21 +436,22 @@ function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<stri
       );
   } else if (crawl) {
     const right = k.dir === 'right';
-    segs(placed, e, e + zw).forEach((g, i) => {
+    segs(placed, e, e + zw).forEach((g) => {
       const iw = ms.itemW(g.item);
       const rel = g.x - e;
       const x0 = right ? zw - rel - g.w : rel;
       content.push(
-        <div key={i}>
+        // Keyed by its place on the tape and slid as one (a transform): on each frame only its offset changes, nothing is laid out again.
+        <div key={g.x} style={{ transform: `translateX(${x0}px)` }}>
           {right ? (
             <>
-              <SepView x={x0} w={gap} h={h} k={k} l={l} lk={lk} />
-              <ItemView it={g.item} x={x0 + gap} h={h} k={k} lk={lk} ms={ms} />
+              <SepView x={0} w={gap} h={h} k={k} l={l} lk={lk} />
+              <ItemView it={g.item} x={gap} h={h} k={k} lk={lk} ms={ms} />
             </>
           ) : (
             <>
-              <ItemView it={g.item} x={x0} h={h} k={k} lk={lk} ms={ms} />
-              <SepView x={x0 + iw} w={gap} h={h} k={k} l={l} lk={lk} />
+              <ItemView it={g.item} x={0} h={h} k={k} lk={lk} ms={ms} />
+              <SepView x={iw} w={gap} h={h} k={k} l={l} lk={lk} />
             </>
           )}
         </div>,
@@ -471,33 +500,31 @@ function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<stri
       if (next && m > 0) put('b', next, 0, u * (1 - m) * h, 1, 1, 0);
     }
   }
-  const ts = Math.round(lk.size * 0.95);
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', background: k.barBg ? cssBg(k.barBg) : undefined }}>
       <div style={{ position: 'absolute', left: zx, top: 0, width: zw, height: h, overflow: 'hidden', WebkitMaskImage: mask, maskImage: mask }}>{content}</div>
-      {k.title.on && zx > 0 && (
-        <>
-          <div style={{ position: 'absolute', left: 0, top: 0, width: zx, height: h, background: cssBg(k.title.bg), clipPath: `polygon(0 0,100% 0,calc(100% - ${Math.min(22, zx)}px) 100%,0 100%)` }} />
-          <FitLine text={k.title.text} size={ts} weight={900} ls={ts * 0.06} align="center" box={[0, 0, Math.max(1, zx - 16), h]} color={cssBg(k.title.color)} fit={{ overflow: 'shrink', minSize: ts * 0.5, minSqueeze: 70 }} />
-        </>
-      )}
+      {title}
     </div>
   );
 }
 
 // ------------------------------------------------------------ operator --
-type OpP = { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
+type OpP = { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
-/** The scene at this frame, for the Operator's rows. */
+/** What the Operator's rows need of the scene: whether the list has ended, followed on each frame but redrawn only when it flips. */
 function useScene({ l, state, data, time }: OpP) {
-  const { now, age: onAir } = useLiveTime(time);
+  const at = useLiveClock(time);
   const k = cfg(l);
   const st = (state ?? {}) as State;
   const w = num(l.props.width as number) || 1920;
   const h = num(l.props.height as number) || 80;
   const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: l.props.fill ?? [1, 1, 1, 1] });
-  const age = st.started ? 0 : onAir;
-  return { k, st, sc: scene(l, k, st, data, lk, w, h, now, age) };
+  // Held by the preview (no state yet, its time standing still): nothing to follow.
+  const ended = useFrameValue(() => {
+    const { now, age: onAir } = at();
+    return scene(l, k, st, data, lk, w, h, now, st.started ? 0 : onAir).ended;
+  }, !time.held);
+  return { k, st, sc: { ended } };
 }
 
 /** The category of an urgent item: one named URGENT, if any. */
@@ -626,6 +653,7 @@ export default defineWidget({
   ownsLook: true,
   content: ['items', 'text'],
   live: () => true,
+  ageOnly: true,
   Render: ({ layer, r, w, h, data, time, state }) => <TickerRender l={layer as unknown as TL} r={r as never} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, set }) => {
     const l = layer as unknown as TL;

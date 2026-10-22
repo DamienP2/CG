@@ -67,7 +67,7 @@ export function useInputs(): InputInfo[] {
   useEffect(() => {
     if (listUsers++ === 0) {
       void fetchList();
-      listTimer = setInterval(() => void fetchList(), 3000);
+      listTimer = setInterval(() => document.hidden || void fetchList(), 3000);
     }
     return () => {
       if (--listUsers === 0 && listTimer) {

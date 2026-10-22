@@ -3,7 +3,7 @@ import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
 import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
@@ -14,7 +14,7 @@ import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { KeyScope, MoreToggle, Row } from '../widgets/kit';
+import { KeyScope, MoreToggle, ReadoutFps, Row } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
 import { changedKeys, hasControls, hasMore, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
@@ -259,7 +259,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
   // Bound fields read live show the source's value (manual ones show what was read).
   const boundDraft = useBoundData(readMode === 'manual' ? undefined : template, draft);
-  const previewData = { ...(template ? defaultData(template) : {}), ...draft, ...boundDraft };
+  // Kept while nothing changes: the preview is not drawn again for nothing.
+  const previewData = useMemo(() => ({ ...(template ? defaultData(template) : {}), ...draft, ...boundDraft }), [template, draft, boundDraft]);
 
   /** Saves the item's data a moment after the last edit. */
   const flush = async () => {
@@ -527,7 +528,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             <Screen width={previewFormat.width} height={previewFormat.height}>
               {template && (
                 <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
-                  <PreviewScene template={inFormat(template, previewFormat.id)} data={previewData} fps={fps} run={pv} lang={lang} />
+                  <PreviewScene template={template} format={previewFormat.id} data={previewData} fps={fps} run={pv} lang={lang} />
                 </div>
               )}
             </Screen>
@@ -660,7 +661,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
               programs.map((p) => (
                 <div key={p.id} className="opx-monitor" style={{ flex: `${p.width / p.height} 1 0` }}>
                   <Screen width={p.width} height={p.height}>
-                    <Program project={project} live={liveState} width={p.width} height={p.height} />
+                    {/* A monitor: 30 frames a second are enough (the HTML5 output runs at the display rate). */}
+                    <Program project={project} live={liveState} width={p.width} height={p.height} maxFps={MONITOR_FPS} />
                   </Screen>
                 </div>
               ))
@@ -704,6 +706,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   );
 }
 
+/** The Operator's monitors and countdowns redraw at most this many times a second. */
+const MONITOR_FPS = 30;
+
 /** An auto next on its way: the graphic on air, the one it takes, and when (client clock, ms). */
 function pendingAutoNext(project: Project, live: Live | undefined): { from: RundownItem; to: RundownItem | undefined; at: number; secs: number } | null {
   if (!live) return null;
@@ -728,7 +733,7 @@ function pendingAutoNext(project: Project, live: Live | undefined): { from: Rund
 /** NEXT: takes the cued graphic; with an auto next on its way, its countdown (and what it takes). */
 function NextButton({ project, live, target, disabled, onTake }: { project: Project; live: Live | undefined; target: RundownItem | undefined; disabled: boolean; onTake: () => void }) {
   const auto = pendingAutoNext(project, live);
-  const now = useTicker(!!auto);
+  const now = useTicker(!!auto, MONITOR_FPS);
   const left = auto ? Math.max(0, (auto.at - now) / 1000) : 0;
   if (auto) {
     const done = auto.secs > 0 ? Math.min(1, Math.max(0, 1 - left / auto.secs)) : 1;
@@ -918,18 +923,23 @@ function tabName(widgets: WidgetPart[], i: number) {
  * The preview of the selected graphic, held at its On air point; its widgets run once the preview's
  * controls were used. A widget moving by itself waits for its Play, still at its start (heldAt).
  */
-function PreviewScene({ template, data, fps, run, lang }: { template: Template; data: Record<string, string>; fps: number; run: PreviewRun; lang: string }) {
+const PreviewScene = memo(function PreviewScene({ template: base, format, data, fps, run, lang }: { template: Template; format: string; data: Record<string, string>; fps: number; run: PreviewRun; lang: string }) {
+  const template = useMemo(() => inFormat(base, format), [base, format]);
   const hold = holdFrame(template);
-  const now = useTicker(run.active);
-  const age = hold / fps + (run.active ? Math.max(0, now - run.since) / 1000 : 0);
-  const clocks = { clocks: run.clocks } as PlayoutItem;
-  const held = (l: Layer) => heldAt(run, l, data, hold / fps);
+  const holdSecs = hold / fps;
+  // Kept while the preview's run and values stay: only the widgets that move redraw on each frame (while it runs).
+  const layerAge = useCallback(
+    (l: Layer, age: number) => heldAt(run, l, data, holdSecs) ?? (run.active ? layerAgeFrames({ clocks: run.clocks } as PlayoutItem, age * fps, l) / fps : age),
+    [run, data, holdSecs, fps],
+  );
+  const clocked = useCallback((l: Layer) => heldAt(run, l, data, holdSecs) !== undefined || (run.active && (!!run.clocks[l.id] || !!l.manualStart)), [run, data, holdSecs]);
+  const widgetState = useMemo(() => (run.active ? (id: string) => run.widgets[id] : undefined), [run]);
   return (
-    <LiveTime ageSecs={age} clientNow={now} layerAge={(l) => held(l) ?? (run.active ? layerAgeFrames(clocks, age * fps, l) / fps : age)} clocked={(l) => held(l) !== undefined || (run.active && (!!run.clocks[l.id] || !!l.manualStart))} widgetState={run.active ? (id) => run.widgets[id] : undefined} fps={fps} lang={lang}>
+    <LiveTime ageSecs={holdSecs} since={run.active ? run.since : undefined} ticking={run.active ? 'all' : false} layerAge={layerAge} clocked={clocked} widgetState={widgetState} fps={fps} lang={lang}>
       <Scene template={template} frame={hold} data={data} />
     </LiveTime>
   );
-}
+});
 
 /** In, hold and out of a template, and where the graphic on air is in it. */
 function MiniTimeline({ template, air }: { template?: Template; air?: PlayoutItem }) {
@@ -1213,7 +1223,10 @@ function SpecControls({ layer, item, act, fps, lang, selected, onSelect, more, o
         </MoreToggle.Provider>
         {Op && (
           <div hidden>
-            <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
+            {/* Not seen: its readouts need not follow each frame. */}
+            <ReadoutFps.Provider value={4}>
+              <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
+            </ReadoutFps.Provider>
           </div>
         )}
       </div>

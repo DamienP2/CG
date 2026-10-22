@@ -1,4 +1,5 @@
 import { designTemplates } from '../engine/drafts';
+import { useShallow } from 'zustand/react/shallow';
 import { Plus, RectangleHorizontal, RectangleVertical, Square, Wand2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { adaptTemplate, projectFormats } from '../engine/formats';
@@ -145,7 +146,7 @@ function AddFormat({ project, onClose }: { project: Project; onClose: () => void
 
 /** Format tabs of the designer (Main 16:9 | 9:16 | +). */
 export function FormatBar({ project }: { project: Project }) {
-  const { format, setFormat, base, readOnly } = useDesigner();
+  const { format, setFormat, base, readOnly } = useDesigner(useShallow((s) => ({ format: s.format, setFormat: s.setFormat, base: s.base, readOnly: s.readOnly })));
   const toast = useApp((s) => s.toast);
   const [adding, setAdding] = useState(false);
   const formats = projectFormats(project);

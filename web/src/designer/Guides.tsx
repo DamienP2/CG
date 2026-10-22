@@ -1,5 +1,5 @@
 import { ChevronDown, Contrast, Eye, EyeOff, Move, Plus, Ruler, ShieldCheck, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { newId } from '../engine/evaluate';
 import type { Area, Guides, Project } from '../engine/types';
@@ -210,7 +210,8 @@ function RulerBar({ axis, length, scale, onGuide }: { axis: 'x' | 'y'; length: n
  * Rulers, guides, safe areas and areas to keep clear over the stage.
  * `frameRef` is the stage frame the positions are relative to.
  */
-export function StageGuides({ project, width, height, scale, frameRef }: { project: Project; width: number; height: number; scale: number; frameRef: React.RefObject<HTMLDivElement | null> }) {
+// Memoised: not drawn again on each frame of the playback (its props stay).
+export const StageGuides = memo(function StageGuides({ project, width, height, scale, frameRef }: { project: Project; width: number; height: number; scale: number; frameRef: React.RefObject<HTMLDivElement | null> }) {
   const view = useGuidesView();
   const [g, setG] = useProjectGuides(project);
 
@@ -305,7 +306,7 @@ export function StageGuides({ project, width, height, scale, frameRef }: { proje
       )}
     </>
   );
-}
+});
 
 const pct = (a: Area) => ({ left: `${a.x * 100}%`, top: `${a.y * 100}%`, width: `${a.width * 100}%`, height: `${a.height * 100}%` });
 

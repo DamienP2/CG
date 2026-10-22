@@ -28,6 +28,7 @@ export function useServerConfig(page: string) {
   useEffect(() => {
     load().catch((e) => toast(String(e), 'error'));
     const h = setInterval(() => {
+      if (document.hidden) return;
       api<SystemInfo>('GET', '/api/system')
         .then(setInfo)
         .catch(() => {});

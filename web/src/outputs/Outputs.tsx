@@ -278,7 +278,7 @@ export function Outputs() {
         .then(setStatus)
         .catch(() => {});
     poll();
-    const h = setInterval(poll, 3000);
+    const h = setInterval(() => document.hidden || void poll(), 3000);
     return () => clearInterval(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -139,7 +139,8 @@ export function useMetrics(): Metrics | null {
   useEffect(() => {
     if (users++ === 0) {
       void poll();
-      timer = setInterval(() => void poll(), 1000);
+      // Not while the page is hidden: nothing shows them.
+      timer = setInterval(() => document.hidden || void poll(), 1000);
     }
     return () => {
       if (--users === 0 && timer) {

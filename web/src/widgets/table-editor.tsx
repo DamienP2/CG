@@ -3,6 +3,7 @@
 // its structure on the left sorted by what is styled (table, title & header, rows, columns), and the settings of
 // the selection on the right, in the inspector's groups.
 import { Eye, EyeOff, GripVertical, Plus, Redo2, Table as TableIcon, Trash2, TriangleAlert, Undo2 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useBoundData } from '../data/dataStore';
@@ -64,7 +65,7 @@ function sampleGrid(cols: Col[]): string[][] {
 }
 
 function Editor({ layer, template, data, onClose }: { layer: TL; template: Template; data: Data; onClose: () => void }) {
-  const { update, undo, redo, past, future } = useDesigner();
+  const { update, undo, redo, past, future } = useDesigner(useShallow((s) => ({ update: s.update, undo: s.undo, redo: s.redo, past: s.past, future: s.future })));
   const frame = useDesigner((s) => s.frame);
   const [sel, setSel] = useState<Sel>({ k: 'table' });
   const k = cfg(layer);

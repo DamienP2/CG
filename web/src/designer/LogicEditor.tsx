@@ -1,4 +1,5 @@
 import { Calculator, Crosshair, Hash, Link2, Split, Target, TextCursorInput, Trash2 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { useMemo, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
 import { INPUTS, measureLayer, nodeValues, type LVal } from '../engine/logic';
@@ -214,7 +215,7 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
 export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' ? port.toUpperCase() : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port) ?? port);
 
 export function LogicEditor({ onClose }: { onClose: () => void }) {
-  const { template, update, frame, previewData } = useDesigner();
+  const { template, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
   const cv = useCanvasView(`logic.${template?.id ?? ''}`, '.logic-node', { onArrange: () => arrange() });
   // Node widths, per browser.
   const sizesKey = `pulse.logicSizes.${template?.id ?? ''}`;
