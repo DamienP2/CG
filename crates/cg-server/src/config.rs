@@ -321,6 +321,10 @@ pub struct ServerConfig {
     /// DeckLink cards and ST 2110 flows (Hardware page).
     #[serde(default)]
     pub hardware: HardwareConfig,
+    /// The channels' projects are a choice (`projectId` null: none); see
+    /// [`ServerConfig::adopt_projects`].
+    #[serde(default)]
+    pub explicit_projects: bool,
     /// Pre-0.2 single-channel outputs, moved into the first channel on load.
     #[serde(default, skip_serializing)]
     outputs: Option<OutputsConfig>,
@@ -347,6 +351,7 @@ impl Default for ServerConfig {
             mos: MosConfig::default(),
             inputs: Vec::new(),
             hardware: HardwareConfig::default(),
+            explicit_projects: false,
             outputs: None,
         }
     }
@@ -394,6 +399,23 @@ impl ServerConfig {
             let _ = c.save(data_dir);
         }
         c
+    }
+
+    /// A new install, or settings from before « no project » was kept: a
+    /// channel without a project showed the first one; it is given it for
+    /// good, once. From then on a channel without a project stays so.
+    /// True when something changed.
+    pub fn adopt_projects(&mut self, first: Option<&str>) -> bool {
+        if self.explicit_projects {
+            return false;
+        }
+        for c in &mut self.channels {
+            if c.project_id.is_none() {
+                c.project_id = first.map(String::from);
+            }
+        }
+        self.explicit_projects = true;
+        true
     }
 
     /// Ids for every destination, and a location for the channels of a
@@ -788,5 +810,23 @@ mod tests {
         let json = serde_json::to_value(&ch).unwrap();
         assert!(json.get("slateStyle").is_none());
         assert_eq!(json["renditions"][1]["slateStyle"], "lines");
+    }
+
+    #[test]
+    fn no_project_is_kept_once_projects_were_adopted() {
+        // Settings from before: the channel without a project gets the first one.
+        let mut c: ServerConfig = serde_json::from_str(
+            r#"{"channels":[{"id":"a","name":"A","width":1920,"height":1080,"frameRate":{"num":25,"den":1},"projectId":null},
+            {"id":"b","name":"B","width":1920,"height":1080,"frameRate":{"num":25,"den":1},"projectId":"p2"}]}"#,
+        )
+        .unwrap();
+        assert!(c.adopt_projects(Some("p1")));
+        assert_eq!(c.channels[0].project_id.as_deref(), Some("p1"));
+        assert_eq!(c.channels[1].project_id.as_deref(), Some("p2"));
+        // Unloaded on purpose (and saved as such): it stays empty.
+        c.channels[0].project_id = None;
+        let mut c: ServerConfig = serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        assert!(!c.adopt_projects(Some("p1")));
+        assert_eq!(c.channels[0].project_id, None);
     }
 }

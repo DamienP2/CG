@@ -1,9 +1,10 @@
 //! Built-in slates: what a channel picture shows while no project is loaded.
 //!
-//! Six designs, each showing « Strata », the channel name, the picture size,
-//! its aspect ratio and frame rate, and the F AudioVisuel signature; the
-//! seventh choice is the user's own picture ([`SlateStyle::Custom`]). A slate
-//! is drawn once, at the picture size, and sent as is by every output.
+//! Six designs, each showing « Strata Graphics » (the app's logo), the
+//! channel name, the picture size, its aspect ratio and frame rate, and the
+//! F AudioVisuel signature; the seventh choice is the user's own picture
+//! ([`SlateStyle::Custom`]). A slate is drawn once, at the picture size, and
+//! sent as is by every output.
 //!
 //! The layouts follow the approved HTML references: sizes are in `cqmin` (a
 //! hundredth of the picture's short side), portrait pictures get the
@@ -373,6 +374,25 @@ impl Run {
     }
 }
 
+/// The app's logo, « Strata Graphics » (web/src/ui/Brand.tsx): « Strata »
+/// white, the module in the accent colour, lighter, on the same line.
+struct Wordmark {
+    strata: Run,
+    module: Run,
+    gap: f32,
+    size: f32,
+}
+
+impl Wordmark {
+    fn w(&self) -> f32 {
+        self.strata.w + self.gap + self.module.w
+    }
+}
+
+/// The module of Strata this is, and the interface's accent colour.
+const MODULE: &str = "Graphics";
+const ACCENT: C = hex(0x8fa3ff);
+
 /// The spec pills (size, ratio, rate).
 struct Pills {
     runs: Vec<Run>,
@@ -537,6 +557,27 @@ impl<'a> Painter<'a> {
         }
         lines.push(cur);
         lines.iter().map(|l| self.fit(l, t, max_w)).collect()
+    }
+
+    /// « Strata Graphics » `size` high, smaller when wider than `max_w`.
+    fn wordmark(&mut self, size: f32, max_w: f32) -> Wordmark {
+        let at = |p: &mut Self, size: f32| Wordmark {
+            strata: p.run("Strata", ty(size, 800).spaced(-0.04)),
+            module: p.run(MODULE, ty(size, 600).spaced(-0.02)),
+            gap: 0.25 * size,
+            size,
+        };
+        let m = at(self, size);
+        if m.w() <= max_w || max_w <= 0.0 {
+            return m;
+        }
+        at(self, size * max_w / m.w() * 0.99)
+    }
+
+    /// Draws a wordmark (line height 1) whose top left is (x, top).
+    fn draw_wordmark(&mut self, m: &Wordmark, x: f32, top: f32) {
+        self.text(&m.strata, x, top, m.size, white(1.0));
+        self.text(&m.module, x + m.strata.w + m.gap, top, m.size, ACCENT);
     }
 
     /// Draws `r` centred in a line box `line_h` high whose top left is (x, top).
@@ -734,14 +775,14 @@ impl<'a> Painter<'a> {
             c
         });
 
-        let word = self.run("Strata", ty(15.0 * u, 800).spaced(-0.04));
+        let word = self.wordmark(10.0 * u, w - 16.0 * u);
         let name = self.fit(&s.channel, ty(4.0 * u, 500), w - 10.0 * u);
         let pills = self.pills(specs);
         let (_, _, ph) = pills.rows(w - 10.0 * u);
-        let total = 15.0 * u + 2.4 * u + name.normal() + 2.4 * u + ph;
+        let total = word.size + 2.4 * u + name.normal() + 2.4 * u + ph;
         let mut y = (h - total) / 2.0;
-        self.text(&word, (w - word.w) / 2.0, y, 15.0 * u, white(1.0));
-        y += 15.0 * u + 2.4 * u;
+        self.draw_wordmark(&word, (w - word.w()) / 2.0, y);
+        y += word.size + 2.4 * u;
         self.text(&name, (w - name.w) / 2.0, y, name.normal(), white(0.85));
         y += name.normal() + 2.4 * u;
         self.pills_centred(&pills, 0.0, w, y, w - 10.0 * u, white(0.1));
@@ -810,8 +851,8 @@ impl<'a> Painter<'a> {
             self.tile(big, radius, &shaded(g), line);
         }
         let inner = big.inset(self.px + 3.0 * u);
-        let word = self.run("Strata", ty(12.0 * u, 800).spaced(-0.04));
-        self.text(&word, inner.x, inner.y, 12.0 * u, white(1.0));
+        let word = self.wordmark(8.5 * u, inner.w);
+        self.draw_wordmark(&word, inner.x, inner.y);
         self.signature_in(inner, 3.0 * u, 0.7);
 
         // The channel: a hole in the slate, its border kept.
@@ -889,8 +930,8 @@ impl<'a> Painter<'a> {
             [0, 1, 2].map(|i| sat[i].clamp(0.0, 1.0) * a + bg[i] * (1.0 - a))
         });
 
-        let word = self.run("Strata", ty(16.0 * u, 800).spaced(-0.04));
-        self.text(&word, 6.0 * u, 6.0 * u, 16.0 * u, white(1.0));
+        let word = self.wordmark(10.5 * u, w - 12.0 * u);
+        self.draw_wordmark(&word, 6.0 * u, 6.0 * u);
         let sh = 3.0 * u;
         let sig_x = w - 5.0 * u - Self::sig_w(sh);
         self.signature(sig_x, h - 5.0 * u - sh, sh, 0.9);
@@ -924,18 +965,19 @@ impl<'a> Painter<'a> {
 
         // The card is centred, at most half the picture wide.
         let max_w = (0.5 * w - 12.0 * u - 2.0 * self.px).max(u);
-        let word = self.run("Strata", ty(10.0 * u, 800).spaced(-0.04));
+        let size = if self.portrait() { 5.0 * u } else { 6.5 * u };
+        let word = self.wordmark(size, max_w);
         let name = self.fit(&s.channel, ty(3.8 * u, 500), max_w);
         let pills = self.pills(specs);
         let sh = 2.6 * u;
         let content_w = word
-            .w
+            .w()
             .max(name.w)
             .max(pills.one_line())
             .max(Self::sig_w(sh))
             .min(max_w);
         let (_, _, ph) = pills.rows(content_w);
-        let content_h = 10.0 * u + 2.0 * u + name.normal() + 2.0 * u + ph + 3.0 * u + sh;
+        let content_h = word.size + 2.0 * u + name.normal() + 2.0 * u + ph + 3.0 * u + sh;
         let (card_w, card_h) = (
             content_w + 12.0 * u + 2.0 * self.px,
             content_h + 8.0 * u + 2.0 * self.px,
@@ -944,14 +986,8 @@ impl<'a> Painter<'a> {
         self.tile(card, 3.0 * u, &solid(hex(0x0a0b12).alpha(0.7)), white(0.14));
         let x = card.x + self.px + 6.0 * u;
         let mut y = card.y + self.px + 4.0 * u;
-        self.text(
-            &word,
-            x + (content_w - word.w) / 2.0,
-            y,
-            10.0 * u,
-            white(1.0),
-        );
-        y += 12.0 * u;
+        self.draw_wordmark(&word, x + (content_w - word.w()) / 2.0, y);
+        y += word.size + 2.0 * u;
         self.text(
             &name,
             x + (content_w - name.w) / 2.0,
@@ -1014,14 +1050,8 @@ impl<'a> Painter<'a> {
             self.draw_pills(&pills, 7.0 * u, bottom - ph, avail, white(0.1));
             top
         };
-        let word = self.run("Strata", ty(14.0 * u, 800).spaced(-0.04));
-        self.text(
-            &word,
-            7.0 * u,
-            row_top - 2.4 * u - 14.0 * u,
-            14.0 * u,
-            white(1.0),
-        );
+        let word = self.wordmark(9.0 * u, avail);
+        self.draw_wordmark(&word, 7.0 * u, row_top - 2.4 * u - word.size);
     }
 
     /// 10 · Partagé: a colour panel beside the format (above it when portrait).
@@ -1040,8 +1070,8 @@ impl<'a> Painter<'a> {
             self.fill(rrect(left, 0.0), &shaded(g));
         }
         let inner = left.inset(6.0 * u);
-        let word = self.run("Strata", ty(12.0 * u, 800).spaced(-0.04));
-        self.text(&word, inner.x, inner.y, 12.0 * u, white(1.0));
+        let word = self.wordmark(8.0 * u, inner.w);
+        self.draw_wordmark(&word, inner.x, inner.y);
         let sh = 3.0 * u;
         self.signature_in(inner, sh, 0.85);
         let name = self.fit(&s.channel, ty(6.0 * u, 700).spaced(-0.02), inner.w);
@@ -1155,8 +1185,8 @@ mod tests {
     fn every_design_fills_the_picture_size() {
         let r = &mut renderer();
         for style in STYLES {
-            for (w, h) in [(320, 180), (180, 320)] {
-                let f = render(r, &slate(style, "Channel 1", w * 6, h * 6), w, h);
+            for (w, h) in [(480, 270), (270, 480)] {
+                let f = render(r, &slate(style, "Channel 1", w * 4, h * 4), w, h);
                 assert_eq!(
                     (f.width, f.height, f.data.len()),
                     (w, h, (w * h * 4) as usize)
@@ -1170,6 +1200,13 @@ mod tests {
                     .filter(|p| p[0] > 230 && p[1] > 230 && p[2] > 230)
                     .count();
                 assert!(bright > 50, "{style:?} {w}×{h}: no text");
+                // « Graphics », in the accent colour.
+                let accent = f
+                    .data
+                    .chunks_exact(4)
+                    .filter(|p| p[3] == 255 && p[0].abs_diff(0x8f) < 4 && p[1].abs_diff(0xa3) < 4 && p[2] > 250)
+                    .count();
+                assert!(accent > 20, "{style:?} {w}×{h}: no « Graphics »");
                 let opaque = f.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255);
                 let see_through = matches!(style, SlateStyle::Frame | SlateStyle::Bento);
                 assert_eq!(opaque, !see_through, "{style:?} {w}×{h}");

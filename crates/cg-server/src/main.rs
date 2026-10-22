@@ -407,7 +407,7 @@ pub async fn serve(
     // Each iteration is one engine "cycle"; settings changes end the cycle
     // and the loop rebuilds everything with the new configuration.
     loop {
-        let config = config::ServerConfig::load(&data_dir);
+        let mut config = config::ServerConfig::load(&data_dir);
         perf.sync.set_domain(config.hardware.sync.ptp_domain);
         if hardware::write_ndi_settings(&data_dir, &config.hardware.network) && ndi_started() {
             tracing::warn!("NDI network settings changed: they apply when the server restarts");
@@ -460,14 +460,13 @@ pub async fn serve(
         }
 
         let library = library::Library::load(&data_dir)?;
+        if config.adopt_projects(library.first_id().as_deref()) {
+            let _ = config.save(&data_dir);
+        }
         let mut channels = BTreeMap::new();
         for c in &config.channels {
-            // Fresh installs show the first project; a deleted one unloads.
-            let pid = match &c.project_id {
-                Some(id) if library.get(id).is_some() => Some(id.clone()),
-                Some(_) => None,
-                None => library.first_id(),
-            };
+            // None: no project, on purpose; a deleted one unloads.
+            let pid = c.project_id.clone().filter(|id| library.get(id).is_some());
             channels.insert(
                 c.id.clone(),
                 Arc::new(ChannelRt {

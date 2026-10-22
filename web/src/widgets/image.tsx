@@ -138,25 +138,24 @@ export function seqInfo(c: Config, st: State | undefined, nowMs: number, ageSecs
 }
 
 /**
- * The time of the controls now, re-rendered while `active`: the clock runs on
- * from the time given; on air, the time on air runs on from the state last
- * received (the server sends none while the timeline holds).
+ * The time of the controls now. On air, the time on air runs on from the
+ * state last received (the server sends none while the timeline holds),
+ * re-rendered while `active`; elsewhere (preview, Designer) the time given.
  */
 function useNow(time: TimeCtx, item: PlayoutItem | undefined, active: boolean) {
   const lives = useApp((s) => s.live);
   const [, tick] = useState(0);
+  const onAir = !!item && active;
   useEffect(() => {
-    if (!active) return;
+    if (!onAir) return;
     const h = setInterval(() => tick((n) => n + 1), 250);
     return () => clearInterval(h);
-  }, [active]);
+  }, [onAir]);
   const anchor = useRef({ time, at: Date.now() });
   if (anchor.current.time !== time) anchor.current = { time, at: Date.now() };
-  const d = Date.now() - anchor.current.at;
-  let ageSecs = time.ageSecs + d / 1000;
   const live = item && Object.values(lives).find((l) => Object.values(l.state.layers).includes(item));
-  if (item && live) ageSecs = (item.age ?? 0) / (time.fps ?? 50) + Math.max(0, Date.now() - live.at) / 1000;
-  return { nowMs: time.nowMs + d, ageSecs };
+  if (!item || !live) return { nowMs: time.nowMs, ageSecs: time.ageSecs };
+  return { nowMs: time.nowMs + Date.now() - anchor.current.at, ageSecs: (item.age ?? 0) / (time.fps ?? 50) + Math.max(0, Date.now() - live.at) / 1000 };
 }
 
 /** Seconds left as −m:ss. */

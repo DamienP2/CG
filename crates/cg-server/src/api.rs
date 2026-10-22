@@ -1891,6 +1891,14 @@ async fn put_system_config(
     require(me.is_admin())?;
     cfg.normalize();
     cfg.validate().map_err(bad)?;
+    // The projects on air are not settings (they change at once): kept as
+    // they are now, « no project » included.
+    cfg.explicit_projects = true;
+    for c in &mut cfg.channels {
+        if let Some(ch) = s.channel(&c.id) {
+            c.project_id = ch.project_id.read().await.clone();
+        }
+    }
     if let Some(bind) = cfg.bind.filter(|b| *b != s.bind) {
         // Fail early rather than restarting into an address we cannot use.
         std::net::TcpListener::bind(bind)

@@ -3779,7 +3779,7 @@
    },
    "ServerConfig": {
     "type": "object",
-    "description": "config.json: name, bind, publicOutputs, timezone and channels (format, outputs, loaded project, `slate` and `slateStyle` (SlateStyle) of the main picture and of each rendition).",
+    "description": "config.json: name, bind, publicOutputs, timezone and channels (format, outputs, loaded project: `projectId`, null for none, kept as it is on air when settings are saved; `slate` and `slateStyle` (SlateStyle) of the main picture and of each rendition).",
     "additionalProperties": true
    },
    "Playlist": {
