@@ -228,7 +228,7 @@ export const SCALE = [
 ];
 /** Designer samples (« Exemple »), for the zones of a level. */
 export function sample(kind: 'election' | 'weather', level: ZoneLevel) {
-  const list = zonesOf(level);
+  const list = level === 'countries' ? [...zonesOf(level)].sort((a, b) => a.name.localeCompare(b.name, 'fr')) : zonesOf(level);
   // A steady pseudo-random value per zone.
   const h = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
   if (kind === 'weather') {
