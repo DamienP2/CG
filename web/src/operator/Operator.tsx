@@ -4,9 +4,9 @@ import { AssetPicker } from '../designer/AssetPicker';
 import { ChevronsRight, CircleStop, Copy, Database, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
+import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
-import { linesKey, oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { LiveTime, useTicker } from '../engine/LiveTime';
@@ -243,8 +243,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Bound fields read live show the source's value (manual ones show what was read).
   const boundDraft = useBoundData(readMode === 'manual' ? undefined : template, draft);
   const previewData = { ...(template ? defaultData(template) : {}), ...draft, ...boundDraft };
-  // Texts too long for their box with these values.
-  const fitWarnings = template ? textWarnings(template, previewData) : [];
 
   /** Saves the item's data a moment after the last edit. */
   const flush = async () => {
@@ -556,7 +554,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 {hasContent && (
                 <div className="opx-fields-col">
                   <div className="opx-fields">
-                    <ValuesPane template={template} fields={[...parts.shared, ...(part?.fields ?? [])]} exposed={part?.exposed ? [part.exposed] : []} fedLayer={part?.fed.length ? part.layer : undefined} layerId={part?.layer.id} partIds={new Set(parts.widgets.map((p) => p.layer.id))} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} fitWarnings={fitWarnings} onDraft={editDraft} />
+                    <ValuesPane template={template} fields={[...parts.shared, ...(part?.fields ?? [])]} exposed={part?.exposed ? [part.exposed] : []} fedLayer={part?.fed.length ? part.layer : undefined} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />
                   </div>
                 </div>
                 )}
@@ -772,7 +770,7 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
  * fed by a data set show), then the properties exposed in the Designer, layer
  * by layer, with the Designer's controls and sections.
  */
-function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, changed, draft, boundDraft, readMode, sourceName, previewData, fitWarnings, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayer?: Layer; layerId?: string; partIds: Set<string>; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; fitWarnings: TextWarning[]; onDraft: (patch: Record<string, string>) => void }) {
+function ValuesPane({ template, fields, exposed, fedLayer, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayer?: Layer; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
   // Typed by hand over the data, until the operator goes back to it.
   const byHand = (k: string) => !!draft[manualKey(k)]?.trim();
   const fromData = (f: Field) => !!f.binding?.source && readMode !== 'manual';
@@ -800,20 +798,15 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
     const use = datasetUse(template, ds);
     if (!use.source || !fedLayer) continue;
     const row = Math.max(1, parseInt(draft[rowKey(ds.key)] ?? '1', 10) || 1);
-    const one = draft[oneKey(ds.key)] === '1';
     for (const l of use.texts) {
       if (l.id !== fedLayer.id || fed.some((x) => x.layer.id === l.id)) continue;
-      // All the rows (a line each), unless the operator keeps only the chosen one.
-      const all = l.type === 'text' && l.text.includes(`{{${linesKey(ds.key)}}}`) && !one;
       // The columns it shows (typed by hand over the row, one by one).
       const at = new RegExp(`\\{\\{\\s*(${ds.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_[A-Za-z0-9][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
-      const cols = all || l.type !== 'text' ? [] : [...new Set([...l.text.matchAll(at)].map((m) => m[1]))];
-      fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }), cols, at: ds.key.length + 1 });
+      const cols = l.type !== 'text' ? [] : [...new Set([...l.text.matchAll(at)].map((m) => m[1]))];
+      fed.push({ layer: l, title: t('From {dataset}: row {row}', { dataset: ds.name, row }), cols, at: ds.key.length + 1 });
     }
   }
   const fedChanged = !!fedLayer && usedDatasets(template).some((d) => changed.has(rowKey(d.key)) || changed.has(oneKey(d.key)));
-  const fedIds = new Set(fed.map((x) => x.layer.id));
-  const keys = new Set(template.fields.map((f) => f.key));
   const dot = (on: boolean, label: React.ReactNode) =>
     on ? (
       <>
@@ -851,18 +844,10 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
                         {plain(draft[f.key] ?? '').length} / {maxChars(template, f.key)}
                       </p>
                     )}
-                    {fitWarnings
-                      .filter((w) => w.keys.includes(f.key) && !fedIds.has(w.layer.id))
-                      .map((w) => (
-                        <FitWarning key={w.layer.id} w={w} />
-                      ))}
                   </div>
                 ))}
                 {!g.title &&
                   fed.map(({ layer, title, cols, at }) => {
-                    const warnings = fitWarnings
-                      .filter((w) => w.layer.id === layer.id)
-                      .map((w) => <FitWarning key={w.layer.id} w={w} />);
                     const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
                     return cols.some(byHand) ? (
                       <div key={layer.id}>
@@ -871,12 +856,9 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
                             <TextInput value={draft[k] ?? ''} onChange={(v) => onDraft({ [k]: v })} />
                           </Row>
                         ))}
-                        {warnings}
                       </div>
                     ) : (
-                      <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title} tail={toggle}>
-                        {warnings}
-                      </FedText>
+                      <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title} tail={toggle} />
                     );
                   })}
               </div>
@@ -887,24 +869,7 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
       {exposed.map((e) => (
         <LayerProperties key={e.layer.id} entry={e} io={io} bare />
       ))}
-      {fitWarnings
-        .filter((w) => !fedIds.has(w.layer.id) && !w.keys.some((k) => keys.has(k)) && (w.layer.id === layerId || !partIds.has(w.layer.id)))
-        .map((w) => (
-          <FitWarning key={w.layer.id} w={w} named />
-        ))}
     </>
-  );
-}
-
-/** A text too long for its box: reduced, or not all shown. */
-function FitWarning({ w, named }: { w: TextWarning; named?: boolean }) {
-  const pct = `${Math.round(w.ratio * 100)} %`;
-  const mode = w.layer.overflow ?? 'fit';
-  return (
-    <span className={`opx-fit ${w.overflows ? 'bad' : ''}`} title={t('The text does not fit its box as designed')}>
-      {named && <strong>{t('{name}:', { name: w.layer.name })}</strong>}
-      {!w.overflows ? t('text reduced to {pct}', { pct }) : mode === 'fit' ? t('too long: cut even when reduced — shorten it') : mode === 'ellipsis' ? t('too long: shown with “…”') : t('too long: cut on air')}
-    </span>
   );
 }
 

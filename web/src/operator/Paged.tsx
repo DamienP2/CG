@@ -1,15 +1,44 @@
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { t } from '../i18n';
 
 /*
  * Every list of data rows in the Operator (data set rows, row pickers, a
- * table's rows): 8 entries at a time, with a search field and pages.
+ * table's rows): 5, 10 or 15 entries at a time (the user's choice, kept in
+ * this browser), with a search field and pages.
  */
 
-export const PAGE_SIZE = 8;
+export const PAGE_SIZES = [5, 10, 15] as const;
+const SIZE_KEY = 'strata.pageSize';
+const readSize = (): number => {
+  try {
+    const v = Number(localStorage.getItem(SIZE_KEY));
+    return (PAGE_SIZES as readonly number[]).includes(v) ? v : 10;
+  } catch {
+    return 10;
+  }
+};
+let pageSize = readSize();
+const listeners = new Set<() => void>();
+const setPageSize = (n: number) => {
+  pageSize = n;
+  try {
+    localStorage.setItem(SIZE_KEY, String(n));
+  } catch {
+    /* private mode */
+  }
+  listeners.forEach((f) => f());
+};
+/** Rows per page, the same for every list. */
+export const usePageSize = () =>
+  useSyncExternalStore(
+    (f) => (listeners.add(f), () => listeners.delete(f)),
+    () => pageSize,
+  );
 
 export interface Paged<T> {
+  /** Entries per page. */
+  size: number;
   query: string;
   setQuery: (q: string) => void;
   page: number;
@@ -28,7 +57,8 @@ export interface Paged<T> {
  * `focus`: the index of an entry to keep in view (the NEXT row…): its page
  * is shown when it changes, unless a search hides it.
  */
-export function usePaged<T>(items: T[], text: (item: T) => string, focus?: number | null, size = PAGE_SIZE): Paged<T> {
+export function usePaged<T>(items: T[], text: (item: T) => string, focus?: number | null): Paged<T> {
+  const size = usePageSize();
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   const q = query.trim().toLowerCase();
@@ -45,8 +75,9 @@ export function usePaged<T>(items: T[], text: (item: T) => string, focus?: numbe
     const i = matches.findIndex((x) => x.index === focus);
     if (i >= 0) setPage(Math.floor(i / size));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus, items.length]);
+  }, [focus, items.length, size]);
   return {
+    size,
     query,
     setQuery: (v) => (setQuery(v), setPage(0)),
     page: at,
@@ -59,10 +90,10 @@ export function usePaged<T>(items: T[], text: (item: T) => string, focus?: numbe
 }
 
 /** The search field and the pages of a list: "1–8 of 42", previous / next. */
-export function Pager<T>({ paged, size = PAGE_SIZE, placeholder }: { paged: Paged<T>; size?: number; placeholder?: string }) {
-  const { query, setQuery, page, setPage, pages, matching, total } = paged;
-  // A short list fits: no search, no pages.
-  if (total <= size && !query) return null;
+export function Pager<T>({ paged, placeholder }: { paged: Paged<T>; placeholder?: string }) {
+  const { size, query, setQuery, page, setPage, pages, matching, total } = paged;
+  // A short list fits at any size: no search, no pages.
+  if (total <= PAGE_SIZES[0] && !query) return null;
   const a = matching ? page * size + 1 : 0;
   const b = Math.min(matching, (page + 1) * size);
   return (
@@ -88,6 +119,13 @@ export function Pager<T>({ paged, size = PAGE_SIZE, placeholder }: { paged: Page
         {matching ? t('{a}–{b} of {n}', { a, b, n: matching }) : t('No match')}
         {query.trim() && matching !== total && <span className="muted"> {t('({n} in all)', { n: total })}</span>}
       </span>
+      <div className="opx-seg tiny" title={t('Rows per page')}>
+        {PAGE_SIZES.map((n) => (
+          <button key={n} className={n === size ? 'on' : ''} onClick={() => setPageSize(n)}>
+            {n}
+          </button>
+        ))}
+      </div>
       <button className="opx-sq" title={t('Previous page')} disabled={page <= 0} onClick={() => setPage(page - 1)}>
         <ChevronLeft size={13} />
       </button>

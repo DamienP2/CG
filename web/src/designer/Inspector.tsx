@@ -9,7 +9,7 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useSta
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
-import { MAIN_FORMAT, TEXT_LIKE, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { ZonesDialog } from './ZonesDialog';
@@ -26,6 +26,7 @@ import { ICONS } from './LayersPanel';
 import { widgetOf } from '../widgets';
 import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { t, tc, tn } from '../i18n';
+import { datasetUse, useDatasetRows } from '../operator/DataSets';
 
 interface PropSpec {
   prop: Prop;
@@ -957,6 +958,7 @@ function SpecInspector({ layer }: { layer: Layer }) {
       <FirstSection.Provider value={claimFirst}>
         <Warnings list={warnings} />
         <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
+        <DatasetRows layer={layer} template={template} />
         {Op && (
           <SpecSection id={`try-${def.id}`} title={t('Operator')} closed>
             <div className="wk-op">
@@ -966,6 +968,40 @@ function SpecInspector({ layer }: { layer: Layer }) {
         )}
       </FirstSection.Provider>
     </Bound>
+  );
+}
+
+/** A Text fed by data sets: the row the Designer shows, one to the next, as the Operator does. */
+function DatasetRows({ layer, template }: { layer: Layer; template: Template }) {
+  const sets = usedDatasets(template).filter((ds) => datasetUse(template, ds).texts.some((l) => l.id === layer.id));
+  if (!sets.length) return null;
+  return (
+    <SpecSection id="dataset-rows" title={t('Operator')}>
+      {sets.map((ds) => (
+        <RowStep key={ds.key} ds={ds} />
+      ))}
+    </SpecSection>
+  );
+}
+
+function RowStep({ ds }: { ds: DataSet }) {
+  const previewData = useDesigner((s) => s.previewData);
+  const stage = useDatasetRows(ds, previewData);
+  const total = stage?.rows.length ?? 0;
+  const row = Math.min(Math.max(1, parseInt(previewData[rowKey(ds.key)] ?? '1', 10) || 1), Math.max(1, total));
+  const go = (n: number) => useDesigner.setState((st) => ({ previewData: { ...st.previewData, [rowKey(ds.key)]: String(n) } }));
+  return (
+    <KitRow label={ds.name}>
+      <div className="wk-rowstep">
+        <button className="icon-btn" title={t('Previous row')} disabled={row <= 1} onClick={() => go(row - 1)}>
+          <ChevronLeft size={14} />
+        </button>
+        <span className="wk-rowstep-n">{total ? `${row} / ${total}` : '—'}</span>
+        <button className="icon-btn" title={t('Next row')} disabled={row >= total} onClick={() => go(row + 1)}>
+          <ChevronRight size={14} />
+        </button>
+      </div>
+    </KitRow>
   );
 }
 

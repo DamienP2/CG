@@ -12909,3 +12909,16 @@ a.lib-nav-item {
 .opx-wrow .opx-widget-name {
   flex: 1;
 }
+
+/* Designer: the row a Text fed by a data set shows, one to the next. */
+.wk-rowstep {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.wk-rowstep-n {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}

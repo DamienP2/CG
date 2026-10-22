@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import { columnKey, countKey, tableKey, linesKey, oneKey, rowKey, type Data, type DataFilter, type DataSet, type DataSort, type DataSourceInfo, type DataStatus, type DataStep, type FieldBinding, type Template } from '../engine/types';
+import { columnKey, countKey, tableKey, linesKey, rowKey, type Data, type DataFilter, type DataSet, type DataSort, type DataSourceInfo, type DataStatus, type DataStep, type FieldBinding, type Template } from '../engine/types';
 import { api } from '../store';
 import { t, tn } from '../i18n';
 
@@ -100,7 +100,8 @@ export async function readDataset(ds: DataSet, data: Data): Promise<Data | null>
   const n = t.total;
   const row = Math.min(Math.max(1, parseInt(data[rowKey(ds.key)] ?? '1', 10) || 1), Math.max(1, n));
   const line = (r: string[]) => rowLine(t.columns, r);
-  const lines = data[oneKey(ds.key)] === '1' ? (t.rows[row - 1] ? line(t.rows[row - 1]) : '') : t.rows.map(line).join('\n');
+  // The chosen row only.
+  const lines = t.rows[row - 1] ? line(t.rows[row - 1]) : '';
   const out: Data = { [countKey(ds.key)]: String(n), [tableKey(ds.key)]: JSON.stringify([t.columns, ...t.rows]), [linesKey(ds.key)]: lines };
   t.columns.forEach((c, i) => (out[columnKey(ds.key, c)] = t.rows[row - 1]?.[i] ?? ''));
   return out;

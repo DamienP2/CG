@@ -17,7 +17,6 @@ import {
   usedDatasets,
   columnKey,
   linesKey,
-  oneKey,
   rowKey,
   type Command,
   type Data,
@@ -211,11 +210,6 @@ export function DataSetPanel({
   const next = Math.min(rowOf(draft, ds), Math.max(total, 1));
   const auto = parseFloat(conf[autoKey(ds.key)] ?? "") || 0;
   const loop = conf[loopKey(ds.key)] === "1";
-  // A Text showing the rows: all of them, or only the current one.
-  const usesLines = template.layers.some(
-    (l) => l.type === "text" && l.text.includes(`{{${linesKey(ds.key)}}}`),
-  );
-  const one = conf[oneKey(ds.key)] === "1";
   const change = (conf[changeKey(ds.key)] || ds.change || "outIn") as RowChange;
   const [every, setEvery] = useState(() => auto || 8);
   const after = (row: number) => (row < total ? row + 1 : loop ? 1 : row);
@@ -355,16 +349,6 @@ export function DataSetPanel({
           <span className="ods-knob" />
           <Repeat size={13} /> {t("Loop")}
         </button>
-        {usesLines && (
-          <button
-            className={`ods-switch ${one ? "on" : ""}`}
-            title={t("The text shows only the current row, instead of all of them")}
-            onClick={() => set({ [oneKey(ds.key)]: one ? "" : "1" })}
-          >
-            <span className="ods-knob" />
-            {t("One entry")}
-          </button>
-        )}
       </div>
       {auto > 0 && (
         <div className="ods-prog line">
@@ -838,9 +822,8 @@ export function DataSetSource({
   const total = table?.rows.length ?? 0;
   const chosen = Math.min(rowOf(draft, ds), Math.max(total, 1));
   const air = live ? Math.min(rowOf(live, ds), Math.max(total, 1)) : null;
-  const one = draft[oneKey(ds.key)] === "1";
-  // One row: the Texts read its columns, or the one showing the rows shows only one.
-  const picks = use.row || (use.lines && one);
+  // The Texts show one row: the one picked here.
+  const picks = use.row || use.lines;
   // 8 rows at a time; the page of the chosen row follows it.
   const paged = usePaged(table?.rows ?? NO_ROWS, rowText, picks ? chosen - 1 : null);
   return (
@@ -849,25 +832,6 @@ export function DataSetSource({
         <Rows3 size={14} className="ods-icon" />
         <strong title={ds.name}>{sourceName}</strong>
         <span className="spacer" />
-        {use.lines && (
-          <div
-            className="opx-seg tiny"
-            title={t("What the text shows: every row, or the chosen one")}
-          >
-            <button
-              className={one ? "" : "on"}
-              onClick={() => onDraft({ [oneKey(ds.key)]: "" })}
-            >
-              {t("All rows")}
-            </button>
-            <button
-              className={one ? "on" : ""}
-              onClick={() => onDraft({ [oneKey(ds.key)]: "1" })}
-            >
-              {t("One row")}
-            </button>
-          </div>
-        )}
       </div>
       {table && <Pager paged={paged} />}
       <div className="ods-rows">

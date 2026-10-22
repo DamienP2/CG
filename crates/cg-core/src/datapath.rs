@@ -634,11 +634,8 @@ fn bind_dataset(ds: &DataSet, data: &mut Data, store: &Store) -> bool {
         data,
     );
     let line = |r: &Vec<String>| row_line(&t.columns, r);
-    let lines = if data.get(&ds.one_key()).is_some_and(|v| v.trim() == "1") {
-        t.rows.get(row - 1).map(line).unwrap_or_default()
-    } else {
-        t.rows.iter().map(line).collect::<Vec<_>>().join("\n")
-    };
+    // The chosen row only.
+    let lines = t.rows.get(row - 1).map(line).unwrap_or_default();
     changed |= set(ds.lines_key(), lines, data);
     for (i, c) in t.columns.iter().enumerate() {
         let key = ds.column_key(c);
@@ -1117,16 +1114,12 @@ mod tests {
             data["standings__table"],
             r#"[["team","club.city"],["PSG","Paris"],["OM","Marseille"]]"#
         );
-        assert_eq!(data["standings__lines"], "PSG · Paris\nOM · Marseille");
+        // A Text shows the chosen row only.
+        assert_eq!(data["standings__lines"], "PSG · Paris");
         data.insert("standings__row".into(), "2".into());
         bind_datasets(&t, &mut data, &store);
         assert_eq!(data["standings_team"], "OM");
-        // One entry: the current row only.
-        data.insert("standings__one".into(), "1".into());
-        bind_datasets(&t, &mut data, &store);
         assert_eq!(data["standings__lines"], "OM · Marseille");
-        data.remove("standings__one");
-        bind_datasets(&t, &mut data, &store);
         // Past the end: the last row.
         data.insert("standings__row".into(), "9".into());
         bind_datasets(&t, &mut data, &store);
