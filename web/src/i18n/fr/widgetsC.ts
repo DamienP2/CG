@@ -82,4 +82,5 @@ export const widgetsC: Record<string, string> = {
   'Credit (auto)': 'Mention (auto)',
   'Zone data: no zone named {names}.': 'Données de zones : aucune zone nommée {names}.',
   'Attribution kept on air: required by the IGN licence (zones).': 'Mention gardée à l’antenne : exigée par la licence de l’IGN (zones).',
+  '⟳ Reload': '⟳ Recharger',
 };

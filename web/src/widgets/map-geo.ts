@@ -490,7 +490,7 @@ export function findPlace(q: string, lang: string): string | null {
   const parts = x.split(/[,; ]/).filter((p) => p.trim());
   if (parts.length === 2) {
     const [lat, lon] = parts.map((p) => (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(p.trim()) ? Number(p) : NaN));
-    if (Number.isFinite(lat) && Number.isFinite(lon)) return validLL(lat, lon) ? `${lat.toFixed(4)}, ${lon.toFixed(4)}` : null;
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return validLL(lat, lon) ? `${lat.toFixed(2)}, ${lon.toFixed(2)}` : null;
   }
   const n = norm(x);
   if (!n) return null;

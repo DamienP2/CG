@@ -1205,7 +1205,7 @@ pub fn find_place(q: &str, lang: &str) -> Option<Found> {
         if let (Ok(lat), Ok(lon)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
             if valid_ll(lat, lon) {
                 return Some(Found {
-                    name: format!("{lat:.4}, {lon:.4}"),
+                    name: format!("{lat:.2}, {lon:.2}"),
                     lat,
                     lon,
                     zoom: None,

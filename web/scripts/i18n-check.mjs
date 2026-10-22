@@ -68,7 +68,7 @@ if (args[0] === '--raw') {
   process.exit(0);
 }
 
-// Every t('…') / tn(n, '…', '…') has its French text.
+// Every t('…') / tn(n, '…', '…') / tl(lang, '…') has its French text.
 const used = new Map();
 for (const f of files(root)) {
   if (f.includes(`${path.sep}i18n${path.sep}`)) continue;
@@ -77,7 +77,7 @@ for (const f of files(root)) {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       const name = node.expression.text;
       const ctx = name === 'tc' ? literal(node.arguments[0]) : null;
-      const texts = name === 't' ? [literal(node.arguments[0])] : name === 'tn' ? [literal(node.arguments[1]), literal(node.arguments[2])] : name === 'tc' ? [literal(node.arguments[1])] : [];
+      const texts = name === 't' ? [literal(node.arguments[0])] : name === 'tn' ? [literal(node.arguments[1]), literal(node.arguments[2])] : name === 'tc' || name === 'tl' ? [literal(node.arguments[1])] : [];
       for (const s of texts) {
         if (s === null) continue;
         const { line } = sf.getLineAndCharacterOfPosition(node.getStart());

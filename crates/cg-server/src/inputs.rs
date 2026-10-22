@@ -752,7 +752,7 @@ fn run_stream(l: &Live) {
             std::thread::spawn(move || {
                 let mut sent = false;
                 let mut in_output = false;
-                for line in std::io::BufReader::new(err).lines().map_while(Result::ok) {
+                for line in log_lines(err) {
                     if line.starts_with("Output #") {
                         in_output = true;
                     }
@@ -813,6 +813,16 @@ fn run_stream(l: &Live) {
             return;
         }
     }
+}
+
+/// The lines of ffmpeg's log, read to the end: a line that is not UTF-8
+/// (stream metadata in another charset) is kept as best it can be, not
+/// taken as the end, which would leave ffmpeg's log unread.
+fn log_lines(r: impl Read) -> impl Iterator<Item = String> {
+    std::io::BufReader::new(r)
+        .split(b'\n')
+        .map_while(Result::ok)
+        .map(|l| String::from_utf8_lossy(l.strip_suffix(b"\r").unwrap_or(&l)).into_owned())
 }
 
 /// The size and rate of the raw pictures ffmpeg sends, from its log line
@@ -1047,6 +1057,17 @@ mod tests {
             decoded_format("  Stream #0:0: Video: h264, yuv420p, 1920x1080, 50 fps"),
             None
         );
+    }
+
+    /// A log line that is not UTF-8 (Latin-1 metadata) does not end the
+    /// reading: the picture's line after it is still found.
+    #[test]
+    fn the_log_is_read_past_a_line_not_in_utf8() {
+        let log: &[u8] = b"    service_name    : T\xe9l\xe9\r\nOutput #0, rawvideo, to 'pipe:1':\n  Stream #0:0: Video: rawvideo (RGBA / 0x41424752), rgba, 640x360, 25 fps\n";
+        let lines: Vec<String> = log_lines(log).collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "    service_name    : T\u{fffd}l\u{fffd}");
+        assert_eq!(decoded_format(&lines[2]), Some((640, 360, Some(25.0))));
     }
 
     #[test]

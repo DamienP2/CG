@@ -69,8 +69,11 @@ jobs:
         if: matrix.pkg == 'windows'
         shell: bash
         run: packaging/ndi/fetch-runtime.sh windows dist/ndi
+      # Required: without it (or without SRT) a release has no streams.
       - name: ffmpeg
         shell: bash
+        env:
+          FFMPEG_REQUIRED: 1
         run: packaging/ffmpeg/fetch.sh ${{ matrix.platform }} dist/ffmpeg
       - name: Version
         shell: bash
@@ -180,7 +183,12 @@ jobs:
           rm certs.p12
       - name: NDI runtime
         run: packaging/ndi/fetch-runtime.sh macos dist/ndi
+      # Required as above; when Martin Riedl's site is down, the ffmpeg of
+      # an earlier release's macOS package (gh, hence the token).
       - name: ffmpeg (universal)
+        env:
+          FFMPEG_REQUIRED: 1
+          GH_TOKEN: ${{ github.token }}
         run: packaging/ffmpeg/fetch.sh macos dist/ffmpeg
       - name: Build installer package
         env:
@@ -193,6 +201,7 @@ jobs:
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
           packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/Strata-$SUFFIX-macos-universal.pkg"
           pkgutil --payload-files dist/*.pkg | grep -E "Applications|cg-server$|bin/ffmpeg$"
+          pkgutil --payload-files dist/*.pkg | grep -q "bin/ffmpeg$" || { echo "::error::the macOS package has no ffmpeg"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
       - name: Notarize

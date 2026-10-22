@@ -1454,13 +1454,6 @@ impl Template {
                 l.kind = kind;
                 changed = true;
             }
-            // « Circle » of an ellipse is now the Dimensions lock of the layer.
-            if let LayerKind::Ellipse { x } = &mut l.kind {
-                if std::mem::take(&mut x.circle) {
-                    l.lock_ratio = true;
-                    changed = true;
-                }
-            }
             // The analog clock is now a Timer with an analog face.
             if let LayerKind::AnalogClock {
                 timezone,

@@ -1241,21 +1241,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
-    fn tmp_gallery() {
-        let dir = std::env::var("SLATE_OUT").unwrap();
-        let r = &mut renderer();
-        for style in STYLES {
-            for (w, h) in [(1920, 1080), (1080, 1920)] {
-                let t = std::time::Instant::now();
-                let f = render(r, &slate(style, "Channel 1", w, h), w, h);
-                eprintln!("{style:?} {w}x{h} {:?}", t.elapsed());
-                std::fs::write(format!("{dir}/{style:?}-{w}x{h}.png"), f.to_png()).unwrap();
-            }
-        }
-    }
-
-    #[test]
     fn custom_shows_the_picture_or_nothing() {
         let r = &mut renderer();
         let mut s = slate(SlateStyle::Custom, "Channel 1", 1920, 1080);

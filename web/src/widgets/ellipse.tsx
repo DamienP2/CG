@@ -13,6 +13,8 @@ import { FillStrokeSections, ShapeSvg, StrokeRows, type FillStyle, type ShapeEdi
 import { t, tc } from '../i18n';
 
 export interface Config {
+  /** Older ellipses: width = height. Unused: the server makes it the layer's Dimensions lock (lockRatio). */
+  circle?: boolean;
   /** Degrees, 0 = 12 o'clock, clockwise. */
   start?: number;
   /** Past 360 wraps round; 360° of sweep = full ellipse. */

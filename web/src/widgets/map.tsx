@@ -686,7 +686,7 @@ function shownName(k: K, s: State, lang: string): string | undefined {
 }
 
 /** « Aller à… »: a city, a zone (name or code) or « lat, lon »; Enter goes there. */
-function GotoField({ act, lang, width = 150 }: { act: Act; lang: string; width?: number }) {
+function GotoField({ act, lang, width = 120 }: { act: Act; lang: string; width?: number }) {
   const toast = useApp((s) => s.toast);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -732,11 +732,12 @@ function GotoField({ act, lang, width = 150 }: { act: Act; lang: string; width?:
 function Compact({ layer, state, act, item, lang = 'fr' }: OpP) {
   const k = cfg(layer);
   const s = (state ?? {}) as State;
+  const shown = shownName(k, s, lang);
   return (
     <div className="wk-oprow">
       <OpRow
         noMore
-        value={shownName(k, s, lang)}
+        value={shown && <span title={shown} style={{ display: 'inline-block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>{shown}</span>}
         list={[
           k.views.length > 0 && { icon: ChevronLeft, title: t('Previous view'), onClick: () => act('prev') },
           k.views.length > 0 && { icon: ChevronRight, title: t('Next view'), tone: 'green', onClick: () => act('next') },
@@ -825,7 +826,7 @@ function Operator({ layer, state, act, item, lang = 'fr' }: OpP) {
       />
       <Row label={t('Go to…')}>
         <div className="wk-oprow">
-          <GotoField act={act} lang={lang} width={220} />
+          <GotoField act={act} lang={lang} width={170} />
         </div>
       </Row>
       <Btns

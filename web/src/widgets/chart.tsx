@@ -632,7 +632,7 @@ export default defineWidget({
             </>
           ) : null}
         </Note>
-        <Btns label={t('Data')} list={[{ label: t('⟳ Reload data'), cls: `violet big`, keyHint: 'R', onClick: () => act('reload'), title: t('Values move from what is shown to the current data') }]} />
+        <Btns label={t('Data')} list={[{ label: t('⟳ Reload'), cls: `violet big`, keyHint: 'R', onClick: () => act('reload'), title: t('Values move from what is shown to the current data') }]} />
         <Seg label={t('Reveal')} value={mode} onChange={(v) => act('revealMode', { mode: v })} options={[['all', t('All at once')], ...(c.chartType === 'pie' ? [] : [['series', t('Series by series')] as const]), ['categories', c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')]]} />
         {n > 0 && (
           <Btns
