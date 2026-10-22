@@ -108,6 +108,7 @@ const SLATES: { id: SlateStyle; label: () => string }[] = [
   { id: 'frame', label: () => tc('slate', 'Frame') },
   { id: 'lines', label: () => tc('slate', 'Lines') },
   { id: 'split', label: () => tc('slate', 'Split') },
+  { id: 'transparent', label: () => tc('slate', 'Transparent') },
   { id: 'custom', label: () => t('Custom picture') },
 ];
 

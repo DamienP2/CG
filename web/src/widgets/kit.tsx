@@ -117,6 +117,12 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   hasMore?: (l: LayerOf<T>, data: Data, state: unknown) => boolean;
   /** It has controls with these settings (default: when it has Operator controls). */
   controls?: (l: LayerOf<T>, data: Data) => boolean;
+  /**
+   * It moves by itself (a crawl, credits, a countdown…): the Operator's preview holds it, still,
+   * until its Play — at its start ('start'), or as at the On air point ('onAir': only its own
+   * motion waits, its In shown played). Else not held (default).
+   */
+  plays?: (l: LayerOf<T>, data: Data) => 'start' | 'onAir' | false;
   /** Orange handles over the selected layer in the Designer. */
   Overlay?: (p: OverlayProps<T>) => ReactNode;
   warnings?: (l: LayerOf<T>, ctx: { data: Data; state: unknown; r?: Resolved }) => Warning[];

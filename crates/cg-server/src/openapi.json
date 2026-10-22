@@ -3527,9 +3527,10 @@
      "frame",
      "lines",
      "split",
+     "transparent",
      "custom"
     ],
-    "description": "What a channel picture shows while no project is loaded: a built-in design (Aurora, Bento, Gradient, Frame, Lines, Split: \"Strata\", the channel name, size, ratio and frame rate) or `custom`, its still picture (`slate`). Not set in the settings: `custom` when a still picture is set, else `aurora`."
+    "description": "What a channel picture shows while no project is loaded: a built-in design (Aurora, Bento, Gradient, Frame, Lines, Split: \"Strata Graphics\", the channel name, size, ratio and frame rate), `transparent` (nothing) or `custom`, its still picture (`slate`). Not set in the settings: `custom` when a still picture is set, else `aurora`."
    },
    "PlayoutItem": {
     "type": "object",

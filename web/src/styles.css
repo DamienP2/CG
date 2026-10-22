@@ -6317,6 +6317,9 @@ a.btn {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* Content | data side by side, never one under the other. */
+  grid-auto-flow: column;
+  grid-template-rows: minmax(0, 1fr);
 }
 .opx-fields {
   overflow: auto;

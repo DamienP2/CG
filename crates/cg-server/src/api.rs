@@ -1893,7 +1893,6 @@ async fn put_system_config(
     cfg.validate().map_err(bad)?;
     // The projects on air are not settings (they change at once): kept as
     // they are now, « no project » included.
-    cfg.explicit_projects = true;
     for c in &mut cfg.channels {
         if let Some(ch) = s.channel(&c.id) {
             c.project_id = ch.project_id.read().await.clone();

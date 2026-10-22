@@ -125,7 +125,7 @@ export interface InputInfo {
 }
 
 /** What a format shows while no project is loaded: a built-in design (drawn by the server) or its still picture. */
-export type SlateStyle = 'aurora' | 'bento' | 'gradient' | 'frame' | 'lines' | 'split' | 'custom';
+export type SlateStyle = 'aurora' | 'bento' | 'gradient' | 'frame' | 'lines' | 'split' | 'transparent' | 'custom';
 
 /** Not set (older settings): the still picture when there is one, else the first design (as the server). */
 export const slateStyleOf = (p: { slate?: string; slateStyle?: SlateStyle }): SlateStyle => p.slateStyle ?? (p.slate?.trim() ? 'custom' : 'aurora');

@@ -55,13 +55,14 @@ export function OpField({ value, title, width, placeholder, onSubmit, inputRef }
  * The wall-clock time and the time on air now, for an Operator row redrawn every frame: the
  * Operator gives them when it draws (its updates), they advance from there.
  */
-export function useLiveTime(time: { nowMs: number; ageSecs: number }) {
+export function useLiveTime(time: { nowMs: number; ageSecs: number; held?: boolean }) {
   const frame = useFrame();
   const ref = useRef({ nowMs: time.nowMs, off: time.nowMs - Date.now(), age: time.ageSecs, at: Date.now() });
   const r = ref.current;
   if (r.nowMs !== time.nowMs) Object.assign(r, { nowMs: time.nowMs, off: time.nowMs - Date.now() });
   if (r.age !== time.ageSecs) Object.assign(r, { age: time.ageSecs, at: Date.now() });
-  return { now: frame + r.off, age: r.age + Math.max(0, frame - r.at) / 1000 };
+  // Held by the preview: its time on air stands still.
+  return { now: frame + r.off, age: time.held ? r.age : r.age + Math.max(0, frame - r.at) / 1000 };
 }
 
 type Btn = OpBtn | false | null | undefined;

@@ -131,6 +131,8 @@ export function useBoundData(template: Template | null | undefined, data: Data):
         }),
       );
       for (const r of await Promise.all(sets.map((d) => readDataset(d, data)))) if (r) Object.assign(out, r);
+      // A value typed by hand over the data stays.
+      for (const k of Object.keys(out)) if (data[`${k}__manual`]?.trim()) delete out[k];
       if (live) setValues(out);
     }, 150);
     return () => {

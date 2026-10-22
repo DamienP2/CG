@@ -638,11 +638,11 @@ function SettingInput({ field, value, onChange }: { field: Field; value: string;
 }
 
 /** A text fed by a data set: what it shows, read only (the data set is chosen on the Data side). */
-export function FedText({ label, value, title, children }: { label: ReactNode; value: string; title: string; children?: ReactNode }) {
+export function FedText({ label, value, title, tail, children }: { label: ReactNode; value: string; title: string; tail?: ReactNode; children?: ReactNode }) {
   const lines = value.split('\n');
   return (
     <div>
-      <Row label={label}>
+      <Row label={label} tail={tail}>
         <span className={`opx-bound opx-fed ${lines.length > 1 ? 'multi' : ''}`} title={title}>
           <Rows3 size={12} className="opx-fed-icon" />
           <span className="opx-fed-v">{value || '—'}</span>

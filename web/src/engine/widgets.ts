@@ -17,6 +17,8 @@ export interface TimeCtx {
   clocked?: (layer: Layer) => boolean;
   /** The operator's state of a spec widget, by layer id (web/src/widgets). */
   widgetState?: (layerId: string) => unknown;
+  /** The Operator's preview holds this widget until its Play (none of its controls used yet): its time stands still. */
+  held?: boolean;
   /** Project frame rate. */
   fps?: number;
   /** Project language (texts' hyphenation and spaces). */

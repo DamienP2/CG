@@ -42,6 +42,8 @@ pub enum SlateStyle {
     Split,
     /// The user's picture, or nothing.
     Custom,
+    /// Nothing: fully transparent.
+    Transparent,
 }
 
 /// What a channel picture shows while no project is loaded.
@@ -101,6 +103,9 @@ impl Renderer {
     /// a built-in design, the custom picture (filling the frame), or nothing.
     pub fn render_idle(&mut self, slate: &Slate, out: OutputFormat) -> Frame {
         let (w, h) = (out.width.max(1), out.height.max(1));
+        if slate.style == SlateStyle::Transparent {
+            return Frame::blank(w, h);
+        }
         if slate.style == SlateStyle::Custom {
             return match slate.image.trim() {
                 "" => Frame::blank(w, h),
@@ -476,6 +481,7 @@ impl<'a> Painter<'a> {
             SlateStyle::Frame => self.frame(s, &specs),
             SlateStyle::Lines => self.lines(s, &specs),
             SlateStyle::Split => self.split(s, &specs),
+            SlateStyle::Transparent => {}
         }
     }
 
@@ -1179,6 +1185,19 @@ mod tests {
         }
         let custom: SlateStyle = serde_json::from_str("\"custom\"").unwrap();
         assert_eq!(custom, SlateStyle::Custom);
+    }
+
+    #[test]
+    fn transparent_shows_nothing() {
+        let style: SlateStyle = serde_json::from_str("\"transparent\"").unwrap();
+        let f = render(
+            &mut renderer(),
+            &slate(style, "Channel 1", 1920, 1080),
+            192,
+            108,
+        );
+        assert_eq!((f.width, f.height), (192, 108));
+        assert!(f.data.iter().all(|&b| b == 0));
     }
 
     #[test]

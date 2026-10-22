@@ -127,9 +127,21 @@ export interface PreviewRun {
 
 export const newPreviewRun = (): PreviewRun => ({ active: false, since: Date.now(), widgets: {}, clocks: {} });
 
-/** start / pause… of a timed layer, as the server does it on air (PlayoutItem::control). */
+/**
+ * Where the preview holds a layer, still: the time on air (s) it shows until its Play, else
+ * undefined. A widget moving by itself (a crawl, credits, a countdown, a Lottie…) waits there for
+ * its Play, as a manual start would, until one of its controls is used; on air it runs from the take.
+ */
+export function heldAt(run: PreviewRun, l: Layer, data: Record<string, string>, holdSecs: number): number | undefined {
+  if (l.id in run.widgets || l.id in run.clocks) return undefined;
+  const def = widgetOf(l.type);
+  const from = def?.Compact ? def.plays?.(l as never, data) : isTimed(l) && l.type !== 'text' && 'start';
+  return from === 'start' ? 0 : from === 'onAir' ? holdSecs : undefined;
+}
+
+/** start / pause… of a timed layer, as the server does it on air (PlayoutItem::control); held at its start until then. */
 export function controlClock(run: PreviewRun, l: Layer, control: 'toggle' | 'reset' | 'restart', ageFrames: number): PreviewRun {
-  const c = { ...(run.clocks[l.id] ?? (l.manualStart ? { offset: ageFrames, pausedAt: ageFrames } : { offset: 0 })) };
+  const c = { ...(run.clocks[l.id] ?? { offset: ageFrames, pausedAt: ageFrames }) };
   const running = c.pausedAt == null;
   if (control === 'toggle') {
     if (running) c.pausedAt = ageFrames;
@@ -158,7 +170,7 @@ export function hasMore(l: Layer, data: Record<string, string>, state: unknown):
  * controls: `more` open or not, `onMore` toggles), or its More controls (`show="more"`, in the bar
  * the Operator puts under it).
  */
-export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, lang, show = 'compact', more, onMore }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; lang?: string; show?: 'compact' | 'more'; more?: boolean; onMore?: (open: boolean) => void }) {
+export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSecs, lang, show = 'compact', more, onMore }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; holdSecs: number; lang?: string; show?: 'compact' | 'more'; more?: boolean; onMore?: (open: boolean) => void }) {
   const def = widgetOf(layer.type);
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
@@ -176,16 +188,20 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, lang, 
   }, []);
   const Compact = def?.Compact;
   if (Compact) {
+    // Held (heldAt): it waits for its Play as a manual start would, its time standing still.
+    const at = heldAt(run, layer, data, holdSecs);
+    const held = at !== undefined;
+    const lay = held ? { ...layer, manualStart: true } : layer;
     const act = async (op: string, args?: unknown) => {
       try {
-        const state = await api('POST', '/api/widgets/act', { layer, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: ageSecs() });
+        const state = await api('POST', '/api/widgets/act', { layer: lay, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: at ?? ageSecs() });
         if (live.current) setRun((r) => ({ ...r, widgets: { ...r.widgets, [layer.id]: state } }));
       } catch (e) {
         toast((e as Error).message, 'error');
       }
     };
     const state = run.widgets[layer.id];
-    const time = { nowMs: Date.now() + offset, ageSecs: ageSecs(), defaultTz: tz, fps, lang };
+    const time = { nowMs: Date.now() + offset, ageSecs: at ?? ageSecs(), defaultTz: tz, fps, lang, held };
     const More = def.More;
     const withMore = !!More && hasMore(layer, data, state);
     // The preview's controls never take the keyboard (only the selected widget on air does).
@@ -193,10 +209,10 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, lang, 
       <KeyScope.Provider value={false}>
         <div className="opx-pvctl">
           {show === 'more' ? (
-            More && <More layer={layer as never} state={state} data={data} act={act} time={time} lang={lang} />
+            More && <More layer={lay as never} state={state} data={data} act={act} time={time} lang={lang} />
           ) : (
             <MoreToggle.Provider value={withMore ? { open: !!more, toggle: () => onMore?.(!more) } : null}>
-              <Compact layer={layer as never} state={state} data={data} act={act} time={time} lang={lang} />
+              <Compact layer={lay as never} state={state} data={data} act={act} time={time} lang={lang} />
             </MoreToggle.Provider>
           )}
         </div>
@@ -204,7 +220,8 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, lang, 
     );
   }
   const c = run.clocks[layer.id];
-  const running = c ? c.pausedAt == null : !layer.manualStart;
+  // Held at its start until its first Play (controlClock).
+  const running = !!c && c.pausedAt == null;
   const age = ageSecs() * fps;
   return (
     <div className="opx-pvctl clock">

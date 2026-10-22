@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, MoreHorizontal, Pause, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, textWarnings, Viewport, type TextWarning } from '../engine/Scene';
@@ -15,8 +15,8 @@ import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { KeyScope, MoreToggle, Row } from '../widgets/kit';
-import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, shownData, sourcePatch, steppedDatasets } from './DataSets';
-import { changedKeys, hasControls, hasMore, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
+import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
+import { changedKeys, hasControls, hasMore, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
 import { maxChars, shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
@@ -92,10 +92,12 @@ function updateData(t: Template, draft: Record<string, string>, read: ReadMode):
   const ds = usedDatasets(t).map((d) => d.key);
   // A data set only feeding Texts: its chosen row (and all rows / one row) go with the other values.
   const sent = new Set(usedDatasets(t).flatMap((d) => (datasetUse(t, d).source ? [rowKey(d.key), oneKey(d.key)] : [])));
-  const bound = new Set(read === 'manual' ? [] : t.fields.filter((f) => f.binding?.source).map((f) => f.key));
+  // Typed by hand over the data (`<key>__manual`): sent, and its mark too (empty: back to the data).
+  const byHand = (k: string) => !!draft[manualKey(k)]?.trim() || k.endsWith('__manual');
+  const bound = new Set(read === 'manual' ? [] : t.fields.filter((f) => f.binding?.source && !byHand(f.key)).map((f) => f.key));
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries({ ...defaultData(t), ...draft })) {
-    if (bound.has(k) || (!sent.has(k) && ds.some((d) => k.startsWith(`${d}__`)))) continue;
+    if (bound.has(k) || (!sent.has(k) && !byHand(k) && ds.some((d) => k.startsWith(`${d}__`)))) continue;
     out[k] = v;
   }
   return { ...out, ...sourcePatch(t) };
@@ -357,7 +359,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const changed = changedKeys(sent, onAirNow ? shownData(onAirNow) : undefined);
   const partChanged = (p: WidgetPart) => !!template && partKeys(template, p).some((k) => changed.has(k));
   const updates = parts.widgets.filter(partChanged).length + (parts.shared.some((f) => changed.has(f.key)) ? 1 : 0) || (changed.size ? 1 : 0);
-  const pvAge = () => (template ? holdFrame(template) / fps : 0) + (pv.active ? Math.max(0, Date.now() - pv.since) / 1000 : 0);
+  const pvHold = template ? holdFrame(template) / fps : 0;
+  const pvAge = () => pvHold + (pv.active ? Math.max(0, Date.now() - pv.since) / 1000 : 0);
   const setRun = (f: (r: PreviewRun) => PreviewRun) => setPv((r) => f(r.active ? r : { ...r, active: true, since: Date.now() }));
 
   return (
@@ -532,7 +535,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               )}
               {((part && part.controls) || onAirNow) && (
                 <div className="opx-wbar">
-                  {part?.controls && <PreviewControls key={`${item.id}-${part.layer.id}`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} lang={lang} more={!!pvMore[part.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [part.layer.id]: open })} />}
+                  {part?.controls && <PreviewControls key={`${item.id}-${part.layer.id}`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[part.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [part.layer.id]: open })} />}
                   <span className="spacer" />
                   {onAirNow && (
                     <>
@@ -546,10 +549,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
               )}
               {part?.controls && pvMore[part.layer.id] && hasMore(part.layer, previewData, pv.widgets[part.layer.id]) && (
                 <div className="opx-wbar">
-                  <PreviewControls key={`${item.id}-${part.layer.id}-more`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} lang={lang} show="more" />
+                  <PreviewControls key={`${item.id}-${part.layer.id}-more`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} show="more" />
                 </div>
               )}
-              <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${layout.fields}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
+              <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${Number.isFinite(layout.fields) ? layout.fields : 50}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
                 {hasContent && (
                 <div className="opx-fields-col">
                   <div className="opx-fields">
@@ -566,7 +569,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       onDoubleClick={() => setLayout('fields', 50)}
                       onPointerDown={(e) => {
                         const box = e.currentTarget.parentElement!.getBoundingClientRect();
-                        const move = (ev: PointerEvent) => setLayout('fields', Math.round(Math.max(25, Math.min(75, ((ev.clientX - box.left) / box.width) * 100))));
+                        const move = (ev: PointerEvent) => box.width > 0 && setLayout('fields', Math.round(Math.max(25, Math.min(75, ((ev.clientX - box.left) / box.width) * 100))));
                         const up = () => (window.removeEventListener('pointermove', move), window.removeEventListener('pointerup', up));
                         window.addEventListener('pointermove', move);
                         window.addEventListener('pointerup', up);
@@ -770,7 +773,21 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
  * by layer, with the Designer's controls and sections.
  */
 function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, changed, draft, boundDraft, readMode, sourceName, previewData, fitWarnings, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayer?: Layer; layerId?: string; partIds: Set<string>; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; fitWarnings: TextWarning[]; onDraft: (patch: Record<string, string>) => void }) {
-  const live = (f: Field) => !!f.binding?.source && readMode !== 'manual';
+  // Typed by hand over the data, until the operator goes back to it.
+  const byHand = (k: string) => !!draft[manualKey(k)]?.trim();
+  const fromData = (f: Field) => !!f.binding?.source && readMode !== 'manual';
+  const live = (f: Field) => fromData(f) && !byHand(f.key);
+  /** The pen (type over the data, from what it shows) or the data (back to it). */
+  const handToggle = (keys: string[], shown: (k: string) => string) =>
+    keys.some(byHand) ? (
+      <button className="icon-btn ghost" title={t('Back to the data')} onClick={() => onDraft(Object.fromEntries(keys.map((k) => [manualKey(k), ''])))}>
+        <Database size={13} />
+      </button>
+    ) : (
+      <button className="icon-btn ghost" title={t('Type it by hand')} onClick={() => onDraft(Object.fromEntries(keys.flatMap((k) => [[k, shown(k)], [manualKey(k), 'removed']])))}>
+        <PenLine size={13} />
+      </button>
+    );
   const io: FieldIO = {
     value: (f) => draft[f.key] ?? '',
     set: (f, v) => onDraft({ [f.key]: v }),
@@ -778,7 +795,7 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
     changed: (f) => changed.has(f.key),
   };
   // A Text a data set feeds (it is only its source): what it shows, read only.
-  const fed: { layer: Layer; title: string }[] = [];
+  const fed: { layer: Layer; title: string; cols: string[]; at: number }[] = [];
   for (const ds of usedDatasets(template)) {
     const use = datasetUse(template, ds);
     if (!use.source || !fedLayer) continue;
@@ -788,7 +805,10 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
       if (l.id !== fedLayer.id || fed.some((x) => x.layer.id === l.id)) continue;
       // All the rows (a line each), unless the operator keeps only the chosen one.
       const all = l.type === 'text' && l.text.includes(`{{${linesKey(ds.key)}}}`) && !one;
-      fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }) });
+      // The columns it shows (typed by hand over the row, one by one).
+      const at = new RegExp(`\\{\\{\\s*(${ds.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_[A-Za-z0-9][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
+      const cols = all || l.type !== 'text' ? [] : [...new Set([...l.text.matchAll(at)].map((m) => m[1]))];
+      fed.push({ layer: l, title: all ? t('From {dataset}: all the rows', { dataset: ds.name }) : t('From {dataset}: row {row}', { dataset: ds.name, row }), cols, at: ds.key.length + 1 });
     }
   }
   const fedChanged = !!fedLayer && usedDatasets(template).some((d) => changed.has(rowKey(d.key)) || changed.has(oneKey(d.key)));
@@ -816,7 +836,7 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
                 {g.title && <div className="opx-sub">{g.title}</div>}
                 {g.fields.map(({ f, label }) => (
                   <div key={f.key}>
-                    <Row label={f.kind === 'table' ? undefined : dot(changed.has(f.key), label)}>
+                    <Row label={f.kind === 'table' ? undefined : dot(changed.has(f.key), label)} tail={fromData(f) && f.kind !== 'table' ? handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '') : undefined}>
                       {live(f) ? (
                         <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
                           {boundDraft[f.key] ?? draft[f.key] ?? '…'}
@@ -839,15 +859,26 @@ function ValuesPane({ template, fields, exposed, fedLayer, layerId, partIds, cha
                   </div>
                 ))}
                 {!g.title &&
-                  fed.map(({ layer, title }) => (
-                    <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title}>
-                      {fitWarnings
-                        .filter((w) => w.layer.id === layer.id)
-                        .map((w) => (
-                          <FitWarning key={w.layer.id} w={w} />
+                  fed.map(({ layer, title, cols, at }) => {
+                    const warnings = fitWarnings
+                      .filter((w) => w.layer.id === layer.id)
+                      .map((w) => <FitWarning key={w.layer.id} w={w} />);
+                    const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
+                    return cols.some(byHand) ? (
+                      <div key={layer.id}>
+                        {cols.map((k, i) => (
+                          <Row key={k} label={dot(changed.has(k), cols.length > 1 ? `${layer.name} · ${k.slice(at)}` : layer.name)} tail={i === 0 ? toggle : undefined}>
+                            <TextInput value={draft[k] ?? ''} onChange={(v) => onDraft({ [k]: v })} />
+                          </Row>
                         ))}
-                    </FedText>
-                  ))}
+                        {warnings}
+                      </div>
+                    ) : (
+                      <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title} tail={toggle}>
+                        {warnings}
+                      </FedText>
+                    );
+                  })}
               </div>
             ));
           })()}
@@ -885,14 +916,18 @@ function tabName(widgets: WidgetPart[], i: number) {
   return same.length > 1 && n > 0 ? `${name} ${n + 1}` : name;
 }
 
-/** The preview of the selected graphic, held at its On air point; its widgets run once the preview's controls were used. */
+/**
+ * The preview of the selected graphic, held at its On air point; its widgets run once the preview's
+ * controls were used. A widget moving by itself waits for its Play, still at its start (heldAt).
+ */
 function PreviewScene({ template, data, fps, run, lang }: { template: Template; data: Record<string, string>; fps: number; run: PreviewRun; lang: string }) {
   const hold = holdFrame(template);
   const now = useTicker(run.active);
   const age = hold / fps + (run.active ? Math.max(0, now - run.since) / 1000 : 0);
   const clocks = { clocks: run.clocks } as PlayoutItem;
+  const held = (l: Layer) => heldAt(run, l, data, hold / fps);
   return (
-    <LiveTime ageSecs={age} clientNow={now} layerAge={run.active ? (l) => layerAgeFrames(clocks, age * fps, l) / fps : undefined} clocked={run.active ? (l) => !!run.clocks[l.id] || !!l.manualStart : undefined} widgetState={run.active ? (id) => run.widgets[id] : undefined} fps={fps} lang={lang}>
+    <LiveTime ageSecs={age} clientNow={now} layerAge={(l) => held(l) ?? (run.active ? layerAgeFrames(clocks, age * fps, l) / fps : age)} clocked={(l) => held(l) !== undefined || (run.active && (!!run.clocks[l.id] || !!l.manualStart))} widgetState={run.active ? (id) => run.widgets[id] : undefined} fps={fps} lang={lang}>
       <Scene template={template} frame={hold} data={data} />
     </LiveTime>
   );
@@ -1383,7 +1418,16 @@ function OutputSelect({ channelId }: { channelId: string | null }) {
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name ?? t('another project');
   const pick = async (id: string) => {
     if (!project) return;
-    if (!id) return navigate(projectPath(project.id, 'operator', 'none'));
+    if (!id) {
+      // No output: the channel it had is unloaded (it shows its picture without project).
+      const cur = channels.find((x) => x.id === channelId && x.projectId === project.id);
+      if (cur) {
+        const onAir = Object.keys(live[cur.id]?.state.layers ?? {}).length;
+        if (onAir && !(await confirmDialog({ title: t('Unload {channel}?', { channel: cur.name }), message: tn(onAir, 'The {n} graphic on air on {channel} is cleared.', 'The {n} graphics on air on {channel} are cleared.', { channel: cur.name }), confirm: t('Unload'), danger: true }))) return;
+        await loadOnChannel(cur.id, null);
+      }
+      return navigate(projectPath(project.id, 'operator', 'none'));
+    }
     const c = channels.find((x) => x.id === id);
     if (!c) return;
     if (c.projectId !== project.id) {
