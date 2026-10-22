@@ -565,11 +565,13 @@ export default defineWidget({
     if (k.input.trim()) return null;
     if (!k.frames.length) return k.video ? null : <OpRow list={[{ icon: RefreshCw, title: t('Reload the picture'), onClick: () => act('reload') }]} />;
     const s = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs);
+    // The preview holds it until a control is used.
+    const running = s.running && (!!item || state != null);
     return (
       <OpRow
         value={left(s.remaining)}
         list={[
-          s.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act('play') },
+          running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act('play') },
           { icon: RotateCcw, title: t('Restart'), onClick: () => act('restart') },
         ]}
       />
@@ -581,7 +583,8 @@ export default defineWidget({
     const now = useNow(time, item, k.frames.length > 0);
     if (k.input.trim()) return null;
     if (!k.frames.length) return k.video ? null : <Btns list={[{ label: t('Reload'), cls: 'violet', title: t('Reload the picture'), onClick: () => act('reload') }]} />;
-    const running = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs).running;
+    // The preview and the Designer's try-out hold it until a control is used.
+    const running = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs).running && (!!item || state != null);
     return (
       <>
         <Btns
