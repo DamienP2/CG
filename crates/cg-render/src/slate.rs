@@ -1203,8 +1203,15 @@ mod tests {
                 // « Graphics », in the accent colour.
                 let accent = f
                     .data
-                    .chunks_exact(4)
-                    .filter(|p| p[3] == 255 && p[0].abs_diff(0x8f) < 4 && p[1].abs_diff(0xa3) < 4 && p[2] > 250)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter(|p| {
+                        p[3] == 255
+                            && p[0].abs_diff(0x8f) < 4
+                            && p[1].abs_diff(0xa3) < 4
+                            && p[2] > 250
+                    })
                     .count();
                 assert!(accent > 20, "{style:?} {w}×{h}: no « Graphics »");
                 let opaque = f.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255);

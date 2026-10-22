@@ -825,7 +825,8 @@ mod tests {
         assert_eq!(c.channels[1].project_id.as_deref(), Some("p2"));
         // Unloaded on purpose (and saved as such): it stays empty.
         c.channels[0].project_id = None;
-        let mut c: ServerConfig = serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        let mut c: ServerConfig =
+            serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
         assert!(!c.adopt_projects(Some("p1")));
         assert_eq!(c.channels[0].project_id, None);
     }
