@@ -114,6 +114,7 @@ function withAdded(
 
 /** What the search of a row looks in: its cells. */
 const rowText = (r: string[]) => r.join(" ");
+const rowCell = (r: string[], i: number) => r[i] ?? "";
 const NO_ROWS: string[][] = [];
 
 const rowOf = (data: Data | undefined, ds: DataSet) =>
@@ -214,7 +215,7 @@ export function DataSetPanel({
   const [every, setEvery] = useState(() => auto || 8);
   const after = (row: number) => (row < total ? row + 1 : loop ? 1 : row);
   // 8 rows at a time; the page of the NEXT row follows it.
-  const paged = usePaged(table?.rows ?? NO_ROWS, rowText, next - 1);
+  const paged = usePaged(table?.rows ?? NO_ROWS, rowText, next - 1, table?.columns, rowCell);
 
   /** Changes kept in the item and, on air, sent to the graphic. */
   const set = (patch: Data) => {
@@ -825,7 +826,7 @@ export function DataSetSource({
   // The Texts show one row: the one picked here.
   const picks = use.row || use.lines;
   // 8 rows at a time; the page of the chosen row follows it.
-  const paged = usePaged(table?.rows ?? NO_ROWS, rowText, picks ? chosen - 1 : null);
+  const paged = usePaged(table?.rows ?? NO_ROWS, rowText, picks ? chosen - 1 : null, table?.columns, rowCell);
   return (
     <div className="ods ods-src">
       <div className="ods-bar">

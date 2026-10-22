@@ -22,7 +22,7 @@ export function TableRowsField({ value, onChange }: { value: string; onChange: (
   const put = (h: string[], r: string[][]) => onChange(JSON.stringify([h, ...r]));
   // A row just added: its page.
   const [added, setAdded] = useState<number | null>(null);
-  const paged = usePaged(rows, rowText, added);
+  const paged = usePaged(rows, rowText, added, head, (r, i) => r[i] ?? '');
   const width = Math.max(head.length, ...rows.map((r) => r.length));
   const cols = Array.from({ length: width }, (_, j) => j);
   const example = () => {

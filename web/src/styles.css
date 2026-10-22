@@ -12676,6 +12676,12 @@ a.lib-nav-item {
   padding: 6px 8px;
   flex: none;
 }
+.opg-col {
+  flex: none;
+  max-width: 140px;
+  height: 26px;
+  font-size: 12px;
+}
 .opg-search {
   flex: 1;
   min-width: 90px;
@@ -12805,6 +12811,26 @@ a.lib-nav-item {
 }
 .opx-wtabs button.on {
   border-bottom-color: var(--accent);
+}
+/* Every layer together, or a tab each. */
+.opx-wtabs button.opx-wmerge {
+  align-self: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin-right: 8px;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-3);
+}
+.opx-wtabs button.opx-wmerge:hover {
+  color: var(--text);
+  background: var(--op-4);
+}
+.opx-wtabs button.opx-wmerge.on {
+  color: #fff;
+  background: var(--accent);
 }
 /* Changed from on air: a tab, a field's label. */
 .opx-chg {

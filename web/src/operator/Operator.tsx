@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
@@ -181,6 +181,23 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [updateFade, setUpdateFade] = useUpdateFade();
   // The widget tab shown, by rundown item; what the preview's controls changed.
   const [tabOf, setTabOf] = useState<Record<string, string>>({});
+  // Every widget's content and data together, or a tab each (default).
+  const [merged, setMerged] = useState(() => {
+    try {
+      return localStorage.getItem('strata.opMerged') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleMerged = () =>
+    setMerged((m) => {
+      try {
+        localStorage.setItem('strata.opMerged', m ? '' : '1');
+      } catch {
+        /* private mode */
+      }
+      return !m;
+    });
   const [pv, setPv] = useState<PreviewRun>(newPreviewRun);
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
@@ -347,10 +364,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // The selected graphic widget by widget (a tab each when there are several).
   const parts = template ? widgetParts(template) : { shared: [], widgets: [] };
   const part = (item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0];
-  // The data part only when the widget reads data (a source or a data set).
-  const hasData = !!part && (part.datasets.length > 0 || part.bound.length > 0);
-  // Nothing to type for it (a table fed by a data set…): the data takes the width.
-  const hasContent = parts.shared.length > 0 || !part || part.fields.length > 0 || !!part.exposed || part.fed.length > 0;
+  // The widgets shown: the tab's, or all of them together.
+  const together = merged && parts.widgets.length > 1;
+  const shownParts = together ? parts.widgets : part ? [part] : [];
+  const bound = [...new Set(shownParts.flatMap((p) => p.bound))];
+  const datasets = [...new Map(shownParts.flatMap((p) => p.datasets).map((d) => [d.key, d])).values()];
+  // The data part only when the widgets read data (a source or a data set).
+  const hasData = datasets.length > 0 || bound.length > 0;
+  // Nothing to type for them (a table fed by a data set…): the data takes the width.
+  const hasContent = parts.shared.length > 0 || !part || shownParts.some((p) => p.fields.length > 0 || !!p.exposed || p.fed.length > 0);
   // What Update would change on air, by widget.
   const onAirNow = item ? onAirByItem.get(item.id) : undefined;
   const sent = template ? updateData(template, draft, readMode) : {};
@@ -523,17 +545,26 @@ export function Operator({ channelId }: { channelId: string | null }) {
               </header>
               {parts.widgets.length > 1 && (
                 <div className="opx-head opx-tabs opx-wtabs">
-                  {parts.widgets.map((p, i) => (
-                    <button key={p.layer.id} className={p === part ? 'on' : ''} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
-                      {tabName(parts.widgets, i)}
-                      {partChanged(p) && <i className="opx-chg" />}
-                    </button>
-                  ))}
+                  {!together &&
+                    parts.widgets.map((p, i) => (
+                      <button key={p.layer.id} className={p === part ? 'on' : ''} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
+                        {tabName(parts.widgets, i)}
+                        {partChanged(p) && <i className="opx-chg" />}
+                      </button>
+                    ))}
+                  <span className="spacer" />
+                  <button className={`opx-wmerge ${together ? 'on' : ''}`} title={together ? t('One tab per layer') : t('All the layers together')} onClick={toggleMerged}>
+                    <Layers size={14} />
+                  </button>
                 </div>
               )}
-              {((part && part.controls) || onAirNow) && (
+              {(shownParts.some((p) => p.controls) || onAirNow) && (
                 <div className="opx-wbar">
-                  {part?.controls && <PreviewControls key={`${item.id}-${part.layer.id}`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[part.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [part.layer.id]: open })} />}
+                  {shownParts
+                    .filter((p) => p.controls)
+                    .map((p) => (
+                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[p.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [p.layer.id]: open })} />
+                    ))}
                   <span className="spacer" />
                   {onAirNow && (
                     <>
@@ -545,16 +576,18 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   )}
                 </div>
               )}
-              {part?.controls && pvMore[part.layer.id] && hasMore(part.layer, previewData, pv.widgets[part.layer.id]) && (
-                <div className="opx-wbar">
-                  <PreviewControls key={`${item.id}-${part.layer.id}-more`} layer={part.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} show="more" />
-                </div>
-              )}
+              {shownParts
+                .filter((p) => p.controls && pvMore[p.layer.id] && hasMore(p.layer, previewData, pv.widgets[p.layer.id]))
+                .map((p) => (
+                  <div key={p.layer.id} className="opx-wbar">
+                    <PreviewControls key={`${item.id}-${p.layer.id}-more`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} show="more" />
+                  </div>
+                ))}
               <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${Number.isFinite(layout.fields) ? layout.fields : 50}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
                 {hasContent && (
                 <div className="opx-fields-col">
                   <div className="opx-fields">
-                    <ValuesPane template={template} fields={[...parts.shared, ...(part?.fields ?? [])]} exposed={part?.exposed ? [part.exposed] : []} fedLayer={part?.fed.length ? part.layer : undefined} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />
+                    <ValuesPane template={template} fields={[...parts.shared, ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />
                   </div>
                 </div>
                 )}
@@ -574,8 +607,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       }}
                     />
                     )}
-                    <DataBlock project={project} template={template} fields={part.bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
-                      {part.datasets.map((ds) =>
+                    <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
+                      {datasets.map((ds) =>
                         datasetUse(template, ds).source ? (
                           <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
                         ) : (
@@ -770,7 +803,7 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
  * fed by a data set show), then the properties exposed in the Designer, layer
  * by layer, with the Designer's controls and sections.
  */
-function ValuesPane({ template, fields, exposed, fedLayer, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayer?: Layer; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
+function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayers: Layer[]; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
   // Typed by hand over the data, until the operator goes back to it.
   const byHand = (k: string) => !!draft[manualKey(k)]?.trim();
   const fromData = (f: Field) => !!f.binding?.source && readMode !== 'manual';
@@ -796,17 +829,17 @@ function ValuesPane({ template, fields, exposed, fedLayer, changed, draft, bound
   const fed: { layer: Layer; title: string; cols: string[]; at: number }[] = [];
   for (const ds of usedDatasets(template)) {
     const use = datasetUse(template, ds);
-    if (!use.source || !fedLayer) continue;
+    if (!use.source || !fedLayers.length) continue;
     const row = Math.max(1, parseInt(draft[rowKey(ds.key)] ?? '1', 10) || 1);
     for (const l of use.texts) {
-      if (l.id !== fedLayer.id || fed.some((x) => x.layer.id === l.id)) continue;
+      if (!fedLayers.some((x) => x.id === l.id) || fed.some((x) => x.layer.id === l.id)) continue;
       // The columns it shows (typed by hand over the row, one by one).
       const at = new RegExp(`\\{\\{\\s*(${ds.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_[A-Za-z0-9][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
       const cols = l.type !== 'text' ? [] : [...new Set([...l.text.matchAll(at)].map((m) => m[1]))];
       fed.push({ layer: l, title: t('From {dataset}: row {row}', { dataset: ds.name, row }), cols, at: ds.key.length + 1 });
     }
   }
-  const fedChanged = !!fedLayer && usedDatasets(template).some((d) => changed.has(rowKey(d.key)) || changed.has(oneKey(d.key)));
+  const fedChanged = fedLayers.length > 0 && usedDatasets(template).some((d) => changed.has(rowKey(d.key)) || changed.has(oneKey(d.key)));
   const dot = (on: boolean, label: React.ReactNode) =>
     on ? (
       <>

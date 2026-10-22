@@ -39,6 +39,10 @@ export const usePageSize = () =>
 export interface Paged<T> {
   /** Entries per page. */
   size: number;
+  /** The columns the search can be narrowed to (several), and the one chosen (-1: all). */
+  columns: string[];
+  column: number;
+  setColumn: (c: number) => void;
   query: string;
   setQuery: (q: string) => void;
   page: number;
@@ -57,16 +61,19 @@ export interface Paged<T> {
  * `focus`: the index of an entry to keep in view (the NEXT row…): its page
  * is shown when it changes, unless a search hides it.
  */
-export function usePaged<T>(items: T[], text: (item: T) => string, focus?: number | null): Paged<T> {
+export function usePaged<T>(items: T[], text: (item: T) => string, focus?: number | null, columns: string[] = [], cell?: (item: T, column: number) => string): Paged<T> {
   const size = usePageSize();
   const [query, setQuery] = useState('');
+  const [column, setColumn] = useState(-1);
+  const col = cell && column >= 0 && column < columns.length ? column : -1;
   const [page, setPage] = useState(0);
   const q = query.trim().toLowerCase();
   const matches = useMemo(() => {
     const all = items.map((item, index) => ({ item, index }));
-    return q ? all.filter((x) => text(x.item).toLowerCase().includes(q)) : all;
+    const of = (item: T) => (col >= 0 ? cell!(item, col) : text(item)) ?? '';
+    return q ? all.filter((x) => of(x.item).toLowerCase().includes(q)) : all;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, q]);
+  }, [items, q, col]);
   const pages = Math.max(1, Math.ceil(matches.length / size));
   const at = Math.min(page, pages - 1);
   // The focused entry's page when it changes.
@@ -78,6 +85,9 @@ export function usePaged<T>(items: T[], text: (item: T) => string, focus?: numbe
   }, [focus, items.length, size]);
   return {
     size,
+    columns: cell ? columns : [],
+    column: col,
+    setColumn: (c) => (setColumn(c), setPage(0)),
     query,
     setQuery: (v) => (setQuery(v), setPage(0)),
     page: at,
@@ -91,13 +101,23 @@ export function usePaged<T>(items: T[], text: (item: T) => string, focus?: numbe
 
 /** The search field and the pages of a list: "1–8 of 42", previous / next. */
 export function Pager<T>({ paged, placeholder }: { paged: Paged<T>; placeholder?: string }) {
-  const { size, query, setQuery, page, setPage, pages, matching, total } = paged;
+  const { size, columns, column, setColumn, query, setQuery, page, setPage, pages, matching, total } = paged;
   // A short list fits at any size: no search, no pages.
   if (total <= PAGE_SIZES[0] && !query) return null;
   const a = matching ? page * size + 1 : 0;
   const b = Math.min(matching, (page + 1) * size);
   return (
     <div className="opg">
+      {columns.length > 1 && (
+        <select className="opg-col" value={column} title={t('Search in')} onChange={(e) => setColumn(+e.target.value)}>
+          <option value={-1}>{t('All columns')}</option>
+          {columns.map((c, i) => (
+            <option key={i} value={i}>
+              {c}
+            </option>
+          ))}
+        </select>
+      )}
       <label className="opg-search">
         <Search size={12} />
         <input
