@@ -981,7 +981,7 @@ const sizeAt = (k: K, s: State, data: Data, now: number, h: number, lang = 'fr')
 
 // --------------------------------------------------------------- operator --
 
-type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; lang?: string };
+type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; lang?: string };
 
 /** The point buttons of a sport: one per value (highest first), with the first preset button of that value. */
 function pointTypes(k: K): [number, number][] {
@@ -1012,7 +1012,7 @@ function Compact({ layer, state, data, act }: OpP) {
         value={ck ? `${score} · ${ck[0]}` : score}
         list={[
           { icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') },
-          hasClock && (s.clock?.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('clockPause') } : { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('clockStart') }),
+          hasClock && (s.clock?.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('clockPause') } : (s.clock?.base ?? 0) > 0 ? { icon: Play, title: tc('action', 'Resume'), tone: 'violet', onClick: () => act('clockStart') } : { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('clockStart') }),
         ]}
       />
       <div className="wk-oprow" style={{ gap: 10 }}>
@@ -1024,7 +1024,7 @@ function Compact({ layer, state, data, act }: OpP) {
               noMore
               list={[
                 { icon: Minus, tag: sh, title: pr.kind === 'tennis' ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh }), onClick: () => act('sub', { team: i }) },
-                ...types.map(([v, j]) => ({ icon: Plus, tag: String(v), tone: 'green' as const, title: pr.kind === 'points' ? `${sh} +${v}` : t('POINT {team}', { team: sh }), onClick: () => act('add', { team: i, pts: j }) })),
+                ...types.map(([v, j]) => ({ icon: Plus, tag: String(v), title: pr.kind === 'points' ? `${sh} +${v}` : t('POINT {team}', { team: sh }), onClick: () => act('add', { team: i, pts: j }) })),
               ]}
             />
           );
@@ -1075,7 +1075,7 @@ function hasMore(layer: Config, state: unknown) {
   return (k.fields.period && pr.kind !== 'tennis') || k.fields.poss || (k.fields.fouls && pr.kind !== 'tennis') || (k.fields.timeouts && pr.timeouts > 0) || shotOn(k, s) || k.fields.susp || shootoutOn(k, s);
 }
 
-function Operator({ layer, state, data, act, lang: lg }: OpP) {
+function Operator({ layer, state, data, act, lang: lg, item }: OpP) {
   const now = useFrame();
   const lang = lg ?? 'fr';
   const k = cfg(layer);
@@ -1089,7 +1089,7 @@ function Operator({ layer, state, data, act, lang: lg }: OpP) {
   const ck = clockOn(k, s) ? clockText(k, s, now) : null;
   const tn = tennisOf(s);
   const [setV, setSetV] = useState<string[]>([]);
-  const [clk, setClk] = useState('00:00');
+  const [clk, setClk] = useState('');
   const [who, setWho] = useState(0);
   const [player, setPlayer] = useState('');
   const hasClock = pr.kind === 'points' && k.clock.dir !== 'none';
@@ -1118,7 +1118,7 @@ function Operator({ layer, state, data, act, lang: lg }: OpP) {
             label={sh}
             list={[
               { label: '−', cls: 'huge ghost', title: pr.kind === 'tennis' ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh }), onClick: () => act('sub', { team: i }) },
-              ...pr.pts.map((pt, j) => ({ label: pr.kind === 'points' ? t(pt.label) : t('POINT {team}', { team: sh }), cls: `huge ${j ? '' : 'green'}`, keyHint: j === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'P' : undefined) : undefined, onClick: () => act('add', { team: i, pts: j }) })),
+              ...pr.pts.map((pt, j) => ({ label: pr.kind === 'points' ? t(pt.label) : t('POINT {team}', { team: sh }), cls: 'huge', keyHint: j === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'P' : undefined) : undefined, onClick: () => act('add', { team: i, pts: j }) })),
             ]}
           />
         );
@@ -1143,7 +1143,7 @@ function Operator({ layer, state, data, act, lang: lg }: OpP) {
         <Row label={t('Set score')}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             {Array.from({ length: n }, (_, i) => (
-              <input key={i} type="number" min={0} max={999} style={{ width: 64 }} value={setV[i] ?? String(sc[i])} onChange={(e) => setSetV(Object.assign([...setV], { [i]: e.target.value }))} title={shortOf(team(k, i))} />
+              <input key={i} type="number" min={0} max={999} style={{ width: 64 }} value={setV[i] ?? ''} placeholder={shortOf(team(k, i))} onChange={(e) => setSetV(Object.assign([...setV], { [i]: e.target.value }))} title={shortOf(team(k, i))} />
             ))}
             <button
               className="opx-btn wk-btn violet"
@@ -1161,8 +1161,8 @@ function Operator({ layer, state, data, act, lang: lg }: OpP) {
         <Btns
           label={t('Period')}
           list={[
-            { label: t('◀ Prev period'), cls: 'big', disabled: (s.period ?? 0) <= 0, onClick: () => act('prevPeriod') },
-            { label: t('Next period ▶'), cls: 'big', disabled: (s.period ?? 0) >= pr.periods.length - 1, onClick: () => act('nextPeriod') },
+            { label: t('Prev period'), cls: 'big', disabled: (s.period ?? 0) <= 0, onClick: () => act('prevPeriod') },
+            { label: t('Next period'), cls: 'big', disabled: (s.period ?? 0) >= pr.periods.length - 1, onClick: () => act('nextPeriod') },
           ]}
         />
       )}
@@ -1171,15 +1171,14 @@ function Operator({ layer, state, data, act, lang: lg }: OpP) {
           <Btns
             label={t('Clock')}
             list={[
-              { label: t('▶ Start'), cls: 'big green', disabled: !!s.clock?.running, onClick: () => act('clockStart') },
-              { label: t('❚❚ Pause'), cls: 'big amber', disabled: !s.clock?.running, onClick: () => act('clockPause') },
-              { label: t('Reset'), cls: 'big ghost', confirm: t('Reset the clock of this period?'), onClick: () => act('clockReset') },
+              s.clock?.running ? { label: t('❚❚ Pause'), cls: 'big amber', onClick: () => act('clockPause') } : (s.clock?.base ?? 0) > 0 ? { label: t('▶ Resume'), cls: 'big violet', onClick: () => act('clockStart') } : { label: t('▶ Start'), cls: 'big green', onClick: () => act('clockStart') },
+              { label: t('↺ Reset'), cls: 'big ghost', confirm: item ? t('Reset the clock of this period?') : undefined, onClick: () => act('clockReset') },
             ]}
           />
           <Row label={t('Set clock')}>
             <div style={{ display: 'flex', gap: 6 }}>
-              <input style={{ width: 80 }} value={clk} placeholder="mm:ss" onChange={(e) => setClk(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-              <button className="opx-btn wk-btn violet" onClick={() => act('clockSet', { time: clk })}>
+              <input className="mono" style={{ width: 80 }} value={clk} placeholder="mm:ss" onChange={(e) => setClk(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && clk.trim() && (act('clockSet', { time: clk }), setClk('')))} />
+              <button className="opx-btn wk-btn violet" disabled={!clk.trim()} onClick={() => (act('clockSet', { time: clk }), setClk(''))}>
                 {t('Set')}
               </button>
             </div>
@@ -1238,7 +1237,7 @@ function Operator({ layer, state, data, act, lang: lg }: OpP) {
       />
       <Btns list={[{ label: hist ? t('↶ Undo last action ({n})', { n: hist }) : t('↶ Undo last action'), cls: 'big violet', keyHint: 'Z', disabled: !hist, onClick: () => act('undo') }]} />
       {a.id === 'priority' && <Btns list={[{ label: t('Back to feed now'), cls: 'green', onClick: () => act('backToFeed') }]} />}
-      <Btns list={[{ label: t('Reset match'), cls: 'ghost', confirm: t('Reset the whole match (scores, clock, cards)? Undo stays available.'), onClick: () => act('reset') }]} />
+      <Btns list={[{ label: t('Reset match'), cls: 'ghost', confirm: item ? t('Reset the whole match (scores, clock, cards)? Undo stays available.') : undefined, onClick: () => act('reset') }]} />
     </>
   );
 }
@@ -1513,9 +1512,9 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, data, act, lang }) => <Operator layer={layer} state={state} data={data} act={act} lang={lang} />,
-  Compact: ({ layer, state, data, act, lang }) => <Compact layer={layer} state={state} data={data} act={act} lang={lang} />,
-  More: ({ layer, state, data, act, lang }) => <More layer={layer} state={state} data={data} act={act} lang={lang} />,
+  Operator: ({ layer, state, data, act, lang, item }) => <Operator layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
+  Compact: ({ layer, state, data, act, lang, item }) => <Compact layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
+  More: ({ layer, state, data, act, lang, item }) => <More layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
   hasMore: (l, _data, state) => hasMore(l, state),
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);

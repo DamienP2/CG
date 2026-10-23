@@ -11,7 +11,8 @@ import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { t, tc, tl, tn } from '../i18n';
 import { useApp } from '../store';
-import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, MoreButton, Num, OpRow, Readout, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { ColorPick, defineWidget, GridEditor, ListEditor, Num, OpRow, Row, Section, Seg, Text, Toggle, useKeys, type Warning } from './kit';
+import { OpBar } from './opbar';
 import { col, ellipse, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
   attribution,
@@ -728,25 +729,32 @@ function GotoField({ act, lang, width = 120 }: { act: Act; lang: string; width?:
   );
 }
 
-/** The Operator's compact row: the view shown, previous / next view, reset, « Aller à… ». */
-function Compact({ layer, state, act, item, lang = 'fr' }: OpP) {
+/** The one bar of the map (validated grammar §1), identical in the Designer's Operator section
+ *  and the Operator's rows: the view shown · previous / next view, ↺ · « Go to… » · ⋯ (layers…). */
+function MapBar({ layer, state, act, item, lang = 'fr' }: OpP) {
   const k = cfg(layer);
   const s = (state ?? {}) as State;
   const shown = shownName(k, s, lang);
+  useKeys({ ArrowRight: () => act('next'), ArrowLeft: () => act('prev') });
   return (
-    <div className="wk-oprow">
+    <OpBar more={<More layer={layer} state={state} act={act} lang={lang} />}>
       <OpRow
         noMore
-        value={shown && <span title={shown} style={{ display: 'inline-block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>{shown}</span>}
+        value={
+          shown && (
+            <span title={shown} style={{ display: 'inline-block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>
+              {shown}
+            </span>
+          )
+        }
         list={[
           k.views.length > 0 && { icon: ChevronLeft, title: t('Previous view'), onClick: () => act('prev') },
-          k.views.length > 0 && { icon: ChevronRight, title: t('Next view'), tone: 'green', onClick: () => act('next') },
+          k.views.length > 0 && { icon: ChevronRight, title: `${t('Next view')} · →`, onClick: () => act('next') },
           { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the template view?', { name: (layer as { name?: string }).name ?? t('Map') }) : undefined, onClick: () => act('reset') },
         ]}
       />
       <GotoField act={act} lang={lang} />
-      <MoreButton />
-    </div>
+    </OpBar>
   );
 }
 
@@ -799,63 +807,6 @@ function More({ layer, state, act, lang = 'fr' }: OpP) {
         />
       )}
     </div>
-  );
-}
-
-function Operator({ layer, state, act, item, lang = 'fr' }: OpP) {
-  const now = useFrame();
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
-  const [v, fly] = viewAt(k, s, now, 1600);
-  const opts = zoneOptions(k, lang);
-  const [zone, setZone] = useState('');
-  const z = opts.some((o) => o.value === zone) ? zone : (opts[0]?.value ?? '');
-  useKeys({ ArrowRight: () => act('next'), ArrowLeft: () => act('prev') });
-  const cur = s.cur;
-  const name = shownName(k, s, lang) ?? t('Template view');
-  return (
-    <>
-      <Readout sub={`${v.lat.toFixed(3)}°, ${v.lon.toFixed(3)}° · z ${v.zoom.toFixed(2)} · ${Math.round(v.rot)}° · ${t('tilt {n}°', { n: Math.round(v.tilt) })}${fly != null ? ` · ${t('flying {n} %', { n: Math.round(fly * 100) })}` : ''}`}>{name}</Readout>
-      <Btns
-        label={t('Views')}
-        list={[
-          ...k.views.map((kv, i) => ({ label: kv.name, cls: `big ${cur === i && !s.goto ? 'violet' : ''}`, onClick: () => act('go', { view: i }) })),
-          { label: t('Next view'), cls: 'big green', keyHint: '→', onClick: () => act('next') },
-          { label: t('Reset'), cls: 'big ghost', title: t('Template view, no highlight, layers and routes as designed'), confirm: item ? t('{name} is on air: back to the template view?', { name: (layer as { name?: string }).name ?? t('Map') }) : undefined, onClick: () => act('reset') },
-        ]}
-      />
-      <Row label={t('Go to…')}>
-        <div className="wk-oprow">
-          <GotoField act={act} lang={lang} width={170} />
-        </div>
-      </Row>
-      <Btns
-        label={t('Layers')}
-        list={(['markers', 'routes', 'zones', 'labels'] as const).map((l) => {
-          const on = layerOn(k, s, l);
-          return { label: `${on ? '◉' : '○'} ${t(LAYER_NAMES[l])}`, cls: on ? 'green' : 'ghost', onClick: () => act('layer', { name: l, on: !on }) };
-        })}
-      />
-      {k.markers.length > 0 && (
-        <Btns
-          label={t('Markers')}
-          list={k.markers.map((m) => {
-            const on = markerOn(s, m);
-            return { label: `${on ? '◉' : '○'} ${m.name}`, cls: on ? 'violet' : 'ghost', onClick: () => act('marker', { id: keyOf(m), on: !on }) };
-          })}
-        />
-      )}
-      <Row label={t('Zone')}>
-        <Dropdown value={z} options={opts} onChange={setZone} />
-      </Row>
-      <Btns
-        list={[
-          { label: t('✦ Highlight zone'), cls: 'amber', disabled: !z, onClick: () => act('highlight', { zone: z }) },
-          { label: t('Clear highlight'), cls: 'ghost', disabled: !s.highlight, onClick: () => act('highlight', { zone: '' }) },
-        ]}
-      />
-      {k.routes.length > 0 && <Btns label={t('Routes')} list={k.routes.map((r) => ({ label: t('▶ Draw {name}', { name: r.name }), cls: 'big', onClick: () => act('route', { id: keyOf(r) }) }))} />}
-    </>
   );
 }
 
@@ -1192,8 +1143,8 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, act, item, lang }) => <Operator layer={layer} state={state} act={act} item={item} lang={lang} />,
-  Compact: ({ layer, state, act, item, lang }) => <Compact layer={layer} state={state} act={act} item={item} lang={lang} />,
+  Operator: ({ layer, state, act, item, lang }) => <MapBar layer={layer} state={state} act={act} item={item} lang={lang} />,
+  Compact: ({ layer, state, act, item, lang }) => <MapBar layer={layer} state={state} act={act} item={item} lang={lang} />,
   More: ({ layer, state, act, lang }) => <More layer={layer} state={state} act={act} lang={lang} />,
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
