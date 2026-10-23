@@ -63,6 +63,9 @@ export const operator: Record<string, string> = {
   // Graphic row
   'Drag to reorder': 'Glisser pour réordonner',
   'Take out': 'Retirer de l’antenne',
+  'Pause · plays on in {n} s': 'Pause · reprend dans {n} s',
+  'Pause · waits for the trigger {name}': 'Pause · attend le déclencheur {name}',
+  'Pause · Continue': 'Pause · Continuer',
   'Take': 'Envoyer à l’antenne',
   'Double-click to rename': 'Double-cliquer pour renommer',
   'NEXT takes this graphic': 'NEXT envoie cet habillage à l’antenne',

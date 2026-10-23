@@ -130,8 +130,6 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
   return t?.markers.find((m) => m.kind === 'pause' && Math.abs(m.frame - p.frame) < 0.5);
 }
 
-const isPaused = (p: PlayoutItem, project: Project) => !!pauseOf(p, project);
-
 /** Content scaled to fit its box (both ways), on a checkerboard. */
 function Screen({ width, height, children }: { width: number; height: number; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -323,6 +321,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     if (n) setCued(n.id);
   };
   const outZone = (z: Zone | undefined) => z && command({ action: 'takeOut', zone: z.id });
+  const continueZone = (z: Zone | undefined) => z && command({ action: 'continue', zone: z.id });
 
   // On air, front-most zone first; the internal controls show one of them.
   const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
@@ -467,6 +466,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 onSelect={() => setCued(r.id)}
                 onTake={() => takeItem(r)}
                 onOut={() => outZone(zoneOf(r))}
+                onContinue={() => continueZone(zoneOf(r))}
                 onRename={(name) => setItem(r.id, { name })}
                 autoNext={!!activePl?.autoNext}
                 onAuto={(patch) => setItem(r.id, patch)}
@@ -550,12 +550,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <span className="spacer" />
                 {onAirNow && (
                   <>
-                    <button className="opx-btn" disabled={!operate} onClick={() => command({ action: 'continue', zone: itemZone?.id })} title={t('F2 / Space')}>
-                      <ChevronsRight size={14} /> Continue
-                    </button>
-                    <button className="opx-btn red" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: itemZone?.id })} title="F3">
-                      <CircleStop size={14} /> Out
-                    </button>
                     <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
                     <button className="opx-btn violet" disabled={!operate || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
                       <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
@@ -990,6 +984,7 @@ function GraphicRow(props: {
   onSelect: () => void;
   onTake: () => void;
   onOut: () => void;
+  onContinue: () => void;
   onRename: (name: string) => void;
   /** The playlist goes on by itself: show and set this graphic's time. */
   autoNext: boolean;
@@ -1000,7 +995,7 @@ function GraphicRow(props: {
 }) {
   const { project, item, zone, air } = props;
   const tpl = project.templates.find((x) => x.id === item.templateId);
-  const paused = air && isPaused(air, project);
+  const pause = air ? pauseOf(air, project) : undefined;
   const [renaming, setRenaming] = useState(false);
   const [autoAt, setAutoAt] = useState<DOMRect | null>(null);
   return (
@@ -1010,18 +1005,22 @@ function GraphicRow(props: {
           <GripVertical size={14} />
         </span>
       )}
-      <button
-        className={`opx-sq big ${air ? (paused ? 'amber' : 'red') : ''}`}
-        disabled={!props.operate}
-        title={air ? t('Take out') : t('Take')}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (air) props.onOut();
-          else props.onTake();
-        }}
-      >
-        {air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
-      </button>
+      {air && pause ? (
+        <PauseButton key={`${pause.frame}`} pause={pause} air={air} fps={project.frameRate.num / project.frameRate.den || 1} operate={props.operate} onContinue={props.onContinue} />
+      ) : (
+        <button
+          className={`opx-sq big ${air ? 'red' : ''}`}
+          disabled={!props.operate}
+          title={air ? t('Take out') : t('Take')}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (air) props.onOut();
+            else props.onTake();
+          }}
+        >
+          {air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+        </button>
+      )}
       <span className="opx-gr-main">
         {renaming ? (
           <input
@@ -1067,6 +1066,48 @@ function GraphicRow(props: {
       )}
       {autoAt && <AutoNextEditor item={item} at={autoAt} onChange={props.onAuto} onClose={() => setAutoAt(null)} />}
     </div>
+  );
+}
+
+/** A graphic held on a pause: Continue when the operator resumes it, else what it waits for (seconds left, a trigger). */
+function PauseButton({ pause, air, fps, operate, onContinue }: { pause: Marker; air: PlayoutItem; fps: number; operate: boolean; onContinue: () => void }) {
+  const resume = pause.resume ?? { type: 'manual' };
+  // The server sends nothing while a graphic holds: the countdown runs here, from when the hold began.
+  const [since] = useState(() => Date.now() - ((air.held ?? 0) / fps) * 1000);
+  const [now, setNow] = useState(Date.now);
+  const timed = resume.type === 'after';
+  useEffect(() => {
+    if (!timed) return;
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [timed]);
+  if (resume.type === 'after') {
+    const total = Math.max(0, resume.seconds);
+    const left = Math.max(0, total - (now - since) / 1000);
+    return (
+      <span className="opx-sq big amber opx-pause wait" style={{ '--p': total ? 1 - left / total : 1 } as React.CSSProperties} title={t('Pause · plays on in {n} s', { n: Math.ceil(left) })} onClick={(e) => e.stopPropagation()}>
+        <b>{Math.ceil(left)}</b>
+      </span>
+    );
+  }
+  if (resume.type === 'trigger')
+    return (
+      <span className="opx-sq big amber opx-pause wait" title={t('Pause · waits for the trigger {name}', { name: resume.name })} onClick={(e) => e.stopPropagation()}>
+        <Zap size={14} fill="currentColor" />
+      </span>
+    );
+  return (
+    <button
+      className="opx-sq big amber opx-pause"
+      disabled={!operate}
+      title={`${t('Pause · Continue')} · F2`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onContinue();
+      }}
+    >
+      <ChevronsRight size={18} />
+    </button>
   );
 }
 

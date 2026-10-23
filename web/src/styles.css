@@ -6167,6 +6167,24 @@ a.btn {
   background: var(--warn);
   color: #241500;
 }
+.opx-sq.opx-pause {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 35%, transparent);
+  animation: opx-pause-pulse 1.6s ease-in-out infinite;
+}
+@keyframes opx-pause-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 15%, transparent);
+  }
+}
+.opx-sq.opx-pause.wait {
+  cursor: default;
+  animation: none;
+  background: conic-gradient(var(--warn) calc(var(--p, 1) * 360deg), color-mix(in srgb, var(--warn) 40%, var(--op-4)) 0);
+}
+.opx-sq.opx-pause b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
 .opx-sq.green {
   background: var(--pvw);
   color: #04210f;
