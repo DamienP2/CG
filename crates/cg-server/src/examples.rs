@@ -178,7 +178,7 @@ mod tests {
     /// running: tickers, timers and clocks move), then 150 frames of the
     /// running cases (ex-02 ticker band, ex-03 match clock, ex-16 quiz timer,
     /// ex-19 strip with two tickers). Prints ms per frame.
-    /// `cargo test --release -p cg-server --bin cg-server -- --ignored bench_playout --nocapture`
+    /// `cargo test --release -p cg-server --bin strata-server -- --ignored bench_playout --nocapture`
     /// `STRATA_BENCH=ex-19-matinale/horoscope`: that template only (to profile it);
     /// `STRATA_BENCH_PROJECT=file.json`: the templates of that project (`project/<id>`);
     /// `STRATA_BENCH_NOCACHE=1`: every frame drawn whole, from scratch.

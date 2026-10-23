@@ -63,7 +63,7 @@ Le serveur repose sur axum et tokio.
 
 - **Chaînes** : chaque chaîne a sa tâche d'horloge, cadencée au format de la chaîne, son `ChannelState` et son thread de rendu. Ses sorties ne reçoivent que ses frames. Quand l'image n'est pas prête à temps, la frame est abandonnée plutôt que d'accumuler de la latence. Les timelines sont avancées de `fps projet / fps chaîne` par tick, et le projet est mis à l'échelle au format de la chaîne.
 - **Projets** : la bibliothèque `data/projects/<id>.json` est écrite de façon atomique. Le projet chargé sur chaque chaîne est mémorisé dans `config.json`.
-- **Utilisateurs** : `users.json` stocke des hachages Argon2 et est relu s'il change sur disque (CLI `cg-server user`). Les sessions sont gardées en mémoire et survivent aux redémarrages du moteur. Chaque route vérifie le rôle de l'appelant et son périmètre de projets et de chaînes. Le WebSocket filtre les évènements selon ce que l'utilisateur peut voir.
+- **Utilisateurs** : `users.json` stocke des hachages Argon2 et est relu s'il change sur disque (CLI `strata-server user`). Les sessions sont gardées en mémoire et survivent aux redémarrages du moteur. Chaque route vérifie le rôle de l'appelant et son périmètre de projets et de chaînes. Le WebSocket filtre les évènements selon ce que l'utilisateur peut voir.
 - **Redémarrage à chaud** : une modification des réglages reconstruit les chaînes et le listener sans arrêter le processus.
 
 ## Feuille de route

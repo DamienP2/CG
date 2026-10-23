@@ -79,7 +79,7 @@ export function Login() {
         </button>
         {firstRun && (
           <p className="set-hint">
-            {t('For security this page only works on the server itself (http://localhost). Remotely, run this on the server:')} <code>cg-server user add admin</code>
+            {t('For security this page only works on the server itself (http://localhost). Remotely, run this on the server:')} <code>strata-server user add admin</code>
           </p>
         )}
       </form>

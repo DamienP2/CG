@@ -17,6 +17,6 @@ cp "$HERE/postinstall" "$WORK/scripts/postinstall"
 chmod 0755 "$WORK/scripts/postinstall"
 
 pkgbuild --root "$WORK/root" --scripts "$WORK/scripts" \
-  --identifier io.pulsecg.premiere --version "$VERSION" --install-location / \
+  --identifier io.stratagraphics.premiere --version "$VERSION" --install-location / \
   ${MACOS_INSTALLER_IDENTITY:+--sign "$MACOS_INSTALLER_IDENTITY"} "$OUT"
 echo "built $OUT"

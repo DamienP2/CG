@@ -684,7 +684,7 @@ pub fn credits() -> Template {
             label: "Credits (one per line)".into(),
             kind: FieldKind::Multiline,
             default:
-                "PULSE CG\n\nDirector\nJane Doe\n\nGraphics\nStrata Engine\n\nThanks for watching"
+                "STRATA GRAPHICS\n\nDirector\nJane Doe\n\nGraphics\nStrata Engine\n\nThanks for watching"
                     .into(),
             binding: None,
             min: None,

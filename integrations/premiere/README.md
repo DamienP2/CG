@@ -33,7 +33,7 @@ Le panneau fonctionne avec Premiere Pro 2020 (14.0) et les versions suivantes, s
 **Installateurs** (dans la release) :
 
 - **macOS** : `Strata-Premiere-<version>-macos.pkg` ;
-- **Windows** : `Strata-Premiere-<version>-windows.msi`. En déploiement silencieux, le serveur peut être fixé : `msiexec /i Strata-Premiere.msi /qn SERVER=http://cg-server:8080`.
+- **Windows** : `Strata-Premiere-<version>-windows.msi`. En déploiement silencieux, le serveur peut être fixé : `msiexec /i Strata-Premiere.msi /qn SERVER=http://strata-server:8080`.
 
 **Depuis le serveur** : Strata → Utilisateurs → API keys → **Premiere panel** télécharge un zip déjà réglé sur ce serveur. Le décompresser, puis lancer `./install-mac.sh` dans le Terminal (macOS) ou clic droit sur `install-windows.ps1` → *Exécuter avec PowerShell* (Windows). Les deux scripts acceptent aussi l'adresse du serveur en argument.
 
@@ -41,7 +41,7 @@ Ensuite :
 
 1. Redémarrer Premiere Pro, puis ouvrir **Fenêtre → Extensions → Strata**.
 2. Dans le panneau, cliquer sur ⚙ et renseigner :
-   - l'adresse du serveur, si l'installateur ne l'a pas déjà mise, par exemple `http://cg-server:8080` ;
+   - l'adresse du serveur, si l'installateur ne l'a pas déjà mise, par exemple `http://strata-server:8080` ;
    - une **clé d'API** (Strata → Utilisateurs → API keys), d'un compte designer ou opérateur ;
    - si besoin, le dossier des rendus (par défaut `Documents/Strata Renders/<projet>/`).
 

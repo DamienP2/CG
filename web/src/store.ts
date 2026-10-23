@@ -152,7 +152,7 @@ export function useChanged(what: string, fn: () => void) {
 export const clientId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random()).slice(2);
 
 export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'X-Pulse-Client': clientId };
+  const headers: Record<string, string> = { 'X-Strata-Client': clientId };
   // A file goes as it is; anything else as JSON.
   const raw = typeof Blob !== 'undefined' && body instanceof Blob;
   if (body !== undefined) headers['Content-Type'] = raw ? (body as Blob).type || 'application/octet-stream' : 'application/json';

@@ -23,7 +23,7 @@ jobs:
       # The example renders load every core: they run on their own, after the
       # timing tests, so those measure the code and not a saturated runner.
       - run: cargo test --workspace -- --skip every_example_loads_and_renders
-      - run: cargo test -p cg-server --bin cg-server every_example_loads_and_renders
+      - run: cargo test -p cg-server --bin strata-server every_example_loads_and_renders
 
   web:
     runs-on: ubuntu-latest

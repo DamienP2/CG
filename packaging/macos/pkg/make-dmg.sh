@@ -29,8 +29,8 @@ retry() {
 # Icon from the artwork.
 mkdir -p "$WORK/icon.iconset"
 for s in 16 32 128 256 512; do
-  sips -z $s $s "$ROOT/assets/icons/pulse-cg-macos-1024.png" --out "$WORK/icon.iconset/icon_${s}x${s}.png" >/dev/null
-  sips -z $((s * 2)) $((s * 2)) "$ROOT/assets/icons/pulse-cg-macos-1024.png" --out "$WORK/icon.iconset/icon_${s}x${s}@2x.png" >/dev/null
+  sips -z $s $s "$ROOT/assets/icons/strata-macos-1024.png" --out "$WORK/icon.iconset/icon_${s}x${s}.png" >/dev/null
+  sips -z $((s * 2)) $((s * 2)) "$ROOT/assets/icons/strata-macos-1024.png" --out "$WORK/icon.iconset/icon_${s}x${s}@2x.png" >/dev/null
 done
 iconutil -c icns "$WORK/icon.iconset" -o "$WORK/icon.icns"
 

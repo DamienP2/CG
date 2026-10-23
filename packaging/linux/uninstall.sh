@@ -1,12 +1,12 @@
 #!/bin/sh
-# Removes the service and binaries. Data in /var/lib/pulse-cg is kept unless --purge.
+# Removes the service and binaries. Data in /var/lib/strata-graphics is kept unless --purge.
 set -eu
 [ "$(id -u)" -eq 0 ] || { echo "Please run as root: sudo $0 $*" >&2; exit 1; }
-/opt/pulse-cg/cg-server service uninstall || true
-rm -f /usr/local/bin/cg-server
-rm -rf /opt/pulse-cg
+/opt/strata/strata-server service uninstall || true
+rm -f /usr/local/bin/strata-server
+rm -rf /opt/strata
 if [ "${1:-}" = "--purge" ]; then
-  rm -rf /var/lib/pulse-cg
-  userdel pulse-cg 2>/dev/null || true
+  rm -rf /var/lib/strata-graphics
+  userdel strata 2>/dev/null || true
 fi
-echo "Strata removed."
+echo "Strata Graphics removed."

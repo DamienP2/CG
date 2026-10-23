@@ -16,5 +16,5 @@ fn main() {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn main() {
-    eprintln!("The Strata tray app is available on macOS and Windows; on Linux use `cg-server service status` and the web UI.");
+    eprintln!("The Strata tray app is available on macOS and Windows; on Linux use `strata-server service status` and the web UI.");
 }

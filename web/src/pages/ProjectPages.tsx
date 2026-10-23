@@ -106,7 +106,7 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
           <div className="set-body">
             <div className="row">
               <a className="btn" href={`${url}/export`}>
-                <Download size={14} /> {t('Export (.pulsecg.json)')}
+                <Download size={14} /> {t('Export (.strata.json)')}
               </a>
               <div className="spacer" />
               <button type="button" className="btn danger" onClick={remove}>

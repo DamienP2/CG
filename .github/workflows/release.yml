@@ -88,7 +88,7 @@ jobs:
         run: |
           NAME=Strata-$SUFFIX-${{ matrix.name }}
           mkdir -p "dist/$NAME"
-          cp "target/${{ matrix.target }}/release/cg-server" "dist/$NAME/"
+          cp "target/${{ matrix.target }}/release/strata-server" "dist/$NAME/"
           find packaging/linux -maxdepth 1 -type f -exec cp {} "dist/$NAME/" \;
           cp docs/INSTALL.md docs/SYNC.md assets/fonts/OFL.txt docs/outputs.example.json "dist/$NAME/"
           # ffmpeg in bin/ next to the server.
@@ -105,7 +105,7 @@ jobs:
           NAME=Strata-$SUFFIX-${{ matrix.platform }}
           mkdir -p "dist/update/$NAME"
           EXT=""; [ "${{ matrix.pkg }}" = windows ] && EXT=.exe
-          cp "target/${{ matrix.target }}/release/cg-server$EXT" "dist/update/$NAME/"
+          cp "target/${{ matrix.target }}/release/strata-server$EXT" "dist/update/$NAME/"
           cd dist/update
           if [ "${{ matrix.pkg }}" = windows ]; then
             7z a "../$NAME.zip" "$NAME" >/dev/null
@@ -121,7 +121,7 @@ jobs:
           wix extension add --global WixToolset.Util.wixext/5.0.2 WixToolset.Firewall.wixext/5.0.2
           NDI=(); [ -f dist/ndi/Processing.NDI.Lib.x64.dll ] && NDI=(-d NdiDir=dist/ndi)
           [ -f dist/ffmpeg/ffmpeg.exe ] && NDI+=(-d FfmpegDir=dist/ffmpeg)
-          wix build packaging/windows/msi/pulse-cg.wxs -arch x64 \
+          wix build packaging/windows/msi/strata.wxs -arch x64 \
             -ext WixToolset.Util.wixext -ext WixToolset.Firewall.wixext \
             -d Version="$VERSION" -d BinDir="target/${{ matrix.target }}/release" -d DocsDir=. "${NDI[@]}" \
             -o "dist/Strata-$SUFFIX-${{ matrix.name }}.msi"
@@ -163,7 +163,7 @@ jobs:
             cargo build --release --locked -p cg-server -p cg-tray --target $t
           done
           mkdir -p dist
-          for b in cg-server pulse-cg-tray; do
+          for b in strata-server strata-tray; do
             lipo -create -output dist/$b target/aarch64-apple-darwin/release/$b target/x86_64-apple-darwin/release/$b
             lipo -info dist/$b
           done
@@ -199,8 +199,8 @@ jobs:
         run: |
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
           SUFFIX=$VERSION; [ "$GITHUB_REF_TYPE" = tag ] || SUFFIX=dev-${GITHUB_SHA::7}
-          packaging/macos/pkg/build.sh dist/cg-server dist/pulse-cg-tray "$VERSION" "dist/Strata-$SUFFIX-macos-universal.pkg"
-          pkgutil --payload-files dist/*.pkg | grep -E "Applications|cg-server$|bin/ffmpeg$"
+          packaging/macos/pkg/build.sh dist/strata-server dist/strata-tray "$VERSION" "dist/Strata-$SUFFIX-macos-universal.pkg"
+          pkgutil --payload-files dist/*.pkg | grep -E "Applications|strata-server$|bin/ffmpeg$"
           pkgutil --payload-files dist/*.pkg | grep -q "bin/ffmpeg$" || { echo "::error::the macOS package has no ffmpeg"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "SUFFIX=$SUFFIX" >> "$GITHUB_ENV"
@@ -222,7 +222,7 @@ jobs:
           for a in arm64:aarch64-apple-darwin x86_64:x86_64-apple-darwin; do
             NAME=Strata-$SUFFIX-macos-${a%%:*}
             mkdir -p "dist/update/$NAME"
-            cp "target/${a#*:}/release/cg-server" "dist/update/$NAME/"
+            cp "target/${a#*:}/release/strata-server" "dist/update/$NAME/"
             (cd dist/update && tar czf "../$NAME.tar.gz" "$NAME")
           done
       - uses: actions/upload-artifact@v4
@@ -267,7 +267,7 @@ jobs:
           export PATH="$PATH:$HOME/.dotnet/tools"
           wix extension add --global WixToolset.Util.wixext/5.0.2
           wix build packaging/premiere/strata-premiere.wxs -ext WixToolset.Util.wixext \
-            -d Version="$VERSION" -d PanelDir=dist/premiere/io.pulsecg.premiere -d DocsDir=. \
+            -d Version="$VERSION" -d PanelDir=dist/premiere/io.stratagraphics.premiere -d DocsDir=. \
             -o "dist/Strata-Premiere-$SUFFIX-windows.msi"
       - uses: actions/upload-artifact@v4
         with:

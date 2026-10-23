@@ -27,7 +27,7 @@ use crate::config::MosConfig;
 use crate::state::Shared;
 
 /// Schema of our item payloads (also used by the HTML5 plugin).
-pub const SCHEMA: &str = "https://pulsecg.io/mos/v1";
+pub const SCHEMA: &str = "https://stratagraphics.io/mos/v1";
 
 // ------------------------------------------------------------- the model ----
 
@@ -81,8 +81,10 @@ fn parse_item(n: roxmltree::Node) -> MosItem {
         obj_id: text(n, "objID"),
         ..Default::default()
     };
-    // Our payload: <pulsecg project=… template=… zone=…><field key=…>…</field></pulsecg>
-    if let Some(p) = n.descendants().find(|d| d.has_tag_name("pulsecg")) {
+    // Our payload: <strata project=… template=… zone=…><field key=…>…</field></strata>
+    // (<pulsecg> in items made before the rename).
+    let ours = |d: &roxmltree::Node| d.has_tag_name("strata") || d.has_tag_name("pulsecg");
+    if let Some(p) = n.descendants().find(ours) {
         item.project = p.attribute("project").unwrap_or("").into();
         item.template = p.attribute("template").unwrap_or("").into();
         item.zone = p.attribute("zone").unwrap_or("").into();
@@ -436,7 +438,7 @@ fn mos_objects(projects: &[std::sync::Arc<Project>], mos_id: &str) -> String {
     for p in projects {
         for t in &p.templates {
             out.push_str(&format!(
-                "<mosObj><objID>{}/{}</objID><objSlug>{} — {}</objSlug><mosAbstract>{}</mosAbstract><objGroup>{}</objGroup><objType>STILL</objType><objTB>{}</objTB><objRev>1</objRev><objDur>{}</objDur><status>NEW</status><objAir>READY</objAir><createdBy>Strata</createdBy><created>{}</created><description>{}</description><mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>{SCHEMA}</mosSchema><mosPayload><pulsecg project=\"{}\" template=\"{}\"/></mosPayload></mosExternalMetadata></mosObj>",
+                "<mosObj><objID>{}/{}</objID><objSlug>{} — {}</objSlug><mosAbstract>{}</mosAbstract><objGroup>{}</objGroup><objType>STILL</objType><objTB>{}</objTB><objRev>1</objRev><objDur>{}</objDur><status>NEW</status><objAir>READY</objAir><createdBy>Strata</createdBy><created>{}</created><description>{}</description><mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>{SCHEMA}</mosSchema><mosPayload><strata project=\"{}\" template=\"{}\"/></mosPayload></mosExternalMetadata></mosObj>",
                 esc(&p.id),
                 esc(&t.id),
                 esc(&p.name),
@@ -849,16 +851,16 @@ mod tests {
         assert_eq!(a, playlist_id("RO.1"), "stable");
     }
 
-    const RO: &str = r#"<mos><mosID>pulsecg.mos</mosID><ncsID>SAGA</ncsID><messageID>12</messageID>
+    const RO: &str = r#"<mos><mosID>strata.mos</mosID><ncsID>SAGA</ncsID><messageID>12</messageID>
 <roCreate><roID>RO-1</roID><roSlug>Evening news</roSlug>
  <story><storyID>S1</storyID><storySlug>Opening</storySlug>
-  <item><itemID>1</itemID><itemSlug>LT Ada</itemSlug><objID>x</objID><mosID>pulsecg.mos</mosID>
-   <mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>https://pulsecg.io/mos/v1</mosSchema>
-   <mosPayload><pulsecg project="demo" template="lower-third" zone="lower-third"><field key="name">Ada &amp; co</field><field key="title">Mathematician</field></pulsecg></mosPayload></mosExternalMetadata></item>
+  <item><itemID>1</itemID><itemSlug>LT Ada</itemSlug><objID>x</objID><mosID>strata.mos</mosID>
+   <mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>https://stratagraphics.io/mos/v1</mosSchema>
+   <mosPayload><strata project="demo" template="lower-third" zone="lower-third"><field key="name">Ada &amp; co</field><field key="title">Mathematician</field></strata></mosPayload></mosExternalMetadata></item>
   <item><itemID>2</itemID><itemSlug>Video</itemSlug><objID>v</objID><mosID>video.server</mosID></item>
  </story>
  <story><storyID>S2</storyID><storySlug>Sport</storySlug>
-  <item><itemID>1</itemID><itemSlug>Score</itemSlug><objID>y</objID><mosID>pulsecg.mos</mosID><mosExternalMetadata><mosPayload><pulsecg project="demo" template="score-bug"/></mosPayload></mosExternalMetadata></item>
+  <item><itemID>1</itemID><itemSlug>Score</itemSlug><objID>y</objID><mosID>strata.mos</mosID><mosExternalMetadata><mosPayload><pulsecg project="demo" template="score-bug"/></mosPayload></mosExternalMetadata></item>
  </story>
 </roCreate></mos>"#;
 
@@ -873,7 +875,7 @@ mod tests {
         );
         assert_eq!((ro.slug.as_str(), ro.stories.len()), ("Evening news", 2));
         let mut p = cg_core::sample::demo_project();
-        assert_eq!(apply_to_project(&mut p, &ro, "PULSECG.MOS"), 2);
+        assert_eq!(apply_to_project(&mut p, &ro, "STRATA.MOS"), 2);
         let items: Vec<_> = p
             .rundown
             .iter()
@@ -909,7 +911,7 @@ mod tests {
             ro.stories.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
             ["S2", "S1", "S3"]
         );
-        assert_eq!(apply_to_project(&mut p, &ro, "pulsecg.mos"), 1);
+        assert_eq!(apply_to_project(&mut p, &ro, "strata.mos"), 1);
         remove_from_project(&mut p, "RO-1");
         assert!(!p.rundown.iter().any(|r| r.playlist == "mos-RO-1"));
     }

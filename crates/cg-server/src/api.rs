@@ -256,7 +256,7 @@ fn login_response(token: String, user: &User) -> Response {
 }
 
 /// First admin account: only while no user exists, and only from the
-/// server itself (or `cg-server user add` on the command line).
+/// server itself (or `strata-server user add` on the command line).
 async fn auth_setup(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -266,7 +266,7 @@ async fn auth_setup(
         return Err((StatusCode::CONFLICT, "already set up".into()));
     }
     if !peer.ip().is_loopback() {
-        return Err((StatusCode::FORBIDDEN, "the first admin must be created on the server itself (http://localhost) or with `cg-server user add`".into()));
+        return Err((StatusCode::FORBIDDEN, "the first admin must be created on the server itself (http://localhost) or with `strata-server user add`".into()));
     }
     let input = UserInput {
         username: c.username,
@@ -695,7 +695,7 @@ async fn export_project(
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    let disposition = format!("attachment; filename=\"{name}.pulsecg.json\"");
+    let disposition = format!("attachment; filename=\"{name}.strata.json\"");
     let body = serde_json::to_vec_pretty(p.as_ref()).map_err(internal)?;
     Ok((
         [
@@ -802,10 +802,10 @@ async fn put_template(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// The designer tab a request comes from (`X-Pulse-Client`).
+/// The designer tab a request comes from (`X-Strata-Client`).
 fn client_id(headers: &HeaderMap) -> Option<&str> {
     headers
-        .get("x-pulse-client")
+        .get("x-strata-client")
         .and_then(|v| v.to_str().ok())
         .filter(|v| !v.is_empty() && v.len() <= 64)
 }
@@ -835,7 +835,7 @@ async fn lock_template(
 ) -> ApiResult<Json<LockReply>> {
     require(me.can_design(&id))?;
     visible_project(&s, &me, &id).await?;
-    let client = client_id(&headers).ok_or_else(|| bad("missing X-Pulse-Client header"))?;
+    let client = client_id(&headers).ok_or_else(|| bad("missing X-Strata-Client header"))?;
     let force = body.is_some_and(|b| b.force);
     match s.locks.acquire(&id, &tid, &me, client, force) {
         crate::locks::Acquired::Held(lock) => Ok(Json(LockReply {
@@ -866,7 +866,7 @@ async fn unlock_template(
     Path((id, tid)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> ApiResult<StatusCode> {
-    let client = client_id(&headers).ok_or_else(|| bad("missing X-Pulse-Client header"))?;
+    let client = client_id(&headers).ok_or_else(|| bad("missing X-Strata-Client header"))?;
     if s.locks.release(&id, &tid, client) {
         let _ = s.events.send(Event::Lock {
             project_id: id,

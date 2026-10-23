@@ -50,9 +50,6 @@ struct Words {
     no_outputs: &'static str,
     copy_address: &'static str,
     open_home: &'static str,
-    designer: &'static str,
-    operator: &'static str,
-    html5: &'static str,
     network: &'static str,
     web_ui: &'static str,
     every_adapter: &'static str,
@@ -75,10 +72,7 @@ const FR: Words = Words {
     outputs: "Sorties : {ok} sur {n} en marche",
     no_outputs: "Aucune sortie vidéo",
     copy_address: "Copier l’adresse  {u}",
-    open_home: "Ouvrir Strata Graphics",
-    designer: "Designer",
-    operator: "Opérateur",
-    html5: "Sortie HTML5",
+    open_home: "Ouvrir la page web",
     network: "Carte réseau",
     web_ui: "Interface web",
     every_adapter: "Toutes les cartes",
@@ -101,10 +95,7 @@ const EN: Words = Words {
     outputs: "Outputs: {ok} of {n} running",
     no_outputs: "No video output",
     copy_address: "Copy address  {u}",
-    open_home: "Open Strata Graphics",
-    designer: "Designer",
-    operator: "Operator",
-    html5: "HTML5 Output",
+    open_home: "Open Web Page",
     network: "Network Adapter",
     web_ui: "Web interface",
     every_adapter: "Every adapter",
@@ -165,9 +156,9 @@ fn data_dir() -> PathBuf {
         std::env::var_os("ProgramData")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\ProgramData"))
-            .join("PulseCG")
+            .join("Strata Graphics")
     } else {
-        PathBuf::from("/Library/Application Support/PulseCG")
+        PathBuf::from("/Library/Application Support/Strata Graphics")
     }
 }
 
@@ -175,18 +166,18 @@ fn server_exe() -> PathBuf {
     if cfg!(windows) {
         std::env::current_exe()
             .ok()
-            .and_then(|p| p.parent().map(|d| d.join("cg-server.exe")))
-            .unwrap_or_else(|| PathBuf::from("cg-server.exe"))
+            .and_then(|p| p.parent().map(|d| d.join("strata-server.exe")))
+            .unwrap_or_else(|| PathBuf::from("strata-server.exe"))
     } else {
-        PathBuf::from("/usr/local/pulse-cg/cg-server")
+        PathBuf::from("/usr/local/strata/strata-server")
     }
 }
 
 fn log_file() -> PathBuf {
     if cfg!(windows) {
-        data_dir().join("logs").join("cg-server.log")
+        data_dir().join("logs").join("strata-server.log")
     } else {
-        PathBuf::from("/Library/Logs/PulseCG/cg-server.log")
+        PathBuf::from("/Library/Logs/Strata Graphics/strata-server.log")
     }
 }
 
@@ -305,7 +296,7 @@ fn ask(method: &str, port: u16, path: &str, json: Option<String>) -> bool {
     r.is_ok_and(|r| r.status().is_success())
 }
 
-/// Runs `cg-server service <action>` with administrator rights: without a
+/// Runs `strata-server service <action>` with administrator rights: without a
 /// password when the installer allowed it (sudoers), else the system prompt.
 fn service_as_admin(action: &'static str) -> Result<(), String> {
     let exe = server_exe();
@@ -347,7 +338,7 @@ fn service_as_admin(action: &'static str) -> Result<(), String> {
         {
             Ok(s) if s.success() => Ok(()),
             Ok(s) => Err(format!(
-                "cg-server service {action} exited with {s}. See {}",
+                "strata-server service {action} exited with {s}. See {}",
                 log_file().display()
             )),
             Err(e) => Err(e.to_string()),
@@ -522,9 +513,6 @@ struct Items {
     outputs: MenuItem,
     address: MenuItem,
     home: MenuItem,
-    designer: MenuItem,
-    operator: MenuItem,
-    output: MenuItem,
     network: Submenu,
     /// The adapter choices now in the submenu: item, role, adapter name.
     choices: Vec<(CheckMenuItem, Role, String)>,
@@ -546,9 +534,6 @@ impl Items {
             outputs: MenuItem::new("", false, None),
             address: MenuItem::new("", false, None),
             home: MenuItem::new(w.open_home, false, None),
-            designer: MenuItem::new(w.designer, false, None),
-            operator: MenuItem::new(w.operator, false, None),
-            output: MenuItem::new(w.html5, false, None),
             network: Submenu::new(w.network, false),
             choices: Vec::new(),
             shown_network: None,
@@ -566,9 +551,6 @@ impl Items {
             &items.address,
             &PredefinedMenuItem::separator(),
             &items.home,
-            &items.designer,
-            &items.operator,
-            &items.output,
             &PredefinedMenuItem::separator(),
             &items.network,
             &PredefinedMenuItem::separator(),
@@ -656,13 +638,7 @@ impl Items {
             self.address.set_text("—");
             self.address.set_enabled(false);
         }
-        for item in [
-            &self.home,
-            &self.designer,
-            &self.operator,
-            &self.output,
-            &self.restart,
-        ] {
+        for item in [&self.home, &self.restart] {
             item.set_enabled(s.running);
         }
         self.network
@@ -752,12 +728,6 @@ pub fn run() {
                 let id = e.id();
                 if id == items.home.id() {
                     open_url(&url(""));
-                } else if id == items.designer.id() {
-                    open_url(&url("designer"));
-                } else if id == items.operator.id() {
-                    open_url(&url("operator"));
-                } else if id == items.output.id() {
-                    open_url(&url("output"));
                 } else if id == items.address.id() {
                     if let Some(u) = status.urls.first() {
                         copy_to_clipboard(u);

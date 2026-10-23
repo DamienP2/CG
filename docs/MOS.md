@@ -10,7 +10,7 @@ Strata est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group), 
 
 1. **Onglet MOS** de l'accueil (admins) :
    - cocher *Accept newsroom connections* ;
-   - **MOS ID** : `pulsecg.mos` par défaut, c'est l'identifiant à déclarer dans la rédaction ;
+   - **MOS ID** : `strata.mos` par défaut, c'est l'identifiant à déclarer dans la rédaction ;
    - **Ports** : 10540 (bas : objets, profils 0-1) et 10541 (haut : conducteurs, profil 2) ;
    - **Projet** : celui qui reçoit les conducteurs. En mode *Automatique*, c'est le projet des habillages.
 
@@ -23,14 +23,14 @@ Strata est un **MOS device** (MOS 2.8.5). Il fonctionne avec Saga (Fonn Group), 
 À faire par l'administrateur Saga (les intitulés varient selon la version) :
 
 1. **Déclarer le MOS device** :
-   - MOS ID `pulsecg.mos` ;
+   - MOS ID `strata.mos` ;
    - adresse IP du serveur Strata ;
    - ports bas / haut 10540 / 10541 ;
    - profils 0, 1 et 2 ;
    - encodage UCS-2 (UTF-16), standard MOS. Strata accepte aussi l'UTF-8.
 2. **Déclarer le plugin HTML5** de ce MOS device :
    ```
-   http://<serveur-pulse-cg>:8080/mos/plugin?key=pcg_…
+   http://<serveur-strata>:8080/mos/plugin?key=pcg_…
    ```
    La clé est celle du compte `saga-plugin`. Le plugin communique avec Saga par `postMessage` (`<ncsItem>`, MOS 2.8.5) et accepte aussi le **glisser-déposer** de l'élément dans le texte du sujet.
 3. Activer l'envoi des conducteurs (MOS « running order ») vers ce device pour les émissions concernées.
@@ -57,14 +57,14 @@ Rouvrir un élément existant recharge ses valeurs, et le bouton devient **Updat
 
 Chaque message reçoit sa réponse sur la même connexion (`roAck` / `mosAck`). Les conducteurs sont conservés dans `<données>/mos/` et survivent aux redémarrages.
 
-Format des éléments créés par le plugin (`mosExternalMetadata`, schéma `https://pulsecg.io/mos/v1`) :
+Format des éléments créés par le plugin (`mosExternalMetadata`, schéma `https://stratagraphics.io/mos/v1`) :
 
 ```xml
 <mosPayload>
-  <pulsecg project="demo" template="lower-third" zone="lower-third">
+  <strata project="demo" template="lower-third" zone="lower-third">
     <field key="name">Ada Lovelace</field>
     <field key="title">Mathématicienne</field>
-  </pulsecg>
+  </strata>
 </mosPayload>
 ```
 

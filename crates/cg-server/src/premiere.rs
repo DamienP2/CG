@@ -101,7 +101,7 @@ fn zip_bytes(server: Option<&str>) -> zip::result::ZipResult<Vec<u8>> {
         let Some(f) = Panel::get(&path) else { continue };
         let name = match path.strip_prefix("install/") {
             Some(script) => script.to_string(),
-            None => format!("io.pulsecg.premiere/{path}"),
+            None => format!("io.stratagraphics.premiere/{path}"),
         };
         let opts = if name.ends_with(".sh") {
             opts.unix_permissions(0o755)
@@ -112,7 +112,7 @@ fn zip_bytes(server: Option<&str>) -> zip::result::ZipResult<Vec<u8>> {
         z.write_all(&f.data)?;
     }
     if let Some(server) = server {
-        z.start_file("io.pulsecg.premiere/strata.ini", opts)?;
+        z.start_file("io.stratagraphics.premiere/strata.ini", opts)?;
         writeln!(z, "[strata]\nserver={server}")?;
     }
     Ok(z.finish()?.into_inner())
@@ -169,8 +169,10 @@ mod tests {
             .collect();
         assert!(names
             .iter()
-            .any(|n| n == "io.pulsecg.premiere/CSXS/manifest.xml"));
+            .any(|n| n == "io.stratagraphics.premiere/CSXS/manifest.xml"));
         assert!(names.iter().any(|n| n == "install-mac.sh"));
-        assert!(names.iter().any(|n| n == "io.pulsecg.premiere/strata.ini"));
+        assert!(names
+            .iter()
+            .any(|n| n == "io.stratagraphics.premiere/strata.ini"));
     }
 }

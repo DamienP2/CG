@@ -14,13 +14,13 @@ Architecture, choix techniques et feuille de route : [`docs/ARCHITECTURE.md`](do
 
 Le serveur est distribué sous la forme d'**un exécutable autonome** par plateforme : il embarque l'UI web, les polices et le moteur. Il s'installe en **service natif** : systemd sous Linux, launchd sous macOS, service Windows.
 
-- **Windows** : installateur `.msi` avec l'app **Strata** (zone de notification) (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
-- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel) avec l'app **Strata** (barre des menus).
+- **Windows** : installateur `.msi` avec l’app **Strata Graphics** (zone de notification) (service, pare-feu, menu Démarrer, déploiement silencieux `msiexec /qn`).
+- **macOS** : installateur `.pkg` universel (Apple Silicon + Intel) avec l’app **Strata Graphics** (barre des menus).
 - **Linux** : archive avec binaire statique et `sudo ./install.sh` (systemd).
 
 Les mises à jour suivantes se font **sans désinstaller**, depuis **Réglages → Mises à jour** : en ligne (releases GitHub) ou en déposant l'archive de la version (serveurs hors ligne), avec retour automatique à la version précédente si la nouvelle ne démarre pas.
 
-Les commandes `cg-server service install | uninstall | start | stop | status` sont identiques sur les trois OS. Le guide complet est dans [`docs/INSTALL.md`](docs/INSTALL.md).
+Les commandes `strata-server service install | uninstall | start | stop | status` sont identiques sur les trois OS. Le guide complet est dans [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Développement
 
@@ -40,7 +40,7 @@ En développement de l'UI, lancez `npm run dev` dans `web/` : Vite sert l'UI sur
 
 Au premier lancement :
 
-- la page d'accueil, ouverte **sur le serveur lui-même** (`http://localhost:8080`), propose de créer le compte administrateur. À distance, utilisez `cg-server user add admin` ;
+- la page d'accueil, ouverte **sur le serveur lui-même** (`http://localhost:8080`), propose de créer le compte administrateur. À distance, utilisez `strata-server user add admin` ;
 - un projet de démo est créé dans `<data>/projects/` : lower third, score bug et un exemple de chaque widget ;
 - une chaîne de sortie `main` (1080p50) est créée.
 
@@ -51,16 +51,16 @@ Une installation 0.1 est migrée automatiquement : `project.json` devient le pre
 | Option | Variable | Défaut |
 | --- | --- | --- |
 | `--bind` | `CG_BIND` | `0.0.0.0:8080` |
-| `--data-dir` | `CG_DATA_DIR` | dossier de données de l'utilisateur ; pour le service : `/var/lib/pulse-cg`, `/Library/Application Support/PulseCG` ou `%ProgramData%\PulseCG` |
+| `--data-dir` | `CG_DATA_DIR` | dossier de données de l'utilisateur ; pour le service : `/var/lib/strata-graphics`, `/Library/Application Support/Strata Graphics` ou `%ProgramData%\Strata Graphics` |
 | `--web-dir` | `CG_WEB_DIR` | UI embarquée (option utile pour servir `web/dist` en développement) |
 
 ### Comptes utilisateurs en ligne de commande
 
 ```bash
-cg-server user add <nom> [--role admin|designer|operator|viewer]   # demande le mot de passe
-cg-server user list
-cg-server user passwd <nom>
-cg-server user delete <nom>
+strata-server user add <nom> [--role admin|designer|operator|viewer]   # demande le mot de passe
+strata-server user list
+strata-server user passwd <nom>
+strata-server user delete <nom>
 ```
 
 Ces commandes agissent sur le dossier de données du service s'il existe (sinon sur le dossier utilisateur, ou sur `--data-dir`). Elles fonctionnent aussi pendant que le serveur tourne.
@@ -85,10 +85,10 @@ Le serveur se règle dans la page **Settings** (Général, Réseau, Mises à jou
         "html5": [{ "id": "html5-1", "name": "Web page", "background": "" }],
         "st2110": [{ "id": "st2110-1", "name": "CG1", "encoding": "fillKey", "fill": "239.100.1.1:5004", "key": "239.100.1.2:5004", "interface": "10.10.0.21" }],
         "sdi": [{ "id": "sdi-1", "name": "CG1-SDI", "device": 0, "externalKey": true, "fillOnly": false, "genlock": true }],
-        "ndi": [{ "id": "ndi-1", "name": "PULSE NEWS", "groups": "", "alpha": true }],
+        "ndi": [{ "id": "ndi-1", "name": "STRATA NEWS", "groups": "", "alpha": true }],
         "streams": [{ "id": "stream-1", "name": "Web", "protocol": "srt", "url": "srt://0.0.0.0:9000", "listen": true, "bitrate": 8000, "codec": "h264", "background": "#000000", "audio": true }]
       },
-      "renditions": [{ "id": "vertical", "name": "Vertical 9:16", "width": 1080, "height": 1920, "outputs": { "st2110": [], "sdi": [], "ndi": [{ "id": "ndi-2", "name": "PULSE NEWS 9:16", "groups": "", "alpha": true }] } }]
+      "renditions": [{ "id": "vertical", "name": "Vertical 9:16", "width": 1080, "height": 1920, "outputs": { "st2110": [], "sdi": [], "ndi": [{ "id": "ndi-2", "name": "STRATA NEWS 9:16", "groups": "", "alpha": true }] } }]
     }
   ],
   "inputs": [
@@ -103,7 +103,7 @@ Les SDP se récupèrent sur `GET /api/channels/<chaîne>/outputs/<id de la sorti
 ## Utilisation
 
 ### Projets
-Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. La page d'accueil a les onglets **Projects**, **Assets**, **Data**, **Flux vidéo** (Video streams), **MOS**, **Users**, **API** et **Settings** (*Flux vidéo*, *MOS*, *Users* et *Settings* pour les admins ; *Data* pour les designers). Chacun suit la même mise en page : une liste à gauche, la page à droite. La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.pulsecg.json`) et de le supprimer (menu *…* de la carte).
+Un **projet** correspond à une émission : ses templates, ses widgets et son rundown. La page d'accueil a les onglets **Projects**, **Assets**, **Data**, **Flux vidéo** (Video streams), **MOS**, **Users**, **API** et **Settings** (*Flux vidéo*, *MOS*, *Users* et *Settings* pour les admins ; *Data* pour les designers). Chacun suit la même mise en page : une liste à gauche, la page à droite. La page **Projects** permet de créer un projet (dans le format de son choix ; il démarre avec un template vide, et garde toujours au moins un template), de le dupliquer, de l'exporter ou de l'importer (`.strata.json`) et de le supprimer (menu *…* de la carte).
 
 Les projets se rangent dans des **dossiers** (colonne de gauche : créer, renommer, supprimer un dossier ; glisser une carte sur un dossier, ou *… > Move to*). Supprimer un dossier ne supprime pas ses projets. Recherche et tri par nom ou nombre de templates.
 
@@ -247,7 +247,7 @@ L'onglet **Users** liste les comptes en cartes, filtrées par rôle à gauche. P
 | `GET` / `PUT` / `DELETE` | `/api/projects/{id}` · `/export` | projet complet, réglages, suppression, export |
 | `PUT` / `DELETE` | `/api/projects/{id}/templates/{tid}[?publish=true]` | enregistrer le brouillon d'un template (publié aussitôt avec `?publish=true`), ou le supprimer |
 | `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/publish` · `/draft` | publier vers l'Opérateur, abandonner le brouillon |
-| `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/lock` · `GET /api/projects/{id}/locks` | verrou d'édition (en-tête `X-Pulse-Client`, `force` pour reprendre la main) |
+| `POST` / `DELETE` | `/api/projects/{id}/templates/{tid}/lock` · `GET /api/projects/{id}/locks` | verrou d'édition (en-tête `X-Strata-Client`, `force` pour reprendre la main) |
 | `GET` | `/api/projects/{id}/templates/{tid}/thumbnail.png?frame=` | rendu serveur d'un template |
 | `GET` / `PUT` / `DELETE` | `/api/media[/{nom}]` · `/api/projects/{id}/media[/{nom}]` | médias partagés, médias d'un projet |
 | `GET` / `PUT` | `/api/folders` | dossiers de la liste des projets |

@@ -6,7 +6,7 @@ edition.workspace = true
 autoexamples = false
 
 [[bin]]
-name = "cg-server"
+name = "strata-server"
 path = "src/main.rs"
 
 [features]

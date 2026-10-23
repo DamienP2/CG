@@ -44,7 +44,7 @@ use crate::state::{AppState, ChannelRt, Shared};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "cg-server",
+    name = "strata-server",
     version,
     about = "Strata — broadcast character generator server",
     args_conflicts_with_subcommands = true
@@ -221,8 +221,8 @@ enum ServiceCmd {
     Install {
         #[arg(long, default_value = "0.0.0.0:8080")]
         bind: SocketAddr,
-        /// [default: /var/lib/pulse-cg, /Library/Application Support/PulseCG
-        /// or %ProgramData%\PulseCG]
+        /// [default: /var/lib/strata-graphics, /Library/Application Support/Strata Graphics
+        /// or %ProgramData%\Strata Graphics]
         #[arg(long)]
         data_dir: Option<PathBuf>,
     },
@@ -279,6 +279,7 @@ fn main() -> anyhow::Result<()> {
             let result = match cmd {
                 ServiceCmd::Install { bind, data_dir } => {
                     let data_dir = data_dir.unwrap_or_else(paths::system_data_dir);
+                    paths::adopt_former_data(&data_dir);
                     service::install(&service::InstallOptions {
                         bind,
                         data_dir: data_dir.clone(),
@@ -316,10 +317,16 @@ fn main() -> anyhow::Result<()> {
 
 fn run(args: RunArgs) -> anyhow::Result<()> {
     update::set_supervised(args.service);
+    let default_dir = if args.service {
+        paths::system_data_dir
+    } else {
+        paths::user_data_dir
+    };
+    paths::adopt_former_data(&args.data_dir.clone().unwrap_or_else(default_dir));
     if args.service {
         // Windows services have no console: log next to the data.
         let data = args.data_dir.clone().unwrap_or_else(paths::system_data_dir);
-        init_logging(Some(data.join("logs").join("cg-server.log")));
+        init_logging(Some(data.join("logs").join("strata-server.log")));
         #[cfg(windows)]
         return service::windows_runtime::run(args);
         #[cfg(not(windows))]
@@ -398,7 +405,7 @@ pub async fn serve(
     let perf = Arc::new(perf::Perf::default());
     perf::spawn_sampler(perf.clone(), inputs.clone());
     if auth.needs_setup() {
-        tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `cg-server user add <name>`");
+        tracing::warn!("no user yet: open http://localhost:<port>/ on this machine to create the admin account, or run `strata-server user add <name>`");
     }
 
     // The NDI runtime reads its settings (network roles) from here.

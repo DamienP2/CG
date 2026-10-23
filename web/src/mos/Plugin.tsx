@@ -20,7 +20,7 @@ import { t } from '../i18n';
  * cannot use the web app's login cookie inside another application).
  */
 
-const SCHEMA = 'https://pulsecg.io/mos/v1';
+const SCHEMA = 'https://stratagraphics.io/mos/v1';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 interface Info {
@@ -40,7 +40,7 @@ interface Edited {
 function parseNcsItem(xml: string): Edited | null {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   const item = doc.querySelector('item');
-  const payload = doc.querySelector('pulsecg');
+  const payload = doc.querySelector('strata, pulsecg');
   if (!item || !payload) return null;
   const data: Data = {};
   payload.querySelectorAll('field').forEach((f) => (data[f.getAttribute('key') ?? ''] = f.textContent ?? ''));
@@ -70,7 +70,7 @@ function itemXml(info: Info, project: Project, t: Template, data: Data, slug: st
     `<mosAbstract>${esc(`${t.name}${summary ? `: ${summary}` : ''}`)}</mosAbstract>` +
     `<objDur>${Math.round(t.duration)}</objDur><objTB>${Math.round(fps)}</objTB>` +
     `<mosExternalMetadata><mosScope>PLAYLIST</mosScope><mosSchema>${SCHEMA}</mosSchema><mosPayload>` +
-    `<pulsecg project="${esc(project.id)}" template="${esc(t.id)}" zone="${esc(t.zone)}">${fields}</pulsecg>` +
+    `<strata project="${esc(project.id)}" template="${esc(t.id)}" zone="${esc(t.zone)}">${fields}</strata>` +
     `</mosPayload></mosExternalMetadata></item>`
   );
 }

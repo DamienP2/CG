@@ -5,8 +5,8 @@
   where the panel can update itself from the Strata server.
   Build: packaging/premiere/stage.sh <dir>, then
          wix build strata-premiere.wxs -ext WixToolset.Util.wixext
-         -d Version=0.1.0 -d PanelDir=<dir>\io.pulsecg.premiere -d DocsDir=<repo root> -o Strata-Premiere.msi
-  Silent install with the server set: msiexec /i Strata-Premiere.msi /qn SERVER=http://cg-server:8080
+         -d Version=0.1.0 -d PanelDir=<dir>\io.stratagraphics.premiere -d DocsDir=<repo root> -o Strata-Premiere.msi
+  Silent install with the server set: msiexec /i Strata-Premiere.msi /qn SERVER=http://strata-server:8080
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
@@ -24,7 +24,7 @@
     <!-- The Strata server the panel starts on (msiexec SERVER=...); empty: asked in the panel. -->
     <Property Id="SERVER" Secure="yes" />
     <Property Id="ARPNOMODIFY" Value="1" />
-    <Icon Id="Strata.ico" SourceFile="$(var.DocsDir)\assets\icons\pulse-cg.ico" />
+    <Icon Id="Strata.ico" SourceFile="$(var.DocsDir)\assets\icons\strata.ico" />
     <Property Id="ARPPRODUCTICON" Value="Strata.ico" />
 
     <!-- The panel adds files when it updates itself: remove the whole folder on uninstall. -->
@@ -36,7 +36,7 @@
       <Directory Id="AdobeDir" Name="Adobe">
         <Directory Id="CepDir" Name="CEP">
           <Directory Id="ExtensionsDir" Name="extensions">
-            <Directory Id="EXT" Name="io.pulsecg.premiere" />
+            <Directory Id="EXT" Name="io.stratagraphics.premiere" />
           </Directory>
         </Directory>
       </Directory>

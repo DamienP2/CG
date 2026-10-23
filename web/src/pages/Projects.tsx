@@ -422,13 +422,13 @@ export function Projects() {
   // Drop target: a folder (name), or the top level (null). A selected project carries the whole selection.
   const drop = (target: string | null) => ({
     onDragOver: (e: React.DragEvent) => {
-      if (!design || !e.dataTransfer.types.includes('application/x-pulse-project')) return;
+      if (!design || !e.dataTransfer.types.includes('application/x-strata-project')) return;
       e.preventDefault();
       setDropOn(target ?? '');
     },
     onDragLeave: () => setDropOn(null),
     onDrop: (e: React.DragEvent) => {
-      const ids = e.dataTransfer.getData('application/x-pulse-project').split('\n').filter(Boolean);
+      const ids = e.dataTransfer.getData('application/x-strata-project').split('\n').filter(Boolean);
       setDropOn(null);
       if (!ids.length) return;
       moveAll(ids, target);
@@ -509,7 +509,7 @@ export function Projects() {
                 <button className="btn" title={t('Ready-to-air graphics packages to start from')} onClick={() => setExamples(true)}>
                   <GraduationCap size={14} /> {t('Examples')}
                 </button>
-                <label className="btn" title={t('Import a .pulsecg.json file')}>
+                <label className="btn" title={t('Import a .strata.json file')}>
                   <Upload size={14} /> {t('Import')}
                   <input type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
                 </label>
@@ -602,7 +602,7 @@ export function Projects() {
                   draggable={design}
                   onDragStart={(e) => {
                     const ids = isOn ? [...selected] : [p.id];
-                    e.dataTransfer.setData('application/x-pulse-project', ids.join('\n'));
+                    e.dataTransfer.setData('application/x-strata-project', ids.join('\n'));
                     e.dataTransfer.effectAllowed = 'move';
                   }}
                 >

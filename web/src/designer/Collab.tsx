@@ -20,7 +20,7 @@ const lockUrl = (p: string, t: string) => `/api/projects/${encodeURIComponent(p)
 
 function release(projectId: string, templateId: string) {
   // keepalive: also sent while the tab closes.
-  void fetch(lockUrl(projectId, templateId), { method: 'DELETE', credentials: 'same-origin', keepalive: true, headers: { 'X-Pulse-Client': clientId } }).catch(() => {});
+  void fetch(lockUrl(projectId, templateId), { method: 'DELETE', credentials: 'same-origin', keepalive: true, headers: { 'X-Strata-Client': clientId } }).catch(() => {});
 }
 
 /** Takes the open template's edit lock, keeps it, and follows take overs. */

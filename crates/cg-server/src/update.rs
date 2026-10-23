@@ -5,12 +5,12 @@
 //! from a release archive uploaded by an admin (servers without internet).
 //! Either way the server:
 //!
-//! 1. extracts `cg-server` from the platform package (Ubuntu `.tar.gz`,
+//! 1. extracts `strata-server` from the platform package (Ubuntu `.tar.gz`,
 //!    macOS `.pkg` through pkgutil, Windows `.msi` through an administrative
 //!    install of msiexec; older `.tar.gz` / `.zip` archives too) and checks
 //!    the SHA-256 published by GitHub when there is one;
 //! 2. runs `<new> --version`, which proves the binary runs on this machine;
-//! 3. keeps the running binary as `cg-server.previous` and swaps the new one
+//! 3. keeps the running binary as `strata-server.previous` and swaps the new one
 //!    in (atomic rename; the running process keeps its old image);
 //! 4. exits so the service manager (systemd, launchd, Windows SCM) starts the
 //!    new version; a foreground server re-launches itself.
@@ -31,8 +31,8 @@ use sha2::{Digest, Sha256};
 
 pub const DEFAULT_REPO: &str = "DamienP2/CG";
 
-/// This build's platform (older release archives were named after it:
-/// `pulse-cg-<version>-<PLATFORM>.*`, now `Strata-<version>-<PLATFORM>.*`).
+/// This build's platform, in the name of its update package
+/// (`Strata-<version>-<PLATFORM>.*`).
 pub const PLATFORM: &str = if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
     "linux-arm64"
 } else if cfg!(target_os = "linux") {
@@ -61,19 +61,19 @@ pub const PACKAGES: &[&str] = if cfg!(all(target_os = "linux", target_arch = "x8
 };
 
 const EXE: &str = if cfg!(windows) {
-    "cg-server.exe"
+    "strata-server.exe"
 } else {
-    "cg-server"
+    "strata-server"
 };
 const PREVIOUS: &str = if cfg!(windows) {
-    "cg-server.previous.exe"
+    "strata-server.previous.exe"
 } else {
-    "cg-server.previous"
+    "strata-server.previous"
 };
 const STAGED: &str = if cfg!(windows) {
-    "cg-server.new.exe"
+    "strata-server.new.exe"
 } else {
-    "cg-server.new"
+    "strata-server.new"
 };
 /// Exit code asking the service manager for a restart.
 const RESTART_CODE: i32 = 75;
@@ -88,7 +88,7 @@ pub fn set_supervised(windows_service: bool) {
     let supervised = windows_service
         || env("CG_SUPERVISED").is_some_and(|v| v == "1")
         || env("INVOCATION_ID").is_some()
-        || env("XPC_SERVICE_NAME").is_some_and(|v| v == "com.pulsecg.server");
+        || env("XPC_SERVICE_NAME").is_some_and(|v| v == "com.stratagraphics.server");
     SUPERVISED.store(supervised, Ordering::Relaxed);
     let _ = exe_path();
 }
@@ -296,7 +296,7 @@ fn agent() -> ureq::Agent {
         .timeout_global(Some(Duration::from_secs(600)))
         .max_redirects(0)
         .http_status_as_error(false)
-        .user_agent(concat!("pulse-cg/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("strata-graphics/", env!("CARGO_PKG_VERSION")))
         .build()
         .into()
 }
@@ -645,7 +645,7 @@ fn from_archive(bytes: &[u8], want: impl Fn(&str) -> bool) -> Result<Option<Opti
     Ok(None)
 }
 
-/// `cg-server` from a release package (archive or installer) or a bare binary.
+/// `strata-server` from a release package (archive or installer) or a bare binary.
 pub fn extract_binary(bytes: &[u8]) -> Result<Vec<u8>> {
     let is_exe = |name: &str| Path::new(name).file_name().and_then(|n| n.to_str()) == Some(EXE);
     match from_package(bytes, is_exe)? {
@@ -710,14 +710,14 @@ pub fn add_ffmpeg(bytes: &[u8]) {
     }
 }
 
-/// Version printed by `<binary> --version` ("cg-server 0.3.0").
+/// Version printed by `<binary> --version` ("strata-server 0.3.0").
 fn binary_version(path: &Path) -> Result<String> {
     let out = std::process::Command::new(path)
         .arg("--version")
         .output()
         .context("the new binary cannot run on this machine")?;
     let text = String::from_utf8_lossy(&out.stdout);
-    match text.trim().strip_prefix("cg-server ") {
+    match text.trim().strip_prefix("strata-server ") {
         Some(v) if out.status.success() => Ok(v.trim().to_string()),
         _ => bail!("this is not a Strata server for {PLATFORM}"),
     }
@@ -1005,9 +1005,9 @@ mod tests {
             h.set_mode(0o755);
             tar.append_data(&mut h, name, data).unwrap();
         };
-        add(format!("pulse-cg-9.9.9-{PLATFORM}/README.md"), b"hello");
-        add(format!("pulse-cg-9.9.9-{PLATFORM}/{EXE}"), body);
-        add(format!("pulse-cg-9.9.9-{PLATFORM}/bin/{FFMPEG}"), b"ffmpeg");
+        add(format!("Strata-9.9.9-{PLATFORM}/README.md"), b"hello");
+        add(format!("Strata-9.9.9-{PLATFORM}/{EXE}"), body);
+        add(format!("Strata-9.9.9-{PLATFORM}/bin/{FFMPEG}"), b"ffmpeg");
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         std::io::Write::write_all(&mut gz, &tar.into_inner().unwrap()).unwrap();
         let archive = gz.finish().unwrap();
@@ -1079,8 +1079,8 @@ mod tests {
         // An older release: its archive.
         let old = || {
             vec![
-                asset(1, &format!("pulse-cg-9.9.8-{PLATFORM}.tar.gz")),
-                asset(2, &format!("pulse-cg-9.9.8-{PLATFORM}.zip")),
+                asset(1, &format!("Strata-9.9.8-{PLATFORM}.tar.gz")),
+                asset(2, &format!("Strata-9.9.8-{PLATFORM}.zip")),
             ]
         };
         assert!(pick_package_for(old(), false).is_some());
@@ -1108,7 +1108,7 @@ mod tests {
         // An unpacked installer: the server and ffmpeg are found by path.
         let dir = std::env::temp_dir().join(format!("strata-find-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let deep = dir.join("Strata.pkg/Payload/usr/local/pulse-cg");
+        let deep = dir.join("Strata.pkg/Payload/usr/local/strata");
         std::fs::create_dir_all(deep.join("bin")).unwrap();
         std::fs::write(deep.join("INSTALL.md"), b"doc").unwrap();
         std::fs::write(deep.join(EXE), b"server").unwrap();

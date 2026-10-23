@@ -1,7 +1,7 @@
 //! Installs the server as a native background service:
 //! systemd (Linux), launchd (macOS) or the Service Control Manager (Windows).
 //!
-//! `cg-server service install` registers the *current* executable, so copy
+//! `strata-server service install` registers the *current* executable, so copy
 //! the binary to its final location first (the packaged install scripts do).
 
 use std::net::SocketAddr;
@@ -65,11 +65,18 @@ mod imp {
     use super::*;
     use crate::paths::SERVICE_NAME;
 
-    const UNIT: &str = "/etc/systemd/system/pulse-cg.service";
-    const USER: &str = "pulse-cg";
+    const UNIT: &str = "/etc/systemd/system/strata-graphics.service";
+    const USER: &str = "strata";
+    /// The service of an install from before the rename.
+    const FORMER_UNIT: &str = "/etc/systemd/system/pulse-cg.service";
 
     pub fn install(o: &InstallOptions) -> Result<()> {
         let exe = exe()?;
+        if Path::new(FORMER_UNIT).exists() {
+            let _ = run("systemctl", &["disable", "--now", "pulse-cg"]);
+            let _ = std::fs::remove_file(FORMER_UNIT);
+            let _ = Command::new("userdel").arg("pulse-cg").output();
+        }
         // Dedicated unprivileged account owning the data directory.
         if Command::new("id")
             .arg(USER)
@@ -153,9 +160,12 @@ mod imp {
 mod imp {
     use super::*;
 
-    const LABEL: &str = "com.pulsecg.server";
-    const PLIST: &str = "/Library/LaunchDaemons/com.pulsecg.server.plist";
-    const LOG_DIR: &str = "/Library/Logs/PulseCG";
+    const LABEL: &str = "com.stratagraphics.server";
+    const PLIST: &str = "/Library/LaunchDaemons/com.stratagraphics.server.plist";
+    const LOG_DIR: &str = "/Library/Logs/Strata Graphics";
+    /// The service of an install from before the rename.
+    const FORMER_LABEL: &str = "com.pulsecg.server";
+    const FORMER_PLIST: &str = "/Library/LaunchDaemons/com.pulsecg.server.plist";
 
     fn xml_escape(s: &str) -> String {
         s.replace('&', "&amp;")
@@ -165,6 +175,12 @@ mod imp {
 
     pub fn install(o: &InstallOptions) -> Result<()> {
         let exe = exe()?;
+        if Path::new(FORMER_PLIST).exists() {
+            let _ = Command::new("launchctl")
+                .args(["bootout", &format!("system/{FORMER_LABEL}")])
+                .output();
+            let _ = std::fs::remove_file(FORMER_PLIST);
+        }
         std::fs::create_dir_all(&o.data_dir).map_err(|e| permission_hint(e.into(), &o.data_dir))?;
         std::fs::create_dir_all(LOG_DIR)
             .map_err(|e| permission_hint(e.into(), Path::new(LOG_DIR)))?;
@@ -192,8 +208,8 @@ mod imp {
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ProcessType</key><string>Interactive</string>
-  <key>StandardOutPath</key><string>{LOG_DIR}/cg-server.log</string>
-  <key>StandardErrorPath</key><string>{LOG_DIR}/cg-server.log</string>
+  <key>StandardOutPath</key><string>{LOG_DIR}/strata-server.log</string>
+  <key>StandardErrorPath</key><string>{LOG_DIR}/strata-server.log</string>
 </dict>
 </plist>
 "#
@@ -261,7 +277,7 @@ mod imp {
 
     pub fn start() -> Result<()> {
         if !Path::new(PLIST).exists() {
-            bail!("the service is not installed — run `sudo cg-server service install`");
+            bail!("the service is not installed — run `sudo strata-server service install`");
         }
         // Loading the daemon starts it (RunAtLoad); if it is already loaded
         // but stopped, kickstart it.
@@ -447,7 +463,7 @@ mod imp {
 mod imp {
     use super::*;
     fn unsupported() -> Result<()> {
-        bail!("service management is not supported on this platform; run `cg-server run` under your init system")
+        bail!("service management is not supported on this platform; run `strata-server run` under your init system")
     }
     pub fn install(_: &InstallOptions) -> Result<()> {
         unsupported()

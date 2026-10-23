@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Strata panel for Adobe Premiere Pro (CEP). -->
-<ExtensionManifest Version="9.0" ExtensionBundleId="io.pulsecg.premiere" ExtensionBundleVersion="0.8.0" ExtensionBundleName="Strata Graphics">
+<ExtensionManifest Version="9.0" ExtensionBundleId="io.stratagraphics.premiere" ExtensionBundleVersion="0.8.0" ExtensionBundleName="Strata Graphics">
   <ExtensionList>
-    <Extension Id="io.pulsecg.premiere.panel" Version="0.8.0" />
+    <Extension Id="io.stratagraphics.premiere.panel" Version="0.8.0" />
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -17,7 +17,7 @@
     </RequiredRuntimeList>
   </ExecutionEnvironment>
   <DispatchInfoList>
-    <Extension Id="io.pulsecg.premiere.panel">
+    <Extension Id="io.stratagraphics.premiere.panel">
       <DispatchInfo>
         <Resources>
           <MainPath>./index.html</MainPath>

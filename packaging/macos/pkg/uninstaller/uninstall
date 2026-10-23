@@ -1,7 +1,7 @@
 #!/bin/sh
 # "Uninstall Strata Graphics.app" — asks for confirmation, then runs the uninstall
 # script with administrator rights (the macOS password prompt).
-SCRIPT=/usr/local/pulse-cg/uninstall.sh
+SCRIPT=/usr/local/strata/uninstall.sh
 ICON="$(cd "$(dirname "$0")/../Resources" && pwd)/AppIcon.icns"
 
 case "$(defaults read -g AppleLanguages 2>/dev/null | sed -n 2p | tr -d ' ",')" in

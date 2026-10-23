@@ -4,9 +4,9 @@
 # The panel then updates itself from the Strata server.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-if [ -d "$HERE/io.pulsecg.premiere" ]; then SRC="$HERE/io.pulsecg.premiere"; else SRC=$(cd "$HERE/.." && pwd); fi
-DEST="$HOME/Library/Application Support/Adobe/CEP/extensions/io.pulsecg.premiere"
-rm -rf "$DEST"
+if [ -d "$HERE/io.stratagraphics.premiere" ]; then SRC="$HERE/io.stratagraphics.premiere"; else SRC=$(cd "$HERE/.." && pwd); fi
+DEST="$HOME/Library/Application Support/Adobe/CEP/extensions/io.stratagraphics.premiere"
+rm -rf "$DEST" "$HOME/Library/Application Support/Adobe/CEP/extensions/io.pulsecg.premiere"
 mkdir -p "$DEST"
 for item in CSXS host ui index.html loader.js .debug strata.ini; do
   if [ -e "$SRC/$item" ]; then cp -R "$SRC/$item" "$DEST/"; fi

@@ -262,7 +262,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
         <div>
           <strong>{t('Offline update')}</strong>
           <span className="muted small">
-            {t('Upload the file from the release page — for servers without internet access:')} <code>{info.package ?? `pulse-cg-<version>-${info.platform}`}</code>
+            {t('Upload the file from the release page — for servers without internet access:')} <code>{info.package ?? `Strata-<version>-${info.platform}`}</code>
           </span>
         </div>
         <label className="check small">

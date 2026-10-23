@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the macOS installer package from universal binaries.
-# Usage: packaging/macos/pkg/build.sh <cg-server> <pulse-cg-tray> <version> <output.pkg>
+# Usage: packaging/macos/pkg/build.sh <strata-server> <strata-tray> <version> <output.pkg>
 # Optional signing: MACOS_APP_IDENTITY ("Developer ID Application: …") for the
 # apps and binaries, MACOS_INSTALLER_IDENTITY ("Developer ID Installer: …")
 # for the package.
@@ -35,10 +35,10 @@ make_app() {
 }
 
 # --- payload -----------------------------------------------------------------
-PAYLOAD="$WORK/root/usr/local/pulse-cg"
+PAYLOAD="$WORK/root/usr/local/strata"
 mkdir -p "$PAYLOAD"
-cp "$BIN" "$PAYLOAD/cg-server"
-chmod 0755 "$PAYLOAD/cg-server"
+cp "$BIN" "$PAYLOAD/strata-server"
+chmod 0755 "$PAYLOAD/strata-server"
 cp "$ROOT/packaging/macos/uninstall.sh" "$ROOT/docs/INSTALL.md" "$ROOT/docs/outputs.example.json" "$ROOT/assets/fonts/OFL.txt" "$PAYLOAD/"
 chmod 0755 "$PAYLOAD/uninstall.sh"
 
@@ -65,11 +65,11 @@ fi
 
 APPS="$WORK/root/Applications/Strata Graphics"
 mkdir -p "$APPS"
-make_app "Strata Graphics" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
+make_app "Strata Graphics" "$TRAY" strata-tray "$HERE/app" "$ROOT/assets/icons/strata-macos-1024.png"
 make_app "Uninstall Strata Graphics" "$HERE/uninstaller/uninstall" uninstall "$HERE/uninstaller" "$ROOT/assets/icons/uninstall-macos-1024.png"
 
 mkdir -p "$WORK/root/Library/LaunchAgents"
-cp "$HERE/com.pulsecg.tray.plist" "$WORK/root/Library/LaunchAgents/"
+cp "$HERE/com.stratagraphics.tray.plist" "$WORK/root/Library/LaunchAgents/"
 
 # --- signing (optional) --------------------------------------------------------
 if [ -n "${MACOS_APP_IDENTITY:-}" ]; then
@@ -77,7 +77,7 @@ if [ -n "${MACOS_APP_IDENTITY:-}" ]; then
   # Same team as the server, so the hardened runtime loads it.
   [ -f "$PAYLOAD/lib/libndi.dylib" ] && sign "$PAYLOAD/lib/libndi.dylib"
   [ -f "$PAYLOAD/bin/ffmpeg" ] && sign "$PAYLOAD/bin/ffmpeg"
-  sign "$PAYLOAD/cg-server"
+  sign "$PAYLOAD/strata-server"
   sign "$APPS/Strata Graphics.app"
   sign "$APPS/Uninstall Strata Graphics.app"
 fi
@@ -92,7 +92,7 @@ while /usr/libexec/PlistBuddy -c "Print :$i" "$WORK/component.plist" >/dev/null 
 done
 
 pkgbuild --root "$WORK/root" --component-plist "$WORK/component.plist" --scripts "$HERE/scripts" \
-  --identifier com.pulsecg.server --version "$VERSION" --install-location / \
+  --identifier com.stratagraphics.server --version "$VERSION" --install-location / \
   "$WORK/component.pkg"
 sed "s/__VERSION__/$VERSION/" "$HERE/Distribution.xml" > "$WORK/Distribution.xml"
 

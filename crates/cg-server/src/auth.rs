@@ -1,7 +1,7 @@
 //! Users, roles and sessions.
 //!
 //! Users live in `<data>/users.json` (Argon2 password hashes); the file is
-//! re-read when it changes on disk so `cg-server user …` works while the
+//! re-read when it changes on disk so `strata-server user …` works while the
 //! server runs. Sessions are random tokens kept in memory, sent as an
 //! HttpOnly cookie to browsers or as `Authorization: Bearer` to automation.
 

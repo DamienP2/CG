@@ -19,14 +19,14 @@ fn icon() {
     #[cfg(windows)]
     {
         let mut res = winresource::WindowsResource::new();
-        res.set_icon("../../assets/icons/pulse-cg.ico");
+        res.set_icon("../../assets/icons/strata.ico");
         res.set("FileDescription", "Strata Graphics Server");
         res.set("ProductName", "Strata Graphics");
         if let Err(e) = res.compile() {
             println!("cargo:warning=cannot embed the icon: {e}");
         }
     }
-    println!("cargo:rerun-if-changed=../../assets/icons/pulse-cg.ico");
+    println!("cargo:rerun-if-changed=../../assets/icons/strata.ico");
 }
 
 /// The example projects: every `examples/ex-*.json` is embedded, in name

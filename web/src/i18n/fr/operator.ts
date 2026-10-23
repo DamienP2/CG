@@ -385,7 +385,7 @@ export const operator: Record<string, string> = {
   'What this project is for': 'À quoi sert ce projet',
   'The original format of the templates. Changing it does not move or rescale existing layers; channels in another format scale the graphics to fit.': 'Le format d’origine des modèles. Le changer ne déplace ni ne redimensionne les calques existants ; les canaux d’un autre format mettent les habillages à l’échelle.',
   'Export and delete': 'Exporter et supprimer',
-  'Export (.pulsecg.json)': 'Exporter (.pulsecg.json)',
+  'Export (.strata.json)': 'Exporter (.strata.json)',
   'Delete project': 'Supprimer le projet',
   // Messages (store)
   'Cannot open the project: {error}': 'Impossible d’ouvrir le projet : {error}',

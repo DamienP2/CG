@@ -351,7 +351,7 @@ fn agent() -> ureq::Agent {
         .timeout_global(Some(Duration::from_secs(15)))
         .max_redirects(5)
         .http_status_as_error(false)
-        .user_agent(concat!("pulse-cg/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("strata-graphics/", env!("CARGO_PKG_VERSION")))
         .build()
         .into()
 }

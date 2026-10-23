@@ -82,7 +82,7 @@ export const home: Record<string, string> = {
   'HTML5 outputs': 'Sorties HTML5',
   'HTML5 plugin for the journalists': 'Plugin HTML5 pour les journalistes',
   'Images': 'Images',
-  'Import a .pulsecg.json file': 'Importer un fichier .pulsecg.json',
+  'Import a .strata.json file': 'Importer un fichier .strata.json',
   'Import failed: {error}': 'Échec de l’import : {error}',
   'Import it into Postman, Insomnia or a code generator': 'À importer dans Postman, Insomnia ou un générateur de code',
   'Imported “{name}”': '« {name} » importé',

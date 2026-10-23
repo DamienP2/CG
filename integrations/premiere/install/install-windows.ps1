@@ -1,13 +1,16 @@
 # Installs the Strata panel for Premiere Pro (current user).
 # Usage: right-click > Run with PowerShell (from the unzipped folder),
-# or: powershell -File install-windows.ps1 -Server http://cg-server:8080
+# or: powershell -File install-windows.ps1 -Server http://strata-server:8080
 # The panel then updates itself from the Strata server.
 param([string]$Server = "")
 $ErrorActionPreference = "Stop"
-$src = Join-Path $PSScriptRoot "io.pulsecg.premiere"
+$src = Join-Path $PSScriptRoot "io.stratagraphics.premiere"
 if (-not (Test-Path $src)) { $src = Split-Path -Parent $PSScriptRoot }
-$dest = Join-Path $env:APPDATA "Adobe\CEP\extensions\io.pulsecg.premiere"
+$dest = Join-Path $env:APPDATA "Adobe\CEP\extensions\io.stratagraphics.premiere"
 if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+# The panel as installed before the rename.
+$former = Join-Path $env:APPDATA "Adobe\CEP\extensions\io.pulsecg.premiere"
+if (Test-Path $former) { Remove-Item -Recurse -Force $former }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 foreach ($item in "CSXS", "host", "ui", "index.html", "loader.js", ".debug", "strata.ini") {
   $from = Join-Path $src $item

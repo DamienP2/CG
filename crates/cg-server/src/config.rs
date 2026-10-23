@@ -249,7 +249,7 @@ impl ChannelConfig {
 pub struct MosConfig {
     #[serde(default)]
     pub enabled: bool,
-    /// Our MOS ID, as declared in the newsroom system (e.g. "pulsecg.mos").
+    /// Our MOS ID, as declared in the newsroom system (e.g. "strata.mos").
     #[serde(default = "default_mos_id")]
     pub mos_id: String,
     /// The newsroom system's ID (informational; any NCS is accepted).
@@ -267,7 +267,7 @@ pub struct MosConfig {
 }
 
 fn default_mos_id() -> String {
-    "pulsecg.mos".into()
+    "strata.mos".into()
 }
 fn default_lower_port() -> u16 {
     10540

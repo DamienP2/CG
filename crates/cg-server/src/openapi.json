@@ -783,7 +783,7 @@
     "tags": [
      "Projects"
     ],
-    "summary": "Export (.pulsecg.json)",
+    "summary": "Export (.strata.json)",
     "responses": {
      "200": {
       "description": "OK",
@@ -925,7 +925,7 @@
      "Projects"
     ],
     "summary": "Save a template draft",
-    "description": "Saves the designer's working copy (draft). The Operator, outputs and playout keep using the published version until it is published (`POST …/publish`), or pass `?publish=true` to publish at once.\n\nA designer tab sends its `X-Pulse-Client` id: the save is refused (409) when another tab holds the template's edit lock. Requests without that header (automation, API keys) are not locked out.\n\n**Rights:** admin, designer.",
+    "description": "Saves the designer's working copy (draft). The Operator, outputs and playout keep using the published version until it is published (`POST …/publish`), or pass `?publish=true` to publish at once.\n\nA designer tab sends its `X-Strata-Client` id: the save is refused (409) when another tab holds the template's edit lock. Requests without that header (automation, API keys) are not locked out.\n\n**Rights:** admin, designer.",
     "requestBody": {
      "required": true,
      "content": {
@@ -955,7 +955,7 @@
       "description": "Publish to the Operator immediately"
      },
      {
-      "name": "X-Pulse-Client",
+      "name": "X-Strata-Client",
       "in": "header",
       "required": false,
       "schema": {
@@ -1811,7 +1811,7 @@
      "Updates"
     ],
     "summary": "Install an uploaded release archive",
-    "description": "Body: the `pulse-cg-<version>-<platform>` .tar.gz / .zip. The server restarts.\n\n**Rights:** admin.",
+    "description": "Body: the `Strata-<version>-<platform>` .tar.gz / .zip. The server restarts.\n\n**Rights:** admin.",
     "parameters": [
      {
       "name": "allowOlder",
@@ -1991,7 +1991,7 @@
      "Newsroom (MOS)"
     ],
     "summary": "MOS device status and running orders",
-    "description": "The MOS 2.8 device itself listens on TCP (default 10540 / 10541, XML in UTF-16). Running orders become project playlists `mos-<roID>`; items whose payload is `<pulsecg project=… template=… zone=…><field key=…>…</field></pulsecg>` (schema https://pulsecg.io/mos/v1) become rundown items.\n\n**Rights:** admin.",
+    "description": "The MOS 2.8 device itself listens on TCP (default 10540 / 10541, XML in UTF-16). Running orders become project playlists `mos-<roID>`; items whose payload is `<strata project=… template=… zone=…><field key=…>…</field></strata>` (schema https://stratagraphics.io/mos/v1) become rundown items.\n\n**Rights:** admin.",
     "responses": {
      "200": {
       "description": "OK"
@@ -2636,7 +2636,7 @@
     "description": "One designer tab at a time edits a template. The lock lapses when not renewed for 45 s. `force` takes it over: the previous holder is told by a `lock` WebSocket event and switches to read only.\n\n**Rights:** admin, designer.",
     "parameters": [
      {
-      "name": "X-Pulse-Client",
+      "name": "X-Strata-Client",
       "in": "header",
       "required": true,
       "schema": {
@@ -2689,7 +2689,7 @@
     "description": "Only the holding tab releases it.\n\n**Rights:** admin, designer.",
     "parameters": [
      {
-      "name": "X-Pulse-Client",
+      "name": "X-Strata-Client",
       "in": "header",
       "required": true,
       "schema": {
