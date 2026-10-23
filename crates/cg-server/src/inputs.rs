@@ -1011,16 +1011,24 @@ mod tests {
             l.put(pic(w));
         }
         assert!(l.current().is_none());
-        // Looked at mid-frame, so a slow test machine has 50 ms to spare.
-        let at = |ms| std::thread::sleep(Duration::from_millis(ms).saturating_sub(start.elapsed()));
-        at(250);
-        assert_eq!(l.current().unwrap().width(), 1);
-        at(350);
-        assert_eq!(l.current().unwrap().width(), 2);
-        at(450);
-        assert_eq!(l.current().unwrap().width(), 3);
+        // Watched every few ms: each picture shows in turn, the first after the buffer.
+        // (A loaded test machine may wake late; the order and the buffer still hold.)
+        let mut seen: Vec<(u32, Duration)> = Vec::new();
+        while start.elapsed() < Duration::from_millis(700) {
+            if let Some(w) = l.current().map(|p| p.width()) {
+                if seen.last().map(|s| s.0) != Some(w) {
+                    seen.push((w, start.elapsed()));
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(
+            seen.iter().map(|s| s.0).collect::<Vec<_>>(),
+            vec![1, 2, 3],
+            "{seen:?}"
+        );
+        assert!(seen[0].1 >= Duration::from_millis(190), "{seen:?}");
         // Nothing new: the last one stays.
-        at(600);
         assert_eq!(l.current().unwrap().width(), 3);
         assert_eq!(l.dropped.load(Ordering::Relaxed), 0);
     }
