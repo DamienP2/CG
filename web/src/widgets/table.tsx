@@ -2,16 +2,17 @@
 // mapped columns, header row / column, merges, widths fixed / auto / %, styles per level, borders, conditional
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
-import { ChevronLeft, ChevronRight, Pause, Pencil, Play, RefreshCw, Table } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, Table } from 'lucide-react';
 import { Dropdown } from '../ui/Dropdown';
 import { useEffect, useState } from 'react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { locale, t, tc, tl, tn } from '../i18n';
+import { t, tl, tn } from '../i18n';
 import { useTableEditor } from './table-editor-store';
 import { ColorField } from '../ui/fields';
-import { Btns, clamp, defineWidget, easeOut, Handle, hex, Note, parseCsv, Range, Readout, Row, Select, Toggle, useBound, useKeys, type Warning } from './kit';
-import { cased, OpField, OpLine, TextCell, tw, useLiveTime, type CellText, type Overflow } from './table-text';
+import { clamp, defineWidget, easeOut, Handle, hex, OpRow, parseCsv, PlayToggle, Readout, Row, Sep, SliderNum, useBound, useKeys, type Warning } from './kit';
+import { OpBar, ReloadBtn, SetField } from './opbar';
+import { cased, TextCell, tw, useLiveTime, type CellText, type Overflow } from './table-text';
 import { textWidth } from '../engine/textFit';
 
 export interface Col {
@@ -375,15 +376,6 @@ export function currentPage(st: State, pages: number, now: number): [number, num
   }
   return [Math.min(page, pages - 1), st.pageAt ?? 0];
 }
-/** Seconds shown to the operator, one decimal. */
-const secs = (v: number) => Math.max(0, v).toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-function nextIn(st: State, now: number): number | undefined {
-  if (!st.auto || !(st.interval! > 0) || !st.autoAt) return;
-  const t = st.pausedAt ? st.pausedAt : now;
-  const step = st.interval! * 1000;
-  return (step - (Math.max(0, t - st.autoAt) % step)) / 1000;
-}
-
 /** Column widths (mirrors widths() of the renderer). */
 export function widths(k: K, m: M, W: number, size: number): number[] {
   const n = m.cols.length;
@@ -705,8 +697,8 @@ export default defineWidget({
   Render: ({ layer, r, w, data, time, state, lang }) => <TableRender layer={layer} r={r as never} w={w} data={data} time={time} state={state} lang={lang} />,
   Inspector: ({ layer }) => <TableCard layer={layer as unknown as TL} />,
   quiet: true,
-  Operator: (p) => <TableOperator {...p} />,
-  Compact: (p) => <TableCompact {...p} />,
+  Operator: (p) => <TableBar {...p} />,
+  Compact: (p) => <TableBar {...p} />,
   More: (p) => <TableMore {...p} />,
   hasMore: (l, data) => {
     const k = cfg(l);
@@ -752,75 +744,65 @@ function HlPick({ m, value, onChange }: { m: M; value: string; onChange: (v: str
   );
 }
 
-/** One row: the page, previous / next, auto pages, the highlighted row, reload. */
-function TableCompact(p: OpP) {
+/** The one bar of the table (validated grammar §1), identical in the Designer's Operator section
+ *  and the Operator's rows: page x/y · previous / next · auto-pages toggle (and its interval) ·
+ *  the highlighted row · RELOAD (linked data) · ⋯ (go to a page). */
+function TableBar(p: OpP) {
   const { act } = p;
   const { k, m, st, pages, page, scroll } = useTable(p);
   const turns = !scroll && pages > 1;
   // Held by the preview: its auto pages wait for their Play.
   const held = !!p.time.held;
+  const auto = !!st.auto;
+  const state: 'stop' | 'run' | 'pause' = auto && !st.pausedAt && !held ? 'run' : auto ? 'pause' : 'stop';
+  useKeys({
+    ArrowLeft: () => !scroll && act('prev'),
+    ArrowRight: () => !scroll && act('next'),
+    p: () => turns && act(state === 'run' ? 'pause' : state === 'pause' ? 'resume' : 'auto', state === 'stop' ? { seconds: st.interval || k.autoSecs || 6 } : undefined),
+    r: () => k.link.trim() && act('reload'),
+  });
   return (
-    <OpLine
-      value={scroll || !m.rows.length ? undefined : `${page + 1}/${pages}`}
-      list={[
-        !scroll && { icon: ChevronLeft, title: t('Previous'), disabled: pages < 2, onClick: () => act('prev') },
-        !scroll && { icon: ChevronRight, title: t('Next'), disabled: pages < 2, onClick: () => act('next') },
-        turns && (st.auto && !st.pausedAt && !held ? { icon: Pause, title: t('Pause auto pages'), tone: 'amber' as const, onClick: () => act('pause') } : st.auto ? { icon: Play, title: tc('action', 'Resume'), tone: 'green' as const, onClick: () => act('resume') } : { icon: Play, title: t('Auto pages'), onClick: () => act('auto', { seconds: st.interval || k.autoSecs || 6 }) }),
-      ]}
-      field={m.rows.length ? <HlPick m={m} value={st.hl ?? ''} onChange={(v) => act('highlight', { row: v })} /> : undefined}
-      after={[!!k.link.trim() && { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') }]}
-    />
+    <OpBar more={turns ? <TableMore {...p} /> : undefined}>
+      {!scroll && m.rows.length > 0 && <Readout>{`${page + 1}/${pages}`}</Readout>}
+      {!scroll && (
+        <>
+          <Sep />
+          <OpRow
+            noMore
+            list={[
+              { icon: ChevronLeft, title: `${t('Previous')} · ←`, disabled: pages < 2, onClick: () => act('prev') },
+              { icon: ChevronRight, title: `${t('Next')} · →`, disabled: pages < 2, onClick: () => act('next') },
+            ]}
+          />
+        </>
+      )}
+      {turns && <PlayToggle state={state} onStart={() => act('auto', { seconds: st.interval || k.autoSecs || 6 })} onPause={() => act('pause')} onResume={() => act('resume')} />}
+      {turns && auto && <SliderNum value={st.interval ?? 6} min={2} max={30} step={1} unit="s" title={t('Interval')} onRelease onChange={(v) => act('auto', { seconds: v })} />}
+      {m.rows.length > 0 && (
+        <>
+          <Sep />
+          <HlPick m={m} value={st.hl ?? ''} onChange={(v) => act('highlight', { row: v })} />
+        </>
+      )}
+      {!!k.link.trim() && (
+        <>
+          <Sep />
+          <ReloadBtn title={`${t('Reload data')} · R`} onClick={() => act('reload')} />
+        </>
+      )}
+    </OpBar>
   );
 }
 
 /** Under ⋯: go to a page. */
 function TableMore(p: OpP) {
   const { act } = p;
-  const { pages, page, scroll } = useTable(p);
+  const { pages, scroll } = useTable(p);
   if (scroll || pages < 2) return null;
   return (
     <div className="wk-oprow">
-      <OpField width={44} title={t('Go to page')} value={String(page + 1)} onSubmit={(v) => act('go', { page: v })} />
+      <SetField width={56} placeholder={`1–${pages}`} title={t('Go to page')} onSet={(v) => void act('go', { page: v })} />
     </div>
-  );
-}
-
-function TableOperator(p: OpP) {
-  const { act } = p;
-  const { k, m, st, pages, page, now, scroll } = useTable(p);
-  useKeys({ ArrowLeft: () => !scroll && act('prev'), ArrowRight: () => !scroll && act('next') });
-  const a = page * k.perPage + 1;
-  const b = Math.min(m.rows.length, (page + 1) * k.perPage);
-  const left = nextIn(st, now);
-  return (
-    <>
-      {!m.rows.length ? (
-        <Readout sub={k.emptyMode === 'hide' ? t('table hidden') : t('fallback message on air')}>{t('NO DATA')}</Readout>
-      ) : scroll ? (
-        <Readout sub={tn(m.rows.length, '{n} row · {speed} px/s continuous', '{n} rows · {speed} px/s continuous', { speed: k.scrollSpeed })}>{t('SCROLL')}</Readout>
-      ) : (
-        <Readout sub={t('rows {a}–{b} of {n}', { a, b, n: m.rows.length })}>{t('PAGE {page}/{pages}', { page: page + 1, pages })}</Readout>
-      )}
-      <Btns
-        list={[
-          { label: t('Previous'), cls: 'big', keyHint: '←', disabled: scroll || pages < 2, onClick: () => act('prev') },
-          { label: t('Next'), cls: 'big violet', keyHint: '→', disabled: scroll || pages < 2, onClick: () => act('next') },
-        ]}
-      />
-      {!scroll && pages > 1 && <Btns label={t('Go to page')} list={Array.from({ length: pages }, (_, i) => ({ label: String(i + 1), cls: i === page ? 'violet' : 'ghost', title: t('Go to page {n}', { n: i + 1 }), onClick: () => act('go', { page: i + 1 }) }))} />}
-      <Toggle label={t('Auto pages')} value={!!st.auto} text={t('Turn pages automatically')} disabled={scroll ? t('Not in continuous scroll') : pages < 2 ? t('One page only') : undefined} onChange={(v) => act(v ? 'auto' : 'stop', v ? { seconds: st.interval || k.autoSecs || 6 } : undefined)} />
-      {st.auto && !scroll && (
-        <>
-          <Range label={t('Interval')} value={st.interval ?? 6} min={2} max={30} unit=" s" onChange={(v) => act('auto', { seconds: v })} />
-          <Btns list={[st.pausedAt ? { label: t('▶ Resume'), cls: 'green', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'amber', onClick: () => act('pause') }]} />
-          {left !== undefined && <Note>{st.pausedAt ? t('❚❚ Paused {s} s', { s: secs(left) }) : t('▶ Next page in {s} s', { s: secs(left) })}</Note>}
-        </>
-      )}
-      <Select label={t('Highlight row')} value={st.hl ?? ''} options={[['', t('— none —')], ...m.rows.map((r) => [r.key, `${r.rank}. ${r.key}`] as [string, string])]} onChange={(v) => act('highlight', { row: v })} />
-      {st.hl && <Btns list={[{ label: t('Clear highlight'), cls: 'ghost', onClick: () => act('highlight', { row: '' }) }]} />}
-      {k.link.trim() && <Btns list={[{ label: t('Reload data'), cls: 'ghost', onClick: () => act('reload') }]} />}
-      <Note>{k.link.trim() ? t('Source: linked data — an update keeps the page if it still exists; Reload reads the source again now.') : t('Source: manual grid.')}</Note>
-    </>
   );
 }
 

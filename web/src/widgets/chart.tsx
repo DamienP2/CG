@@ -1,14 +1,15 @@
 // Chart: settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/chart.rs; layout mirrored in chart-layout.tsx; actions in crates/cg-core/src/wid/chart.rs.
 import { Dropdown } from '../ui/Dropdown';
-import { ChartColumn, ChevronLeft, ChevronRight, ChevronsRight, ListOrdered, RefreshCw, Star } from 'lucide-react';
+import { ChartColumn, ChevronLeft, ChevronRight, ChevronsRight, ListOrdered, Star } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
 import { t, tl, tn } from '../i18n';
 import { GroupRow } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, GridEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useKeys, type Warning } from './kit';
+import { ColorPick, Content, defineWidget, GridEditor, Num, OpRow, Readout, Row, Section, Seg, Select, Sep, Text, Toggle, useKeys, type Warning } from './kit';
+import { OpBar, ReloadBtn } from './opbar';
 import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Config as LConfig, type Out, type Prim, type State as LState } from './chart-layout';
 
 /** Settings of the layer (flattened into it; every field optional). */
@@ -137,6 +138,70 @@ function Svg({ prims, w, h, font }: { prims: Prim[]; w: number; h: number; font:
 }
 
 const fsOf = (r: Resolved | undefined, layer: { props: Record<string, unknown> }) => num((r?.fontSize ?? layer.props.fontSize ?? 26) as number);
+
+/** The one bar of the chart (validated grammar §1), identical in the Designer's Operator section
+ *  and the Operator's rows: the reveal step (or new data waiting) · back / next / all · RELOAD · ⋯. */
+function ChartBar({ layer, state, data, act, item }: { layer: Parameters<typeof cfg>[0]; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown }) {
+  const c = cfg(layer);
+  const s = st(state);
+  const P = parse(c, shownGrid(c, s, data));
+  const n = steps(c, s, P);
+  const step = Math.min(Math.max(1, s.step), n);
+  // The data on air waits for a Reload (kept since the take, by the server).
+  const pending = c.onAir === 'reload' && !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(resolveGrid(c, data));
+  useKeys({ r: () => act('reload'), ArrowRight: () => n && act('next'), ArrowLeft: () => n && act('prev') });
+  return (
+    <OpBar more={<ChartMore layer={layer} state={state} data={data} act={act} item={item} />}>
+      {(n > 0 || pending) && <Readout sub={pending ? <span style={{ color: '#facc15' }}>● {t('New data')}</span> : undefined}>{n ? `${step}/${n}` : '—'}</Readout>}
+      {n > 0 && (
+        <>
+          <Sep />
+          <OpRow
+            noMore
+            list={[
+              { icon: ChevronLeft, title: `${t('Back')} · ←`, disabled: step <= 1, onClick: () => act('prev') },
+              { icon: ChevronRight, title: `${t('Next step')} · →`, disabled: step >= n, onClick: () => act('next') },
+              { icon: ChevronsRight, title: t('Show all'), disabled: step >= n, onClick: () => act('showAll') },
+            ]}
+          />
+        </>
+      )}
+      <Sep />
+      <ReloadBtn title={`${t('Reload data')} · R`} onClick={() => act('reload')} />
+    </OpBar>
+  );
+}
+
+/** Under ⋯: highlight a series / a column / a slice, the reveal mode, back to the live data (try-out). */
+function ChartMore({ layer, state, data, act, item }: { layer: Parameters<typeof cfg>[0]; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown }) {
+  const c = cfg(layer);
+  const s = st(state);
+  const P = parse(c, shownGrid(c, s, data));
+  const mode = revealMode(c, s);
+  return (
+    <div className="wk-oprow">
+      <Star size={13} className="muted" />
+      <select className="opx-output" title={t('Put forward')} value={hlValue(s)} onChange={(e) => act('highlight', hlArgs(e.target.value))}>
+        {hlOptions(c, P).map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <ListOrdered size={13} className="muted" />
+      <select className="opx-output" title={t('Reveal')} value={mode} onChange={(e) => act('revealMode', { mode: e.target.value })}>
+        <option value="all">{t('All at once')}</option>
+        {c.chartType !== 'pie' && <option value="series">{t('Series by series')}</option>}
+        <option value="categories">{c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')}</option>
+      </select>
+      {!!s.cur && !item && (
+        <button className="opx-btn wk-btn ghost" title={t('The try-out holds the data of its last Reload.')} onClick={() => act('reset')}>
+          <span>{t('Back to the live data')}</span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default defineWidget({
   id: 'chart',
@@ -548,138 +613,9 @@ export default defineWidget({
       </>
     );
   },
-  // One row: new data waiting, the reveal step, back / next / all, reload the data.
-  Compact: ({ layer, state, data, act }) => {
-    const c = cfg(layer);
-    const s = st(state);
-    const P = parse(c, shownGrid(c, s, data));
-    const n = steps(c, s, P);
-    const step = Math.min(Math.max(1, s.step), n);
-    // The data on air waits for a Reload (kept since the take, by the server).
-    const pending = c.onAir === 'reload' && !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(resolveGrid(c, data));
-    return (
-      <OpRow
-        value={pending ? <span style={{ color: '#facc15' }}>● {t('New data')}</span> : n ? `${step}/${n}` : undefined}
-        list={[
-          !!n && { icon: ChevronLeft, title: t('Back'), disabled: step <= 1, onClick: () => act('prev') },
-          !!n && { icon: ChevronRight, title: t('Next step'), tone: 'green', disabled: step >= n, onClick: () => act('next') },
-          !!n && { icon: ChevronsRight, title: t('Show all'), disabled: step >= n, onClick: () => act('showAll') },
-          { icon: RefreshCw, title: t('Reload data'), onClick: () => act('reload') },
-        ]}
-      />
-    );
-  },
-  // Under ⋯: highlight a series / a column / a slice, the reveal mode.
-  More: ({ layer, state, data, act }) => {
-    const c = cfg(layer);
-    const s = st(state);
-    const P = parse(c, shownGrid(c, s, data));
-    const mode = revealMode(c, s);
-    return (
-      <div className="wk-oprow">
-        <Star size={13} className="muted" />
-        <select className="opx-output" title={t('Put forward')} value={hlValue(s)} onChange={(e) => act('highlight', hlArgs(e.target.value))}>
-          {hlOptions(c, P).map(([v, label]) => (
-            <option key={v} value={v}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <ListOrdered size={13} className="muted" />
-        <select className="opx-output" title={t('Reveal')} value={mode} onChange={(e) => act('revealMode', { mode: e.target.value })}>
-          <option value="all">{t('All at once')}</option>
-          {c.chartType !== 'pie' && <option value="series">{t('Series by series')}</option>}
-          <option value="categories">{c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')}</option>
-        </select>
-      </div>
-    );
-  },
-  Operator: ({ layer, state, data, act, item, time }) => {
-    const c = cfg(layer);
-    const s = st(state);
-    const P = parse(c, shownGrid(c, s, data));
-    const live = resolveGrid(c, data);
-    const pending = !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(live);
-    const n = steps(c, s, P);
-    const mode = revealMode(c, s);
-    const step = Math.min(Math.max(1, s.step), n);
-    useKeys({ r: () => act('reload'), ArrowRight: () => n && act('next'), ArrowLeft: () => n && act('prev') });
-    const next = mode === 'series' ? P.ser[step] : P.cats[step]?.name;
-    const hlBtns = (kind: 'series' | 'category', items: [number, string][]) => [
-      { label: t('None'), cls: s.hl.kind === 'none' ? 'violet' : 'ghost', onClick: () => act('highlight', { kind: 'none' }) },
-      ...items.map(([idx, name]) => ({ label: name, cls: s.hl.kind === kind && s.hl.idx === idx ? 'violet' : 'ghost', onClick: () => act('highlight', { kind, idx }) })),
-    ];
-    void time;
-    return (
-      <>
-        <Note>
-          {s.cur ? pending ? <b style={{ color: '#facc15' }}>{t('● New data waiting: Reload to show it')}</b> : t('Data on screen is up to date') : t('Live data')}
-          {n ? (
-            <>
-              {' '}
-              · {t('Step')}{' '}
-              <b>
-                {step} / {n}
-              </b>
-              {step < n ? (
-                <>
-                  {' '}
-                  · {t('next:')} <b>{next}</b>
-                </>
-              ) : (
-                ` · ${t('all shown')}`
-              )}
-            </>
-          ) : null}
-        </Note>
-        <Btns label={t('Data')} list={[{ label: t('⟳ Reload'), cls: `violet big`, keyHint: 'R', onClick: () => act('reload'), title: t('Values move from what is shown to the current data') }]} />
-        <Seg label={t('Reveal')} value={mode} onChange={(v) => act('revealMode', { mode: v })} options={[['all', t('All at once')], ...(c.chartType === 'pie' ? [] : [['series', t('Series by series')] as const]), ['categories', c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')]]} />
-        {n > 0 && (
-          <Btns
-            list={[
-              { label: t('Back'), cls: 'ghost', keyHint: '←', onClick: () => act('prev'), disabled: step <= 1 },
-              { label: t('Next step'), cls: 'green big', keyHint: '→', onClick: () => act('next'), disabled: step >= n },
-              { label: t('Show all'), cls: 'ghost', onClick: () => act('showAll'), disabled: step >= n },
-            ]}
-          />
-        )}
-        {c.chartType !== 'pie' ? (
-          <>
-            <Btns
-              label={t('Highlight series')}
-              list={hlBtns(
-                'series',
-                P.ser.map((x, j) => [j, x]),
-              )}
-            />
-            <Btns
-              label={c.chartType === 'columns' ? t('Highlight column') : t('Highlight point')}
-              list={hlBtns(
-                'category',
-                P.cats.map((x) => [x.ri, x.name]),
-              )}
-            />
-          </>
-        ) : (
-          <Btns
-            label={t('Highlight slice')}
-            list={hlBtns(
-              'category',
-              P.cats.map((x) => [x.ri, x.name]),
-            )}
-          />
-        )}
-        {s.cur && !item && (
-          <Msg level="info">
-            {t('The try-out holds the data of its last Reload.')}{' '}
-            <a href="#" onClick={(e) => (e.preventDefault(), act('reset'))}>
-              {t('Back to the live data')}
-            </a>
-          </Msg>
-        )}
-      </>
-    );
-  },
+  Compact: ({ layer, state, data, act, item }) => <ChartBar layer={layer} state={state} data={data} act={act} item={item} />,
+  Operator: ({ layer, state, data, act, item }) => <ChartBar layer={layer} state={state} data={data} act={act} item={item} />,
+  More: ({ layer, state, data, act, item }) => <ChartMore layer={layer} state={state} data={data} act={act} item={item} />,
   warnings: (layer, { data, state, r }) => {
     const c = cfg(layer);
     const s = st(state);

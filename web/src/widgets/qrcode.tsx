@@ -7,7 +7,8 @@ import { col, interpolateText, num, toHex, type Resolved } from '../engine/evalu
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
-import { Area, ColorPick, Content, defineWidget, ListEditor, Num, Row, Section, Seg, Select, Toggle, type Warning } from './kit';
+import { Area, ColorPick, Content, defineWidget, ListEditor, Num, Readout, Row, Section, Seg, Select, Toggle, type Warning } from './kit';
+import { Segmented } from '../ui/fields';
 import { t, tc, tn } from '../i18n';
 
 type Ecl = 'L' | 'M' | 'Q' | 'H';
@@ -820,6 +821,20 @@ export default defineWidget({
           <Num label={t('Quiet zone')} path="quiet" value={c.quiet} min={0} max={10} unit="mod" />
           <Num label={t('Min module')} path="minPx" value={c.minPx} min={2} max={20} unit="px" />
         </Section>
+      </>
+    );
+  },
+  // The Designer's Operator section (D9): the address shown and the menu of the prepared addresses.
+  Operator: ({ layer, state, act }) => {
+    const c = cfg(layer as QrLayer);
+    const cur = Math.min((state as State | undefined)?.addr ?? 0, Math.max(0, c.addresses.length - 1));
+    const a = c.addresses[cur];
+    return (
+      <>
+        <Readout sub={(a?.caption.trim() ? a.caption : c.label.text) || undefined}>
+          <span style={{ fontSize: 16 }}>{a?.url || '—'}</span>
+        </Readout>
+        <Segmented value={String(cur)} onChange={(v) => act('address', { i: +v })} options={c.addresses.map((x, i) => ({ value: String(i), label: x.name || x.url || String(i + 1) }))} />
       </>
     );
   },

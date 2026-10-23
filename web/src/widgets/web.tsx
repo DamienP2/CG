@@ -2,9 +2,10 @@
 // the previews show it; the engine's own outputs (SDI, NDI, ST 2110) leave its box empty.
 // Model: crates/cg-core/src/wid/web.rs.
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { Globe, RefreshCw } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import type { Data } from '../engine/types';
-import { Btns, Content, defineWidget, Num, OpRow, Section, Seg, Toggle, type Warning } from './kit';
+import { Content, defineWidget, Num, Section, Seg, Toggle, type Warning } from './kit';
+import { OpBar, ReloadBtn } from './opbar';
 import { t } from '../i18n';
 
 export interface Config {
@@ -187,16 +188,16 @@ function Compact({ layer, act }: { layer: WebLayer; act: (op: string, args?: unk
   const dot = st?.s === 'error' ? { c: 'var(--live)', txt: `● ${t('Page not loaded')}` } : st?.s === 'loading' ? { c: 'var(--warn)', txt: '●' } : st ? { c: 'var(--pvw)', txt: '●' } : null;
   const tip = st?.s === 'error' ? st.msg || t('Page not loaded') : st?.s === 'loading' ? t('Loading…') : t('Page loaded');
   return (
-    <OpRow
-      value={
-        dot && (
+    <OpBar>
+      {dot && (
+        <b className="wk-oprow-v">
           <span style={{ color: dot.c }} title={tip}>
             {dot.txt}
           </span>
-        )
-      }
-      list={[{ icon: RefreshCw, title: t('Reload the page'), onClick: () => act('reload') }]}
-    />
+        </b>
+      )}
+      <ReloadBtn title={t('Reload the page')} onClick={() => act('reload')} />
+    </OpBar>
   );
 }
 
@@ -244,7 +245,7 @@ export default defineWidget({
     );
   },
   Compact: ({ layer, act }) => <Compact layer={layer as unknown as WebLayer} act={act} />,
-  Operator: ({ act }) => <Btns list={[{ label: t('Reload the page'), cls: 'violet', onClick: () => act('reload') }]} />,
+  Operator: ({ layer, act }) => <Compact layer={layer as unknown as WebLayer} act={act} />,
   warnings: (l) => {
     const k = cfg(l as unknown as WebLayer);
     const out: Warning[] = [{ level: 'info', op: true, text: t('Web page: HTML5 outputs and previews only (not SDI, NDI, ST 2110).') }];

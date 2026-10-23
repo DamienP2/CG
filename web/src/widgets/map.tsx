@@ -4,14 +4,13 @@
 // attribution of the data drawn.
 // Same picture as crates/cg-render/src/wid/map.rs (line for line); actions in
 // crates/cg-core/src/wid/map.rs; geometry and logic in ./map-geo.ts.
-import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Map as MapIcon, MapPin, Route as RouteIcon, RotateCcw, Search, Shapes, Star, Tag } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { t, tc, tl, tn } from '../i18n';
 import { useApp } from '../store';
-import { ColorPick, defineWidget, GridEditor, ListEditor, Num, OpRow, Row, Section, Seg, Text, Toggle, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, OpRow, Row, Section, Seg, Text, Toggle, useKeys, type Warning } from './kit';
 import { OpBar } from './opbar';
 import { col, ellipse, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
