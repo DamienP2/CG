@@ -518,8 +518,9 @@ fn wait_until(due: Instant) {
         if left > spin {
             std::thread::sleep(left - spin);
         } else {
+            // A pure spin: yielding here hands the core to any busy process,
+            // and on a loaded machine the clock then wakes a whole time slice late.
             std::hint::spin_loop();
-            std::thread::yield_now();
         }
     }
 }
@@ -960,18 +961,29 @@ mod tests {
 
     #[test]
     fn the_clock_waits_precisely() {
-        // Each deadline is 5 ms from now, so one stall of a loaded test machine
-        // (a shared CI runner) spoils one measure, not all the ones after it.
-        let mut late: Vec<Duration> = (0..40)
+        // Measured against a plain sleep to the same deadline, taken in turn:
+        // a loaded test machine (a shared CI runner) delays both alike, so
+        // this checks the wait itself, not how busy the machine is.
+        let late = |wait: &dyn Fn(Instant)| {
+            let due = Instant::now() + Duration::from_millis(5);
+            wait(due);
+            Instant::now() - due
+        };
+        let (mut ours, mut plain): (Vec<Duration>, Vec<Duration>) = (0..40)
             .map(|_| {
-                let due = Instant::now() + Duration::from_millis(5);
-                wait_until(due);
-                Instant::now() - due
+                (
+                    late(&|d| wait_until(d)),
+                    late(&|d| std::thread::sleep(d.saturating_duration_since(Instant::now()))),
+                )
             })
-            .collect();
-        late.sort();
-        // The typical wait is on time, far from a frame late.
-        assert!(late[20] < Duration::from_millis(5), "{late:?}");
+            .unzip();
+        ours.sort();
+        plain.sort();
+        // Typically no later than the platform's own sleep.
+        assert!(
+            ours[20] <= plain[20] + Duration::from_millis(1),
+            "{ours:?} vs {plain:?}"
+        );
     }
 
     #[test]
