@@ -205,7 +205,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
-  const [airSel, setAirSel] = useState<string | null>(null);
   // The widget of a graphic on air whose keys are on (`zone:layer`, a click on its row), and the ⋯ unfolded.
   const [airWidget, setAirWidget] = useState<string | null>(null);
   const [airMore, setAirMore] = useState<Record<string, boolean>>({});
@@ -305,8 +304,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const takeItem = (r: RundownItem, extra?: Record<string, string>) => {
     const tpl = project?.templates.find((x) => x.id === r.templateId);
     command({ action: 'take', zone: zoneOf(r)?.id, templateId: r.templateId, data: { ...dataOf(r), ...(tpl ? sourcePatch(tpl) : {}), ...extra }, rundownId: r.id });
-    const z = zoneOf(r);
-    if (z) setAirSel(z.id);
   };
   /** The NEXT row the operator chose for a data set of the graphic on air (in the cued item), if it is that one. */
   const nextRowOf = (onAir: PlayoutItem, key: string) => (item && onAirByItem.get(item.id) === onAir ? parseInt(draft[rowKey(key)] ?? '', 10) || undefined : undefined);
@@ -329,8 +326,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // On air, front-most zone first; the internal controls show one of them.
   const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
   const busy = zones.filter((z) => channel.layers[String(z.layer)]);
-  const selZone = busy.find((z) => z.id === airSel) ?? busy[0];
-  const selItem = selZone ? channel.layers[String(selZone.layer)] : undefined;
+  // F2 / F3 drive the front-most graphic on air.
+  const selZone = busy[0];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -699,29 +696,24 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
         <Splitter axis="y" className="opx-gap" value={layout.air} min={160} max={800} reset={330} onChange={(v) => setLayout('air', v)} />
         <section className="opx-pane grow">
-          <header className="opx-head opx-tabs">
-            {busy.length ? (
-              busy.map((z) => {
+          {busy.length ? (
+            <div className="opx-airlist">
+              {busy.map((z) => {
                 const p = channel.layers[String(z.layer)];
                 return (
-                  <button key={z.id} className={z.id === selZone?.id ? 'on' : ''} onClick={() => setAirSel(z.id)}>
-                    {rundownName(project, p.rundownId) ?? project.templates.find((t) => t.id === p.templateId)?.name ?? t('Deleted graphic')}
-                  </button>
+                  <AirCard
+                    key={z.id}
+                    project={project}
+                    zone={z}
+                    item={p}
+                    operate={operate}
+                    command={command}
+                    nextRowOf={(key) => nextRowOf(p, key)}
+                    widget={{ selected: airWidget, onSelect: setAirWidget, more: airMore, onMore: (k, open) => setAirMore({ ...airMore, [k]: open }) }}
+                  />
                 );
-              })
-            ) : (
-              <span className="opx-title">{t('Controls')}</span>
-            )}
-          </header>
-          {selItem && selZone ? (
-            <AirControls
-              project={project}
-              zone={selZone}
-              item={selItem}
-              command={command}
-              nextRowOf={(key) => nextRowOf(selItem, key)}
-              widget={{ selected: airWidget, onSelect: setAirWidget, more: airMore, onMore: (k, open) => setAirMore({ ...airMore, [k]: open }) }}
-            />
+              })}
+            </div>
           ) : (
             <p className="opx-hint pad">{t('Nothing on air.')}</p>
           )}
@@ -1365,18 +1357,46 @@ function useUpdateFade(): [boolean, (v: boolean) => void] {
   return [v, set];
 }
 
-function AirControls({ project, zone, item, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
+/** One graphic on air: a card — the on-air family in its header, the animation pills below. */
+function AirCard({ project, zone, item, operate, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; operate: boolean; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
+  const tpl = project.templates.find((x) => x.id === item.templateId);
+  const waiting = tpl ? pauseOf(item, project) : undefined;
+  const name = rundownName(project, item.rundownId) ?? tpl?.name ?? t('Deleted graphic');
+  return (
+    <div className="opx-aircard">
+      <header>
+        <span className="opx-dot" style={{ background: 'var(--live)' }} />
+        <strong>{name}</strong>
+        <span className="muted small">{zone.name}</span>
+        <span className="spacer" />
+        {tpl && (
+          <button className={`opx-btn small ${waiting ? 'amber' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={t('F2 / Space')}>
+            <ChevronsRight size={13} /> Continue
+          </button>
+        )}
+        <button className="opx-btn small red" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: zone.id })} title="F3">
+          <CircleStop size={13} /> Out
+        </button>
+      </header>
+      <AirControls project={project} zone={zone} item={item} command={command} nextRowOf={nextRowOf} widget={widget} bare />
+    </div>
+  );
+}
+
+function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets; bare?: boolean }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const target = { zone: zone.id };
   // Deleted (or unpublished) while on air: it can still be taken out.
   if (!tpl)
     return (
       <div className="opx-controls">
-        <div className="opx-actions sticky">
-          <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
-            <CircleStop size={14} /> Out
-          </button>
-        </div>
+        {!bare && (
+          <div className="opx-actions sticky">
+            <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
+              <CircleStop size={14} /> Out
+            </button>
+          </div>
+        )}
         <p className="opx-hint">{t('This graphic is no longer in the project: take it out.')}</p>
       </div>
     );
@@ -1387,14 +1407,16 @@ function AirControls({ project, zone, item, command, nextRowOf, widget }: { proj
   const waiting = pauseOf(item, project);
   return (
     <div className="opx-controls">
-      <div className="opx-actions sticky">
-        <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title={t('F2 / Space')}>
-          <ChevronsRight size={14} /> Continue
-        </button>
-        <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
-          <CircleStop size={14} /> Out
-        </button>
-      </div>
+      {!bare && (
+        <div className="opx-actions sticky">
+          <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title={t('F2 / Space')}>
+            <ChevronsRight size={14} /> Continue
+          </button>
+          <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
+            <CircleStop size={14} /> Out
+          </button>
+        </div>
+      )}
       {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
         .filter((l) => l.visible && !!widgetOf(l.type)?.Compact && hasControls(l, item.data))

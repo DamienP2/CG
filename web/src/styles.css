@@ -6489,6 +6489,41 @@ a.btn {
   flex: 1;
   min-height: 0;
 }
+/* On air: one card per graphic — the on-air family in its header, the animation pills below. */
+.opx-airlist {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+.opx-aircard {
+  flex: none;
+  border: 1px solid var(--op-3);
+  border-radius: 10px;
+  background: var(--op-1);
+  overflow: hidden;
+}
+.opx-aircard > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--op-2);
+}
+.opx-aircard > header strong {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opx-aircard .opx-controls {
+  padding: 10px;
+  overflow: visible;
+  flex: none;
+}
 .opx-widget {
   display: flex;
   align-items: center;
