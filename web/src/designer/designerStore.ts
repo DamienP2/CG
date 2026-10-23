@@ -77,6 +77,9 @@ const HISTORY = 200;
 
 const view = (base: Template | null, format: string) => (base ? structuredClone(inFormat(base, format)) : null);
 
+/** The On air point (the IN/OUT marker), where a template opens. */
+const onAirFrame = (t: Template | null) => t?.markers.find((m) => m.kind === 'out')?.frame ?? 0;
+
 export const useDesigner = create<DesignerStore>((set, get) => ({
   base: null,
   format: MAIN_FORMAT,
@@ -105,7 +108,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
       template: view(base, get().format),
       past: [],
       future: [],
-      frame: 0,
+      frame: onAirFrame(base),
       playing: false,
       selected: [],
       selectedKeys: [],

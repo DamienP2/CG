@@ -882,12 +882,6 @@ function LayerGeneral({ layer }: { layer: Layer }) {
       {layer.type === 'image' && (wiredKeys(layer.src).length ? <WiredValue value={interpolateText(layer.src, data)} /> : <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />)}
       <WidgetSettings layer={layer} set={set} data={data} />
       {isTimed(layer) && (
-        <div className="dp-run">
-          <span className="prop-label">{t('Try it')}</span>
-          <WidgetRunButtons layer={layer} />
-        </div>
-      )}
-      {isTimed(layer) && (
         <div className="row" title={t('Manual: the operator starts it with ▶ (or the API action widget)')}>
           <span className="prop-label">{t('Launch')}</span>
           <Segmented value={layer.manualStart ? 'manual' : 'in'} onChange={(v) => edit((l) => void (l.manualStart = v === 'manual' || undefined))} options={[{ value: 'in', label: t('At the In') }, { value: 'manual', label: t('Manual') }]} />
@@ -930,7 +924,7 @@ function LottieSource({ layer }: { layer: Layer }) {
   );
 }
 
-/** Settings of a spec widget (web/src/widgets), its warnings and its Operator controls to try. */
+/** Settings of a spec widget (web/src/widgets) and its warnings. */
 function SpecInspector({ layer }: { layer: Layer }) {
   const { update, template, previewData } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template, previewData: s.previewData })));
   const data = useBoundData(template, previewData);
@@ -949,7 +943,6 @@ function SpecInspector({ layer }: { layer: Layer }) {
     if (firstRef.current.id === null) firstRef.current.id = id;
     return firstRef.current.id === id;
   };
-  const Op = def.Operator;
   const r = resolveLayer(layer, useDesigner.getState().frame, data, holdFrame(template));
   const warnings = def.quiet ? [] : (def.warnings?.(layer as never, { data, state, r }) ?? []).filter((w) => w.op !== 'only');
   return (
@@ -957,29 +950,37 @@ function SpecInspector({ layer }: { layer: Layer }) {
       <FirstSection.Provider value={claimFirst}>
         <Warnings list={warnings} />
         <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
-        <DatasetRows layer={layer} template={template} />
-        {Op && (def.controls ? def.controls(layer as never, data) : true) && (
-          <SpecSection id={`try-${def.id}`} title={t('Operator')} closed>
-            <div className="wk-op">
-              <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
-            </div>
-          </SpecSection>
-        )}
       </FirstSection.Provider>
     </Bound>
   );
 }
 
-/** A Text fed by data sets: the row the Designer shows, one to the next, as the Operator does. */
-function DatasetRows({ layer, template }: { layer: Layer; template: Template }) {
+/** The Operator's controls of a widget, to try in the Designer: under its name, always shown. */
+function OperatorPreview({ layer }: { layer: Layer }) {
+  const { template, previewData } = useDesigner(useShallow((s) => ({ template: s.template, previewData: s.previewData })));
+  const data = useBoundData(template, previewData);
+  const state = useDesigner((s) => s.widgetState[layer.id]);
+  const actWidget = useDesigner((s) => s.actWidget);
+  if (!template) return null;
+  const def = widgetOf(layer.type);
+  const Op = def?.Operator && (def.controls ? def.controls(layer as never, data) : true) ? def.Operator : undefined;
+  // A Text fed by data sets: the row the Designer shows, one to the next, as the Operator does.
   const sets = usedDatasets(template).filter((ds) => datasetUse(template, ds).texts.some((l) => l.id === layer.id));
-  if (!sets.length) return null;
+  const timed = !def?.Inspector && isTimed(layer);
+  if (!Op && !sets.length && !timed) return null;
+  const act = (op: string, args?: unknown) => void actWidget(layer.id, op, args);
   return (
-    <SpecSection id="dataset-rows" title={t('Operator')}>
+    <div className="pp-try">
+      {timed && <WidgetRunButtons layer={layer} />}
       {sets.map((ds) => (
         <RowStep key={ds.key} ds={ds} />
       ))}
-    </SpecSection>
+      {Op && (
+        <div className="wk-op">
+          <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1022,6 +1023,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
         </span>
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
+      <OperatorPreview layer={layer} />
       {spec?.Inspector ? (
         <Boundary resetKey={layer} fallback={<div className="hint wk-note">{t("This widget's settings cannot be shown.")}</div>}>
           <SpecInspector layer={layer} />

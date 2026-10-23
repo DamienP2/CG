@@ -5398,6 +5398,13 @@ a.btn {
   color: var(--accent-2);
   background: var(--accent-soft);
 }
+.pp-try {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
 .pp-head input {
   flex: 1;
   min-width: 0;
