@@ -811,6 +811,8 @@ pub fn install(data_dir: &Path, binary: &[u8], allow_older: bool) -> Result<Stri
     }
     let previous = folder.join(PREVIOUS);
     swap_in(&exe, &staged, &previous).map_err(|e| permission_hint(e, &folder))?;
+    // The new file, not yet running (this process keeps its old image).
+    crate::firewall::allow(&exe);
     write_json(
         &dir(data_dir).join("pending.json"),
         &Pending {
@@ -870,6 +872,8 @@ pub fn rollback(data_dir: &Path, outcome: &str) -> Result<String> {
     let staged = folder.join(STAGED);
     std::fs::copy(&previous, &staged).map_err(|e| permission_hint(e, &folder))?;
     swap_in(&exe, &staged, &previous).map_err(|e| permission_hint(e, &folder))?;
+    // The new file, not yet running (this process keeps its old image).
+    crate::firewall::allow(&exe);
     let _ = std::fs::remove_file(dir(data_dir).join("pending.json"));
     write_json(
         &dir(data_dir).join("history.json"),

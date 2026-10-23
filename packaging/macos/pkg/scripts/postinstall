@@ -4,6 +4,14 @@ set -e
 PREFIX=/usr/local/pulse-cg
 mkdir -p /usr/local/bin
 ln -sf "$PREFIX/cg-server" /usr/local/bin/cg-server
+# Let other machines reach the web UI and NDI outputs through the macOS
+# firewall. Done here, before the service starts: it signs the program in
+# place, which must never happen to a running one.
+FW=/usr/libexec/ApplicationFirewall/socketfilterfw
+if "$FW" --getglobalstate 2>/dev/null | grep -q "State = [12]"; then
+  "$FW" --add "$PREFIX/cg-server" >/dev/null 2>&1 || true
+  "$FW" --unblockapp "$PREFIX/cg-server" >/dev/null 2>&1 || true
+fi
 "$PREFIX/cg-server" service install
 
 # Start the menu bar app for the logged-in user (it also starts at login).

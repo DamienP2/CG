@@ -1,21 +1,21 @@
 //! macOS application firewall: it blocks incoming connections to a program it
-//! does not know, silently for a service (no one sees the prompt). Each update
-//! is a new program to it, the web UI and NDI receivers on other machines then
-//! see nothing while everything works on this Mac. Running as the service
-//! (root), the server lists itself as allowed at every start.
+//! does not know, silently for a service (no one sees the prompt). Each
+//! unsigned update is a new program to it.
+//!
+//! `socketfilterfw --add` signs an unsigned program in place: it must never
+//! touch the file of the running server (macOS kills a process whose code
+//! changes under it). It is run by the installer before the service starts,
+//! and by an update on the new file once swapped in — the running process
+//! keeps its old image.
 
 #[cfg(target_os = "macos")]
-pub fn allow_self() {
+pub fn allow(exe: &std::path::Path) {
     use std::process::Command;
     const FW: &str = "/usr/libexec/ApplicationFirewall/socketfilterfw";
     // SAFETY: geteuid has no preconditions and cannot fail.
     if unsafe { libc::geteuid() } != 0 {
         return;
     }
-    let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let exe = exe.canonicalize().unwrap_or(exe);
     let path = exe.to_string_lossy();
     let run = |args: &[&str]| {
         Command::new(FW)
@@ -30,9 +30,6 @@ pub fn allow_self() {
     if state.contains("State = 0") {
         return;
     }
-    if state.contains("State = 2") {
-        tracing::warn!("the macOS firewall blocks all incoming connections: other machines cannot reach this server (System Settings ▸ Network ▸ Firewall)");
-    }
     let added = run(&["--add", &path]);
     let unblocked = run(&["--unblockapp", &path]);
     match (added, unblocked) {
@@ -44,4 +41,4 @@ pub fn allow_self() {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn allow_self() {}
+pub fn allow(_exe: &std::path::Path) {}
