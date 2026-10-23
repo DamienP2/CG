@@ -771,6 +771,7 @@ pub struct Nic {
 }
 
 /// The adapter family of a Linux network driver.
+#[cfg(target_os = "linux")]
 fn driver_model(driver: &str) -> Option<&'static str> {
     Some(match driver {
         "mlx5_core" => "Mellanox ConnectX",
