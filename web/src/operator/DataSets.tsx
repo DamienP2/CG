@@ -134,12 +134,11 @@ export interface DatasetUse {
   lines: boolean;
   /** The Texts reading it. */
   texts: Layer[];
-  /** Only tickers read it, all its rows: no row to choose or step through. */
+  /** Its readers take the whole table (ticker, tableau, graphique…): no row to choose or step through. */
   whole: boolean;
 }
-/** A ticker reading all the rows of `ds` (its whole table): it goes through them by itself, whatever the row. */
+/** The layer reads all the rows of `ds` (its whole table): the widget goes through them by itself, whatever the row. */
 export function readsAllRows(l: Layer, ds: DataSet): boolean {
-  if (l.type !== "ticker") return false;
   const keys =
     JSON.stringify(l).match(
       new RegExp(`${ds.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}_\\w+`, "g"),

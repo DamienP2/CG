@@ -76,6 +76,7 @@ export const designer: Record<string, string> = {
   'Try it': 'Essayer',
   'The operator starts it with ▶ in the controls of the graphic on air (or API action widget)': 'L’opérateur le lance avec ▶ dans les commandes de l’habillage à l’antenne (ou par l’action d’API widget)',
   'Start manually (the operator presses ▶)': 'Démarrage manuel (l’opérateur appuie sur ▶)',
+  'Manual: the operator starts it with ▶ (or the API action widget)': 'Manuel : l’opérateur le lance avec ▶ (ou l’action widget de l’API)',
   'A group holds layers; its properties apply to all of them.': 'Un groupe contient des calques ; ses propriétés s’appliquent à tous.',
   Overflow: 'Débordement',
   'Narrower, then smaller, down to the minimums below; then cut at the box': 'Plus étroit, puis plus petit, jusqu’aux minimums ci-dessous ; puis coupé au cadre',

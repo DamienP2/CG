@@ -11690,6 +11690,24 @@ body.cv-moving * {
   height: 26px;
 }
 
+/* The widget bar: controls left (wrapping), the Update cluster pinned top right. */
+.opx-wbar-ctl {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.opx-wbar-upd {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-height: 34px;
+}
+
 /* Operator: add a graphic to the rundown (the + of Rundown). */
 .opx-addpanel {
   flex: none;
@@ -12900,8 +12918,7 @@ a.lib-nav-item {
 .opx-wbar {
   flex: none;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
   min-height: 48px;
   padding: 7px 12px;

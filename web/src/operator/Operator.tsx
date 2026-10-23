@@ -561,19 +561,21 @@ export function Operator({ channelId }: { channelId: string | null }) {
               )}
               {(shownParts.some((p) => p.controls) || onAirNow) && (
                 <div className="opx-wbar">
-                  {shownParts
-                    .filter((p) => p.controls)
-                    .map((p) => (
-                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[p.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [p.layer.id]: open })} />
-                    ))}
-                  <span className="spacer" />
+                  {/* The controls wrap below; Fondu / Cut / UPDATE stay pinned top right. */}
+                  <div className="opx-wbar-ctl">
+                    {shownParts
+                      .filter((p) => p.controls)
+                      .map((p) => (
+                        <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[p.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [p.layer.id]: open })} />
+                      ))}
+                  </div>
                   {onAirNow && (
-                    <>
+                    <div className="opx-wbar-upd">
                       <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
                       <button className="opx-btn violet" disabled={!operate || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
                         <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               )}

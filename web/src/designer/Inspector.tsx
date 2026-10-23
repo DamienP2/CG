@@ -888,13 +888,12 @@ function LayerGeneral({ layer }: { layer: Layer }) {
         </div>
       )}
       {isTimed(layer) && (
-        <label className="check" title={t('The operator starts it with ▶ in the controls of the graphic on air (or API action widget)')}>
-          <input type="checkbox" checked={!!layer.manualStart} onChange={(e) => edit((l) => void (l.manualStart = e.target.checked || undefined))} />
-          {t('Start manually (the operator presses ▶)')}
-        </label>
+        <div className="row" title={t('Manual: the operator starts it with ▶ (or the API action widget)')}>
+          <span className="prop-label">{t('Launch')}</span>
+          <Segmented value={layer.manualStart ? 'manual' : 'in'} onChange={(v) => edit((l) => void (l.manualStart = v === 'manual' || undefined))} options={[{ value: 'in', label: t('At the In') }, { value: 'manual', label: t('Manual') }]} />
+        </div>
       )}
       {layer.type === 'group' && layer.lottie !== undefined && <LottieSource layer={layer} />}
-      {layer.type === 'group' && layer.lottie === undefined && <p className="hint">{t('A group holds layers; its properties apply to all of them.')}</p>}
       {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{t(LABELS[layer.type])}</p>}
     </div>
   );
@@ -926,7 +925,6 @@ function LottieSource({ layer }: { layer: Layer }) {
           <span className={`pick-nm ${file ? '' : 'ph'}`}>{busy ? t('Converting…') : file ? decodeURIComponent(file.split('/').pop() || file) : t('Choose a Lottie file…')}</span>
         </button>
       </div>
-      <p className="hint">{t('A Lottie / Bodymovin file (.json, .lottie, .zip) becomes layers inside this one, fitted to its box: both renderers draw them. Choosing another file replaces them.')}</p>
       {lib && <AssetLibrary kind="lottie" title={t('Choose a Lottie animation')} value={file} onClose={() => setLib(false)} onChoose={(src) => void choose(src)} />}
     </>
   );
@@ -960,7 +958,7 @@ function SpecInspector({ layer }: { layer: Layer }) {
         <Warnings list={warnings} />
         <Insp layer={layer as never} template={template} data={data} edit={edit as never} set={set} state={state} act={act} />
         <DatasetRows layer={layer} template={template} />
-        {Op && (
+        {Op && (def.controls ? def.controls(layer as never, data) : true) && (
           <SpecSection id={`try-${def.id}`} title={t('Operator')} closed>
             <div className="wk-op">
               <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
