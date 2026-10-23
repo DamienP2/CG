@@ -1261,12 +1261,6 @@ function SpecControls({ layer, item, act, fps, lang, selected, onSelect, more, o
 /** The templates the operator can add to the rundown: searchable cards with their picture, by zone. */
 function AddGraphic({ project, templates, used, onPick, onClose }: { project: Project; templates: Template[]; used: (id: string) => number; onPick: (t: Template) => void; onClose: () => void }) {
   const [q, setQ] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const down = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && !(e.target as Element).closest?.('.opx-add') && onClose();
-    window.addEventListener('pointerdown', down);
-    return () => window.removeEventListener('pointerdown', down);
-  }, [onClose]);
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const zoneOf = (t: Template) => project.zones.find((z) => z.id === t.zone);
   const list = templates.filter((t) => words.every((w) => `${t.name} ${zoneOf(t)?.name ?? ''}`.toLowerCase().includes(w)));
@@ -1274,53 +1268,59 @@ function AddGraphic({ project, templates, used, onPick, onClose }: { project: Pr
   const groups = [...project.zones.map((z) => ({ zone: z as Zone | undefined, list: list.filter((t) => t.zone === z.id) })), { zone: undefined, list: list.filter((t) => !zoneOf(t)) }].filter((g) => g.list.length);
   const fps = project.frameRate.num / project.frameRate.den || 25;
   const secs = (f: number) => `${+(f / fps).toFixed(1)} s`;
-  return (
-    <div className="opx-addpanel" ref={ref} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
-      <div className="opx-addsearch">
-        <input
-          autoFocus
-          placeholder={templates.length > 1 ? t('Search {n} graphics…', { n: templates.length }) : t('Search a graphic…')}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && list[0]) onPick(list[0]);
-          }}
-        />
-        <button className="icon-btn ghost" title={t('Close (Esc)')} onClick={onClose}>
-          <X size={14} />
-        </button>
+  return createPortal(
+    <div className="modal-back" onPointerDown={onClose}>
+      <div className="modal opx-addmodal" onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+        <header>
+          <h2>{t('Add a graphic from a template')}</h2>
+          <button className="icon-btn ghost" title={t('Close (Esc)')} onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <div className="opx-addsearch">
+          <input
+            autoFocus
+            placeholder={templates.length > 1 ? t('Search {n} graphics…', { n: templates.length }) : t('Search a graphic…')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && list[0]) onPick(list[0]);
+            }}
+          />
+        </div>
+        <div className="opx-addbody">
+          {groups.map((g) => (
+            <section key={g.zone?.id ?? '-'}>
+              <h4>
+                <span className="opx-dot" style={{ background: g.zone?.color ?? '#6b7090' }} /> {g.zone?.name ?? t('No zone')}
+                <em>{g.list.length}</em>
+              </h4>
+              <div className="opx-addgrid">
+                {g.list.map((tpl) => {
+                  const n = used(tpl.id);
+                  return (
+                    <button key={tpl.id} className="opx-addcard" title={t('Add “{name}” to the rundown', { name: tpl.name })} onClick={() => onPick(tpl)}>
+                      <span className="opx-addpic" style={{ aspectRatio: `${project.width} / ${project.height}` }}>
+                        <img src={thumbnailUrl(project.id, tpl)} alt="" loading="lazy" draggable={false} />
+                        {n > 0 && <i title={t('Already {n}× in this playlist', { n })}>×{n}</i>}
+                      </span>
+                      <strong>{tpl.name}</strong>
+                      <span className="muted small">
+                        {secs(tpl.duration)}
+                        {tpl.fields.length ? ` · ${tn(tpl.fields.length, '{n} field', '{n} fields')}` : ''}
+                        {usedDatasets(tpl).length ? ` · ${t('data set')}` : ''}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+          {!groups.length && <p className="opx-hint pad">{templates.length ? t('No graphic matches.') : t('No graphic published yet: publish templates from the Designer.')}</p>}
+        </div>
       </div>
-      <div className="opx-addbody">
-        {groups.map((g) => (
-          <section key={g.zone?.id ?? '-'}>
-            <h4>
-              <span className="opx-dot" style={{ background: g.zone?.color ?? '#6b7090' }} /> {g.zone?.name ?? t('No zone')}
-              <em>{g.list.length}</em>
-            </h4>
-            <div className="opx-addgrid">
-              {g.list.map((tpl) => {
-                const n = used(tpl.id);
-                return (
-                  <button key={tpl.id} className="opx-addcard" title={t('Add “{name}” to the rundown', { name: tpl.name })} onClick={() => onPick(tpl)}>
-                    <span className="opx-addpic" style={{ aspectRatio: `${project.width} / ${project.height}` }}>
-                      <img src={thumbnailUrl(project.id, tpl)} alt="" loading="lazy" draggable={false} />
-                      {n > 0 && <i title={t('Already {n}× in this playlist', { n })}>×{n}</i>}
-                    </span>
-                    <strong>{tpl.name}</strong>
-                    <span className="muted small">
-                      {secs(tpl.duration)}
-                      {tpl.fields.length ? ` · ${tn(tpl.fields.length, '{n} field', '{n} fields')}` : ''}
-                      {usedDatasets(tpl).length ? ` · ${t('data set')}` : ''}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-        {!groups.length && <p className="opx-hint pad">{templates.length ? t('No graphic matches.') : t('No graphic published yet: publish templates from the Designer.')}</p>}
-      </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
