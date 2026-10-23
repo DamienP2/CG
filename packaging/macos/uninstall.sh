@@ -14,6 +14,7 @@ rm -f /Library/LaunchAgents/com.pulsecg.tray.plist
 
 rm -rf "/Applications/Strata Graphics" "/Applications/Strata" "/Applications/Pulse CG" "/Applications/Pulse CG.app"
 rm -f /usr/local/bin/cg-server
+rm -f /etc/sudoers.d/strata-graphics
 rm -rf /usr/local/pulse-cg
 pkgutil --forget com.pulsecg.server >/dev/null 2>&1
 

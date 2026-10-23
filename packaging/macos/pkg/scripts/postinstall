@@ -14,6 +14,17 @@ if "$FW" --getglobalstate 2>/dev/null | grep -q "State = [12]"; then
 fi
 "$PREFIX/cg-server" service install
 
+# Let administrators start the server from the menu bar without a password
+# prompt (stop and restart go through the server itself). Only this exact
+# command, and only if sudo accepts the file.
+RULE=/etc/sudoers.d/strata-graphics
+TMP=$(mktemp)
+echo "%admin ALL=(root) NOPASSWD: $PREFIX/cg-server service start" > "$TMP"
+if visudo -cf "$TMP" >/dev/null 2>&1; then
+  install -m 0440 -o root -g wheel "$TMP" "$RULE"
+fi
+rm -f "$TMP"
+
 # Start the menu bar app for the logged-in user (it also starts at login).
 USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
 if [ "$USER_ID" != "0" ]; then

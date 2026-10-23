@@ -128,6 +128,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/outputs/status", get(outputs_status))
         .route("/api/hardware", get(get_hardware))
         .route("/api/system/restart", post(post_restart))
+        .route("/api/system/tray", get(tray_info))
+        .route("/api/system/restart-server", post(post_restart_server))
+        .route("/api/system/stop", post(post_stop))
+        .route("/api/system/network", put(put_network_roles))
         .route("/api/mos/status", get(mos_status))
         .route("/api/data/sources", get(list_sources).post(create_source))
         .route(
@@ -2037,6 +2041,135 @@ async fn post_restart(
 ) -> ApiResult<StatusCode> {
     require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
     s.restart.notify_one();
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// What the menu bar / tray app shows: status, addresses, network roles.
+/// The server itself only (the tray runs on it).
+async fn tray_info(
+    State(s): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> ApiResult<Json<serde_json::Value>> {
+    require(peer.ip().is_loopback())?;
+    let port = s.bind.port();
+    let interfaces: Vec<serde_json::Value> = tokio::task::spawn_blocking(crate::hardware::detect)
+        .await
+        .map_err(internal)?
+        .interfaces
+        .into_iter()
+        .filter(|i| !i.loopback && i.ip.parse::<std::net::Ipv4Addr>().is_ok())
+        .map(|i| serde_json::json!({ "name": i.name, "ip": i.ip }))
+        .collect();
+    // Where other machines reach the web UI.
+    let urls: Vec<String> = if s.bind.ip().is_unspecified() {
+        interfaces
+            .iter()
+            .filter_map(|i| i["ip"].as_str())
+            .map(|ip| format!("http://{ip}:{port}"))
+            .collect()
+    } else if s.bind.ip().is_loopback() {
+        Vec::new()
+    } else {
+        vec![format!("http://{}:{port}", s.bind.ip())]
+    };
+    let outputs = s.output_status.snapshot();
+    let total = outputs.values().map(|o| o.len()).sum::<usize>();
+    let ok = outputs
+        .values()
+        .flat_map(|o| o.values())
+        .filter(|o| o.ok)
+        .count();
+    let roles = &s.config.hardware.network;
+    Ok(Json(serde_json::json!({
+        "name": s.config.name,
+        "version": env!("CARGO_PKG_VERSION"),
+        "bind": s.bind,
+        "uptimeSecs": s.started_at.elapsed().map(|d| d.as_secs()).unwrap_or(0),
+        "urls": urls,
+        "interfaces": interfaces,
+        "control": roles.control,
+        "ndi": roles.ndi,
+        "channels": s.channels.len(),
+        "outputs": { "ok": ok, "total": total },
+    })))
+}
+
+/// Restarts the whole server process (the service manager starts it again):
+/// no password from the tray. Admins, or the server itself.
+async fn post_restart_server(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    MaybeUser(me): MaybeUser,
+) -> ApiResult<StatusCode> {
+    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
+    tracing::info!("restart asked from the menu bar app");
+    crate::update::restart_soon();
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// Stops the server as the service manager would (SIGTERM: a clean exit it
+/// does not restart). macOS and Linux; the server itself only.
+async fn post_stop(ConnectInfo(peer): ConnectInfo<SocketAddr>) -> ApiResult<StatusCode> {
+    require(peer.ip().is_loopback())?;
+    #[cfg(unix)]
+    {
+        tracing::info!("stop asked from the menu bar app");
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            // SAFETY: signalling our own process; no memory is involved.
+            unsafe {
+                libc::kill(libc::getpid(), libc::SIGTERM);
+            }
+        });
+        Ok(StatusCode::ACCEPTED)
+    }
+    #[cfg(not(unix))]
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        "stop the Windows service from its tray app".into(),
+    ))
+}
+
+#[derive(Deserialize)]
+struct NetworkRolesInput {
+    /// The interface the web UI listens on ("" = every one).
+    control: Option<String>,
+    /// The interface NDI uses ("" = every one).
+    ndi: Option<String>,
+}
+
+/// Picks the network adapter of the web UI and of NDI, then restarts the
+/// server (NDI reads its network at start). Admins, or the server itself.
+async fn put_network_roles(
+    State(s): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    MaybeUser(me): MaybeUser,
+    Json(i): Json<NetworkRolesInput>,
+) -> ApiResult<StatusCode> {
+    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
+    let known = |n: &str| n.is_empty() || crate::hardware::interface_ip(n).is_some();
+    for n in [&i.control, &i.ndi].into_iter().flatten() {
+        if !known(n) {
+            return Err(bad(format!(
+                "no network interface `{n}` with an IPv4 address"
+            )));
+        }
+    }
+    let dir = s.data_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut cfg = ServerConfig::load(&dir);
+        if let Some(c) = i.control {
+            cfg.hardware.network.control = c;
+        }
+        if let Some(n) = i.ndi {
+            cfg.hardware.network.ndi = n;
+        }
+        cfg.save(&dir)
+    })
+    .await
+    .map_err(internal)?
+    .map_err(internal)?;
+    tracing::info!("network roles changed from the menu bar app, restarting");
+    crate::update::restart_soon();
     Ok(StatusCode::ACCEPTED)
 }
 
