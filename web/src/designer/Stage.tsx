@@ -288,7 +288,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
 function WidgetOverlay({ layerId, box, frame }: { layerId: string; box: Box; frame: number }) {
   const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const layer = template && findLayer(template, layerId);
-  const Ov = layer && widgetOf(layer.type)?.Overlay;
+  const Ov = layer && widgetOf(layer)?.Overlay;
   if (!layer || !Ov) return null;
   const w = num(propValue(layer, 'width', frame));
   const h = num(propValue(layer, 'height', frame));

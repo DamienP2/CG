@@ -50,6 +50,9 @@ export const widgets: Record<string, string> = {
   'Image': 'Image',
   'Pen': 'Plume',
   'Timer': 'Chrono',
+  // The Time widget (stopwatch and countdown), not a time of day.
+  'widget|Time': 'Temps',
+  'More settings': 'Plus de réglages',
   'Table': 'Tableau',
   'Ticker': 'Bandeau défilant',
   'Credits': 'Générique',

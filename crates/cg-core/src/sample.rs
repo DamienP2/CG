@@ -447,7 +447,7 @@ fn fade(l: &mut Layer, in_at: f64, out_at: f64) {
     );
 }
 
-/// Corner clock (time of day).
+/// Corner clock (time of day): the Clock widget, its names in the project's language.
 pub fn clock() -> Template {
     use Prop::*;
     let n = Value::Number;
@@ -470,7 +470,11 @@ pub fn clock() -> Template {
         "ck-time",
         "Clock",
         LayerKind::Clock {
-            x: Default::default(),
+            x: Box::new(crate::wid::timer::Config {
+                timer_mode: Some(crate::wid::timer::TimerMode::Clock),
+                lang: String::new(),
+                ..Default::default()
+            }),
             mode: ClockMode::Time,
             format: "HH:mm:ss".into(),
             timezone: String::new(),
@@ -919,7 +923,7 @@ pub fn qr_code() -> Template {
     )
 }
 
-/// "Live in" countdown to a time of day.
+/// "Live in" countdown to a time of day: the Time widget, its target from the `target` field.
 pub fn countdown() -> Template {
     use Prop::*;
     let n = Value::Number;
@@ -959,15 +963,22 @@ pub fn countdown() -> Template {
         ],
     );
     fade(&mut label, 4.0, 30.0);
+    use crate::wid::timer::{CdTarget, Config, StartMode, TimerMode};
     let mut clock = layer(
         "cd-time",
         "Countdown",
         LayerKind::Clock {
-            x: Default::default(),
+            x: Box::new(Config {
+                timer_mode: Some(TimerMode::Countdown),
+                cd_target: CdTarget::Time,
+                t_time: "20:00".into(),
+                start_mode: StartMode::Auto,
+                ..Default::default()
+            }),
             mode: ClockMode::Countdown,
             format: "HH:mm:ss".into(),
             timezone: String::new(),
-            target: "{{target}}".into(),
+            target: String::new(),
             font: font(800, TextAlign::Center),
         },
         None,
@@ -981,6 +992,9 @@ pub fn countdown() -> Template {
         ],
     );
     fade(&mut clock, 4.0, 30.0);
+    clock
+        .setting_bindings
+        .insert("tTime".into(), "target".into());
     simple(
         "countdown",
         "Countdown",

@@ -936,10 +936,11 @@ type MenuItem = {
 };
 
 /** The + menu: one list of widgets, in this order. */
-const MENU: { type?: LayerType; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string }[] = [
+const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Video; patch?: Record<string, unknown>; action?: 'video' | 'lottie'; hint?: string; preset?: string }[] = [
   { type: 'ticker', label: 'Ticker' },
   { type: 'credits', label: 'Credits' },
-  { type: 'clock', label: 'Timer' },
+  { widget: 'clock', label: 'Clock' },
+  { widget: 'time', label: 'Time' },
   { type: 'table', label: 'Table' },
   { type: 'counter', label: 'Counter' },
   { type: 'chart', label: 'Chart' },
@@ -955,8 +956,10 @@ const MENU: { type?: LayerType; label: string; soon?: typeof Video; patch?: Reco
 type Menu = MenuItem & { action?: 'video' | 'lottie' };
 const menu = (): Menu[] =>
   MENU.map((m) => {
-    const w = m.type ? WIDGET_LIST.find((x) => x.type === m.type) : undefined;
-    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch: m.patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset };
+    // A widget by its id (a type drawn by two widgets: the Clock and the Time) comes with its own settings.
+    const w = m.widget ? WIDGET_LIST.find((x) => x.id === m.widget) : m.type ? WIDGET_LIST.find((x) => x.type === m.type) : undefined;
+    const patch = m.widget && w ? (w.create() as Record<string, unknown>) : m.patch;
+    return { label: m.label, icon: m.soon && !w ? m.soon : (w?.icon ?? m.soon ?? Square), type: w?.type, patch, hint: m.hint, preset: m.preset, action: m.action, soon: !w && !m.action && !m.preset };
   });
 
 function AddMenu({ onAdd }: { onAdd: AddLayer }) {
@@ -985,7 +988,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
     }
     if (it.type) {
       setOpen(null);
-      onAdd(it.type, it.patch, t(it.label));
+      onAdd(it.type, it.patch, tc('widget', it.label));
       return;
     }
     const w = WIDGET_PRESETS.find((x) => x.key === it.preset);
@@ -1028,7 +1031,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
                 <span className="add-icon">
                   <it.icon size={15} />
                 </span>
-                {t(it.label)}
+                {tc('widget', it.label)}
                 {it.soon && <em>{t('soon')}</em>}
               </button>
             ))}

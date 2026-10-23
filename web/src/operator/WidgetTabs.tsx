@@ -42,7 +42,7 @@ const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** The widget has controls with this data: its own (spec widgets) or start / pause (timed layers). */
 export function hasControls(l: Layer, data: Record<string, string> = {}): boolean {
-  const def = widgetOf(l.type);
+  const def = widgetOf(l);
   if (def?.Compact) return def.controls ? def.controls(l as never, data) : true;
   return isTimed(l) && l.type !== 'text';
 }
@@ -138,7 +138,7 @@ export const newPreviewRun = (): PreviewRun => ({ active: false, since: Date.now
  */
 export function heldAt(run: PreviewRun, l: Layer, data: Record<string, string>, holdSecs: number): number | undefined {
   if (l.id in run.widgets || l.id in run.clocks) return undefined;
-  const def = widgetOf(l.type);
+  const def = widgetOf(l);
   const from = def?.Compact ? def.plays?.(l as never, data) : isTimed(l) && l.type !== 'text' && 'start';
   return from === 'start' ? 0 : from === 'onAir' ? holdSecs : undefined;
 }
@@ -165,7 +165,7 @@ export function controlClock(run: PreviewRun, l: Layer, control: 'toggle' | 'res
 
 /** The widget has advanced controls (More) to unfold under its compact row with these values. */
 export function hasMore(l: Layer, data: Record<string, string>, state: unknown): boolean {
-  const def = widgetOf(l.type);
+  const def = widgetOf(l);
   return !!def?.More && (def.hasMore ? def.hasMore(l as never, data, state) : true);
 }
 
@@ -175,7 +175,7 @@ export function hasMore(l: Layer, data: Record<string, string>, state: unknown):
  * the Operator puts under it).
  */
 export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSecs, lang, show = 'compact', more, onMore }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; holdSecs: number; lang?: string; show?: 'compact' | 'more'; more?: boolean; onMore?: (open: boolean) => void }) {
-  const def = widgetOf(layer.type);
+  const def = widgetOf(layer);
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const toast = useApp((s) => s.toast);

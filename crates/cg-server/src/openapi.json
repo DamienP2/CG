@@ -766,6 +766,10 @@
          },
          "frameRate": {
           "$ref": "#/components/schemas/FrameRate"
+         },
+         "language": {
+          "type": "string",
+          "description": "Language of the texts; unchanged when absent."
          }
         }
        }
@@ -3597,6 +3601,11 @@
       "items": {
        "$ref": "#/components/schemas/Format"
       }
+     },
+     "language": {
+      "type": "string",
+      "default": "fr",
+      "description": "Language of the texts (\"fr\", \"en\", \"de\", \"es\", \"it\"): hyphenation, French spaces, and the day and month names of the Clock widgets that follow the project (`lang` \"\" on a clock layer)."
      }
     }
    },

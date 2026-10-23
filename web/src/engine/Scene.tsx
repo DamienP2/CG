@@ -110,7 +110,7 @@ function layerStyle(layer: Layer, frame: number, data: Data, hold: number, logic
   const shadow = layerShadow(layer, r);
   if (shadow) style.filter = shadow;
   // The spec widgets draw everything inside their box (SpecWidget).
-  if (widgetOf(layer.type)?.Render) return { style };
+  if (widgetOf(layer)?.Render) return { style };
   const fill = cssColor(col(r.fill));
   const strokeW = num(r.strokeWidth);
   const stroke = cssColor(col(r.stroke));
@@ -356,7 +356,7 @@ function WidgetContent({ layer, frame, data, hold }: { layer: Layer; frame: numb
 
 /** A spec widget (web/src/widgets) drawing its layer; reads the time context so only it re-renders. */
 function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; frame: number; data: Data; hold: number; interactive?: boolean }) {
-  const def = widgetOf(layer.type)!;
+  const def = widgetOf(layer)!;
   // Only a widget that moves is redrawn on each frame; one moving with its time only, without an operator state, stands still with it.
   const still = useContext(TimeContext);
   const base = useLayerTime(!def.live?.(layer as never) ? false : def.ageOnly && still.widgetState?.(layer.id) == null ? 'age' : 'wall');
@@ -387,7 +387,7 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
     <div style={style} data-layer-id={interactive ? layer.id : undefined} data-fit={interactive ? fit : undefined}>
       {lines && (squeeze < 1 ? <div style={{ width: `${100 / squeeze}%`, transform: `scaleX(${squeeze})`, transformOrigin: '0 0' }}>{lines}</div> : lines)}
       {src && layer.type === 'image' && <img src={src} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, display: 'block' }} />}
-      {widgetOf(layer.type)?.Render ? <SpecWidget layer={layer} frame={frame} data={data} hold={hold} interactive={interactive} /> : LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
+      {widgetOf(layer)?.Render ? <SpecWidget layer={layer} frame={frame} data={data} hold={hold} interactive={interactive} /> : LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
       {layer.type === 'group' && layer.lottie !== undefined ? (
         <LottieKids group={layer} kids={kids} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
       ) : (

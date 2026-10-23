@@ -137,8 +137,8 @@ const ROW_LABEL: Record<string, () => string> = {
 /** The exposed properties of one layer: its header, then the Designer's sections. */
 export function LayerProperties({ entry, io, bare }: { entry: ExposedLayer; io: FieldIO; /** Without its header (the widget's tab names it). */ bare?: boolean }) {
   const { layer, at } = entry;
-  const Icon = widgetOf(layer.type)?.icon ?? ICONS[layer.type];
-  const kind = widgetOf(layer.type)?.label;
+  const Icon = widgetOf(layer)?.icon ?? ICONS[layer.type];
+  const kind = widgetOf(layer)?.label;
   const has = (...paths: Path[]) => paths.some((p) => at.has(p));
   const shown = new Set<Path>();
   const use = (...paths: Path[]) => (paths.forEach((p) => shown.add(p)), has(...paths));
@@ -277,7 +277,7 @@ export function LayerProperties({ entry, io, bare }: { entry: ExposedLayer; io: 
             <Icon size={13} />
           </span>
           <strong>{layer.name}</strong>
-          {kind && <span className="muted small">{t(kind)}</span>}
+          {kind && <span className="muted small">{tc('widget', kind)}</span>}
         </div>
       )}
       {sections}

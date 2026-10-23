@@ -204,7 +204,8 @@ L'onglet **Users** liste les comptes en cartes, filtrées par rôle à gauche. P
   - **Image** (et séquences GIF / APNG) ;
   - **Vidéo** : posée tout de suite avec un emplacement réservé ; à droite, on choisit soit un **fichier** dans les ressources (fenêtre de la bibliothèque, import possible ; la vidéo est jouée image par image, alpha conservé, une minute au plus), soit une **entrée en direct** de la page Flux vidéo, avec son aperçu et son état ;
   - **Animation (Lottie)** : posée avec un emplacement réservé ; le fichier (`.json`, `.lottie`, `.zip`) se choisit à droite et devient des calques ajustés au cadre ;
-  - **Chrono** (minuteur, chronomètre, compte à rebours, horloge, avec déclencheur à zéro) ; dans *Style*, l'aspect **Chiffres** ou **Horloge analogique** (cadran, graduations, chiffres, aiguilles, trotteuse fluide ou par saut ; les anciennes horloges analogiques sont converties) ;
+  - **Horloge** (heure, date, villes ; noms des jours et des mois en français, anglais, allemand, espagnol, italien, portugais ou néerlandais, dans la langue du projet par défaut) ; dans *Style*, l'aspect **Chiffres** ou **Horloge analogique** (cadran, graduations, chiffres, aiguilles, trotteuse fluide ou par saut ; les anciennes horloges analogiques sont converties) ;
+  - **Temps** (chronomètre et compte à rebours, lancement à l'envoi, à la main ou à une heure, déclencheur à zéro ; les réglages avancés sous *Plus de réglages*). Les deux sont des calques `clock` : le mode (`timerMode`) dit lequel des deux widgets les dessine, les anciens « Chrono » s'ouvrent donc dans l'un ou l'autre sans conversion ;
   - **Tableau** (classements, résultats, couleurs par ligne venant des données) ;
   - **Bandeau défilant**, **Générique**, **Machine à écrire** ;
   - **Compteur animé**, **Barre de progression** (qui peut suivre un autre widget) ;

@@ -560,12 +560,28 @@ const DAYS: [(&str, [&str; 7], [&str; 7]); 7] = [
     ),
 ];
 
-fn lang_idx(lang: &str) -> usize {
+/// The languages of the day and month names (same tables in the web renderer:
+/// the browser's locale is never used, so every output shows the same names).
+pub const NAME_LANGS: [&str; 7] = ["fr", "en", "de", "es", "it", "pt", "nl"];
+
+fn known(lang: &str) -> Option<&'static str> {
     let l = lang
+        .trim()
         .split(['-', '_'])
         .next()
         .unwrap_or("")
         .to_ascii_lowercase();
+    NAME_LANGS.iter().copied().find(|k| *k == l)
+}
+
+/// The names' language of a clock: its own (`fr-FR`, `de`…), else the
+/// project's (`""` = the project's language), else French.
+pub fn name_lang(lang: &str, project: &str) -> &'static str {
+    known(lang).or_else(|| known(project)).unwrap_or("fr")
+}
+
+fn lang_idx(lang: &str) -> usize {
+    let l = name_lang(lang, "");
     MONTHS.iter().position(|m| m.0 == l).unwrap_or(0)
 }
 

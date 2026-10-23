@@ -1,4 +1,4 @@
-//! Timer: drawing (same picture as `web/src/widgets/timer.tsx`).
+//! Clock layers (the Clock and the Time widgets): drawing (same picture as `web/src/widgets/timer.tsx`).
 //!
 //! Layout (both renderers): one plate per clock (several for city clocks,
 //! side by side, 36 px apart), each `[prefix] value [suffix]` on one line,
@@ -9,7 +9,7 @@
 use ab_glyph::FontArc;
 use cg_core::wid::timer::fmt::{Seg, SegKind, ZoneSel};
 use cg_core::wid::timer::{
-    affixes, banner, display, eff, hands, widest, At, Disp, Eff, Face, State, Ticks,
+    affixes, banner, display, eff_in, hands, widest, At, Disp, Eff, Face, State, Ticks,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{FillRule, LineCap, PathBuilder, Stroke, Transform};
@@ -201,7 +201,7 @@ pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
     let LayerKind::Clock { .. } = &d.layer.kind else {
         return None;
     };
-    let e = eff(d.layer, d.data)?;
+    let e = eff_in(d.layer, d.data, d.lang)?;
     let c = e.c;
     if c.face == Face::Analog {
         return Some(Motion::Moving);
@@ -233,7 +233,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Clock { font: fs, .. } = &d.layer.kind else {
         return false;
     };
-    let Some(e) = eff(d.layer, d.data) else {
+    let Some(e) = eff_in(d.layer, d.data, d.lang) else {
         return false;
     };
     let c = e.c;

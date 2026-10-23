@@ -1,4 +1,8 @@
-//! Timer: clock, date, stopwatch and countdown — settings, operator state and actions.
+//! Clock layers — settings, operator state and actions of two widgets:
+//! the Clock (« Horloge »: time of day and date, `timerMode` clock / date)
+//! and the Time (« Temps »: stopwatch and countdown, `timerMode` stopwatch /
+//! countdown). Both are `clock` layers with the same settings: the mode says
+//! which widget a layer is (`web/src/widgets/clock.tsx`, `time.tsx`).
 //! Drawn by `cg-render/src/wid/timer.rs` and `web/src/widgets/timer.tsx` (keep in sync;
 //! the formatting is mirrored by `web/src/widgets/timer-fmt.ts`).
 //!
@@ -315,6 +319,8 @@ pub struct Config {
     pub fine_unit: FineUnit,
     pub cities: bool,
     pub city_list: Vec<City>,
+    /// Language of the day and month names ("fr-FR", "de"…; "" = the
+    /// project's). Older layers without it keep English.
     pub lang: String,
     pub case: DateCase,
     // stopwatch
@@ -450,10 +456,18 @@ pub struct Eff<'a> {
     /// Target string ("[date ]time"), its zone.
     pub target: String,
     pub target_zone: ZoneSel,
+    /// Language of the day and month names (a key of [`fmt::NAME_LANGS`]).
+    pub lang: &'static str,
 }
 
-/// The timer settings of a clock layer (None for another layer).
+/// The timer settings of a clock layer (None for another layer), the names
+/// in French when the layer follows the project's language.
 pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
+    eff_in(layer, data, "")
+}
+
+/// The timer settings of a clock layer in a project of this language.
+pub fn eff_in<'a>(layer: &'a Layer, data: &Data, project_lang: &str) -> Option<Eff<'a>> {
     let LayerKind::Clock {
         mode,
         format,
@@ -474,6 +488,7 @@ pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
     } else {
         format.clone()
     };
+    let lang = fmt::name_lang(&c.lang, project_lang);
     Some(match c.timer_mode {
         Some(m) => Eff {
             c,
@@ -496,6 +511,7 @@ pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
                 format!("{} {}", c.t_date.trim(), c.t_time.trim())
             },
             target_zone: ZoneSel::named(&c.t_zone),
+            lang,
         },
         None => {
             let tgt = interpolate_text(target, data);
@@ -522,6 +538,7 @@ pub fn eff<'a>(layer: &'a Layer, data: &Data) -> Option<Eff<'a>> {
                     .max(0),
                 target: tgt.trim().to_string(),
                 target_zone: zone,
+                lang,
             }
         }
     })
@@ -734,7 +751,7 @@ pub struct At<'a> {
 
 fn wall_opts<'a>(e: &'a Eff, fps: f64) -> WallOpts<'a> {
     WallOpts {
-        lang: &e.c.lang,
+        lang: e.lang,
         h12: e.c.h12,
         am: &e.c.am,
         pm: &e.c.pm,
@@ -1593,6 +1610,45 @@ mod tests {
             r#"{"id":"a","name":"D","type":"clock","mode":"time","format":"ddd D MMM","timerMode":"date","lang":"de","case":"upper","timezone":"UTC","props":{}}"#,
         );
         assert_eq!(text(&l, &State::default(), ms, 0), "SO 18 OKT");
+    }
+
+    #[test]
+    fn names_follow_the_layer_then_the_project_then_french() {
+        // 2026-10-18 is a Sunday.
+        let ms = jiff::Timestamp::from_second(1_792_324_800)
+            .unwrap()
+            .as_millisecond();
+        let d = data();
+        let at = At {
+            now: ms,
+            age_ms: 0,
+            fps: 25.0,
+            default_tz: "UTC",
+        };
+        let shown = |lang: &str, project: &str| {
+            let l = layer(&format!(
+                r#"{{"id":"a","name":"D","type":"clock","format":"dddd D MMMM","timerMode":"date","lang":"{lang}","timezone":"UTC","props":{{}}}}"#
+            ));
+            let e = eff_in(&l, &d, project).unwrap();
+            seg_text(&display(&e, &State::default(), at, None).segs, ":")
+        };
+        assert_eq!(shown("", "de"), "Sonntag 18 Oktober");
+        assert_eq!(shown("", "en"), "Sunday 18 October");
+        assert_eq!(shown("", ""), "dimanche 18 octobre");
+        assert_eq!(shown("", "sv"), "dimanche 18 octobre");
+        assert_eq!(shown("es-ES", "de"), "domingo 18 octubre");
+        assert_eq!(shown("it", "fr"), "domenica 18 ottobre");
+        assert_eq!(shown("pt-BR", "fr"), "domingo 18 outubro");
+        assert_eq!(shown("nl-NL", "fr"), "zondag 18 oktober");
+        // Older layers without a language keep English.
+        let l = layer(
+            r#"{"id":"a","name":"D","type":"clock","format":"dddd","timerMode":"date","timezone":"UTC","props":{}}"#,
+        );
+        let e = eff_in(&l, &d, "de").unwrap();
+        assert_eq!(
+            seg_text(&display(&e, &State::default(), at, None).segs, ":"),
+            "Sunday"
+        );
     }
 
     #[test]

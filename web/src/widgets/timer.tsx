@@ -1,39 +1,36 @@
-// Timer: clock, date, stopwatch and countdown — settings, drawing, inspector and Operator controls.
+// Clock layers, shared by two widgets: the Clock (« Horloge », ./clock.tsx: time of day and
+// date) and the Time (« Temps », ./time.tsx: stopwatch and countdown). Both are `clock`
+// layers with the same settings; `timerMode` says which widget a layer is (widgetOf).
+// Here: the drawing, the inspector rows both use, the Operator controls and the warnings.
 // Same picture as crates/cg-render/src/wid/timer.rs; logic mirrored in ./timer-fmt.ts
 // (crates/cg-core/src/wid/timer.rs); actions in crates/cg-core/src/wid/timer.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Timer } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { col, cssColor, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
 import type { Data, Layer, FontStyle } from '../engine/types';
 import { FontControls, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Sep, Text, Toggle, Transport, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, Num, Readout, Row, Seg, Sep, Text, Toggle, Transport, useFrame, useKeys, type InspectorProps, type Warning } from './kit';
 import * as T from './timer-fmt';
 import { OpBar, SetField } from './opbar';
 import { t, tc } from '../i18n';
 
 export type Config = T.Config;
 export type State = T.State;
-type L = T.ClockLayer;
+export type L = T.ClockLayer;
 
-const ZONES = ['Europe/Paris', 'Europe/London', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Rome', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'America/Sao_Paulo', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Dubai', 'Asia/Kolkata', 'Australia/Sydney', 'UTC'];
-const PRESETS: Record<T.TimerMode, [string, T.DateCase?][]> = {
+export const ZONES = ['Europe/Paris', 'Europe/London', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Rome', 'America/New_York', 'America/Chicago', 'America/Los_Angeles', 'America/Sao_Paulo', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Dubai', 'Asia/Kolkata', 'Australia/Sydney', 'UTC'];
+export const PRESETS: Record<T.TimerMode, [string, T.DateCase?][]> = {
   clock: [['HH:mm:ss'], ['HH:mm'], ['H[h]mm'], ['HH:mm:ss:FF'], ['dddd HH:mm']],
   date: [['dddd D MMMM YYYY', 'first'], ['DD/MM/YYYY'], ['D MMM', 'upper'], ['ddd D MMM', 'upper'], ['YYYY-MM-DD']],
   stopwatch: [['mm:ss'], ['HH:mm:ss'], ['mm:ss.S'], ['mm:ss.SS'], ['HH:mm:ss:FF']],
   countdown: [['mm:ss'], ['HH:mm:ss'], ['mm:ss.S'], ['DD[d] HH:mm:ss'], ['[J-]D']],
 };
-const MODES: [T.TimerMode, string][] = [
-  ['clock', 'Clock'],
-  ['date', 'Date'],
-  ['stopwatch', 'Stopwatch'],
-  ['countdown', 'Countdown'],
-];
-const LEGACY_MODE: Record<T.TimerMode, string> = { clock: 'time', date: 'time', stopwatch: 'elapsed', countdown: 'timer' };
-const STEPS: Partial<Record<T.TimerMode, T.Step[]>> = {
+export const LEGACY_MODE: Record<T.TimerMode, string> = { clock: 'time', date: 'time', stopwatch: 'elapsed', countdown: 'timer' };
+export const STEPS: Partial<Record<T.TimerMode, T.Step[]>> = {
   countdown: [
     { on: true, at: 60, color: '#f59e0b', bg: '', blink: false },
     { on: true, at: 10, color: '#ff3b5c', bg: '', blink: true },
@@ -92,8 +89,8 @@ interface Plate {
 
 const fontCss = (fam: string) => `"${fam}", Inter, system-ui, sans-serif`;
 
-function TimerView({ layer, r, w, h, data, time, state, fps, designer }: { layer: L; r: Resolved; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number; defaultTz: string }; state: unknown; fps: number; designer?: boolean }) {
-  const e = T.eff(layer, data);
+function TimerView({ layer, r, w, h, data, time, state, fps, designer, lang }: { layer: L; r: Resolved; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number; defaultTz: string }; state: unknown; fps: number; designer?: boolean; lang?: string }) {
+  const e = T.eff(layer, data, lang);
   const c = e.c;
   const now = time.nowMs;
   const at: T.At = { now, ageMs: time.ageSecs * 1000, fps, defaultTz: time.defaultTz };
@@ -329,7 +326,20 @@ function AnalogFaces({ e, st, at, zones, w, h, align, valign, ink, labelCol, fam
 
 // ------------------------------------------------------------ inspector --
 
-function DurField({ label, value, onChange, min = 0, expose }: { label: string; value: number; onChange: (ms: number) => void; min?: number; expose?: string }) {
+export type Edit = (fn: (l: L) => void, key?: string) => void;
+export type SetPath = (path: string, v: unknown, coalesce?: boolean) => void;
+/** What the inspector of each widget gets. */
+export interface InspP {
+  layer: L;
+  data: Data;
+  edit: Edit;
+  set: SetPath;
+}
+
+/** The project's language: a clock that follows it shows its day and month names in it. */
+export const useProjectLang = () => useApp((s) => s.project?.language) || 'fr';
+
+export function DurField({ label, value, onChange, min = 0, expose }: { label: string; value: number; onChange: (ms: number) => void; min?: number; expose?: string }) {
   const toast = useApp((s) => s.toast);
   const [txt, setTxt] = useState<string | null>(null);
   const commit = () => {
@@ -346,411 +356,212 @@ function DurField({ label, value, onChange, min = 0, expose }: { label: string; 
   );
 }
 
-const sampleText = (layer: L, data: Data, fmt: string) => {
-  const e = T.eff({ ...layer, format: fmt }, data);
+const sampleText = (layer: L, data: Data, fmt: string, lang: string) => {
+  const e = T.eff({ ...layer, format: fmt }, data, lang);
   const d = T.display(e, undefined, { now: Date.now(), ageMs: 0, fps: 25, defaultTz: '' }, undefined);
   return T.segText(d.segs, e.c.sep);
 };
 
-function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn: (l: L) => void, key?: string) => void; set: (path: string, v: unknown, coalesce?: boolean) => void }) {
-  const e = T.eff(layer, data);
-  const c = e.c;
-  const mode = e.mode;
+/** The mode, among the two of the widget (the format, zeros and steps follow it unless the designer's own). */
+export function ModeSeg({ mode, modes, edit }: { mode: T.TimerMode; modes: [T.TimerMode, string][]; edit: Edit }) {
+  return (
+    <Seg
+      expose="timerMode"
+      exposeValue={mode}
+      label={t('Mode')}
+      value={mode}
+      options={modes.map(([v, l]) => [v, t(l)] as [T.TimerMode, string])}
+      onChange={(v) =>
+        edit((l) => {
+          const x = l as L & Config;
+          const was = x.timerMode ?? mode;
+          x.timerMode = v;
+          x.mode = LEGACY_MODE[v] as L['mode'];
+          // A format, zeros and steps of the designer's own stay (only the presets of the old mode change).
+          const preset = !x.format?.trim() || PRESETS[was].some((p) => p[0] === x.format) || !T.hasToken(x.format);
+          if (preset) {
+            x.format = PRESETS[v][0][0];
+            if (PRESETS[v][0][1]) x.case = PRESETS[v][0][1];
+            x.zeros = 'pad';
+          }
+          const sameSteps = (a?: T.Step[], b?: T.Step[]) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+          if (!x.steps?.length || sameSteps(x.steps, STEPS[was])) x.steps = STEPS[v] ? structuredClone(STEPS[v]) : [];
+          if (v !== 'clock') x.cities = false;
+        })
+      }
+    />
+  );
+}
+
+/** The format presets of the mode, each with what it shows now. */
+export function PresetRow({ layer, data, mode, edit }: { layer: L; data: Data; mode: T.TimerMode; edit: Edit }) {
+  const lang = useProjectLang();
   const list = PRESETS[mode];
-  const zoneMode = c.tzOffset != null ? 'offset' : layer.timezone?.trim() ? 'named' : 'machine';
-  const affixed = !!(c.prefix || c.suffix || (mode === 'clock' && c.cities));
+  return (
+    <Row expose="format" exposeValue={layer.format} label={t('Preset')}>
+      <Dropdown
+        value={list.some((p) => p[0] === layer.format) ? layer.format : '__custom'}
+        options={[...list.map(([f]) => ({ value: f, label: `${f} → ${sampleText(layer, data, f, lang)}` })), { value: '__custom', label: t('Custom') }]}
+        onChange={(v) => {
+          const p = list.find((x) => x[0] === v);
+          if (!p) return;
+          edit((l) => {
+            const x = l as L & Config;
+            x.format = p[0];
+            if (p[1]) x.case = p[1];
+            if (mode === 'stopwatch') x.swRound = x.swRound ?? 'trunc';
+          });
+        }}
+      />
+    </Row>
+  );
+}
+
+/** The format typed, the prefix and the suffix. */
+export function TextRows() {
   return (
     <>
-      <Section id="timer-main" title={t('Timer')}>
-        <Seg
-          expose="timerMode"
-          exposeValue={mode}
-          label={t('Mode')}
-          value={mode}
-          options={MODES.map(([v, l]) => [v, t(l)] as [T.TimerMode, string])}
-          onChange={(v) =>
-            edit((l) => {
-              const x = l as L & Config;
-              const was = x.timerMode ?? mode;
-              x.timerMode = v;
-              x.mode = LEGACY_MODE[v] as L['mode'];
-              // A format, zeros and steps of the designer's own stay (only the presets of the old mode change).
-              const preset = !x.format?.trim() || PRESETS[was].some((p) => p[0] === x.format) || !T.hasToken(x.format);
-              if (preset) {
-                x.format = PRESETS[v][0][0];
-                if (PRESETS[v][0][1]) x.case = PRESETS[v][0][1];
-                x.zeros = 'pad';
-              }
-              const sameSteps = (a?: T.Step[], b?: T.Step[]) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
-              if (!x.steps?.length || sameSteps(x.steps, STEPS[was])) x.steps = STEPS[v] ? structuredClone(STEPS[v]) : [];
-              if (v !== 'clock') x.cities = false;
-            })
-          }
-        />
-        <Row expose="format" exposeValue={layer.format} label={t('Preset')}>
-          <Dropdown
-            value={list.some((p) => p[0] === layer.format) ? layer.format : '__custom'}
-            options={[...list.map(([f]) => ({ value: f, label: `${f} → ${sampleText(layer, data, f)}` })), { value: '__custom', label: t('Custom') }]}
-            onChange={(v) => {
-              const p = list.find((x) => x[0] === v);
-              if (!p) return;
-              edit((l) => {
-                const x = l as L & Config;
-                x.format = p[0];
-                if (p[1]) x.case = p[1];
-                if (mode === 'stopwatch') x.swRound = x.swRound ?? 'trunc';
-              });
-            }}
-          />
-        </Row>
-        <Text label={t('Format')} path="format" placeholder="HH:mm:ss" />
-        <Content label={t('Prefix')} path="prefix" value="" />
-        <Content label={t('Suffix')} path="suffix" value="" />
-        {mode === 'clock' && (
-          <>
-            <Toggle
-              expose="cities"
-              exposeValue={c.cities}
-              label={t('Cities')}
-              value={c.cities}
-              onChange={(v) =>
-                edit((l) => {
-                  const x = l as L & Config;
-                  x.cities = v;
-                  if (v && !x.cityList?.length)
-                    x.cityList = [
-                      { label: 'Paris', zone: 'Europe/Paris' },
-                      { label: 'New York', zone: 'America/New_York' },
-                      { label: 'Tokyo', zone: 'Asia/Tokyo' },
-                    ];
-                  if (v) x.format = 'HH:mm';
-                })
-              }
-            />
-            {c.cities && (
-              <ListEditor
-                path="cityList"
-                value={[]}
-                fields={[
-                  { key: 'label', placeholder: t('City') },
-                  { key: 'zone', w: 150, options: [['', t('Server')], ...ZONES.map((z) => [z, z] as [string, string])] },
-                ]}
-                add={() => ({ label: 'London', zone: 'Europe/London' })}
-                addLabel={t('City')}
-                min={1}
-              />
-            )}
-          </>
-        )}
-      </Section>
+      <Text label={t('Format')} path="format" placeholder="HH:mm:ss" />
+      <Content label={t('Prefix')} path="prefix" value="" />
+      <Content label={t('Suffix')} path="suffix" value="" />
+    </>
+  );
+}
 
-      {c.face !== 'analog' && (
-        <Section id="timer-digits" title={t('Digits')}>
-          <Toggle label={t('Tabular')} path="tabular" value={T.DEF.tabular} />
-          {mode !== 'date' && (
-            <>
-              <Seg
-                label={t('Zeros')}
-                path="zeros"
-                value="pad"
-                options={[
-                  ['pad', '00:01:05'],
-                  ['trim', '1:05'],
-                ]}
-              />
-              {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
-              <Seg
-                label={t('Separator')}
-                path="sep"
-                value=":"
-                options={[
-                  [':', ':'],
-                  ['h', 'h'],
-                  ["'", "'"],
-                  [' ', t('space')],
-                  ['.', '.'],
-                ]}
-              />
-              <Toggle label={t('Blink')} path="sepBlink" value={false} />
-            </>
-          )}
-          {mode === 'clock' && (
-            <>
-              <Seg
-                label={t('Hours')}
-                path="h12"
-                value={false}
-                options={[
-                  [false, '24 h'],
-                  [true, '12 h'],
-                ]}
-              />
-              {c.h12 && (
-                <>
-                  <Text label="AM" path="am" value="AM" />
-                  <Text label="PM" path="pm" value="PM" />
-                </>
-              )}
-            </>
-          )}
-          {(mode === 'date' || (mode === 'clock' && /dddd|ddd|MMMM|MMM/.test(e.format.replace(/\[[^\]]*\]/g, '')))) && (
-            <>
-              <Select label={t('Language')} path="lang" value="en-GB" options={T.LANGS} />
-              <Seg
-                label={t('Case')}
-                path="case"
-                value="none"
-                options={[
-                  ['none', t('As is')],
-                  ['first', t('First')],
-                  ['words', t('Words')],
-                  ['upper', t('UPPER')],
-                  ['lower', t('lower')],
-                ]}
-              />
-            </>
-          )}
-        </Section>
-      )}
+/** Zeros, separator and its blink (durations and times of day). */
+export function DigitRows({ e }: { e: T.Eff }) {
+  return (
+    <>
+      <Seg
+        label={t('Zeros')}
+        path="zeros"
+        value="pad"
+        options={[
+          ['pad', '00:01:05'],
+          ['trim', '1:05'],
+        ]}
+      />
+      {T.timed(e) && <Toggle label={t('Auto hours')} path="hoursAuto" value={false} />}
+      <Seg
+        label={t('Separator')}
+        path="sep"
+        value=":"
+        options={[
+          [':', ':'],
+          ['h', 'h'],
+          ["'", "'"],
+          [' ', t('space')],
+          ['.', '.'],
+        ]}
+      />
+      <Toggle label={t('Blink')} path="sepBlink" value={false} />
+    </>
+  );
+}
 
-      <Section id="timer-style" title={t('Style')}>
-        {(mode === 'clock' || c.face === 'analog') && (
-          <Seg
-            label={t('Look')}
-            path="face"
-            value={c.face}
-            options={[
-              ['digital', t('Digits')],
-              ['analog', t('Analog clock')],
-            ]}
-          />
-        )}
-        {c.face === 'analog' && (
-          <>
-            <ColorPick label={t('Face')} path="analog.face" value={T.DEF.analog.face} none={t('None')} first={T.DEF.analog.face} />
-            <ColorPick label={t('Rim')} path="analog.rim" value="" none={t('None')} />
-            <ColorPick label={t('Hands')} path="analog.hands" value="" none={t('Text colour')} />
-            <Toggle label={t('Second hand')} path="analog.seconds" value={true} />
-            {c.analog.seconds && (
-              <>
-                <ColorPick label={t('Second hand colour')} path="analog.accent" value={T.DEF.analog.accent} />
-                <Toggle label={t('Sweep')} path="analog.smooth" value={false} text={t('The second hand moves smoothly')} />
-              </>
-            )}
-            <Seg
-              label={t('Marks')}
-              path="analog.ticks"
-              value={c.analog.ticks}
-              options={[
-                ['minutes', t('Minutes')],
-                ['hours', t('Hours')],
-                ['none', t('None')],
-              ]}
-            />
-            <Toggle label={tc('clock', 'Numbers')} path="analog.numbers" value={false} text={t('1 to 12 around the face')} />
-          </>
-        )}
-        <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
-        {c.face !== 'analog' && <GroupRow layer={layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />}
-        {affixed && (
-          <>
-            <Num label={t('Affix size')} path="affix.size" value={30} min={15} max={100} unit="%" />
-            <ColorPick label={t('Affix colour')} path="affix.color" value="#a594ff" />
-            <Seg
-              label={t('Affix weight')}
-              path="affix.weight"
-              value={800}
-              options={[
-                [500, t('Medium')],
-                [700, t('Bold')],
-                [800, t('Extra')],
-                [900, t('Black')],
-              ]}
-            />
-            <Toggle label={t('Affix caps')} path="affix.upper" value={true} />
-          </>
-        )}
-        {c.face !== 'analog' && (
-          <>
-            <Toggle label={t('Plate')} path="plate.on" value={false} />
-            {c.plate.on && (
-              <>
-                <ColorPick label={t('Colour')} path="plate.color" value={T.DEF.plate.color} />
-                <Num label={t('Radius')} path="plate.radius" value={22} min={0} max={80} unit="px" />
-                <Num label={t('Padding')} path="plate.padX" value={46} min={0} max={120} unit="px" />
-                <Num label={t('Padding V')} path="plate.padY" value={14} min={0} max={80} unit="px" />
-                <Toggle label={t('Accent')} path="plate.accent" value={true} />
-                {c.plate.accent && <ColorPick label={t('Accent colour')} path="plate.accentColor" value="#ff3b5c" />}
-                <Toggle label={t('Shadow')} path="plate.shadow" value={true} />
-              </>
-            )}
-            <Toggle label={t('Reserve width')} path="reserve" value={T.DEF.reserve} />
-            {c.reserve && <Toggle label={t('Guide')} path="guide" value={true} />}
-            <Toggle label={t('Shrink to fit')} path="fit" value={false} />
-          </>
-        )}
-      </Section>
+/** Digits or an analog face (offered to a timed layer only when it has a face already, to go back to digits). */
+export function LookSeg({ c }: { c: T.Cfg }) {
+  return (
+    <Seg
+      label={t('Look')}
+      path="face"
+      value={c.face}
+      options={[
+        ['digital', t('Digits')],
+        ['analog', t('Analog clock')],
+      ]}
+    />
+  );
+}
 
-      {!T.timed(e) && (
-        <Section id="timer-zone" title={t('Time zone')}>
-          <Seg
-            expose="timezone"
-            exposeValue={(layer as L & Config).timezone ?? ''}
-            exposeOptions={[]}
-            label={t('Zone')}
-            value={zoneMode}
-            options={[
-              ['machine', t('Server')],
-              ['named', t('Named')],
-              ['offset', t('Offset')],
-            ]}
-            onChange={(v) =>
-              edit((l) => {
-                const x = l as L & Config;
-                if (v === 'offset') x.tzOffset = x.tzOffset ?? 0;
-                else {
-                  delete x.tzOffset;
-                  x.timezone = v === 'named' ? x.timezone?.trim() || 'Europe/Paris' : '';
-                }
-              })
-            }
-          />
-          {zoneMode === 'named' && <Select label={t('Zone name')} path="timezone" value="Europe/Paris" options={ZONES.includes(layer.timezone) ? ZONES : [layer.timezone, ...ZONES]} />}
-          {zoneMode === 'offset' && <Num label={t('UTC offset')} path="tzOffset" value={0} min={-12} max={14} step={0.25} precision={2} unit="h" />}
-          {mode === 'clock' && (
-            <>
-              <Seg
-                label={t('Fine in')}
-                path="fineUnit"
-                value="s"
-                options={[
-                  ['s', t('Seconds')],
-                  ['f', t('Frames')],
-                ]}
-              />
-              {c.fineUnit === 's' ? <Num label={t('Fine offset')} path="fine" value={0} min={-10} max={10} step={0.1} precision={1} unit="s" /> : <Num label={t('Fine offset')} path="fine" value={0} min={-50} max={50} step={1} unit="fr" />}
-            </>
-          )}
-        </Section>
-      )}
-      {mode === 'stopwatch' && (
-        <Section id="timer-sw" title={t('Stopwatch')}>
-          <DurField label={t('Start value')} value={c.swStart} onChange={(v) => set('swStart', v)} expose="swStart" />
-          <Toggle label={t('Limit')} path="swLimitOn" value={false} />
-          {c.swLimitOn && (
-            <>
-              <DurField label={t('Limit at')} value={c.swLimit} min={1000} onChange={(v) => set('swLimit', v)} expose="swLimit" />
-              <Seg
-                label={t('At the limit')}
-                path="swLimitMode"
-                value="stop"
-                options={[
-                  ['stop', t('Stop')],
-                  ['continue', t('Continue')],
-                  ['restart', t('Restart')],
-                ]}
-              />
-            </>
-          )}
-          <Num label={t('Split hold')} path="splitHold" value={5} min={1} max={15} unit="s" />
-        </Section>
-      )}
-      {mode === 'countdown' && (
-        <Section id="timer-cd" title={t('Countdown')}>
-          <Seg
-            label={t('Target')}
-            path="cdTarget"
-            value="duration"
-            options={[
-              ['duration', t('Duration')],
-              ['time', t('Time')],
-            ]}
-          />
-          {c.cdTarget === 'duration' ? (
-            <DurField label={t('Duration')} value={c.cdDuration} min={1000} onChange={(v) => set('cdDuration', v)} expose="cdDuration" />
-          ) : (
-            <>
-              <Text label={t('Date')} path="tDate" value="" placeholder="YYYY-MM-DD" />
-              <Text label={t('Time')} path="tTime" value="20:00:00" placeholder="20:00:00" />
-              <Select label={t('Zone')} path="tZone" value="" options={[['', t('Server')] as [string, string], ...ZONES.map((z) => [z, z] as [string, string])]} />
-            </>
-          )}
-          <Toggle label={t('Round up')} path="roundUp" value={true} />
-          <Seg
-            label={t('At zero')}
-            path="atZero"
-            value="freeze"
-            options={[
-              ['freeze', t('Freeze')],
-              ['overrun', t('Overrun +')],
-              ['restart', t('Restart')],
-              ['out', t('Hide')],
-            ]}
-          />
-          <Text label={t('Then trigger')} path="zeroTrigger" value="" placeholder={t('e.g. next (none)')} />
-          {!!c.zeroTrigger?.trim() && <Note>{t('At zero, every graphic on air paused on the trigger “{trigger}” plays on.', { trigger: c.zeroTrigger.trim() })}</Note>}
-          {c.atZero === 'overrun' && (
-            <>
-              <ColorPick label={t('Overrun text')} path="overColor" value="#ff3b5c" />
-              <ColorPick label={t('Overrun bg')} path="overBg" value="" none={t('None')} first="#3a0d18" />
-            </>
-          )}
-          <Toggle label={t('Banner')} path="banner" value={false} />
-          {c.banner && (
-            <>
-              <Content label={t('Banner text')} path="bannerText" value="" />
-              <ColorPick label={t('Banner colour')} path="bannerColor" value="#ff3b5c" />
-            </>
-          )}
-        </Section>
-      )}
-      {T.timed(e) && (
+/** The look of an analog face. */
+export function AnalogRows({ c }: { c: T.Cfg }) {
+  return (
+    <>
+      <ColorPick label={t('Face')} path="analog.face" value={T.DEF.analog.face} none={t('None')} first={T.DEF.analog.face} />
+      <ColorPick label={t('Rim')} path="analog.rim" value="" none={t('None')} />
+      <ColorPick label={t('Hands')} path="analog.hands" value="" none={t('Text colour')} />
+      <Toggle label={t('Second hand')} path="analog.seconds" value={true} />
+      {c.analog.seconds && (
         <>
-          <Section id="timer-start" title={t('Start')}>
-            <Seg
-              label={t('Launch')}
-              expose="startMode"
-              exposeValue={e.start}
-              value={e.start}
-              onChange={(v) => set('startMode', v)}
-              options={[
-                ['auto', t('At the In')],
-                ['manual', t('Manual')],
-                ['at', t('At a time')],
-              ]}
-            />
-            {e.start === 'at' && (
-              <>
-                <Text label={t('Start at')} path="startAt" value="20:00:00" placeholder="20:00:00" />
-                <Toggle label={t('Run off air')} path="offAir" value={true} />
-              </>
-            )}
-          </Section>
-          <Section id="timer-steps" title={t('Steps')}>
-            <ListEditor
-              label={t('Steps')}
-              path="steps"
-              value={[]}
-              toggle="on"
-              fields={[
-                { key: 'at', num: true, w: 56, placeholder: 's' },
-                { key: 'color', color: true, w: 36 },
-                { key: 'bg', placeholder: t('bg #hex') },
-                {
-                  key: 'blink',
-                  w: 76,
-                  options: [
-                    ['', t('Steady')],
-                    ['true', t('Blink')],
-                  ],
-                },
-              ]}
-              add={() => ({ on: true, at: 30, color: '#facc15', bg: '', blink: false })}
-              addLabel={t('Step')}
-            />
-          </Section>
+          <ColorPick label={t('Second hand colour')} path="analog.accent" value={T.DEF.analog.accent} />
+          <Toggle label={t('Sweep')} path="analog.smooth" value={false} text={t('The second hand moves smoothly')} />
         </>
       )}
+      <Seg
+        label={t('Marks')}
+        path="analog.ticks"
+        value={c.analog.ticks}
+        options={[
+          ['minutes', t('Minutes')],
+          ['hours', t('Hours')],
+          ['none', t('None')],
+        ]}
+      />
+      <Toggle label={tc('clock', 'Numbers')} path="analog.numbers" value={false} text={t('1 to 12 around the face')} />
+    </>
+  );
+}
+
+/** Font and size (no size for a face: it fills its box). */
+export function FontRows({ layer, c, set }: { layer: L; c: T.Cfg; set: SetPath }) {
+  return (
+    <>
+      <FontControls layer={layer as Layer & FontStyle} set={(k, v) => set(k, v)} />
+      {c.face !== 'analog' && <GroupRow layer={layer} spec={{ label: t('Size'), props: ['fontSize'], min: 1, suffix: 'px' }} />}
+    </>
+  );
+}
+
+/** The look of the prefix, suffix and city names. */
+export function AffixRows() {
+  return (
+    <>
+      <Num label={t('Affix size')} path="affix.size" value={30} min={15} max={100} unit="%" />
+      <ColorPick label={t('Affix colour')} path="affix.color" value="#a594ff" />
+      <Seg
+        label={t('Affix weight')}
+        path="affix.weight"
+        value={800}
+        options={[
+          [500, t('Medium')],
+          [700, t('Bold')],
+          [800, t('Extra')],
+          [900, t('Black')],
+        ]}
+      />
+      <Toggle label={t('Affix caps')} path="affix.upper" value={true} />
+    </>
+  );
+}
+
+/** The plate behind the value. */
+export function PlateRows({ c }: { c: T.Cfg }) {
+  return (
+    <>
+      <Toggle label={t('Plate')} path="plate.on" value={false} />
+      {c.plate.on && (
+        <>
+          <ColorPick label={t('Colour')} path="plate.color" value={T.DEF.plate.color} />
+          <Num label={t('Radius')} path="plate.radius" value={22} min={0} max={80} unit="px" />
+          <Num label={t('Padding')} path="plate.padX" value={46} min={0} max={120} unit="px" />
+          <Num label={t('Padding V')} path="plate.padY" value={14} min={0} max={80} unit="px" />
+          <Toggle label={t('Accent')} path="plate.accent" value={true} />
+          {c.plate.accent && <ColorPick label={t('Accent colour')} path="plate.accentColor" value="#ff3b5c" />}
+          <Toggle label={t('Shadow')} path="plate.shadow" value={true} />
+        </>
+      )}
+    </>
+  );
+}
+
+/** Digits that do not move (the widest value's width), or shrunk to the box. */
+export function WidthRows({ c }: { c: T.Cfg }) {
+  return (
+    <>
+      <Toggle label={t('Reserve width')} path="reserve" value={T.DEF.reserve} />
+      {c.reserve && <Toggle label={t('Guide')} path="guide" value={true} />}
+      <Toggle label={t('Shrink to fit')} path="fit" value={false} />
     </>
   );
 }
@@ -908,31 +719,22 @@ function warnings(layer: L, data: Data, state: unknown): Warning[] {
   return out;
 }
 
-const timerDef = () =>
+/**
+ * The definition of a widget drawing clock layers (the Clock or the Time): the same drawing,
+ * Operator controls and warnings, its own name, icon, new layer and inspector.
+ */
+export const clockWidget = (w: { id: string; label: string; icon: LucideIcon; create: () => Partial<L> & { props?: Record<string, unknown> }; content: string[]; Inspector: (p: InspP) => ReactNode }) =>
   defineWidget({
-    id: 'timer',
+    id: w.id,
     type: 'clock',
-    label: 'Timer',
+    label: w.label,
     group: 'Time',
-    icon: Timer,
-    create: () => ({
-      mode: 'time' as const,
-      format: 'HH:mm',
-      timezone: '',
-      target: '',
-      fontFamily: 'Inter',
-      fontWeight: 800,
-      align: 'center' as const,
-      verticalAlign: 'middle' as const,
-      uppercase: false,
-      timerMode: 'clock' as const,
-      lang: 'fr-FR',
-      props: { width: 900, height: 300, fontSize: 150, fill: [1, 1, 1, 1] },
-    }),
+    icon: w.icon,
+    create: w.create as never,
     live: () => true,
-    content: ['prefix', 'suffix', 'bannerText'],
-    Render: (p) => <TimerView layer={p.layer as L} r={p.r} w={p.w} h={p.h} data={p.data} time={p.time} state={p.state} fps={p.fps} designer={p.designer} />,
-    Inspector: (p) => <Inspector layer={p.layer as L} data={p.data} edit={p.edit as never} set={p.set} />,
+    content: w.content,
+    Render: (p) => <TimerView layer={p.layer as L} r={p.r} w={p.w} h={p.h} data={p.data} time={p.time} state={p.state} fps={p.fps} designer={p.designer} lang={p.lang} />,
+    Inspector: (p: InspectorProps<'clock'>) => <w.Inspector layer={p.layer as L} data={p.data} edit={p.edit as Edit} set={p.set} />,
     Operator: (p) => <TimerBar layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     Compact: (p) => <TimerBar layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     More: (p) => <More layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
@@ -944,5 +746,3 @@ const timerDef = () =>
     },
     warnings: (l, { data, state }) => warnings(l as L, data, state),
   });
-
-export default timerDef();

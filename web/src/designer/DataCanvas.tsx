@@ -14,7 +14,7 @@ import { autoLayout, measureNodes, type LayoutEdge } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
-import { ICONS } from './LayersPanel';
+import { layerIcon } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
 import { BuildCard, TableNodeInfo } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
@@ -45,7 +45,7 @@ export const useDataCanvas = create<{ open: boolean; set: (open: boolean) => voi
 const HAND_ONLY = new Set(['grid', 'entries']);
 /** What a layer shows, wired by default: its text, or its picture. */
 function contentOf(l: Layer): string[] {
-  const spec = widgetOf(l.type)?.content;
+  const spec = widgetOf(l)?.content;
   if (spec) return spec.filter((p) => !HAND_ONLY.has(p));
   if (l.type === 'image') return ['src'];
   return typeof (l as { text?: unknown }).text === 'string' ? ['text'] : [];
@@ -1092,7 +1092,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             {/* Layers: what they show (text, picture); their properties folded */}
             {template.layers.map((l) => {
               const p = nodePos.get(`l:${l.id}`)!;
-              const Icon = ICONS[l.type];
+              const Icon = layerIcon(l);
               const wired = wiredPorts(l);
               const r = resolved.get(l.id);
               const hidden = portsOf(l).filter((x) => !ports(l).includes(x)).length;

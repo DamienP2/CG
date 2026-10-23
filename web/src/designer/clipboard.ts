@@ -74,7 +74,7 @@ const ALWAYS = new Set<Prop>(['x', 'y', 'width', 'height', 'anchorX', 'anchorY',
 export function layerHasProp(l: Layer, p: Prop): boolean {
   if (ALWAYS.has(p) || l.props[p] !== undefined || l.tracks[p]?.length || l.timeline?.includes(p)) return true;
   if (p === 'fontSize' || p === 'letterSpacing') return TEXT_LIKE.has(l.type) || 'fontFamily' in l;
-  const look = l.type !== 'image' && l.type !== 'slideshow' && !widgetOf(l.type)?.ownsLook;
+  const look = l.type !== 'image' && l.type !== 'slideshow' && !widgetOf(l)?.ownsLook;
   if (p === 'fill') return look;
   if (p === 'cornerRadius') return look && ['rect', 'group', 'progress'].includes(l.type);
   if (p === 'stroke' || p === 'strokeWidth') return look && !['progress', 'qrCode'].includes(l.type);

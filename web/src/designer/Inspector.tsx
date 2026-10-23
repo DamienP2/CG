@@ -23,7 +23,7 @@ import { WidgetRunButtons } from './WidgetRun';
 import { AreaInspector, useGuidesView } from './Guides';
 import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
-import { ICONS } from './LayersPanel';
+import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
 import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { t, tc, tn } from '../i18n';
@@ -931,7 +931,7 @@ function SpecInspector({ layer }: { layer: Layer }) {
   const state = useDesigner((s) => s.widgetState[layer.id]);
   const actWidget = useDesigner((s) => s.actWidget);
   if (!template) return null;
-  const def = widgetOf(layer.type)!;
+  const def = widgetOf(layer)!;
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const set = (path: string, v: unknown, coalesce?: boolean) => edit((l) => setPath(l, path, v), coalesce ? `${path}-${layer.id}` : undefined);
   const act = (op: string, args?: unknown) => void actWidget(layer.id, op, args);
@@ -962,7 +962,7 @@ function OperatorPreview({ layer }: { layer: Layer }) {
   const state = useDesigner((s) => s.widgetState[layer.id]);
   const actWidget = useDesigner((s) => s.actWidget);
   if (!template) return null;
-  const def = widgetOf(layer.type);
+  const def = widgetOf(layer);
   const Op = def?.Operator && (def.controls ? def.controls(layer as never, data) : true) ? def.Operator : undefined;
   // A Text fed by data sets: the row the Designer shows, one to the next, as the Operator does.
   const sets = usedDatasets(template).filter((ds) => datasetUse(template, ds).texts.some((l) => l.id === layer.id));
@@ -1013,10 +1013,10 @@ function LayerInspector({ layer }: { layer: Layer }) {
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const textLike = TEXT_LIKE.has(layer.type);
   const radius = layer.type === 'rect' || layer.type === 'group' || layer.type === 'progress';
-  const Icon = ICONS[layer.type];
-  const hasLook = layer.type !== 'image' && layer.type !== 'slideshow' && !widgetOf(layer.type)?.ownsLook;
+  const Icon = layerIcon(layer);
+  const hasLook = layer.type !== 'image' && layer.type !== 'slideshow' && !widgetOf(layer)?.ownsLook;
   const driven = useDrivenValues(layer);
-  const spec = widgetOf(layer.type);
+  const spec = widgetOf(layer);
   return (
     <DrivenContext.Provider value={driven}>
       <FormatNote layer={layer} />

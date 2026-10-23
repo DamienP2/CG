@@ -439,10 +439,17 @@ export function Designer() {
   const add = (type: LayerType, patch?: Record<string, unknown>, name?: string) => {
     const parent = selected.length === 1 && template && findLayer(template, selected[0])?.type === 'group' ? selected[0] : null;
     const size = formatById(project, useDesigner.getState().format);
-    const l = {
-      ...makeLayer(type, size.width, size.height, parent),
-      ...patch,
-    } as Layer;
+    const made = makeLayer(type, size.width, size.height, parent);
+    const l = { ...made, ...patch } as Layer;
+    // A widget's own size (the second widget of a type: the Time): centred like the first.
+    if (patch?.props) {
+      const p = { ...made.props, ...(patch.props as Layer['props']) } as Record<string, unknown>;
+      if (!parent) {
+        p.x = Math.round((size.width - Number(p.width ?? 0)) / 2);
+        p.y = Math.round((size.height - Number(p.height ?? 0)) / 2);
+      }
+      l.props = p as Layer['props'];
+    }
     if (name) l.name = name;
     // Video and Lottie start as a 16:9 box in the middle, until their file is chosen.
     if ((l.type === 'image' && l.video) || (l.type === 'group' && l.lottie !== undefined)) {

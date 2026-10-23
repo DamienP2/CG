@@ -68,6 +68,7 @@ export interface Config {
   fineUnit?: 's' | 'f';
   cities?: boolean;
   cityList?: City[];
+  /** Language of the day and month names ('fr-FR', 'de'…; '' = the project's). Older layers without it keep English. */
   lang?: string;
   case?: DateCase;
   swStart?: number;
@@ -401,10 +402,18 @@ export const LANGS: [string, string][] = [
   ['pt-BR', 'Português'],
   ['nl-NL', 'Nederlands'],
 ];
-const langKey = (l: string) => {
-  const k = l.split(/[-_]/)[0].toLowerCase();
-  return MONTHS[k] ? k : 'en';
+/** Languages of the day and month names (mirror of NAME_LANGS: never the browser's locale, so every output shows the same names). */
+export const NAME_LANGS = ['fr', 'en', 'de', 'es', 'it', 'pt', 'nl'];
+const known = (l: string | undefined) => {
+  const k = String(l ?? '')
+    .trim()
+    .split(/[-_]/)[0]
+    .toLowerCase();
+  return NAME_LANGS.includes(k) ? k : null;
 };
+/** The names' language of a clock: its own ('fr-FR', 'de'…), else the project's ('' = the project's language), else French (mirror of name_lang). */
+export const nameLang = (lang: string | undefined, project?: string) => known(lang) ?? known(project) ?? 'fr';
+const langKey = (l: string) => nameLang(l);
 export const monthName = (l: string, mo: number, long: boolean) => MONTHS[langKey(l)][long ? 0 : 1][Math.min(12, Math.max(1, mo)) - 1];
 export const dayName = (l: string, wd: number, long: boolean) => DAYS[langKey(l)][long ? 0 : 1][wd % 7];
 
@@ -622,6 +631,8 @@ export interface Eff {
   duration: number;
   target: string;
   targetZone: ZoneSel;
+  /** Language of the day and month names (one of NAME_LANGS). */
+  lang: string;
 }
 
 /** "[HH:]mm:ss" or plain seconds (legacy durations, like widgets.rs parse_duration). */
@@ -635,8 +646,10 @@ function legacyDuration(s: string): number | null {
   return null;
 }
 
-export function eff(l: ClockLayer, data: Data): Eff {
+/** The settings that apply (older layers mapped); `project`: the project's language, for a clock that follows it. */
+export function eff(l: ClockLayer, data: Data, project = ''): Eff {
   const c = cfg(l);
+  const lang = nameLang(c.lang, project);
   const zone: ZoneSel = c.tzOffset != null ? { offset: c.tzOffset } : zoneNamed(l.timezone);
   const format = l.format?.trim() ? l.format : 'HH:mm:ss';
   if (c.timerMode) {
@@ -655,6 +668,7 @@ export function eff(l: ClockLayer, data: Data): Eff {
       duration: Math.max(0, c.cdDuration),
       target: c.tDate.trim() ? `${c.tDate.trim()} ${c.tTime.trim()}` : c.tTime.trim(),
       targetZone: zoneNamed(c.tZone),
+      lang,
     };
   }
   const tgt = interpolateText(l.target ?? '', data);
@@ -675,6 +689,7 @@ export function eff(l: ClockLayer, data: Data): Eff {
     duration: Math.max(0, d == null ? 0 : Math.round(d * 1000)),
     target: tgt.trim(),
     targetZone: zone,
+    lang,
   };
 }
 
@@ -782,7 +797,7 @@ export interface At {
   defaultTz: string;
 }
 
-const wallOpts = (e: Eff, fps: number) => ({ lang: e.c.lang, h12: e.c.h12, am: e.c.am, pm: e.c.pm, trim: e.c.zeros === 'trim', fps });
+const wallOpts = (e: Eff, fps: number) => ({ lang: e.lang, h12: e.c.h12, am: e.c.am, pm: e.c.pm, trim: e.c.zeros === 'trim', fps });
 export const clockMs = (e: Eff, now: number, fps: number) => now + Math.round(e.c.fineUnit === 'f' ? (e.c.fine * 1000) / Math.max(1, fps) : e.c.fine * 1000);
 
 export function wall(e: Eff, ms: number, zone: ZoneSel, fmt: string, fps: number, defaultTz: string): Seg[] {

@@ -567,7 +567,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <div className="opx-head opx-tabs opx-wtabs">
                   {!together &&
                     parts.widgets.map((p, i) => {
-                      const Icon = widgetOf(p.layer.type)?.icon;
+                      const Icon = widgetOf(p.layer)?.icon;
                       const ws = pv.widgets[p.layer.id] as { running?: boolean } | undefined;
                       return (
                         <button key={p.layer.id} className={`opx-wtab ${!sharedSel && p === part ? 'on' : ''}`} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
@@ -1219,7 +1219,7 @@ interface AirWidgets {
  * row selects it: only then its keyboard shortcuts work. Its full panel stays mounted, hidden, for them.
  */
 function SpecControls({ layer, item, act, fps, lang, selected, onSelect, more, onMore }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number; lang: string; selected: boolean; onSelect: () => void; more: boolean; onMore: (open: boolean) => void }) {
-  const def = widgetOf(layer.type)!;
+  const def = widgetOf(layer)!;
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const state = item.widgets?.[layer.id];
@@ -1420,7 +1420,7 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
       )}
       {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
-        .filter((l) => l.visible && !!widgetOf(l.type)?.Compact && hasControls(l, item.data))
+        .filter((l) => l.visible && !!widgetOf(l)?.Compact && hasControls(l, item.data))
         .map((l) => {
           const key = `${zone.id}:${l.id}`;
           return (
@@ -1439,7 +1439,7 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
           );
         })}
       {timed
-        .filter((l) => !widgetOf(l.type)?.Operator)
+        .filter((l) => !widgetOf(l)?.Operator)
         .map((l) => {
           const c = item.clocks?.[l.id];
           const running = c ? c.pausedAt == null : !l.manualStart;
