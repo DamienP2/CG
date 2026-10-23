@@ -891,12 +891,15 @@ mod tests {
             Arc::new(OutputStatus::default()),
             "c".into(),
         );
-        let t = Instant::now();
+        // Sending never waits for the slow sink (the sleeps between are not counted).
+        let mut sending = Duration::ZERO;
         for w in 1..=10 {
+            let t = Instant::now();
             o.send(Arc::new(Frame::blank(w, 1)), SystemTime::now());
+            sending += t.elapsed();
             std::thread::sleep(Duration::from_millis(5));
         }
-        assert!(t.elapsed() < Duration::from_millis(200));
+        assert!(sending < Duration::from_millis(100), "{sending:?}");
         o.close();
         let got = lock(&got).clone();
         // The first, then whatever was newest each time it was free; the last one always.
