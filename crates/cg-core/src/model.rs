@@ -1454,6 +1454,13 @@ impl Template {
                 l.kind = kind;
                 changed = true;
             }
+            // A typewriter wired to a data set's table takes its rows as lines, like a Text.
+            if let LayerKind::Typewriter { text, .. } = &mut l.kind {
+                if text.contains("__table}}") {
+                    *text = text.replace("__table}}", "__lines}}");
+                    changed = true;
+                }
+            }
             // The analog clock is now a Timer with an analog face.
             if let LayerKind::AnalogClock {
                 timezone,
@@ -2445,6 +2452,23 @@ mod setting_tests {
         );
         assert!(t.upgrade_layers());
         assert!(t.layers[0].lock_ratio);
+        assert!(!t.upgrade_layers());
+    }
+
+    #[test]
+    fn a_typewriter_on_a_table_reads_its_rows_as_lines() {
+        let mut t = Template::blank("T", "", 50.0);
+        t.layers.push(
+            serde_json::from_str(
+                r#"{"id":"w","name":"W","type":"typewriter","text":"{{news__table}}"}"#,
+            )
+            .unwrap(),
+        );
+        assert!(t.upgrade_layers());
+        let LayerKind::Typewriter { text, .. } = &t.layers[0].kind else {
+            panic!("not a typewriter");
+        };
+        assert_eq!(text, "{{news__lines}}");
         assert!(!t.upgrade_layers());
     }
 

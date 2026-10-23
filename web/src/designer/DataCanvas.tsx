@@ -72,8 +72,8 @@ function tableSummary(v: string): string | null {
 }
 /** Wires `{{key}}` into a layer's content port (`x` is the draft layer). */
 function wireContent(x: Layer, port: string, key: string) {
-  // A data set's rows into a text: a line per row (or only the current one, in the Operator).
-  if (x.type === 'text' && port === 'text' && key.endsWith('__table')) key = linesKey(key.slice(0, -'__table'.length));
+  // A data set's rows into a text or a typewriter: a line per row (or only the current one, in the Operator).
+  if ((x.type === 'text' || x.type === 'typewriter') && port === 'text' && key.endsWith('__table')) key = linesKey(key.slice(0, -'__table'.length));
   const token = `{{${key}}}`;
   const l = x as unknown as Record<string, unknown>;
   if (port === 'text') {
