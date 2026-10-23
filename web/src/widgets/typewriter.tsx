@@ -24,6 +24,8 @@ export interface Config {
   unit?: 'char' | 'word' | 'line';
   speedMode?: 'rate' | 'duration';
   duration?: number;
+  /** Speed mode `rate`: a text too long for this many seconds is typed faster, to end on time (0 = no limit). */
+  maxDuration?: number;
   jitter?: number;
   punctPause?: number;
   appear?: 'instant' | 'fade' | 'slide';
@@ -64,6 +66,7 @@ const D: Required<Config> = {
   unit: 'char',
   speedMode: 'rate',
   duration: 4,
+  maxDuration: 0,
   jitter: 0,
   punctPause: 0,
   appear: 'instant',
@@ -142,9 +145,11 @@ export function timeline(c: K, rate: number, text: string, idx: number, lines?: 
     t.push(acc);
     if (i + 1 < k && isPunct(g.slice(units[i][0], units[i][1]).join(''))) acc += Math.max(0, c.punctPause) / 1000;
   }
-  if (c.speedMode === 'duration' && k > 0) {
+  // As cg-core: the last unit lands on the duration; at a rate, only past the maximum.
+  const fit = c.speedMode === 'duration' ? Math.max(0, c.duration) : c.maxDuration > 0 && k > 0 && t[k - 1] > c.maxDuration ? c.maxDuration : null;
+  if (fit !== null && k > 0) {
     const last = Math.max(1e-9, t[k - 1]);
-    for (let i = 0; i < k; i++) t[i] *= Math.max(0, c.duration) / last;
+    for (let i = 0; i < k; i++) t[i] *= fit / last;
   }
   const appear = c.appear === 'instant' ? 0 : Math.max(0, c.appearMs) / 1000;
   const unitOf = new Array<number>(n).fill(0);
@@ -573,7 +578,14 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
             ['duration', t('Duration')],
           ]}
         />
-        {c.speedMode === 'rate' ? <Num label={t('Speed')} path="speed" value={layer.speed} min={1} max={80} unit={unitName} /> : <Num label={t('Duration')} path="duration" value={c.duration} min={0.5} max={20} step={0.5} precision={1} unit="s" />}
+        {c.speedMode === 'rate' ? (
+          <>
+            <Num label={t('Speed')} path="speed" value={layer.speed} min={1} max={80} unit={unitName} />
+            <Num label={t('Max duration')} path="maxDuration" value={c.maxDuration} min={0} max={60} step={0.5} precision={1} unit="s" />
+          </>
+        ) : (
+          <Num label={t('Duration')} path="duration" value={c.duration} min={0.5} max={20} step={0.5} precision={1} unit="s" />
+        )}
         <Num label={t('Variation')} path="jitter" value={c.jitter} min={0} max={80} unit="%" />
         <Num label={t('Punctuation')} path="punctPause" value={c.punctPause} min={0} max={1200} step={20} unit="ms" />
         <Seg

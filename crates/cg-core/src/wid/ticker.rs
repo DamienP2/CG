@@ -46,6 +46,20 @@ pub enum Trans {
     Push,
     Fade,
     Flip,
+    /// The next item is typed in, character by character, over the
+    /// transition time (the previous one goes at once).
+    Type,
+}
+
+/// What a typed-in item shows `wk` seconds into its slot: its first
+/// characters and the cursor while it types, all of it once typed.
+pub fn typed(text: &str, wk: f64, dur: f64) -> (String, bool) {
+    let n = text.chars().count();
+    if wk >= dur || n == 0 {
+        return (text.to_string(), false);
+    }
+    let k = ((n as f64) * (wk / dur.max(0.01)).max(0.0)).ceil() as usize;
+    (text.chars().take(k.min(n)).collect(), true)
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -936,6 +950,15 @@ pub fn act(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_item_is_typed_in_over_the_transition() {
+        assert_eq!(typed("Élection", 0.0, 2.0), (String::new(), true));
+        assert_eq!(typed("Élection", 0.5, 2.0), ("Él".into(), true));
+        assert_eq!(typed("Élection", 1.99, 2.0), ("Élection".into(), true));
+        assert_eq!(typed("Élection", 2.0, 2.0), ("Élection".into(), false));
+        assert_eq!(typed("", 0.5, 2.0), (String::new(), false));
+    }
 
     fn layer(json: &str) -> Layer {
         serde_json::from_str(json).unwrap()

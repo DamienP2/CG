@@ -76,6 +76,9 @@ pub struct Config {
     pub speed_mode: SpeedMode,
     /// Seconds for the whole text (speed mode `duration`).
     pub duration: f64,
+    /// Speed mode `rate`: a text too long to be typed in this many seconds
+    /// is typed faster, just enough to end on time (0 = no limit).
+    pub max_duration: f64,
     /// Random variation of each step, % (seeded: same in both renderers).
     pub jitter: f64,
     /// Extra pause after a unit ending with . , ; : ! ? … —, ms.
@@ -118,6 +121,7 @@ impl Default for Config {
             unit: Unit::Char,
             speed_mode: SpeedMode::Rate,
             duration: 4.0,
+            max_duration: 0.0,
             jitter: 0.0,
             punct_pause: 0.0,
             appear: Appear::Instant,
@@ -290,10 +294,17 @@ pub fn timeline(
         t.push(acc);
         acc += pause(i);
     }
-    if c.speed_mode == SpeedMode::Duration && k > 0 {
-        // The last unit lands exactly on the duration (pauses scaled too).
+    // The last unit lands exactly on the duration (pauses scaled too); at a
+    // rate, only when the text would take longer than the maximum.
+    let fit = match c.speed_mode {
+        SpeedMode::Duration => Some(c.duration.max(0.0)),
+        SpeedMode::Rate if c.max_duration > 0.0 => {
+            Some(c.max_duration).filter(|&m| t.last().is_some_and(|&l| l > m))
+        }
+        SpeedMode::Rate => None,
+    };
+    if let (Some(d), true) = (fit, k > 0) {
         let last = t[k - 1].max(1e-9);
-        let d = c.duration.max(0.0);
         for x in &mut t {
             *x *= d / last;
         }
@@ -570,6 +581,21 @@ mod tests {
         assert_eq!(t.g.len(), 18);
         // Deterministic.
         assert_eq!(t, timeline(&c, 10.0, "Hello world. Bye 👩‍💻", 0, None));
+    }
+
+    #[test]
+    fn a_long_text_ends_by_the_max_duration() {
+        let c = Config {
+            max_duration: 2.0,
+            ..Default::default()
+        };
+        // 10 characters at 10 / s: 1 s, under the maximum, as set.
+        let short = timeline(&c, 10.0, "0123456789", 0, None);
+        assert!((short.t[9] - 1.0).abs() < 1e-9);
+        // 40 characters would take 4 s: typed faster, ending at 2 s.
+        let long = timeline(&c, 10.0, &"x".repeat(40), 0, None);
+        assert!((long.t[39] - 2.0).abs() < 1e-9);
+        assert!((long.t[0] - 0.05).abs() < 1e-9);
     }
 
     #[test]

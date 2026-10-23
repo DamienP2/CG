@@ -2,8 +2,8 @@
 
 use ab_glyph::FontArc;
 use cg_core::wid::ticker::{
-    clock, expand, limit, period, queue, resolve, runs, segs, Dir, EmptyMode, Item, Mode, Placed,
-    SepType, State, Ticker, Trans, PAD,
+    clock, expand, limit, period, queue, resolve, runs, segs, typed, Dir, EmptyMode, Item, Mode,
+    Placed, SepType, State, Ticker, Trans, PAD,
 };
 use cg_core::{Color, FontStyle, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{
@@ -450,7 +450,21 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             d.tf = tf0;
             d.opacity = op0;
         };
-        if c.mode == Mode::Flip {
+        if c.mode == Mode::Flip && c.trans == Trans::Type {
+            // Typed in: the first item too, once the ticker runs.
+            if let Some(it) = &cur {
+                let (text, typing) = if started {
+                    typed(&it.text, wk as f64, c.trans_dur)
+                } else {
+                    (it.text.clone(), false)
+                };
+                let shown = Item {
+                    text: if typing { format!("{text}|") } else { text },
+                    ..it.clone()
+                };
+                put(d, &shown, 0.0, 0.0, 1.0, 1.0, wk);
+            }
+        } else if c.mode == Mode::Flip {
             let in_trans = wk < c.trans_dur as f32 && prev.is_some() && cur.is_some() && started;
             let pk = if in_trans {
                 ease(wk / (c.trans_dur as f32).max(0.01))
@@ -480,7 +494,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                             put(d, a, 0.0, 0.0, 1.0, ang.cos().abs(), wk);
                         }
                     }
-                    Trans::Slide => {
+                    Trans::Slide | Trans::Type => {
                         put(d, b, 0.0, -pk * h, 1.0, 1.0, p as f32);
                         put(d, a, 0.0, (1.0 - pk) * h, 1.0, 1.0, wk);
                     }

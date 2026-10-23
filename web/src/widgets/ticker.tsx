@@ -30,7 +30,7 @@ export interface Config {
   rollDir?: 'up' | 'down';
   itemDur?: number;
   transDur?: number;
-  trans?: 'slide' | 'push' | 'fade' | 'flip';
+  trans?: 'slide' | 'push' | 'fade' | 'flip' | 'type';
   items?: Item[];
   sepType?: 'text' | 'symbol' | 'image' | 'none';
   sepSymbol?: string;
@@ -480,7 +480,15 @@ function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<stri
         </div>,
       );
     };
-    if (k.mode === 'flip') {
+    if (k.mode === 'flip' && k.trans === 'type') {
+      // Typed in: the first item too, once the ticker runs (as cg-core's `typed`).
+      if (cur) {
+        const chars = Array.from(cur.text ?? '');
+        const typing = started && wk < k.transDur && chars.length > 0;
+        const n = typing ? Math.min(chars.length, Math.ceil(chars.length * Math.max(0, wk / Math.max(0.01, k.transDur)))) : chars.length;
+        put('a', typing ? { ...cur, text: `${chars.slice(0, n).join('')}|` } : cur, 0, 0, 1, 1, wk);
+      }
+    } else if (k.mode === 'flip') {
       const inTrans = wk < k.transDur && !!prev && !!cur && started;
       const p = inTrans ? ease(wk / Math.max(0.01, k.transDur)) : 1;
       if (!inTrans) {
@@ -773,9 +781,10 @@ export default defineWidget({
                   ['push', t('Push')],
                   ['fade', t('Fade')],
                   ['flip', t('Flip')],
+                  ['type', t('Typewriter')],
                 ]}
               />
-              <Num label={t('Duration')} path="transDur" value={k.transDur} min={0.1} max={2} step={0.05} precision={2} unit="s" />
+              <Num label={t('Duration')} path="transDur" value={k.transDur} min={0.1} max={k.trans === 'type' ? 10 : 2} step={0.05} precision={2} unit="s" />
             </>
           )}
           {k.mode === 'crawl' && <Toggle label={t('Start full')} path="startFull" value={k.startFull} />}

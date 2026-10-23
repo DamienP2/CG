@@ -2255,6 +2255,37 @@ mod tests {
     }
 
     #[test]
+    fn a_flip_ticker_types_its_item_in() {
+        let project = sample::demo_project();
+        let t: cg_core::Template = serde_json::from_value(serde_json::json!({
+            "id": "tk", "name": "T", "duration": 500.0, "markers": [], "zone": "", "fields": [],
+            "layers": [{
+                "id": "k", "name": "Ticker", "type": "ticker", "text": "", "separator": "", "speed": 100.0,
+                "fontFamily": "Inter", "mode": "flip", "trans": "type", "transDur": 2.0, "itemDur": 8.0,
+                "items": [{"cat": "", "text": "MMMMMMMM", "on": true}],
+                "props": {"x": 0.0, "y": 0.0, "width": 1200.0, "height": 100.0, "fill": [1.0, 1.0, 1.0, 1.0], "fontSize": 60.0}
+            }]
+        }))
+        .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let fps = project.frame_rate.as_f64();
+        // Ink along the middle line of the ticker.
+        let mut ink = |frame: f64| {
+            let f = r.render_template(&project, &t, "main", frame, &Default::default());
+            (0..f.width)
+                .filter(|&x| f.data[((50 * f.width + x) * 4 + 3) as usize] > 128)
+                .count()
+        };
+        let quarter = ink(fps * 0.5);
+        let typed = ink(fps * 3.0);
+        assert!(typed > 100, "the whole item once typed ({typed} px)");
+        assert!(
+            quarter * 2 < typed,
+            "a quarter of it half a second in ({quarter} px of {typed})"
+        );
+    }
+
+    #[test]
     fn a_drop_shadow_falls_under_the_layer_and_its_children() {
         let project = sample::demo_project();
         let shadow = serde_json::json!({"shadowColor": [0.0, 0.0, 1.0, 1.0], "shadowX": 20.0, "shadowY": 30.0, "shadowBlur": 0.0});

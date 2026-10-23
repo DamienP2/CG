@@ -57,6 +57,7 @@ export const widgets: Record<string, string> = {
   'Ticker': 'Bandeau défilant',
   'Credits': 'Générique',
   'Typewriter': 'Machine à écrire',
+  'Max duration': 'Durée max',
   'Counter': 'Compteur',
   'Progress bar': 'Barre de progression',
   'Chart': 'Graphique',
