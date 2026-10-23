@@ -194,6 +194,7 @@ export const home: Record<string, string> = {
   'Role': 'Rôle',
   'Roles': 'Rôles',
   'Roll back': 'Revenir en arrière',
+  'Available versions': 'Versions disponibles',
   'Running for': 'En marche depuis',
   'Running order': 'Conducteur',
   'Running orders': 'Conducteurs',

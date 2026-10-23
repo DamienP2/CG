@@ -2987,6 +2987,36 @@ select.small {
   max-height: 240px;
   overflow: auto;
 }
+.update-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.update-rows {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  min-height: 38px;
+}
+.update-row + .update-row {
+  border-top: 1px solid var(--line);
+}
+.update-row strong {
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+.update-row.here {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
 .update-offline {
   display: flex;
   align-items: center;

@@ -108,9 +108,11 @@ Le serveur :
 
 Si la nouvelle version n'arrive pas à démarrer trois fois de suite, l'ancienne est **restaurée automatiquement**. Le bouton *Revenir à …* permet aussi de revenir en arrière à la main.
 
+Seules les releases dont le paquet de ce système est entièrement publié sont proposées (un tag dont la release est encore en construction n'apparaît pas). La liste *Versions disponibles* permet d'installer n'importe laquelle, y compris une plus ancienne ; les versions antérieures à la 0.16.0 (avant le renommage en Strata Graphics) ne sont pas proposées.
+
 Sous Linux, l'installateur donne au compte de service le droit d'écrire dans `/opt/strata`. Une installation antérieure à la 0.3 doit relancer une fois `sudo ./install.sh`. La mise à jour web remplace le serveur, qui embarque l'interface web. L'application de la barre des menus se met à jour avec l'installateur `.pkg` / `.msi`.
 
-L'API correspondante : `GET /api/system/update`, `POST /api/system/update/check`, `POST /api/system/update/install`, `POST /api/system/update/upload` (corps = l'archive), `POST /api/system/update/rollback`.
+L'API correspondante : `GET /api/system/update`, `POST /api/system/update/check`, `POST /api/system/update/install` (`?version=` pour une version précise), `POST /api/system/update/upload` (corps = l'archive), `POST /api/system/update/rollback`.
 
 ## Gérer le service
 

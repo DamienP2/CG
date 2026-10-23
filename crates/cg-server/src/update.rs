@@ -77,6 +77,9 @@ const STAGED: &str = if cfg!(windows) {
 };
 /// Exit code asking the service manager for a restart.
 const RESTART_CODE: i32 = 75;
+/// Versions before the Strata Graphics rename keep their data elsewhere:
+/// going back to one of them would start on an empty server.
+const OLDEST_INSTALLABLE: &str = "0.16.0";
 const MAX_FAILED_STARTS: u32 = 3;
 
 static SUPERVISED: AtomicBool = AtomicBool::new(false);
@@ -211,7 +214,10 @@ pub struct Status {
     /// 0..1 while downloading.
     pub progress: f32,
     pub message: String,
+    /// Newest release with a package for this platform.
     pub latest: Option<Release>,
+    /// Every release with a package for this platform, newest first.
+    pub releases: Vec<Release>,
     pub last_check: Option<i64>,
 }
 
@@ -277,7 +283,8 @@ pub fn info(data_dir: &Path) -> Info {
         previous: sibling(PREVIOUS)
             .ok()
             .filter(|p| p.exists())
-            .and_then(|p| binary_version(&p).ok()),
+            .and_then(|p| binary_version(&p).ok())
+            .filter(|v| installable(v)),
         history: read_json(&dir(data_dir).join("history.json")),
         status: status(),
         supervised: SUPERVISED.load(Ordering::Relaxed),
@@ -335,6 +342,9 @@ struct GhAsset {
     size: u64,
     #[serde(default)]
     digest: Option<String>,
+    /// "uploaded" once the file is complete ("starter" while it uploads).
+    #[serde(default)]
+    state: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -348,10 +358,57 @@ struct GhRelease {
     published_at: Option<String>,
     html_url: String,
     assets: Vec<GhAsset>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
 }
 
-/// Latest published release with an archive for this platform.
-pub fn check(data_dir: &Path) -> Result<Release> {
+/// A version this server can run on its data (see [`OLDEST_INSTALLABLE`]).
+fn installable(version: &str) -> bool {
+    !is_newer(OLDEST_INSTALLABLE, version)
+}
+
+/// The published releases whose package for this platform is fully
+/// uploaded, newest first: a tag, or a release still being built, is not
+/// a version this server can install.
+fn usable_releases(
+    all: Vec<GhRelease>,
+    pick: impl Fn(Vec<GhAsset>) -> Option<GhAsset>,
+) -> Vec<Release> {
+    let mut out: Vec<Release> = all
+        .into_iter()
+        .filter(|gh| !gh.draft && !gh.prerelease)
+        .filter_map(|gh| {
+            let version = gh.tag_name.trim_start_matches('v').to_string();
+            if !installable(&version) {
+                return None;
+            }
+            let uploaded = gh
+                .assets
+                .into_iter()
+                .filter(|a| a.state.as_deref().is_none_or(|s| s == "uploaded"))
+                .collect();
+            let asset = pick(uploaded)?;
+            Some(Release {
+                version,
+                name: gh.name.unwrap_or_else(|| gh.tag_name.clone()),
+                notes: gh.body.unwrap_or_default(),
+                published_at: gh.published_at.unwrap_or_default(),
+                url: gh.html_url,
+                asset_id: asset.id,
+                asset_name: asset.name,
+                size: asset.size,
+                digest: asset.digest,
+            })
+        })
+        .collect();
+    out.sort_by_key(|a| std::cmp::Reverse(version_key(&a.version)));
+    out
+}
+
+/// The releases that can be installed here; returns the newest one.
+pub fn check(data_dir: &Path) -> Result<Option<Release>> {
     let s = Settings::load(data_dir);
     set_status(|st| {
         st.phase = Phase::Checking;
@@ -359,7 +416,7 @@ pub fn check(data_dir: &Path) -> Result<Release> {
     });
     let res = (|| {
         let url = format!(
-            "https://api.github.com/repos/{}/releases/latest",
+            "https://api.github.com/repos/{}/releases?per_page=50",
             s.repo.trim()
         );
         let mut r = github_get(&s, &url, "application/vnd.github+json")?;
@@ -367,30 +424,26 @@ pub fn check(data_dir: &Path) -> Result<Release> {
             return Err(http_error(r.status().as_u16(), "published release", &s));
         }
         let body = r.body_mut().read_to_string()?;
-        let gh: GhRelease = serde_json::from_str(&body).context("unexpected answer from GitHub")?;
-        let asset = pick_package(gh.assets)
-            .ok_or_else(|| anyhow!("release {} has no package for {PLATFORM}", gh.tag_name))?;
-        Ok(Release {
-            version: gh.tag_name.trim_start_matches('v').to_string(),
-            name: gh.name.unwrap_or_else(|| gh.tag_name.clone()),
-            notes: gh.body.unwrap_or_default(),
-            published_at: gh.published_at.unwrap_or_default(),
-            url: gh.html_url,
-            asset_id: asset.id,
-            asset_name: asset.name,
-            size: asset.size,
-            digest: asset.digest,
-        })
+        let all: Vec<GhRelease> =
+            serde_json::from_str(&body).context("unexpected answer from GitHub")?;
+        Ok(usable_releases(all, pick_package))
     })();
-    match &res {
-        Ok(r) => set_status(|st| {
-            st.phase = Phase::Idle;
-            st.latest = Some(r.clone());
-            st.last_check = Some(crate::state::now_ms());
-        }),
-        Err(e) => fail(e),
+    match res {
+        Ok(releases) => {
+            let latest = releases.first().cloned();
+            set_status(|st| {
+                st.phase = Phase::Idle;
+                st.latest = latest.clone();
+                st.releases = releases;
+                st.last_check = Some(crate::state::now_ms());
+            });
+            Ok(latest)
+        }
+        Err(e) => {
+            fail(&e);
+            Err(e)
+        }
     }
-    res
 }
 
 /// The release file for this platform (see [`PACKAGES`]). A server without
@@ -474,16 +527,28 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Downloads and installs the latest release, then restarts.
-pub fn install_latest(data_dir: &Path) -> Result<()> {
+/// Downloads and installs a release (the latest one, or `version`, which
+/// may be older: going back), then restarts.
+pub fn install_release(data_dir: &Path, version: Option<&str>) -> Result<()> {
     if busy() {
         bail!("an update is already in progress");
     }
     let s = Settings::load(data_dir);
-    let release = match status().latest {
-        Some(r) => r,
-        None => check(data_dir)?,
+    if status().releases.is_empty() {
+        check(data_dir)?;
+    }
+    let st = status();
+    let release = match version {
+        Some(v) => st
+            .releases
+            .into_iter()
+            .find(|r| r.version == v.trim_start_matches('v'))
+            .ok_or_else(|| anyhow!("no release {v} with a package for {PLATFORM}"))?,
+        None => st
+            .latest
+            .ok_or_else(|| anyhow!("no release with a package for {PLATFORM}"))?,
     };
+    let allow_older = version.is_some();
     set_status(|st| {
         st.phase = Phase::Downloading;
         st.progress = 0.0;
@@ -492,7 +557,7 @@ pub fn install_latest(data_dir: &Path) -> Result<()> {
     let res = (|| {
         let archive = download(&s, &release)?;
         let binary = extract_binary(&archive)?;
-        let v = install(data_dir, &binary, false)?;
+        let v = install(data_dir, &binary, allow_older)?;
         add_ffmpeg(&archive);
         Ok(v)
     })();
@@ -802,6 +867,10 @@ pub fn install(data_dir: &Path, binary: &[u8], allow_older: bool) -> Result<Stri
             return Err(e);
         }
     };
+    if !installable(&version) {
+        let _ = std::fs::remove_file(&staged);
+        bail!("version {version} predates Strata Graphics {OLDEST_INSTALLABLE} and cannot run on this server's data");
+    }
     if !allow_older && !is_newer(&version, current_version()) {
         let _ = std::fs::remove_file(&staged);
         bail!(
@@ -869,6 +938,9 @@ pub fn rollback(data_dir: &Path, outcome: &str) -> Result<String> {
         bail!("no previous version to go back to");
     }
     let version = binary_version(&previous)?;
+    if outcome == "rolled back" && !installable(&version) {
+        bail!("version {version} predates Strata Graphics {OLDEST_INSTALLABLE} and cannot run on this server's data");
+    }
     let staged = folder.join(STAGED);
     std::fs::copy(&previous, &staged).map_err(|e| permission_hint(e, &folder))?;
     swap_in(&exe, &staged, &previous).map_err(|e| permission_hint(e, &folder))?;
@@ -970,7 +1042,7 @@ pub fn spawn_auto_check(data_dir: PathBuf) {
             if s.auto_check && !busy() {
                 let d = data_dir.clone();
                 match tokio::task::spawn_blocking(move || check(&d)).await {
-                    Ok(Ok(r)) if is_newer(&r.version, current_version()) => {
+                    Ok(Ok(Some(r))) if is_newer(&r.version, current_version()) => {
                         tracing::info!(version = r.version, "a new version is available")
                     }
                     Ok(Err(e)) => tracing::debug!("update check: {e:#}"),
@@ -992,6 +1064,47 @@ mod tests {
         assert!(is_newer("1.0.0", "0.99.99"));
         assert!(!is_newer("0.2.0", "0.2.0"));
         assert!(!is_newer("0.1.9", "0.2.0"));
+    }
+
+    #[test]
+    fn only_releases_with_this_platforms_package_are_offered() {
+        let gh = |tag: &str, assets: &[(&str, &str)], draft: bool| GhRelease {
+            tag_name: tag.into(),
+            name: None,
+            body: None,
+            published_at: None,
+            html_url: String::new(),
+            assets: assets
+                .iter()
+                .enumerate()
+                .map(|(i, (name, state))| GhAsset {
+                    id: i as u64,
+                    name: (*name).into(),
+                    size: 1,
+                    digest: None,
+                    state: Some((*state).into()),
+                })
+                .collect(),
+            draft,
+            prerelease: false,
+        };
+        let ours = format!("Strata-x{}", PACKAGES[0]);
+        let all = vec![
+            // Tagged, still building: no package yet, or one being uploaded.
+            gh("v0.19.0", &[], false),
+            gh("v0.18.2", &[(&ours, "starter")], false),
+            gh("v0.18.1", &[(&ours, "uploaded")], false),
+            gh("v0.18.3", &[(&ours, "uploaded")], true),
+            gh("v0.17.0", &[("Strata-x-other.tar.gz", "uploaded")], false),
+            gh("v0.16.0", &[(&ours, "uploaded")], false),
+            // Before the rename: its data is elsewhere.
+            gh("v0.15.3", &[(&ours, "uploaded")], false),
+        ];
+        let got: Vec<String> = usable_releases(all, |a| pick_package_for(a, false))
+            .into_iter()
+            .map(|r| r.version)
+            .collect();
+        assert_eq!(got, ["0.18.1", "0.16.0"]);
     }
 
     #[test]
@@ -1025,6 +1138,7 @@ mod tests {
             name: name.into(),
             size: 1,
             digest: None,
+            state: None,
         };
         let names = [
             "Strata-Premiere-9.9.9-macos.pkg",

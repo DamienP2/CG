@@ -30,6 +30,8 @@ interface UpdateInfo {
     progress: number;
     message: string;
     latest: Release | null;
+    /** Every release with a package for this system, newest first. */
+    releases: Release[];
     lastCheck: number | null;
   };
 }
@@ -114,9 +116,10 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
     }
     load();
   };
-  const install = async () => {
-    if (!latest || !(await confirmDialog({ title: t('Install Strata {version}?', { version: latest.version }), message: restartNote, confirm: t('Install') }))) return;
-    await api('POST', '/api/system/update/install').catch((e) => toast((e as Error).message, 'error'));
+  /** Installs a release: the latest, or one of the list (older: going back). */
+  const install = async (r: Release | null = latest, older = false) => {
+    if (!r || !(await confirmDialog({ title: older ? t('Go back to version {version}?', { version: r.version }) : t('Install Strata {version}?', { version: r.version }), message: restartNote, confirm: older ? t('Roll back') : t('Install'), danger: older }))) return;
+    await api('POST', `/api/system/update/install${r === latest ? '' : `?version=${encodeURIComponent(r.version)}`}`).catch((e) => toast((e as Error).message, 'error'));
     load();
     // The status poll turns into the "waiting for restart" poll.
     const h = setInterval(async () => {
@@ -198,7 +201,7 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
                   {t('Version')} <strong>{latest.version}</strong> {t('is available')}
                   {latest.publishedAt && ` (${new Date(latest.publishedAt).toLocaleDateString(locale())})`}.
                 </span>
-                <button className="btn primary" onClick={install}>
+                <button className="btn primary" onClick={() => install()}>
                   <CloudDownload size={14} /> {t('Install {version}', { version: latest.version })}
                 </button>
               </>
@@ -218,6 +221,32 @@ export function Updates({ Card }: { Card: (p: { icon: React.ReactNode; title: st
           <summary>{t('What’s new in {version}', { version: latest.version })}</summary>
           <pre>{latest.notes}</pre>
         </details>
+      )}
+      {status.releases.length > 0 && !waiting && (
+        <div className="update-list">
+          <span className="set-label">{t('Available versions')}</span>
+          <div className="update-rows">
+            {status.releases.map((r) => {
+              const here = r.version === info.current;
+              const up = isNewer(r.version, info.current);
+              return (
+                <div key={r.version} className={`update-row ${here ? 'here' : ''}`}>
+                  <strong>{r.version}</strong>
+                  <span className="muted small">{r.publishedAt ? new Date(r.publishedAt).toLocaleDateString(locale()) : ''}</span>
+                  <span className="muted small">{t('{n} MB', { n: (r.size / 1048576).toFixed(0) })}</span>
+                  <span className="spacer" />
+                  {here ? (
+                    <span className="badge">{t('Installed')}</span>
+                  ) : (
+                    <button className={`btn small ${up ? 'primary' : ''}`} disabled={!!busy} onClick={() => install(r, !up)}>
+                      {up ? <CloudDownload size={13} /> : <RotateCcw size={13} />} {up ? t('Install') : t('Roll back')}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
       {info.history && (
         <p className="hint">

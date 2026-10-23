@@ -1824,8 +1824,19 @@
     "tags": [
      "Updates"
     ],
-    "summary": "Download and install the latest release",
-    "description": "Runs in the background; follow `GET /api/system/update`. The server restarts.\n\n**Rights:** admin.",
+    "summary": "Download and install a release",
+    "description": "The latest release with a package for this system, or `version` (one of `status.releases`, older ones included: going back). Runs in the background; follow `GET /api/system/update`. The server restarts.\n\n**Rights:** admin.",
+    "parameters": [
+     {
+      "name": "version",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string"
+      },
+      "example": "0.18.0"
+     }
+    ],
     "responses": {
      "202": {
       "description": "Started"

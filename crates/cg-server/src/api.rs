@@ -2592,7 +2592,7 @@ async fn update_settings(
 async fn update_check(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
-) -> ApiResult<Json<crate::update::Release>> {
+) -> ApiResult<Json<Option<crate::update::Release>>> {
     require(me.is_admin())?;
     let dir = s.data_dir.clone();
     tokio::task::spawn_blocking(move || crate::update::check(&dir))
@@ -2602,17 +2602,29 @@ async fn update_check(
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("{e:#}")))
 }
 
-/// Downloads and installs the latest release in the background; follow
-/// progress with GET /api/system/update.
+#[derive(Deserialize)]
+struct InstallQuery {
+    /// A release of the list (older ones included); the latest by default.
+    #[serde(default)]
+    version: Option<String>,
+}
+
+/// Downloads and installs a release in the background; follow progress
+/// with GET /api/system/update.
 async fn update_install(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
+    Query(q): Query<InstallQuery>,
 ) -> ApiResult<StatusCode> {
     require(me.is_admin())?;
-    tracing::warn!(user = me.username, "installing the latest release");
+    tracing::warn!(
+        user = me.username,
+        version = q.version.as_deref().unwrap_or("latest"),
+        "installing a release"
+    );
     let dir = s.data_dir.clone();
     tokio::task::spawn_blocking(move || {
-        let _ = crate::update::install_latest(&dir);
+        let _ = crate::update::install_release(&dir, q.version.as_deref());
     });
     Ok(StatusCode::ACCEPTED)
 }
