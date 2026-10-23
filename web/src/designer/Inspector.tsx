@@ -969,6 +969,9 @@ function OperatorPreview({ layer }: { layer: Layer }) {
   const timed = !def?.Inspector && isTimed(layer);
   if (!Op && !sets.length && !timed) return null;
   const act = (op: string, args?: unknown) => void actWidget(layer.id, op, args);
+  // Until its first Play here, a widget that moves by itself waits, as in the Operator's preview.
+  const held = state === undefined && !!(def?.plays ? def.plays(layer as never, data) : isTimed(layer));
+  const shown = held ? { ...layer, manualStart: true } : layer;
   return (
     <div className="pp-try">
       {timed && <WidgetRunButtons layer={layer} />}
@@ -977,7 +980,7 @@ function OperatorPreview({ layer }: { layer: Layer }) {
       ))}
       {Op && (
         <div className="wk-op">
-          <Op layer={layer as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '' }} />
+          <Op layer={shown as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '', held }} />
         </div>
       )}
     </div>

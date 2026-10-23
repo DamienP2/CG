@@ -5,7 +5,7 @@ import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, PenL
 import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
-import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evaluate';
+import { defaultData, holdFrame, interpolateText, newId, parseHex, toHex } from '../engine/evaluate';
 import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
@@ -858,7 +858,7 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
       if (!fedLayers.some((x) => x.id === l.id) || fed.some((x) => x.layer.id === l.id)) continue;
       // The columns it shows (typed by hand over the row, one by one).
       const at = new RegExp(`\\{\\{\\s*(${ds.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_[A-Za-z0-9][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
-      const cols = l.type !== 'text' ? [] : [...new Set([...l.text.matchAll(at)].map((m) => m[1]))];
+      const cols = l.type !== 'text' && l.type !== 'typewriter' ? [] : [...new Set([...l.text.matchAll(at)].map((m) => m[1]))];
       fed.push({ layer: l, title: t('From {dataset}: row {row}', { dataset: ds.name, row }), cols, at: ds.key.length + 1 });
     }
   }
@@ -914,7 +914,7 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
                         ))}
                       </div>
                     ) : (
-                      <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : ''} title={title} tail={toggle} />
+                      <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : layer.type === 'typewriter' ? interpolateText(layer.text, previewData) : ''} title={title} tail={toggle} />
                     );
                   })}
               </div>

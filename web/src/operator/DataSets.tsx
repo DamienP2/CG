@@ -157,10 +157,15 @@ export function datasetUse(t: Template, ds: DataSet): DatasetUse {
   const readers = t.layers.filter((l) =>
     JSON.stringify(l).includes(`${ds.key}_`),
   );
-  const texts = readers.filter((l) => l.type === "text");
+  // Texts and typewriters show one row, the one the operator picks.
+  const texts = readers.filter(
+    (l) => l.type === "text" || l.type === "typewriter",
+  );
   const json = JSON.stringify(readers);
   const lines = texts.some(
-    (l) => l.type === "text" && l.text.includes(`{{${linesKey(ds.key)}}}`),
+    (l) =>
+      (l.type === "text" || l.type === "typewriter") &&
+      l.text.includes(`{{${linesKey(ds.key)}}}`),
   );
   const row =
     new RegExp(`${ds.key}_[A-Za-z0-9]`).test(json) ||

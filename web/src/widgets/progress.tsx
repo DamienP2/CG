@@ -465,8 +465,8 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
           path="input"
           value="value"
           options={[
-            ['value', t('Min / max')],
             ['percent', '%'],
+            ['value', t('Min / max')],
             ['follow', t('Follow'), t('The value of a timer or a counter of the graphic')],
           ]}
         />
@@ -842,6 +842,7 @@ export default defineWidget({
   group: 'Data',
   icon: SlidersHorizontal,
   create: () => ({
+    input: 'percent',
     value: '64',
     max: '100',
     duration: 0.6,
