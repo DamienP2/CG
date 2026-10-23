@@ -59,6 +59,13 @@ pub struct SdiConfig {
     /// [`OutputSink::frame_clock`]).
     #[serde(default)]
     pub genlock: bool,
+    /// Genlock offset in lines (the card's reference input timing offset).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub genlock_offset: i32,
+}
+
+fn is_zero(v: &i32) -> bool {
+    *v == 0
 }
 
 impl SdiConfig {
@@ -130,7 +137,8 @@ impl DeckLinkOutput {
         height: u32,
         rate: (u32, u32),
     ) -> Result<Self, OutputError> {
-        let handle = OutputHandle::open(config.device, width, height, rate, config.keyer())
+        let offset = config.genlock.then_some(config.genlock_offset);
+        let handle = OutputHandle::open(config.device, width, height, rate, config.keyer(), offset)
             .map_err(OutputError::Unsupported)?;
         let handle = Arc::new(handle);
         tracing::info!(
@@ -356,6 +364,7 @@ mod tests {
             external_key: true,
             fill_only: false,
             genlock: false,
+            genlock_offset: 0,
         };
         assert_eq!(c.keyer(), Keyer::External);
         c.external_key = false;
@@ -376,6 +385,7 @@ mod tests {
             external_key: true,
             fill_only: false,
             genlock: true,
+            genlock_offset: 0,
         };
         if devices().map(|d| d.is_empty()).unwrap_or(true) {
             assert!(matches!(

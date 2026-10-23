@@ -38,7 +38,39 @@ typedef const char *dl_string;
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include <vector>
+
+// What identifies a device and where it sits (same layout as `RawDevice`).
+// `has_*` say whether the matching attribute answered.
+struct dl_device_info {
+    int64_t persistent_id;
+    int64_t group_id;
+    int64_t topological_id;
+    int64_t sub_device_index;
+    int64_t sub_devices;
+    int32_t has_persistent_id;
+    int32_t has_group_id;
+    int32_t has_topological_id;
+    int32_t has_sub_device_index;
+    int32_t has_sub_devices;
+    int32_t has_reference_input;
+    // 1 locked, 0 not locked, -1 unknown.
+    int32_t reference_locked;
+    // BMDDisplayMode of the reference signal (0: none or unknown).
+    uint32_t reference_mode;
+    // BMDDeviceInterface (0: unknown).
+    uint32_t interface_kind;
+    // BMDProfileID of the active profile (0: unknown).
+    uint32_t profile;
+    // The profiles the device can switch to.
+    uint32_t profiles[8];
+    int32_t profile_count;
+    // As dl_device_caps.
+    int32_t caps;
+    char display_name[128];
+    char model_name[128];
+};
 
 // One display mode, as listed to the Rust side (same layout as `RawMode`).
 struct dl_mode {
@@ -174,6 +206,104 @@ bool flag_attribute(IDeckLink *dev, BMDDeckLinkAttributeID id) {
     bool ok = attrs->GetFlag(id, &v) == S_OK && v;
     release(attrs);
     return ok;
+}
+
+int64_t int_attribute(IDeckLinkProfileAttributes *attrs, BMDDeckLinkAttributeID id, int32_t *ok) {
+    int64_t v = 0;
+    *ok = attrs && attrs->GetInt(id, &v) == S_OK ? 1 : 0;
+    return *ok ? v : 0;
+}
+
+// Capabilities of a device: bit 0 output, 1 input, 2 internal keyer,
+// 3 external keyer, 4 input format detection.
+int caps_of(IDeckLink *dev) {
+    int caps = 0;
+    IDeckLinkOutput *out = NULL;
+    if (dev->QueryInterface(IID_IDeckLinkOutput, (void **)&out) == S_OK) {
+        caps |= 1;
+        release(out);
+    }
+    IDeckLinkInput *in = NULL;
+    if (dev->QueryInterface(IID_IDeckLinkInput, (void **)&in) == S_OK) {
+        caps |= 2;
+        release(in);
+    }
+    if (flag_attribute(dev, BMDDeckLinkSupportsInternalKeying)) {
+        caps |= 4;
+    }
+    if (flag_attribute(dev, BMDDeckLinkSupportsExternalKeying)) {
+        caps |= 8;
+    }
+    if (flag_attribute(dev, BMDDeckLinkSupportsInputFormatDetection)) {
+        caps |= 16;
+    }
+    return caps;
+}
+
+// Identity, place, reference and profiles of a device.
+void describe(IDeckLink *dev, dl_device_info *o) {
+    std::memset(o, 0, sizeof *o);
+    o->reference_locked = -1;
+    dl_string s = NULL;
+    if (dev->GetDisplayName(&s) == S_OK) {
+        take_string(s, o->display_name, (int)sizeof o->display_name);
+    }
+    s = NULL;
+    if (dev->GetModelName(&s) == S_OK) {
+        take_string(s, o->model_name, (int)sizeof o->model_name);
+    }
+    IDeckLinkProfileAttributes *attrs = NULL;
+    if (dev->QueryInterface(IID_IDeckLinkProfileAttributes, (void **)&attrs) != S_OK) {
+        attrs = NULL;
+    }
+    if (attrs) {
+        o->persistent_id = int_attribute(attrs, BMDDeckLinkPersistentID, &o->has_persistent_id);
+        o->group_id = int_attribute(attrs, BMDDeckLinkDeviceGroupID, &o->has_group_id);
+        o->topological_id = int_attribute(attrs, BMDDeckLinkTopologicalID, &o->has_topological_id);
+        o->sub_device_index = int_attribute(attrs, BMDDeckLinkSubDeviceIndex, &o->has_sub_device_index);
+        o->sub_devices = int_attribute(attrs, BMDDeckLinkNumberOfSubDevices, &o->has_sub_devices);
+        int32_t ok = 0;
+        o->interface_kind = (uint32_t)int_attribute(attrs, BMDDeckLinkDeviceInterface, &ok);
+        o->profile = (uint32_t)int_attribute(attrs, BMDDeckLinkProfileID, &ok);
+        dl_bool v = false;
+        o->has_reference_input = attrs->GetFlag(BMDDeckLinkHasReferenceInput, &v) == S_OK && v ? 1 : 0;
+        release(attrs);
+    }
+    IDeckLinkStatus *status = NULL;
+    if (dev->QueryInterface(IID_IDeckLinkStatus, (void **)&status) == S_OK && status) {
+        dl_bool v = false;
+        if (status->GetFlag(bmdDeckLinkStatusReferenceSignalLocked, &v) == S_OK) {
+            o->reference_locked = v ? 1 : 0;
+        }
+        int64_t mode = 0;
+        if (status->GetInt(bmdDeckLinkStatusReferenceSignalMode, &mode) == S_OK) {
+            o->reference_mode = (uint32_t)mode;
+        }
+        release(status);
+    }
+    IDeckLinkProfileManager *pm = NULL;
+    if (dev->QueryInterface(IID_IDeckLinkProfileManager, (void **)&pm) == S_OK && pm) {
+        IDeckLinkProfileIterator *it = NULL;
+        if (pm->GetProfiles(&it) == S_OK && it) {
+            IDeckLinkProfile *p = NULL;
+            while (it->Next(&p) == S_OK && p) {
+                IDeckLinkProfileAttributes *pa = NULL;
+                if (o->profile_count < 8 &&
+                    p->QueryInterface(IID_IDeckLinkProfileAttributes, (void **)&pa) == S_OK && pa) {
+                    int32_t ok = 0;
+                    uint32_t id = (uint32_t)int_attribute(pa, BMDDeckLinkProfileID, &ok);
+                    if (ok) {
+                        o->profiles[o->profile_count++] = id;
+                    }
+                    release(pa);
+                }
+                release(p);
+            }
+            release(it);
+        }
+        release(pm);
+    }
+    o->caps = caps_of(dev);
 }
 
 // ------------------------------------------------------------------ output
@@ -576,28 +706,91 @@ int dl_device_caps(int index) {
     if (!dev) {
         return -1;
     }
-    int caps = 0;
-    IDeckLinkOutput *out = NULL;
-    if (dev->QueryInterface(IID_IDeckLinkOutput, (void **)&out) == S_OK) {
-        caps |= 1;
-        release(out);
-    }
-    IDeckLinkInput *in = NULL;
-    if (dev->QueryInterface(IID_IDeckLinkInput, (void **)&in) == S_OK) {
-        caps |= 2;
-        release(in);
-    }
-    if (flag_attribute(dev, BMDDeckLinkSupportsInternalKeying)) {
-        caps |= 4;
-    }
-    if (flag_attribute(dev, BMDDeckLinkSupportsExternalKeying)) {
-        caps |= 8;
-    }
-    if (flag_attribute(dev, BMDDeckLinkSupportsInputFormatDetection)) {
-        caps |= 16;
-    }
+    int caps = caps_of(dev);
     release(dev);
     return caps;
+}
+
+// Every device in Desktop Video order: writes at most `cap` and returns how
+// many there are, or -1 when the runtime is missing.
+int dl_devices(dl_device_info *out, int cap) {
+    IDeckLinkIterator *it = create_iterator();
+    if (!it) {
+        return -1;
+    }
+    int n = 0;
+    IDeckLink *dev = NULL;
+    while (it->Next(&dev) == S_OK) {
+        if (n < cap && out) {
+            describe(dev, &out[n]);
+        }
+        n++;
+        release(dev);
+    }
+    release(it);
+    return n;
+}
+
+// The version of the DeckLink runtime (Desktop Video), e.g. "12.4"; 0 on success.
+int dl_api_version(char *buf, int len) {
+    set_err(buf, len, "");
+    com_init();
+#if defined(_WIN32)
+    IDeckLinkAPIInformation *info = NULL;
+    if (FAILED(CoCreateInstance(CLSID_CDeckLinkAPIInformation, NULL, CLSCTX_ALL, IID_IDeckLinkAPIInformation,
+                                (void **)&info))) {
+        info = NULL;
+    }
+#else
+    IDeckLinkAPIInformation *info = CreateDeckLinkAPIInformationInstance();
+#endif
+    if (!info) {
+        return -1;
+    }
+    dl_string s = NULL;
+    int r = -1;
+    if (info->GetString(BMDDeckLinkAPIVersion, &s) == S_OK) {
+        take_string(s, buf, len);
+        r = 0;
+    }
+    release(info);
+    return r;
+}
+
+// Activates a profile (BMDProfileID) of a device and its peers, waiting up
+// to 3 s for it to take effect. 0 on success, -1 with `err` set.
+int dl_set_profile(int index, uint32_t profile, char *err, int errlen) {
+    set_err(err, errlen, "");
+    IDeckLink *dev = device_at(index, err, errlen);
+    if (!dev) {
+        return -1;
+    }
+    int r = -1;
+    IDeckLinkProfileManager *pm = NULL;
+    IDeckLinkProfile *p = NULL;
+    if (dev->QueryInterface(IID_IDeckLinkProfileManager, (void **)&pm) != S_OK || !pm) {
+        set_err(err, errlen, "this DeckLink device has a single profile");
+    } else if (pm->GetProfile((BMDProfileID)profile, &p) != S_OK || !p) {
+        set_err(err, errlen, "this DeckLink device has no such profile");
+    } else if (p->SetActive() != S_OK) {
+        set_err(err, errlen, "cannot activate the profile (device in use?)");
+    } else {
+        for (int i = 0; i < 30; i++) {
+            dl_bool active = false;
+            if (p->IsActive(&active) == S_OK && active) {
+                r = 0;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (r != 0) {
+            set_err(err, errlen, "the profile did not become active");
+        }
+    }
+    release(p);
+    release(pm);
+    release(dev);
+    return r;
 }
 
 // Display modes of a device's output (input = 0) or input (input = 1).
@@ -641,7 +834,10 @@ int dl_device_modes(int index, int input, dl_mode *out, int cap, char *err, int 
 
 // Opens a device's output in `mode` (BGRA frames of width × height).
 // keyer: 0 none (fill only), 1 internal, 2 external (fill + key).
-void *dl_output_open(int index, uint32_t mode, int width, int height, int keyer, char *err, int errlen) {
+// `set_ref_offset`: also set the reference input timing offset (genlock
+// offset, `ref_offset` lines).
+void *dl_output_open(int index, uint32_t mode, int width, int height, int keyer, int set_ref_offset,
+                     int ref_offset, char *err, int errlen) {
     set_err(err, errlen, "");
     IDeckLink *dev = device_at(index, err, errlen);
     if (!dev) {
@@ -675,6 +871,14 @@ void *dl_output_open(int index, uint32_t mode, int width, int height, int keyer,
         goto fail;
     }
     dev->QueryInterface(IID_IDeckLinkStatus, (void **)&o->status);
+    if (set_ref_offset) {
+        IDeckLinkConfiguration *conf = NULL;
+        if (dev->QueryInterface(IID_IDeckLinkConfiguration, (void **)&conf) == S_OK && conf) {
+            // Not every card takes an offset: genlock still works without.
+            conf->SetInt(bmdDeckLinkConfigReferenceInputTimingOffset, ref_offset);
+            release(conf);
+        }
+    }
     if (o->out->EnableVideoOutput(m, bmdVideoOutputFlagDefault) != S_OK) {
         set_err(err, errlen, "cannot enable the video output (device in use by another application?)");
         goto fail;

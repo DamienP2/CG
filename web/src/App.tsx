@@ -164,7 +164,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {tab('media', '/media', <Images size={14} />, t('Assets'))}
           {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
           {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams'))}
-          {can.admin(user) && tab('hardware', '/hardware', <CircuitBoard size={14} />, t('Hardware'))}
+          {can.admin(user) && tab('hardware', '/hardware', <CircuitBoard size={14} />, t('I/O'))}
           {can.admin(user) && tab('performance', '/performance', <Gauge size={14} />, t('Performance'))}
           {can.admin(user) && tab('mos', '/mos', <Newspaper size={14} />, 'MOS')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, t('Users'))}

@@ -403,7 +403,7 @@ function Inspector({
             return (
               <option key={k.value} value={k.value} disabled={missing}>
                 {t(k.label)}
-                {missing ? ` — ${k.value === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')}` : ''}
+                {missing ? ` — ${k.value === 'sdi' ? t('Define SDI inputs in I/O') : t('Define ST 2110 input flows in I/O')}` : ''}
               </option>
             );
           })}
@@ -498,7 +498,7 @@ function Inspector({
 
       {needsHardware(i.kind) && (
         <>
-          <Field label={i.kind === 'sdi' ? t('SDI input') : t('ST 2110 flow')} hint={i.kind === 'sdi' ? t('The connectors declared in Hardware.') : t('The multicast addresses are set in Hardware.')}>
+          <Field label={i.kind === 'sdi' ? t('SDI input') : t('ST 2110 flow')} hint={i.kind === 'sdi' ? t('The connectors declared in I/O.') : t('The multicast addresses are set in I/O.')}>
             <select value={i.hardware ?? ''} onChange={(e) => editInput((x) => void (x.hardware = e.target.value))}>
               {!choices.some((c) => c.id === i.hardware) && <option value="">{t('— choose —')}</option>}
               {choices.map((c) => (
@@ -509,7 +509,7 @@ function Inspector({
             </select>
           </Field>
           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate(i.kind === 'st2110' ? '/hardware#st2110' : '/hardware')}>
-            <Cpu size={13} /> {t('Edit in Hardware')}
+            <Cpu size={13} /> {t('Edit in I/O')}
           </button>
           <Hint>{i.kind === 'sdi' ? t('SDI inputs need a server built with DeckLink support.') : t('Receiving ST 2110 is not available yet.')}</Hint>
         </>

@@ -30,6 +30,8 @@ export interface SdiOutput {
   externalKey: boolean;
   fillOnly?: boolean;
   genlock?: boolean;
+  /** Genlock offset in lines (filled by the server from the card). */
+  genlockOffset?: number;
 }
 
 export interface NdiOutput {
@@ -195,6 +197,18 @@ export interface SdiCard {
   device: number;
   /** What each connector is wired to; its role comes from the outputs and inputs using it. */
   connectors: { name: string }[];
+  /** The model as Desktop Video names it; none: declared by hand. */
+  modelName?: string;
+  /** The identity of the detected card (`DetectedCard.id`). */
+  persistentId?: string;
+  /** The Desktop Video device of each connector (index = connector). */
+  devices?: number[];
+  /** A mode of its model (`DeckLinkModel.modes`). */
+  mode?: string;
+  /** Its outputs follow the reference input. */
+  genlock?: boolean;
+  /** Genlock offset, lines. */
+  genlockOffset?: number;
 }
 
 export type SdiMode = 'externalKey' | 'internalKey' | 'fillOnly';
@@ -243,6 +257,8 @@ export interface NetworkRoles {
   mediaRed: string;
   mediaBlue: string;
   ptp: string;
+  /** The MOS ports listen on this one only ("" = every interface). */
+  mos?: string;
 }
 
 export type ClockReference = 'free' | 'ptp' | 'decklink';
@@ -254,19 +270,19 @@ export interface SyncConfig {
 }
 
 export interface HardwareConfig {
-  sdi: { cards: SdiCard[]; outputs: SdiOutputDef[]; inputs: SdiInputDef[] };
+  sdi: { cards: SdiCard[]; outputs: SdiOutputDef[]; inputs: SdiInputDef[]; ignored?: string[] };
   st2110: { flows: St2110Flow[] };
   network?: NetworkRoles;
   sync?: SyncConfig;
 }
 
-export const emptyNetwork = (): NetworkRoles => ({ control: '', ndi: '', ndiDiscovery: '', mediaRed: '', mediaBlue: '', ptp: '' });
+export const emptyNetwork = (): NetworkRoles => ({ control: '', ndi: '', ndiDiscovery: '', mediaRed: '', mediaBlue: '', ptp: '', mos: '' });
 export const emptySync = (): SyncConfig => ({ reference: 'free', ptpDomain: 127, taiOffset: 37 });
 
 /** NTP / PTP status (crates/cg-server/src/sync.rs). */
 export interface SyncStatus {
   ntp: { tool?: string | null; synced?: boolean | null; source?: string | null; offsetMs?: number | null };
-  ptp: { running: boolean; message?: string | null; domain: number; portState?: string | null; grandmaster?: string | null; offsetNs?: number | null; locked: boolean };
+  ptp: { running: boolean; message?: string | null; domain: number; portState?: string | null; grandmaster?: string | null; offsetNs?: number | null; jitterNs?: number | null; locked: boolean };
   checkedAt: number;
 }
 
@@ -285,6 +301,59 @@ export interface HardwareInfo {
   sync?: SyncStatus | null;
   /** The NDI network settings changed since the NDI runtime started. */
   ndiRestart?: boolean;
+  decklinkCards?: DetectedCard[];
+  decklinkModels?: DeckLinkModel[];
+  /** Made-up cards (STRATA_FAKE_DECKLINK). */
+  decklinkFake?: boolean;
+  desktopVideoVersion?: string | null;
+  nics?: Nic[];
+}
+
+export type PortCap = 'in' | 'out' | 'both';
+
+/** A DeckLink card the driver lists (crates/cg-server/src/decklink.rs). */
+export interface DetectedCard {
+  id: string;
+  modelName: string;
+  legacyModel: SdiModel;
+  connectors: number;
+  /** The Desktop Video device of each connector (index = connector). */
+  devices: number[];
+  ports: PortCap[];
+  hasReference: boolean;
+  referenceLocked?: boolean | null;
+  referenceKind?: 'blackBurst' | 'triLevel' | null;
+  referenceFormat?: string | null;
+  interface?: 'pcie' | 'usb' | 'thunderbolt' | null;
+  topologicalId?: string | null;
+  persistentId?: string | null;
+  profile?: string | null;
+  profiles: string[];
+}
+
+/** The bracket of a model: connector numbers top to bottom (empty: numeric order). */
+export interface DeckLinkModel {
+  name: string;
+  legacy: SdiModel;
+  jack: 'din' | 'bnc';
+  connectors: number;
+  order: number[];
+  reference?: boolean | null;
+  ports: PortCap[];
+  modes: { id: string; profile?: string | null; roles: ('fill' | 'key' | 'input')[] }[];
+}
+
+/** A network interface and its link. */
+export interface Nic {
+  name: string;
+  ipv4: string[];
+  mac?: string | null;
+  mtu?: number | null;
+  /** Mb/s. */
+  speed?: number | null;
+  up?: boolean | null;
+  kind?: 'ethernet' | 'wifi' | 'virtual' | null;
+  model?: string | null;
 }
 
 export interface SystemInfo {

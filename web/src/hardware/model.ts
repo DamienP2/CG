@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { emptyHardware, emptyNetwork, emptySync, type ClockReference, type HardwareConfig, type SdiCard, type SdiModel, type SdiMode, type SdiOutput, type SdiOutputDef, type ServerConfig, type St2110Flow, type St2110Output } from '../outputs/types';
+import { emptyHardware, emptyNetwork, emptySync, type ClockReference, type DeckLinkModel, type DetectedCard, type HardwareConfig, type PortCap, type SdiCard, type SdiModel, type SdiMode, type SdiOutput, type SdiOutputDef, type ServerConfig, type St2110Flow, type St2110Output } from '../outputs/types';
 
 /*
  * The video hardware of the server (Hardware page), shared with the Video
@@ -8,8 +8,7 @@ import { emptyHardware, emptyNetwork, emptySync, type ClockReference, type Hardw
  * does the same when it loads the settings: crates/cg-server/src/hardware.rs).
  */
 
-/** What a connector of a model can do. */
-export type PortCap = 'in' | 'out' | 'both';
+export type { PortCap };
 
 export const SDI_MODELS: { id: SdiModel; label: string; ports: PortCap[]; oneDevice?: boolean }[] = [
   { id: 'miniMonitor', label: 'DeckLink Mini Monitor', ports: ['out'], oneDevice: true },
@@ -29,8 +28,38 @@ export const portsOf = (c: SdiCard): PortCap[] => {
   return m.ports.length ? m.ports : c.connectors.map(() => 'both');
 };
 
-/** The Desktop Video device of a connector (one per connector, but on single-device cards). */
-export const deviceOf = (c: SdiCard, connector: number) => (modelOf(c.model).oneDevice ? c.device : c.device + connector);
+/** The Desktop Video device of a connector: as detected, else one per connector (but on single-device cards). */
+export const deviceOf = (c: SdiCard, connector: number) => c.devices?.[connector] ?? (modelOf(c.model).oneDevice ? c.device : c.device + connector);
+
+/** How a card looks from the back of the machine. */
+export interface Bracket {
+  jack: 'din' | 'bnc';
+  /** Connector numbers (1 = SDI 1) from the top of the bracket down; the REF comes after. */
+  order: number[];
+  reference: boolean;
+  ports: PortCap[];
+  modes: DeckLinkModel['modes'];
+}
+
+/** The table entry of a card's model (crates/cg-server/src/decklink.rs): by name, else by the hand-declared model. */
+export function modelEntry(c: { modelName?: string; model?: string }, models: DeckLinkModel[]): DeckLinkModel | undefined {
+  const name = c.modelName?.trim().toLowerCase();
+  return (name ? models.find((m) => m.name.toLowerCase() === name) : undefined) ?? (c.model && c.model !== 'other' && !name ? models.find((m) => m.legacy === c.model) : undefined);
+}
+
+/** The bracket of a card; models not in the table: connectors in numeric order, the REF when the driver reports one. */
+export function bracketOf(c: SdiCard, models: DeckLinkModel[], det?: DetectedCard): Bracket {
+  const n = c.connectors.length;
+  const m = modelEntry(c, models);
+  const numeric = Array.from({ length: n }, (_, i) => i + 1);
+  return {
+    jack: m?.jack ?? (n > 4 ? 'din' : 'bnc'),
+    order: m && m.order.length === n ? m.order : numeric,
+    reference: m?.reference ?? det?.hasReference ?? false,
+    ports: m && m.ports.length === n ? m.ports : det && det.ports.length === n ? det.ports : portsOf(c),
+    modes: m?.modes ?? [],
+  };
+}
 
 export type Role = 'unused' | 'fill' | 'key' | 'input';
 
@@ -92,7 +121,10 @@ export function fillSdi(o: SdiOutput, hw: HardwareConfig) {
   if (card) o.device = deviceOf(card, d.fill);
   o.externalKey = d.mode !== 'internalKey';
   o.fillOnly = d.mode === 'fillOnly';
-  o.genlock = d.genlock;
+  o.genlock = d.genlock || !!card?.genlock;
+  // The server leaves out a zero offset.
+  if (card?.genlockOffset) o.genlockOffset = card.genlockOffset;
+  else delete o.genlockOffset;
 }
 
 /** An ST 2110 destination takes its addresses from its Hardware flow. */
@@ -153,3 +185,6 @@ export function syncUsers(c: ServerConfig) {
     if (d && card) i.device = deviceOf(card, d.connector);
   }
 }
+
+/** "25 Gb/s" from Mb/s. */
+export const speedLabel = (mbps?: number | null) => (mbps == null ? '' : mbps >= 1000 ? `${+(mbps / 1000).toFixed(1)} Gb/s` : `${mbps} Mb/s`);

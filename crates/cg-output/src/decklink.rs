@@ -99,6 +99,43 @@ pub struct Caps {
     pub format_detection: bool,
 }
 
+/// A device as Desktop Video lists it: what it is, which physical card it
+/// belongs to and where that card sits, its reference input and profiles
+/// (attributes the driver does not answer are `None`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeviceInfo {
+    /// Desktop Video order (the `device` of the settings).
+    pub index: u32,
+    /// "DeckLink Quad (5)": the model and, on cards with several
+    /// sub-devices, the connector it starts at.
+    pub display_name: String,
+    /// "DeckLink Quad 2" (`IDeckLink::GetModelName`).
+    pub model_name: String,
+    /// `BMDDeckLinkPersistentID`: kept across reboots while the card stays
+    /// in its slot.
+    pub persistent_id: Option<i64>,
+    /// `BMDDeckLinkDeviceGroupID`: shared by the sub-devices of one card.
+    pub group_id: Option<i64>,
+    /// `BMDDeckLinkTopologicalID`: where the card sits (PCIe slot).
+    pub topological_id: Option<i64>,
+    /// `BMDDeckLinkSubDeviceIndex` (0 = first) and `…NumberOfSubDevices`.
+    pub sub_device_index: Option<i64>,
+    pub sub_devices: Option<i64>,
+    /// `BMDDeckLinkHasReferenceInput`.
+    pub has_reference_input: bool,
+    /// `bmdDeckLinkStatusReferenceSignalLocked` (None: not answered).
+    pub reference_locked: Option<bool>,
+    /// `bmdDeckLinkStatusReferenceSignalMode`: the `BMDDisplayMode` of the
+    /// signal on the reference input (black burst: NTSC / PAL).
+    pub reference_mode: Option<u32>,
+    /// `BMDDeckLinkDeviceInterface` ('pci ', 'usb ', 'thun').
+    pub interface: Option<u32>,
+    /// The active `BMDProfileID` and the ones the device can switch to.
+    pub profile: Option<u32>,
+    pub profiles: Vec<u32>,
+    pub caps: Caps,
+}
+
 /// Outcome of a push.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pushed {
@@ -123,7 +160,35 @@ mod ffi {
         pub name: [c_char; 64],
     }
 
+    #[repr(C)]
+    pub struct RawDevice {
+        pub persistent_id: i64,
+        pub group_id: i64,
+        pub topological_id: i64,
+        pub sub_device_index: i64,
+        pub sub_devices: i64,
+        pub has_persistent_id: i32,
+        pub has_group_id: i32,
+        pub has_topological_id: i32,
+        pub has_sub_device_index: i32,
+        pub has_sub_devices: i32,
+        pub has_reference_input: i32,
+        pub reference_locked: i32,
+        pub reference_mode: u32,
+        pub interface_kind: u32,
+        pub profile: u32,
+        pub profiles: [u32; 8],
+        pub profile_count: i32,
+        pub caps: i32,
+        pub display_name: [c_char; 128],
+        pub model_name: [c_char; 128],
+    }
+
     extern "C" {
+        pub fn dl_devices(out: *mut RawDevice, cap: c_int) -> c_int;
+        pub fn dl_api_version(buf: *mut c_char, len: c_int) -> c_int;
+        pub fn dl_set_profile(index: c_int, profile: u32, err: *mut c_char, errlen: c_int)
+            -> c_int;
         pub fn dl_device_count() -> c_int;
         pub fn dl_device_name(index: c_int, buf: *mut c_char, len: c_int) -> c_int;
         pub fn dl_device_caps(index: c_int) -> c_int;
@@ -141,6 +206,8 @@ mod ffi {
             width: c_int,
             height: c_int,
             keyer: c_int,
+            set_ref_offset: c_int,
+            ref_offset: c_int,
             err: *mut c_char,
             errlen: c_int,
         ) -> *mut c_void;
@@ -210,19 +277,114 @@ pub fn devices() -> Result<Vec<String>, String> {
     Err(NOT_BUILT.into())
 }
 
+#[cfg(decklink_shim)]
+impl Caps {
+    fn from_bits(c: i32) -> Self {
+        Caps {
+            output: c & 1 != 0,
+            input: c & 2 != 0,
+            internal_keyer: c & 4 != 0,
+            external_keyer: c & 8 != 0,
+            format_detection: c & 16 != 0,
+        }
+    }
+}
+
+/// Every DeckLink device with what identifies it, in Desktop Video order.
+pub fn device_infos() -> Result<Vec<DeviceInfo>, String> {
+    #[cfg(decklink_shim)]
+    {
+        // SAFETY: a null buffer of capacity 0 only counts.
+        let n = unsafe { ffi::dl_devices(std::ptr::null_mut(), 0) };
+        if n < 0 {
+            return Err(NO_RUNTIME.into());
+        }
+        let mut raw: Vec<ffi::RawDevice> = Vec::with_capacity(n as usize + 4);
+        // SAFETY: `raw` has room for `capacity` entries; the shim writes at
+        // most that many and returns the total count.
+        let n = unsafe { ffi::dl_devices(raw.as_mut_ptr(), raw.capacity() as _) };
+        if n < 0 {
+            return Err(NO_RUNTIME.into());
+        }
+        // SAFETY: the first min(n, capacity) entries were written.
+        unsafe { raw.set_len((n as usize).min(raw.capacity())) };
+        Ok(raw
+            .iter()
+            .enumerate()
+            .map(|(i, d)| {
+                let some = |has: i32, v: i64| (has != 0).then_some(v);
+                DeviceInfo {
+                    index: i as u32,
+                    display_name: ffi::text(&d.display_name),
+                    model_name: ffi::text(&d.model_name),
+                    persistent_id: some(d.has_persistent_id, d.persistent_id),
+                    group_id: some(d.has_group_id, d.group_id),
+                    topological_id: some(d.has_topological_id, d.topological_id),
+                    sub_device_index: some(d.has_sub_device_index, d.sub_device_index),
+                    sub_devices: some(d.has_sub_devices, d.sub_devices),
+                    has_reference_input: d.has_reference_input != 0,
+                    reference_locked: match d.reference_locked {
+                        0 => Some(false),
+                        1 => Some(true),
+                        _ => None,
+                    },
+                    reference_mode: (d.reference_mode != 0).then_some(d.reference_mode),
+                    interface: (d.interface_kind != 0).then_some(d.interface_kind),
+                    profile: (d.profile != 0).then_some(d.profile),
+                    profiles: d.profiles[..(d.profile_count.clamp(0, 8) as usize)].to_vec(),
+                    caps: Caps::from_bits(d.caps),
+                }
+            })
+            .collect())
+    }
+    #[cfg(not(decklink_shim))]
+    Err(NOT_BUILT.into())
+}
+
+/// The version of the DeckLink runtime (Blackmagic Desktop Video).
+pub fn runtime_version() -> Option<String> {
+    #[cfg(decklink_shim)]
+    {
+        let mut buf = [0 as std::ffi::c_char; 64];
+        // SAFETY: `buf` sized as passed.
+        let r = unsafe { ffi::dl_api_version(buf.as_mut_ptr(), buf.len() as _) };
+        let v = ffi::text(&buf);
+        (r == 0 && !v.is_empty()).then_some(v)
+    }
+    #[cfg(not(decklink_shim))]
+    None
+}
+
+/// Activates a profile (`BMDProfileID`: the connector mapping and duplex
+/// of a card with sub-devices) on a device and its peers.
+pub fn set_profile(device: u32, profile: u32) -> Result<(), String> {
+    #[cfg(decklink_shim)]
+    {
+        let idx = index(device)?;
+        let mut err = [0 as std::ffi::c_char; 256];
+        // SAFETY: plain call; `err` sized as passed.
+        let r = unsafe { ffi::dl_set_profile(idx, profile, err.as_mut_ptr(), err.len() as _) };
+        if r == 0 {
+            Ok(())
+        } else {
+            let e = ffi::text(&err);
+            Err(if e.is_empty() { NO_RUNTIME.into() } else { e })
+        }
+    }
+    #[cfg(not(decklink_shim))]
+    {
+        let _ = (device, profile);
+        Err(NOT_BUILT.into())
+    }
+}
+
 /// What a device can do (None: no such device, or not built / no runtime).
 pub fn capabilities(device: u32) -> Option<Caps> {
     #[cfg(decklink_shim)]
     {
         // SAFETY: plain call into the shim.
         let c = unsafe { ffi::dl_device_caps(index(device).ok()?) };
-        (c >= 0).then_some(Caps {
-            output: c & 1 != 0,
-            input: c & 2 != 0,
-            internal_keyer: c & 4 != 0,
-            external_keyer: c & 8 != 0,
-            format_detection: c & 16 != 0,
-        })
+        (c >= 0).then_some(Caps::from_bits(c))
     }
     #[cfg(not(decklink_shim))]
     {
@@ -317,12 +479,14 @@ unsafe impl Sync for OutputHandle {}
 
 impl OutputHandle {
     /// Opens a device's output in the mode matching width × height at `rate`.
+    /// `ref_offset`: the genlock offset (lines) to set on the card.
     pub fn open(
         device: u32,
         width: u32,
         height: u32,
         rate: (u32, u32),
         keyer: Keyer,
+        ref_offset: Option<i32>,
     ) -> Result<Self, String> {
         #[cfg(decklink_shim)]
         {
@@ -338,6 +502,8 @@ impl OutputHandle {
                         width as _,
                         height as _,
                         keyer as _,
+                        ref_offset.is_some() as _,
+                        ref_offset.unwrap_or(0) as _,
                         err.as_mut_ptr(),
                         err.len() as _,
                     )
@@ -356,7 +522,7 @@ impl OutputHandle {
         }
         #[cfg(not(decklink_shim))]
         {
-            let _ = (device, width, height, rate, keyer, pick);
+            let _ = (device, width, height, rate, keyer, ref_offset, pick);
             Err(NOT_BUILT.into())
         }
     }
@@ -585,7 +751,9 @@ mod tests {
             Err(e) => assert!(e == NOT_BUILT || e == NO_RUNTIME, "{e}"),
         }
         if !BUILT {
-            assert!(OutputHandle::open(0, 1920, 1080, (25, 1), Keyer::External).is_err());
+            assert!(OutputHandle::open(0, 1920, 1080, (25, 1), Keyer::External, None).is_err());
+            assert_eq!(device_infos(), Err(NOT_BUILT.to_string()));
+            assert_eq!(runtime_version(), None);
             assert!(InputHandle::open(0, 1920, 1080, (25, 1)).is_err());
             assert_eq!(capabilities(0), None);
         }

@@ -56,162 +56,6 @@
 .hw-note.warn {
   color: var(--warn);
 }
-.hw-card-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-@media (max-width: 900px) {
-  .hw-card-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-/* The card, from the back of the machine. */
-.hw-drawing {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  user-select: none;
-}
-.hw-pcb {
-  fill: #12392c;
-  stroke: #1d5a44;
-}
-.hw-finger {
-  fill: #c9a227;
-  opacity: 0.85;
-}
-.hw-chip {
-  fill: #0d1117;
-  stroke: #2a2f44;
-}
-.hw-chip-text {
-  fill: #8b90aa;
-  font-size: 9px;
-  font-family: var(--mono);
-}
-.hw-bracket {
-  fill: #9aa0ab;
-  stroke: #6b7280;
-}
-.hw-screw {
-  fill: #6b7280;
-  stroke: #4b5563;
-}
-.hw-brand {
-  fill: #4b5563;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-.hw-bnc-nut {
-  fill: #d1d5db;
-  stroke: #6b7280;
-}
-.hw-bnc-body {
-  fill: #b8bec8;
-  stroke: #6b7280;
-}
-.hw-bnc-insulator {
-  fill: #f8fafc;
-}
-.hw-bnc-pin {
-  fill: #c9a227;
-}
-.hw-bnc-lug {
-  fill: #9ca3af;
-  stroke: #6b7280;
-}
-.hw-bnc-label {
-  fill: #1f2937;
-  font-size: 10px;
-  font-weight: 700;
-}
-.hw-bnc-role {
-  fill: var(--text-3);
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-.hw-bnc-sel {
-  fill: none;
-  stroke: var(--accent-2);
-  stroke-width: 2;
-  stroke-dasharray: 4 3;
-}
-.hw-bnc:hover .hw-bnc-nut {
-  fill: #f1f5f9;
-}
-
-/* One row per connector. */
-.hw-ports {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.hw-ports-head,
-.hw-port-row {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-}
-.hw-ports-head {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  padding: 0 8px;
-}
-.hw-port-row {
-  padding: 5px 8px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-}
-.hw-port-row:hover {
-  background: var(--panel-2);
-}
-.hw-port-row.sel {
-  background: var(--panel-2);
-  border-color: var(--line-2);
-}
-.hw-port-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 12.5px;
-}
-.hw-port-name small {
-  font-weight: 400;
-  color: var(--text-3);
-  font-size: 11px;
-}
-.hw-port-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 3px solid var(--k);
-  flex: none;
-}
-.hw-port-use {
-  font-size: 12px;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hw-add {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.hw-add select {
-  max-width: 340px;
-}
-
 /* SDI outputs and inputs. */
 .hw-table {
   display: flex;
@@ -265,35 +109,6 @@
   font-size: 12px;
 }
 
-/* ST 2110. */
-.hw-ifaces {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 8px;
-}
-.hw-iface {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 12px;
-  border-radius: 9px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  font-size: 12.5px;
-}
-.hw-iface.lo {
-  opacity: 0.6;
-}
-.hw-iface code {
-  font-size: 12px;
-}
-.hw-iface .muted {
-  margin-left: auto;
-}
-.hw-iface-icon {
-  color: #e879f9;
-  flex: none;
-}
 .hw-flow {
   border: 1px solid var(--line);
   border-left: 3px solid #e879f9;
@@ -351,26 +166,7 @@
   .hw-flow-gap {
     grid-column: span 2;
   }
-  .hw-row.out,
-  .hw-row.in,
-  .hw-ports-head,
-  .hw-port-row {
-    grid-template-columns: 1fr 1fr;
-  }
 }
-.hw-bnc-role.fill {
-  fill: #b45309;
-}
-.hw-bnc-role.key {
-  fill: #0e7490;
-}
-.hw-bnc-role.input {
-  fill: #6d28d9;
-}
-.hw-bnc-role.unused {
-  fill: #6b7280;
-}
-
 /* SMPTE 2022-7 blue leg. */
 .hw-blue-toggle {
   display: flex;
@@ -403,19 +199,6 @@
   }
 }
 
-/* DeckLink devices the driver lists. */
-.hw-det-devices {
-  flex-basis: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.hw-det-devices code {
-  opacity: 0.7;
-  margin-right: 4px;
-}
-
 /* Network roles. */
 .hw-banner {
   padding: 10px 14px;
@@ -423,63 +206,6 @@
   background: color-mix(in srgb, var(--warn) 10%, transparent);
   margin-bottom: 14px;
 }
-.hw-roles {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-.hw-role {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) minmax(200px, 280px);
-  align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
-  border-radius: 9px;
-  background: var(--bg);
-}
-.hw-role-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-.hw-role-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.hw-role-text strong {
-  font-size: 13px;
-}
-.hw-role-text span {
-  font-size: 12px;
-  color: var(--text-2);
-}
-.hw-role-chips {
-  margin-left: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  justify-content: flex-end;
-}
-.hw-role-chip {
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 1px 7px;
-  border: 1px solid;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-@media (max-width: 800px) {
-  .hw-role {
-    grid-template-columns: 10px minmax(0, 1fr);
-  }
-  .hw-role select {
-    grid-column: 2;
-  }
-}
-
 /* Synchronisation. */
 .hw-clock-seg {
   align-self: flex-start;
@@ -497,4 +223,420 @@
   display: grid;
   grid-template-columns: 140px 140px;
   gap: 10px 12px;
+}
+
+/* ---------- Flux I/O ---------- */
+.fio-page .settings-head {
+  margin-bottom: 0;
+}
+.fio-sync .count {
+  font-variant-numeric: normal;
+}
+.fio-found,
+.fio-card,
+.fio-box,
+.fio-empty {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.fio-found {
+  border: 1px dashed rgba(143, 163, 255, 0.55);
+  background: rgba(143, 163, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fio-found > header,
+.fio-card > header,
+.fio-box > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.fio-found h3,
+.fio-card h3,
+.fio-box h3 {
+  margin: 0;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.fio-found-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fio-found-row .fio-kv {
+  flex: 1;
+}
+.fio-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 12px;
+  align-items: center;
+}
+.fio-kv dt {
+  color: var(--text-3);
+}
+.fio-kv dd {
+  margin: 0;
+  min-width: 0;
+}
+.fio-kv select {
+  width: auto;
+  max-width: 220px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.fio-num {
+  width: 64px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.fio-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+}
+.fio-ignored {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fio-ignored-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 12px;
+}
+.fio-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+}
+.fio-pill.ok {
+  border-color: rgba(34, 197, 94, 0.45);
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.08);
+}
+.fio-pill.warn {
+  border-color: rgba(245, 165, 36, 0.5);
+  color: #fcd34d;
+  background: rgba(245, 165, 36, 0.08);
+}
+.fio-pill.err {
+  border-color: rgba(255, 59, 92, 0.5);
+  color: #fda4af;
+  background: rgba(255, 59, 92, 0.08);
+}
+.fio-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.fio-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.fio-legend span::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.fio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fio-card > header .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.fio-card-body {
+  display: flex;
+  gap: 36px;
+  align-items: flex-start;
+}
+.fio-bracket {
+  flex: none;
+  height: 540px;
+  width: auto;
+  padding: 4px 10px 0 4px;
+  user-select: none;
+}
+.fio-jack {
+  cursor: pointer;
+}
+.fio-jack-sel {
+  stroke: var(--text);
+}
+.fio-tape {
+  font: 700 4.2px 'Comic Sans MS', 'Segoe Print', cursive;
+  fill: #1b1d24;
+}
+.fio-ports {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fio-port {
+  display: grid;
+  grid-template-columns: 62px 92px minmax(0, 1fr) 150px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.fio-port.sel {
+  border-color: var(--accent);
+}
+.fio-port.ref {
+  border-color: rgba(245, 197, 66, 0.35);
+}
+.fio-port b {
+  font: 700 12px var(--mono);
+  white-space: nowrap;
+}
+.fio-port select {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 12px;
+}
+.fio-port select.none {
+  color: var(--text-3);
+}
+.fio-ref {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.fio-ref select {
+  flex: 1;
+  min-width: 0;
+}
+.fio-ref input {
+  width: 72px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.fio-tag {
+  justify-self: start;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  background: var(--panel-3);
+  color: var(--text-3);
+}
+.fio-tag.fill {
+  background: rgba(143, 163, 255, 0.15);
+  color: var(--accent-2);
+}
+.fio-tag.key {
+  background: rgba(167, 139, 250, 0.16);
+  color: #d8ccff;
+}
+.fio-tag.input {
+  background: rgba(34, 197, 94, 0.13);
+  color: #86efac;
+}
+.fio-tag.ref {
+  background: rgba(245, 197, 66, 0.14);
+  color: #fde68a;
+}
+.fio-sig {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  min-width: 0;
+}
+.fio-sig-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fio-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+  background: var(--text-3);
+}
+.fio-dot.ok {
+  background: var(--pvw);
+}
+.fio-dot.warn {
+  background: var(--warn);
+}
+.fio-dot.err {
+  background: var(--live);
+}
+.fio-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+.fio-row {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+.fio-ptp {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.fio-ptp-body {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.fio-big {
+  font: 700 26px var(--mono);
+}
+.fio-media-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fio-media {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.fio-page .mono,
+.net-page .mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.fio-chip {
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.fio-chip.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.fio-chip.red {
+  border-color: rgba(255, 59, 92, 0.55);
+  background: rgba(255, 59, 92, 0.1);
+  color: #fda4af;
+}
+.fio-chip.blue {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.1);
+  color: #7dd3fc;
+}
+.fio-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fio-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+.fio-table th,
+.fio-table td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.fio-table th {
+  color: var(--text-3);
+  font-weight: 600;
+  font-size: 11.5px;
+}
+.fio-flows tbody tr {
+  cursor: pointer;
+}
+.fio-flows tbody tr:hover,
+.fio-flows tbody tr.sel {
+  background: var(--panel-2);
+}
+.fio-table td .fio-sig {
+  display: inline-flex;
+}
+.fio-none {
+  margin: 10px;
+}
+@media (max-width: 1000px) {
+  .fio-row,
+  .fio-card-body {
+    flex-direction: column;
+  }
+  .fio-port {
+    grid-template-columns: 56px 80px minmax(0, 1fr);
+  }
+  .fio-port .fio-sig {
+    grid-column: 2 / -1;
+  }
+}
+
+/* Settings › Networks, Time and sync. */
+.net-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.net-table td select {
+  width: 260px;
+  max-width: 100%;
+}
+.net-table td input[type='number'] {
+  width: 90px;
+}
+.net-table td input.net-discovery {
+  width: 260px;
+}
+.net-ports {
+  display: flex;
+  gap: 6px;
+}
+.net-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }

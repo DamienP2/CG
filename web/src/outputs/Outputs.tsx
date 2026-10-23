@@ -412,12 +412,12 @@ export function Outputs() {
   const outFlows = hw.st2110.flows.filter((f) => f.direction === 'output');
   const freeFlows = outFlows.filter((f) => !usedHw.has(f.id));
   const hwMissing = (k: DestKind) => (k === 'sdi' ? !hw.sdi.outputs.length : k === 'st2110' ? !outFlows.length : false);
-  const hwHint = (k: DestKind) => (k === 'sdi' ? t('Define SDI outputs in Hardware') : t('Define ST 2110 output flows in Hardware'));
+  const hwHint = (k: DestKind) => (k === 'sdi' ? t('Define SDI outputs in I/O') : t('Define ST 2110 output flows in I/O'));
 
   const addDest = (kind: DestKind, picture = targetPicture, at?: { x: number; y: number }) => {
     if (needsHardware(kind)) {
       if (hwMissing(kind)) return toast(hwHint(kind), 'info');
-      if (!(kind === 'sdi' ? freeSdi : freeFlows).length) return toast(kind === 'sdi' ? t('Every SDI output of Hardware is already used') : t('Every ST 2110 output flow of Hardware is already used'), 'info');
+      if (!(kind === 'sdi' ? freeSdi : freeFlows).length) return toast(kind === 'sdi' ? t('Every SDI output of I/O is already used') : t('Every ST 2110 output flow of I/O is already used'), 'info');
     }
     const taken = takenIds();
     let k = 1;
@@ -989,7 +989,7 @@ export function Outputs() {
                       </Field>
                       <Field label={t('Clock reference')} hint={t('What the channel clock follows. PTP: frames on the ST 2059 grid of the PTP-locked system clock. DeckLink: the genlock of its first SDI destination.')}>
                         <select value={ch.clock ?? ''} onChange={(e) => editCh((c) => void (c.clock = (e.target.value || null) as ChannelConfig['clock']))}>
-                          <option value="">{t('Hardware default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'free') })}</option>
+                          <option value="">{t('Default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'free') })}</option>
                           {CLOCKS.map((r) => (
                             <option key={r} value={r}>
                               {clockLabel(r)}
@@ -1146,7 +1146,7 @@ export function Outputs() {
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<SdiOutput>((d) => void (d.name = e.target.value))} />
                           </Field>
-                          <Field label={t('SDI output')} hint={t('The fill (+ key) connectors declared in Hardware.')}>
+                          <Field label={t('SDI output')} hint={t('The fill (+ key) connectors declared in I/O.')}>
                             <select
                               value={o.hardware ?? ''}
                               onChange={(e) =>
@@ -1183,7 +1183,7 @@ export function Outputs() {
                             </dl>
                           )}
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware')}>
-                            <Cpu size={13} /> {t('Edit in Hardware')}
+                            <Cpu size={13} /> {t('Edit in I/O')}
                           </button>
                           <Hint>{t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.')}</Hint>
                         </>
@@ -1202,7 +1202,7 @@ export function Outputs() {
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<St2110Output>((d) => void (d.name = e.target.value))} />
                           </Field>
-                          <Field label={t('ST 2110 flow')} hint={t('The multicast addresses are set in Hardware.')}>
+                          <Field label={t('ST 2110 flow')} hint={t('The multicast addresses are set in I/O.')}>
                             <select
                               value={o.hardware ?? ''}
                               onChange={(e) =>
@@ -1247,7 +1247,7 @@ export function Outputs() {
                             </dl>
                           )}
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware#st2110')}>
-                            <Cpu size={13} /> {t('Edit in Hardware')}
+                            <Cpu size={13} /> {t('Edit in I/O')}
                           </button>
                           <div className="set-field">
                             <span className="set-label">SDP</span>

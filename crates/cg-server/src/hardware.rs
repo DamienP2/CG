@@ -48,6 +48,9 @@ pub struct NetworkRoles {
     /// system clock through phc2sys).
     #[serde(default)]
     pub ptp: String,
+    /// The MOS ports listen on this one only ("" = every interface).
+    #[serde(default)]
+    pub mos: String,
 }
 
 /// What the channel clocks follow.
@@ -124,10 +127,13 @@ pub struct SdiHardware {
     pub outputs: Vec<SdiOutputDef>,
     #[serde(default)]
     pub inputs: Vec<SdiInputDef>,
+    /// Detected cards the admin chose not to use (`DetectedCard::id`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignored: Vec<String>,
 }
 
-/// A DeckLink card, as declared by the admin (cards cannot be listed
-/// without the DeckLink SDK).
+/// A DeckLink card the server uses: adopted from detection (its identity
+/// filled), or declared by hand before detection existed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SdiCard {
@@ -143,6 +149,27 @@ pub struct SdiCard {
     /// inputs using them).
     #[serde(default)]
     pub connectors: Vec<SdiConnector>,
+    /// The model as Desktop Video names it ("DeckLink Quad 2"); "" = a card
+    /// declared by hand, not seen by the driver yet.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model_name: String,
+    /// The identity of the detected card (`DetectedCard::id`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub persistent_id: String,
+    /// The Desktop Video device of each connector (index = connector), as
+    /// detected; refreshed when the server starts (the order of Desktop
+    /// Video changes when cards are added). Empty: `device` + connector.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<u32>,
+    /// How the card is used (a mode of its model, see `decklink::MODELS`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mode: String,
+    /// Its outputs follow the reference input (genlock).
+    #[serde(default)]
+    pub genlock: bool,
+    /// Genlock offset, in lines.
+    #[serde(default)]
+    pub genlock_offset: i32,
 }
 
 fn other() -> String {
@@ -161,6 +188,9 @@ impl SdiCard {
     /// The Desktop Video device of a connector: cards with several
     /// connectors show one device per connector, the others one in all.
     pub fn device_of(&self, connector: u32) -> u32 {
+        if let Some(d) = self.devices.get(connector as usize) {
+            return *d;
+        }
         match self.model.as_str() {
             "miniMonitor" | "miniRecorder" | "sdi4k" => self.device,
             _ => self.device + connector,
@@ -303,7 +333,92 @@ impl HardwareConfig {
         }
         o.external_key = def.mode != SdiMode::InternalKey;
         o.fill_only = def.mode == SdiMode::FillOnly;
-        o.genlock = def.genlock;
+        let card = self.card(&def.card);
+        o.genlock = def.genlock || card.is_some_and(|c| c.genlock);
+        o.genlock_offset = card.map_or(0, |c| c.genlock_offset);
+    }
+
+    /// Adopted cards follow the card detected with their identity (the
+    /// Desktop Video order changes when cards are added). Cards declared
+    /// by hand take the identity of the detected card at their device
+    /// index; their outputs and inputs keep the Desktop Video devices they
+    /// had, now under the label of the connector that device is on. True
+    /// when something changed.
+    pub fn link_detected(&mut self, detected: &[crate::decklink::DetectedCard]) -> bool {
+        let mut changed = false;
+        let mut taken: HashSet<String> = self
+            .sdi
+            .cards
+            .iter()
+            .map(|c| c.persistent_id.clone())
+            .filter(|p| !p.is_empty())
+            .collect();
+        // Connector renumberings of the cards declared by hand.
+        let mut moves: Vec<(String, Vec<u32>)> = Vec::new();
+        for c in &mut self.sdi.cards {
+            let d = if c.persistent_id.is_empty() {
+                let d = detected.iter().find(|d| {
+                    !taken.contains(&d.id)
+                        && d.devices.first() == Some(&c.device)
+                        && (c.model == d.legacy_model || c.model == "other")
+                });
+                let Some(d) = d else { continue };
+                taken.insert(d.id.clone());
+                // Where each connector's device is on the detected card.
+                let to: Vec<Option<u32>> = (0..c.connectors.len() as u32)
+                    .map(|k| {
+                        let dev = c.device_of(k);
+                        d.devices.iter().position(|x| *x == dev).map(|p| p as u32)
+                    })
+                    .collect();
+                let unique: HashSet<_> = to.iter().flatten().collect();
+                if to
+                    .iter()
+                    .all(|t| t.is_some_and(|t| (t as usize) < c.connectors.len()))
+                    && unique.len() == to.len()
+                {
+                    moves.push((c.id.clone(), to.into_iter().flatten().collect()));
+                }
+                c.persistent_id = d.id.clone();
+                c.model_name = d.model_name.clone();
+                c.model = d.legacy_model.clone();
+                changed = true;
+                d
+            } else {
+                match detected.iter().find(|d| d.id == c.persistent_id) {
+                    Some(d) => d,
+                    None => continue,
+                }
+            };
+            let first = d.devices.first().copied().unwrap_or(c.device);
+            let devices: Vec<u32> = (0..c.connectors.len())
+                .map(|i| d.devices.get(i).copied().unwrap_or(first))
+                .collect();
+            if c.devices != devices || c.device != first {
+                c.devices = devices;
+                c.device = first;
+                changed = true;
+            }
+        }
+        for (card, to) in moves {
+            let at = |k: u32| to.get(k as usize).copied().unwrap_or(k);
+            for o in self.sdi.outputs.iter_mut().filter(|o| o.card == card) {
+                o.fill = at(o.fill);
+                o.key = o.key.map(at);
+            }
+            for i in self.sdi.inputs.iter_mut().filter(|i| i.card == card) {
+                i.connector = at(i.connector);
+            }
+            if let Some(c) = self.sdi.cards.iter_mut().find(|c| c.id == card) {
+                let old = c.connectors.clone();
+                for (k, conn) in old.into_iter().enumerate() {
+                    if let Some(slot) = c.connectors.get_mut(at(k as u32) as usize) {
+                        *slot = conn;
+                    }
+                }
+            }
+        }
+        changed
     }
 
     /// The settings of an ST 2110 destination from its Hardware flow.
@@ -383,6 +498,12 @@ impl HardwareConfig {
             model: other(),
             device,
             connectors: vec![SdiConnector::default(); connectors],
+            model_name: String::new(),
+            persistent_id: String::new(),
+            devices: Vec::new(),
+            mode: String::new(),
+            genlock: false,
+            genlock_offset: 0,
         });
         id
     }
@@ -438,6 +559,9 @@ impl HardwareConfig {
         for c in &self.sdi.cards {
             if c.connectors.is_empty() || c.connectors.len() > 16 {
                 return Err(format!("card `{}`: 1 to 16 connectors", c.name));
+            }
+            if c.genlock_offset.unsigned_abs() > 1125 {
+                return Err(format!("card `{}`: genlock offset out of range", c.name));
             }
         }
         // Each connector does one thing.
@@ -584,8 +708,7 @@ pub fn write_ndi_settings(data_dir: &std::path::Path, roles: &NetworkRoles) -> b
 
 // ------------------------------------------------------------- detection --
 
-/// `GET /api/hardware`: what this machine has, as far as it can be told
-/// without the DeckLink SDK.
+/// `GET /api/hardware`: what this machine has.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HardwareInfo {
@@ -599,6 +722,16 @@ pub struct HardwareInfo {
     pub decklink_devices: Vec<String>,
     /// Why they cannot be listed.
     pub decklink_error: Option<String>,
+    /// The DeckLink cards, each with the devices of its connectors.
+    pub decklink_cards: Vec<crate::decklink::DetectedCard>,
+    /// The bracket of the known models.
+    pub decklink_models: &'static [crate::decklink::Model],
+    /// The cards are made up (`STRATA_FAKE_DECKLINK`).
+    pub decklink_fake: bool,
+    /// Desktop Video version.
+    pub desktop_video_version: Option<String>,
+    /// Every network interface, with its link.
+    pub nics: Vec<Nic>,
     /// This server receives ST 2110.
     pub st2110_receive: bool,
     pub interfaces: Vec<NetInterface>,
@@ -615,6 +748,125 @@ pub struct NetInterface {
     pub name: String,
     pub ip: String,
     pub loopback: bool,
+}
+
+/// A network interface and its link (Linux tells all; elsewhere only the
+/// addresses are known).
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Nic {
+    pub name: String,
+    /// `10.10.0.21/24`.
+    pub ipv4: Vec<String>,
+    pub mac: Option<String>,
+    pub mtu: Option<u32>,
+    /// Link speed, Mb/s.
+    pub speed: Option<u32>,
+    /// The link is up (None: unknown).
+    pub up: Option<bool>,
+    /// `ethernet`, `wifi`, `virtual`.
+    pub kind: Option<&'static str>,
+    /// The adapter family, from its driver ("Mellanox ConnectX").
+    pub model: Option<String>,
+}
+
+/// The adapter family of a Linux network driver.
+fn driver_model(driver: &str) -> Option<&'static str> {
+    Some(match driver {
+        "mlx5_core" => "Mellanox ConnectX",
+        "mlx4_en" | "mlx4_core" => "Mellanox ConnectX-3",
+        "ice" => "Intel E810",
+        "i40e" => "Intel X710",
+        "ixgbe" => "Intel X520",
+        "igb" => "Intel I350",
+        "igc" => "Intel I225",
+        "e1000e" | "e1000" => "Intel Gigabit",
+        "bnxt_en" => "Broadcom NetXtreme-E",
+        "tg3" => "Broadcom NetXtreme",
+        "r8169" | "r8125" => "Realtek",
+        "atlantic" => "Aquantia AQtion",
+        "sfc" => "Solarflare",
+        "virtio_net" => "virtio",
+        _ => return None,
+    })
+}
+
+/// The network interfaces, loopback aside.
+fn nics() -> Vec<Nic> {
+    let addrs = if_addrs::get_if_addrs().unwrap_or_default();
+    let mut names: Vec<String> = Vec::new();
+    #[cfg(target_os = "linux")]
+    if let Ok(dir) = std::fs::read_dir("/sys/class/net") {
+        names.extend(
+            dir.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned()),
+        );
+    }
+    for a in &addrs {
+        if !names.contains(&a.name) {
+            names.push(a.name.clone());
+        }
+    }
+    let mut out: Vec<Nic> = names
+        .into_iter()
+        .filter(|n| !addrs.iter().any(|a| a.name == *n && a.is_loopback()) && n != "lo")
+        .map(|name| {
+            let ipv4 = addrs
+                .iter()
+                .filter(|a| a.name == name)
+                .filter_map(|a| match &a.addr {
+                    if_addrs::IfAddr::V4(v) => {
+                        Some(format!("{}/{}", v.ip, u32::from(v.netmask).count_ones()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            let mut n = Nic {
+                name,
+                ipv4,
+                ..Nic::default()
+            };
+            #[cfg(target_os = "linux")]
+            {
+                let dir = std::path::Path::new("/sys/class/net").join(&n.name);
+                let read = |f: &str| {
+                    std::fs::read_to_string(dir.join(f))
+                        .ok()
+                        .map(|s| s.trim().to_string())
+                };
+                n.mac = read("address").filter(|m| !m.is_empty() && m != "00:00:00:00:00:00");
+                n.mtu = read("mtu").and_then(|v| v.parse().ok());
+                n.up = read("operstate").map(|s| {
+                    s == "up" || (s == "unknown" && read("carrier").as_deref() == Some("1"))
+                });
+                // -1 (or unreadable) when there is no link.
+                n.speed = read("speed")
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .filter(|v| *v > 0 && n.up == Some(true))
+                    .map(|v| v as u32);
+                let driver = std::fs::read_link(dir.join("device/driver"))
+                    .ok()
+                    .and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()));
+                n.kind = Some(
+                    if dir.join("wireless").exists() || dir.join("phy80211").exists() {
+                        "wifi"
+                    } else if dir.join("device").exists() {
+                        "ethernet"
+                    } else {
+                        "virtual"
+                    },
+                );
+                n.model = driver.as_deref().and_then(driver_model).map(str::to_string);
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                n.up = (!n.ipv4.is_empty()).then_some(true);
+            }
+            n
+        })
+        .collect();
+    out.sort_by(|a, b| (a.ipv4.is_empty(), &a.name).cmp(&(b.ipv4.is_empty(), &b.name)));
+    out
 }
 
 /// The places Desktop Video installs its driver library.
@@ -653,8 +905,14 @@ pub fn detect() -> HardwareInfo {
         })
         .collect();
     interfaces.sort_by(|a, b| (a.loopback, &a.name).cmp(&(b.loopback, &b.name)));
+    let (cards, version, fake) = crate::decklink::detect();
     HardwareInfo {
-        desktop_video: found.is_some(),
+        decklink_cards: cards,
+        decklink_models: crate::decklink::MODELS,
+        decklink_fake: fake,
+        desktop_video_version: version,
+        nics: nics(),
+        desktop_video: found.is_some() || fake,
         desktop_video_path: found.map(|p| p.display().to_string()),
         decklink_support: cg_output::sdi::SUPPORTED,
         decklink_devices: devices.clone().unwrap_or_default(),
@@ -670,6 +928,58 @@ pub fn detect() -> HardwareInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hand_declared_cards_take_the_identity_of_the_detected_one() {
+        let cards = crate::decklink::group(&[]);
+        assert!(cards.is_empty());
+        let mut hw: HardwareConfig = serde_json::from_value(serde_json::json!({
+            "sdi": {
+                "cards": [{ "id": "card-1", "name": "Quad", "model": "quad2", "device": 0,
+                            "connectors": [{}, {}, {}, {}, {}, {}, {}, {}] }],
+                "outputs": [{ "id": "sdi-out-1", "name": "CG", "card": "card-1", "fill": 1, "key": 5,
+                              "mode": "externalKey" }]
+            }
+        }))
+        .unwrap();
+        // Before detection: device + connector, as declared.
+        assert_eq!(hw.sdi.cards[0].device_of(1), 1);
+        let detected = vec![crate::decklink::DetectedCard {
+            id: "7B10A04E".into(),
+            model_name: "DeckLink Quad 2".into(),
+            legacy_model: "quad2".into(),
+            connectors: 8,
+            devices: vec![0, 2, 4, 6, 1, 3, 5, 7],
+            ports: vec![crate::decklink::Port::Both; 8],
+            has_reference: true,
+            reference_locked: Some(true),
+            reference_kind: None,
+            reference_format: None,
+            interface: None,
+            topological_id: None,
+            persistent_id: None,
+            profile: None,
+            profiles: vec![],
+        }];
+        assert!(hw.link_detected(&detected));
+        let c = &hw.sdi.cards[0];
+        assert_eq!(c.persistent_id, "7B10A04E");
+        assert_eq!(c.model_name, "DeckLink Quad 2");
+        // SDI 2 is the third device Desktop Video lists.
+        assert_eq!(c.device_of(1), 2);
+        // The output keeps its devices (1 and 5), now on SDI 5 and SDI 7.
+        let o = &hw.sdi.outputs[0];
+        assert_eq!((o.fill, o.key), (4, Some(6)));
+        assert!(!hw.link_detected(&detected));
+        let mut o: cg_output::sdi::SdiConfig = serde_json::from_value(serde_json::json!({
+            "name": "CG", "device": 0, "hardware": "sdi-out-1"
+        }))
+        .unwrap();
+        hw.sdi.cards[0].genlock = true;
+        hw.sdi.cards[0].genlock_offset = -2;
+        hw.apply_sdi(&mut o);
+        assert_eq!((o.device, o.genlock, o.genlock_offset), (1, true, -2));
+    }
 
     fn flow() -> St2110Flow {
         St2110Flow {

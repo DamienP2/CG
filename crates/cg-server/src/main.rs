@@ -3,6 +3,7 @@ mod api;
 mod auth;
 mod config;
 mod datasources;
+mod decklink;
 mod engine;
 mod examples;
 mod firewall;
@@ -416,7 +417,26 @@ pub async fn serve(
     // Each iteration is one engine "cycle"; settings changes end the cycle
     // and the loop rebuilds everything with the new configuration.
     loop {
-        let config = config::ServerConfig::load(&data_dir);
+        let mut config = config::ServerConfig::load(&data_dir);
+        // The DeckLink cards as the driver lists them now: they take the
+        // profile of their mode first, then adopted cards follow their
+        // Desktop Video devices.
+        let hw = config.hardware.clone();
+        let (cards, _, _) = tokio::task::spawn_blocking(move || {
+            let found = decklink::detect();
+            if !found.2 && decklink::apply_profiles(&hw, &found.0) {
+                return decklink::detect();
+            }
+            found
+        })
+        .await
+        .unwrap_or_default();
+        if config.hardware.link_detected(&cards) {
+            config.normalize();
+            if let Err(e) = config.save(&data_dir) {
+                tracing::warn!("cannot save the DeckLink cards: {e}");
+            }
+        }
         perf.sync.set_domain(config.hardware.sync.ptp_domain);
         if hardware::write_ndi_settings(&data_dir, &config.hardware.network) && ndi_started() {
             tracing::warn!("NDI network settings changed: they apply when the server restarts");

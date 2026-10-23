@@ -47,6 +47,8 @@ pub struct PtpStatus {
     pub grandmaster: Option<String>,
     /// Offset from the master, in ns.
     pub offset_ns: Option<f64>,
+    /// Standard deviation of the last offsets read, in ns.
+    pub jitter_ns: Option<f64>,
     /// Following a grandmaster, within 10 µs.
     pub locked: bool,
 }
@@ -55,6 +57,8 @@ pub struct PtpStatus {
 pub struct Watch {
     status: Mutex<SyncStatus>,
     domain: AtomicU8,
+    /// The last PTP offsets read (for the jitter).
+    offsets: Mutex<std::collections::VecDeque<f64>>,
 }
 
 impl Default for Watch {
@@ -62,8 +66,19 @@ impl Default for Watch {
         Self {
             status: Mutex::default(),
             domain: AtomicU8::new(127),
+            offsets: Mutex::default(),
         }
     }
+}
+
+/// Standard deviation of the samples (None under 3).
+fn spread(samples: &std::collections::VecDeque<f64>) -> Option<f64> {
+    if samples.len() < 3 {
+        return None;
+    }
+    let n = samples.len() as f64;
+    let mean = samples.iter().sum::<f64>() / n;
+    Some((samples.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n).sqrt())
 }
 
 impl Watch {
@@ -81,9 +96,23 @@ impl Watch {
 
     fn check(&self) {
         let domain = self.domain.load(Ordering::Relaxed);
+        let mut ptp = ptp(domain);
+        {
+            let mut offsets = self.offsets.lock().unwrap_or_else(|e| e.into_inner());
+            match ptp.offset_ns {
+                Some(o) => {
+                    offsets.push_back(o);
+                    while offsets.len() > 12 {
+                        offsets.pop_front();
+                    }
+                }
+                None => offsets.clear(),
+            }
+            ptp.jitter_ns = spread(&offsets);
+        }
         let status = SyncStatus {
             ntp: ntp(),
-            ptp: ptp(domain),
+            ptp,
             checked_at: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map_or(0, |d| d.as_millis() as u64),
@@ -287,6 +316,7 @@ fn pmc(t: &str) -> PtpStatus {
         grandmaster: value("gmIdentity").map(str::to_string),
         port_state,
         offset_ns,
+        jitter_ns: None,
         locked,
     }
 }
@@ -294,6 +324,15 @@ fn pmc(t: &str) -> PtpStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn jitter_is_the_spread_of_the_offsets() {
+        let mut v: std::collections::VecDeque<f64> = [10.0, -10.0].into_iter().collect();
+        assert_eq!(spread(&v), None);
+        v.push_back(10.0);
+        v.push_back(-10.0);
+        assert_eq!(spread(&v), Some(10.0));
+    }
 
     #[test]
     fn chrony_tracking() {

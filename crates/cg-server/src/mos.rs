@@ -549,9 +549,15 @@ pub async fn serve(state: Shared) {
     if !cfg.enabled {
         return;
     }
+    // The MOS network role: one interface, else every one.
+    let role = &state.config.hardware.network.mos;
+    let ip = crate::hardware::interface_ip(role).unwrap_or(std::net::Ipv4Addr::UNSPECIFIED);
+    if !role.is_empty() && ip.is_unspecified() {
+        tracing::warn!("MOS interface `{role}` has no IPv4 address: listening on every interface");
+    }
     let mut tasks = Vec::new();
     for port in [cfg.lower_port, cfg.upper_port] {
-        match TcpListener::bind(("0.0.0.0", port)).await {
+        match TcpListener::bind((ip, port)).await {
             Ok(l) => {
                 tracing::info!(port, mos_id = cfg.mos_id, "MOS device listening");
                 tasks.push(tokio::spawn(accept_loop(state.clone(), l)));
