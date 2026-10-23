@@ -61,20 +61,6 @@ function pcg_selected() {
   return "OK:" + pcg_clean(media) + "\t" + c.start.seconds + "\t" + c.end.seconds + "\t" + sel[1];
 }
 
-/** The sequence markers, one per line: "start\tname\tcomments". */
-function pcg_markers() {
-  var s = app.project.activeSequence;
-  if (!s) return "ERR:Open a sequence first.";
-  var out = [];
-  var ms = s.markers;
-  var m = ms.getFirstMarker();
-  while (m) {
-    out.push(m.start.seconds + "\t" + pcg_clean(m.name) + "\t" + pcg_clean(m.comments));
-    m = ms.getNextMarker(m);
-  }
-  return "OK:" + out.join("\n");
-}
-
 /** The first video track above V1 with nothing between start and end (seconds); the top one when none is free. */
 function pcg_freeTrack(start, end) {
   var s = app.project.activeSequence;
@@ -133,18 +119,4 @@ function pcg_replaceSelected(path) {
   } catch (e) {}
   s.videoTracks[t].overwriteClip(item, start);
   return "OK:" + item.name + " updated on V" + (t + 1);
-}
-
-/** Saves the frame under the playhead as a PNG (Premiere 2019 and later; written a moment later). */
-function pcg_exportFrame(path) {
-  var s = app.project.activeSequence;
-  if (!s) return "ERR:Open a sequence first.";
-  try {
-    app.enableQE();
-    var qs = qe.project.getActiveSequence();
-    qs.exportFramePNG(s.CTI.timecode, path);
-    return "OK:" + path;
-  } catch (e) {
-    return "ERR:This Premiere cannot export a frame.";
-  }
 }

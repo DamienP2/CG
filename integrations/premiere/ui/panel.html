@@ -1,106 +1,102 @@
-<div id="update" class="update hidden"></div>
-<header class="head">
-  <svg class="logo" viewBox="72 -1510 1208 1530" aria-hidden="true"><path fill="#fff" transform="scale(1 -1)" d="M691 -20C1060 -20 1280 149 1280 432C1280 670 1113 814 825 877L696 907C563 937 476 981 476 1073C476 1156 549 1217 690 1217C832 1217 911 1154 921 1046H1260C1256 1322 1036 1510 691 1510C353 1510 111 1325 111 1049C111 825 267 696 524 637L682 600C845 563 923 518 923 433C923 338 833 273 687 273C526 273 419 347 411 492H72C78 148 318 -20 691 -20Z"/></svg>
-  <select id="project" title="Strata project"></select>
-  <span id="dot" class="dot" title="Not connected"></span>
-  <button id="toggleSettings" class="ib" title="Server">⚙</button>
-</header>
-
-<section id="settings" class="settings hidden">
-  <label>Server <input id="server" placeholder="http://strata-server:8080" /></label>
-  <label>API key <input id="key" type="password" placeholder="pcg_…" /></label>
-  <label>Folder <input id="folder" placeholder="Documents/Strata Renders" /></label>
-  <div class="end"><span id="about" class="about"></span><span class="sp"></span><button id="saveSettings" class="btn primary">Connect</button></div>
+<!-- 1 · Projects -->
+<section id="scr-projects" class="scr">
+  <header class="hd">
+    <span class="logo">S</span><b class="ttl">Strata Graphics</b><span class="sp"></span>
+    <span id="conn" class="conn"><i></i><span id="connTxt"></span></span>
+    <button id="gear" class="ib" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+    </button>
+  </header>
+  <div class="bar">
+    <input id="pSearch" class="grow" placeholder="Search projects…" />
+    <button id="syncNow" class="ib round" title="Sync now">⟳</button>
+  </div>
+  <div id="projects" class="list"></div>
+  <footer class="ft">
+    <span id="srvTxt" class="ell"></span><span class="sp"></span>
+    <span class="ft-l">Auto-sync</span><button id="autoSync" class="sw" title="Auto-sync"><i></i></button>
+  </footer>
 </section>
 
-<nav id="tabs" class="tabs hidden">
-  <button data-tab="graphics" class="on">Graphics</button>
-  <button data-tab="markers">From markers</button>
-  <button data-tab="renders">Renders <span id="running" class="n hidden"></span></button>
-</nav>
+<!-- 2 · Templates -->
+<section id="scr-templates" class="scr hidden">
+  <header class="hd">
+    <span class="logo">S</span><b id="projTitle" class="ttl"></b><span class="sp"></span>
+    <button class="back" data-go="projects">‹ Projects</button>
+  </header>
+  <div class="bar wrap">
+    <input id="tSearch" class="grow" placeholder="Search templates…" />
+    <div id="zones" class="chips"></div>
+  </div>
+  <div id="templates" class="list tgrid"></div>
+</section>
 
-<div id="editing" class="editing hidden"></div>
-
-<main id="body" class="body hidden">
-  <!-- Graphics -->
-  <div id="tab-graphics">
-    <section class="sec">
-      <input id="search" class="search" placeholder="Search a template" />
-      <div id="filters" class="chips"></div>
-      <div id="templates" class="grid"></div>
-    </section>
-    <div id="editor" class="hidden">
-      <section class="sec">
-        <div class="sec-h">
-          Preview<span class="sp"></span>
-          <div id="bgs" class="seg">
-            <button data-bg="frame" title="Over the frame under the playhead">Playhead</button>
-            <button data-bg="alpha" class="on">Alpha</button>
-            <button data-bg="black">Black</button>
-          </div>
-          <button id="safe" class="ib" title="Safe areas">▢</button>
+<!-- 3 · Clip -->
+<section id="scr-clip" class="scr hidden">
+  <header class="hd">
+    <span class="logo">S</span><b id="tplTitle" class="ttl"></b><span class="sp"></span>
+    <button id="backTpl" class="back" data-go="templates"></button>
+  </header>
+  <div class="clip">
+    <div class="col">
+      <div id="stillBox" class="still"><img id="still" alt="" /></div>
+      <div class="blk">
+        <div class="blk-h">
+          <span class="cap">Durations</span><span class="sp"></span>
+          <label class="tot"><span>Total</span><input id="total" type="number" min="0.1" max="300" step="0.1" /><i>s</i></label>
+          <button id="origin" class="pill"></button>
         </div>
-        <div id="pv" class="pv">
-          <div id="pvBg" class="pv-bg alpha"></div>
-          <iframe id="pvFrame" title="Preview"></iframe>
-          <div id="pvSafe" class="safe hidden"></div>
+        <div id="tl" class="tl">
+          <div id="ruler" class="ruler"></div>
+          <div id="track" class="track"></div>
+          <div id="labels" class="labels"></div>
         </div>
-        <div id="scrub" class="scrub"></div>
-        <div class="transport">
-          <button id="play" class="btn icon" title="Play">▶</button>
-          <span id="pvTc" class="tc"></span>
-        </div>
-        <div id="warn" class="warn hidden"></div>
-      </section>
-      <section class="sec">
-        <div class="sec-h">Values<span class="sp"></span><button id="reset" class="ib" title="Back to the template's values">↺</button></div>
-        <div id="fields"></div>
-      </section>
-      <section class="sec">
-        <div class="sec-h">Timing</div>
-        <div class="f">
-          <span>On air</span>
-          <div id="durModes" class="seg">
-            <button data-dur="value" class="on">Duration</button>
-            <button data-dur="inout" title="The sequence In and Out points">In → Out</button>
-            <button data-dur="clip" title="As long as the clip selected in the timeline">Selected clip</button>
-          </div>
-        </div>
-        <div id="holdRow" class="f"><span></span><div class="num"><input id="hold" type="number" min="0" step="0.5" value="5" /><i>s</i></div></div>
-        <div class="f"><span>Out anim.</span><button id="withOut" class="tog on"><i></i></button></div>
-        <div class="f"><span>Track</span><select id="track"></select></div>
-        <div id="sum" class="sum"></div>
-      </section>
+        <div id="ratio" class="ratio"></div>
+      </div>
+    </div>
+    <div class="col">
+      <div id="paramsCap" class="cap pad">Exposed parameters</div>
+      <div id="fields" class="fields"></div>
     </div>
   </div>
+  <footer class="ft act">
+    <button id="apply" class="btn primary">Apply to clip</button>
+    <button id="insert" class="btn ghost" title="Insert at playhead">Insert</button>
+  </footer>
+</section>
 
-  <!-- Markers -->
-  <div id="tab-markers" class="hidden">
-    <section class="sec">
-      <div class="sec-h">Sequence markers<span class="sp"></span><button id="reloadMarkers" class="ib" title="Read the markers again">↻</button></div>
-      <div id="markers"></div>
-    </section>
-    <section class="sec">
-      <div id="mapTitle" class="sec-h"></div>
-      <div id="map" class="map"></div>
-    </section>
-    <section class="sec">
-      <button id="batch" class="btn primary wide"></button>
-      <div id="batchMeta" class="meta"></div>
-    </section>
+<!-- 4 · Settings -->
+<section id="scr-settings" class="scr hidden">
+  <header class="hd">
+    <span class="logo">S</span><b class="ttl">Settings</b><span class="sp"></span>
+    <button class="back" data-go="projects">‹ Projects</button>
+  </header>
+  <div class="list set">
+    <div class="cap pad">Server</div>
+    <div class="rows">
+      <label class="row"><span class="lab">URL</span><input id="server" class="grow" placeholder="http://strata-server:8080" spellcheck="false" /></label>
+      <label class="row"><span class="lab">API key</span><input id="key" class="grow" type="password" placeholder="pcg_…" spellcheck="false" /><button id="paste" class="pill" type="button">Paste</button></label>
+      <div class="row"><button id="test" class="pill">Test connection</button><span id="testState" class="state ell"></span></div>
+    </div>
+    <div class="cap pad">Sync</div>
+    <div class="rows">
+      <div class="row">
+        <span class="lab">Auto-sync</span><button id="autoSync2" class="sw"><i></i></button>
+        <select id="every">
+          <option value="10">10 s</option>
+          <option value="30">30 s</option>
+          <option value="60">1 min</option>
+          <option value="300">5 min</option>
+        </select>
+      </div>
+      <div class="row"><span class="lab">Last</span><span id="lastAgo" class="val ell"></span><button id="syncNow2" class="pill">⟳ Now</button></div>
+    </div>
+    <div class="cap pad">Panel</div>
+    <div class="rows">
+      <div class="row"><span class="lab">Version</span><span id="ver" class="val ell"></span><span id="verState" class="state"></span></div>
+      <div class="row"><span class="lab"></span><button id="check" class="pill">Check for updates</button></div>
+    </div>
   </div>
+</section>
 
-  <!-- Renders -->
-  <div id="tab-renders" class="hidden"><div id="queue"></div></div>
-</main>
-
-<footer id="foot" class="foot hidden">
-  <div class="row">
-    <button id="insert" class="btn primary">↓ Insert at playhead</button>
-    <button id="toBin" class="btn" title="Render and import into the bin only">Bin</button>
-  </div>
-  <div id="meta" class="meta"></div>
-</footer>
-<div id="status" class="status"></div>
-
-
+<div id="toast" class="toast"></div>

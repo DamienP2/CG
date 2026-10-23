@@ -18,7 +18,7 @@
 (function () {
   'use strict';
 
-  var LOADER_VERSION = 2;
+  var LOADER_VERSION = 3;
   var UI_FILES = ['ui/panel.html', 'ui/panel.css', 'ui/panel.js', 'host/premiere.jsx'];
   var node = typeof require === 'function';
   var fs = node ? require('fs') : null;

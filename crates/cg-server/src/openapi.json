@@ -2005,7 +2005,7 @@
      "Post-production"
     ],
     "summary": "Render a graphic to a video file with alpha",
-    "description": "QuickTime (.mov), PNG codec with alpha (Premiere, After Effects, Resolve, Avid). The clip plays the template like on air: animation in, `hold` seconds on air, then the out animation (`includeOut`). The project format closest to width × height is used (9:16 sequences get the 9:16 layout). At most 300 s.\n\n**Rights:** everyone but viewers.",
+    "description": "QuickTime (.mov), PNG codec with alpha (Premiere, After Effects, Resolve, Avid). The clip plays the template like on air: animation in, `hold` seconds on air, then the out animation (`includeOut`), or the clip timeline given by `timing`. The project format closest to width × height is used (9:16 sequences get the 9:16 layout). At most 300 s.\n\n**Rights:** everyone but viewers.",
     "requestBody": {
      "required": true,
      "content": {
@@ -2047,6 +2047,30 @@
          "includeOut": {
           "type": "boolean",
           "default": true
+         },
+         "timing": {
+          "type": "object",
+          "description": "The clip's own timeline (the Premiere panel): the clip lasts `duration` seconds and leaves each stop of the template at the second given in `stops`. The stops are the template's pause markers and its on-air (out) marker, in frame order, one per frame. An animation with more time than it needs plays at its speed then holds on its stop; one with less is played faster. `hold` and `includeOut` are then not used.",
+          "required": [
+           "stops",
+           "duration"
+          ],
+          "properties": {
+           "stops": {
+            "type": "array",
+            "items": {
+             "type": "number"
+            },
+            "example": [
+             10,
+             20
+            ]
+           },
+           "duration": {
+            "type": "number",
+            "example": 30
+           }
+          }
          }
         }
        }
