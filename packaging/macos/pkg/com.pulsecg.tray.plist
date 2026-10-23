@@ -5,7 +5,7 @@
   <key>Label</key><string>com.pulsecg.tray</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Applications/Strata/Strata.app/Contents/MacOS/pulse-cg-tray</string>
+    <string>/Applications/Strata Graphics/Strata Graphics.app/Contents/MacOS/pulse-cg-tray</string>
     <string>--background</string>
   </array>
   <key>RunAtLoad</key><true/>

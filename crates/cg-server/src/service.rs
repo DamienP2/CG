@@ -100,7 +100,7 @@ mod imp {
         )?;
         let unit = format!(
             "[Unit]\n\
-             Description=Strata broadcast graphics server\n\
+             Description=Strata Graphics broadcast graphics server\n\
              After=network-online.target\n\
              Wants=network-online.target\n\n\
              [Service]\n\
@@ -297,8 +297,10 @@ mod imp {
     use super::*;
     use crate::paths::SERVICE_NAME;
 
-    const DISPLAY_NAME: &str = "Strata Server";
-    const FIREWALL_RULE: &str = "Pulse CG Server";
+    const DISPLAY_NAME: &str = "Strata Graphics Server";
+    const FIREWALL_RULE: &str = "Strata Graphics Server";
+    /// Rules an older install added under its former name.
+    const LEGACY_FIREWALL_RULES: [&str; 1] = ["Pulse CG Server"];
 
     fn manager(access: ServiceManagerAccess) -> Result<ServiceManager> {
         ServiceManager::local_computer(None::<&str>, access).context(
@@ -351,15 +353,17 @@ mod imp {
             actions: Some(vec![restart.clone(), restart.clone(), restart]),
         })?;
         // Let operators reach the web UI and outputs through Windows Firewall.
-        let _ = Command::new("netsh")
-            .args([
-                "advfirewall",
-                "firewall",
-                "delete",
-                "rule",
-                &format!("name={FIREWALL_RULE}"),
-            ])
-            .output();
+        for rule in std::iter::once(FIREWALL_RULE).chain(LEGACY_FIREWALL_RULES) {
+            let _ = Command::new("netsh")
+                .args([
+                    "advfirewall",
+                    "firewall",
+                    "delete",
+                    "rule",
+                    &format!("name={rule}"),
+                ])
+                .output();
+        }
         if let Err(e) = run(
             "netsh",
             &[
@@ -400,15 +404,17 @@ mod imp {
             }
         }
         svc.delete()?;
-        let _ = Command::new("netsh")
-            .args([
-                "advfirewall",
-                "firewall",
-                "delete",
-                "rule",
-                &format!("name={FIREWALL_RULE}"),
-            ])
-            .output();
+        for rule in std::iter::once(FIREWALL_RULE).chain(LEGACY_FIREWALL_RULES) {
+            let _ = Command::new("netsh")
+                .args([
+                    "advfirewall",
+                    "firewall",
+                    "delete",
+                    "rule",
+                    &format!("name={rule}"),
+                ])
+                .output();
+        }
         Ok(())
     }
 

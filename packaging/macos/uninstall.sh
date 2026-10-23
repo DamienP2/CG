@@ -12,7 +12,7 @@ USER_ID=$(stat -f %u /dev/console 2>/dev/null || echo 0)
 pkill -x pulse-cg-tray 2>/dev/null
 rm -f /Library/LaunchAgents/com.pulsecg.tray.plist
 
-rm -rf "/Applications/Strata" "/Applications/Pulse CG" "/Applications/Pulse CG.app"
+rm -rf "/Applications/Strata Graphics" "/Applications/Strata" "/Applications/Pulse CG" "/Applications/Pulse CG.app"
 rm -f /usr/local/bin/cg-server
 rm -rf /usr/local/pulse-cg
 pkgutil --forget com.pulsecg.server >/dev/null 2>&1

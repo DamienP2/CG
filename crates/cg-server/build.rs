@@ -11,6 +11,22 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=../../web/dist");
     examples(dir);
+    icon();
+}
+
+/// The Strata Graphics icon and name on the Windows executable (Task Manager, services).
+fn icon() {
+    #[cfg(windows)]
+    {
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon("../../assets/icons/pulse-cg.ico");
+        res.set("FileDescription", "Strata Graphics Server");
+        res.set("ProductName", "Strata Graphics");
+        if let Err(e) = res.compile() {
+            println!("cargo:warning=cannot embed the icon: {e}");
+        }
+    }
+    println!("cargo:rerun-if-changed=../../assets/icons/pulse-cg.ico");
 }
 
 /// The example projects: every `examples/ex-*.json` is embedded, in name

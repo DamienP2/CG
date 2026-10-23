@@ -89,7 +89,7 @@ fn alert(message: &str) {
     {
         let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
         let script = format!(
-            "display alert \"Strata\" message \"{}\" as critical",
+            "display alert \"Strata Graphics\" message \"{}\" as critical",
             esc(message)
         );
         let _ = Command::new("osascript").args(["-e", &script]).spawn();
@@ -99,7 +99,7 @@ fn alert(message: &str) {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let ps = format!(
-            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Strata', 'OK', 'Error')",
+            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Strata Graphics', 'OK', 'Error')",
             message.replace('\'', "''")
         );
         let _ = Command::new("powershell")
@@ -144,7 +144,9 @@ fn service(action: &'static str) {
             }
         };
         if let Err(e) = result {
-            alert(&format!("Could not {action} the Strata server.\n\n{e}"));
+            alert(&format!(
+                "Could not {action} the Strata Graphics server.\n\n{e}"
+            ));
         }
     });
 }
@@ -154,7 +156,7 @@ fn service(action: &'static str) {
 fn uninstall() {
     #[cfg(target_os = "macos")]
     let r = Command::new("open")
-        .arg("/Applications/Strata/Uninstall Strata.app")
+        .arg("/Applications/Strata Graphics/Uninstall Strata Graphics.app")
         .spawn();
     #[cfg(windows)]
     let r = Command::new("explorer.exe")
@@ -196,13 +198,13 @@ fn poll(proxy: EventLoopProxy<UserEvent>) {
                     name: j
                         .get("name")
                         .and_then(|n| n.as_str())
-                        .unwrap_or("Strata")
+                        .unwrap_or("Strata Graphics")
                         .to_string(),
                     port: port_from(&j, "bind").unwrap_or(port),
                 })
                 .unwrap_or(Status {
                     running: false,
-                    name: "Strata".into(),
+                    name: "Strata Graphics".into(),
                     port,
                 });
             if proxy.send_event(UserEvent::Status(status)).is_err() {
@@ -246,15 +248,15 @@ struct Items {
 impl Items {
     fn new() -> (Menu, Self) {
         let items = Self {
-            status: MenuItem::new("Strata — checking…", false, None),
+            status: MenuItem::new("Strata Graphics — checking…", false, None),
             designer: MenuItem::new("Open Designer", false, None),
             operator: MenuItem::new("Open Operator", false, None),
             settings: MenuItem::new("Server Settings…", false, None),
             output: MenuItem::new("Open HTML5 Output", false, None),
             restart: MenuItem::new("Restart Engine", false, None),
             start_stop: MenuItem::new("Start Server", true, None),
-            uninstall: MenuItem::new("Uninstall Strata…", true, None),
-            quit: MenuItem::new("Quit Strata", true, None),
+            uninstall: MenuItem::new("Uninstall Strata Graphics…", true, None),
+            quit: MenuItem::new("Quit Strata Graphics", true, None),
         };
         let menu = Menu::new();
         let _ = menu.append_items(&[
@@ -279,7 +281,7 @@ impl Items {
         let label = if s.running {
             format!("● {} — running on port {}", s.name, s.port)
         } else {
-            "○ Strata server is stopped".to_string()
+            "○ Strata Graphics server is stopped".to_string()
         };
         self.status.set_text(&label);
         for item in [
@@ -331,7 +333,7 @@ pub fn run() {
     let mut tray: Option<TrayIcon> = None;
     let mut status = Status {
         running: false,
-        name: "Strata".into(),
+        name: "Strata Graphics".into(),
         port: discover_port(),
     };
     let mut first_status = true;
@@ -346,7 +348,7 @@ pub fn run() {
                 let builder = TrayIconBuilder::new().with_icon_templated(icon());
                 #[cfg(windows)]
                 let builder = TrayIconBuilder::new().with_icon(icon());
-                let mut builder = builder.with_tooltip("Strata");
+                let mut builder = builder.with_tooltip("Strata Graphics");
                 if let Some(m) = menu.take() {
                     builder = builder.with_menu(Box::new(m));
                 }

@@ -63,10 +63,10 @@ else
   echo "warning: no ffmpeg to bundle (FFMPEG_DIR)"
 fi
 
-APPS="$WORK/root/Applications/Strata"
+APPS="$WORK/root/Applications/Strata Graphics"
 mkdir -p "$APPS"
-make_app "Strata" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
-make_app "Uninstall Strata" "$HERE/uninstaller/uninstall" uninstall "$HERE/uninstaller" "$ROOT/assets/icons/uninstall-macos-1024.png"
+make_app "Strata Graphics" "$TRAY" pulse-cg-tray "$HERE/app" "$ROOT/assets/icons/pulse-cg-macos-1024.png"
+make_app "Uninstall Strata Graphics" "$HERE/uninstaller/uninstall" uninstall "$HERE/uninstaller" "$ROOT/assets/icons/uninstall-macos-1024.png"
 
 mkdir -p "$WORK/root/Library/LaunchAgents"
 cp "$HERE/com.pulsecg.tray.plist" "$WORK/root/Library/LaunchAgents/"
@@ -78,8 +78,8 @@ if [ -n "${MACOS_APP_IDENTITY:-}" ]; then
   [ -f "$PAYLOAD/lib/libndi.dylib" ] && sign "$PAYLOAD/lib/libndi.dylib"
   [ -f "$PAYLOAD/bin/ffmpeg" ] && sign "$PAYLOAD/bin/ffmpeg"
   sign "$PAYLOAD/cg-server"
-  sign "$APPS/Strata.app"
-  sign "$APPS/Uninstall Strata.app"
+  sign "$APPS/Strata Graphics.app"
+  sign "$APPS/Uninstall Strata Graphics.app"
 fi
 
 # --- package ---------------------------------------------------------------------

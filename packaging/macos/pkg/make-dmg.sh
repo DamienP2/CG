@@ -36,12 +36,12 @@ iconutil -c icns "$WORK/icon.iconset" -o "$WORK/icon.icns"
 
 STAGE="$WORK/stage"
 mkdir -p "$STAGE"
-NAME="Install Strata $VERSION.pkg"
+NAME="Install Strata Graphics $VERSION.pkg"
 cp "$PKG" "$STAGE/$NAME"
 # Custom Finder icon on the package file.
 osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSWorkspace.sharedWorkspace.setIconForFileOptions(\$.NSImage.alloc.initWithContentsOfFile('$WORK/icon.icns'), '$STAGE/$NAME', 0)" >/dev/null
 
-retry hdiutil create -ov -quiet -fs HFS+ -volname "Strata $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
+retry hdiutil create -ov -quiet -fs HFS+ -volname "Strata Graphics $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
 mkdir -p "$WORK/mnt"
 retry hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$WORK/mnt" "$WORK/rw.dmg"
 cp "$WORK/icon.icns" "$WORK/mnt/.VolumeIcon.icns"
