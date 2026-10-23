@@ -5,18 +5,20 @@
  *  - Templates: a project's templates (still picture from the server, zone,
  *    duration), search and zone filters; + (or a drag to the sequence)
  *    inserts one as it is at the playhead.
- *  - Clip: one template. Its timeline in the clip: total duration, the
- *    on-air point (IN / OUT, one marker as in the Designer), the pauses, the
- *    end. A new total moves every marker proportionally; each one can then
- *    be dragged. Its exposed parameters, then Apply to the selected Strata
- *    clip or Insert at the playhead.
+ *  - Clip: one template. An animated preview (the server's HTML5 renderer,
+ *    /embed/preview) with play, loop and a playhead to scrub. Its timeline
+ *    in the clip: total duration, the on-air point (IN / OUT, one marker as
+ *    in the Designer), the pauses, the end. A new total moves every marker
+ *    proportionally; each one can then be dragged anywhere. Its exposed
+ *    parameters, then Insert at the playhead, or Update clip when a Strata
+ *    clip of this template is selected in the sequence.
  *  - Settings (gear of the Projects screen): server, API key, sync, version.
  *
  * The server renders the clip at the active sequence's size and frame rate
  * (QuickTime, PNG with alpha, POST /api/render with the clip timing) and the
  * panel lays it on the first free video track above V1. A clip keeps its
  * values in a sidecar file (<clip>.pcg.json): selecting it in the timeline
- * opens it here, and Apply to clip replaces it in place.
+ * opens it here, and Update clip replaces it in place.
  *
  * Written for CEP 9+ (Chromium 61): no optional chaining, no `??`.
  */
@@ -596,6 +598,10 @@
     if (side && side.timing && side.timing.stops && side.timing.stops.length === S.model.stops.length) S.timing = copyTiming(side.timing);
     else if (side && typeof side.hold === 'number') S.timing = timingFromHold(S.model, side.hold, side.withOut);
     else S.timing = copyTiming(S.origin);
+    pv.t = onAirTime();
+    pv.playing = false;
+    $('play').innerHTML = '▶';
+    $('play').classList.remove('on');
     show('clip');
   }
 
@@ -606,8 +612,9 @@
     $('backTpl').textContent = '‹ ' + S.project.name;
     $('origin').textContent = '↺ Origin ' + secs(S.origin.duration);
     renderFields();
+    loadPreview();
+    sizePreview();
     renderTimeline();
-    renderStill();
     renderBusy();
   }
 
@@ -674,9 +681,8 @@
     });
     $('track').innerHTML = h;
 
-    // Labels under the markers, on a second row when they would overlap.
-    var rows = [-1e9, -1e9];
-    var two = false;
+    // Labels under the markers, on more rows when they would overlap.
+    var rows = [];
     var labels = S.timing.stops
       .map(function (s, i) {
         var onair = i === m.onAir;
@@ -688,75 +694,226 @@
       })
       .map(function (l) {
         var left = Math.max(0, Math.min(W - l.w, l.x - l.w / 2));
-        var row = left >= rows[0] + 4 ? 0 : 1;
-        if (row === 1) two = true;
+        var row = 0;
+        while (row < rows.length && left < rows[row] + 4) row++;
         rows[row] = left + l.w;
         return '<span class="' + (l.onair ? 'onair' : 'pause') + '" style="left:' + left + 'px;top:' + row * 14 + 'px">' + l.html + '</span>';
       });
     $('labels').innerHTML = labels.join('');
-    $('labels').classList.toggle('two', two);
-    renderRatio();
+    $('labels').style.height = Math.max(1, rows.length) * 14 + 'px';
+    sendPreview();
   }
 
-  /** The original timing and the clip's, at the same scale. */
-  function renderRatio() {
-    var o = S.origin;
-    var c = S.timing;
-    var M = Math.max(o.duration, c.duration);
-    var bar = function (t) {
-      var w = (t.duration / M) * 100;
-      var on = t.stops[S.model.onAir];
-      var p = t.stops
-        .map(function (s, i) {
-          return i === S.model.onAir ? '' : '<i style="left:' + (s / t.duration) * 100 + '%"></i>';
-        })
-        .join('');
-      return '<span class="rbar" style="width:' + w + '%"><span class="in" style="width:' + (on / t.duration) * 100 + '%"></span>' + p + '</span>';
-    };
-    var r = c.duration / o.duration;
-    $('ratio').innerHTML =
-      '<div class="rrow"><b>' + secs(o.duration) + '</b><span class="rline">' + bar(o) + '</span></div>' + '<div class="rrow now"><b>×' + (Math.abs(r - 1) < 0.005 ? '1' : r.toFixed(2)) + '</b><span class="rline">' + bar(c) + '</span></div>';
-  }
-
+  /**
+   * Drags a marker (a stop's index, or 'end') anywhere on the clip. The
+   * stops keep their order: a marker pushes the ones it passes, and they go
+   * back where they were when it comes back. The end follows the last stop.
+   * Near the right edge the timeline zooms out, to make the clip longer.
+   */
   function startDrag(e, which) {
-    e.preventDefault();
-    var track = $('track');
-    var rect = track.getBoundingClientRect();
-    drag = { i: which === 'end' ? 'end' : +which, span: viewSpan(), rect: rect };
+    var rect = $('track').getBoundingClientRect();
+    var i = which === 'end' ? 'end' : +which;
+    var from = copyTiming(S.timing);
+    var t0 = i === 'end' ? from.duration : from.stops[i];
     var snap = 1 / (S.seq ? S.seq.fps : projectFps());
-    var move = function (ev) {
-      var t = ((ev.clientX - drag.rect.left) / drag.rect.width) * drag.span;
-      t = Math.round(t / snap) * snap;
-      var st = S.timing.stops;
-      if (drag.i === 'end') {
-        S.timing.duration = Math.max(Math.max(st[st.length - 1] || 0, snap), Math.min(MAX_SECONDS, t));
+    drag = { i: i, span: viewSpan(), x: e.clientX, cx: e.clientX };
+    var place = function () {
+      var t = t0 + ((drag.cx - drag.x) / rect.width) * drag.span;
+      t = Math.max(0, Math.min(MAX_SECONDS, Math.round(t / snap) * snap));
+      var st = from.stops.slice();
+      var end = from.duration;
+      if (i === 'end') {
+        end = Math.max(t, snap);
+        st = st.map(function (x) {
+          return Math.min(x, end);
+        });
       } else {
-        var lo = drag.i > 0 ? st[drag.i - 1] : 0;
-        var hi = drag.i < st.length - 1 ? st[drag.i + 1] : S.timing.duration;
-        st[drag.i] = Math.max(lo, Math.min(hi, t));
+        st = st.map(function (x, k) {
+          return k < i ? Math.min(x, t) : k > i ? Math.max(x, t) : t;
+        });
+        end = Math.max(end, t);
       }
+      S.timing = { stops: st, duration: end };
       renderTimeline();
     };
-    var up = function () {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+    var edge = setInterval(function () {
+      if (drag && drag.cx > rect.right - 6 && drag.span < MAX_SECONDS * 1.1) {
+        drag.span *= 1.04;
+        place();
+      }
+    }, 60);
+    trackPointer(e, function (ev) {
+      drag.cx = ev.clientX;
+      place();
+    }, function () {
+      clearInterval(edge);
       drag = null;
       renderTimeline();
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    });
     renderTimeline();
   }
 
-  var stillTimer = 0;
-  function renderStill() {
-    clearTimeout(stillTimer);
-    stillTimer = setTimeout(function () {
-      if (!S.template) return;
-      var img = $('still');
-      var url = thumbUrl(S.template, S.data);
-      if (img.getAttribute('src') !== url) img.src = url;
-    }, 300);
+  /**
+   * Follows the mouse until it is released: mouse events, which every CEP
+   * Chromium sends (pointer events are only used when the mouse ones are not).
+   */
+  function trackPointer(e, move, up) {
+    e.preventDefault();
+    var mouse = e.type === 'mousedown';
+    var mv = mouse ? 'mousemove' : 'pointermove';
+    var end = mouse ? 'mouseup' : 'pointerup';
+    var onMove = function (ev) {
+      ev.preventDefault();
+      move(ev);
+    };
+    var onUp = function (ev) {
+      window.removeEventListener(mv, onMove);
+      window.removeEventListener(end, onUp);
+      window.removeEventListener('blur', onUp);
+      up(ev);
+    };
+    window.addEventListener(mv, onMove);
+    window.addEventListener(end, onUp);
+    window.addEventListener('blur', onUp);
+  }
+
+  /** Clicks and drags on the ruler or the bar move the playhead. */
+  function startScrub(e) {
+    var rect = $('track').getBoundingClientRect();
+    var span = viewSpan();
+    var at = function (ev) {
+      setTime(((ev.clientX - rect.left) / rect.width) * span);
+    };
+    setPlaying(false);
+    at(e);
+    trackPointer(e, at, function () {});
+  }
+
+  // ---------------------------------------------------------------- preview
+
+  /**
+   * The template frame shown `t` seconds into the clip, as the server
+   * renders it (render.rs `ClipTiming::frame_at`): an animation with time to
+   * spare plays at its speed then holds on its stop, a shorter one plays
+   * faster. Null once the graphic has gone out.
+   */
+  function clipFrame(t) {
+    var m = S.model;
+    var c = S.timing;
+    var fromF = 0;
+    var fromT = 0;
+    for (var k = 0; k <= m.stops.length; k++) {
+      var last = k === m.stops.length;
+      var toF = last ? m.duration : m.stops[k].frame;
+      var toT = last ? c.duration : c.stops[k];
+      if (last || t < toT) {
+        var anim = (toF - fromF) / m.fps;
+        var len = toT - fromT;
+        var d = Math.max(0, t - fromT);
+        var f = len >= anim ? fromF + Math.min(d, anim) * m.fps : len > 0 ? fromF + Math.min(d / len, 1) * (toF - fromF) : toF;
+        return !last || f < m.duration - 1e-6 ? f : null;
+      }
+      fromF = toF;
+      fromT = toT;
+    }
+    return null;
+  }
+
+  /** When the graphic is fully on air (it reaches the IN / OUT point). */
+  function onAirTime() {
+    var m = S.model;
+    var k = m.onAir;
+    var fromT = k > 0 ? S.timing.stops[k - 1] : 0;
+    var anim = (m.stops[k].frame - (k > 0 ? m.stops[k - 1].frame : 0)) / m.fps;
+    return Math.min(S.timing.stops[k], fromT + anim);
+  }
+
+  var pv = { ready: false, page: '', loads: 0, playing: false, loop: store.get('loop', true), t: 0, last: 0 };
+
+  function setTime(t) {
+    pv.t = Math.max(0, Math.min(S.timing ? S.timing.duration : 0, t));
+    sendPreview();
+  }
+
+  function setPlaying(on) {
+    pv.playing = on;
+    if (on && pv.t >= S.timing.duration - 1e-3) pv.t = 0;
+    pv.last = 0;
+    $('play').innerHTML = on ? '❚❚' : '▶';
+    $('play').classList.toggle('on', on);
+    if (on) requestAnimationFrame(tick);
+  }
+
+  function tick(now) {
+    if (!pv.playing || S.screen !== 'clip' || !S.timing) return setPlaying(false);
+    if (pv.last) {
+      pv.t += (now - pv.last) / 1000;
+      if (pv.t >= S.timing.duration) {
+        if (pv.loop) pv.t = pv.t % S.timing.duration;
+        else {
+          pv.t = S.timing.duration;
+          sendPreview();
+          return setPlaying(false);
+        }
+      }
+      sendPreview();
+    }
+    pv.last = now;
+    requestAnimationFrame(tick);
+  }
+
+  /**
+   * The preview page of the server (the HTML5 renderer). Loaded again for
+   * another project: the page keeps the first project it read when two
+   * arrive out of order.
+   */
+  function loadPreview() {
+    var want = S.server + '|' + S.key + '|' + S.project.id;
+    if (pv.page === want) return;
+    pv.page = want;
+    pv.ready = false;
+    // A new address each time: never a page kept from before (it would not say it is ready).
+    $('pvFrame').src = S.server + '/embed/preview?key=' + enc(S.key) + '&project=' + enc(S.project.id) + '&n=' + ++pv.loads;
+  }
+
+  window.addEventListener('message', function (ev) {
+    if (ev.source !== $('pvFrame').contentWindow) return;
+    if (ev.data && ev.data.type === 'pcg-ready') {
+      pv.ready = true;
+      sendPreview();
+    }
+  });
+
+  /** The preview box at the sequence's (else the project's) shape. */
+  function sizePreview() {
+    var box = $('pv');
+    var w = (S.seq && S.seq.width) || (S.project && S.project.width) || 16;
+    var h = (S.seq && S.seq.height) || (S.project && S.project.height) || 9;
+    box.style.height = Math.round(Math.min(box.clientWidth * (h / w), 260)) + 'px';
+  }
+
+  function sendPreview() {
+    if (!S.template || !S.timing) return;
+    var t = Math.min(pv.t, S.timing.duration);
+    var x = (t / viewSpan()) * 100;
+    $('ph').style.left = x + '%';
+    $('pvTc').textContent = t.toFixed(2) + ' / ' + S.timing.duration.toFixed(2) + ' s';
+    var f = clipFrame(t);
+    var frame = $('pvFrame');
+    frame.style.visibility = f === null ? 'hidden' : '';
+    if (!pv.ready || f === null || !frame.contentWindow) return;
+    frame.contentWindow.postMessage(
+      {
+        type: 'pcg-preview',
+        projectId: S.project.id,
+        templateId: S.template.id,
+        data: S.data,
+        frame: f,
+        width: S.seq ? S.seq.width : undefined,
+        height: S.seq ? S.seq.height : undefined,
+      },
+      '*',
+    );
   }
 
   function renderFields() {
@@ -796,7 +953,7 @@
     var v = S.data[f.key] == null ? '' : String(S.data[f.key]);
     var set = function (x) {
       S.data[f.key] = x;
-      renderStill();
+      sendPreview();
     };
     var el;
     if (f.options && f.options.length) {
@@ -953,11 +1110,13 @@
     return chain;
   }
 
+  /** A Strata clip of this template selected in the sequence: Update clip, else Insert. */
   function renderBusy() {
-    var a = $('apply');
-    a.disabled = !S.editing || !S.template;
-    a.classList.toggle('busy', !!S.busy.apply);
-    $('insert').classList.toggle('busy', !!S.busy.insert);
+    var editing = !!(S.editing && S.template && S.editing.templateId === S.template.id && S.editing.projectId === S.project.id);
+    var u = $('update');
+    u.classList.toggle('hidden', !editing);
+    u.classList.toggle('busy', !!S.busy.update);
+    $('insert').className = 'btn ' + (editing ? 'ghost' : 'primary') + (S.busy.insert ? ' busy' : '');
     [].forEach.call(document.querySelectorAll('[data-add]'), function (b) {
       b.classList.toggle('busy', !!S.busy['add:' + b.getAttribute('data-add')]);
     });
@@ -1021,7 +1180,8 @@
     }, 'add:' + t.id);
   }
 
-  function apply() {
+  /** Renders the clip again and puts it in place of the selected Strata clip. */
+  function update() {
     if (!S.template || !S.editing || !needNode()) return;
     var p = S.project;
     var t = S.template;
@@ -1034,7 +1194,7 @@
           function (file) {
             return evalScript('pcg_replaceSelected(' + jsx(file) + ')');
           },
-          'apply',
+          'update',
         );
       })
       .catch(function (e) {
@@ -1066,7 +1226,7 @@
         try {
           side = node && p[0] && fs.existsSync(p[0] + '.pcg.json') ? JSON.parse(fs.readFileSync(p[0] + '.pcg.json', 'utf8')) : null;
         } catch (e) {}
-        S.editing = side ? { media: p[0] } : null;
+        S.editing = side ? { media: p[0], projectId: side.projectId, templateId: side.templateId } : null;
         renderBusy();
         if (!side) return;
         var open = function (project) {
@@ -1240,10 +1400,22 @@
     }
   });
 
-  $('track').addEventListener('pointerdown', function (e) {
+  // Markers drag, the ruler and the bar scrub (mouse events: every CEP Chromium).
+  $('tl').addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
     var mk = e.target.closest('[data-mk]');
     if (mk) startDrag(e, mk.getAttribute('data-mk'));
+    else if (e.target.closest('#ruler, #track')) startScrub(e);
   });
+  $('play').onclick = function () {
+    setPlaying(!pv.playing);
+  };
+  $('loop').classList.toggle('on', pv.loop);
+  $('loop').onclick = function () {
+    pv.loop = !pv.loop;
+    store.set('loop', pv.loop);
+    this.classList.toggle('on', pv.loop);
+  };
 
   $('pSearch').oninput = function () {
     S.q = this.value;
@@ -1267,7 +1439,7 @@
     S.timing = copyTiming(S.origin);
     renderTimeline();
   };
-  $('apply').onclick = apply;
+  $('update').onclick = update;
   $('insert').onclick = insert;
   $('gear').onclick = function () {
     show('settings');
@@ -1344,7 +1516,10 @@
   });
 
   window.addEventListener('resize', function () {
-    if (S.screen === 'clip') renderTimeline();
+    if (S.screen === 'clip') {
+      sizePreview();
+      renderTimeline();
+    }
   });
   // Back in the panel: the sequence may have changed.
   window.addEventListener('focus', function () {

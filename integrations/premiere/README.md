@@ -10,15 +10,16 @@ L'écran d'accueil liste les projets du serveur, synchronisés en continu (badge
 
 ## Templates
 
-Les templates du projet : image fixe rendue par le serveur (`/api/projects/{id}/templates/{tid}/thumbnail.png`, au point d'antenne), nom, zone, durée (∞ quand le graphique tient à l'antenne jusqu'au Take out). Recherche et filtres par zone. **+** (ou un glisser vers la séquence) pose le template tel quel à la tête de lecture. Un clic ouvre le clip.
+Les templates du projet : image fixe rendue par le serveur (`/api/projects/{id}/templates/{tid}/thumbnail.png`, au point d'antenne), nom, zone, durée du clip. Recherche et filtres par zone. **+** (ou un glisser vers la séquence) pose le template tel quel à la tête de lecture. Un clic ouvre le clip.
 
 ## Le clip
 
+- Un **aperçu animé** (le moteur HTML5 du serveur, `/embed/preview`) avec lecture, boucle et une tête de lecture : un clic ou un glisser sur la règle ou la barre s'y place. Il montre le graphique avec les valeurs saisies et la timeline du clip, comme il sera rendu.
 - **Total** (durée totale) en tête du bloc Durations. La changer déplace tous les marqueurs proportionnellement (60 → 30 s : pause 20 → 10, in/out 40 → 20) ; chaque poignée reste ensuite libre.
 - **↺ Origin** remet la durée et tous les marqueurs aux valeurs du template.
-- La timeline du clip, comme dans le Designer : un seul marqueur **IN / OUT** (le point d'antenne : vert avant, rouge après), les **pauses** (losanges orange), la **fin** (trait violet), la règle, et un rappel de l'original et du clip (×ratio).
+- La timeline du clip, comme dans le Designer : un seul marqueur **IN / OUT** (le point d'antenne : vert avant, rouge après), les **pauses** (losanges orange), la **fin** (trait violet), la règle. Chaque marqueur se glisse n'importe où : il pousse ceux qu'il dépasse (ils reviennent s'il repart en arrière), la fin suit ; contre le bord droit, la timeline s'élargit pour allonger le clip.
 - Chaque marqueur est l'instant où le graphique **repart** de cet arrêt. Une animation qui a plus de temps qu'il ne lui en faut joue à sa vitesse puis tient sur l'arrêt ; une animation qui en a moins est accélérée (`timing` de `POST /api/render`).
-- Les **paramètres exposés** du template, puis **Apply to clip** (remplace le clip Strata sélectionné, à la même place et sur la même piste) ou **Insert** (à la tête de lecture, sur la première piste vidéo libre au-dessus de V1).
+- Les **paramètres exposés** du template, puis **Insert** (à la tête de lecture, sur la première piste vidéo libre au-dessus de V1). Quand un clip Strata est sélectionné dans la séquence, le panneau l'ouvre et le bouton principal devient **Update clip** (le clip est rendu à nouveau et remplacé, à la même place et sur la même piste).
 
 Le serveur rend le clip au format et à la cadence de la séquence (QuickTime, codec PNG avec couche alpha). Un graphique identique déjà rendu est réutilisé. Si la séquence est verticale (9:16), c'est la mise en page 9:16 du projet qui est utilisée, à condition qu'elle existe.
 

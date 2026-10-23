@@ -482,20 +482,48 @@ textarea:focus {
 .col {
   min-width: 0;
 }
-.still {
+.pv {
   position: relative;
+  height: 150px;
+  overflow: hidden;
+  background-color: #0e1018;
+  background-image: linear-gradient(45deg, #161925 25%, transparent 25%, transparent 75%, #161925 75%), linear-gradient(45deg, #161925 25%, transparent 25%, transparent 75%, #161925 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+.pv iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+.transport {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 120px;
+  gap: 6px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--line);
-  background: radial-gradient(ellipse at center, var(--panel-2), #0e1018);
-  overflow: hidden;
 }
-.still img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+.transport .ib {
+  width: 26px;
+  height: 26px;
+  font-size: 11px;
+}
+.transport .ib.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+.tc {
+  margin-left: auto;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
 }
 .blk {
   padding: 10px 12px 4px;
@@ -594,9 +622,9 @@ textarea:focus {
 .mk {
   position: absolute;
   top: 18px;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  width: 24px;
+  height: 34px;
+  margin: -17px 0 0 -12px;
   display: grid;
   place-items: center;
   cursor: ew-resize;
@@ -643,9 +671,6 @@ textarea:focus {
   position: relative;
   height: 14px;
 }
-.labels.two {
-  height: 28px;
-}
 .labels span,
 .endlab {
   position: absolute;
@@ -671,59 +696,29 @@ textarea:focus {
   top: 0;
   color: var(--accent);
 }
-.ratio {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 8px 0 6px;
-}
-.rrow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.rrow b {
-  flex: none;
-  width: 44px;
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--text-3);
-  text-align: right;
-}
-.rrow.now b {
-  color: var(--accent-2);
-}
-.rline {
-  position: relative;
-  flex: 1;
-  height: 4px;
-}
-.rbar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 99px;
-  overflow: hidden;
-  background: var(--live);
-  opacity: 0.55;
-}
-.rrow.now .rbar {
-  opacity: 0.9;
-}
-.rbar .in {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: var(--pvw);
-}
-.rbar i {
+.ph {
   position: absolute;
   top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--warn);
+  height: 50px;
+  width: 0;
+  border-left: 1.5px solid #fff;
+  pointer-events: none;
+  z-index: 3;
+}
+.ph::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 0;
+  height: 0;
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  border-top: 6px solid #fff;
+}
+.ruler,
+.track {
+  cursor: text;
 }
 
 /* parameters */
@@ -903,7 +898,5 @@ textarea:focus {
     border-left: 1px solid var(--line);
     min-height: 100%;
   }
-  .still {
-    height: 150px;
-  }
+
 }

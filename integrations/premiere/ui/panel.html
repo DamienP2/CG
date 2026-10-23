@@ -39,7 +39,12 @@
   </header>
   <div class="clip">
     <div class="col">
-      <div id="stillBox" class="still"><img id="still" alt="" /></div>
+      <div id="pv" class="pv"><iframe id="pvFrame" title="" tabindex="-1"></iframe></div>
+      <div class="transport">
+        <button id="play" class="ib" title="Play">▶</button>
+        <button id="loop" class="ib on" title="Loop">⟲</button>
+        <span id="pvTc" class="tc"></span>
+      </div>
       <div class="blk">
         <div class="blk-h">
           <span class="cap">Durations</span><span class="sp"></span>
@@ -50,8 +55,8 @@
           <div id="ruler" class="ruler"></div>
           <div id="track" class="track"></div>
           <div id="labels" class="labels"></div>
+          <div id="ph" class="ph"></div>
         </div>
-        <div id="ratio" class="ratio"></div>
       </div>
     </div>
     <div class="col">
@@ -60,8 +65,8 @@
     </div>
   </div>
   <footer class="ft act">
-    <button id="apply" class="btn primary">Apply to clip</button>
-    <button id="insert" class="btn ghost" title="Insert at playhead">Insert</button>
+    <button id="update" class="btn primary hidden">Update clip</button>
+    <button id="insert" class="btn primary" title="Insert at playhead">Insert</button>
   </footer>
 </section>
 
