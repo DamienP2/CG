@@ -69,6 +69,10 @@ export const operator: Record<string, string> = {
   'no zone': 'aucune zone',
   'missing template': 'modèle manquant',
   'next {n} s': 'suivant après {n} s',
+  // Shared transport (widget kit)
+  '▶ Play': '▶ Lecture',
+  'From the top': 'Depuis le début',
+  '{name} is on air: start again from the top?': '{name} est à l’antenne : repartir du début ?',
   // Auto next editor
   'Next': 'Suivant',
   'The operator takes the next graphic': 'L’opérateur envoie l’habillage suivant',

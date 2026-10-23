@@ -641,6 +641,63 @@ export function Btns({ list, label }: { list: (BtnSpec | false | null | undefine
   return label === undefined ? row : <Row label={label}>{row}</Row>;
 }
 
+/** The ONE play / pause button of a layer (validated grammar): fixed width so nothing
+ *  moves under the finger; the colour tells the state (green start · amber pause · violet resume). */
+export function PlayToggle({ state, media, disabled, confirm, onStart, onPause, onResume }: { state: 'stop' | 'run' | 'pause' | 'ended'; media?: boolean; disabled?: boolean; confirm?: string; onStart: () => void; onPause: () => void; onResume: () => void }) {
+  const m =
+    state === 'run'
+      ? { cls: 'amber', label: t('❚❚ Pause'), on: onPause }
+      : state === 'pause'
+        ? { cls: 'violet', label: t('▶ Resume'), on: onResume }
+        : { cls: 'green', label: media ? t('▶ Play') : t('▶ Start'), on: onStart };
+  return (
+    <button
+      className={`opx-btn wk-btn wk-tog ${m.cls}`}
+      disabled={disabled}
+      title={`${m.label.replace(/^[▶❚\s]+/, '')} · P`}
+      onClick={async () => {
+        if (confirm && !(await confirmDialog({ title: confirm, confirm: t('Yes') }))) return;
+        m.on();
+      }}
+    >
+      <span>{m.label}</span>
+      <kbd className="kc">P</kbd>
+    </button>
+  );
+}
+
+/** A thin vertical rule between the control groups of a bar. */
+export const Sep = () => <span className="wk-sep" aria-hidden="true" />;
+
+/** The standard transport of a layer: ⏮? · Toggle · ⏭? · end of list? · ↺? · ⟲?.
+ *  Icons are 30 px pills, their key lives in the tooltip; confirmations fire only on air (`item`). */
+export function Transport(p: { state: 'stop' | 'run' | 'pause' | 'ended'; media?: boolean; item?: unknown; name?: string; disabled?: boolean; onStart: () => void; onPause: () => void; onResume: () => void; top?: () => void; next?: { onClick: () => void; disabled?: boolean; title?: string }; end?: { label: string; title?: string; onClick: () => void; disabled?: boolean; cls?: string }; reset?: () => void; restart?: () => void }) {
+  const press = (action: () => void, confirmMsg?: string) => async () => {
+    if (confirmMsg && !(await confirmDialog({ title: confirmMsg, confirm: t('Yes') }))) return;
+    action();
+  };
+  const onAir = (msg: string) => (p.item ? msg : undefined);
+  const sq = (glyph: string, title: string, onClick: () => void, confirmMsg?: string, disabled?: boolean) => (
+    <button className="opx-btn wk-btn sq" title={title} disabled={disabled} onClick={press(onClick, confirmMsg)}>
+      <span className="wk-g">{glyph}</span>
+    </button>
+  );
+  return (
+    <div className="wk-btns">
+      {p.top && sq('⏮', `${t('From the top')} · S`, p.top, onAir(t('{name} is on air: start again from the top?', { name: p.name ?? '' })))}
+      <PlayToggle state={p.state} media={p.media} disabled={p.disabled} onStart={p.onStart} onPause={p.onPause} onResume={p.onResume} />
+      {p.next && sq('⏭', p.next.title ?? `${t('Next')} · →`, p.next.onClick, undefined, p.next.disabled)}
+      {p.end && (
+        <button className={`opx-btn wk-btn ${p.end.cls ?? ''}`} title={p.end.title} disabled={p.end.disabled} onClick={p.end.onClick}>
+          <span>{p.end.label}</span>
+        </button>
+      )}
+      {p.reset && sq('↺', `${t('Reset')} · X`, p.reset, onAir(t('{name} is on air: reset it to its start value?', { name: p.name ?? '' })))}
+      {p.restart && sq('⟲', `${t('Restart')} · T`, p.restart, onAir(t('{name} is on air: start it again from its start value?', { name: p.name ?? '' })))}
+    </div>
+  );
+}
+
 export interface ListField {
   key: string;
   placeholder?: string;

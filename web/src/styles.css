@@ -9142,26 +9142,87 @@ body.cv-moving * {
   border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
   box-shadow: inset 0 -2px 0 color-mix(in srgb, currentColor 20%, transparent);
 }
-.wk-btn.big .kc {
-  min-width: 26px;
-  height: 24px;
-  font-size: 14px;
+/* ---- Validated grammar (D2/D3): a layer's ANIMATION controls are outlined pills, one height.
+   Filled squares stay the ON-AIR family (Take / Continue / Out / Next / Update). ---- */
+.opx-btn.wk-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-2);
+  background: color-mix(in srgb, currentColor 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 36%, transparent);
 }
-.wk-btn.big {
-  height: 42px;
-  padding: 0 18px;
-  font-size: 13px;
+.opx-btn.wk-btn:hover:not(:disabled) {
+  filter: none;
+  background: color-mix(in srgb, currentColor 15%, transparent);
 }
-.wk-btn.huge {
-  height: 60px;
-  min-width: 60px;
-  font-size: 22px;
-  font-weight: 900;
-  justify-content: center;
+.opx-btn.wk-btn.green {
+  color: var(--pvw);
 }
-.wk-btn.ghost {
+.opx-btn.wk-btn.amber {
+  color: var(--warn);
+}
+.opx-btn.wk-btn.violet {
+  color: var(--accent);
+}
+.opx-btn.wk-btn.red {
+  color: var(--live);
+}
+.opx-btn.wk-btn.ghost {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--op-4);
+}
+.wk-btn.big {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+.wk-btn.huge {
+  height: 30px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  justify-content: center;
+}
+.wk-btn.sq {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+.wk-btn .wk-g {
+  font-size: 15px;
+  line-height: 1;
+}
+.wk-btn .kc,
+.wk-btn.big .kc {
+  min-width: 18px;
+  height: 17px;
+  padding: 0 4px;
+  font-size: 11px;
+  box-shadow: none;
+}
+/* The one play / pause toggle: fixed width, the key pinned at the same spot. */
+.wk-tog {
+  width: 150px;
+}
+.wk-tog > span {
+  flex: 1;
+  text-align: left;
+}
+.wk-tog .kc {
+  margin-left: auto;
+}
+.wk-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--op-4);
+  flex: none;
+  align-self: center;
 }
 .wk-list {
   display: flex;
@@ -12977,6 +13038,50 @@ a.lib-nav-item {
 .wk-oprow .opx-sq:disabled {
   opacity: 0.35;
   cursor: default;
+}
+/* Compact chips are pills too (the ANIMATION family), everywhere a widget row lives. */
+.wk-oprow .opx-sq,
+.opx-wbar .opx-sq,
+.opx-spec .opx-sq,
+.wk-op .opx-sq {
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent);
+  color: var(--text-2);
+}
+.wk-oprow .opx-sq.tagged {
+  font: 600 11px/1 var(--ui, inherit);
+  padding: 0 10px;
+}
+.wk-oprow .opx-sq.green,
+.opx-wbar .opx-sq.green,
+.opx-spec .opx-sq.green,
+.wk-op .opx-sq.green {
+  color: var(--pvw);
+}
+.wk-oprow .opx-sq.amber,
+.opx-wbar .opx-sq.amber,
+.opx-spec .opx-sq.amber,
+.wk-op .opx-sq.amber {
+  color: var(--warn);
+}
+.wk-oprow .opx-sq.violet,
+.opx-wbar .opx-sq.violet,
+.opx-spec .opx-sq.violet,
+.wk-op .opx-sq.violet {
+  color: var(--accent);
+}
+.wk-oprow .opx-sq.red,
+.opx-wbar .opx-sq.red,
+.opx-spec .opx-sq.red,
+.wk-op .opx-sq.red {
+  color: var(--live);
+}
+.wk-oprow .opx-sq.on,
+.opx-wbar .opx-sq.on,
+.opx-spec .opx-sq.on,
+.wk-op .opx-sq.on {
+  color: var(--accent);
 }
 /* A slider and its number field (kit SliderNum). */
 .wk-slnum {
