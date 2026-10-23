@@ -3,16 +3,16 @@
 // (crates/cg-core/src/wid/timer.rs); actions in crates/cg-core/src/wid/timer.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { Flag, Minus, Pause, Play, Plus, RotateCcw, Timer, Undo2 } from 'lucide-react';
+import { Timer } from 'lucide-react';
 import { col, cssColor, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
 import type { Data, Layer, FontStyle } from '../engine/types';
 import { FontControls, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Note, Num, Readout, Row, Section, Seg, Select, Sep, Text, Toggle, Transport, useFrame, useKeys, type Warning } from './kit';
 import * as T from './timer-fmt';
-import { OpField, OpLine } from './table-text';
+import { OpBar, SetField } from './opbar';
 import { t, tc } from '../i18n';
 
 export type Config = T.Config;
@@ -757,194 +757,6 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
 
 // ------------------------------------------------------------- operator --
 
-const LIGHT = { ok: '#22c55e', warn: '#f59e0b', err: '#ff3b5c', idle: '#6b7290' };
-const chip = (txt: string, c: string) => <span style={{ font: '800 10.5px Inter, system-ui, sans-serif', letterSpacing: '.08em', padding: '3px 8px', borderRadius: 10, background: `${c}26`, color: c, border: `1px solid ${c}66` }}>{txt}</span>;
-
-function statusOf(e: T.Eff, r: T.Run, now: number, tz: string): [string, string] {
-  const val = T.value(e, r, now, tz);
-  const raw = T.rawValue(e, r, now, tz);
-  if (!T.started(e, r) || (e.legacy && e.manualStart && r.startedAt === now)) return e.start === 'manual' || e.legacy ? ['READY', '#6b7290'] : ['ARMED', '#38bdf8'];
-  if (r.pausedAt != null) {
-    if (val?.limit) return ['LIMIT', '#facc15'];
-    if (e.mode === 'countdown' && raw != null && raw <= 0) return ['ZERO', '#ff3b5c'];
-    return ['PAUSED', '#f59e0b'];
-  }
-  if (val?.limit) return ['LIMIT', '#facc15'];
-  if (val?.over) return ['OVERRUN', '#ff3b5c'];
-  if (e.mode === 'countdown' && raw != null && raw <= 0) return [e.atZero === 'restart' && !e.cdTime ? 'LOOPING' : 'ZERO', '#ff3b5c'];
-  return ['RUNNING', '#22c55e'];
-}
-
-/** A time of day in a zone, HH:mm:ss. */
-const hmsIn = (ms: number, z: T.ZoneSel, tz: string) => {
-  const c = T.compAt(ms, z, tz);
-  return `${String(c.h).padStart(2, '0')}:${String(c.mi).padStart(2, '0')}:${String(c.s).padStart(2, '0')}`;
-};
-/** Whole seconds of a value as shown (a countdown rounds up). */
-const wholeSecs = (e: T.Eff, ms: number) => Math.max(0, e.mode === 'countdown' ? Math.ceil(ms / 1000 - 1e-6) : Math.floor(ms / 1000));
-
-const fmtClock = (ms: number, tz: string) => {
-  const c = T.compAt(ms, T.zoneNamed(''), tz);
-  return `${String(c.h).padStart(2, '0')}:${String(c.mi).padStart(2, '0')}:${String(c.s).padStart(2, '0')}`;
-};
-
-function Operator({ layer, state, data, act, item, time }: { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string } }) {
-  useFrame();
-  const [input, setInput] = useState('');
-  const [err, setErr] = useState('');
-  const inp = useRef<HTMLInputElement>(null);
-  const serverOffset = useApp((s) => s.serverOffset) ?? 0;
-  const got = useRef({ age: time.ageSecs, at: Date.now() });
-  if (got.current.age !== time.ageSecs) got.current = { age: time.ageSecs, at: Date.now() };
-  const now = Date.now() + (item ? serverOffset : 0);
-  const e = T.eff(layer, data);
-  const st = state as State | undefined;
-  const tz = time.defaultTz;
-  const fps = (time as { fps?: number }).fps ?? 25;
-  const onAir = !!item;
-  const ageMs = got.current.age * 1000 + (Date.now() - got.current.at);
-  const r = T.run(e, st, now, ageMs, tz);
-  const tgt = T.isTarget(e);
-  const isTimed = T.timed(e);
-  const paused = r.pausedAt != null;
-  const st0 = T.started(e, r);
-  const confirmReset = async () => {
-    if (onAir && !(await confirmDialog({ title: t('{name} is on air: reset it to its start value?', { name: layer.name }), confirm: t('Reset') }))) return;
-    act('reset');
-  };
-  const set = () => {
-    const p = tgt ? T.parseTarget(input) : T.parseDur(input);
-    if ('err' in p) return setErr(p.err);
-    if (!tgt && e.mode === 'stopwatch' && e.c.swLimitOn && 'ms' in p && p.ms > e.c.swLimit) return setErr(t('{value} is above the limit {limit}', { value: T.plainDur(p.ms), limit: T.plainDur(e.c.swLimit) }));
-    act('set', { value: input.trim() });
-    setErr('');
-    setInput('');
-  };
-  const adj = (s: number) => act('adjust', { seconds: s });
-  // Space stays the Operator's CONTINUE; the value is typed in the row.
-  useKeys(
-    isTimed
-      ? {
-          s: () => act('start'),
-          p: () => (paused ? act('resume') : !tgt && act('pause')),
-          x: () => void confirmReset(),
-          t: () => !tgt && act('restart'),
-          l: () => e.mode === 'stopwatch' && act('split'),
-          '1': () => adj(-10),
-          '2': () => adj(-1),
-          '3': () => adj(1),
-          '4': () => adj(10),
-          '5': () => adj(60),
-        }
-      : {},
-  );
-  const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 12px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--line-2, var(--line))' };
-  const big: CSSProperties = { font: '800 46px/1.05 var(--mono, monospace)', letterSpacing: '.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
-  const api = (op: string) => `API: POST /api/channels/{id}/command {action:'act', target:'${layer.name}', op:'${op}'}`;
-  const [prefix, suffix] = T.affixes(e.c, data);
-  if (!isTimed) {
-    const txt =
-      e.c.cities && e.c.cityList.length ? e.c.cityList.map((ct) => `${ct.label || ct.zone || t('Server')} ${T.segText(T.display(e, st, { now, ageMs, fps, defaultTz: tz }, T.zoneNamed(ct.zone)).segs, e.c.sep)}`).join(' · ') : T.segText(T.display(e, st, { now, ageMs, fps, defaultTz: tz }).segs, e.c.sep);
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={box}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontWeight: 600, fontSize: 12 }}>
-            <span style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: LIGHT.ok, boxShadow: `0 0 0 4px ${LIGHT.ok}33, 0 0 10px ${LIGHT.ok}` }} />
-            <span>{e.c.fine ? t("Server clock (the engine's system time) · fine offset {offset}", { offset: `${e.c.fine > 0 ? '+' : ''}${e.c.fine} ${e.c.fineUnit === 'f' ? 'fr' : 's'}` }) : t("Server clock (the engine's system time)")}</span>
-          </div>
-          <div style={{ ...big, fontSize: 30 }}>{txt}</div>
-        </div>
-        <Note>{e.mode === 'clock' ? t('The clock runs by itself: no transport control, only the time source status.') : t('The date runs by itself: no transport control, only the time source status.')}</Note>
-      </div>
-    );
-  }
-  const d = T.display(e, st, { now, ageMs, fps, defaultTz: tz });
-  const [stTxt, stCol] = statusOf(e, r, now, tz);
-  const lines: string[] = [];
-  if (d.split) {
-    const v = T.value(e, r, now, tz);
-    if (v) lines.push(t('Split frozen on air · running behind: {value}', { value: T.segText(T.dur(e, v.v, fps, e.c.swRound === 'near' ? 'near' : 'trunc'), e.c.sep) }));
-  }
-  if (r.startedAt != null && !tgt) {
-    const v = { start: fmtClock(r.startedAt, tz), pauses: T.plainDur(Math.round(r.pausedTotal / 100) * 100), adjusted: `${r.adj > 0 ? '+' : '−'}${T.plainDur(Math.abs(r.adj))}` };
-    lines.push(r.adj ? t('Started {start} · pauses {pauses} · adjusted {adjusted} · server time − start − pauses: no drift', v) : t('Started {start} · pauses {pauses} · server time − start − pauses: no drift', v));
-  }
-  if (tgt) {
-    const tg = T.targetOf(e, r, now, tz);
-    if (tg != null) lines.push(t('Target {time} UTC (absolute)', { time: new Date(tg).toISOString().slice(0, 19).replace('T', ' ') }));
-  }
-  if (e.legacy) lines.push(t('Older timer layer: follows its time on air.'));
-  const color = d.color ? hex(d.color) : 'var(--text)';
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={box}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {chip(t(stTxt), stCol)}
-          {onAir ? chip(t('ON AIR'), '#ff3b5c') : chip(t('TRY-OUT'), '#a3a9bd')}
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>{t(MODES.find((m) => m[0] === e.mode)![1])}</span>
-        </div>
-        <div style={{ ...big, color, opacity: d.hidden ? 0.4 : 1 }}>{`${prefix ? prefix + ' ' : ''}${T.segText(d.segs, e.c.sep)}${suffix ? ' ' + suffix : ''}`}</div>
-        {lines.length > 0 && (
-          <div style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--text-3)' }}>
-            {lines.map((l, i) => (
-              <div key={i}>{l}</div>
-            ))}
-          </div>
-        )}
-      </div>
-      <Btns
-        list={[
-          { label: t('▶ Start'), cls: 'green big', keyHint: 'S', disabled: st0 && !paused, title: tgt ? t('A countdown to a time always runs') : undefined, onClick: () => act('start') },
-          // A countdown to a time keeps its top: no pause, no restart (= reset).
-          (!tgt || paused) && { label: paused ? t('⏯ Resume') : t('⏸ Pause'), cls: 'amber big', keyHint: 'P', disabled: !st0, onClick: () => act(paused ? 'resume' : 'pause') },
-          { label: t('↺ Reset'), cls: 'big', keyHint: 'X', confirm: onAir ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-          !tgt && { label: t('⟲ Restart'), cls: 'violet big', keyHint: 'T', confirm: onAir ? t('{name} is on air: start it again from its start value?', { name: layer.name }) : undefined, onClick: () => act('restart') },
-          e.mode === 'stopwatch' && { label: t('⏱ Split'), cls: 'big', keyHint: 'L', disabled: !st0 || paused, onClick: () => act('split') },
-        ]}
-      />
-      <Btns
-        label={t('Adjust')}
-        list={(
-          [
-            ['−10 s', -10, '1'],
-            ['−1 s', -1, '2'],
-            ['+1 s', 1, '3'],
-            ['+10 s', 10, '4'],
-            ['+1 min', 60, '5'],
-          ] as [string, number, string][]
-        ).map(([label, s, k]) => ({ label, keyHint: k, cls: 'ghost', onClick: () => adj(s) }))}
-      />
-      <Row label={tgt ? t('New target') : t('Set value')}>
-        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-          <input
-            ref={inp}
-            style={{ flex: 1, minWidth: 0, fontFamily: 'var(--mono, monospace)' }}
-            value={input}
-            placeholder={tgt ? t('20:00:00 or 2026-10-18 20:00') : t('mm:ss or h:mm:ss')}
-            onChange={(ev) => setInput(ev.target.value)}
-            onKeyDown={(ev) => {
-              ev.stopPropagation();
-              if (ev.key === 'Enter') set();
-            }}
-          />
-          <button className="opx-btn violet" onClick={set}>
-            {t('Set')}
-          </button>
-        </div>
-      </Row>
-      {err && <Msg level="error">⛔ {t('{error} — nothing changed on air.', { error: err })}</Msg>}
-      <Note>
-        <span style={{ fontFamily: 'var(--mono, monospace)', fontSize: 10.5 }}>
-          {api('start')} · ops: start, {tgt ? '' : 'pause, resume, toggle, '}reset, {tgt ? '' : 'restart, '}adjust {'{seconds:10}'}, set {"{value:'05:00'}"}
-          {e.mode === 'stopwatch' ? ', split' : ''}
-        </span>
-        <br />
-        {t('Keys: {keys} · 1–5 adjust · V set value', { keys: tgt ? 'S X' : `S P X T${e.mode === 'stopwatch' ? ' L' : ''}` })}
-      </Note>
-    </div>
-  );
-}
-
 type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string; fps?: number; held?: boolean } };
 
 /** What the compact controls show now (time on air advancing between two updates). */
@@ -964,43 +776,93 @@ function useNow({ layer, state, data, item, time }: OpP) {
   return { e, r, d, now, tz };
 }
 
-/** The Operator's compact row: the time shown, start / pause, ±10 s, the value (or the new target), reset, restart (split). */
-function Compact(p: OpP) {
-  const { layer, act, item } = p;
-  const { e, r, d, now, tz } = useNow(p);
+/** The one bar of a timed layer (validated grammar §1), identical in the Designer's Operator
+ *  section and the Operator's rows: readout · toggle ↺ ⟲ (Lap) · −10 s/+10 s · field + Set · ⋯. */
+function TimerBar(p: OpP) {
+  const { layer, data, act, item } = p;
+  const { e, r, d } = useNow(p);
+  const isTimed = T.timed(e);
   const tgt = T.isTarget(e);
   const st0 = T.started(e, r);
   const paused = r.pausedAt != null;
   // Held by the preview, it waits for its Play.
   const running = st0 && !paused && !p.time.held;
-  const shown = T.segText(d.segs, e.c.sep);
-  const target = tgt ? T.targetOf(e, r, now, tz) : null;
-  // V: type the value (on air, while this widget's row is selected).
+  const state: 'stop' | 'run' | 'pause' = running ? 'run' : paused ? 'pause' : 'stop';
   const field = useRef<HTMLInputElement>(null);
-  useKeys({ v: () => setTimeout(() => field.current?.focus(), 30) });
-  const toggle = running ? !tgt && { icon: Pause, title: t('Pause'), tone: 'amber' as const, onClick: () => act('pause') } : (!tgt || paused) && { icon: Play, title: paused ? tc('action', 'Resume') : tc('action', 'Start'), tone: 'green' as const, onClick: () => act(st0 ? 'resume' : 'start') };
+  // Confirmations only on air (a key does as its button).
+  const confirmed = (msg: string, go: () => void) => async () => {
+    if (item && !(await confirmDialog({ title: msg, confirm: t('Yes') }))) return;
+    go();
+  };
+  const reset = confirmed(t('{name} is on air: reset it to its start value?', { name: layer.name }), () => act('reset'));
+  const restart = confirmed(t('{name} is on air: start it again from its start value?', { name: layer.name }), () => act('restart'));
+  const adj = (s: number) => act('adjust', { seconds: s });
+  // Space stays the Operator's CONTINUE; the value is typed in the field (V).
+  useKeys(
+    isTimed
+      ? {
+          s: () => act('start'),
+          p: () => !tgt && act(paused ? 'resume' : st0 ? 'pause' : 'start'),
+          x: () => void reset(),
+          t: () => !tgt && void restart(),
+          l: () => e.mode === 'stopwatch' && running && act('split'),
+          v: () => setTimeout(() => field.current?.focus(), 30),
+          '1': () => adj(-10),
+          '2': () => adj(-1),
+          '3': () => adj(1),
+          '4': () => adj(10),
+          '5': () => adj(60),
+        }
+      : {},
+  );
+  if (!isTimed) return null;
+  const [prefix, suffix] = T.affixes(e.c, data);
+  const shown = `${prefix ? `${prefix} ` : ''}${T.segText(d.segs, e.c.sep)}${suffix ? ` ${suffix}` : ''}`;
   return (
-    <OpLine
-      value={shown}
-      list={[toggle, { icon: Minus, title: '−10 s', tag: '10 s', onClick: () => act('adjust', { seconds: -10 }) }, { icon: Plus, title: '+10 s', tag: '10 s', onClick: () => act('adjust', { seconds: 10 }) }]}
-      field={tgt ? <OpField inputRef={field} width={80} title={t('New target')} value={target != null ? hmsIn(target, e.targetZone, tz) : ''} placeholder="20:00:00" onSubmit={(v) => act('set', { value: v })} /> : <OpField inputRef={field} width={62} title={t('Set value')} value={T.plainDur(wholeSecs(e, T.rawValue(e, r, now, tz) ?? 0) * 1000)} placeholder="mm:ss" onSubmit={(v) => act('set', { value: v })} />}
-      after={[
-        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-        !tgt && { icon: Undo2, title: t('Restart'), confirm: item ? t('{name} is on air: start it again from its start value?', { name: layer.name }) : undefined, onClick: () => act('restart') },
-        e.mode === 'stopwatch' && { icon: Flag, title: t('Split'), disabled: !running, onClick: () => act('split') },
-      ]}
-    />
+    <OpBar more={<More {...p} />}>
+      <Readout>
+        <span style={{ color: d.color ? hex(d.color) : undefined, opacity: d.hidden ? 0.4 : 1 }}>{shown}</span>
+      </Readout>
+      <Sep />
+      {/* A countdown to a time keeps its top: no pause, no restart (= reset). */}
+      {tgt && !paused ? (
+        <Btns list={[{ label: <span className="wk-g">↺</span>, cls: 'sq', title: `${t('Reset')} · X`, confirm: item ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') }]} />
+      ) : (
+        <Transport state={state} item={item} name={layer.name} onStart={() => act('start')} onPause={() => act('pause')} onResume={() => act('resume')} reset={() => act('reset')} restart={tgt ? undefined : () => act('restart')} />
+      )}
+      {e.mode === 'stopwatch' && <Btns list={[{ label: t('Lap'), cls: 'big', title: `${t('Lap')} · L`, disabled: !running, onClick: () => act('split') }]} />}
+      <Sep />
+      <Btns
+        list={[
+          { label: '−10 s', title: '−10 s · 1', onClick: () => adj(-10) },
+          { label: '+10 s', title: '+10 s · 4', onClick: () => adj(10) },
+        ]}
+      />
+      <Sep />
+      <SetField
+        inputRef={field}
+        width={tgt ? 92 : 64}
+        placeholder={tgt ? '20:00:00' : 'mm:ss'}
+        title={tgt ? t('New target') : t('Set value')}
+        onSet={(v) => {
+          const pr = tgt ? T.parseTarget(v) : T.parseDur(v);
+          if ('err' in pr) return pr.err;
+          if (!tgt && e.mode === 'stopwatch' && e.c.swLimitOn && 'ms' in pr && pr.ms > e.c.swLimit) return t('{value} is above the limit {limit}', { value: T.plainDur(pr.ms), limit: T.plainDur(e.c.swLimit) });
+          act('set', { value: v });
+        }}
+      />
+    </OpBar>
   );
 }
 
-/** Under ⋯: the fine adjustments. */
+/** Under ⋯: the fine adjustments (keys 2 · 3 · 5). */
 function More({ act }: OpP) {
   return (
-    <OpRow
+    <Btns
       list={[
-        { icon: Minus, title: '−1 s', tag: '1 s', onClick: () => act('adjust', { seconds: -1 }) },
-        { icon: Plus, title: '+1 s', tag: '1 s', onClick: () => act('adjust', { seconds: 1 }) },
-        { icon: Plus, title: '+1 min', tag: '1 min', onClick: () => act('adjust', { seconds: 60 }) },
+        { label: '−1 s', title: '−1 s · 2', onClick: () => act('adjust', { seconds: -1 }) },
+        { label: '+1 s', title: '+1 s · 3', onClick: () => act('adjust', { seconds: 1 }) },
+        { label: '+1 min', title: '+1 min · 5', onClick: () => act('adjust', { seconds: 60 }) },
       ]}
     />
   );
@@ -1071,8 +933,8 @@ const timerDef = () =>
     content: ['prefix', 'suffix', 'bannerText'],
     Render: (p) => <TimerView layer={p.layer as L} r={p.r} w={p.w} h={p.h} data={p.data} time={p.time} state={p.state} fps={p.fps} designer={p.designer} />,
     Inspector: (p) => <Inspector layer={p.layer as L} data={p.data} edit={p.edit as never} set={p.set} />,
-    Operator: (p) => <Operator layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
-    Compact: (p) => <Compact layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
+    Operator: (p) => <TimerBar layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
+    Compact: (p) => <TimerBar layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     More: (p) => <More layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
     controls: (l, data) => T.timed(T.eff(l as L, data)),
     // The Operator's preview holds it at its start value until its Play (a countdown to a time follows the clock).
