@@ -3,14 +3,16 @@
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { api, uploadAsset, useApp } from '../store';
-import { Film, Image, Pause, Play, Radio, RefreshCw, RotateCcw } from 'lucide-react';
+import { Film, Image, Radio } from 'lucide-react';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { inputMessage, useInputs, useLiveFrame } from '../engine/liveInputs';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, PlayoutItem } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, OpRow, Row, Section, Seg, Toggle, useBound, useExposable, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Readout, Row, Section, Seg, Sep, Toggle, Transport, useBound, useExposable, useKeys, type Warning, withDefaults } from './kit';
+import { confirmDialog } from '../ui/dialogs';
+import { OpBar, ReloadBtn } from './opbar';
 import { lang, t, tn } from '../i18n';
 
 export interface Crop {
@@ -420,6 +422,49 @@ function PictureRow() {
   );
 }
 
+/** The one media bar (validated grammar §1, D5), identical in the Designer's Operator section
+ *  and the Operator's rows: time left · ▶ Play / ❚❚ Pause / ▶ Resume · ⟲ Restart. A still
+ *  picture at a web address keeps its RELOAD pill; a live input has no controls. */
+function MediaBar({ layer, state, data, act, time, item }: { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: TimeCtx; item?: PlayoutItem }) {
+  const l = layer as ImgLayer & { name?: string };
+  const k = cfg(l);
+  const st = (state ?? {}) as State;
+  const now = useNow(time, item, k.frames.length > 0);
+  const s = k.frames.length ? seqInfo(l, st, now.nowMs, now.ageSecs) : null;
+  // The preview and the Designer's try-out hold it on its first frame until a control is used.
+  const held = !item && state == null;
+  const running = !!s && s.running && !held;
+  const paused = !!s && !s.ended && !running && st.playing === false;
+  const pstate: 'stop' | 'run' | 'pause' | 'ended' = !s ? 'stop' : running ? 'run' : paused ? 'pause' : s.ended ? 'ended' : 'stop';
+  // Confirmations only on air (the T key does as the ⟲ button).
+  const restart = async () => {
+    if (item && !(await confirmDialog({ title: t('{name} is on air: start it again from its start value?', { name: l.name ?? '' }), confirm: t('Yes') }))) return;
+    act('restart');
+  };
+  useKeys(
+    s
+      ? {
+          p: () => (pstate === 'run' ? act('pause') : pstate === 'pause' ? act('play') : act('restart')),
+          t: () => void restart(),
+        }
+      : {},
+  );
+  if (k.input.trim()) return null;
+  if (!s)
+    return k.video || !webPicture(l, data) ? null : (
+      <OpBar>
+        <ReloadBtn title={t('Reload the picture')} onClick={() => act('reload')} />
+      </OpBar>
+    );
+  return (
+    <OpBar>
+      <Readout>{left(s.remaining)}</Readout>
+      <Sep />
+      <Transport state={pstate} media item={item} name={l.name ?? ''} onStart={() => act(held || s.ended ? 'restart' : 'play')} onPause={() => act('pause')} onResume={() => act('play')} restart={() => act('restart')} />
+    </OpBar>
+  );
+}
+
 export default defineWidget({
   id: 'image',
   type: 'image',
@@ -566,49 +611,8 @@ export default defineWidget({
     const k = cfg(layer as unknown as ImgLayer);
     return !k.input.trim() && k.frames.length > 0 && 'start';
   },
-  Compact: ({ layer, state, data, act, time, item }) => {
-    const k = cfg(layer as unknown as ImgLayer);
-    const st = (state ?? {}) as State;
-    const now = useNow(time, item, k.frames.length > 0);
-    if (k.input.trim()) return null;
-    if (!k.frames.length) return k.video || !webPicture(layer as unknown as ImgLayer, data) ? null : <OpRow list={[{ icon: RefreshCw, title: t('Reload the picture'), onClick: () => act('reload') }]} />;
-    const s = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs);
-    // The preview holds it on its first frame until a control is used: its Play starts it from there.
-    const held = !item && state == null;
-    const running = s.running && !held;
-    return (
-      <OpRow
-        value={left(s.remaining)}
-        list={[
-          running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('pause') } : { icon: Play, title: t('Play'), tone: 'green', onClick: () => act(held ? 'restart' : 'play') },
-          { icon: RotateCcw, title: t('Restart'), onClick: () => act('restart') },
-        ]}
-      />
-    );
-  },
-  Operator: ({ layer, state, data, act, time, item }) => {
-    const k = cfg(layer as unknown as ImgLayer);
-    const st = (state ?? {}) as State;
-    const now = useNow(time, item, k.frames.length > 0);
-    if (k.input.trim()) return null;
-    if (!k.frames.length) return k.video || !webPicture(layer as unknown as ImgLayer, data) ? null : <Btns list={[{ label: t('Reload'), cls: 'violet', title: t('Reload the picture'), onClick: () => act('reload') }]} />;
-    // The preview and the Designer's try-out hold it until a control is used.
-    const running = seqInfo(layer as unknown as ImgLayer, st, now.nowMs, now.ageSecs).running && (!!item || state != null);
-    return (
-      <>
-        <Btns
-          list={[
-            { label: running ? t('Pause') : t('Play'), cls: running ? '' : 'violet', onClick: () => act(running ? 'pause' : 'play') },
-            { label: t('Restart'), cls: 'ghost', onClick: () => act('restart') },
-          ]}
-        />
-        <Note>
-          {tn(k.frames.length, '{n} frame at {fps} fps', '{n} frames at {fps} fps', { fps: k.fps })} · {k.playMode === 'loop' ? t('loops') : k.playMode === 'once' ? t('plays once') : tn(k.loops, 'plays {n} time', 'plays {n} times')}
-          {k.start === 'in' ? ` · ${t('starts at the In')}` : ''}
-        </Note>
-      </>
-    );
-  },
+  Compact: ({ layer, state, data, act, time, item }) => <MediaBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  Operator: ({ layer, state, data, act, time, item }) => <MediaBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
 
   Overlay: ({ layer, w, h, scale, edit }) => {
     useStore();

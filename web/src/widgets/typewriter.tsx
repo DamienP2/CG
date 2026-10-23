@@ -6,14 +6,16 @@
 // is a pure function of the elapsed time (time on air, or the operator's
 // timestamps): the state never counts.
 import { useEffect, useRef, type CSSProperties } from 'react';
-import { ChevronLast, Eraser, Keyboard, Pause, Play, SkipForward } from 'lucide-react';
+import { Keyboard } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, OpRow, Section, Seg, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Section, Seg, Sep, Toggle, Transport, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
 import { useLiveTime } from './table-text';
+import { confirmDialog } from '../ui/dialogs';
+import { OpBar } from './opbar';
 import { t, tc } from '../i18n';
 
 export interface Config {
@@ -427,86 +429,77 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
 
 // ------------------------------------------------------------- operator --
 
-const PHASE_COL: Record<string, string> = { typing: '#22c55e', paused: '#f59e0b', erasing: '#ff3b5c', hold: '#a594ff', done: '#a3a9bd', cleared: '#6b7290' };
-
 type OpP = { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
-/** The Operator's compact row: start, pause / resume, next text, show all, clear. */
-function Compact({ layer, state, data, act, item, time }: OpP) {
+/** Where the typing is now, for the bar (time on air advancing between two updates). */
+function useTw({ layer, state, data, time }: OpP) {
   const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
   const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now, age);
+  return { st, R };
+}
+
+/** The one bar of the typewriter (validated grammar §1), identical in the Designer's Operator
+ *  section and the Operator's rows: readout typed/total · toggle, ⏭ · Show all · Clear (red). */
+function TwBar(p: OpP) {
+  const { layer, act, item, time } = p;
+  const { st, R } = useTw(p);
   const mode = st.mode ?? 'auto';
   // Held by the preview, nothing typed yet: it waits for its Start.
   const running = (mode === 'auto' && !time.held) || mode === 'run';
+  const done = R.vis.phase === 'done' && !R.next;
+  const state: 'stop' | 'run' | 'pause' | 'ended' = mode === 'paused' ? 'pause' : done ? 'ended' : running ? 'run' : 'stop';
   const cur = { cur: R.idx };
+  const clearMsg = item ? t('{name} is on air: clear the screen?', { name: layer.name }) : undefined;
+  // Confirmations only on air (a key does as its button). Enter and Space stay the Operator's TAKE and CONTINUE.
+  const clear = async () => {
+    if (clearMsg && !(await confirmDialog({ title: clearMsg, confirm: t('Yes') }))) return;
+    act(R.list.length > 1 ? 'reset' : 'clear', cur);
+  };
+  useKeys({
+    s: () => act('start', cur),
+    p: () => act('toggle', cur),
+    x: () => void clear(),
+    ArrowRight: () => R.list.length > 1 && act('next', cur),
+  });
   return (
-    <OpRow
-      value={R.list.length > 1 ? `${R.idx + 1}/${R.list.length}` : undefined}
-      list={[
-        { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('start', cur) },
-        mode === 'paused' ? { icon: Play, title: tc('action', 'Resume'), tone: 'violet', onClick: () => act('resume', cur) } : { icon: Pause, title: t('Pause'), disabled: !running, onClick: () => act('pause', cur) },
-        R.list.length > 1 && { icon: SkipForward, title: t('Next text'), onClick: () => act('next', cur) },
-        { icon: ChevronLast, title: t('Show all'), disabled: mode !== 'paused' && R.vis.phase !== 'typing' && mode !== 'idle', onClick: () => act('showAll', cur) },
-        { icon: Eraser, title: t('Clear'), confirm: item ? t('{name} is on air: clear the screen?', { name: layer.name }) : undefined, onClick: () => act(R.list.length > 1 ? 'reset' : 'clear', cur) },
-      ]}
-    />
+    <OpBar>
+      <Readout sub={R.list.length > 1 ? t('Text {n}/{total}', { n: R.idx + 1, total: R.list.length }) : undefined}>{`${R.vis.shown}/${R.g.length}`}</Readout>
+      <Sep />
+      <Transport
+        state={state}
+        item={item}
+        name={layer.name}
+        onStart={() => act('start', cur)}
+        onPause={() => act('pause', cur)}
+        onResume={() => act('resume', cur)}
+        next={R.list.length > 1 ? { onClick: () => act('next', cur), title: `${t('Next text')} · →` } : undefined}
+      />
+      <Sep />
+      <Btns
+        list={[
+          { label: t('Show all'), disabled: mode !== 'paused' && R.vis.phase !== 'typing' && mode !== 'idle', onClick: () => act('showAll', cur) },
+          { label: t('Clear'), cls: 'red', title: `${t('Clear')} · X`, confirm: clearMsg, onClick: () => act(R.list.length > 1 ? 'reset' : 'clear', cur) },
+        ]}
+      />
+    </OpBar>
   );
 }
 
-function Operator({ layer, state, data, act, time }: { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  // Time on air advances with the clock between two updates of the graphic.
-  const { now, age } = useLiveTime(time);
-  const st = (state ?? {}) as State;
-  const R = runOf(layer, st, data, num(layer.props.fontSize ?? 64), num(layer.props.letterSpacing ?? 0), num(layer.props.width ?? 800), num(layer.props.height ?? 200), now, age);
+/** The text shown changed while typing: restart or continue (setting « If edited »).
+ *  Mounted by the Operator only, so the action is sent once. */
+function EditedWatch(p: OpP) {
+  const { act } = p;
+  const { st, R } = useTw(p);
   const mode = st.mode ?? 'auto';
-  const running = mode === 'auto' || mode === 'run';
-  const cur = { cur: R.idx };
-  // The text shown changed while typing: restart or continue (setting "Edited while typing").
-  const seen = useRef<{ idx: number; text: string; shown: number } | null>(null);
   const text = R.list[R.idx] ?? '';
+  const seen = useRef<{ idx: number; text: string; shown: number } | null>(null);
   useEffect(() => {
     const s = seen.current;
     if (s && s.idx === R.idx && s.text !== text && (mode === 'run' || mode === 'paused' || mode === 'auto') && R.vis.phase === 'typing') act('edited', { cur: R.idx, typed: s.shown });
     seen.current = { idx: R.idx, text, shown: R.vis.shown };
   });
-  // Enter and Space stay the Operator's TAKE and CONTINUE.
-  useKeys({
-    s: () => act('start', cur),
-    p: () => act('toggle', cur),
-    ArrowRight: () => act('next', cur),
-  });
-  const n = R.g.length;
-  const shown = R.vis.shown;
-  const ph = mode === 'idle' ? 'cleared' : mode === 'paused' ? 'paused' : R.vis.phase;
-  const pct = n ? Math.round((shown / n) * 100) : 100;
-  const colr = PHASE_COL[ph] ?? '#a3a9bd';
-  return (
-    <>
-      <Btns
-        list={[
-          { label: t('▶ Start'), cls: 'green big', keyHint: 'S', onClick: () => act('start', cur) },
-          mode === 'paused' ? { label: t('▶ Resume'), cls: 'violet big', keyHint: 'P', onClick: () => act('resume', cur) } : { label: t('❚❚ Pause'), cls: 'big', keyHint: 'P', disabled: !running, onClick: () => act('pause', cur) },
-          { label: t('Show all'), cls: 'big', onClick: () => act('showAll', cur) },
-          R.list.length > 1 && { label: t('Next text'), cls: 'big', keyHint: 'Right', onClick: () => act('next', cur) },
-          // One Clear: with several texts it goes back to the first one.
-          { label: t('Clear'), cls: 'big', onClick: () => act(R.list.length > 1 ? 'reset' : 'clear', cur) },
-        ]}
-      />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline', marginTop: 6 }}>
-        <b style={{ fontSize: 18 }}>
-          {t('Text {n}/{total}', { n: R.idx + 1, total: R.list.length })}
-        </b>
-        <span style={{ color: colr, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em' }}>{t(ph)}</span>
-        <span style={{ fontFamily: 'var(--mono, monospace)' }}>
-          {t('{shown} / {n} characters · {pct} %', { shown, n, pct })}
-        </span>
-      </div>
-      <div style={{ height: 8, borderRadius: 4, background: '#232838', marginTop: 6, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: colr }} />
-      </div>
-    </>
-  );
+  return null;
 }
 
 // ------------------------------------------------------------ inspector --
@@ -655,8 +648,13 @@ export default defineWidget({
   content: ['text'],
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
-  Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
-  Compact: ({ layer, state, data, act, time, item }) => <Compact layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  Operator: ({ layer, state, data, act, time, item }) => (
+    <>
+      <EditedWatch layer={layer} state={state} data={data} act={act} time={time} item={item} />
+      <TwBar layer={layer} state={state} data={data} act={act} time={time} item={item} />
+    </>
+  ),
+  Compact: ({ layer, state, data, act, time, item }) => <TwBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   // The Operator's preview holds it until its Start: nothing typed yet.
   plays: () => 'start',
   warnings: (layer, { data, state, r }) => {

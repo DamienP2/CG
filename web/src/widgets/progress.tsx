@@ -1,20 +1,21 @@
 // Progress bar: linear (horizontal / vertical), ring, segmented — settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/progress.rs; values and actions in crates/cg-core/src/wid/progress.rs.
-import { useContext, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useContext, useRef, useState, type ReactNode } from 'react';
 import { SceneLayers } from '../engine/sceneLayers';
 import { TimeContext } from '../engine/Scene';
 import * as T from './timer-fmt';
 import { display as counterDisplay, partsOf } from './counter';
 import { useDesigner } from '../designer/designerStore';
 import { Dropdown } from '../ui/Dropdown';
-import { Check, Database, Minus, Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { confirmDialog } from '../ui/dialogs';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import { textWidth } from '../engine/widgets';
 import type { Data, Layer, PlayoutItem } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Num, OpRow, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Row, Section, Seg, Sep, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { OpBar, SetField } from './opbar';
 import { t } from '../i18n';
 
 export interface Config {
@@ -726,82 +727,20 @@ const pctText = (e: ReturnType<typeof effOf>, v: number) => {
   return bad ? '—' : `${fmtNum(f * 100, e.c.decimals)} %`;
 };
 
-/** The Operator's compact row: the percentage, − / + one step, reset, back to the data (Follow: the percentage, back to following). */
-function Compact(p: OpP) {
+/** The one bar of the progress (validated grammar §1, same order as the counter), identical in
+ *  the Designer's Operator section and the Operator's rows: readout % · − / + · field + Set · ⋯.
+ *  Input « Follow »: the percentage and ↺ back to the data only. */
+function ProgressBar(p: OpP) {
   useFrame();
   const { layer, act, item } = p;
-  const { e, st, v } = useShown(p);
-  const c = e.c;
-  const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
-  const manual = st?.value != null;
-  if (c.input === 'follow') return <OpRow value={pctText(e, v)} list={[{ icon: RotateCcw, title: t('Reset'), disabled: !manual, onClick: () => act('data') }]} />;
-  return (
-    <OpRow
-      value={pctText(e, v)}
-      list={[
-        { icon: Minus, title: `− ${stepTxt}`, onClick: () => act('dec') },
-        { icon: Plus, title: `+ ${stepTxt}`, tone: 'green', onClick: () => act('inc') },
-        { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-        { icon: Database, title: t('Back to the data'), disabled: !manual, onClick: () => act('data') },
-      ]}
-    />
-  );
-}
-
-/** Under ⋯: a value typed exactly. */
-function More({ layer, act }: OpP) {
-  const toast = useApp((s) => s.toast);
-  const [input, setInput] = useState('');
-  const c = cfg(layer);
-  const e = effOf(layer, {});
-  const set = () => {
-    const x = parseNum(input);
-    if (!input.trim()) return toast(t('Empty value'), 'error');
-    if (x == null) return toast(t('“{value}” is not a number', { value: input.trim() }), 'error');
-    act('set', { value: x });
-    setInput('');
-  };
-  return (
-    <div className="wk-oprow">
-      <input
-        id={`pg-set-${layer.id}`}
-        style={{ width: 130, height: 28, fontFamily: 'var(--mono, monospace)' }}
-        value={input}
-        placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
-        onChange={(ev) => setInput(ev.target.value)}
-        onKeyDown={(ev) => {
-          ev.stopPropagation();
-          if (ev.key === 'Enter') set();
-        }}
-      />
-      <button className="opx-sq violet" title={t('Set value')} onClick={set}>
-        <Check size={13} />
-      </button>
-    </div>
-  );
-}
-
-function Operator(p: OpP) {
-  useFrame();
-  const { layer, act, item } = p;
-  const [input, setInput] = useState('');
-  const [err, setErr] = useState('');
-  const inp = useRef<HTMLInputElement>(null);
   const { e, st, v } = useShown(p);
   const c = e.c;
   const follow = c.input === 'follow';
-  const [f, bad] = e.frac(v);
-  const col = e.stepColor(f) ?? 'var(--accent)';
   const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
+  const manual = st?.value != null;
   const resetMsg = item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined;
-  const set = () => {
-    const x = parseNum(input);
-    if (!input.trim()) return setErr(t('Empty value'));
-    if (x == null) return setErr(t('“{value}” is not a number', { value: input.trim() }));
-    act('set', { value: x });
-    setErr('');
-    setInput('');
-  };
+  const inp = useRef<HTMLInputElement>(null);
+  // Confirmations only on air (the X key asks like the button). ↑ / ↓ adjust; V types the value.
   useKeys(
     follow
       ? {}
@@ -810,65 +749,56 @@ function Operator(p: OpP) {
           ArrowRight: () => act('inc'),
           ArrowDown: () => act('dec'),
           ArrowLeft: () => act('dec'),
-          r: async () => {
-            // On air the key asks like the button.
+          x: async () => {
             if (resetMsg && !(await confirmDialog({ title: resetMsg, confirm: t('Yes') }))) return;
             act('reset');
           },
-          // The field of the ⋯ row on air (this panel is hidden there), else this one.
-          v: () => setTimeout(() => ((document.getElementById(`pg-set-${layer.id}`) as HTMLInputElement | null) ?? inp.current)?.focus(), 30),
+          v: () => setTimeout(() => inp.current?.focus(), 30),
         },
   );
-  const box: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--line-2, var(--line))' };
+  if (follow)
+    return (
+      <OpBar>
+        <Readout sub={manual ? t('SET BY HAND') : undefined}>{pctText(e, v)}</Readout>
+        <Sep />
+        <Btns list={[{ label: t('↺ Reset'), title: t('Back to the data'), disabled: !manual, onClick: () => act('data') }]} />
+      </OpBar>
+    );
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={box}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ font: '800 40px/1 var(--mono, monospace)', whiteSpace: 'nowrap' }}>{pctText(e, v)}</span>
-          <span style={{ color: 'var(--text-3)', fontFamily: 'var(--mono, monospace)' }}>
-            {fmtNum(v, c.decimals)} / {fmtNum(e.hi, decOf(e.hi))}
-            {c.unit ? ` ${c.unit}` : ''}
-          </span>
-          {st?.value != null && <span style={{ marginLeft: 'auto', font: '800 10.5px Inter, system-ui, sans-serif', color: '#38bdf8' }}>{t('SET BY HAND')}</span>}
-        </div>
-        <div style={{ height: 10, borderRadius: 5, background: 'var(--panel-3, #2a2346)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${bad ? 0 : (f * 100).toFixed(2)}%`, background: col.startsWith('#') ? hex(col) : col }} />
-        </div>
-      </div>
-      {!follow && (
-        <Row label={t('Set value')}>
-          <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-            <input
-              ref={inp}
-              style={{ flex: 1, minWidth: 0, fontFamily: 'var(--mono, monospace)' }}
-              value={input}
-              placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
-              onChange={(ev) => setInput(ev.target.value)}
-              onKeyDown={(ev) => {
-                ev.stopPropagation();
-                if (ev.key === 'Enter') set();
-              }}
-            />
-            <button className="opx-btn violet" onClick={set}>
-              {t('Set')} <kbd>V</kbd>
-            </button>
-          </div>
-        </Row>
-      )}
-      {err && <Msg level="error">⛔ {t('{error} — nothing changed on air.', { error: err })}</Msg>}
+    <OpBar more={<More {...p} />}>
+      <Readout sub={`${fmtNum(v, c.decimals)} / ${fmtNum(e.hi, decOf(e.hi))}${c.unit ? ` ${c.unit}` : ''}${manual ? ` · ${t('SET BY HAND')}` : ''}`}>{pctText(e, v)}</Readout>
+      <Sep />
       <Btns
-        list={
-          follow
-            ? [{ label: t('↺ Reset'), cls: 'big', disabled: st?.value == null, onClick: () => act('data') }]
-            : [
-                { label: `− ${stepTxt}`, cls: 'big', keyHint: '↓', onClick: () => act('dec') },
-                { label: `+ ${stepTxt}`, cls: 'green big', keyHint: '↑', onClick: () => act('inc') },
-                { label: t('↺ Reset'), cls: 'big', keyHint: 'R', confirm: resetMsg, onClick: () => act('reset') },
-                { label: t('Back to the data'), cls: 'big', disabled: st?.value == null, onClick: () => act('data') },
-              ]
-        }
+        list={[
+          { label: `− ${stepTxt}`, title: `− ${stepTxt} · ↓`, onClick: () => act('dec') },
+          { label: `+ ${stepTxt}`, title: `+ ${stepTxt} · ↑`, onClick: () => act('inc') },
+        ]}
       />
-    </div>
+      <Sep />
+      <SetField
+        inputRef={inp}
+        width={76}
+        placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
+        title={t('Set value')}
+        onSet={(x) => {
+          if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
+          act('set', { value: parseNum(x) });
+        }}
+      />
+    </OpBar>
+  );
+}
+
+/** Under ⋯: back to the min, back to the data. */
+function More({ layer, state, act, item }: OpP) {
+  const st = state as State | undefined;
+  return (
+    <Btns
+      list={[
+        { label: t('↺ Reset'), title: `${t('Reset')} · X`, confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+        { label: t('Back to the data'), disabled: st?.value == null, onClick: () => act('data') },
+      ]}
+    />
   );
 }
 
@@ -923,8 +853,8 @@ export default defineWidget({
   content: ['value', 'max', 'min', 'goal', 'goalText'],
   Render: ({ layer, r, w, h, data, time, state }) => <View layer={layer} r={r} w={w} h={h} data={data} nowMs={time.nowMs} ageSecs={time.ageSecs} state={state} />,
   Inspector: ({ layer, data, edit }) => <Inspector layer={layer} data={data} edit={edit} />,
-  Operator: ({ layer, state, data, act, item, time }) => <Operator layer={layer} state={state} data={data} act={act} item={item} time={time} />,
-  Compact: ({ layer, state, data, act, item, time }) => <Compact layer={layer} state={state} data={data} act={act} item={item} time={time} />,
+  Operator: ({ layer, state, data, act, item, time }) => <ProgressBar layer={layer} state={state} data={data} act={act} item={item} time={time} />,
+  Compact: ({ layer, state, data, act, item, time }) => <ProgressBar layer={layer} state={state} data={data} act={act} item={item} time={time} />,
   More: ({ layer, state, data, act, item, time }) => <More layer={layer} state={state} data={data} act={act} item={item} time={time} />,
   hasMore: (l) => cfg(l).input !== 'follow',
   warnings: (l, { data, state }) => warnings(l, data, state),

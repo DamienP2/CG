@@ -3,13 +3,13 @@
 // state (seeded from the layer's items); its edits apply at the next pass, without a jump.
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
 import { memo, useMemo, useState } from 'react';
-import { ArrowLeftRight, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowLeftRight } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle } from '../engine/types';
 import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
 import { useFonts } from '../engine/fonts';
-import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, SliderNum, Text, Toggle, useFrameValue, useKeys, type Warning } from './kit';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, SliderNum, Text, Toggle, Transport, useFrameValue, useKeys, type Warning } from './kit';
 import { FitLine, FONT_CSS, tw, useLiveClock } from './table-text';
 import { t, tc } from '../i18n';
 
@@ -556,23 +556,34 @@ function Priority({ k, act, bare }: { k: K; act: OpP['act']; bare?: boolean }) {
 /** The live speed (px/s, as in the Designer; not in flip, one item at a time). */
 const LiveSpeed = ({ l, st, act, unit }: { l: TL; st: State; act: OpP['act']; unit?: boolean }) => <SliderNum value={Math.round(speedOf(l, st))} min={SPEED[0]} max={SPEED[1]} step={5} unit={unit ? 'px/s' : undefined} title={unit ? undefined : `${t('Speed')} (px/s)`} onRelease onChange={(v) => act('speed', { px: v })} />;
 
-/** The Operator's row (preview bar, On air panel): start from the top, start / pause, next item, the speed, a priority item. */
-function TickerCompact(p: OpP) {
+/** The one bar of the ticker (validated grammar §1), identical in the Designer's Operator
+ *  section and the Operator's rows: ⏮ · toggle · ⏭ · the speed · a priority item. */
+function TickerBar(p: OpP) {
   const { l, act, item } = p;
   const { k, st, sc } = useScene(p);
   const paused = !!st.started && !st.running;
   // Manual launch (or held in the preview): it waits for the operator.
   const waiting = !!l.manualStart && !st.started;
-  const running = !waiting && !paused && !sc.ended;
+  const state: 'stop' | 'run' | 'pause' | 'ended' = sc.ended ? 'ended' : waiting ? 'stop' : paused ? 'pause' : 'run';
+  // Space stays the Operator's CONTINUE.
+  useKeys({
+    s: () => act('start'),
+    p: () => act(sc.ended ? 'start' : waiting || paused ? 'resume' : 'pause'),
+    ArrowRight: () => k.mode !== 'crawl' && act('next'),
+    '+': () => k.mode !== 'flip' && act('speed', { delta: 20 }),
+    '-': () => k.mode !== 'flip' && act('speed', { delta: -20 }),
+  });
   return (
     <div className="wk-opbig">
-      <Btns
-        list={[
-          { label: <SkipBack size={16} fill="currentColor" />, cls: 'big sq', title: t('Start from the top of the queue'), confirm: item && !waiting ? t('{name} is on air: start again from the top of the queue?', { name: l.name ?? '' }) : undefined, onClick: () => act('start') },
-          { label: paused ? t('▶ Resume') : t('▶ Start'), cls: 'big green', disabled: running || sc.ended, onClick: () => act('resume') },
-          { label: t('❚❚ Pause'), cls: 'big amber', disabled: !running, onClick: () => act('pause') },
-          { label: <SkipForward size={16} fill="currentColor" />, cls: 'big sq', title: t('Next item'), disabled: k.mode === 'crawl', onClick: () => act('next') },
-        ]}
+      <Transport
+        state={state}
+        item={item && !waiting ? item : undefined}
+        name={l.name ?? ''}
+        top={() => act('start')}
+        onStart={() => act(sc.ended ? 'start' : 'resume')}
+        onPause={() => act('pause')}
+        onResume={() => act('resume')}
+        next={{ onClick: () => act('next'), disabled: k.mode === 'crawl', title: `${t('Next item')} · →` }}
       />
       {k.mode !== 'flip' && (
         <span className="wk-opbig-f">
@@ -584,32 +595,6 @@ function TickerCompact(p: OpP) {
         <Priority k={k} act={act} bare />
       </span>
     </div>
-  );
-}
-
-/** The Designer's Operator section (and the keys of the widget selected on air): start, pause, next, the speed, a priority item. */
-function TickerOperator(p: OpP) {
-  const { l, act } = p;
-  const { k, st, sc } = useScene(p);
-  // Space stays the Operator's CONTINUE.
-  useKeys({ p: () => act(sc.ended ? 'start' : st.started && !st.running ? 'resume' : 'pause'), ArrowRight: () => k.mode !== 'crawl' && act('next'), '+': () => k.mode !== 'flip' && act('speed', { delta: 20 }), '-': () => k.mode !== 'flip' && act('speed', { delta: -20 }) });
-  const paused = !!st.started && !st.running;
-  return (
-    <>
-      <Btns
-        list={[
-          { label: t('▶ Start'), cls: 'big green', title: t('Start from the top of the queue'), onClick: () => act('start') },
-          paused || (l.manualStart && !st.started) ? { label: t('▶ Resume'), cls: 'big violet', keyHint: 'P', onClick: () => act('resume') } : { label: t('❚❚ Pause'), cls: 'big amber', keyHint: 'P', disabled: sc.ended, onClick: () => act('pause') },
-          { label: t('⏭ Next'), cls: 'big', keyHint: '→', disabled: k.mode === 'crawl', title: t('Next item'), onClick: () => act('next') },
-        ]}
-      />
-      {k.mode !== 'flip' && (
-        <Row label={t('Speed')}>
-          <LiveSpeed l={l} st={st} act={act} unit />
-        </Row>
-      )}
-      <Priority k={k} act={act} />
-    </>
   );
 }
 
@@ -828,8 +813,8 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, data, act, time }) => <TickerOperator l={layer as unknown as TL} state={state} data={data} act={act} time={time} />,
-  Compact: ({ layer, state, data, act, time, item }) => <TickerCompact l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
+  Operator: ({ layer, state, data, act, time, item }) => <TickerBar l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
+  Compact: ({ layer, state, data, act, time, item }) => <TickerBar l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
   // The Operator's preview holds it until its Play: nothing has entered yet.
   plays: () => 'start',
   warnings: (layer, { data, state, r }) => {

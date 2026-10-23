@@ -7,14 +7,16 @@
 // seconds (as older counters did); every later value rolls from the value
 // displayed. The operator's value holds until the source sends another one;
 // the freeze holds the display while the source keeps being read.
-import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Hash, Minus, Plus, RotateCcw, Snowflake } from 'lucide-react';
+import { type CSSProperties, type ReactNode } from 'react';
+import { Hash } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Msg, Note, Num, OpRow, Row, Section, Seg, Select, Text, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Section, Seg, Select, Sep, Text, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { fontCss, measure } from './text';
-import { OpField, OpLine, useLiveTime } from './table-text';
+import { useLiveTime } from './table-text';
+import { confirmDialog } from '../ui/dialogs';
+import { OpBar, SetField } from './opbar';
 import { t, tc } from '../i18n';
 
 export interface Config {
@@ -619,90 +621,79 @@ function Flip({ from, to, text, k, active, x, baseline, asc: a, size, cellW, fon
 
 // ------------------------------------------------------------- operator --
 
-type OpP = { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number } };
+type OpP = { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
-/** The Operator's compact row: the value shown, − / + one step, the extra steps, the value to set, freeze (a value from data). */
-function Compact({ layer, state, data, act, time }: OpP) {
+/** The one bar of the counter (validated grammar §1), identical in the Designer's Operator
+ *  section and the Operator's rows: readout · − / + steps · empty field + Set · ⋯ (↺, ❄). */
+function CounterBar(p: OpP) {
+  const { layer, state, data, act, item, time } = p;
   const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
-  const p = partsOf(layer);
-  const [v, anim] = display(p, st, data, now, age, null);
-  const plain = { ...p.fmt, plus: false, compact: false };
-  const stepTxt = format(plain, p.c.step);
+  const pt = partsOf(layer);
+  const [v] = display(pt, st, data, now, age, null);
+  const plain = { ...pt.fmt, plus: false, compact: false };
+  const stepTxt = format(plain, pt.c.step);
   const wired = /\{\{\w+\}\}/.test(layer.to);
+  const resetMsg = item ? t('{name} is on air: back to the initial value?', { name: layer.name }) : undefined;
+  // ↑ / ↓ stay the rundown's. Confirmations only on air (a key does as its button).
+  useKeys({
+    '+': () => act('inc'),
+    '-': () => act('dec'),
+    f: () => wired && act('freeze'),
+    x: async () => {
+      if (resetMsg && !(await confirmDialog({ title: resetMsg, confirm: t('Yes') }))) return;
+      act('reset');
+    },
+  });
+  const value = format(pt.fmt, v);
   return (
-    <OpLine
-      value={format(p.fmt, v)}
-      list={[
-        { icon: Minus, title: `− ${stepTxt}`, onClick: () => act('dec') },
-        { icon: Plus, title: `+ ${stepTxt}`, tone: 'green', onClick: () => act('inc') },
-        ...extraSteps(p.c).map((x) => ({ icon: Plus, title: `+ ${format(plain, x)}`, tag: format(plain, x), tone: 'green' as const, onClick: () => act('inc', { by: x }) })),
-      ]}
-      field={<OpField width={52} title={t('Set value')} value={format(plain, anim?.to ?? v)} onSubmit={(x) => act('set', { value: x })} />}
-      after={[wired && { icon: Snowflake, title: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), tone: st.frozen ? 'violet' : undefined, onClick: () => act('freeze') }]}
-    />
+    <OpBar more={<More {...p} />}>
+      {item ? (
+        // On air the label and the red edge stay; the try-out shows the plain readout (D9).
+        <span className="wk-readout" style={{ padding: '1px 10px 3px', borderRadius: 8, border: '1px solid var(--live)' }} title={st.frozen ? t('Frozen in the control room only: nothing changes on air.') : undefined}>
+          <b>{value}</b>
+          <span>
+            {t('ON AIR')}
+            {st.frozen ? ` · ${t('FROZEN')}` : ''}
+          </span>
+        </span>
+      ) : (
+        <Readout sub={st.frozen ? t('FROZEN') : undefined}>{value}</Readout>
+      )}
+      <Sep />
+      <Btns
+        list={[
+          { label: `− ${stepTxt}`, title: `− ${stepTxt} · −`, onClick: () => act('dec') },
+          { label: `+ ${stepTxt}`, title: `+ ${stepTxt} · +`, onClick: () => act('inc') },
+          ...extraSteps(pt.c).map((x) => ({ label: `+ ${format(plain, x)}`, onClick: () => act('inc', { by: x }) })),
+        ]}
+      />
+      <Sep />
+      <SetField
+        width={70}
+        placeholder={t('Value')}
+        title={t('Set value')}
+        onSet={(x) => {
+          if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
+          act('set', { value: x });
+        }}
+      />
+    </OpBar>
   );
 }
 
-/** Under ⋯: back to the initial value. */
-function More({ layer, act, item }: OpP) {
-  return <OpRow list={[{ icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the initial value?', { name: layer.name }) : t('Back to the initial value?'), onClick: () => act('reset') }]} />;
-}
-
-function Operator({ layer, state, data, act, time }: { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: { nowMs: number; ageSecs: number } }) {
-  const { now, age } = useLiveTime(time);
+/** Under ⋯: back to the initial value, freeze the display (a value from data). */
+function More({ layer, state, act, item }: OpP) {
   const st = (state ?? {}) as State;
-  const p = partsOf(layer);
-  const [input, setInput] = useState('');
-  const [v] = display(p, st, data, now, age, null);
-  const [raw, src] = source(p, data);
   const wired = /\{\{\w+\}\}/.test(layer.to);
-  const light = !wired ? '#6b7290' : src == null ? '#f59e0b' : '#22c55e';
-  const stepTxt = format({ ...p.fmt, plus: false, compact: false }, p.c.step);
-  // ↑ / ↓ stay the rundown's.
-  useKeys({ '+': () => act('inc'), '-': () => act('dec'), f: () => wired && act('freeze') });
-  const box: CSSProperties = { background: '#0d0f16', borderRadius: 8, padding: '8px 10px', minWidth: 0 };
+  const freezeTxt = st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display');
   return (
-    <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <div style={{ ...box, border: `1px solid ${st.frozen ? '#38bdf8' : '#ff3b5c'}` }} title={st.frozen ? t('Frozen in the control room only: nothing changes on air.') : undefined}>
-          <div className="hint">{t('ON AIR')}{st.frozen && <b style={{ color: '#38bdf8' }}> · {t('FROZEN')}</b>}</div>
-          <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: 22, fontWeight: 700 }}>{format(p.fmt, v)}</div>
-        </div>
-        <div style={{ ...box, border: '1px solid #2e3448' }}>
-          <div className="hint">
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: light, marginRight: 5 }} />
-            {wired ? t('SOURCE') : t('NO SOURCE')}
-          </div>
-          <div style={{ fontFamily: 'var(--mono, monospace)', fontSize: 22, fontWeight: 700, color: wired && src == null ? '#f59e0b' : undefined, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wired ? raw || '“”' : '—'}</div>
-          <div className="hint">{wired ? (src == null ? t('Not a number: ignored') : t('Read from the data')) : t('Values set by hand')}</div>
-        </div>
-      </div>
-      <Btns
-        list={[
-          { label: `− ${stepTxt}`, cls: 'huge', keyHint: '-', onClick: () => act('dec') },
-          { label: `+ ${stepTxt}`, cls: 'huge green', keyHint: '+', onClick: () => act('inc') },
-          ...extraSteps(p.c).map((x) => ({ label: `+ ${format({ ...p.fmt, plus: false, compact: false }, x)}`, cls: 'huge green', onClick: () => act('inc', { by: x }) })),
-        ]}
-      />
-      <Row label={t('Set')}>
-        <div style={{ display: 'flex', gap: 6, width: '100%' }}>
-          <input style={{ flex: 1, height: 34, fontFamily: 'var(--mono, monospace)', fontSize: 15 }} placeholder={t('Value')} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && input.trim() && act('set', { value: input }))} />
-          <button className="opx-btn wk-btn violet" disabled={!input.trim()} onClick={() => act('set', { value: input })}>
-            {t('Set value')}
-          </button>
-        </div>
-      </Row>
-      {input.trim() && parseNum(input) == null && <Msg level="warn">{t('“{value}” is not a number: it would be ignored.', { value: input })}</Msg>}
-      <Btns
-        list={[
-          // A value typed by hand changes only by hand: nothing to freeze.
-          wired && { label: st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display'), cls: st.frozen ? 'violet' : '', keyHint: 'F', onClick: () => act('freeze') },
-          { label: t('Reset'), cls: 'ghost', confirm: t('Back to the initial value?'), onClick: () => act('reset') },
-        ]}
-      />
-      {st.frozen && <Note>{t('Frozen: the source is still read (right), the screen keeps its value until you unfreeze.')}</Note>}
-    </>
+    <Btns
+      list={[
+        { label: t('↺ Reset'), title: `${t('Reset')} · X`, confirm: item ? t('{name} is on air: back to the initial value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
+        wired && { label: freezeTxt, cls: st.frozen ? 'violet' : '', title: `${freezeTxt} · F`, onClick: () => act('freeze') },
+      ]}
+    />
   );
 }
 
@@ -887,8 +878,8 @@ export default defineWidget({
   content: ['to'],
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
-  Operator: ({ layer, state, data, act, time }) => <Operator layer={layer} state={state} data={data} act={act} time={time} />,
-  Compact: ({ layer, state, data, act, time, item }) => <Compact layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  Operator: ({ layer, state, data, act, time, item }) => <CounterBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  Compact: ({ layer, state, data, act, time, item }) => <CounterBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   More: ({ layer, state, data, act, time, item }) => <More layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   warnings: (layer, { data, state }) => {
     const out: Warning[] = [];
