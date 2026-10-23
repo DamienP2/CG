@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, SkipForward, Square, Timer, Trash2, Type, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
@@ -9,6 +9,7 @@ import { defaultData, holdFrame, newId, parseHex, toHex } from '../engine/evalua
 import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
+import { PlayToggle } from '../widgets/kit';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
@@ -1442,16 +1443,16 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
         .map((l) => {
           const c = item.clocks?.[l.id];
           const running = c ? c.pausedAt == null : !l.manualStart;
+          const paused = !!c && c.pausedAt != null;
+          const toggle = () => command({ action: 'widget', target: l.id, control: 'toggle', ...target });
           return (
             <div key={l.id} className="opx-widget opx-wrow">
               <span className="opx-widget-name">
                 <strong>{l.name}</strong>
               </span>
-              <button className={`opx-sq ${running ? 'amber' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => command({ action: 'widget', target: l.id, control: 'toggle', ...target })}>
-                {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-              </button>
-              <button className="opx-sq" title={t('Back to the start')} onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
-                <RotateCcw size={13} />
+              <PlayToggle state={running ? 'run' : paused ? 'pause' : 'stop'} media onStart={toggle} onPause={toggle} onResume={toggle} />
+              <button className="opx-btn wk-btn sq" title={`${t('Restart')} · T`} onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
+                <span className="wk-g">⟲</span>
               </button>
             </div>
           );

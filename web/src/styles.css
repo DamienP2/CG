@@ -9338,7 +9338,7 @@ body.cv-moving * {
   font-weight: 800;
   letter-spacing: 0.03em;
 }
-.wk-readout span {
+.wk-readout > span {
   color: var(--text-3);
   font-size: 11px;
 }

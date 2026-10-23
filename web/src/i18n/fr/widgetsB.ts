@@ -11,6 +11,7 @@ export const widgetsB: Record<string, string> = {
   'trend|Hold': 'Durée',
   '{name} is on air: back to the start of the credits?': '{name} est à l’antenne : revenir au début du générique ?',
   'Finish now': 'Terminer maintenant',
+  'Finish': 'Terminer',
   'Paste a text…': 'Coller un texte…',
   'Paste a text (# Section, Role | Name)': 'Coller un texte (# Section, Rôle | Nom)',
   'Launch': 'Lancement',

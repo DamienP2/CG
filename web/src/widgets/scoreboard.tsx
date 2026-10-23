@@ -3,16 +3,16 @@
 // Same picture as crates/cg-render/src/wid/scoreboard.rs (line for line);
 // rules and actions in crates/cg-core/src/wid/scoreboard.rs.
 import { useState } from 'react';
-import { CircleCheck, CircleX, Flag, Hand, Minus, Pause, Play, Plus, RotateCcw, SkipForward, Timer, Trophy, Undo2, UserMinus } from 'lucide-react';
+import { CircleCheck, CircleX, Flag, Hand, Minus, Plus, RotateCcw, SkipForward, Timer, Trophy, Undo2, UserMinus } from 'lucide-react';
 import { interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { Dropdown } from '../ui/Dropdown';
 import { useApp } from '../store';
-import { t, tc, tl } from '../i18n';
+import { t, tl } from '../i18n';
 import { hexMix } from './map-geo';
 import { AssetPicker } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, getPath, Num, OpRow, Readout, Row, Section, Seg, Select, Text, Toggle, useBound, useFrame, useKeys, type Warning } from './kit';
+import { Btns, ColorPick, Content, defineWidget, getPath, MoreButton, Num, OpRow, PlayToggle, Readout, Row, Section, Seg, Select, Text, Toggle, type Warning, useBound, useFrame, useKeys } from './kit';
 import { col, ink, mix, poly, rrect, tf, ellipse, Pt, type Cmd } from './scoreboard-paint';
 
 export type Sport = 'football' | 'rugby' | 'basketball' | 'handball' | 'volleyball' | 'tennis' | 'generic';
@@ -1008,13 +1008,12 @@ function Compact({ layer, state, data, act }: OpP) {
   const types = pointTypes(k);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-      <OpRow
-        value={ck ? `${score} · ${ck[0]}` : score}
-        list={[
-          { icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') },
-          hasClock && (s.clock?.running ? { icon: Pause, title: t('Pause'), tone: 'amber', onClick: () => act('clockPause') } : (s.clock?.base ?? 0) > 0 ? { icon: Play, title: tc('action', 'Resume'), tone: 'violet', onClick: () => act('clockStart') } : { icon: Play, title: tc('action', 'Start'), tone: 'green', onClick: () => act('clockStart') }),
-        ]}
-      />
+      <div className="wk-oprow">
+        <b className="wk-oprow-v">{ck ? `${score} · ${ck[0]}` : score}</b>
+        {hasClock && <PlayToggle state={s.clock?.running ? 'run' : (s.clock?.base ?? 0) > 0 ? 'pause' : 'stop'} onStart={() => act('clockStart')} onPause={() => act('clockPause')} onResume={() => act('clockStart')} />}
+        <OpRow noMore list={[{ icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') }]} />
+        <MoreButton />
+      </div>
       <div className="wk-oprow" style={{ gap: 10 }}>
         {order.map((i) => {
           const sh = shortOf(team(k, i));

@@ -1,14 +1,13 @@
-import { Pause, Play, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, useApp } from '../store';
 import { defaultData } from '../engine/evaluate';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
-import { KeyScope, MoreToggle } from '../widgets/kit';
+import { KeyScope, MoreToggle, PlayToggle } from '../widgets/kit';
 import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type Template } from '../engine/types';
 import { datasetUse, readsAllRows } from './DataSets';
 import { exposedFields, type ExposedLayer } from './Exposed';
-import { t, tc } from '../i18n';
+import { t } from '../i18n';
 
 /*
  * The graphic selected in the Operator, widget by widget (one tab each): its
@@ -227,14 +226,14 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
   const c = run.clocks[layer.id];
   // Held at its start until its first Play (controlClock).
   const running = !!c && c.pausedAt == null;
+  const paused = !!c && c.pausedAt != null;
   const age = ageSecs() * fps;
+  const toggle = () => setRun((r) => controlClock(r, layer, 'toggle', age));
   return (
-    <div className="opx-pvctl clock">
-      <button className={`opx-sq ${running ? 'amber' : 'green'}`} title={running ? t('Pause') : tc('action', 'Start')} onClick={() => setRun((r) => controlClock(r, layer, 'toggle', age))}>
-        {running ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-      </button>
-      <button className="opx-sq" title={t('Back to the start')} onClick={() => setRun((r) => controlClock(r, layer, running ? 'restart' : 'reset', age))}>
-        <RotateCcw size={13} />
+    <div className="opx-pvctl clock wk-oprow">
+      <PlayToggle state={running ? 'run' : paused ? 'pause' : 'stop'} media onStart={toggle} onPause={toggle} onResume={toggle} />
+      <button className="opx-btn wk-btn sq" title={`${t('Restart')} · T`} onClick={() => setRun((r) => controlClock(r, layer, running ? 'restart' : 'reset', age))}>
+        <span className="wk-g">⟲</span>
       </button>
     </div>
   );

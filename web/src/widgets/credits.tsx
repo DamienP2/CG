@@ -613,7 +613,7 @@ function CreditsBar(p: OpP) {
         onPause={() => act('pause', travel)}
         onResume={() => act('resume', travel)}
         next={k.mode === 'pages' ? { onClick: () => act('next', travel), title: `${tc('credits', 'Next card')} · →` } : undefined}
-        end={{ label: t('Finish now'), disabled: status === 'done', onClick: () => act('finish', travel) }}
+        end={{ label: t('Finish'), disabled: status === 'done', onClick: () => act('finish', travel) }}
         reset={() => act('reset')}
       />
       <Sep />
