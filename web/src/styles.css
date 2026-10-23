@@ -12928,6 +12928,17 @@ a.lib-nav-item {
 .opx-wtabs button.on {
   border-bottom-color: var(--accent);
 }
+.opx-wtabs .opx-wtab svg {
+  opacity: 0.75;
+}
+/* The layer's animation lives (runs) — visible without opening its tab. */
+.opx-wtabs .opx-run {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--warn);
+  flex: none;
+}
 /* Every layer together, or a tab each. */
 .opx-wtabs button.opx-wmerge {
   align-self: center;

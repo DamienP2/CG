@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
@@ -118,6 +118,9 @@ function fieldGroups(fields: Field[]): { title: string; fields: { f: Field; labe
 }
 
 const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
+
+/** The tab id of the fields that belong to no widget layer (texts, exposed shape settings). */
+const SHARED_TAB = '__texts__';
 
 /** The pause marker the graphic holds on, if it holds on a pause (not on the On air point). */
 function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
@@ -364,7 +367,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const lang = project.language || 'fr';
   // The selected graphic widget by widget (a tab each when there are several).
   const parts = template ? widgetParts(template) : { shared: [], widgets: [] };
-  const part = (item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0];
+  // The fields outside the widget layers live in their own tab (Texts) once widgets have tabs.
+  const sharedSel = !!item && tabOf[item.id] === SHARED_TAB && parts.shared.length > 0 && parts.widgets.length > 0;
+  const part = sharedSel ? undefined : ((item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0]);
   // The widgets shown: the tab's, or all of them together.
   const together = merged && parts.widgets.length > 1;
   const shownParts = together ? parts.widgets : part ? [part] : [];
@@ -373,7 +378,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // The data part only when the widgets read data (a source or a data set).
   const hasData = datasets.length > 0 || bound.length > 0;
   // Nothing to type for them (a table fed by a data set…): the data takes the width.
-  const hasContent = parts.shared.length > 0 || !part || shownParts.some((p) => p.fields.length > 0 || !!p.exposed || p.fed.length > 0);
+  const showShared = together || sharedSel || parts.widgets.length === 0;
+  const hasContent = (showShared && parts.shared.length > 0) || (!part && !sharedSel) || shownParts.some((p) => p.fields.length > 0 || !!p.exposed || p.fed.length > 0);
   // What Update would change on air, by widget.
   const onAirNow = item ? onAirByItem.get(item.id) : undefined;
   const sent = template ? updateData(template, draft, readMode) : {};
@@ -543,40 +549,57 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <Pencil size={13} className="muted" />
                 <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title={t('Name in the playlist')} />
                 <span className="muted small">{t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}</span>
+                <span className="spacer" />
+                {onAirNow && (
+                  <>
+                    <button className="opx-btn" disabled={!operate} onClick={() => command({ action: 'continue', zone: itemZone?.id })} title={t('F2 / Space')}>
+                      <ChevronsRight size={14} /> Continue
+                    </button>
+                    <button className="opx-btn red" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: itemZone?.id })} title="F3">
+                      <CircleStop size={14} /> Out
+                    </button>
+                    <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
+                    <button className="opx-btn violet" disabled={!operate || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
+                      <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
+                    </button>
+                  </>
+                )}
               </header>
-              {parts.widgets.length > 1 && (
+              {(parts.widgets.length > 1 || (parts.widgets.length > 0 && parts.shared.length > 0)) && (
                 <div className="opx-head opx-tabs opx-wtabs">
                   {!together &&
-                    parts.widgets.map((p, i) => (
-                      <button key={p.layer.id} className={p === part ? 'on' : ''} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
-                        {tabName(parts.widgets, i)}
-                        {partChanged(p) && <i className="opx-chg" />}
-                      </button>
-                    ))}
+                    parts.widgets.map((p, i) => {
+                      const Icon = widgetOf(p.layer.type)?.icon;
+                      const ws = pv.widgets[p.layer.id] as { running?: boolean } | undefined;
+                      return (
+                        <button key={p.layer.id} className={`opx-wtab ${!sharedSel && p === part ? 'on' : ''}`} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
+                          {Icon && <Icon size={13} />}
+                          <span>{tabName(parts.widgets, i)}</span>
+                          {ws?.running && <i className="opx-run" title={t('Animation running')} />}
+                          {partChanged(p) && <i className="opx-chg" />}
+                        </button>
+                      );
+                    })}
+                  {!together && parts.shared.length > 0 && (
+                    <button className={`opx-wtab ${sharedSel ? 'on' : ''}`} onClick={() => setTabOf({ ...tabOf, [item.id]: SHARED_TAB })}>
+                      <Type size={13} />
+                      <span>{t('Texts')}</span>
+                      {parts.shared.some((f) => changed.has(f.key)) && <i className="opx-chg" />}
+                    </button>
+                  )}
                   <span className="spacer" />
                   <button className={`opx-wmerge ${together ? 'on' : ''}`} title={together ? t('One tab per layer') : t('All the layers together')} onClick={toggleMerged}>
                     <Layers size={14} />
                   </button>
                 </div>
               )}
-              {(shownParts.some((p) => p.controls) || onAirNow) && (
+              {shownParts.some((p) => p.controls) && (
                 <div className="opx-wbar">
-                  {/* The controls wrap below; Fondu / Cut / UPDATE stay pinned top right. */}
-                  <div className="opx-wbar-ctl">
-                    {shownParts
-                      .filter((p) => p.controls)
-                      .map((p) => (
-                        <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[p.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [p.layer.id]: open })} />
-                      ))}
-                  </div>
-                  {onAirNow && (
-                    <div className="opx-wbar-upd">
-                      <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
-                      <button className="opx-btn violet" disabled={!operate || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
-                        <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
-                      </button>
-                    </div>
-                  )}
+                  {shownParts
+                    .filter((p) => p.controls)
+                    .map((p) => (
+                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[p.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [p.layer.id]: open })} />
+                    ))}
                 </div>
               )}
               {shownParts
@@ -590,7 +613,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 {hasContent && (
                 <div className="opx-fields-col">
                   <div className="opx-fields">
-                    <ValuesPane template={template} fields={[...parts.shared, ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />
+                    <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />
                   </div>
                 </div>
                 )}

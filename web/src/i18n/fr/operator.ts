@@ -70,6 +70,7 @@ export const operator: Record<string, string> = {
   'missing template': 'modèle manquant',
   'next {n} s': 'suivant après {n} s',
   // Shared transport (widget kit)
+  'Animation running': 'Animation en cours',
   '▶ Play': '▶ Lecture',
   'From the top': 'Depuis le début',
   '{name} is on air: start again from the top?': '{name} est à l’antenne : repartir du début ?',
