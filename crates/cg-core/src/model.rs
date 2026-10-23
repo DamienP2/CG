@@ -1568,7 +1568,10 @@ impl Template {
             m.frame = m.frame.clamp(0.0, self.duration.max(0.0));
             if m.kind == MarkerKind::Out {
                 m.name = "On air".into();
-                m.resume = Resume::Manual;
+                // It holds until Take out, or goes out by itself after a delay.
+                if matches!(m.resume, Resume::Trigger { .. }) {
+                    m.resume = Resume::Manual;
+                }
             }
         }
         self.markers.sort_by(|a, b| a.frame.total_cmp(&b.frame));
@@ -2453,6 +2456,27 @@ mod setting_tests {
         assert!(t.upgrade_layers());
         assert!(t.layers[0].lock_ratio);
         assert!(!t.upgrade_layers());
+    }
+
+    #[test]
+    fn the_on_air_marker_keeps_its_automatic_out() {
+        let mut t = Template::blank("T", "", 50.0);
+        t.markers.retain(|m| m.kind != MarkerKind::Out);
+        t.markers.push(Marker {
+            id: "o".into(),
+            frame: 30.0,
+            name: "On air".into(),
+            kind: MarkerKind::Out,
+            resume: Resume::After { seconds: 3.0 },
+        });
+        t.marker_model = MARKER_MODEL;
+        t.normalize_markers();
+        let out = t
+            .markers
+            .iter()
+            .find(|m| m.kind == MarkerKind::Out)
+            .unwrap();
+        assert_eq!(out.resume, Resume::After { seconds: 3.0 });
     }
 
     #[test]

@@ -6211,6 +6211,23 @@ a.btn {
   animation: none;
   background: conic-gradient(var(--warn) calc(var(--p, 1) * 360deg), color-mix(in srgb, var(--warn) 40%, var(--op-4)) 0);
 }
+.opx-sq.opx-pause.wait-out {
+  animation: none;
+  box-shadow: none;
+  background: conic-gradient(var(--live) calc(var(--p, 1) * 360deg), color-mix(in srgb, var(--live) 45%, var(--op-4)) 0);
+}
+/* A countdown in an on-air button (pause, out, auto next). */
+.opx-count {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  font: 700 11px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.38) calc(var(--p, 1) * 100%), rgba(0, 0, 0, 0.18) 0);
+}
 .opx-sq.opx-pause b {
   font-size: 14px;
   font-variant-numeric: tabular-nums;

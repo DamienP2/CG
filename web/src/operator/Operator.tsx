@@ -130,6 +130,35 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
   return t?.markers.find((m) => m.kind === 'pause' && Math.abs(m.frame - p.frame) < 0.5);
 }
 
+/** What a graphic on air does by itself, the soonest: a timed pause plays on, it goes out (IN/OUT marker after a delay), or auto next takes the next graphic. `at`: client time (ms); `secs`: the whole delay. As the server, the time counts from the stop it holds at. */
+interface AutoStep {
+  kind: 'resume' | 'out' | 'next';
+  at: number;
+  secs: number;
+}
+function autoStep(project: Project, p: PlayoutItem & { advanced?: boolean }, liveAt: number): AutoStep | null {
+  if (p.phase !== 'holding') return null;
+  const t = project.templates.find((x) => x.id === p.templateId);
+  if (!t) return null;
+  const fps = project.frameRate.num / project.frameRate.den || 1;
+  const step = (kind: AutoStep['kind'], secs: number): AutoStep => ({ kind, secs: Math.max(0, secs), at: liveAt + (Math.max(0, secs) - (p.held ?? 0) / fps) * 1000 });
+  const pause = pauseOf(p, project);
+  if (pause) return pause.resume?.type === 'after' ? step('resume', pause.resume.seconds) : null;
+  if (p.frame < holdFrame(t) - 1e-6) return null;
+  const steps: AutoStep[] = [];
+  const out = t.markers.find((m) => m.kind === 'out');
+  if (out?.resume?.type === 'after') steps.push(step('out', out.resume.seconds));
+  const r = p.rundownId ? project.rundown.find((x) => x.id === p.rundownId) : undefined;
+  if (!p.advanced && r?.autoSecs !== undefined && project.playlists.some((x) => x.id === r.playlist && x.autoNext)) steps.push(step('next', r.autoSecs));
+  return steps.sort((a, b) => a.at - b.at)[0] ?? null;
+}
+
+/** Seconds left before an automatic step, ticking. */
+function useLeft(step: AutoStep | null): number {
+  const now = useTicker(!!step, 10);
+  return step ? Math.max(0, (step.at - now) / 1000) : 0;
+}
+
 /** Content scaled to fit its box (both ways), on a checkerboard. */
 function Screen({ width, height, children }: { width: number; height: number; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -459,6 +488,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 item={r}
                 zone={zoneOf(r)}
                 air={onAirByItem.get(r.id)}
+                liveAt={liveState?.at ?? 0}
                 selected={r.id === cued}
                 cue={r.id === nextTarget?.id}
                 operate={operate}
@@ -701,6 +731,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     project={project}
                     zone={z}
                     item={p}
+                    liveAt={liveState?.at ?? 0}
                     operate={operate}
                     command={command}
                     nextRowOf={(key) => nextRowOf(p, key)}
@@ -730,13 +761,16 @@ function pendingAutoNext(project: Project, live: Live | undefined): { from: Rund
     if (p.advanced || p.phase === 'out' || p.phase === 'outHold' || !p.rundownId) continue;
     const r = project.rundown.find((x) => x.id === p.rundownId);
     if (!r || r.autoSecs === undefined) continue;
+    // Counts from the on-air point (after the in animation and the pauses before it).
+    const tpl = project.templates.find((x) => x.id === p.templateId);
+    if (!tpl || p.phase !== 'holding' || p.frame < holdFrame(tpl) - 1e-6) continue;
     const list = project.playlists.find((x) => x.id === r.playlist && x.autoNext);
     if (!list) continue;
     // As the server: the graphics of the playlist (an empty template is not part of it).
     const items = project.rundown.filter((x) => x.playlist === r.playlist && (x.id === r.id || !!project.templates.find((t) => t.id === x.templateId)?.layers.some((l) => l.visible !== false)));
     const i = items.findIndex((x) => x.id === r.id);
     const to = items[i + 1] ?? (list.loop ? items[0] : undefined);
-    const at = live.at + (Math.max(0, r.autoSecs) - (p.age ?? 0) / fps) * 1000;
+    const at = live.at + (Math.max(0, r.autoSecs) - (p.held ?? 0) / fps) * 1000;
     if (!best || at < best.at) best = { from: r, to, at, secs: r.autoSecs };
   }
   return best;
@@ -976,6 +1010,8 @@ function GraphicRow(props: {
   item: RundownItem;
   zone?: Zone;
   air?: PlayoutItem;
+  /** When the channel state was received (client ms). */
+  liveAt: number;
   selected: boolean;
   /** NEXT takes this one. */
   cue: boolean;
@@ -996,6 +1032,8 @@ function GraphicRow(props: {
   const { project, item, zone, air } = props;
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const pause = air ? pauseOf(air, project) : undefined;
+  const step = air ? autoStep(project, air, props.liveAt) : null;
+  const left = useLeft(step);
   const [renaming, setRenaming] = useState(false);
   const [autoAt, setAutoAt] = useState<DOMRect | null>(null);
   return (
@@ -1006,19 +1044,20 @@ function GraphicRow(props: {
         </span>
       )}
       {air && pause ? (
-        <PauseButton key={`${pause.frame}`} pause={pause} air={air} fps={project.frameRate.num / project.frameRate.den || 1} operate={props.operate} onContinue={props.onContinue} />
+        <PauseButton pause={pause} step={step} left={left} operate={props.operate} onContinue={props.onContinue} />
       ) : (
         <button
-          className={`opx-sq big ${air ? 'red' : ''}`}
+          className={`opx-sq big ${air ? 'red' : ''} ${step ? 'opx-pause wait-out' : ''}`}
+          style={step ? ({ '--p': step.secs ? 1 - left / step.secs : 1 } as React.CSSProperties) : undefined}
           disabled={!props.operate}
-          title={air ? t('Take out') : t('Take')}
+          title={air ? (step ? `${(step.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) }))} · ${t('Take out')}` : t('Take out')) : t('Take')}
           onClick={(e) => {
             e.stopPropagation();
             if (air) props.onOut();
             else props.onTake();
           }}
         >
-          {air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+          {step ? <b>{Math.ceil(left)}</b> : air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
         </button>
       )}
       <span className="opx-gr-main">
@@ -1070,22 +1109,11 @@ function GraphicRow(props: {
 }
 
 /** A graphic held on a pause: Continue when the operator resumes it, else what it waits for (seconds left, a trigger). */
-function PauseButton({ pause, air, fps, operate, onContinue }: { pause: Marker; air: PlayoutItem; fps: number; operate: boolean; onContinue: () => void }) {
+function PauseButton({ pause, step, left, operate, onContinue }: { pause: Marker; step: AutoStep | null; left: number; operate: boolean; onContinue: () => void }) {
   const resume = pause.resume ?? { type: 'manual' };
-  // The server sends nothing while a graphic holds: the countdown runs here, from when the hold began.
-  const [since] = useState(() => Date.now() - ((air.held ?? 0) / fps) * 1000);
-  const [now, setNow] = useState(Date.now);
-  const timed = resume.type === 'after';
-  useEffect(() => {
-    if (!timed) return;
-    const id = setInterval(() => setNow(Date.now()), 200);
-    return () => clearInterval(id);
-  }, [timed]);
-  if (resume.type === 'after') {
-    const total = Math.max(0, resume.seconds);
-    const left = Math.max(0, total - (now - since) / 1000);
+  if (step) {
     return (
-      <span className="opx-sq big amber opx-pause wait" style={{ '--p': total ? 1 - left / total : 1 } as React.CSSProperties} title={t('Pause · plays on in {n} s', { n: Math.ceil(left) })} onClick={(e) => e.stopPropagation()}>
+      <span className="opx-sq big amber opx-pause wait" style={{ '--p': step.secs ? 1 - left / step.secs : 1 } as React.CSSProperties} title={t('Pause · plays on in {n} s', { n: Math.ceil(left) })} onClick={(e) => e.stopPropagation()}>
         <b>{Math.ceil(left)}</b>
       </span>
     );
@@ -1400,9 +1428,17 @@ function useUpdateFade(): [boolean, (v: boolean) => void] {
 }
 
 /** One graphic on air: a card — the on-air family in its header, the animation pills below. */
-function AirCard({ project, zone, item, operate, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; operate: boolean; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
+function AirCard({ project, zone, item, liveAt, operate, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; liveAt: number; operate: boolean; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const waiting = tpl ? pauseOf(item, project) : undefined;
+  const step = autoStep(project, item, liveAt);
+  const left = useLeft(step);
+  const count = (kind: AutoStep['kind']) =>
+    step?.kind === kind || (kind === 'out' && step?.kind === 'next') ? (
+      <b className="opx-count" style={{ '--p': step.secs ? 1 - left / step.secs : 1 } as React.CSSProperties} title={step.kind === 'resume' ? t('Pause · plays on in {n} s', { n: Math.ceil(left) }) : step.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) })}>
+        {Math.ceil(left)}
+      </b>
+    ) : null;
   const name = rundownName(project, item.rundownId) ?? tpl?.name ?? t('Deleted graphic');
   return (
     <div className="opx-aircard">
@@ -1413,11 +1449,11 @@ function AirCard({ project, zone, item, operate, command, nextRowOf, widget }: {
         <span className="spacer" />
         {tpl && (
           <button className={`opx-btn small ${waiting ? 'amber' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={t('F2 / Space')}>
-            <ChevronsRight size={13} /> Continue
+            <ChevronsRight size={13} /> Continue {count('resume')}
           </button>
         )}
         <button className="opx-btn small red" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: zone.id })} title="F3">
-          <CircleStop size={13} /> Out
+          <CircleStop size={13} /> Out {count('out')}
         </button>
       </header>
       <AirControls project={project} zone={zone} item={item} command={command} nextRowOf={nextRowOf} widget={widget} bare />

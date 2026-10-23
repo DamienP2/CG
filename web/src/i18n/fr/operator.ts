@@ -66,6 +66,8 @@ export const operator: Record<string, string> = {
   'Pause · plays on in {n} s': 'Pause · reprend dans {n} s',
   'Pause · waits for the trigger {name}': 'Pause · attend le déclencheur {name}',
   'Pause · Continue': 'Pause · Continuer',
+  'Next graphic in {n} s': 'Graphique suivant dans {n} s',
+  'Goes out in {n} s': 'Sort de l’antenne dans {n} s',
   'Take': 'Envoyer à l’antenne',
   'Double-click to rename': 'Double-cliquer pour renommer',
   'NEXT takes this graphic': 'NEXT envoie cet habillage à l’antenne',

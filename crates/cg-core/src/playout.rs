@@ -909,7 +909,13 @@ impl ChannelState {
             else {
                 continue;
             };
-            if item.age / fps < secs.max(0.0) {
+            // Its time on air counts from the on-air point, after the in
+            // animation and the pauses before it.
+            let Some(t) = project.template(&item.template_id) else {
+                continue;
+            };
+            let on_air = item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
+            if !on_air || item.held / fps < secs.max(0.0) {
                 continue;
             }
             item.advanced = true;
@@ -1205,11 +1211,24 @@ mod tests {
             )
             .unwrap();
         };
+        // Frame by frame, like the engine.
+        let run = |st: &mut ChannelState, p: &Project, frames: f64| {
+            for _ in 0..frames.round() as usize {
+                st.tick(1.0);
+                st.auto_resume(p);
+            }
+        };
+        // The pauses before the on-air point: none for now.
+        let pauses = std::mem::take(&mut p.templates[0].markers);
+        p.templates[0]
+            .markers
+            .extend(pauses.iter().filter(|m| m.kind == MarkerKind::Out).cloned());
+        let on_air = p.templates[0].hold_frame();
         let mut st = ChannelState::default();
         take_a(&mut st, &p);
-        st.tick(fps * 0.5);
+        run(&mut st, &p, on_air + fps * 0.5);
         assert!(!st.auto_next(&p));
-        st.tick(fps * 0.6);
+        run(&mut st, &p, fps * 0.6);
         assert!(st.auto_next(&p));
         // b in its zone; a goes out.
         assert_eq!(st.layers[&2].rundown_id.as_deref(), Some("b"));
@@ -1219,9 +1238,39 @@ mod tests {
         p.rundown[0].hold = true;
         let mut st = ChannelState::default();
         take_a(&mut st, &p);
-        st.tick(fps * 1.2);
+        run(&mut st, &p, on_air + fps * 1.2);
         assert!(st.auto_next(&p));
         assert_ne!(st.layers[&1].phase, Phase::Out);
+        // A pause before the on-air point: the time counts from the on-air
+        // point, not from the take.
+        p.rundown[0].hold = false;
+        p.templates[0].markers = pauses;
+        let mut st = ChannelState::default();
+        take_a(&mut st, &p);
+        run(&mut st, &p, fps * 5.0);
+        assert!(!st.auto_next(&p), "held on a pause");
+        st.apply(
+            &p,
+            Command::Continue {
+                zone: Some("z".into()),
+                layer: None,
+            },
+        )
+        .unwrap();
+        run(&mut st, &p, fps * 5.0);
+        assert!(!st.auto_next(&p), "held on the second pause");
+        st.apply(
+            &p,
+            Command::Continue {
+                zone: Some("z".into()),
+                layer: None,
+            },
+        )
+        .unwrap();
+        run(&mut st, &p, on_air - 40.0 + fps * 0.5);
+        assert!(!st.auto_next(&p), "on air for half a second");
+        run(&mut st, &p, fps * 0.6);
+        assert!(st.auto_next(&p));
         // Playlist without auto next: nothing.
         p.playlists[0].auto_next = false;
         let mut st = ChannelState::default();
