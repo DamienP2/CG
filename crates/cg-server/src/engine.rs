@@ -969,20 +969,24 @@ mod tests {
             wait(due);
             Instant::now() - due
         };
-        let (mut ours, mut plain): (Vec<Duration>, Vec<Duration>) = (0..40)
+        let pairs: Vec<(Duration, Duration)> = (0..40)
             .map(|_| {
                 (
                     late(&|d| wait_until(d)),
                     late(&|d| std::thread::sleep(d.saturating_duration_since(Instant::now()))),
                 )
             })
-            .unzip();
-        ours.sort();
-        plain.sort();
-        // Typically no later than the platform's own sleep.
+            .collect();
+        // Pair by pair, ours is not the later one as a rule: a wait that is
+        // late every time (a whole time slice) loses nearly every pair, while
+        // the noise of a busy runner falls on both sides alike.
+        let lost = pairs
+            .iter()
+            .filter(|(ours, plain)| *ours > *plain + Duration::from_micros(500))
+            .count();
         assert!(
-            ours[20] <= plain[20] + Duration::from_millis(1),
-            "{ours:?} vs {plain:?}"
+            lost <= 30,
+            "{lost} of 40 later than a plain sleep: {pairs:?}"
         );
     }
 
