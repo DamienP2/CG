@@ -448,6 +448,30 @@
     }
    }
   },
+  "/api/keys/{id}/reveal": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "post": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Show an API key again",
+    "description": "Body `{\"password\": \"…\"}`: the admin's own password. Answers `{\"secret\": \"pcg_…\"}`. Keys made before this version cannot be shown again (400). Wrong password: 403.\n\n**Rights:** admin.",
+    "responses": {
+     "200": {
+      "description": "The key"
+     }
+    }
+   }
+  },
   "/api/projects": {
    "get": {
     "tags": [

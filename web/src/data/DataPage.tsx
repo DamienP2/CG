@@ -1,4 +1,4 @@
-import { CircleAlert, Database, FileUp, Plus, RefreshCw, Rss, Save, Sheet, Trash2, Upload, Webhook, Braces, Code2 } from 'lucide-react';
+import { CircleAlert, Copy, Database, FileUp, KeyRound, Plus, RefreshCw, Rss, Save, Sheet, Trash2, Upload, Webhook, Braces, Code2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { DataSource, DataSourceInfo } from '../engine/types';
 import { api, can, useApp } from '../store';
@@ -144,7 +144,9 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
   const [s, setS] = useState<DataSource>(source);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ value: unknown; error?: string | null } | null>(null);
-  const [picked, setPicked] = useState<string>('');
+  const [raw, setRaw] = useState(false);
+  const [pushKey, setPushKey] = useState('');
+  const me = useApp((st) => st.auth?.user);
   const fileRef = useRef<HTMLInputElement>(null);
   const dirty = JSON.stringify(s) !== JSON.stringify(source);
 
@@ -204,6 +206,21 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
   const K = KINDS.find((k) => k.type === s.type)!;
   const url = 'url' in s ? s.url : '';
   const origin = location.origin;
+  const curl = `curl -X PUT -H "Authorization: Bearer ${pushKey || 'pcg_…'}" \\\n  --data-binary @values.${s.type === 'push' ? (s.format ?? 'json') : 'json'} \\\n  ${origin}/api/data/sources/${s.id}/value`;
+  const copy = (text: string) =>
+    navigator.clipboard
+      ?.writeText(text)
+      .then(() => toast(t('Copied'), 'info'))
+      .catch(() => toast(text));
+  // A key made for this source, shown in the command.
+  const newKey = async () => {
+    try {
+      const r = await api<{ secret: string }>('POST', '/api/keys', { name: t('Push · {name}', { name: s.name }) });
+      setPushKey(r.secret);
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    }
+  };
   return (
     <div className="source-editor">
       <div className="se-form">
@@ -295,11 +312,20 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
             </label>
             {!isNew && (
               <div className="push-help">
-                <p>{t('Send the values from automation (an API key from Settings):')}</p>
-                <pre>{`curl -X PUT -H "Authorization: Bearer pcg_…" \\\n  --data-binary @scores.${s.format ?? 'json'} \\\n  ${origin}/api/data/sources/${s.id}/value`}</pre>
-                <button className="btn small" onClick={() => fileRef.current?.click()}>
-                  <Upload size={13} /> {t('Send a file now')}
-                </button>
+                <pre>{curl}</pre>
+                <div className="row">
+                  {me && me.role !== 'viewer' && !pushKey && (
+                    <button className="btn small" onClick={newKey}>
+                      <KeyRound size={13} /> {t('Create a key')}
+                    </button>
+                  )}
+                  <button className="btn small" onClick={() => copy(curl)}>
+                    <Copy size={13} /> {t('Copy')}
+                  </button>
+                  <button className="btn small" onClick={() => fileRef.current?.click()}>
+                    <Upload size={13} /> {t('Send a file now')}
+                  </button>
+                </div>
                 <input ref={fileRef} type="file" hidden accept=".json,.csv,.xml,.txt" onChange={(e) => e.target.files?.[0] && push(e.target.files[0])} />
               </div>
             )}
@@ -345,23 +371,106 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
       <div className="se-preview">
         <div className="se-preview-head">
           <strong>{t('Value')}</strong>
-          <span className="muted small">{t('Click a value to see its path; bind fields to it in the Designer (data fields → link).')}</span>
+          <div className="spacer" />
+          <label className="check small">
+            <input type="checkbox" checked={raw} onChange={(e) => setRaw(e.target.checked)} />
+            {t('Raw data')}
+          </label>
         </div>
-        {picked && (
-          <div className="picked-path">
-            <code>{picked || t('(root)')}</code>
-            <button className="btn small" onClick={() => navigator.clipboard?.writeText(picked)}>
-              {t('Copy')}
-            </button>
-          </div>
-        )}
         {preview?.error && (
           <p className="error-text">
             <CircleAlert size={13} /> {preview.error}
           </p>
         )}
-        {preview && preview.value !== undefined && preview.value !== null ? <JsonTree value={preview.value} onPick={setPicked} picked={picked} /> : !preview?.error && <p className="muted small">{isNew ? t('Press Test to fetch it.') : t('No value yet.')}</p>}
+        {preview && preview.value !== undefined && preview.value !== null ? raw ? <JsonTree value={preview.value} /> : <DataTable value={preview.value} /> : !preview?.error && <p className="muted small">{isNew ? t('Press Test to fetch it.') : t('No value yet.')}</p>}
       </div>
     </div>
+  );
+}
+
+const isRow = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** The longest list in a value (its rows), up to three levels down, with where it is. */
+function mainList(v: unknown, path = '', depth = 0): { path: string; list: unknown[] } | null {
+  if (Array.isArray(v)) return { path, list: v };
+  if (!isRow(v) || depth > 2) return null;
+  let best: { path: string; list: unknown[] } | null = null;
+  for (const [k, x] of Object.entries(v)) {
+    const found = mainList(x, path ? `${path}.${k}` : k, depth + 1);
+    if (found && (!best || found.list.length > best.list.length)) best = found;
+  }
+  return best;
+}
+
+const cell = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+/** An object's values, nested ones under dotted names (`away.score`); lists stay whole. */
+function flat(v: Record<string, unknown>, prefix = '', out: [string, unknown][] = [], depth = 0): [string, unknown][] {
+  for (const [k, x] of Object.entries(v)) {
+    const name = prefix ? `${prefix}.${k}` : k;
+    if (isRow(x) && depth < 4) flat(x, name, out, depth + 1);
+    else out.push([name, x]);
+  }
+  return out;
+}
+
+/** A source's value as a table, to read: its main list (one row per item), else its fields. */
+function DataTable({ value }: { value: unknown }) {
+  const found = mainList(value);
+  const MAX = 500;
+  if (!found || !found.list.length) {
+    const entries = isRow(value) ? flat(value) : [['', value] as [string, unknown]];
+    return (
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <tbody>
+            {entries.map(([k, v]) => (
+              <tr key={k}>
+                <th>{k}</th>
+                <td className={typeof v === 'number' ? 'num' : ''}>{cell(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  const rows = found.list.slice(0, MAX).map((r) => (isRow(r) ? Object.fromEntries(flat(r)) : r));
+  const objects = rows.some(isRow);
+  const cols = objects ? [...new Set(rows.flatMap((r) => (isRow(r) ? Object.keys(r) : [])))] : [''];
+  return (
+    <>
+      <span className="data-table-meta">
+        {found.path ? `${found.path} · ` : ''}
+        {found.list.length > MAX ? t('{n} of {total} rows', { n: MAX, total: found.list.length }) : t('{n} rows', { n: found.list.length })}
+      </span>
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              {cols.map((c) => (
+                <th key={c}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td className="n">{i + 1}</td>
+                {cols.map((c) => {
+                  const v = objects ? (isRow(r) ? r[c] : undefined) : r;
+                  return (
+                    <td key={c} className={typeof v === 'number' ? 'num' : ''} title={cell(v)}>
+                      {cell(v)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

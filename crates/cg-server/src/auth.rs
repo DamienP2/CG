@@ -183,7 +183,8 @@ struct Session {
 }
 
 /// Permanent token for automation (Companion, MOS gateways, scripts). It
-/// acts with the rights of its user; only a SHA-256 of it is stored.
+/// acts with the rights of its user. A SHA-256 of it checks requests; a
+/// sealed copy lets an admin see it again (after typing their password).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiKey {
@@ -194,6 +195,10 @@ pub struct ApiKey {
     pub prefix: String,
     pub created_at: i64,
     hash: String,
+    /// The secret sealed with the server's key (`keys.secret`), hex; "" for
+    /// a key made before keys could be shown again.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    sealed: String,
 }
 
 /// An API key as listed to clients (never the secret).
@@ -233,6 +238,8 @@ pub struct Auth {
     users: RwLock<Users>,
     sessions: Mutex<HashMap<String, Session>>,
     keys_path: PathBuf,
+    /// The key that seals the API keys' secrets.
+    seal_path: PathBuf,
     keys: RwLock<Keys>,
     /// Key id -> last use (ms), kept in memory.
     key_use: Mutex<HashMap<String, i64>>,
@@ -260,8 +267,71 @@ impl Auth {
                 mtime: mtime(&keys_path),
             }),
             keys_path,
+            seal_path: data_dir.join("keys.secret"),
             key_use: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The sealing key, made on first use (readable by the server only).
+    fn seal_key(&self) -> anyhow::Result<ring::aead::LessSafeKey> {
+        use ring::aead::{LessSafeKey, UnboundKey, CHACHA20_POLY1305};
+        let bytes = match std::fs::read(&self.seal_path) {
+            Ok(b) if b.len() == 32 => b,
+            _ => {
+                let mut b = vec![0u8; 32];
+                ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut b)
+                    .map_err(|_| anyhow::anyhow!("no random source"))?;
+                std::fs::write(&self.seal_path, &b)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(
+                        &self.seal_path,
+                        std::fs::Permissions::from_mode(0o600),
+                    );
+                }
+                b
+            }
+        };
+        let key = UnboundKey::new(&CHACHA20_POLY1305, &bytes)
+            .map_err(|_| anyhow::anyhow!("invalid sealing key"))?;
+        Ok(LessSafeKey::new(key))
+    }
+
+    fn seal(&self, secret: &str) -> anyhow::Result<String> {
+        use ring::aead::{Aad, Nonce, NONCE_LEN};
+        let mut nonce = [0u8; NONCE_LEN];
+        ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut nonce)
+            .map_err(|_| anyhow::anyhow!("no random source"))?;
+        let mut data = secret.as_bytes().to_vec();
+        self.seal_key()?
+            .seal_in_place_append_tag(Nonce::assume_unique_for_key(nonce), Aad::empty(), &mut data)
+            .map_err(|_| anyhow::anyhow!("cannot seal"))?;
+        Ok(nonce
+            .iter()
+            .chain(&data)
+            .map(|b| format!("{b:02x}"))
+            .collect())
+    }
+
+    fn unseal(&self, sealed: &str) -> Option<String> {
+        use ring::aead::{Aad, Nonce, NONCE_LEN};
+        let bytes: Vec<u8> = (0..sealed.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(sealed.get(i..i + 2)?, 16).ok())
+            .collect::<Option<_>>()?;
+        if bytes.len() <= NONCE_LEN {
+            return None;
+        }
+        let (n, ct) = bytes.split_at(NONCE_LEN);
+        let nonce = Nonce::try_assume_unique_for_key(n).ok()?;
+        let mut data = ct.to_vec();
+        let plain = self
+            .seal_key()
+            .ok()?
+            .open_in_place(nonce, Aad::empty(), &mut data)
+            .ok()?;
+        String::from_utf8(plain.to_vec()).ok()
     }
 
     fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
@@ -499,6 +569,7 @@ impl Auth {
             prefix: secret[..API_KEY_PREFIX.len() + 6].into(),
             created_at: crate::state::now_ms(),
             hash: sha256_hex(&secret),
+            sealed: self.seal(&secret).map_err(|e| e.to_string())?,
         };
         let mut list = self.api_keys_raw();
         list.push(key.clone());
@@ -512,6 +583,36 @@ impl Auth {
             last_used: None,
         };
         Ok((secret, public))
+    }
+
+    /// The secret of a key, again, for an admin who types their password.
+    pub fn reveal_api_key(
+        &self,
+        id: &str,
+        admin_id: &str,
+        password: &str,
+    ) -> Result<String, String> {
+        let admin = self
+            .users()
+            .into_iter()
+            .find(|u| u.id == admin_id && u.role == Role::Admin && !u.disabled)
+            .ok_or("admins only")?;
+        if !verify_password(password, &admin.password_hash) {
+            return Err("wrong password".into());
+        }
+        let key = self
+            .api_keys_raw()
+            .into_iter()
+            .find(|k| k.id == id)
+            .ok_or("no such key")?;
+        if key.sealed.is_empty() {
+            return Err(
+                "this key was made before keys could be shown again: create a new one".into(),
+            );
+        }
+        self.unseal(&key.sealed)
+            .filter(|s| sha256_hex(s) == key.hash)
+            .ok_or_else(|| "the key cannot be read back (keys.secret changed)".into())
     }
 
     pub fn delete_api_key(&self, id: &str) -> Result<ApiKey, String> {
@@ -719,6 +820,18 @@ mod tests {
         assert!(!std::fs::read_to_string(dir.join("api_keys.json"))
             .unwrap()
             .contains(&secret));
+        // An admin sees it again with their password, nobody else.
+        assert_eq!(
+            auth.reveal_api_key(&key.id, &admin.id, "correct horse")
+                .unwrap(),
+            secret
+        );
+        assert_eq!(
+            auth.reveal_api_key(&key.id, &admin.id, "wrong")
+                .unwrap_err(),
+            "wrong password"
+        );
+        assert!(auth.reveal_api_key(&key.id, &op.id, "operator pw").is_err());
         auth.delete(&op.id).unwrap();
         assert!(auth.user_for_token(&secret).is_none() && auth.api_keys().is_empty());
 

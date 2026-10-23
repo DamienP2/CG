@@ -11,7 +11,7 @@ import { t } from '../i18n';
 
 type Request =
   | { kind: 'confirm'; title: string; message?: React.ReactNode; confirm?: string; cancel?: string; danger?: boolean; resolve: (v: boolean) => void }
-  | { kind: 'prompt'; title: string; message?: React.ReactNode; label?: string; value?: string; placeholder?: string; confirm?: string; resolve: (v: string | null) => void }
+  | { kind: 'prompt'; title: string; message?: React.ReactNode; label?: string; value?: string; placeholder?: string; confirm?: string; password?: boolean; resolve: (v: string | null) => void }
   | { kind: 'alert'; title: string; message?: React.ReactNode; resolve: (v: void) => void };
 
 const useDialogs = create<{ queue: Request[] }>(() => ({ queue: [] }));
@@ -24,7 +24,7 @@ export const confirmDialog = (o: { title: string; message?: React.ReactNode; con
   new Promise<boolean>((resolve) => push({ kind: 'confirm', ...o, resolve }));
 
 /** Asks for a text; resolves null when cancelled (or empty). */
-export const promptDialog = (o: { title: string; message?: React.ReactNode; label?: string; value?: string; placeholder?: string; confirm?: string }) =>
+export const promptDialog = (o: { title: string; message?: React.ReactNode; label?: string; value?: string; placeholder?: string; confirm?: string; password?: boolean }) =>
   new Promise<string | null>((resolve) => push({ kind: 'prompt', ...o, resolve }));
 
 /** Shows an information. */
@@ -82,7 +82,7 @@ export function DialogHost() {
         {r.kind === 'prompt' && (
           <label className="set-field">
             {r.label && <span className="set-label">{r.label}</span>}
-            <input ref={input} value={text} placeholder={r.placeholder} onChange={(e) => setText(e.target.value)} />
+            <input ref={input} type={r.password ? 'password' : 'text'} autoComplete={r.password ? 'current-password' : undefined} value={text} placeholder={r.placeholder} onChange={(e) => setText(e.target.value)} />
           </label>
         )}
         <footer>

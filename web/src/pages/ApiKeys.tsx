@@ -1,9 +1,9 @@
-import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { Copy, Eye, KeyRound, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { User } from '../engine/types';
 import { locale, t } from '../i18n';
 import { api, can, useApp } from '../store';
-import { confirmDialog } from '../ui/dialogs';
+import { confirmDialog, promptDialog } from '../ui/dialogs';
 
 export interface ApiKey {
   id: string;
@@ -24,7 +24,7 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
   const [users, setUsers] = useState<User[]>([]);
   const [name, setName] = useState('');
   const [owner, setOwner] = useState(me?.id ?? '');
-  const [secret, setSecret] = useState<{ name: string; value: string } | null>(null);
+  const [secret, setSecret] = useState<{ name: string; value: string; again?: boolean } | null>(null);
   useEffect(() => {
     if (admin) api<User[]>('GET', '/api/users').then(setUsers).catch(() => {});
   }, [admin]);
@@ -42,6 +42,17 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
     }
   };
   const canCreate = !!me && me.role !== 'viewer';
+  // An admin sees a key again after typing their password.
+  const reveal = async (k: ApiKey) => {
+    const password = await promptDialog({ title: t('Show the key “{name}”', { name: k.name }), label: t('Your password'), password: true, confirm: t('Show') });
+    if (!password) return;
+    try {
+      const r = await api<{ secret: string }>('POST', `/api/keys/${encodeURIComponent(k.id)}/reveal`, { password });
+      setSecret({ name: k.name, value: r.secret, again: true });
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
 
   return (
     <>
@@ -51,7 +62,7 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
       </p>
       {secret && (
         <div className="key-secret">
-          <strong>{t('Key “{name}” created — copy it now, it will not be shown again:', { name: secret.name })}</strong>
+          <strong>{secret.again ? t('Key “{name}”:', { name: secret.name }) : t('Key “{name}” created — copy it now:', { name: secret.name })}</strong>
           <div className="row">
             <code>{secret.value}</code>
             <button
@@ -98,6 +109,11 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
                   <KeyRound size={15} />
                 </span>
                 <strong>{k.name}</strong>
+                {admin && (
+                  <button className="icon-btn ghost" title={t('Show the key')} onClick={() => void reveal(k)}>
+                    <Eye size={14} />
+                  </button>
+                )}
                 <button
                   className="icon-btn ghost"
                   title={t('Revoke')}

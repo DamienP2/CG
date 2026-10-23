@@ -42,6 +42,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/users/{id}", put(update_user).delete(delete_user))
         .route("/api/keys", get(list_keys).post(create_key))
         .route("/api/keys/{id}", axum::routing::delete(delete_key))
+        .route("/api/keys/{id}/reveal", post(reveal_key))
         .route("/api/openapi.json", get(openapi))
         .route("/api/projects", get(list_projects).post(create_project))
         .route("/api/examples", get(list_examples))
@@ -421,6 +422,38 @@ async fn create_key(
     let (secret, key) = s.auth.create_api_key(&owner, &n.name).map_err(bad)?;
     tracing::info!(by = me.username, key = key.name, "API key created");
     Ok(Json(CreatedKey { key, secret }))
+}
+
+#[derive(Deserialize)]
+struct RevealKey {
+    /// The admin's own password, typed again.
+    password: String,
+}
+
+#[derive(Serialize)]
+struct RevealedKey {
+    secret: String,
+}
+
+async fn reveal_key(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(r): Json<RevealKey>,
+) -> ApiResult<Json<RevealedKey>> {
+    require(me.is_admin())?;
+    let secret = s
+        .auth
+        .reveal_api_key(&id, &me.id, &r.password)
+        .map_err(|e| {
+            if e == "wrong password" {
+                (StatusCode::FORBIDDEN, e)
+            } else {
+                bad(e)
+            }
+        })?;
+    tracing::info!(by = me.username, key = id, "API key shown again");
+    Ok(Json(RevealedKey { secret }))
 }
 
 async fn delete_key(
