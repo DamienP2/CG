@@ -960,18 +960,18 @@ mod tests {
 
     #[test]
     fn the_clock_waits_precisely() {
-        let start = Instant::now();
-        let mut late: Vec<Duration> = (1..=40u32)
-            .map(|n| {
-                let due = start + Duration::from_millis(5) * n;
+        // Each deadline is 5 ms from now, so one stall of a loaded test machine
+        // (a shared CI runner) spoils one measure, not all the ones after it.
+        let mut late: Vec<Duration> = (0..40)
+            .map(|_| {
+                let due = Instant::now() + Duration::from_millis(5);
                 wait_until(due);
                 Instant::now() - due
             })
             .collect();
         late.sort();
-        // A busy test machine (a shared CI runner) preempts many; the best
-        // quarter still shows the wait itself is precise, far from a frame late.
-        assert!(late[10] < Duration::from_millis(5), "{late:?}");
+        // The typical wait is on time, far from a frame late.
+        assert!(late[20] < Duration::from_millis(5), "{late:?}");
     }
 
     #[test]
