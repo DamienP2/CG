@@ -708,14 +708,14 @@ function Inspector({ layer, data, edit, set }: { layer: L; data: Data; edit: (fn
         <>
           <Section id="timer-start" title={t('Start')}>
             <Seg
-              label={t('Start')}
+              label={t('Launch')}
               expose="startMode"
               exposeValue={e.start}
               value={e.start}
               onChange={(v) => set('startMode', v)}
               options={[
+                ['auto', t('At the In')],
                 ['manual', t('Manual')],
-                ['auto', t('At In')],
                 ['at', t('At a time')],
               ]}
             />

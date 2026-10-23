@@ -813,12 +813,12 @@ function Playback({ k }: { k: ReturnType<typeof cfg> }) {
       />
       {k.playMode === 'count' && <Num label={t('Times')} path="loops" value={k.loops} min={1} max={999} />}
       <Seg
-        label={t('Start')}
+        label={t('Launch')}
         path="start"
         value={k.start}
         options={[
           ['in', t('At the In')],
-          ['manual', t('By the operator')],
+          ['manual', t('Manual')],
         ]}
       />
     </>
