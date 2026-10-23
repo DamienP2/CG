@@ -5,6 +5,7 @@ mod config;
 mod datasources;
 mod engine;
 mod examples;
+mod firewall;
 mod hardware;
 mod inputs;
 mod library;
@@ -381,6 +382,8 @@ pub async fn serve(
         let _ = stop_tx.send(true);
     });
     let started_at = SystemTime::now();
+    // Off the start path: the firewall tool can take a moment.
+    std::thread::spawn(firewall::allow_self);
     let fallback: SocketAddr = DEFAULT_BIND.parse()?;
     // A fresh update that keeps failing is rolled back here.
     update::startup_guard(&data_dir);
