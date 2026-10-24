@@ -288,6 +288,7 @@ impl Packets {
         (0..self.len()).map(|i| self.get(i))
     }
     /// Where packet `i` starts in the buffer.
+    #[cfg(target_os = "linux")]
     fn start(&self, i: usize) -> usize {
         if i == 0 {
             0
