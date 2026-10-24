@@ -13633,6 +13633,9 @@ a.lib-nav-item {
   flex-wrap: wrap;
   gap: 4px;
 }
+.imp-warns .imp-chip {
+  white-space: normal;
+}
 .imp-sw {
   width: 26px;
   height: 15px;

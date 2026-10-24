@@ -76,7 +76,14 @@ const BADGE: Record<Format, [string, string]> = {
 };
 
 /** A reader's note in the person's language (its values too: effect and blend mode names…). */
-const noteText = (n: { label: string; params?: Record<string, string> }) => t(n.label, n.params && Object.fromEntries(Object.entries(n.params).map(([k, v]) => [k, t(v)])));
+const noteText = (n: { label: string; params?: Record<string, string> }) => {
+  const params = Object.fromEntries(Object.entries(n.params ?? {}).map(([k, v]) => [k, t(v)]));
+  // Values the label has no place for follow it (« Expression · Position »).
+  const extra = Object.entries(params)
+    .filter(([k]) => !n.label.includes(`{${k}}`))
+    .map(([, v]) => v);
+  return [t(n.label, params), ...extra].join(' · ');
+};
 
 // ------------------------------------------------------------- options --
 
@@ -183,9 +190,22 @@ function build(a: Analysis, comp: Comp, o: Options, size: { width: number; heigh
     ];
   }
   if (a.format === 'psd' && !o.groups) {
-    // The layers only: a group's children take its place (PSD groups do not move them).
-    const groups = new Set(layers.filter((l) => l.type === 'group').map((l) => l.id));
-    layers = layers.filter((l) => !groups.has(l.id)).map((l) => (l.parent && groups.has(l.parent) ? { ...l, parent: null } : l));
+    // The layers only: each one placed where its groups put it (a PSD group only moves and fades its children).
+    const byId = new Map(layers.map((l) => [l.id, l]));
+    const num = (v: Value | undefined, or: number) => (typeof v === 'number' ? v : or);
+    layers = layers
+      .filter((l) => l.type !== 'group')
+      .map((l) => {
+        let x = num(l.props.x, 0);
+        let y = num(l.props.y, 0);
+        let opacity = num(l.props.opacity, 1);
+        for (let g = l.parent ? byId.get(l.parent) : undefined; g; g = g.parent ? byId.get(g.parent) : undefined) {
+          x += num(g.props.x, 0);
+          y += num(g.props.y, 0);
+          opacity *= num(g.props.opacity, 1);
+        }
+        return { ...l, parent: null, props: { ...l.props, x, y, opacity } };
+      });
   }
   if (a.format === 'svg') {
     // The drawing (its root layers) placed on the frame.
@@ -220,6 +240,8 @@ const FORMATS: [number, number][] = [
   [1080, 1920],
 ];
 const RATES: [number, number][] = [
+  [24000, 1001],
+  [24, 1],
   [25, 1],
   [50, 1],
   [30000, 1001],
@@ -330,7 +352,7 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
               {a && (
                 <span className="muted small">
                   · {a.format === 'psd' ? tn(a.comps.length, '{n} artboard', '{n} artboards') : tn(a.comps.length, '{n} composition', '{n} compositions')} · {a.width}×{a.height}
-                  {a.comps.some((c) => c.animated) ? ` · ${rateName([Math.round(a.fps * 1000), 1000]).replace(/,000$/, '')} ${t('fps')}` : ''}
+                  {a.comps.some((c) => c.animated) ? ` · ${String(Number(a.fps.toFixed(3))).replace('.', ',')} ${t('fps')}` : ''}
                 </span>
               )}
             </span>
@@ -523,7 +545,7 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
                               )}
                             </div>
                             <span className="imp-to">
-                              → <b>{def ? t(def.label) : layer?.type}</b>
+                              → <b>{layer?.type === 'group' ? t('Group') : def ? t(def.label) : layer?.type}</b>
                               {on && <i className={`imp-dot ${l.status}`} />}
                             </span>
                           </div>
@@ -652,6 +674,8 @@ function Preview({ tpl, width, height, fps, comp, on, sel, onSel }: { tpl: Templ
   useEffect(() => setFrame((f) => Math.min(f, d - 1)), [d]);
   const lanes = comp.layers.filter((l) => tpl.layers.some((x) => x.id === l.layer) || on?.[l.layer] === false);
   const pct = (f: number) => `${(f / d) * 100}%`;
+  // Seconds between the ruler's labels: about ten of them.
+  const tick = [1, 2, 5, 10, 15, 30, 60].find((s) => d / fps / s <= 10) ?? 120;
   const ruler = useRef<HTMLDivElement>(null);
   const scrub = (e: React.PointerEvent) => {
     const r = ruler.current?.getBoundingClientRect();
@@ -708,9 +732,9 @@ function Preview({ tpl, width, height, fps, comp, on, sel, onSel }: { tpl: Templ
         onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && scrub(e)}
       >
         <div className="imp-ruler" ref={ruler}>
-          {Array.from({ length: Math.floor(d / fps) + 1 }, (_, i) => (
-            <i key={i} style={{ left: pct(i * fps) }}>
-              {i}s
+          {Array.from({ length: Math.floor(d / fps / tick) + 1 }, (_, i) => (
+            <i key={i} style={{ left: pct(i * tick * fps) }}>
+              {i * tick}s
             </i>
           ))}
           <span className="imp-ph" style={{ left: pct(frame) }} />

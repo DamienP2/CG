@@ -11,9 +11,6 @@
 //! token until the project is created; the templates point at them through
 //! [`Ctx::prefix`] and are re-pointed at the project's media on creation.
 
-// Parts used once every format is filled in.
-#![allow(dead_code)]
-
 pub mod aep;
 pub mod mogrt;
 pub mod psd;
