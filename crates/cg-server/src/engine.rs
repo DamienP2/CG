@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
+use cg_core::playout::Phase;
 use cg_core::{ChannelState, Project};
 use cg_output::ndi::NdiSender;
 use cg_output::sdi::DeckLinkOutput;
@@ -791,6 +792,48 @@ impl Grid {
     }
 }
 
+/// Writes a step the engine took by itself to the as-run log.
+fn log_auto(
+    state: &Shared,
+    ch: &ChannelRt,
+    p: &Project,
+    action: &str,
+    layer: u32,
+    template_id: &str,
+    rundown_id: Option<&str>,
+) {
+    let label = rundown_id
+        .and_then(|id| p.rundown.iter().find(|r| r.id == id))
+        .map(|r| r.name.clone())
+        .or_else(|| p.template(template_id).map(|t| t.name.clone()))
+        .unwrap_or_default();
+    let zone = p
+        .zones
+        .iter()
+        .find(|z| z.layer == layer)
+        .map(|z| z.id.clone())
+        .unwrap_or_default();
+    crate::asrun::record(
+        &state.data_dir,
+        &crate::asrun::Entry {
+            at: crate::state::now_ms(),
+            channel_id: ch.config.id.clone(),
+            channel_name: ch.config.name.clone(),
+            project_id: p.id.clone(),
+            project_name: p.name.clone(),
+            action: action.into(),
+            label,
+            zone,
+            actor: crate::antenna::Actor::auto(match action {
+                "auto-next" => "auto next",
+                _ => "marker",
+            }),
+            values: Default::default(),
+            detail: String::new(),
+        },
+    );
+}
+
 /// One tick of the channel: timelines, automatic steps, clients told.
 async fn advance(
     state: &Shared,
@@ -813,9 +856,58 @@ async fn advance(
         let mut st = ch.state.write().await;
         let mut changed = st.tick(step);
         if let Some(p) = &project {
-            changed |= st.auto_resume(p);
+            let before: Vec<_> = st
+                .layers
+                .iter()
+                .map(|(l, it)| {
+                    (
+                        *l,
+                        it.phase,
+                        it.frame,
+                        it.template_id.clone(),
+                        it.rundown_id.clone(),
+                    )
+                })
+                .collect();
+            if st.auto_resume(p) {
+                changed = true;
+                // What the engine did by itself, in the as-run log.
+                for (layer, phase, frame, template_id, rundown_id) in &before {
+                    let now = st.layers.get(layer);
+                    let action = match (phase, now.map(|it| it.phase)) {
+                        (Phase::Holding, None | Some(Phase::Out | Phase::OutHold)) => "auto-out",
+                        (Phase::Holding, Some(Phase::Playing))
+                        | (Phase::OutHold, Some(Phase::Out)) => "auto-continue",
+                        (Phase::OutHold, None) => "auto-continue",
+                        _ => continue,
+                    };
+                    if now.is_some_and(|it| {
+                        it.template_id != *template_id || it.frame < *frame - 1e-6
+                    }) {
+                        continue;
+                    }
+                    log_auto(
+                        state,
+                        ch,
+                        p,
+                        action,
+                        *layer,
+                        template_id,
+                        rundown_id.as_deref(),
+                    );
+                }
+            }
             // Auto next between the graphics of a playlist.
             if let Some(taken) = st.auto_next_taken(p) {
+                for id in &taken {
+                    if let Some((layer, it)) = st
+                        .layers
+                        .iter()
+                        .find(|(_, it)| it.rundown_id.as_deref() == Some(id))
+                    {
+                        log_auto(state, ch, p, "auto-next", *layer, &it.template_id, Some(id));
+                    }
+                }
                 let store = state.data.store();
                 crate::state::bind_state(p, &mut st, &store, None, None);
                 // Items reading their sources "on take" read them now.
@@ -826,6 +918,22 @@ async fn advance(
             }
             // Countdowns at zero firing their trigger.
             for name in st.zero_triggers(p, &state.config.timezone) {
+                crate::asrun::record(
+                    &state.data_dir,
+                    &crate::asrun::Entry {
+                        at: crate::state::now_ms(),
+                        channel_id: ch.config.id.clone(),
+                        channel_name: ch.config.name.clone(),
+                        project_id: p.id.clone(),
+                        project_name: p.name.clone(),
+                        action: "trigger".into(),
+                        label: name.clone(),
+                        zone: String::new(),
+                        actor: crate::antenna::Actor::auto("countdown"),
+                        values: Default::default(),
+                        detail: String::new(),
+                    },
+                );
                 let _ = st.apply(p, cg_core::playout::Command::Trigger { name });
                 changed = true;
             }

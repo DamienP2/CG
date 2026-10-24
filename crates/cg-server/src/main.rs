@@ -1,5 +1,7 @@
 mod ae_import;
+mod antenna;
 mod api;
+mod asrun;
 mod auth;
 mod config;
 mod datasources;
@@ -502,6 +504,7 @@ pub async fn serve(
                     state: RwLock::new(state::load_on_air(&data_dir, &c.id, pid.as_deref())),
                     project_id: RwLock::new(pid),
                     dirty: Default::default(),
+                    ops: Default::default(),
                 }),
             );
         }
@@ -526,6 +529,7 @@ pub async fn serve(
             started_at,
             restart: Notify::new(),
             closing,
+            presence: Default::default(),
         });
         shared.inputs.apply(&shared.config.inputs);
         shared

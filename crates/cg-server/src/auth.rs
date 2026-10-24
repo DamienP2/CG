@@ -623,6 +623,24 @@ impl Auth {
         Ok(key)
     }
 
+    /// Who acts on air with `token`: its user, or the API key by its name
+    /// (a control surface, an automation).
+    pub fn actor_for_token(&self, token: &str) -> Option<(User, crate::antenna::Actor)> {
+        let user = self.user_for_token(token)?;
+        if token.starts_with(API_KEY_PREFIX) {
+            let hash = sha256_hex(token);
+            let key = self.api_keys_raw().into_iter().find(|k| k.hash == hash)?;
+            let actor = crate::antenna::Actor {
+                kind: crate::antenna::ActorKind::Api,
+                id: key.id,
+                name: key.name,
+            };
+            return Some((user, actor));
+        }
+        let actor = crate::antenna::Actor::user(&user);
+        Some((user, actor))
+    }
+
     fn user_for_api_key(&self, secret: &str) -> Option<User> {
         let hash = sha256_hex(secret);
         let key = self.api_keys_raw().into_iter().find(|k| k.hash == hash)?;
@@ -753,6 +771,24 @@ impl FromRequestParts<crate::state::Shared> for MaybeUser {
         Ok(MaybeUser(
             token_from(parts).and_then(|t| s.auth.user_for_token(&t)),
         ))
+    }
+}
+
+/// The logged-in user and who they act as on air (themselves, or the API
+/// key they came with).
+pub struct Acting(pub User, pub crate::antenna::Actor);
+
+impl FromRequestParts<crate::state::Shared> for Acting {
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        s: &crate::state::Shared,
+    ) -> Result<Self, Self::Rejection> {
+        token_from(parts)
+            .and_then(|t| s.auth.actor_for_token(&t))
+            .map(|(u, a)| Acting(u, a))
+            .ok_or((StatusCode::UNAUTHORIZED, "login required".into()))
     }
 }
 

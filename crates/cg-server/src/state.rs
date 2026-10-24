@@ -36,6 +36,18 @@ pub enum Event {
         state: ChannelState,
         server_time: i64,
     },
+    /// Who has the Operator open, on which channel.
+    Presence {
+        present: Vec<crate::antenna::Present>,
+    },
+    /// The zones held by operators on a channel changed. `takenFrom` is the
+    /// user who lost a zone to another.
+    #[serde(rename_all = "camelCase")]
+    ZoneLocks {
+        channel_id: String,
+        locks: Vec<crate::antenna::ZoneLock>,
+        taken_from: Option<String>,
+    },
     /// A template's edit lock changed (taken, renewed after a take over,
     /// released). `takenFrom` is the designer tab that lost it.
     #[serde(rename_all = "camelCase")]
@@ -74,6 +86,9 @@ pub enum ClientMessage {
         channel_id: String,
         command: Command,
     },
+    /// The Operator of this channel is open here (`None`: closed).
+    #[serde(rename_all = "camelCase")]
+    Presence { channel_id: Option<String> },
 }
 
 /// A channel as shown to clients.
@@ -113,6 +128,8 @@ pub struct ChannelRt {
     pub state: RwLock<ChannelState>,
     /// Changed since it was last saved to disk.
     pub dirty: std::sync::atomic::AtomicBool,
+    /// Zones held by operators, actions that can be undone.
+    pub ops: crate::antenna::ChannelOps,
 }
 
 /// What a channel has on air, kept on disk so a restart (or a crash) puts
@@ -247,6 +264,8 @@ pub struct AppState {
     pub restart: Notify,
     /// Flips to true when this cycle ends, so long-lived WebSockets close.
     pub closing: watch::Sender<bool>,
+    /// Who has the Operator open, on which channel.
+    pub presence: crate::antenna::Presence,
 }
 
 pub type Shared = Arc<AppState>;
@@ -452,7 +471,14 @@ impl AppState {
         });
     }
 
-    pub async fn command(&self, channel_id: &str, cmd: Command) -> Result<ChannelState, String> {
+    /// Applies a command on air for `actor`: refused on a zone another
+    /// operator holds, kept for an undo, written to the as-run log.
+    pub async fn command(
+        &self,
+        channel_id: &str,
+        cmd: Command,
+        actor: &crate::antenna::Actor,
+    ) -> Result<ChannelState, String> {
         let ch = self.channel(channel_id).ok_or("no such channel")?;
         let pid = ch
             .project_id
@@ -465,8 +491,58 @@ impl AppState {
             .await
             .ok_or("the loaded project no longer exists")?;
         let store = self.data.store();
+        let zone = crate::antenna::command_zone(&project, &cmd);
+        if let Some(l) = zone.as_deref().and_then(|z| ch.ops.held_by_other(z, actor)) {
+            return Err(format!("{} holds this zone", l.user_name));
+        }
+        // Everything out: but the zones others hold.
+        let others: Vec<String> = project
+            .zones
+            .iter()
+            .filter(|z| ch.ops.held_by_other(&z.id, actor).is_some())
+            .map(|z| z.id.clone())
+            .collect();
+        if let Command::Clear {
+            zone: None,
+            layer: None,
+        } = &cmd
+        {
+            if !others.is_empty() {
+                let mut last = Ok(ch.state.read().await.clone());
+                for z in project.zones.iter().filter(|z| !others.contains(&z.id)) {
+                    let one = Command::Clear {
+                        zone: Some(z.id.clone()),
+                        layer: None,
+                    };
+                    last = Box::pin(self.command(channel_id, one, actor)).await;
+                }
+                return last;
+            }
+        }
+        let action = crate::antenna::action_name(&cmd);
+        let mut values = BTreeMap::new();
         let snapshot = {
             let mut st = ch.state.write().await;
+            let before = st.clone();
+            let label = crate::antenna::command_label(&project, &before, &cmd);
+            let old = zone
+                .as_deref()
+                .and_then(|z| project.zone(z))
+                .and_then(|z| before.layers.get(&z.layer))
+                .map(|it| it.data.clone())
+                .unwrap_or_default();
+            if let Command::Update { data, .. }
+            | Command::Take {
+                data: Some(data), ..
+            } = &cmd
+            {
+                for (k, v) in data {
+                    if k.starts_with("__") || old.get(k) == Some(v) {
+                        continue;
+                    }
+                    values.insert(k.clone(), (old.get(k).cloned(), v.clone()));
+                }
+            }
             let taken = match &cmd {
                 Command::Take { rundown_id, .. } => rundown_id.clone(),
                 _ => None,
@@ -515,6 +591,31 @@ impl AppState {
             }
             st.apply(&project, cmd).map_err(|e| e.to_string())?;
             bind_state(&project, &mut st, &store, None, taken.as_deref());
+            if actor.kind != crate::antenna::ActorKind::Auto {
+                ch.ops.push_undo(crate::antenna::UndoStep {
+                    at: now_ms(),
+                    actor: actor.clone(),
+                    action: action.into(),
+                    label: label.clone(),
+                    before,
+                });
+            }
+            crate::asrun::record(
+                &self.data_dir,
+                &crate::asrun::Entry {
+                    at: now_ms(),
+                    channel_id: channel_id.into(),
+                    channel_name: ch.config.name.clone(),
+                    project_id: project.id.clone(),
+                    project_name: project.name.clone(),
+                    action: action.into(),
+                    label,
+                    zone: zone.clone().unwrap_or_default(),
+                    actor: actor.clone(),
+                    values: std::mem::take(&mut values),
+                    detail: String::new(),
+                },
+            );
             st.clone()
         };
         let _ = self.events.send(Event::Channel {
@@ -523,6 +624,116 @@ impl AppState {
             server_time: now_ms(),
         });
         Ok(snapshot)
+    }
+
+    /// Puts the channel back as it was before its last action that can be
+    /// undone (the last `UNDO_STEPS` are kept).
+    pub async fn undo(
+        &self,
+        channel_id: &str,
+        actor: &crate::antenna::Actor,
+    ) -> Result<ChannelState, String> {
+        let ch = self.channel(channel_id).ok_or("no such channel")?;
+        let step = ch
+            .ops
+            .undo
+            .lock()
+            .map_err(|_| "busy".to_string())?
+            .pop_back()
+            .ok_or("nothing to undo")?;
+        let project = match ch.project_id.read().await.clone() {
+            Some(id) => self.project(&id).await,
+            None => None,
+        };
+        let snapshot = {
+            let mut st = ch.state.write().await;
+            let mut before = step.before.clone();
+            // Values changed on air go back without replaying the graphic.
+            if matches!(step.action.as_str(), "update" | "widget" | "row") {
+                for (layer, it) in before.layers.iter_mut() {
+                    if let Some(now) = st.layers.get(layer).filter(|n| {
+                        n.template_id == it.template_id && n.rundown_id == it.rundown_id
+                    }) {
+                        it.frame = now.frame;
+                        it.target = now.target;
+                        it.phase = now.phase;
+                        it.age = now.age;
+                        it.held = now.held;
+                        it.pause_ahead = now.pause_ahead;
+                        it.clocks = now.clocks.clone();
+                        it.advanced = now.advanced;
+                    }
+                }
+            }
+            *st = before;
+            if let Some(p) = &project {
+                bind_state(p, &mut st, &self.data.store(), None, None);
+            }
+            st.clone()
+        };
+        crate::asrun::record(
+            &self.data_dir,
+            &crate::asrun::Entry {
+                at: now_ms(),
+                channel_id: channel_id.into(),
+                channel_name: ch.config.name.clone(),
+                project_id: project.as_ref().map(|p| p.id.clone()).unwrap_or_default(),
+                project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+                action: "undo".into(),
+                label: step.label.clone(),
+                zone: String::new(),
+                actor: actor.clone(),
+                values: BTreeMap::new(),
+                detail: step.action.clone(),
+            },
+        );
+        let _ = self.events.send(Event::Channel {
+            channel_id: channel_id.into(),
+            state: snapshot.clone(),
+            server_time: now_ms(),
+        });
+        Ok(snapshot)
+    }
+
+    /// Gives `zone` of a channel to `user` (taken from whoever held it, who
+    /// is told), or frees it.
+    pub fn set_zone_lock(
+        &self,
+        channel_id: &str,
+        zone: &str,
+        user: Option<&crate::auth::User>,
+    ) -> Result<(), String> {
+        let ch = self.channel(channel_id).ok_or("no such channel")?;
+        let mut taken_from = None;
+        {
+            let mut locks = ch.ops.locks.lock().map_err(|_| "busy".to_string())?;
+            match user {
+                Some(u) => {
+                    let me = crate::antenna::Actor::user(u);
+                    if let Some(prev) = locks.get(zone).filter(|l| l.user_id != u.id) {
+                        taken_from = Some(prev.user_id.clone());
+                    }
+                    locks.insert(
+                        zone.into(),
+                        crate::antenna::ZoneLock {
+                            zone: zone.into(),
+                            user_id: u.id.clone(),
+                            user_name: me.name,
+                            since: now_ms(),
+                        },
+                    );
+                }
+                None => {
+                    locks.remove(zone);
+                }
+            }
+        }
+        let _ = self.events.send(Event::ZoneLocks {
+            channel_id: channel_id.into(),
+            locks: ch.ops.locks(),
+            taken_from,
+        });
+        Ok(())
     }
 }
 

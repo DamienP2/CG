@@ -108,6 +108,15 @@ pub fn router() -> Router<Shared> {
         .route("/api/channels/{id}/project", put(load_project))
         .route("/api/channels/{id}/command", post(channel_command))
         .route(
+            "/api/channels/{id}/undo",
+            get(channel_undo_list).post(channel_undo),
+        )
+        .route("/api/channels/{id}/locks", get(zone_locks))
+        .route(
+            "/api/channels/{id}/zones/{zone}/lock",
+            put(take_zone).delete(free_zone),
+        )
+        .route(
             "/api/channels/{id}/items/{item}/{action}",
             post(item_command),
         )
@@ -1683,14 +1692,84 @@ async fn load_project(
 
 async fn channel_command(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    auth::Acting(me, actor): auth::Acting,
     Path(id): Path<String>,
     Json(cmd): Json<Command>,
 ) -> ApiResult<impl IntoResponse> {
     visible_channel(&me, &id)?;
     require(me.can_operate(&id))?;
     sees_loaded(&s, &me, &id).await?;
-    s.command(&id, cmd).await.map(Json).map_err(bad)
+    s.command(&id, cmd, &actor).await.map(Json).map_err(locked)
+}
+
+/// A command refused: on a zone another operator holds (409), or wrong.
+fn locked(e: String) -> (StatusCode, String) {
+    if e.ends_with("holds this zone") {
+        (StatusCode::CONFLICT, e)
+    } else {
+        bad(e)
+    }
+}
+
+/// The last actions of a channel that can be undone, latest first.
+async fn channel_undo_list(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<crate::antenna::UndoStep>>> {
+    visible_channel(&me, &id)?;
+    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    Ok(Json(ch.ops.undo_list()))
+}
+
+/// Undoes the last action of a channel.
+async fn channel_undo(
+    State(s): State<Shared>,
+    auth::Acting(me, actor): auth::Acting,
+    Path(id): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    visible_channel(&me, &id)?;
+    require(me.can_operate(&id))?;
+    sees_loaded(&s, &me, &id).await?;
+    s.undo(&id, &actor).await.map(Json).map_err(bad)
+}
+
+/// The zones of a channel held by operators.
+async fn zone_locks(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<crate::antenna::ZoneLock>>> {
+    visible_channel(&me, &id)?;
+    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    Ok(Json(ch.ops.locks()))
+}
+
+/// Takes a zone of a channel (from whoever held it, who is told).
+async fn take_zone(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, zone)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    visible_channel(&me, &id)?;
+    require(me.can_operate(&id))?;
+    s.set_zone_lock(&id, &zone, Some(&me)).map_err(bad)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Frees a zone of a channel (its holder, or an admin).
+async fn free_zone(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((id, zone)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    visible_channel(&me, &id)?;
+    require(me.can_operate(&id))?;
+    let ch = s.channel(&id).ok_or_else(|| not_found("channel"))?;
+    let holder = ch.ops.locks().into_iter().find(|l| l.zone == zone);
+    require(holder.is_none_or(|l| l.user_id == me.id || me.role == Role::Admin))?;
+    s.set_zone_lock(&id, &zone, None).map_err(bad)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, Default)]
@@ -1707,7 +1786,7 @@ struct ItemBody {
 /// `out`, `update`, `clear`).
 async fn item_command(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    auth::Acting(me, actor): auth::Acting,
     Path((id, item, action)): Path<(String, String, String)>,
     body: Option<Json<ItemBody>>,
 ) -> ApiResult<impl IntoResponse> {
@@ -1758,7 +1837,7 @@ async fn item_command(
             ))
         }
     };
-    s.command(&id, cmd).await.map(Json).map_err(bad)
+    s.command(&id, cmd, &actor).await.map(Json).map_err(locked)
 }
 
 #[derive(Deserialize)]
@@ -2908,6 +2987,18 @@ async fn ws_upgrade(
 }
 
 async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
+    let socket_id = s.presence.connect();
+    ws_session_on(&s, socket, &viewer, socket_id).await;
+    // Gone: no longer on any channel.
+    if s.presence.set(socket_id, None) {
+        let _ = s.events.send(Event::Presence {
+            present: s.presence.list(),
+        });
+    }
+}
+
+async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id: u64) {
+    let s = s.clone();
     let (mut tx, mut rx) = socket.split();
     let mut events = s.events.subscribe();
     let closing = crate::state::until_true(s.closing.subscribe());
@@ -2990,6 +3081,8 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                     },
                     Event::ProjectDeleted { id } => viewer.user.as_ref().is_some_and(|u| u.sees_project(id)),
                     Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
+                    Event::Presence { .. } => viewer.user.is_some(),
+                    Event::ZoneLocks { channel_id, .. } => viewer.user.is_some() && viewer.sees_channel(channel_id),
                     // Signed-in users (designer, operator, settings), not output pages.
                     Event::Data { .. } | Event::Folders { .. } => viewer.user.is_some(),
                     Event::Changed { what } => viewer.user.as_ref().is_some_and(|u| what.strip_prefix("media:").is_none_or(|p| u.sees_project(p))),
@@ -3013,6 +3106,7 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                 }
                 let ev = match ev {
                     Event::Channels { channels } => Event::Channels { channels: channels.into_iter().filter(|c| viewer.sees_channel(&c.id)).collect() },
+                    Event::Presence { present } => Event::Presence { present: present.into_iter().filter(|p| viewer.sees_channel(&p.channel_id)).collect() },
                     other => other,
                 };
                 if let Some(x) = extra {
@@ -3024,9 +3118,20 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
                 Some(Ok(Message::Text(text))) => {
                     let reply = match serde_json::from_str::<ClientMessage>(&text) {
                         Ok(ClientMessage::Command { channel_id, command }) => match &viewer.user {
-                            Some(u) if u.can_operate(&channel_id) => s.command(&channel_id, command).await.err(),
+                            Some(u) if u.can_operate(&channel_id) => s.command(&channel_id, command, &crate::antenna::Actor::user(u)).await.err(),
                             _ => Some("you do not have the rights to operate this channel".into()),
                         },
+                        Ok(ClientMessage::Presence { channel_id }) => {
+                            let at = viewer.user.as_ref().zip(channel_id.filter(|c| viewer.sees_channel(c))).map(|(u, c)| crate::antenna::Present {
+                                user_id: u.id.clone(),
+                                user_name: crate::antenna::Actor::user(u).name,
+                                channel_id: c,
+                            });
+                            if s.presence.set(socket_id, at) {
+                                let _ = s.events.send(Event::Presence { present: s.presence.list() });
+                            }
+                            None
+                        }
                         Err(e) => Some(e.to_string()),
                     };
                     if let Some(message) = reply {
