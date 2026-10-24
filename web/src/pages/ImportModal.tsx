@@ -75,7 +75,8 @@ const BADGE: Record<Format, [string, string]> = {
   svg: ['SVG', 'b-svg'],
 };
 
-const noteText = (n: { label: string; params?: Record<string, string> }) => t(n.label, n.params);
+/** A reader's note in the person's language (its values too: effect and blend mode names…). */
+const noteText = (n: { label: string; params?: Record<string, string> }) => t(n.label, n.params && Object.fromEntries(Object.entries(n.params).map(([k, v]) => [k, t(v)])));
 
 // ------------------------------------------------------------- options --
 
@@ -538,7 +539,7 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
                         {comp.ignored.map((g, i) => (
                           <div key={i} className="imp-ignrow">
                             <span>{g.name}</span>
-                            <span>{t(g.reason, g.params)}</span>
+                            <span>{noteText({ label: g.reason, params: g.params })}</span>
                           </div>
                         ))}
                       </div>
