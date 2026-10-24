@@ -1,4 +1,4 @@
-import { Braces, CircuitBoard, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Braces, CircuitBoard, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
@@ -7,7 +7,7 @@ import { Operator } from './operator/Operator';
 import { Output } from './output/Output';
 import { ApiPage } from './pages/ApiPage';
 import { MosPage } from './mos/MosPage';
-import { LANGS, setLang, t, useLang, type Lang } from './i18n';
+import { LANGS, setLang, t, tc, useLang, type Lang } from './i18n';
 import { Login } from './pages/Login';
 import { MosPlugin } from './mos/Plugin';
 import { EmbedPreview } from './embed/Preview';
@@ -15,6 +15,7 @@ import { Projects } from './pages/Projects';
 import { MediaLibrary } from './pages/Media';
 import { Outputs } from './outputs/Outputs';
 import { Performance } from './perf/Performance';
+import { AsRun } from './pages/AsRun';
 import { Hardware } from './hardware/Hardware';
 import { LoadMeter, UsageMeter } from './ui/LoadMeter';
 import { Users } from './pages/Users';
@@ -73,7 +74,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'settings' || route.page === 'users' || route.page === 'outputs' || route.page === 'hardware' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'users' || route.page === 'outputs' || route.page === 'hardware' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -145,7 +146,7 @@ function UserMenu() {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'hardware' | 'performance' | 'mos' | 'users' | 'api' | 'settings' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'hardware' | 'performance' | 'asrun' | 'mos' | 'users' | 'api' | 'settings' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata Graphics';
@@ -166,10 +167,11 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams'))}
           {can.admin(user) && tab('hardware', '/hardware', <CircuitBoard size={14} />, t('I/O'))}
           {can.admin(user) && tab('performance', '/performance', <Gauge size={14} />, t('Performance'))}
+          {tab('asrun', '/asrun', <ClipboardList size={14} />, tc('tab', 'As-run'))}
           {can.admin(user) && tab('mos', '/mos', <Newspaper size={14} />, 'MOS')}
           {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, t('Users'))}
           {tab('api', '/api-docs', <Braces size={14} />, 'API')}
-          {can.admin(user) && tab('settings', '/settings', <SettingsIcon size={14} />, t('Settings'))}
+          {tab('settings', '/settings', <SettingsIcon size={14} />, t('Settings'))}
         </div>
         <div className="spacer" />
         <LoadMeter />
@@ -182,6 +184,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         {route.page === 'outputs' && <Outputs />}
         {route.page === 'hardware' && <Hardware />}
         {route.page === 'performance' && <Performance />}
+        {route.page === 'asrun' && <AsRun />}
         {route.page === 'settings' && <Settings />}
         {route.page === 'mos' && <MosPage />}
         {route.page === 'users' && <Users />}

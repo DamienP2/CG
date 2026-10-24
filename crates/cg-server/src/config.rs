@@ -289,6 +289,45 @@ impl Default for MosConfig {
     }
 }
 
+/// OSC (UDP) and TCP text control of the playout (`crate::apiv1`): no
+/// login on these, so they are off until enabled and can be limited to
+/// some machines.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlConfig {
+    #[serde(default)]
+    pub osc_enabled: bool,
+    #[serde(default = "default_osc_port")]
+    pub osc_port: u16,
+    #[serde(default)]
+    pub tcp_enabled: bool,
+    #[serde(default = "default_tcp_port")]
+    pub tcp_port: u16,
+    /// Addresses (or networks `10.0.0.0/24`) allowed to send commands;
+    /// empty = any.
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
+fn default_osc_port() -> u16 {
+    9000
+}
+fn default_tcp_port() -> u16 {
+    9001
+}
+
+impl Default for ControlConfig {
+    fn default() -> Self {
+        Self {
+            osc_enabled: false,
+            osc_port: default_osc_port(),
+            tcp_enabled: false,
+            tcp_port: default_tcp_port(),
+            allow: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerConfig {
@@ -321,6 +360,9 @@ pub struct ServerConfig {
     /// DeckLink cards and ST 2110 flows (Hardware page).
     #[serde(default)]
     pub hardware: HardwareConfig,
+    /// Control surfaces without HTTP (Bitfocus Buttons over OSC or TCP).
+    #[serde(default)]
+    pub control: ControlConfig,
     /// Pre-0.2 single-channel outputs, moved into the first channel on load.
     #[serde(default, skip_serializing)]
     outputs: Option<OutputsConfig>,
@@ -347,6 +389,7 @@ impl Default for ServerConfig {
             mos: MosConfig::default(),
             inputs: Vec::new(),
             hardware: HardwareConfig::default(),
+            control: ControlConfig::default(),
             outputs: None,
         }
     }

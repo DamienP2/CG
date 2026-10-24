@@ -1,14 +1,15 @@
-import { Clock, CloudDownload, Cpu, Network, RotateCcw, Server, SlidersHorizontal } from 'lucide-react';
+import { Clock, CloudDownload, Cpu, Keyboard, Network, RotateCcw, Server, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
-import { api, useApp } from '../store';
+import { api, can, useApp } from '../store';
 import type { HardwareInfo } from '../outputs/types';
 import { Card, Field, SaveBar } from './ui';
 import { useServerConfig } from './serverConfig';
 import { Networks } from './Networks';
 import { TimeSync } from './TimeSync';
 import { Updates } from './Updates';
+import { ShortcutsPage } from './Shortcuts';
 
 const TIMEZONES: string[] = (() => {
   try {
@@ -25,12 +26,29 @@ function uptime(s: number) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
 }
 
-type Section = 'general' | 'network' | 'sync' | 'updates' | 'system';
-const SECTIONS: Section[] = ['general', 'network', 'sync', 'updates', 'system'];
+type Section = 'shortcuts' | 'general' | 'network' | 'sync' | 'updates' | 'system';
+const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'sync', 'updates', 'system'];
 const sectionOf = (hash: string): Section => SECTIONS.find((s) => `#${s}` === hash) ?? 'general';
 
-/** The server: name, clocks, network, updates and what it runs on. */
+/** Your own settings; an admin's also the server's. */
 export function Settings() {
+  const user = useApp((s) => s.auth?.user);
+  if (can.admin(user)) return <ServerSettings />;
+  const nav = (
+    <>
+      <NavSection>{t('You')}</NavSection>
+      <NavItem on icon={<Keyboard size={15} />} label={t('Shortcuts')} />
+    </>
+  );
+  return (
+    <SidePage nav={nav}>
+      <ShortcutsPage />
+    </SidePage>
+  );
+}
+
+/** The server: name, clocks, network, updates and what it runs on. */
+function ServerSettings() {
   const toast = useApp((s) => s.toast);
   const { info, cfg, edit, dirty, saving, save, discard, reload } = useServerConfig('settings');
   const [section, setSection] = useState<Section>(() => sectionOf(location.hash));
@@ -63,6 +81,8 @@ export function Settings() {
   const item = (s: Section, icon: React.ReactNode, label: string) => <NavItem on={section === s} icon={icon} label={label} onClick={() => go(s)} />;
   const nav = (
     <>
+      <NavSection>{t('You')}</NavSection>
+      {item('shortcuts', <Keyboard size={15} />, t('Shortcuts'))}
       <NavSection>{t('Server')}</NavSection>
       {item('general', <SlidersHorizontal size={15} />, t('General'))}
       {item('network', <Network size={15} />, t('Networks'))}
@@ -77,6 +97,7 @@ export function Settings() {
       </div>
     </>
   );
+  if (section === 'shortcuts') return <SidePage nav={nav}><ShortcutsPage /></SidePage>;
 
   return (
     <SidePage nav={nav}>

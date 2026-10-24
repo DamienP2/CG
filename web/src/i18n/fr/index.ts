@@ -5,16 +5,21 @@
 // synthé, asset → ressource. Buttons of the transport (TAKE, NEXT, OUT,
 // CUE, UPDATE, CONTINUE, PVW, PGM) keep their broadcast names. French
 // spacing: a no-break space (U+00A0) before ? ! : ; and inside « ».
+import { asrun } from './asrun';
+import { buttons } from './buttons';
 import { common } from './common';
 import { data } from './data';
 import { designer } from './designer';
 import { home } from './home';
 import { importer } from './importer';
 import { operator } from './operator';
+import { operatorLocks } from './operatorLocks';
+import { schedule } from './schedule';
+import { shortcuts } from './shortcuts';
 import { widgets } from './widgets';
 import { widgetsData } from './widgetsData';
 import { widgetsA } from './widgetsA';
 import { widgetsB } from './widgetsB';
 import { widgetsC } from './widgetsC';
 
-export const fr: Record<string, string> = { ...common, ...home, ...importer, ...designer, ...data, ...operator, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC };
+export const fr: Record<string, string> = { ...common, ...home, ...importer, ...designer, ...data, ...operator, ...operatorLocks, ...schedule, ...shortcuts, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC, ...asrun, ...buttons };

@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, Layers, MoreHorizontal, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, SkipForward, Square, Timer, Trash2, Type, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, Layers, Lock, MoreHorizontal, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, SkipForward, Square, Timer, Trash2, Type, X, Zap, GripVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
@@ -27,6 +27,12 @@ import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { TableRowsField } from './TableRowsField';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { t, tc, tn } from '../i18n';
+import { LockedBy, useZoneLocks, ZoneBar } from './ZoneBar';
+import { OperatorTop } from './Presence';
+import { noteAction, requestUndo, UndoToast } from './UndoToast';
+import { ScheduleCell, ScheduleTop, toggleScheduleList } from './Schedule';
+import { useShortcuts } from './shortcuts';
+import type { ZoneLock } from '../store';
 
 /*
  * Operator page, four areas (each resizable):
@@ -205,7 +211,12 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Editing the rundown needs the rights; going on air also needs an output.
   const canEdit = can.operate(auth?.user);
   const operate = canEdit && !!channelId;
-  const command: typeof send = (cmd) => operate && send(cmd, channelId!);
+  // Each action of mine can be undone (its toast).
+  const command: typeof send = (cmd) => {
+    if (!operate) return;
+    send(cmd, channelId!);
+    noteAction();
+  };
   const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200, fields: 50 });
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -243,6 +254,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const original = useRef<{ id: string; data: Record<string, string> } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const channelInfo = channels.find((c) => c.id === channelId);
+  // Zones held by other operators: their graphics are locked here.
+  const zoneLocks = useZoneLocks(channelId, project);
 
   const rundown = project?.rundown ?? [];
   const playlists = project?.playlists ?? [];
@@ -355,27 +368,37 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // On air, front-most zone first; the internal controls show one of them.
   const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
   const busy = zones.filter((z) => channel.layers[String(z.layer)]);
-  // F2 / F3 drive the front-most graphic on air.
+  // CONTINUE / OUT drive the front-most graphic on air.
   const selZone = busy[0];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A key the selected widget on air took (its own shortcuts) is not the Operator's.
       if (e.defaultPrevented || (e.target as HTMLElement).closest('input, textarea, select')) return;
-      if (e.key === 'Escape' && airWidget) return setAirWidget(null);
-      // A focused button (a widget's, a row's) would also "click" on Space / Enter.
-      if (e.key === ' ' || e.key === 'Enter') (e.target as HTMLElement).closest?.('button')?.blur();
-      const idx = items.findIndex((r) => r.id === cued);
-      if (e.key === 'F1' || e.key === 'Enter') (e.preventDefault(), take());
-      // Continue / Out act on the graphic on air shown in the controls (not on the next one cued).
-      else if (e.key === 'F2' || e.key === ' ') (e.preventDefault(), selZone && command({ action: 'continue', zone: selZone.id }));
-      else if (e.key === 'F3') (e.preventDefault(), outZone(selZone));
-      else if (e.key === 'F12') (e.preventDefault(), command({ action: 'clear' }));
-      else if (e.key === 'ArrowDown' && idx < items.length - 1) setCued(items[idx + 1].id);
-      else if (e.key === 'ArrowUp' && idx > 0) setCued(items[idx - 1].id);
+      if (e.key === 'Escape' && airWidget) (e.preventDefault(), setAirWidget(null));
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  });
+  // The user's keyboard shortcuts (Settings › Shortcuts), through the same functions as the buttons.
+  useShortcuts({
+    next: take,
+    take: () => item && takeItem(item),
+    continue: () => continueZone(selZone),
+    continueAll: () => busy.forEach(continueZone),
+    out: () => outZone(selZone),
+    outSelected: () => item && outZone(zoneOf(item)),
+    clear: () => command({ action: 'clear' }),
+    undo: requestUndo,
+    update: () => item && template && onAirByItem.get(item.id) && command({ action: 'update', zone: zoneOf(item)?.id, data: updateData(template, draftRef.current, readMode), fade: updateFade }),
+    select: (d) => {
+      const i = items.findIndex((r) => r.id === cued) + d;
+      if (i >= 0 && i < items.length) setCued(items[i].id);
+    },
+    takeAt: (n) => items[n - 1] && takeItem(items[n - 1]),
+    outZone: (name) => outZone(project?.zones.find((z) => z.name === name) ?? project?.zones.find((z) => z.id === name)),
+    trigger: (name) => command({ action: 'trigger', name }),
+    schedule: toggleScheduleList,
   });
 
   if (!project) return <div className="opx-empty">{t('No project loaded.')}</div>;
@@ -416,7 +439,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const pvAge = () => pvHold + (pv.active ? Math.max(0, Date.now() - pv.since) / 1000 : 0);
   const setRun = (f: (r: PreviewRun) => PreviewRun) => setPv((r) => f(r.active ? r : { ...r, active: true, since: Date.now() }));
 
+  // A graphic of a zone another operator holds: no take, out or update here.
+  const lockOf = (r: RundownItem | null | undefined) => (r && channelId ? zoneLocks.other(zoneOf(r)?.id) : undefined);
+  const operateItem = operate && !lockOf(item);
+
   return (
+    <div className="opl-page">
+    <OperatorTop channelId={channelId} operate={operate} />
+    <ScheduleTop channelId={channelId} project={project} />
+    {channelId && <ZoneBar project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
       {/* Left: playlists and graphics. */}
       <div className="opx-col">
@@ -491,7 +522,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 liveAt={liveState?.at ?? 0}
                 selected={r.id === cued}
                 cue={r.id === nextTarget?.id}
-                operate={operate}
+                operate={operate && !lockOf(r)}
+                lockedBy={lockOf(r)}
+                schedule={<ScheduleCell channelId={channelId} project={project} item={r} operate={operate && !lockOf(r)} />}
                 editable={canEdit}
                 onSelect={() => setCued(r.id)}
                 onTake={() => takeItem(r)}
@@ -545,7 +578,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
             {!items.length && <p className="opx-hint">{t('Empty playlist: add graphics from your templates with +.')}</p>}
           </div>
           <footer className="opx-foot">
-            <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate} onTake={take} />
+            <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate || !!lockOf(nextTarget)} onTake={take} />
             <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title={t('F12: everything out at once')}>
               {t('Clear all')}
             </button>
@@ -580,8 +613,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <span className="spacer" />
                 {onAirNow && (
                   <>
-                    <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operate} />
-                    <button className="opx-btn violet" disabled={!operate || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
+                    <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operateItem} />
+                    <button className="opx-btn violet" disabled={!operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
                       <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
                     </button>
                   </>
@@ -661,8 +694,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                           <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
                         ) : (
                           <div key={ds.key} className="opx-ds-stack">
-                            <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operate} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
-                            <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operate} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                            <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
+                            <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
                           </div>
                         ),
                       )}
@@ -732,7 +765,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     zone={z}
                     item={p}
                     liveAt={liveState?.at ?? 0}
-                    operate={operate}
+                    operate={operate && !zoneLocks.other(z.id)}
+                    lockedBy={channelId ? zoneLocks.other(z.id) : undefined}
                     command={command}
                     nextRowOf={(key) => nextRowOf(p, key)}
                     widget={{ selected: airWidget, onSelect: setAirWidget, more: airMore, onMore: (k, open) => setAirMore({ ...airMore, [k]: open }) }}
@@ -745,6 +779,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
           )}
         </section>
       </div>
+    </div>
+    <UndoToast channelId={channelId} operate={operate} />
     </div>
   );
 }
@@ -1016,6 +1052,10 @@ function GraphicRow(props: {
   /** NEXT takes this one. */
   cue: boolean;
   operate: boolean;
+  /** Its zone is held by another operator. */
+  lockedBy?: ZoneLock;
+  /** Its scheduled takes and the clock button. */
+  schedule?: React.ReactNode;
   editable: boolean;
   onSelect: () => void;
   onTake: () => void;
@@ -1037,13 +1077,17 @@ function GraphicRow(props: {
   const [renaming, setRenaming] = useState(false);
   const [autoAt, setAutoAt] = useState<DOMRect | null>(null);
   return (
-    <div className={`opx-gr ${props.selected ? 'on' : ''} ${props.cue ? 'cue' : ''} ${air ? 'air' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
+    <div className={`opx-gr ${props.selected ? 'on' : ''} ${props.cue ? 'cue' : ''} ${air ? 'air' : ''} ${props.lockedBy ? 'opl-locked' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
       {props.editable && (
         <span className="opx-grip" draggable onDragStart={props.drag.onStart} onDragEnd={props.drag.onEnd} title={t('Drag to reorder')} onClick={(e) => e.stopPropagation()}>
           <GripVertical size={14} />
         </span>
       )}
-      {air && pause ? (
+      {props.lockedBy ? (
+        <button className={`opx-sq big opl-sq ${air ? 'red' : ''}`} disabled title={t('{name} holds this zone', { name: props.lockedBy.userName })} onClick={(e) => e.stopPropagation()}>
+          <Lock size={14} />
+        </button>
+      ) : air && pause ? (
         <PauseButton pause={pause} step={step} left={left} operate={props.operate} onContinue={props.onContinue} />
       ) : (
         <button
@@ -1090,6 +1134,8 @@ function GraphicRow(props: {
         </span>
         <MiniTimeline template={tpl} air={air} />
       </span>
+      {props.lockedBy && <LockedBy lock={props.lockedBy} />}
+      {props.schedule}
       {props.editable && (
         <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
           <button title={t('Auto next of this graphic: its time on air')} className={item.autoSecs !== undefined ? 'on' : ''} onClick={(e) => setAutoAt(autoAt ? null : e.currentTarget.getBoundingClientRect())}>
@@ -1428,7 +1474,7 @@ function useUpdateFade(): [boolean, (v: boolean) => void] {
 }
 
 /** One graphic on air: a card — the on-air family in its header, the animation pills below. */
-function AirCard({ project, zone, item, liveAt, operate, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; liveAt: number; operate: boolean; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
+function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; liveAt: number; operate: boolean; /** Its zone is held by another operator. */ lockedBy?: ZoneLock; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const waiting = tpl ? pauseOf(item, project) : undefined;
   const step = autoStep(project, item, liveAt);
@@ -1441,11 +1487,19 @@ function AirCard({ project, zone, item, liveAt, operate, command, nextRowOf, wid
     ) : null;
   const name = rundownName(project, item.rundownId) ?? tpl?.name ?? t('Deleted graphic');
   return (
-    <div className="opx-aircard">
+    <div className={`opx-aircard ${lockedBy ? 'opl-locked' : ''}`} title={lockedBy ? t('{name} holds this zone', { name: lockedBy.userName }) : undefined}>
       <header>
         <span className="opx-dot" style={{ background: 'var(--live)' }} />
         <strong>{name}</strong>
-        <span className="muted small">{zone.name}</span>
+        <span className="muted small">
+          {zone.name}
+          {lockedBy && (
+            <>
+              {' · '}
+              <Lock size={10} /> {lockedBy.userName}
+            </>
+          )}
+        </span>
         <span className="spacer" />
         {tpl && (
           <button className={`opx-btn small ${waiting ? 'amber' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={t('F2 / Space')}>

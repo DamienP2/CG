@@ -53,6 +53,10 @@
   {
    "name": "Media",
    "description": "Shared and project media libraries"
+  },
+  {
+   "name": "Control surfaces (v1)",
+   "description": "Short paths for Bitfocus Buttons / Companion, Stream Deck and scripts: a channel by id or name, a graphic of the rundown by id, name or 1-based position, a zone or a template by id or name. The same actions over OSC (UDP, `/strata/{channel}/…`) and a TCP text protocol (`{channel} take 2`), when enabled in the settings. Rights: admin, designer, operator of the channel."
   }
  ],
  "paths": {
@@ -1205,6 +1209,269 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/ChannelState"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/asrun": {
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "As-run log",
+    "description": "Every action on air (who, what, when, with which values), newest first, for the channels the user sees. Kept per day on the server. New entries are pushed live on `/ws` as `asRun` events.",
+    "parameters": [
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "description": "Start, ms since 1970 (default: 24 h before `to`).",
+      "schema": {
+       "type": "integer",
+       "format": "int64"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "description": "End, ms since 1970 (default: now).",
+      "schema": {
+       "type": "integer",
+       "format": "int64"
+      }
+     },
+     {
+      "name": "channel",
+      "in": "query",
+      "required": false,
+      "description": "Channel id.",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "actions",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated: take, out, continue, update, clear, row, widget, trigger, undo, auto (every step of the engine: auto-next, auto-out, auto-continue).",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "actors",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated actor ids (user, API key…).",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "kinds",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated sources: user, api, mos, auto, schedule, data.",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "description": "Text in the graphic, values, actor, project, channel, zone or detail.",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "description": "At most this many entries (newest kept; default 5000 for JSON).",
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "at": {
+            "type": "integer",
+            "description": "Server time, ms."
+           },
+           "channelId": {
+            "type": "string"
+           },
+           "channelName": {
+            "type": "string"
+           },
+           "projectId": {
+            "type": "string"
+           },
+           "projectName": {
+            "type": "string"
+           },
+           "action": {
+            "type": "string"
+           },
+           "label": {
+            "type": "string",
+            "description": "The graphic."
+           },
+           "zone": {
+            "type": "string"
+           },
+           "actor": {
+            "type": "object",
+            "properties": {
+             "kind": {
+              "type": "string",
+              "enum": [
+               "user",
+               "api",
+               "mos",
+               "auto",
+               "schedule",
+               "data"
+              ]
+             },
+             "id": {
+              "type": "string"
+             },
+             "name": {
+              "type": "string"
+             }
+            }
+           },
+           "values": {
+            "type": "object",
+            "description": "Key → [before (or null), after].",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": [
+               "string",
+               "null"
+              ]
+             }
+            }
+           },
+           "detail": {
+            "type": "string"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/asrun.csv": {
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "As-run log (CSV)",
+    "description": "Same filters as `GET /api/asrun`, in time order, as a CSV download (times to the hundredth of a second in the server time zone).",
+    "parameters": [
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "description": "Start, ms since 1970 (default: 24 h before `to`).",
+      "schema": {
+       "type": "integer",
+       "format": "int64"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "description": "End, ms since 1970 (default: now).",
+      "schema": {
+       "type": "integer",
+       "format": "int64"
+      }
+     },
+     {
+      "name": "channel",
+      "in": "query",
+      "required": false,
+      "description": "Channel id.",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "actions",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated: take, out, continue, update, clear, row, widget, trigger, undo, auto (every step of the engine: auto-next, auto-out, auto-continue).",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "actors",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated actor ids (user, API key…).",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "kinds",
+      "in": "query",
+      "required": false,
+      "description": "Comma-separated sources: user, api, mos, auto, schedule, data.",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "description": "Text in the graphic, values, actor, project, channel, zone or detail.",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "description": "At most this many entries (newest kept; default 5000 for JSON).",
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "text/csv": {
+        "schema": {
+         "type": "string"
         }
        }
       }
@@ -3149,6 +3416,1181 @@
      }
     }
    }
+  },
+  "/api/v1/status": {
+   "get": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Status of every channel",
+    "description": "Tally of every graphic, what each zone shows, countdowns, widgets, zone locks, health.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Status"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/feedback": {
+   "get": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Feedback (WebSocket)",
+    "description": "Sends the status (`V1Status`) on connect, then again each time it changes (at most 10 a second; countdowns at least once a second). The API key may come as `?key=pcg_…`.",
+    "parameters": [
+     {
+      "name": "key",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "description": "API key"
+     },
+     {
+      "name": "channel",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      },
+      "description": "One channel (id or name)"
+     }
+    ],
+    "responses": {
+     "101": {
+      "description": "WebSocket"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/status": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Status of a channel",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1ChannelStatus"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/take/{item}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "item",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Rundown item id, name or position (1 = first)"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Take a graphic",
+    "description": "A graphic of the rundown (its values, the body's over them), else a template by id or name. `?zone=` plays it in another zone.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    },
+    "requestBody": {
+     "required": false,
+     "description": "Values, at the top or under `data` (the query works too).",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "data": {
+          "$ref": "#/components/schemas/Data"
+         },
+         "fade": {
+          "type": "boolean"
+         },
+         "zone": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": {
+         "type": "string"
+        }
+       }
+      },
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/next": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "NEXT",
+    "description": "Takes the cued graphic (the one after it when it is already on air), else the one after the last taken, as the Operator's NEXT; then cues the following one.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    },
+    "requestBody": {
+     "required": false,
+     "description": "Optional.",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "playlist": {
+          "type": "string",
+          "description": "Playlist id, name or position"
+         }
+        }
+       }
+      },
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/cue/{item}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "item",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Rundown item id, name or position (1 = first)"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Cue a graphic",
+    "description": "Marks the graphic NEXT takes (kept in memory).",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/continue/{zone}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Continue",
+    "description": "Plays on from the pause the graphic in the zone holds at.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/out": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Take out everything",
+    "description": "Every zone on air plays its out animation.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/out/{zone}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Take out a zone",
+    "description": "",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/clear/{zone}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Clear a zone",
+    "description": "Removes at once, without the out animation (`all` for every zone).",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/update/{zone}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Update values",
+    "description": "New values for the graphic on air (`fade` cross-fades them in).",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    },
+    "requestBody": {
+     "required": false,
+     "description": "Values, at the top or under `data` (the query works too).",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "data": {
+          "$ref": "#/components/schemas/Data"
+         },
+         "fade": {
+          "type": "boolean"
+         },
+         "zone": {
+          "type": "string"
+         }
+        },
+        "additionalProperties": {
+         "type": "string"
+        }
+       }
+      },
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/value/{zone}/{key}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    },
+    {
+     "name": "key",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Field key"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Set one value",
+    "description": "The body is the value (text), or `{\"value\": …}`, or `?value=`.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    },
+    "requestBody": {
+     "required": false,
+     "description": "The value.",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "value": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/undo": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Undo",
+    "description": "Puts back the channel as before its last action.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/trigger/{name}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "name",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Trigger name"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Fire a trigger",
+    "description": "Pauses waiting for this trigger play on.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/widget/{zone}/{widget}/{action}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    },
+    {
+     "name": "widget",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Layer id or name (`*`: every timed widget)"
+    },
+    {
+     "name": "action",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "start, pause, toggle, reset, restart, or the widget's action"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Widget action",
+    "description": "`start`, `pause`, `toggle`, `reset`, `restart` a timed widget; any other action is the widget's own (`next`, `add`…) with the body (or `key=value` words) as `args`.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    },
+    "requestBody": {
+     "required": false,
+     "description": "Arguments of the widget's action.",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "args": {
+          "type": "object"
+         }
+        }
+       }
+      },
+      "text/plain": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/{channel}/row/{zone}/{row}": {
+   "parameters": [
+    {
+     "name": "channel",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id or name"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id or name"
+    },
+    {
+     "name": "row",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "next, prev, first, last or a row number (1 = first)"
+    }
+   ],
+   "post": {
+    "tags": [
+     "Control surfaces (v1)"
+    ],
+    "summary": "Data set row",
+    "description": "Another row of a data set of the graphic on air (`?dataset=`: its key or name; default: the first).",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/V1Done"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such channel, graphic, zone or action"
+     },
+     "409": {
+      "description": "Another operator holds the zone, or nothing next"
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/undo": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Last actions that can be undone",
+    "description": "The last 10 actions of the channel, latest first.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/UndoStep"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Undo the last action",
+    "description": "**Rights:** admin, designer, operator. Only the zone of the action goes back; refused (409) when another operator holds it.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ChannelState"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "The zone is held by another operator"
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/locks": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Zones held by operators",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/ZoneLock"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/zones/{zone}/lock": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    },
+    {
+     "name": "zone",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Zone id"
+    }
+   ],
+   "put": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Take a zone",
+    "description": "**Rights:** admin, designer, operator. Taken from whoever held it, who is told (`zoneLocks` event). Other people's commands on it are then refused (409).",
+    "responses": {
+     "204": {
+      "description": "Taken"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Free a zone",
+    "description": "Its holder or an admin.",
+    "responses": {
+     "204": {
+      "description": "Freed"
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/schedule": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    }
+   ],
+   "get": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Scheduled takes",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Scheduled"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Schedule a take or an out",
+    "description": "**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "action",
+         "when"
+        ],
+        "properties": {
+         "projectId": {
+          "type": "string",
+          "description": "Default: the project on the channel"
+         },
+         "action": {
+          "type": "string",
+          "enum": [
+           "take",
+           "out"
+          ]
+         },
+         "item": {
+          "type": "string",
+          "description": "Rundown item id"
+         },
+         "zone": {
+          "type": "string",
+          "description": "For an out without item"
+         },
+         "when": {
+          "$ref": "#/components/schemas/ScheduleWhen"
+         },
+         "repeat": {
+          "type": "string",
+          "enum": [
+           "once",
+           "daily"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Scheduled"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/channels/{id}/schedule/{sid}": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Channel id"
+    },
+    {
+     "name": "sid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     },
+     "description": "Scheduled entry id"
+    }
+   ],
+   "patch": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Turn a scheduled entry on or off",
+    "description": "**Rights:** admin, designer, operator.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "enabled"
+        ],
+        "properties": {
+         "enabled": {
+          "type": "boolean"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "Channels & playout"
+    ],
+    "summary": "Delete a scheduled entry",
+    "description": "**Rights:** admin, designer, operator.",
+    "responses": {
+     "204": {
+      "description": "Deleted"
+     }
+    }
+   }
+  },
+  "/api/me/shortcuts": {
+   "get": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "My keyboard shortcuts",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Shortcuts"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Save my keyboard shortcuts",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Shortcuts"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Shortcuts"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -4158,6 +5600,512 @@
        "type": "string"
       },
       "description": "Project id → folder"
+     }
+    }
+   },
+   "V1Done": {
+    "type": "object",
+    "description": "What was done.",
+    "properties": {
+     "ok": {
+      "type": "boolean"
+     },
+     "channel": {
+      "type": "string",
+      "description": "Channel id"
+     },
+     "done": {
+      "type": "string",
+      "example": "take Marie Curie"
+     }
+    }
+   },
+   "V1ChannelStatus": {
+    "type": "object",
+    "description": "What a control surface shows for a channel.",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "project": {
+      "oneOf": [
+       {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         }
+        }
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "next": {
+      "oneOf": [
+       {
+        "type": "object",
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         }
+        }
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The graphic `next` takes (tally `cue`)."
+     },
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "index": {
+         "type": "integer",
+         "description": "Position in the rundown (1 = first)"
+        },
+        "playlist": {
+         "type": "string"
+        },
+        "zone": {
+         "type": "string"
+        },
+        "tally": {
+         "type": "string",
+         "enum": [
+          "off",
+          "cue",
+          "pvw",
+          "pgm"
+         ],
+         "description": "`pgm` on air, `pvw` taken and waiting for its zone to clear, `cue` what `next` takes."
+        }
+       }
+      }
+     },
+     "zones": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "name": {
+         "type": "string"
+        },
+        "layer": {
+         "type": "integer"
+        },
+        "onAir": {
+         "type": "boolean"
+        },
+        "item": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string"
+            },
+            "name": {
+             "type": "string"
+            }
+           }
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "template": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string"
+            },
+            "name": {
+             "type": "string"
+            }
+           }
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "phase": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "enum": [
+          "playing",
+          "holding",
+          "out",
+          "outHold",
+          null
+         ]
+        },
+        "paused": {
+         "type": "boolean",
+         "description": "Holding on a pause that waits for Continue or a trigger."
+        },
+        "queued": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "id": {
+             "type": "string"
+            },
+            "name": {
+             "type": "string"
+            }
+           }
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "countdown": {
+         "oneOf": [
+          {
+           "type": "object",
+           "properties": {
+            "kind": {
+             "type": "string",
+             "enum": [
+              "resume",
+              "out",
+              "next"
+             ]
+            },
+            "seconds": {
+             "type": "integer",
+             "description": "Seconds left, rounded up"
+            },
+            "total": {
+             "type": "number"
+            }
+           }
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "lockedBy": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "Operator holding the zone"
+        },
+        "widgets": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "id": {
+            "type": "string"
+           },
+           "name": {
+            "type": "string"
+           },
+           "running": {
+            "type": "boolean"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "locks": {
+      "type": "array",
+      "items": {
+       "type": "object"
+      }
+     },
+     "undo": {
+      "type": "integer",
+      "description": "Actions that can be undone"
+     },
+     "health": {
+      "type": "object",
+      "properties": {
+       "ok": {
+        "type": "boolean"
+       },
+       "fps": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "outputs": {
+        "type": "integer"
+       },
+       "outputsOk": {
+        "type": "integer"
+       },
+       "errors": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   },
+   "V1Status": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "type": "string",
+      "enum": [
+       "status"
+      ]
+     },
+     "serverTime": {
+      "type": "integer"
+     },
+     "surfaces": {
+      "type": "integer",
+      "description": "Control surfaces connected (feedback sockets, TCP, OSC senders of the last minute)"
+     },
+     "control": {
+      "type": "object",
+      "description": "The OSC and TCP listeners: `{osc: {enabled, port}, tcp: {enabled, port}}`."
+     },
+     "channels": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/V1ChannelStatus"
+      }
+     }
+    }
+   },
+   "Actor": {
+    "type": "object",
+    "description": "Who did something on air.",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "user",
+       "api",
+       "mos",
+       "auto",
+       "schedule",
+       "data"
+      ]
+     },
+     "id": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     }
+    }
+   },
+   "UndoStep": {
+    "type": "object",
+    "properties": {
+     "at": {
+      "type": "integer",
+      "description": "Server time, ms"
+     },
+     "actor": {
+      "$ref": "#/components/schemas/Actor"
+     },
+     "action": {
+      "type": "string",
+      "description": "take, out, continue, update, clear, row, widget, trigger"
+     },
+     "label": {
+      "type": "string",
+      "description": "The graphic"
+     },
+     "zone": {
+      "type": "string"
+     }
+    }
+   },
+   "ZoneLock": {
+    "type": "object",
+    "properties": {
+     "zone": {
+      "type": "string"
+     },
+     "userId": {
+      "type": "string"
+     },
+     "userName": {
+      "type": "string"
+     },
+     "since": {
+      "type": "integer"
+     }
+    }
+   },
+   "ScheduleWhen": {
+    "oneOf": [
+     {
+      "type": "object",
+      "required": [
+       "kind",
+       "time"
+      ],
+      "properties": {
+       "kind": {
+        "const": "at"
+       },
+       "time": {
+        "type": "string",
+        "example": "20:00:00",
+        "description": "Time of day in the server's time zone"
+       }
+      }
+     },
+     {
+      "type": "object",
+      "required": [
+       "kind"
+      ],
+      "properties": {
+       "kind": {
+        "const": "in"
+       },
+       "secs": {
+        "type": "number",
+        "description": "Seconds from now (on create)"
+       },
+       "at": {
+        "type": "integer",
+        "description": "Server time, ms"
+       }
+      }
+     },
+     {
+      "type": "object",
+      "required": [
+       "kind",
+       "tc"
+      ],
+      "properties": {
+       "kind": {
+        "const": "timecode"
+       },
+       "tc": {
+        "type": "string",
+        "example": "20:00:00:00",
+        "description": "Time-of-day timecode at the channel's frame rate"
+       }
+      }
+     }
+    ]
+   },
+   "Scheduled": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "channelId": {
+      "type": "string"
+     },
+     "projectId": {
+      "type": "string"
+     },
+     "action": {
+      "type": "string",
+      "enum": [
+       "take",
+       "out"
+      ]
+     },
+     "item": {
+      "type": "string"
+     },
+     "zone": {
+      "type": "string"
+     },
+     "when": {
+      "$ref": "#/components/schemas/ScheduleWhen"
+     },
+     "repeat": {
+      "type": "string",
+      "enum": [
+       "once",
+       "daily"
+      ]
+     },
+     "createdBy": {
+      "type": "string"
+     },
+     "enabled": {
+      "type": "boolean"
+     },
+     "label": {
+      "type": "string"
+     },
+     "next": {
+      "type": "integer"
+     },
+     "missed": {
+      "type": "boolean"
+     }
+    }
+   },
+   "Shortcuts": {
+    "type": "object",
+    "properties": {
+     "bindings": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "null: the Broadcast profile",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "example": "take:1"
+        },
+        "keys": {
+         "type": "array",
+         "items": {
+          "type": "string",
+          "example": "F1"
+         }
+        }
+       }
+      }
      }
     }
    }

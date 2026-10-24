@@ -814,8 +814,8 @@ fn log_auto(
         .map(|z| z.id.clone())
         .unwrap_or_default();
     crate::asrun::record(
-        &state.data_dir,
-        &crate::asrun::Entry {
+        state,
+        crate::asrun::Entry {
             at: crate::state::now_ms(),
             channel_id: ch.config.id.clone(),
             channel_name: ch.config.name.clone(),
@@ -919,8 +919,8 @@ async fn advance(
             // Countdowns at zero firing their trigger.
             for name in st.zero_triggers(p, &state.config.timezone) {
                 crate::asrun::record(
-                    &state.data_dir,
-                    &crate::asrun::Entry {
+                    state,
+                    crate::asrun::Entry {
                         at: crate::state::now_ms(),
                         channel_id: ch.config.id.clone(),
                         channel_name: ch.config.name.clone(),

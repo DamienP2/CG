@@ -1,6 +1,7 @@
 mod ae_import;
 mod antenna;
 mod api;
+mod apiv1;
 mod asrun;
 mod auth;
 mod config;
@@ -19,9 +20,11 @@ mod media;
 mod mos;
 mod paths;
 mod perf;
+mod prefs;
 mod premiere;
 mod render;
 mod rt;
+mod schedule;
 mod service;
 mod state;
 mod sync;
@@ -530,6 +533,7 @@ pub async fn serve(
             restart: Notify::new(),
             closing,
             presence: Default::default(),
+            schedule: schedule::Schedule::load(&data_dir),
         });
         shared.inputs.apply(&shared.config.inputs);
         shared
@@ -541,6 +545,9 @@ pub async fn serve(
         let engine = vec![
             tokio::spawn(mos::serve(shared.clone())),
             tokio::spawn(datasources::run(shared.clone())),
+            // OSC and TCP control (Bitfocus Buttons…), when enabled.
+            tokio::spawn(apiv1::serve(shared.clone())),
+            tokio::spawn(schedule::run(shared.clone())),
         ];
 
         let app = api::router()

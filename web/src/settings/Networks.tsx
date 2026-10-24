@@ -12,7 +12,7 @@ import '../hardware/hardware.css';
  * the machine. Saving restarts the server on its new addresses.
  */
 
-type RoleKey = 'control' | 'ndi' | 'mediaRed' | 'mediaBlue' | 'mos' | 'ptp';
+type RoleKey = 'control' | 'ndi' | 'mediaRed' | 'mediaBlue' | 'mos' | 'ptp' | 'buttons';
 
 const ipOf = (n?: Nic) => n?.ipv4[0]?.split('/')[0];
 
@@ -74,6 +74,19 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
         <span className="net-ports">
           <input type="number" min={1} max={65535} value={cfg.mos.lowerPort} aria-label={t('MOS lower port')} onChange={(e) => edit((c) => void (c.mos.lowerPort = +e.target.value))} />
           <input type="number" min={1} max={65535} value={cfg.mos.upperPort} aria-label={t('MOS upper port')} onChange={(e) => edit((c) => void (c.mos.upperPort = +e.target.value))} />
+        </span>
+      ),
+    },
+    {
+      // OSC and TCP control of Bitfocus Buttons (API page), on every interface.
+      key: 'buttons',
+      label: 'OSC · TCP',
+      cell: <span className="muted">{t('Every interface')}</span>,
+      addr: address('', true),
+      port: (
+        <span className="net-ports">
+          <input type="number" min={1} max={65535} value={cfg.control?.oscPort ?? 9000} aria-label={t('OSC port')} onChange={(e) => edit((c) => void (c.control = { oscEnabled: false, tcpEnabled: false, tcpPort: 9001, allow: [], ...c.control, oscPort: +e.target.value }))} />
+          <input type="number" min={1} max={65535} value={cfg.control?.tcpPort ?? 9001} aria-label={t('TCP port')} onChange={(e) => edit((c) => void (c.control = { oscEnabled: false, oscPort: 9000, tcpEnabled: false, allow: [], ...c.control, tcpPort: +e.target.value }))} />
         </span>
       ),
     },

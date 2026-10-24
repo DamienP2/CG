@@ -256,6 +256,7 @@ L'onglet **Users** liste les comptes en cartes, filtrées par rôle à gauche. P
 | `GET` | `/api/channels` · `/api/channels/{id}/state` · `/preview.png` | chaînes, état et rendu du program |
 | `PUT` | `/api/channels/{id}/project` | charger un projet sur une chaîne |
 | `POST` | `/api/channels/{id}/command` | commandes de playout (voir ci-dessous) |
+| `GET` | `/api/asrun?from=&to=&channel=&actions=&actors=&kinds=&q=&limit=` · `/api/asrun.csv` | journal d'antenne (as-run) : chaque action à l'antenne, qui, quand, avec quelles valeurs ; export CSV |
 | `GET` / `PUT` | `/api/assets` · `/api/assets/{nom}` | médias |
 | `GET` | `/api/health` | état public (supervision, app de la barre des menus) |
 | `GET` / `POST` | `/api/system/update` · `/check` · `/install` · `/upload` · `/rollback` | mises à jour OTA (admin) |
@@ -271,6 +272,21 @@ curl -X POST localhost:8080/api/channels/main/command -H "Authorization: Bearer 
 # actions : take | continue | takeOut | update | clear — ciblées par "zone" (ou "layer")
 # un take sans zone joue dans la zone par défaut du template
 ```
+
+### Surfaces de contrôle (Bitfocus Buttons / Companion)
+
+Chemins courts sous `/api/v1/{canal}/…` (POST, clé d'API en `Authorization: Bearer pcg_…`) : un canal par id ou nom, un graphique du conducteur par id, nom ou position (1 = premier), une zone ou un template par id ou nom. Page *API › Bitfocus Buttons* : URL du serveur, clé, actions à copier, connexion Buttons à télécharger.
+
+| Action | Chemin |
+| --- | --- |
+| take · cue | `take/{item}` (valeurs en JSON ou en query) · `cue/{item}` |
+| NEXT (comme l'Opérateur) | `next` (`?playlist=`) |
+| continue · out · clear | `continue/{zone}` · `out[/{zone}]` · `clear/{zone}` |
+| valeurs | `update/{zone}` · `value/{zone}/{clé}` (corps = valeur) |
+| undo · trigger | `undo` · `trigger/{nom}` |
+| widgets · rangées | `widget/{zone}/{widget}/{start\|pause\|toggle\|reset\|…}` · `row/{zone}/{next\|prev\|n}` |
+
+Retours : `GET /api/v1/status` (tally `off|cue|pvw|pgm` de chaque graphique, zones, comptes à rebours, widgets, verrous, santé) et le WebSocket `/api/v1/feedback?key=pcg_…` (statut à la connexion puis à chaque changement). Sans HTTP, activés dans *API › Bitfocus Buttons* (admin) ou `config.json` → `control` : OSC sur UDP 9000 (`/strata/main/take/2`, `/strata/main/value/lower/name "Marie Curie"`) et texte sur TCP 9001 (`main take 2` → `OK …` / `ERR …`, `status`, `watch`), limités aux adresses de `allow` (vide = toutes).
 
 ## Arborescence
 

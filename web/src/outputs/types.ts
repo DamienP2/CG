@@ -183,6 +183,8 @@ export interface ServerConfig {
   inputs?: InputConfig[];
   /** DeckLink cards and ST 2110 flows (Hardware page). */
   hardware?: HardwareConfig;
+  /** OSC and TCP control (Bitfocus Buttons), see crates/cg-server/src/apiv1. */
+  control?: { oscEnabled: boolean; oscPort: number; tcpEnabled: boolean; tcpPort: number; allow: string[] };
 }
 
 // ---- Hardware (crates/cg-server/src/hardware.rs) ----

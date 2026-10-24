@@ -72,6 +72,16 @@ pub enum Event {
     Folders {
         folders: crate::media::Folders,
     },
+    /// A new entry of the as-run log.
+    AsRun {
+        entry: Box<crate::asrun::Entry>,
+    },
+    /// What is programmed on a channel changed (`crate::schedule`).
+    #[serde(rename_all = "camelCase")]
+    Schedule {
+        channel_id: String,
+        items: Vec<crate::schedule::View>,
+    },
     Error {
         message: String,
     },
@@ -266,6 +276,8 @@ pub struct AppState {
     pub closing: watch::Sender<bool>,
     /// Who has the Operator open, on which channel.
     pub presence: crate::antenna::Presence,
+    /// Takes and outs programmed in advance.
+    pub schedule: crate::schedule::Schedule,
 }
 
 pub type Shared = Arc<AppState>;
@@ -597,12 +609,13 @@ impl AppState {
                     actor: actor.clone(),
                     action: action.into(),
                     label: label.clone(),
+                    zone: zone.clone().unwrap_or_default(),
                     before,
                 });
             }
             crate::asrun::record(
-                &self.data_dir,
-                &crate::asrun::Entry {
+                self,
+                crate::asrun::Entry {
                     at: now_ms(),
                     channel_id: channel_id.into(),
                     channel_name: ch.config.name.clone(),
@@ -634,13 +647,15 @@ impl AppState {
         actor: &crate::antenna::Actor,
     ) -> Result<ChannelState, String> {
         let ch = self.channel(channel_id).ok_or("no such channel")?;
-        let step = ch
-            .ops
-            .undo
-            .lock()
-            .map_err(|_| "busy".to_string())?
-            .pop_back()
-            .ok_or("nothing to undo")?;
+        let step = {
+            let mut undo = ch.ops.undo.lock().map_err(|_| "busy".to_string())?;
+            let last = undo.back().ok_or("nothing to undo")?;
+            // Not an action in a zone another operator holds now.
+            if let Some(l) = ch.ops.held_by_other(&last.zone, actor) {
+                return Err(format!("{} holds this zone", l.user_name));
+            }
+            undo.pop_back().ok_or("nothing to undo")?
+        };
         let project = match ch.project_id.read().await.clone() {
             Some(id) => self.project(&id).await,
             None => None,
@@ -648,6 +663,19 @@ impl AppState {
         let snapshot = {
             let mut st = ch.state.write().await;
             let mut before = step.before.clone();
+            // An action in one zone: the others stay as they are now.
+            let layer = project
+                .as_ref()
+                .and_then(|p| p.zone(&step.zone))
+                .map(|z| z.layer);
+            if let Some(layer) = layer {
+                let mut only = st.clone();
+                match before.layers.remove(&layer) {
+                    Some(it) => only.layers.insert(layer, it),
+                    None => only.layers.remove(&layer),
+                };
+                before = only;
+            }
             // Values changed on air go back without replaying the graphic.
             if matches!(step.action.as_str(), "update" | "widget" | "row") {
                 for (layer, it) in before.layers.iter_mut() {
@@ -672,8 +700,8 @@ impl AppState {
             st.clone()
         };
         crate::asrun::record(
-            &self.data_dir,
-            &crate::asrun::Entry {
+            self,
+            crate::asrun::Entry {
                 at: now_ms(),
                 channel_id: channel_id.into(),
                 channel_name: ch.config.name.clone(),
@@ -681,7 +709,7 @@ impl AppState {
                 project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
                 action: "undo".into(),
                 label: step.label.clone(),
-                zone: String::new(),
+                zone: step.zone.clone(),
                 actor: actor.clone(),
                 values: BTreeMap::new(),
                 detail: step.action.clone(),

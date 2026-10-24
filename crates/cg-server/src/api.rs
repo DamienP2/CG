@@ -25,11 +25,16 @@ use crate::state::{now_ms, ChannelInfo, ClientMessage, Event, Shared};
 pub fn router() -> Router<Shared> {
     Router::new()
         .merge(crate::media::router())
+        .merge(crate::apiv1::router())
         .route("/api/auth/state", get(auth_state))
         .route("/api/auth/setup", post(auth_setup))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/me/lang", put(put_my_lang))
+        .route(
+            "/api/me/shortcuts",
+            get(crate::prefs::get_shortcuts).put(crate::prefs::put_shortcuts),
+        )
         .route("/api/web/proxy", get(crate::webproxy::proxy))
         .route("/api/inputs", get(crate::inputs::list))
         .route("/api/inputs/ndi-sources", get(crate::inputs::ndi_sources))
@@ -113,6 +118,14 @@ pub fn router() -> Router<Shared> {
         )
         .route("/api/channels/{id}/locks", get(zone_locks))
         .route(
+            "/api/channels/{id}/schedule",
+            get(crate::schedule::list).post(crate::schedule::create),
+        )
+        .route(
+            "/api/channels/{id}/schedule/{sid}",
+            axum::routing::patch(crate::schedule::patch).delete(crate::schedule::delete),
+        )
+        .route(
             "/api/channels/{id}/zones/{zone}/lock",
             put(take_zone).delete(free_zone),
         )
@@ -140,6 +153,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/system/metrics", get(crate::perf::metrics))
         .route("/api/system/logs", get(crate::perf::logs))
         .route("/api/system/logs/download", get(crate::perf::logs_download))
+        .route("/api/asrun", get(crate::asrun::get_asrun))
+        .route("/api/asrun.csv", get(crate::asrun::get_asrun_csv))
         .route("/api/system/config", put(put_system_config))
         .route("/api/outputs/status", get(outputs_status))
         .route("/api/hardware", get(get_hardware))
@@ -3083,6 +3098,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                     Event::Channel { channel_id, .. } => viewer.sees_channel(channel_id),
                     Event::Presence { .. } => viewer.user.is_some(),
                     Event::ZoneLocks { channel_id, .. } => viewer.user.is_some() && viewer.sees_channel(channel_id),
+                    Event::AsRun { entry } => viewer.user.is_some() && viewer.sees_channel(&entry.channel_id),
                     // Signed-in users (designer, operator, settings), not output pages.
                     Event::Data { .. } | Event::Folders { .. } => viewer.user.is_some(),
                     Event::Changed { what } => viewer.user.as_ref().is_some_and(|u| what.strip_prefix("media:").is_none_or(|p| u.sees_project(p))),
@@ -3099,6 +3115,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                         }
                         true
                     }
+                    Event::Schedule { channel_id, .. } => viewer.user.is_some() && viewer.sees_channel(channel_id),
                     Event::Error { .. } => false,
                 };
                 if !visible {
@@ -3107,6 +3124,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                 let ev = match ev {
                     Event::Channels { channels } => Event::Channels { channels: channels.into_iter().filter(|c| viewer.sees_channel(&c.id)).collect() },
                     Event::Presence { present } => Event::Presence { present: present.into_iter().filter(|p| viewer.sees_channel(&p.channel_id)).collect() },
+                    Event::Schedule { channel_id, items } => Event::Schedule { channel_id, items: items.into_iter().filter(|i| viewer.user.as_ref().is_some_and(|u| u.sees_project(&i.entry.project_id))).collect() },
                     other => other,
                 };
                 if let Some(x) = extra {

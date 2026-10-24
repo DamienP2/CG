@@ -94,6 +94,9 @@ pub struct UndoStep {
     pub action: String,
     /// The graphic it was about ("" for several).
     pub label: String,
+    /// The zone it drove ("" for several).
+    #[serde(default)]
+    pub zone: String,
     #[serde(skip)]
     pub before: ChannelState,
 }
@@ -264,8 +267,14 @@ pub fn command_label(project: &Project, before: &ChannelState, cmd: &Command) ->
     layer
         .and_then(|l| before.layers.get(&l))
         .map(|it| {
-            rundown_name(&it.rundown_id)
-                .or_else(|| project.template(&it.template_id).map(|t| t.name.clone()))
+            // A take waiting for the graphic going out is the one the
+            // operator sees as on air.
+            let (rundown_id, template_id) = match &it.next {
+                Some(n) => (&n.rundown_id, &n.template_id),
+                None => (&it.rundown_id, &it.template_id),
+            };
+            rundown_name(rundown_id)
+                .or_else(|| project.template(template_id).map(|t| t.name.clone()))
                 .unwrap_or_default()
         })
         .unwrap_or_default()
@@ -319,6 +328,7 @@ mod tests {
                 actor: person("julie"),
                 action: "take".into(),
                 label: format!("#{i}"),
+                zone: String::new(),
                 before: ChannelState::default(),
             });
         }
