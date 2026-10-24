@@ -10,10 +10,10 @@
    "Vigilance",
    "Icônes"
   ],
-  "description": "Un bulletin météo complet : carte de France des températures par région (échelle de couleurs), cartes des villes avec icônes au choix (soleil, éclaircies, nuages, pluie, orage, neige), prévisions sur sept jours, bandeau de vigilance jaune, orange ou rouge et synthé du présentateur. Bleu ciel et verre dépoli, Montserrat. Version 9:16 pour les réseaux sociaux.",
+  "description": "Un bulletin météo complet : carte de France des températures par région (échelle de couleurs), cartes des villes avec icônes au choix (soleil, éclaircies, nuages, pluie, orage, neige), prévisions sur sept jours, bandeau de vigilance jaune, orange ou rouge et synthé du présentateur. Bleu ciel et verre dépoli, Montserrat. Version 9:16 pour les réseaux sociaux.", "summary": "Carte des températures, villes et prévisions sur plusieurs jours.",
   "en": {
    "name": "Weather",
-   "description": "A complete weather bulletin: temperature map of France by region, city cards with selectable icons (sun, sunny spells, clouds, rain, storm, snow), seven-day forecast, yellow / orange / red warning banner and presenter lower third. Also in 9:16 for social networks."
+   "description": "A complete weather bulletin: temperature map of France by region, city cards with selectable icons (sun, sunny spells, clouds, rain, storm, snow), seven-day forecast, yellow / orange / red warning banner and presenter lower third. Also in 9:16 for social networks.", "summary": "Temperature map, cities and multi-day forecast."
   },
   "cover": "cities"
  },

@@ -374,8 +374,9 @@ fn render_loop(
         stats.rendered(t.elapsed());
         let mut d = lock(&done);
         d.insert(tick, frame);
-        // Never more than a few waiting (nothing sends them while stopping).
-        while d.len() > 8 {
+        // Never more than a few waiting (nothing sends them while stopping):
+        // the frames ahead (4 at most) and one.
+        while d.len() > 5 {
             d.pop_first();
         }
     }
@@ -403,7 +404,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
             .renditions
             .iter()
             .find(|r| r.id == id)
-            .map_or("Main", |r| r.name.as_str());
+            .map_or("Principal", |r| r.name.as_str());
         let stats = state.perf.picture(&cfg.id, id, name, width, height);
         let card = opened.iter().find_map(|o| o.sink.frame_clock());
         let outputs = opened
@@ -451,6 +452,25 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
         });
     }
     pictures
+}
+
+// ----------------------------------------------------------------- memory --
+
+/// Gives memory back to the system once the pictures are quiet (after a
+/// busy scene was cleared, thumbnails were drawn…): the spare frame buffers,
+/// and what the allocator keeps of freed memory (glibc keeps it otherwise).
+pub async fn give_back_memory() {
+    loop {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        if cg_render::pool::release_idle(Duration::from_secs(3)) {
+            #[cfg(all(target_os = "linux", target_env = "gnu"))]
+            let _ = tokio::task::spawn_blocking(|| {
+                // SAFETY: malloc_trim only returns free pages of the heap.
+                unsafe { libc::malloc_trim(0) }
+            })
+            .await;
+        }
+    }
 }
 
 // ------------------------------------------------------------------ clock --
@@ -841,11 +861,9 @@ async fn advance(
     saved_at: &mut Instant,
 ) -> (Option<Arc<Project>>, ChannelState) {
     let channel_fps = ch.config.frame_rate.as_f64().max(1.0);
-    let pid = ch.project_id.read().await.clone();
-    let project = match pid.clone() {
-        Some(id) => state.project(&id).await,
-        None => None,
-    };
+    // Without waiting on the library (a project being saved).
+    let project = ch.loaded.get();
+    let pid = project.as_ref().map(|p| p.id.clone());
     // Timelines are authored in project frames: re-time them for the
     // channel rate (a 25p project plays at the right speed on 50p).
     let step = project

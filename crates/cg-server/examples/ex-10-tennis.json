@@ -11,10 +11,10 @@
    "Face-à-face",
    "Résultat"
   ],
-  "description": "Un match de tennis en direct : tableau de score (jeux, sets, points 15-30-40, avantage et tie-break comptés par le widget, balle de service), fiche joueur, statistiques du match à barres partagées, alertes balle de break, de set et de match, face-à-face avant le match et résultat final. Vert gazon profond, terre battue et jaune balle, Montserrat.",
+  "description": "Un match de tennis en direct : tableau de score (jeux, sets, points 15-30-40, avantage et tie-break comptés par le widget, balle de service), fiche joueur, statistiques du match à barres partagées, alertes balle de break, de set et de match, face-à-face avant le match et résultat final. Vert gazon profond, terre battue et jaune balle, Montserrat.", "summary": "Score jeux-sets-points, fiches et statistiques des joueurs.",
   "en": {
    "name": "Tennis",
-   "description": "A live tennis match: scoreboard (games, sets, 15-30-40 points, advantage and tie-break counted by the widget, serve ball), player card, split-bar match statistics, break / set / match point alerts, head-to-head before the match and final result."
+   "description": "A live tennis match: scoreboard (games, sets, 15-30-40 points, advantage and tie-break counted by the widget, serve ball), player card, split-bar match statistics, break / set / match point alerts, head-to-head before the match and final result.", "summary": "Games-sets-points score, player cards and stats."
   },
   "cover": "h2h"
  },

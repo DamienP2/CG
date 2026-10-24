@@ -11,10 +11,10 @@
    "Pause",
    "Alertes"
   ],
-  "description": "Un tournoi diffusé sur YouTube ou Twitch : bandeau de match (équipes, cartes gagnées, carte en cours), cadres des caméras joueurs, barre des partenaires en rotation, écrans « Le stream commence » et « On revient vite » avec compte à rebours, alertes d’abonnement et de don. Noir profond, violet et cyan électriques, Bebas Neue et Space Grotesk.",
+  "description": "Un tournoi diffusé sur YouTube ou Twitch : bandeau de match (équipes, cartes gagnées, carte en cours), cadres des caméras joueurs, barre des partenaires en rotation, écrans « Le stream commence » et « On revient vite » avec compte à rebours, alertes d’abonnement et de don. Noir profond, violet et cyan électriques, Bebas Neue et Space Grotesk.", "summary": "Bandeau de match, caméras joueurs et partenaires en rotation.",
   "en": {
    "name": "Esports & streaming",
-   "description": "A tournament streamed on YouTube or Twitch: match header (teams, maps won, current map), player camera frames, rotating sponsor bar, \"Starting soon\" and \"Be right back\" screens with countdown, follow and donation alerts."
+   "description": "A tournament streamed on YouTube or Twitch: match header (teams, maps won, current map), player camera frames, rotating sponsor bar, \"Starting soon\" and \"Be right back\" screens with countdown, follow and donation alerts.", "summary": "Match bar, player cams and rotating sponsors."
   },
   "cover": "soon"
  },

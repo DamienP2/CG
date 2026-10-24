@@ -1,7 +1,8 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, Layers, Lock, MoreHorizontal, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, SkipForward, Square, Timer, Trash2, Type, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, Layers, Lock, MoreHorizontal, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
@@ -30,9 +31,10 @@ import { Splitter, useLayout } from '../ui/Splitter';
 import { t, tc, tn } from '../i18n';
 import { LockedBy, useZoneLocks, ZoneBar } from './ZoneBar';
 import { OperatorTop } from './Presence';
-import { noteAction, requestUndo, UndoToast } from './UndoToast';
+import { noteAction, requestUndo, UndoHistory, UndoToast } from './UndoToast';
+import { KeyCap, openShortcuts } from './ShortcutsOverlay';
 import { ScheduleCell, ScheduleTop, toggleScheduleList } from './Schedule';
-import { useShortcuts } from './shortcuts';
+import { actionLabel, useShortcuts } from './shortcuts';
 import type { ZoneLock } from '../store';
 
 /*
@@ -127,6 +129,24 @@ function fieldGroups(fields: Field[]): { title: string; fields: { f: Field; labe
 
 const rundownName = (project: Project, id?: string | null) => (id ? project.rundown.find((r) => r.id === id)?.name : undefined);
 
+/** The first text typed for a graphic (a person's name…): the item's name follows it. */
+const firstText = (t: Template) => t.fields.find((f) => (f.kind === 'text' || f.kind === 'multiline') && !f.options?.length && !f.binding?.source);
+const firstLine = (v: string | undefined) => plain(v ?? '').split('\n')[0].trim();
+
+/**
+ * The item's new name when its first text changes, as long as the name was
+ * that text (or the template's name): renamed by hand, it stays. `pendingName`:
+ * a new name not saved yet.
+ */
+function followName(t: Template, name: string, pendingName: string | undefined, before: Record<string, string>, next: Record<string, string>): string | undefined {
+  const f = firstText(t);
+  if (!f || before[f.key] === next[f.key]) return undefined;
+  const current = (pendingName ?? name).trim();
+  if (current && current !== firstLine(before[f.key]) && current !== t.name) return undefined;
+  const v = firstLine(next[f.key]);
+  return v || t.name;
+}
+
 /** The tab id of the fields that belong to no widget layer (texts, exposed shape settings). */
 const SHARED_TAB = '__texts__';
 
@@ -204,7 +224,7 @@ const PHASE_TITLES: Record<Phase, string> = {
 };
 
 export function Operator({ channelId }: { channelId: string | null }) {
-  const { project, command: send, saveRundown, auth, channels, toast } = useApp();
+  const { project, command: send, saveRundown, auth, channels, toast } = useApp(useShallow((s) => ({ project: s.project, command: s.command, saveRundown: s.saveRundown, auth: s.auth, channels: s.channels, toast: s.toast })));
   const allSources = useSources();
   const sourceName = (id: string) => allSources.find((s) => s.id === id)?.name ?? id;
   const liveState = useApp((s) => (channelId ? s.live[channelId] : undefined));
@@ -215,8 +235,13 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Each action of mine can be undone (its toast).
   const command: typeof send = (cmd) => {
     if (!operate) return;
-    send(cmd, channelId!);
-    noteAction();
+    const go = () => {
+      send(cmd, channelId!);
+      noteAction();
+    };
+    // A new name on its way: saved first, so the action (and the as-run) has it.
+    if (pending.current?.name !== undefined) void flush().then(go);
+    else go();
   };
   const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200, fields: 50 });
   const [cued, setCued] = useState<string | null>(null);
@@ -283,7 +308,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // The draft follows the selected item; its data on selection is what Revert restores.
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  const pending = useRef<{ id: string; data: Record<string, string> } | null>(null);
+  const pending = useRef<{ id: string; data: Record<string, string>; name?: string } | null>(null);
   useEffect(() => {
     if (!item || !template) return;
     const fresh = { ...defaultData(template), ...item.data };
@@ -313,24 +338,29 @@ export function Operator({ channelId }: { channelId: string | null }) {
     pending.current = null;
     if (!p) return;
     const cur = useApp.getState().project?.rundown ?? [];
-    await saveRundown(cur.map((r) => (r.id === p.id ? { ...r, data: p.data } : r)));
+    await saveRundown(cur.map((r) => (r.id === p.id ? { ...r, data: p.data, ...(p.name !== undefined ? { name: p.name } : {}) } : r)));
   };
-  const saveData = (id: string, data: Record<string, string>) => {
+  const saveData = (id: string, data: Record<string, string>, name?: string) => {
     // Another item's edit still on its way: saved now, not dropped.
     if (pending.current && pending.current.id !== id) void flush();
-    pending.current = { id, data };
+    pending.current = { id, data, name: name ?? (pending.current?.id === id ? pending.current.name : undefined) };
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => void flush(), 500);
   };
   const editDraft = (patch: Record<string, string>) => {
     if (!item) return;
     // From the latest draft: two edits in the same moment both count.
-    const next = { ...draftRef.current, ...patch };
+    const before = draftRef.current;
+    const next = { ...before, ...patch };
     draftRef.current = next;
     setDraft(next);
-    saveData(item.id, next);
+    saveData(item.id, next, template ? followName(template, item.name, pending.current?.id === item.id ? pending.current.name : undefined, before, next) : undefined);
   };
-  const setItem = (id: string, patch: Partial<RundownItem>) => saveRundown(rundown.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const setItem = (id: string, patch: Partial<RundownItem>) => {
+    // Renamed by hand: the name no longer follows the first text.
+    if (patch.name !== undefined && pending.current?.id === id) pending.current.name = undefined;
+    return saveRundown(rundown.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
 
   const onAirByItem = useMemo(() => {
     const m = new Map<string, PlayoutItem>();
@@ -377,6 +407,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
       // A key the selected widget on air took (its own shortcuts) is not the Operator's.
       if (e.defaultPrevented || (e.target as HTMLElement).closest('input, textarea, select')) return;
       if (e.key === 'Escape' && airWidget) (e.preventDefault(), setAirWidget(null));
+      // « ? »: the keyboard shortcuts (not over a dialog).
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('.modal-back')) (e.preventDefault(), openShortcuts());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -473,7 +505,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
           </header>
           <div className="opx-scroll">
             {playlists.map((p) => (
-              <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={() => setPlaylistId(p.id)} />
+              <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
             ))}
           </div>
         </section>
@@ -578,12 +610,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
             ))}
             {!items.length && <p className="opx-hint">{t('Empty playlist: add graphics from your templates with +.')}</p>}
           </div>
-          <footer className="opx-foot">
-            <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate || !!lockOf(nextTarget)} onTake={take} />
-            <button className="opx-btn big" disabled={!operate} onClick={() => command({ action: 'clear' })} title={t('F12: everything out at once')}>
-              {t('Clear all')}
-            </button>
-          </footer>
         </section>
       </div>
 
@@ -610,7 +636,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               <header className="opx-head tall">
                 <Pencil size={13} className="muted" />
                 <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title={t('Name in the playlist')} />
-                <span className="muted small">{t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}</span>
+                <span className="muted small opx-head-sub" title={t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}>{t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}</span>
                 <span className="spacer" />
                 {onAirNow && (
                   <>
@@ -781,6 +807,27 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
       </div>
     </div>
+    {/* The transport, the whole width: NEXT, CONTINUE, OUT · history, undo, clear, shortcuts. */}
+    <footer className="ux1-transport">
+      <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate || !!lockOf(nextTarget)} onTake={take} cap={<KeyCap action="next" />} />
+      <button className={`opx-btn ${selZone && pauseOf(channel.layers[String(selZone.layer)], project) ? 'amber' : ''}`} disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => continueZone(selZone)} title={actionLabel('continue')}>
+        <ChevronsRight size={16} /> Continue <KeyCap action="continue" />
+      </button>
+      <button className="opx-btn" disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => outZone(selZone)} title={actionLabel('out')}>
+        <CircleStop size={16} /> Out <KeyCap action="out" />
+      </button>
+      <span className="spacer" />
+      {channelId && <UndoHistory channelId={channelId} operate={operate} />}
+      <button className="opx-btn" disabled={!operate} onClick={requestUndo} title={actionLabel('undo')}>
+        <Undo2 size={16} /> {t('Undo')} <KeyCap action="undo" />
+      </button>
+      <button className="opx-btn ux1-clear" disabled={!operate || !Object.keys(channel.layers).length} onClick={() => command({ action: 'clear' })} title={actionLabel('clear')}>
+        {t('Clear all')} <KeyCap action="clear" />
+      </button>
+      <button className="opx-btn ux1-help" title={t('Keyboard shortcuts')} aria-label={t('Keyboard shortcuts')} onClick={openShortcuts}>
+        ?
+      </button>
+    </footer>
     <UndoToast channelId={channelId} operate={operate} />
     </div>
   );
@@ -814,7 +861,7 @@ function pendingAutoNext(project: Project, live: Live | undefined): { from: Rund
 }
 
 /** NEXT: takes the cued graphic; with an auto next on its way, its countdown (and what it takes). */
-function NextButton({ project, live, target, disabled, onTake }: { project: Project; live: Live | undefined; target: RundownItem | undefined; disabled: boolean; onTake: () => void }) {
+function NextButton({ project, live, target, disabled, onTake, cap }: { project: Project; live: Live | undefined; target: RundownItem | undefined; disabled: boolean; onTake: () => void; /** Its key. */ cap?: React.ReactNode }) {
   const auto = pendingAutoNext(project, live);
   const now = useTicker(!!auto, MONITOR_FPS);
   const left = auto ? Math.max(0, (auto.at - now) / 1000) : 0;
@@ -837,18 +884,27 @@ function NextButton({ project, live, target, disabled, onTake }: { project: Proj
     <button className="opx-btn big red" disabled={disabled} onClick={onTake} title={t('F1 / Enter: takes {name}', { name: target?.name ?? t('the next graphic') })}>
       <SkipForward size={15} fill="currentColor" /> Next
       {target && <span className="opx-next-name">{target.name}</span>}
+      {cap}
     </button>
   );
 }
 
-function PlaylistRow({ project, id, active, editable, onSelect }: { project: Project; id: string; active: boolean; editable: boolean; onSelect: () => void }) {
+// Not drawn again on each frame of the channel (only its props matter).
+const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, onSelect }: { project: Project; id: string; active: boolean; editable: boolean; onSelect: (id: string) => void }) {
   const toast = useApp((s) => s.toast);
   const [menu, setMenu] = useState(false);
+  // Esc closes the "…" menu.
+  useEffect(() => {
+    if (!menu) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setMenu(false));
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [menu]);
   const p = project.playlists.find((x) => x.id === id)!;
   const count = project.rundown.filter((r) => r.playlist === id).length;
   const save = (lists: Project['playlists']) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
   return (
-    <div className={`opx-pl ${active ? 'on' : ''}`} onClick={onSelect}>
+    <div className={`opx-pl ${active ? 'on' : ''}`} onClick={() => onSelect(id)}>
       <span className="opx-name-cell">{p.name}</span>
       <span className="muted small">{tn(count, '{n} item', '{n} items')}</span>
       {editable && (
@@ -884,7 +940,7 @@ function PlaylistRow({ project, id, active, editable, onSelect }: { project: Pro
       )}
     </div>
   );
-}
+});
 
 /**
  * The left part of a graphic: its values (texts, pictures… and what the Texts
@@ -1606,8 +1662,10 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
 }
 
 /** The output the operator takes to; another project's output is taken over after a confirmation. */
-function OutputSelect({ channelId }: { channelId: string | null }) {
-  const { channels, projects, project, live, loadOnChannel } = useApp();
+const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: string | null }) {
+  const { channels, projects, project, loadOnChannel } = useApp(useShallow((s) => ({ channels: s.channels, projects: s.projects, project: s.project, loadOnChannel: s.loadOnChannel })));
+  // Read when asked, not followed: this list is not drawn again on each frame.
+  const live = () => useApp.getState().live;
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name ?? t('another project');
   const pick = async (id: string) => {
     if (!project) return;
@@ -1615,7 +1673,7 @@ function OutputSelect({ channelId }: { channelId: string | null }) {
       // No output: the channel it had is unloaded (it shows its picture without project).
       const cur = channels.find((x) => x.id === channelId && x.projectId === project.id);
       if (cur) {
-        const onAir = Object.keys(live[cur.id]?.state.layers ?? {}).length;
+        const onAir = Object.keys(live()[cur.id]?.state.layers ?? {}).length;
         if (onAir && !(await confirmDialog({ title: t('Unload {channel}?', { channel: cur.name }), message: tn(onAir, 'The {n} graphic on air on {channel} is cleared.', 'The {n} graphics on air on {channel} are cleared.', { channel: cur.name }), confirm: t('Unload'), danger: true }))) return;
         await loadOnChannel(cur.id, null);
       }
@@ -1624,7 +1682,7 @@ function OutputSelect({ channelId }: { channelId: string | null }) {
     const c = channels.find((x) => x.id === id);
     if (!c) return;
     if (c.projectId !== project.id) {
-      const onAir = Object.keys(live[c.id]?.state.layers ?? {}).length;
+      const onAir = Object.keys(live()[c.id]?.state.layers ?? {}).length;
       if (
         c.projectId &&
         !(await confirmDialog({
@@ -1674,4 +1732,4 @@ function OutputSelect({ channelId }: { channelId: string | null }) {
       )}
     </select>
   );
-}
+});

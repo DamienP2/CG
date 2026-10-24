@@ -11,10 +11,10 @@
    "Horoscope",
    "Agenda"
   ],
-  "description": "L’habillage lumineux d’une matinale : bandeau permanent avec l’heure, la météo des villes et l’info trafic qui défile, sujets à la une, mur des messages des téléspectateurs, carte météo des régions, horoscope du jour et programme de l’émission. Trafic, météo et messages peuvent venir de sources de données.",
+  "description": "L’habillage lumineux d’une matinale : bandeau permanent avec l’heure, la météo des villes et l’info trafic qui défile, sujets à la une, mur des messages des téléspectateurs, carte météo des régions, horoscope du jour et programme de l’émission. Trafic, météo et messages peuvent venir de sources de données.", "summary": "Bandeau heure, météo et trafic, sujets du jour et messages.",
   "en": {
    "name": "Morning show",
-   "description": "A bright morning show package: a permanent strip with the time, city weather and scrolling traffic news, topic banners, a viewers’ message wall, a regional weather map, the daily horoscope and the show’s running order. Traffic, weather and messages may come from data sources."
+   "description": "A bright morning show package: a permanent strip with the time, city weather and scrolling traffic news, topic banners, a viewers’ message wall, a regional weather map, the daily horoscope and the show’s running order. Traffic, weather and messages may come from data sources.", "summary": "Time, weather and traffic strap, top stories and messages."
   },
   "cover": "strip"
  },

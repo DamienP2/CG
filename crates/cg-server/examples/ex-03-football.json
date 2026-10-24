@@ -11,10 +11,10 @@
    "Remplacements",
    "Statistiques"
   ],
-  "description": "Un match de championnat de bout en bout : score avec chronomètre que l’opérateur lance et arrête, compositions sur le terrain (4-3-3), alerte BUT, cartons jaune et rouge, remplacements, statistiques à barres partagées et score final. Couleurs des équipes en variables, nuit et vert acide, Bebas Neue et Barlow Condensed.",
+  "description": "Un match de championnat de bout en bout : score avec chronomètre que l’opérateur lance et arrête, compositions sur le terrain (4-3-3), alerte BUT, cartons jaune et rouge, remplacements, statistiques à barres partagées et score final. Couleurs des équipes en variables, nuit et vert acide, Bebas Neue et Barlow Condensed.", "summary": "Score et chrono, compositions, buts et cartons d’un match.",
   "en": {
    "name": "Live football",
-   "description": "A league match from kick-off to full time: score bug with a match clock the operator starts and stops, line-ups on the pitch (4-3-3), GOAL alert, yellow and red cards, substitutions, split-bar statistics and final score. Team colours are variables."
+   "description": "A league match from kick-off to full time: score bug with a match clock the operator starts and stops, line-ups on the pitch (4-3-3), GOAL alert, yellow and red cards, substitutions, split-bar statistics and final score. Team colours are variables.", "summary": "Score and clock, line-ups, goals and cards for a match."
   },
   "cover": "lineup"
  },

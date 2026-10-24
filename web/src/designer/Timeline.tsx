@@ -155,7 +155,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   if (!template)
     return (
       <div className="timeline tl-empty">
-        <p>{t('Open a template (on the left, or click its graphic) to see its layers and animate them.')}</p>
+        <p>{t('No template open')}</p>
       </div>
     );
   const width = template.duration * zoom + TAIL;

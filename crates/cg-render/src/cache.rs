@@ -13,10 +13,15 @@
 //!   given again (the same `Arc`, so the outputs know it too);
 //! - else the picture after the first steps that did not change (the static
 //!   layers under a ticker, a lower graphic under one coming in) is kept and
-//!   copied, and only the steps after it are drawn on it.
+//!   copied, and only the steps after it are drawn on it;
+//! - the graphics over the last one that moves (a bug over a ticker, a
+//!   clock over a lower third coming in) are drawn apart, on a picture of
+//!   their own laid over the frame ([`top_item`]): that picture is kept too,
+//!   and laid again while they do not change.
 //!
 //! Drawing goes on in the same order on the same picture, so frames are the
-//! same, pixel for pixel, as drawn whole. A layer whose dependence on time is
+//! same, pixel for pixel, as drawn whole (drawn whole, the graphics over the
+//! last that moves are drawn apart and laid over the frame as well). A layer whose dependence on time is
 //! not known is taken as moving. A widget may draw in two steps (the map:
 //! its base, then its pulsing markers over it, `Renderer::sub_step`) so that
 //! the picture between them can be kept.
@@ -155,6 +160,47 @@ impl Scene {
     }
 }
 
+/// The first of the graphics over the last one that moves (none: nothing
+/// moves, or nothing is over what moves): those are drawn on a picture of
+/// their own, laid over the frame (and kept while they are the same).
+pub(crate) fn top_item(ops: &[Op], items: usize) -> Option<usize> {
+    let last = ops
+        .iter()
+        .filter(|o| o.motion == Motion::Moving)
+        .map(|o| o.item)
+        .max()?;
+    (last + 1 < items && ops.iter().any(|o| o.item > last)).then_some(last + 1)
+}
+
+impl Scene {
+    /// Graphics `t..` and their steps are the same as in `o` (none moving).
+    fn same_top(&self, o: &Scene, t: usize) -> bool {
+        if !self.same_frame(o) || self.items.len() != o.items.len() || t > self.items.len() {
+            return false;
+        }
+        if self.items[t..] != o.items[t..] {
+            return false;
+        }
+        let mine = self.ops.iter().filter(|x| x.item >= t);
+        let theirs = o.ops.iter().filter(|x| x.item >= t);
+        mine.clone().count() == theirs.clone().count()
+            && mine.zip(theirs).all(|(x, y)| {
+                x.motion != Motion::Moving
+                    && x.motion == y.motion
+                    && x.item == y.item
+                    && x.span == y.span
+            })
+    }
+}
+
+/// The picture of the graphics over what moves (`top_item`), in pieces
+/// (`scaled::tiles`).
+struct Top {
+    scene: Scene,
+    item: usize,
+    picture: Arc<crate::scaled::Tiles>,
+}
+
 /// The picture after the first steps of a scene.
 struct Start {
     scene: Scene,
@@ -174,6 +220,10 @@ pub struct FrameCache {
     start: Mutex<Option<Start>>,
     /// The scene planned last (where the next one starts to differ).
     last: Mutex<Option<Scene>>,
+    /// The picture of the graphics over what moves.
+    top: Mutex<Option<Top>>,
+    /// Frames where that picture was laid again.
+    topped: AtomicU64,
     /// Frames given again, frames drawn on a kept picture.
     reused: AtomicU64,
     started: AtomicU64,
@@ -210,11 +260,39 @@ impl FrameCache {
         )
     }
 
+    /// Frames where the kept picture of the graphics over what moves was
+    /// laid again, so far.
+    pub fn tops(&self) -> u64 {
+        self.topped.load(Ordering::Relaxed)
+    }
+
     /// Forgets everything kept (frees the pictures).
     pub fn clear(&self) {
         *lock(&self.still) = None;
         *lock(&self.start) = None;
         *lock(&self.last) = None;
+        *lock(&self.top) = None;
+    }
+
+    /// The kept picture of graphics `t..` of `scene` (and its place), when
+    /// they are the same as when it was drawn.
+    pub(crate) fn top(&self, scene: &Scene, t: usize) -> Option<Arc<crate::scaled::Tiles>> {
+        let top = lock(&self.top);
+        let top = top.as_ref()?;
+        if top.item != t || !scene.same_top(&top.scene, t) {
+            return None;
+        }
+        self.topped.fetch_add(1, Ordering::Relaxed);
+        Some(top.picture.clone())
+    }
+
+    /// Keeps the picture of graphics `t..` of `scene` (its pieces).
+    pub(crate) fn keep_top(&self, scene: &Scene, t: usize, picture: Arc<crate::scaled::Tiles>) {
+        *lock(&self.top) = Some(Top {
+            scene: scene.clone(),
+            item: t,
+            picture,
+        });
     }
 
     pub(crate) fn plan(&self, scene: &Scene) -> Plan {

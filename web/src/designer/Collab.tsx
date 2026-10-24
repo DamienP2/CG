@@ -31,10 +31,12 @@ export function useEditLock(project: Project | null, templateId: string | undefi
   const live = useRef(state);
   live.current = state;
 
-  const acquire = async (force = false) => {
+  const acquire = async (force = false, opening = false): Promise<void> => {
     if (!pid || !templateId) return;
     try {
       const r = await api<{ granted: boolean; lock: EditLock }>('POST', lockUrl(pid, templateId), { force });
+      // Opening a template still held by oneself (the Designer left a moment ago, a reloaded tab): taken back silently.
+      if (!r.granted && opening && r.lock.userId === useApp.getState().auth?.user?.id) return acquire(true);
       setState(r.granted ? { status: 'mine' } : { status: 'held', holder: r.lock });
     } catch {
       // Offline or no rights: let the save errors speak.
@@ -45,7 +47,7 @@ export function useEditLock(project: Project | null, templateId: string | undefi
   useEffect(() => {
     if (!pid || !templateId) return;
     setState({ status: 'pending' });
-    void acquire();
+    void acquire(false, true);
     const renew = setInterval(() => void acquire(), RENEW_MS);
     const onLock = (e: Event) => {
       const ev = (e as CustomEvent).detail as { projectId: string; templateId: string; lock: EditLock | null; takenFrom: string | null };
@@ -90,6 +92,8 @@ export function useEditLock(project: Project | null, templateId: string | undefi
  */
 export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock; template: string; onTakeOver: () => void }) {
   const [confirm, setConfirm] = useState(false);
+  // Held by oneself (another tab): taken over without a second question.
+  const own = useApp((s) => s.auth?.user?.id === holder.userId);
   return (
     <div className="lock-overlay">
       <div className="lock-card" role="alertdialog" aria-labelledby="lock-title">
@@ -115,8 +119,8 @@ export function LockOverlay({ holder, template, onTakeOver }: { holder: EditLock
           <>
             <p>{t('You see their changes live. Take over to edit it yourself, or open another template.')}</p>
             <div className="row end">
-              <button className="btn warn" onClick={() => setConfirm(true)}>
-                {t('Take over…')}
+              <button className="btn warn" onClick={() => (own ? onTakeOver() : setConfirm(true))}>
+                {own ? t('Take over') : t('Take over…')}
               </button>
             </div>
           </>
@@ -144,9 +148,10 @@ async function onAir(project: Project, ids: string[]): Promise<string[]> {
   return out;
 }
 
-/** Asks before publishing: it is immediate, and graphics on air change at once. */
+/** Asks before publishing what is on air (it changes on screen at once); the rest is published directly. */
 async function confirmPublish(project: Project, ids: string[]): Promise<boolean> {
   const live = await onAir(project, ids);
+  if (!live.length) return true;
   const names = ids.map((id) => project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id);
   return confirmDialog({
     title: ids.length > 1 ? t('Publish {n} templates?', { n: ids.length }) : t('Publish “{name}”?', { name: names[0] }),
@@ -181,25 +186,8 @@ async function confirmPublish(project: Project, ids: string[]): Promise<boolean>
   });
 }
 
-/** Publishes one template (its latest edits first when it is open), after confirmation. */
-export async function publishTemplate(project: Project, id: string) {
-  const { saveTemplate, toast } = useApp.getState();
-  const st = useDesigner.getState();
-  if (!(await confirmPublish(project, [id]))) return;
-  try {
-    // Not saved: the Operator must not get an older version.
-    if (st.base?.id === id && !(await saveTemplate(st.base))) return;
-    const r = await api<{ revision: number }>('POST', `/api/projects/${encodeURIComponent(project.id)}/templates/${encodeURIComponent(id)}/publish`);
-    const name = project.drafts?.find((t) => t.id === id)?.name ?? project.templates.find((t) => t.id === id)?.name ?? id;
-    toast(t('“{name}” v{rev} is live in the Operator', { name, rev: r.revision }), 'info');
-  } catch (e) {
-    toast((e as Error).message, 'error');
-  }
-}
-
-/** Publish of one template, in its properties: a discreet status line with its button. */
-export function TemplatePublish({ project, id, readOnly }: { project: Project; id: string; readOnly: boolean }) {
-  const [busy, setBusy] = useState(false);
+/** Publish state of one template, in its properties (it is published with the top bar's Publish). */
+export function TemplatePublish({ project, id }: { project: Project; id: string }) {
   const { published, draft } = publishState(project, id);
   if (published && !draft)
     return (
@@ -210,62 +198,70 @@ export function TemplatePublish({ project, id, readOnly }: { project: Project; i
   return (
     <div className="publish publish-line">
       <span className="publish-draft">{published ? t('Changes not in the Operator') : t('New · not in the Operator')}</span>
-      <button
-        className="btn small publish-btn"
-        disabled={busy || readOnly}
-        title={published ? t('The Operator uses v{rev}', { rev: published.revision || 1 }) : t('The Operator does not see it yet')}
-        onClick={async () => {
-          setBusy(true);
-          await publishTemplate(project, id);
-          setBusy(false);
-        }}
-      >
-        <Upload size={12} /> {busy ? t('Publishing…') : t('Publish')}
-      </button>
     </div>
   );
 }
 
-/** The project's Publish: every template with changes goes live in the Operator at once. */
-export function ProjectPublish({ project, readOnly }: { project: Project; readOnly: boolean }) {
-  const { saveTemplate, toast } = useApp();
+/**
+ * The Designer's part of the top bar: one state (saving, changes not in the
+ * Operator, all published) and one Publish, of every template with changes.
+ */
+export function TopPublish({ project, saving, readOnly }: { project: Project; saving: boolean; readOnly: boolean }) {
+  const saveTemplate = useApp((s) => s.saveTemplate);
+  const toast = useApp((s) => s.toast);
   const [busy, setBusy] = useState(false);
   const changed = project.drafts ?? [];
   const isNew = (id: string) => !project.templates.some((t) => t.id === id);
-  if (!changed.length)
-    return (
-      <span className="publish-state" title={t('The Operator uses the templates as they are here')}>
-        <Check size={12} /> {t('All in the Operator')}
-      </span>
-    );
   const publish = async () => {
-    if (!(await confirmPublish(project, changed.map((t) => t.id)))) return;
     setBusy(true);
     try {
+      if (!(await confirmPublish(project, changed.map((t) => t.id)))) return;
       const st = useDesigner.getState();
       if (st.base && !(await saveTemplate(st.base))) return;
       const r = await api<{ name: string; revision: number }[]>('POST', `/api/projects/${encodeURIComponent(project.id)}/publish`);
-      toast(tn(r.length, '{n} template live in the Operator', '{n} templates live in the Operator'), 'info');
+      if (r.length === 1) toast(t('Published · {name}', { name: r[0].name }), 'info');
+      else toast(tn(r.length, 'Published · {n} template', 'Published · {n} templates'), 'info');
     } catch (e) {
       toast((e as Error).message, 'error');
     } finally {
       setBusy(false);
     }
   };
+  let state: React.ReactNode;
+  if (readOnly) state = <span className="ux2-pub ro">{t('Read only')}</span>;
+  else if (saving)
+    state = (
+      <span className="ux2-pub saving" title={t('Changes are saved automatically')}>
+        {t('Saving…')}
+      </span>
+    );
+  else if (changed.length)
+    state = (
+      <span className="ux2-pub dirty" title={t('Not yet in the Operator: {list}', { list: changed.map((d) => (isNew(d.id) ? t('{name} (new)', { name: d.name }) : d.name)).join(', ') })}>
+        <i /> {tn(changed.length, '{n} change', '{n} changes')}
+      </span>
+    );
+  else
+    state = (
+      <span className="ux2-pub clean" title={t('The Operator uses the templates as they are here')}>
+        <Check size={13} /> {t('All published')}
+      </span>
+    );
   return (
-    <div className="publish publish-line">
-      <span className="publish-draft">{tn(changed.length, '{n} change not in the Operator', '{n} changes not in the Operator')}</span>
-      <button className="btn small publish-btn" disabled={busy || readOnly} title={t('Not yet in the Operator: {list}', { list: changed.map((d) => (isNew(d.id) ? t('{name} (new)', { name: d.name }) : d.name)).join(', ') })} onClick={publish}>
-        <Upload size={12} /> {busy ? t('Publishing…') : t('Publish all')}
+    <>
+      {state}
+      <button className="btn small primary ux2-publish" disabled={busy || readOnly || !changed.length} title={t('Publish to the Operator')} onClick={publish}>
+        <Upload size={13} /> {busy ? t('Publishing…') : t('Publish')}
       </button>
-    </div>
+    </>
   );
 }
 
 /** Draft / published state of the open template, and the Publish button. */
 export function PublishButton({ project, readOnly }: { project: Project; readOnly: boolean }) {
   const base = useDesigner((s) => s.base);
-  const { saveTemplate, toast } = useApp();
+  const saveTemplate = useApp((s) => s.saveTemplate);
+  const toast = useApp((s) => s.toast);
   const [busy, setBusy] = useState(false);
   if (!base) return null;
   const { published, draft } = publishState(project, base.id);

@@ -38,7 +38,7 @@ async function adaptProject(project: Project, format: Format, only?: string): Pr
 }
 
 function AddFormat({ project, onClose }: { project: Project; onClose: () => void }) {
-  const { toast } = useApp();
+  const toast = useApp((s) => s.toast);
   const existing = projectFormats(project);
   const free = PRESETS.filter((p) => !existing.some((f) => f.width * p.height === f.height * p.width));
   const [pick, setPick] = useState(free.find((p) => p.id !== 'custom') ?? PRESETS[PRESETS.length - 1]);

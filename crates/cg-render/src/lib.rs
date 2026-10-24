@@ -9,9 +9,12 @@
 
 mod cache;
 mod mask;
+pub mod pool;
+mod scaled;
 pub mod sequence;
 mod shadow;
 pub mod slate;
+mod strip;
 mod text;
 mod wid;
 
@@ -103,6 +106,13 @@ pub struct Frame {
     pub captured_at: SystemTime,
 }
 
+/// Its buffer goes back to the pool, for the next frame (`pool`).
+impl Drop for Frame {
+    fn drop(&mut self) {
+        pool::give(std::mem::take(&mut self.data));
+    }
+}
+
 impl Frame {
     pub fn blank(width: u32, height: u32) -> Self {
         Self {
@@ -146,6 +156,15 @@ pub struct Renderer {
     steps: Steps,
     /// A frame-sized picture for the drop shadows (cleared before each use).
     scratch: Option<Pixmap>,
+    /// Pictures kept scaled to the size they are drawn at (see `scaled`).
+    scaled: scaled::Scaled,
+    /// Masks kept from frame to frame (faded zones, `mask::Kept`).
+    masks: mask::Kept,
+    /// Strips of the credits rolls (`strip`).
+    strips: strip::Strips,
+    /// A frame-sized picture for the graphics drawn over what moves
+    /// (`cache::top_item`), kept cleared between frames.
+    over: Option<Pixmap>,
 }
 
 /// Where a frame being drawn is, in its steps (see `cache`).
@@ -284,6 +303,10 @@ impl Renderer {
             pending: false,
             steps: Steps::default(),
             scratch: None,
+            scaled: Default::default(),
+            over: None,
+            masks: Default::default(),
+            strips: Default::default(),
         }
     }
 
@@ -396,6 +419,7 @@ impl Renderer {
     /// Forgets cached images (call after an asset upload).
     pub fn invalidate_assets(&mut self) {
         self.images.clear();
+        self.scaled.clear();
         self.assets_generation += 1;
     }
 
@@ -486,6 +510,8 @@ impl Renderer {
         shown_ms: f64,
     ) -> Arc<Frame> {
         self.refresh_fonts();
+        self.scaled.frame();
+        self.strips.frame();
         self.pending = false;
         self.steps = Steps::default();
         // The picture drawn on: blank, or the one kept of the first steps.
@@ -553,9 +579,30 @@ impl Renderer {
                 .filter(|f| f.opacity() > 0.0)
                 .map(|f| (f.opacity(), &f.data))
         }
-        // Planned: what is the same as in the frames kept.
+        // Planned: what is the same as in the frames kept, and which
+        // graphics are over the last one that moves (drawn apart, cache::top_item;
+        // drawn whole too, so that frames are the same either way).
         let mut planned = None;
-        if let Some((arc, kept)) = cache.filter(|_| self.caching) {
+        let kept_cache = cache.filter(|_| self.caching);
+        let mut top = None;
+        let mut top_kept = None;
+        if kept_cache.is_none() && on_air.len() > 1 {
+            self.steps.plan = Some(Vec::new());
+            for (i, a) in on_air.iter().enumerate() {
+                self.steps.item = i;
+                if fading(a.item).is_some() {
+                    self.plan_step(cache::Motion::Moving);
+                } else {
+                    let ctx = ctx!(i);
+                    let mut nowhere = Pixmap::new(1, 1).expect("valid size");
+                    self.draw_children(&mut nowhere, &ctx, None, root, 1.0, None);
+                }
+            }
+            let ops = self.steps.plan.take().unwrap_or_default();
+            top = cache::top_item(&ops, on_air.len());
+            self.steps = Steps::default();
+        }
+        if let Some((arc, kept)) = kept_cache {
             let mut scene = cache::Scene {
                 project: arc.clone(),
                 out,
@@ -600,17 +647,19 @@ impl Renderer {
                     picture,
                     keep,
                 } => {
-                    pm = picture.map(|p| (*p).clone());
+                    pm = picture.map(|p| pool::copy(&p));
                     self.steps.skip = from;
                     self.steps.keep = keep.map(|k| (k, None));
                     self.steps.ops = scene.ops.clone();
                 }
             }
+            top = cache::top_item(&scene.ops, on_air.len());
+            top_kept = top.and_then(|t| kept.top(&scene, t));
             planned = Some((kept, scene));
         }
-        let mut pm = pm.unwrap_or_else(|| {
-            Pixmap::new(out.width.max(1), out.height.max(1)).expect("valid size")
-        });
+        let mut pm = pm.unwrap_or_else(|| pool::pixmap(out.width, out.height));
+        // The graphics over what moves, drawn apart (when not kept).
+        let mut over: Option<Pixmap> = None;
         // The step after the last one of each graphic.
         let mut item_end = vec![0; on_air.len()];
         for (i, op) in self.steps.ops.iter().enumerate() {
@@ -622,6 +671,22 @@ impl Renderer {
                 self.steps.at = item_end[i];
                 continue;
             }
+            let apart = top.is_some_and(|t| i >= t);
+            if apart && top_kept.is_some() {
+                // In the kept picture of the graphics over what moves.
+                self.steps.at = self.steps.at.max(item_end[i]);
+                continue;
+            }
+            let pm: &mut Pixmap = if apart {
+                over.get_or_insert_with(|| {
+                    self.over
+                        .take()
+                        .filter(|p| (p.width(), p.height()) == (out.width, out.height))
+                        .unwrap_or_else(|| pool::pixmap(out.width, out.height))
+                })
+            } else {
+                &mut pm
+            };
             let (layer, item) = (on_air[i].layer, on_air[i].item);
             let ctx = &ctx!(i);
             // Only what is inside the zone shows on air.
@@ -637,15 +702,15 @@ impl Renderer {
                         (a.height * dh as f64) as f32,
                     )
                 })
-                .map(|r| build_mask(&pm, None, r, root));
+                .map(|r| build_mask(pm, None, r, root));
             match fading(item) {
-                None => self.draw_children(&mut pm, ctx, None, root, 1.0, zone_mask.as_ref()),
+                None => self.draw_children(pm, ctx, None, root, 1.0, zone_mask.as_ref()),
                 // A cross-fade (Update, data set row): the graphic with
                 // the old values and with the new ones, each drawn
                 // whole, then mixed (old × k + new × (1 − k)): what both
                 // cover stays opaque, the rest fades in or out.
                 Some((k, old_data)) => {
-                    self.enter_step(&pm);
+                    self.enter_step(pm);
                     self.steps.whole += 1;
                     let (w, h) = (pm.width(), pm.height());
                     let mut new = Pixmap::new(w, h).expect("valid size");
@@ -695,6 +760,23 @@ impl Renderer {
                 }
             }
         }
+        // The graphics over what moves, laid over the frame.
+        let lay = |pm: &mut Pixmap, tiles: &scaled::Tiles| {
+            for (x, y, t) in tiles {
+                scaled::composite(pm, t, *x, *y, 1.0, None);
+            }
+        };
+        if let Some(tiles) = &top_kept {
+            lay(&mut pm, tiles);
+        } else if let Some(mut apart) = over {
+            // In pieces (what is not transparent), `apart` left cleared.
+            let tiles = scaled::tiles(&mut apart);
+            lay(&mut pm, &tiles);
+            if let (Some((kept, scene)), Some(t), false) = (&planned, top, self.pending) {
+                kept.keep_top(scene, t, Arc::new(tiles));
+            }
+            self.over = Some(apart);
+        }
         let keep = self.steps.keep.take();
         self.steps = Steps::default();
         let frame = Arc::new(Frame {
@@ -724,16 +806,42 @@ impl Renderer {
         frame: f64,
         data: &Data,
     ) -> Frame {
+        self.render_template_scaled(project, template, format, frame, data, u32::MAX)
+    }
+
+    /// The same, scaled down to at most `max_width` pixels wide (thumbnails:
+    /// a small picture is drawn small, not drawn whole then shrunk).
+    pub fn render_template_scaled(
+        &mut self,
+        project: &Project,
+        template: &Template,
+        format: &str,
+        frame: f64,
+        data: &Data,
+        max_width: u32,
+    ) -> Frame {
         self.refresh_fonts();
-        let (width, height) = project
+        self.scaled.frame();
+        let (dw, dh) = project
             .formats
             .iter()
             .find(|f| f.id == format)
             .map(|f| (f.width, f.height))
             .unwrap_or((project.width, project.height));
+        let (dw, dh) = (dw.max(1), dh.max(1));
+        let k = (max_width.max(1) as f64 / dw as f64).min(1.0);
+        let (width, height) = if k < 1.0 {
+            (
+                ((dw as f64 * k).round() as u32).max(1),
+                ((dh as f64 * k).round() as u32).max(1),
+            )
+        } else {
+            (dw, dh)
+        };
+        let root = Transform::from_scale(width as f32 / dw as f32, height as f32 / dh as f32);
         let template = template.in_format(format);
         let template = &*template.with_settings(data);
-        let mut pm = Pixmap::new(width.max(1), height.max(1)).expect("valid size");
+        let mut pm = Pixmap::new(width, height).expect("valid size");
         let time = TimeCtx {
             now_ms: now_ms(),
             age_secs: frame / project.frame_rate.as_f64().max(1.0),
@@ -753,28 +861,21 @@ impl Renderer {
         // As on air: only what is inside the template's zone.
         let zone_mask = project
             .zone(&template.zone)
-            .map(|z| z.area(format, height > width))
+            .map(|z| z.area(format, dh > dw))
             .filter(|a| !a.is_full())
             .and_then(|a| {
                 Rect::from_xywh(
-                    (a.x * width as f64) as f32,
-                    (a.y * height as f64) as f32,
-                    (a.width * width as f64) as f32,
-                    (a.height * height as f64) as f32,
+                    (a.x * dw as f64) as f32,
+                    (a.y * dh as f64) as f32,
+                    (a.width * dw as f64) as f32,
+                    (a.height * dh as f64) as f32,
                 )
             })
-            .map(|r| build_mask(&pm, None, r, Transform::identity()));
-        self.draw_children(
-            &mut pm,
-            &ctx,
-            None,
-            Transform::identity(),
-            1.0,
-            zone_mask.as_ref(),
-        );
+            .map(|r| build_mask(&pm, None, r, root));
+        self.draw_children(&mut pm, &ctx, None, root, 1.0, zone_mask.as_ref());
         Frame {
-            width: width.max(1),
-            height: height.max(1),
+            width,
+            height,
             data: pm.take(),
             captured_at: SystemTime::now(),
         }
@@ -1150,6 +1251,7 @@ impl Renderer {
             state,
             lang: ctx.lang,
             runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
+            moving: geometry_moving(ctx.template, r.layer, ctx.frame),
             follow: match &r.layer.kind {
                 LayerKind::Progress { x: c, .. } => {
                     let none = Default::default();
@@ -1412,7 +1514,52 @@ impl Renderer {
                 else {
                     return;
                 };
-                for y in scroll_positions(h as f64, cycle as f64, speed * time.age_secs, *looping) {
+                let tops: Vec<f32> =
+                    scroll_positions(h as f64, cycle as f64, speed * time.age_secs, *looping)
+                        .into_iter()
+                        .map(|y| y as f32)
+                        .collect();
+                // The block drawn once in a strip, the part in the box laid each frame.
+                let key = {
+                    use std::hash::{Hash, Hasher};
+                    let mut k = std::collections::hash_map::DefaultHasher::new();
+                    format!("{body}{font:?}").hash(&mut k);
+                    [Prop::FontSize, Prop::LetterSpacing, Prop::StrokeWidth]
+                        .map(|p| r.num(p).to_bits())
+                        .hash(&mut k);
+                    [Prop::Fill, Prop::Stroke]
+                        .map(|p| r.color(p).0.map(f32::to_bits))
+                        .hash(&mut k);
+                    k.finish()
+                };
+                let mut draw = |rd: &mut Renderer, chunk: &mut Pixmap, t: Transform| {
+                    let place = (font.align, VerticalAlign::Top);
+                    rd.draw_text(
+                        chunk,
+                        r,
+                        font,
+                        &body,
+                        place,
+                        (0.0, 0.0, w, block),
+                        t,
+                        1.0,
+                        None,
+                    );
+                };
+                let rolled = strip::roll(
+                    self,
+                    pm,
+                    &r.layer.id,
+                    key,
+                    tf,
+                    (w, h),
+                    block,
+                    &tops,
+                    opacity,
+                    Some(&clip),
+                    &mut draw,
+                );
+                for y in tops.into_iter().filter(|_| !rolled) {
                     let place = (font.align, VerticalAlign::Top);
                     self.draw_text(
                         pm,
@@ -1420,7 +1567,7 @@ impl Renderer {
                         font,
                         &body,
                         place,
-                        (0.0, y as f32, w, block),
+                        (0.0, y, w, block),
                         tf,
                         opacity,
                         Some(&clip),
@@ -1882,6 +2029,36 @@ impl Renderer {
         }
     }
 
+    /// Draws the picture `src` through `img_tf` (picture → frame) at
+    /// `opacity`, cut by `mask`, inside the frame region `clip`: kept scaled
+    /// to its size on the frame (see `scaled`), bicubic, bilinear while it
+    /// moves (`moving`). Its size in pixels (None: no such picture).
+    pub(crate) fn draw_picture(
+        &mut self,
+        pm: &mut Pixmap,
+        src: &str,
+        img_tf: Transform,
+        moving: bool,
+        opacity: f32,
+        mask: Option<&Mask>,
+        clip: Option<tiny_skia::IntRect>,
+    ) -> Option<(u32, u32)> {
+        self.image(src)?;
+        let img = self.images.get(src)?.as_ref()?;
+        scaled_picture(
+            &mut self.scaled,
+            pm,
+            src,
+            img,
+            img_tf,
+            moving,
+            opacity,
+            mask,
+            clip,
+        );
+        Some((img.width(), img.height()))
+    }
+
     fn image(&mut self, src: &str) -> Option<&Pixmap> {
         if !self.images.contains_key(src) {
             let loaded = load_image(&self.assets_dir, src);
@@ -1897,6 +2074,35 @@ impl Renderer {
             self.images.insert(src.to_string(), loaded);
         }
         self.images.get(src).and_then(Option::as_ref)
+    }
+}
+
+/// Draws `img` (named `key`) through `img_tf`: kept scaled when the
+/// transform only scales and moves it (see `scaled`), else drawn directly.
+/// Bicubic, bilinear while it moves.
+pub(crate) fn scaled_picture(
+    scaled: &mut scaled::Scaled,
+    pm: &mut Pixmap,
+    key: &str,
+    img: &Pixmap,
+    img_tf: Transform,
+    moving: bool,
+    opacity: f32,
+    mask: Option<&Mask>,
+    clip: Option<tiny_skia::IntRect>,
+) {
+    let quality = if moving {
+        tiny_skia::FilterQuality::Bilinear
+    } else {
+        tiny_skia::FilterQuality::Bicubic
+    };
+    if !scaled.draw(pm, key, img, img_tf, quality, opacity, mask, clip, !moving) {
+        let paint = PixmapPaint {
+            opacity,
+            quality,
+            ..Default::default()
+        };
+        pm.draw_pixmap(0, 0, img.as_ref(), &paint, img_tf, mask);
     }
 }
 
@@ -1979,6 +2185,42 @@ fn load_svg(path: &Path) -> Option<Pixmap> {
     let mut pm = Pixmap::new(w, h)?;
     resvg::render(&tree, Transform::from_scale(k, k), &mut pm.as_mut());
     Some(pm)
+}
+
+/// The layer or one of its parents moves, turns or changes size between
+/// `frame` and the next (keyframes): pictures are then scaled with a
+/// cheaper filter (bilinear) than at rest (bicubic).
+fn geometry_moving(t: &Template, layer: &cg_core::Layer, frame: f64) -> bool {
+    const GEOMETRY: [Prop; 9] = [
+        Prop::X,
+        Prop::Y,
+        Prop::Width,
+        Prop::Height,
+        Prop::AnchorX,
+        Prop::AnchorY,
+        Prop::Rotation,
+        Prop::ScaleX,
+        Prop::ScaleY,
+    ];
+    let mut at = Some(layer);
+    for _ in 0..64 {
+        let Some(l) = at else { break };
+        let moves = GEOMETRY.iter().any(|p| {
+            l.tracks.get(p).is_some_and(|k| {
+                k.len() > 1
+                    && cg_core::anim::sample_track(k, frame)
+                        != cg_core::anim::sample_track(k, frame + 1.0)
+            })
+        });
+        if moves {
+            return true;
+        }
+        at = l
+            .parent
+            .as_deref()
+            .and_then(|id| t.layers.iter().find(|x| x.id == id));
+    }
+    false
 }
 
 /// Same convention as the web renderer: position is the top-left of the box

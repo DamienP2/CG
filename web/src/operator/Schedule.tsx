@@ -159,9 +159,11 @@ function TimecodeChip({ channelId }: { channelId: string }) {
   const tz = useApp((s) => s.timezone);
   const rate = useApp((s) => s.channels.find((c) => c.id === channelId)?.frameRate) ?? { num: 25, den: 1 };
   const now = useServerNow(25);
+  // Server lost: no time of its own to show.
+  const connected = useApp((s) => s.connected);
   return (
     <span className="sch-tc" title={t('Time of day, in frames of the channel')}>
-      TC <b>{tcOfDay(msOfDay(tz, now), rate)}</b>
+      <span className="sch-tc-l">TC</span> <b>{connected ? tcOfDay(msOfDay(tz, now), rate) : '--:--:--:--'}</b>
     </span>
   );
 }

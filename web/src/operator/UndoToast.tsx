@@ -15,6 +15,8 @@ export interface UndoStep {
   actor: { kind: string; id: string; name: string };
   action: string;
   label: string;
+  /** Graphics on air before it (Clear all). */
+  count?: number;
 }
 
 const url = (channelId: string) => `/api/channels/${encodeURIComponent(channelId)}/undo`;
@@ -75,7 +77,10 @@ async function undoLast(channelId: string): Promise<boolean> {
   }
 }
 
-const stepName = (s: UndoStep) => s.label || s.action;
+/** What the step was about: the graphic, or how many graphics Clear all took out. */
+const stepName = (s: UndoStep) => (s.action === 'clear' ? (s.count ? tn(s.count, '{n} graphic', '{n} graphics') : '') : s.label || s.action);
+/** The step in a sentence (« Undone: … »). */
+const stepText = (s: UndoStep) => (s.action === 'clear' ? [tc('undo', 'Clear all'), stepName(s)].filter(Boolean).join(' · ') : stepName(s));
 const sameStep = (a: UndoStep | undefined, b: UndoStep | undefined) => !!a && !!b && a.at === b.at && a.action === b.action && a.label === b.label && a.actor.id === b.actor.id;
 
 /** The toast after an action of mine, and ⌘Z / Ctrl+Z. */
@@ -129,7 +134,7 @@ export function UndoToast({ channelId, operate }: { channelId: string | null; op
     if (!list.length) return useApp.getState().toast(t('Nothing to undo'), 'error');
     if (await undoLast(channelId)) {
       if (sameStep(list[0], step ?? undefined)) setStep(null);
-      useApp.getState().toast(t('Undone: {name}', { name: stepName(list[0]) }), 'info');
+      useApp.getState().toast(t('Undone: {name}', { name: stepText(list[0]) }), 'info');
     }
   };
   // The toast's button undoes its own action, only while it is the last one.
@@ -171,8 +176,9 @@ export function UndoToast({ channelId, operate }: { channelId: string | null; op
 /** The last actions of the channel (top bar): a click undoes back to one. */
 export function UndoHistory({ channelId, operate }: { channelId: string; operate: boolean }) {
   const me = useApp((s) => s.auth?.user?.id);
-  const live = useApp((s) => s.live[channelId]);
   const [open, setOpen] = useState(false);
+  // The channel's news only while the list shows (it is in the transport bar).
+  const live = useApp((s) => (open ? s.live[channelId] : undefined));
   const [list, setList] = useState<UndoStep[] | null>(null);
   // Undo back to this entry (several: confirmed first).
   const [upTo, setUpTo] = useState<number | null>(null);

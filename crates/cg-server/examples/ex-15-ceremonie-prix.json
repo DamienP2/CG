@@ -10,10 +10,10 @@
    "Révélation",
    "Luxe"
   ],
-  "description": "Une cérémonie de prix en noir et or : carton de catégorie, liste des nommés, révélation du lauréat qui attend le déclencheur « reveal » (l’enveloppe s’ouvre en régie), synthés lauréat et remettant, carton d’applaudissements pour les écrans de salle et logo de la soirée. Les nommés peuvent venir d’une source de données.",
+  "description": "Une cérémonie de prix en noir et or : carton de catégorie, liste des nommés, révélation du lauréat qui attend le déclencheur « reveal » (l’enveloppe s’ouvre en régie), synthés lauréat et remettant, carton d’applaudissements pour les écrans de salle et logo de la soirée. Les nommés peuvent venir d’une source de données.", "summary": "Catégories, nommés et révélation du lauréat en noir et or.",
   "en": {
    "name": "Awards ceremony",
-   "description": "An awards night in black and gold: category card, the nominees, the winner reveal waiting for the “reveal” trigger (the envelope is opened in the gallery), winner and presenter straps, an applause card for the screens in the hall and the night’s logo bug. The nominees may come from a data source."
+   "description": "An awards night in black and gold: category card, the nominees, the winner reveal waiting for the “reveal” trigger (the envelope is opened in the gallery), winner and presenter straps, an applause card for the screens in the hall and the night’s logo bug. The nominees may come from a data source.", "summary": "Categories, nominees and winner reveal in black and gold."
   },
   "cover": "reveal"
  },

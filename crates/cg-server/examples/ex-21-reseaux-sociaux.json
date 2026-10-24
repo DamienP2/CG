@@ -10,10 +10,10 @@
    "Mot-dièse",
    "Bandeau"
   ],
-  "description": "Les messages des téléspectateurs à l’antenne, venus de YouTube, Twitch, Facebook, Instagram, X, TikTok, WhatsApp ou SMS et validés par la modération : carte du message à l’antenne, mur des messages validés qui arrivent en douceur, bandeau « VOS MESSAGES » et compteur du mot-dièse avec sa courbe. Tout se lit dans la source Social du projet.",
+  "description": "Les messages des téléspectateurs à l’antenne, venus de YouTube, Twitch, Facebook, Instagram, X, TikTok, WhatsApp ou SMS et validés par la modération : carte du message à l’antenne, mur des messages validés qui arrivent en douceur, bandeau « VOS MESSAGES » et compteur du mot-dièse avec sa courbe. Tout se lit dans la source Social du projet.", "summary": "Messages validés des réseaux sociaux : carte, mur, bandeau, compteur.",
   "en": {
    "name": "Social media",
-   "description": "The viewers' messages on air, from YouTube, Twitch, Facebook, Instagram, X, TikTok, WhatsApp or SMS, approved by the moderation: the card of the message on air, a wall of approved messages sliding in, a \"YOUR MESSAGES\" band and the hashtag counter with its curve. Everything reads the project's Social source."
+   "description": "The viewers' messages on air, from YouTube, Twitch, Facebook, Instagram, X, TikTok, WhatsApp or SMS, approved by the moderation: the card of the message on air, a wall of approved messages sliding in, a \"YOUR MESSAGES\" band and the hashtag counter with its curve. Everything reads the project's Social source.", "summary": "Approved social messages: card, wall, ticker, counter."
   },
   "cover": "card"
  },

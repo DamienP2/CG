@@ -98,7 +98,7 @@
   border-color: var(--line);
 }
 .lm-label {
-  font-size: 10px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--text-3);
@@ -206,7 +206,7 @@
 .lm-section {
   padding-top: 8px;
   border-top: 1px solid var(--line);
-  font-size: 10.5px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -232,12 +232,12 @@
   font-size: 11px;
 }
 .lm-air {
-  font-size: 10px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: white;
-  background: var(--live);
+  background: var(--live-btn);
   padding: 1px 7px;
   border-radius: 10px;
 }
@@ -299,7 +299,7 @@
   align-items: center;
   gap: 8px;
   padding: 18px 10px 8px;
-  font-size: 10.5px;
+  font-size: var(--fs-11);
   font-weight: 600;
   color: var(--text-2);
   background: linear-gradient(180deg, transparent, rgba(8, 9, 14, 0.88) 55%);
@@ -312,7 +312,7 @@
   gap: 5px;
   padding: 2px 7px;
   border-radius: 10px;
-  font-size: 9.5px;
+  font-size: var(--fs-11);
   font-weight: 800;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -327,7 +327,7 @@
   background: var(--text-3);
 }
 .project-air.live .project-air-state {
-  background: var(--live);
+  background: var(--live-btn);
   color: white;
   box-shadow: 0 0 12px rgba(255, 59, 92, 0.45);
 }
@@ -407,7 +407,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -540,7 +540,7 @@
   background: color-mix(in srgb, var(--tone) 14%, transparent);
 }
 .perf-chip.live {
-  background: var(--live);
+  background: var(--live-btn);
   color: white;
 }
 .perf-none {
@@ -593,7 +593,7 @@
   min-width: 0;
 }
 .perf-stat-k {
-  font-size: 10px;
+  font-size: var(--fs-11);
   letter-spacing: 0.06em;
 }
 .perf-stat-v {
@@ -625,7 +625,7 @@
 }
 .perf-table th {
   text-align: left;
-  font-size: 10px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -723,7 +723,7 @@
 .perf-budget-scale {
   position: relative;
   height: 14px;
-  font-size: 10.5px;
+  font-size: var(--fs-11);
   font-variant-numeric: tabular-nums;
 }
 .perf-budget-scale span {
@@ -820,7 +820,7 @@
 }
 .perf-src {
   margin-left: 4px;
-  font-size: 9.5px;
+  font-size: var(--fs-11);
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -939,7 +939,7 @@
   margin-top: 2px;
   padding: 0 5px;
   border-radius: 4px;
-  font-size: 9.5px;
+  font-size: var(--fs-11);
   font-weight: 700;
   line-height: 15px;
   letter-spacing: 0.04em;
@@ -1025,7 +1025,7 @@
 .vs-fps {
   flex: none;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-11);
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 5px;

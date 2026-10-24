@@ -47,6 +47,8 @@ export function inputMessage(m: string): string {
 // ----------------------------------------------------------------- list --
 
 let list: InputInfo[] = [];
+/** The answer the list was read from: the same one again changes nothing. */
+let listText = '';
 let listUsers = 0;
 let listTimer: ReturnType<typeof setInterval> | null = null;
 const listSubs = new Set<() => void>();
@@ -55,7 +57,10 @@ async function fetchList() {
   try {
     const r = await fetch('/api/inputs', { credentials: 'same-origin' });
     if (!r.ok) return;
-    list = (await r.json()) as InputInfo[];
+    const text = await r.text();
+    if (text === listText) return;
+    listText = text;
+    list = JSON.parse(text) as InputInfo[];
     listSubs.forEach((f) => f());
   } catch {
     /* offline */

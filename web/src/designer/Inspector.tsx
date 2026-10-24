@@ -151,7 +151,7 @@ export interface RowSpec {
   precision?: number;
   min?: number;
   max?: number;
-  /** The two values keep their ratio when this setting of the layer is on (Scale: scaleLock, Dimensions: lockRatio). */
+  /** The two values keep their ratio when this setting of the layer is on (Scale: scaleLock, Size: lockRatio). */
   lock?: 'scaleLock' | 'lockRatio';
 }
 
@@ -166,7 +166,8 @@ const TRANSFORM_ROWS: RowSpec[] = [
     lock: 'scaleLock',
   },
   {
-    label: 'Dimensions',
+    // "Size", as in the timeline.
+    label: 'Size',
     props: ['width', 'height'],
     fields: ['W', 'H'],
     suffix: 'px',
@@ -1339,7 +1340,7 @@ function TemplateInspector({ template }: { template: Template }) {
       </div>
       {project && (
         <div className="tpl-publish-row">
-          <TemplatePublish project={project} id={template.id} readOnly={false} />
+          <TemplatePublish project={project} id={template.id} />
         </div>
       )}
       <div className="tpl-props">
@@ -1386,7 +1387,7 @@ export function Inspector() {
     return (
       <div className="inspector">
         <Section title={t('All templates')}>
-          <p className="hint">{t('The stage shows every template at its on-air point, each in its zone. Click a graphic, or a template on the left, to open it; Esc in a template comes back here.')}</p>
+          <p className="muted small">{tn(project?.templates.length ?? 0, '{n} template', '{n} templates')}</p>
         </Section>
       </div>
     );

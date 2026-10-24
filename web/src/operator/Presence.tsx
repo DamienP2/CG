@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { sendWs, useApp } from '../store';
 import { t } from '../i18n';
-import { UndoHistory } from './UndoToast';
 
 /*
  * Who has the Operator of a channel open: the Operator says where it is on
@@ -64,17 +63,11 @@ function People({ channelId }: { channelId: string }) {
   );
 }
 
-/** In the app's top bar: the people on the channel and the history of the actions. */
-export function OperatorTop({ channelId, operate }: { channelId: string | null; operate: boolean }) {
+/** In the app's top bar: the people on the channel (the history of the actions is in the transport bar). */
+export function OperatorTop({ channelId }: { channelId: string | null; operate?: boolean }) {
   usePresence(channelId);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setSlot(document.getElementById('topbar-slot')), []);
   if (!slot || !channelId) return null;
-  return createPortal(
-    <>
-      <People channelId={channelId} />
-      <UndoHistory channelId={channelId} operate={operate} />
-    </>,
-    slot,
-  );
+  return createPortal(<People channelId={channelId} />, slot);
 }

@@ -12,10 +12,10 @@
    "Drapeaux",
    "Arrêt au stand"
   ],
-  "description": "La course comme à la télévision : tour de classement à gauche (20 pilotes, couleurs d’écurie, écarts) alimenté par un tableau que l’opérateur colle ou qu’une source met à jour, compteur de tours, carte pilote, duel avec écart, meilleur tour en violet, drapeaux et safety car, arrêt au stand avec pneus. Noir carbone et rouge, Titillium Web.",
+  "description": "La course comme à la télévision : tour de classement à gauche (20 pilotes, couleurs d’écurie, écarts) alimenté par un tableau que l’opérateur colle ou qu’une source met à jour, compteur de tours, carte pilote, duel avec écart, meilleur tour en violet, drapeaux et safety car, arrêt au stand avec pneus. Noir carbone et rouge, Titillium Web.", "summary": "Classement des pilotes, écarts et chrono de la course.",
   "en": {
    "name": "Motor racing",
-   "description": "The race as on TV: timing tower (20 drivers, team colours, gaps) fed by a table the operator pastes or a source updates, lap counter, driver card, battle with interval, purple fastest lap, flags and safety car, pit stop with tyres."
+   "description": "The race as on TV: timing tower (20 drivers, team colours, gaps) fed by a table the operator pastes or a source updates, lap counter, driver card, battle with interval, purple fastest lap, flags and safety car, pit stop with tyres.", "summary": "Driver standings, gaps and race timing."
   },
   "cover": "tower"
  },

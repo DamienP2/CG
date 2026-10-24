@@ -16,13 +16,62 @@ use super::Draw;
 use crate::text as tx;
 
 /// A clip of (x, y, w, h) of the layer whose edges fade over `fade` px
-/// (horizontal or vertical), inside the parents' clip.
+/// (horizontal or vertical), inside the parents' clip. The same from frame
+/// to frame while the box does not move: kept (`mask::Kept`), its gradient
+/// is not painted again each frame.
 pub(crate) fn zone_mask(
-    d: &Draw,
+    d: &mut Draw,
     (x, y, w, h): (f32, f32, f32, f32),
     fade: Option<(bool, f32)>,
-) -> Option<Mask> {
+) -> Option<std::sync::Arc<Mask>> {
     let r = Rect::from_xywh(x, y, w.max(0.01), h.max(0.01))?;
+    // Where the mask can be other than 0 (and reads the parents' clip).
+    let (fw, fh) = (d.pm.width(), d.pm.height());
+    let region = crate::scaled::device_bounds(r, d.tf, fw, fh)
+        .and_then(|b| {
+            tiny_skia::IntRect::from_ltrb(
+                (b.left() - 3).max(0),
+                (b.top() - 3).max(0),
+                (b.right() + 3).min(fw as i32),
+                (b.bottom() + 3).min(fh as i32),
+            )
+        })
+        .unwrap_or_else(|| tiny_skia::IntRect::from_xywh(0, 0, 1, 1).expect("a pixel"));
+    let key = crate::mask::Kept::key(
+        d.pm.width(),
+        d.pm.height(),
+        &[
+            x,
+            y,
+            w,
+            h,
+            fade.map_or(-1.0, |f| f.1),
+            d.tf.sx,
+            d.tf.ky,
+            d.tf.kx,
+            d.tf.sy,
+            d.tf.tx,
+            d.tf.ty,
+        ],
+        fade.is_some_and(|f| f.0),
+        d.mask,
+        region,
+    );
+    let (w0, h0, tf, parent) = (d.pm.width(), d.pm.height(), d.tf, d.mask);
+    d.rd.masks
+        .get_or_make(key, || zone_mask_drawn(w0, h0, r, (w, h), fade, tf, parent))
+}
+
+fn zone_mask_drawn(
+    width: u32,
+    height: u32,
+    r: Rect,
+    (w, h): (f32, f32),
+    fade: Option<(bool, f32)>,
+    tf: Transform,
+    parent: Option<&Mask>,
+) -> Option<Mask> {
+    let (x, y) = (r.x(), r.y());
     let mut paint = Paint::default();
     paint.set_color_rgba8(0, 0, 0, 255);
     if let Some((horiz, fw)) = fade {
@@ -50,7 +99,7 @@ pub(crate) fn zone_mask(
             paint.shader = sh;
         }
     }
-    crate::mask::painted(d.pm.width(), d.pm.height(), r, &paint, d.tf, d.mask)
+    crate::mask::painted(width, height, r, &paint, tf, parent)
 }
 
 /// Everything an item needs to be measured and drawn.
@@ -359,7 +408,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         c.fade_w.min(h * 0.2)
     };
     let zm = zone_mask(d, (zx, 0.0, zw, h), c.fade.then_some((crawl, fw)));
-    let zm = zm.as_ref();
+    let zm = zm.as_deref();
     let now = d.time.now_ms;
     let e = clock(&t, st, now, d.time.age_secs);
     if empty {

@@ -26,9 +26,7 @@ mod typewriter;
 use cg_core::anim::{Data, ResolvedLayer};
 use cg_core::widgets::TimeCtx;
 use cg_core::{Color, Layer, Prop, TextAlign, VerticalAlign};
-use tiny_skia::{
-    FillRule, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform,
-};
+use tiny_skia::{FillRule, Mask, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 use ab_glyph::FontArc;
 
@@ -65,6 +63,9 @@ pub(crate) struct Draw<'a, 'b> {
     pub runs: Option<Vec<cg_core::rich::Run>>,
     /// A Progress following another widget: its value and natural end.
     pub follow: Option<(f64, Option<f64>)>,
+    /// The layer (or a parent) moves or changes size now (keyframes):
+    /// pictures are scaled with a cheaper filter while it does.
+    pub moving: bool,
 }
 
 impl Draw<'_, '_> {
@@ -175,15 +176,15 @@ impl Draw<'_, '_> {
     ) -> Option<(u32, u32)> {
         let tf = self.tf.pre_concat(img_tf);
         let m = mask.or(self.mask);
-        let img = self.rd.image(src)?;
-        let size = (img.width(), img.height());
-        let paint = PixmapPaint {
-            opacity: opacity * self.opacity,
-            quality: tiny_skia::FilterQuality::Bicubic,
-            ..Default::default()
-        };
-        self.pm.draw_pixmap(0, 0, img.as_ref(), &paint, tf, m);
-        Some(size)
+        self.rd.draw_picture(
+            self.pm,
+            src,
+            tf,
+            self.moving,
+            opacity * self.opacity,
+            m,
+            None,
+        )
     }
     /// Size of a picture, in pixels (None if missing).
     pub fn image_size(&mut self, src: &str) -> Option<(u32, u32)> {

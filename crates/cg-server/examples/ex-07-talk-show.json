@@ -11,10 +11,10 @@
    "Citation",
    "Vote QR"
   ],
-  "description": "L’habillage chaleureux d’une émission de plateau : synthés des invités dont le cartouche suit le nom, bandeau du thème, comptes sociaux, logo de l’émission, citation plein écran, vote par QR code et « À suivre ». Aubergine, corail et crème, Playfair Display et Montserrat. Chaque graphique a sa mise en page 9:16 pour les extraits sur les réseaux.",
+  "description": "L’habillage chaleureux d’une émission de plateau : synthés des invités dont le cartouche suit le nom, bandeau du thème, comptes sociaux, logo de l’émission, citation plein écran, vote par QR code et « À suivre ». Aubergine, corail et crème, Playfair Display et Montserrat. Chaque graphique a sa mise en page 9:16 pour les extraits sur les réseaux.", "summary": "Synthés des invités, thème du jour et citations à l’écran.",
   "en": {
    "name": "Talk show",
-   "description": "A warm studio show package: guest lower thirds whose plate follows the name, topic banner, social handles, show logo, full-screen quote, QR code vote and \"Coming up\". Every graphic also has a 9:16 layout for social clips."
+   "description": "A warm studio show package: guest lower thirds whose plate follows the name, topic banner, social handles, show logo, full-screen quote, QR code vote and \"Coming up\". Every graphic also has a 9:16 layout for social clips.", "summary": "Guest straps, topic of the day and on-screen quotes."
   },
   "cover": "guest"
  },

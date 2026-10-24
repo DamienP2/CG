@@ -623,7 +623,13 @@ async fn create_project(
         // A new project starts with one template to design, already
         // published: the operator sees it right away.
         let zone = p.zones.first().map(|z| z.id.clone()).unwrap_or_default();
-        let blank = cg_core::Template::blank("Template 1", &zone, p.frame_rate.as_f64());
+        // Named in the user's language (French by default).
+        let first = if me.lang.starts_with("en") {
+            "Template 1"
+        } else {
+            "Modèle 1"
+        };
+        let blank = cg_core::Template::blank(first, &zone, p.frame_rate.as_f64());
         let id = blank.id.clone();
         p.drafts.push(blank);
         p.publish(&id);
@@ -699,24 +705,48 @@ async fn example_cover(
     State(s): State<Shared>,
     CurrentUser(_me): CurrentUser,
     Path(id): Path<String>,
+    Query(q): Query<CoverQuery>,
 ) -> ApiResult<Response> {
     let (p, template) = crate::examples::cover(&id).ok_or_else(|| not_found("example"))?;
+    // The examples are in the program: the same picture until an update.
+    const CACHE: &str = "private, max-age=86400";
+    let width = q.w.unwrap_or(u32::MAX).clamp(16, 7680);
+    let key = crate::thumbs::Key::default()
+        .part("example")
+        .template(&p, &template)
+        .part(&width)
+        .finish();
+    if let Some(bytes) = s.thumbs.get(key) {
+        return Ok(png_cached(bytes, CACHE));
+    }
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         let data = template.default_data();
-        let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
-        r.render_template(
-            &p,
-            &template,
-            cg_core::MAIN_FORMAT,
-            template.hold_frame(),
-            &data,
-        )
-        .to_png()
+        let frame = {
+            let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
+            r.render_template_scaled(
+                &p,
+                &template,
+                cg_core::MAIN_FORMAT,
+                template.hold_frame(),
+                &data,
+                width,
+            )
+        };
+        cg_render::pool::busy();
+        frame.to_png()
     })
     .await
     .map_err(internal)?;
-    Ok(png(bytes))
+    let bytes = Bytes::from(bytes);
+    s.thumbs.put(key, bytes.clone());
+    Ok(png_cached(bytes, CACHE))
+}
+
+#[derive(Deserialize)]
+struct CoverQuery {
+    /// At most this wide (pixels).
+    w: Option<u32>,
 }
 
 /// Copies the files of a directory (not recursive). A missing source is empty.
@@ -893,6 +923,7 @@ async fn import_create(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .invalidate_assets();
+        s.thumbs.clear();
     }
     let templates: Vec<Template> =
         serde_json::from_str(&json.replace(&stage, &crate::media::project_prefix(&p.id)))
@@ -1331,6 +1362,7 @@ async fn import_after_effects(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .invalidate_assets();
+        s.thumbs.clear();
         let mut json = serde_json::to_string(&template).map_err(internal)?;
         for (name, _) in &out.files {
             json = json.replace(
@@ -1538,15 +1570,24 @@ async fn put_formats(
 }
 
 fn png(bytes: Vec<u8>) -> Response {
+    png_cached(bytes.into(), "no-store")
+}
+
+/// A PNG with how long browsers keep it.
+fn png_cached(bytes: Bytes, cache: &'static str) -> Response {
     (
         [
             (header::CONTENT_TYPE, "image/png"),
-            (header::CACHE_CONTROL, "no-store"),
+            (header::CACHE_CONTROL, cache),
         ],
         bytes,
     )
         .into_response()
 }
+
+/// A thumbnail whose address names its version (`v`) never changes:
+/// browsers keep it (it is private to the signed-in user).
+const VERSIONED: &str = "private, max-age=31536000, immutable";
 
 #[derive(Deserialize)]
 struct ThumbQuery {
@@ -1558,6 +1599,10 @@ struct ThumbQuery {
     /// Show the designer's draft rather than the published template.
     #[serde(default)]
     draft: bool,
+    /// At most this wide (pixels): drawn small for lists.
+    w: Option<u32>,
+    /// Version of the template in the address (cached by browsers when set).
+    v: Option<String>,
 }
 
 async fn template_thumbnail(
@@ -1565,6 +1610,7 @@ async fn template_thumbnail(
     CurrentUser(me): CurrentUser,
     Path((id, tid)): Path<(String, String)>,
     Query(q): Query<ThumbQuery>,
+    headers: HeaderMap,
 ) -> ApiResult<Response> {
     let p = visible_project(&s, &me, &id).await?;
     let template = if q.draft {
@@ -1586,21 +1632,55 @@ async fn template_thumbnail(
     }
     // Data sets show their row (the first, or the one asked).
     cg_core::datapath::bind_datasets(&template, &mut data, &s.data.store());
+    let width = q.w.unwrap_or(u32::MAX).clamp(16, 7680);
+    let format = q.format.unwrap_or_else(|| cg_core::MAIN_FORMAT.to_string());
+    // Made already (another list, another user): the same PNG.
+    let key = crate::thumbs::Key::default()
+        .template(&p, &template)
+        .part(&format)
+        .part(&frame.to_bits())
+        .value(&data)
+        .part(&width)
+        .finish();
+    // Without a version in the address: browsers ask again each time, and
+    // get "not modified" while it shows the same.
+    let etag = format!("\"{key:016x}\"");
+    let cache = if q.v.is_some() {
+        VERSIONED
+    } else {
+        "private, no-cache"
+    };
+    if q.v.is_none()
+        && headers
+            .get(header::IF_NONE_MATCH)
+            .is_some_and(|v| v.as_bytes() == etag.as_bytes())
+    {
+        return Ok((StatusCode::NOT_MODIFIED, [(header::ETAG, etag)]).into_response());
+    }
+    let tagged = |res: Response| {
+        let mut res = res;
+        if let Ok(v) = header::HeaderValue::from_str(&etag) {
+            res.headers_mut().insert(header::ETAG, v);
+        }
+        res
+    };
+    if let Some(bytes) = s.thumbs.get(key) {
+        return Ok(tagged(png_cached(bytes, cache)));
+    }
     let st = s.clone();
     let bytes = tokio::task::spawn_blocking(move || {
-        let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
-        r.render_template(
-            &p,
-            &template,
-            q.format.as_deref().unwrap_or(cg_core::MAIN_FORMAT),
-            frame,
-            &data,
-        )
-        .to_png()
+        let frame = {
+            let mut r = st.renderer.lock().unwrap_or_else(|e| e.into_inner());
+            r.render_template_scaled(&p, &template, &format, frame, &data, width)
+        };
+        cg_render::pool::busy();
+        frame.to_png()
     })
     .await
     .map_err(internal)?;
-    Ok(png(bytes))
+    let bytes = Bytes::from(bytes);
+    s.thumbs.put(key, bytes.clone());
+    Ok(tagged(png_cached(bytes, cache)))
 }
 
 /// Renders a graphic to a QuickTime file with alpha (post-production).
@@ -2095,6 +2175,7 @@ async fn upload_font(
         .await
         .map_err(internal)?;
     cg_render::fonts_changed();
+    s.thumbs.clear();
     Ok(Json(serde_json::json!({ "name": name })))
 }
 
@@ -2113,6 +2194,7 @@ async fn delete_font(
         .await
         .map_err(|_| not_found("font"))?;
     cg_render::fonts_changed();
+    s.thumbs.clear();
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -2174,6 +2256,7 @@ async fn put_asset(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .invalidate_assets();
+    s.thumbs.clear();
     s.changed("media");
     Ok(Json(BTreeMap::from([("src", format!("/assets/{name}"))])))
 }
@@ -3083,7 +3166,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
             // Engine restart / shutdown: close so the client reconnects.
             _ = &mut closing => break,
             ev = events.recv() => {
-                let ev = match ev {
+                let sent = match ev {
                     Ok(ev) => ev,
                     // Slow client: events it missed (project, channels, locks) are not sent again,
                     // so it reconnects and gets everything afresh.
@@ -3091,10 +3174,16 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                     Err(_) => break,
                 };
                 let mut extra = None;
-                let visible = match &ev {
-                    Event::Project { project } => match (&viewer.user, &viewer.channel) {
-                        (_, Some(_)) => followed.as_deref() == Some(project.id.as_str()),
-                        (Some(u), None) => u.sees_project(&project.id),
+                let ev = &sent.event;
+                let project_id = match ev {
+                    Event::Project { project } => project.id.as_str(),
+                    Event::ProjectTemplate { project_id, .. } => project_id.as_str(),
+                    _ => "",
+                };
+                let visible = match ev {
+                    Event::Project { .. } | Event::ProjectTemplate { .. } => match (&viewer.user, &viewer.channel) {
+                        (_, Some(_)) => followed.as_deref() == Some(project_id),
+                        (Some(u), None) => u.sees_project(project_id),
                         (None, None) => false,
                     },
                     Event::ProjectDeleted { id } => viewer.user.as_ref().is_some_and(|u| u.sees_project(id)),
@@ -3125,16 +3214,28 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                 if !visible {
                     continue;
                 }
-                let ev = match ev {
-                    Event::Channels { channels } => Event::Channels { channels: channels.into_iter().filter(|c| viewer.sees_channel(&c.id)).collect() },
-                    Event::Presence { present } => Event::Presence { present: present.into_iter().filter(|p| viewer.sees_channel(&p.channel_id)).collect() },
-                    Event::Schedule { channel_id, items } => Event::Schedule { channel_id, items: items.into_iter().filter(|i| viewer.user.as_ref().is_some_and(|u| u.sees_project(&i.entry.project_id))).collect() },
-                    other => other,
+                // What this viewer may see of a list; None: all of it (the
+                // JSON written once for every client is sent).
+                let own = match ev {
+                    Event::Channels { channels } if !channels.iter().all(|c| viewer.sees_channel(&c.id)) => Some(Event::Channels { channels: channels.iter().filter(|c| viewer.sees_channel(&c.id)).cloned().collect() }),
+                    Event::Presence { present } if !present.iter().all(|p| viewer.sees_channel(&p.channel_id)) => Some(Event::Presence { present: present.iter().filter(|p| viewer.sees_channel(&p.channel_id)).cloned().collect() }),
+                    Event::Schedule { channel_id, items } => {
+                        let sees = |i: &crate::schedule::View| viewer.user.as_ref().is_some_and(|u| u.sees_project(&i.entry.project_id));
+                        (!items.iter().all(sees)).then(|| Event::Schedule { channel_id: channel_id.clone(), items: items.iter().filter(|i| sees(i)).cloned().collect() })
+                    }
+                    _ => None,
                 };
                 if let Some(x) = extra {
                     if send(&mut tx, &x).await.is_err() { break }
                 }
-                if send(&mut tx, &ev).await.is_err() { break }
+                let sent = match own {
+                    Some(own) => send(&mut tx, &own).await,
+                    None => match sent.json() {
+                        Some(json) => tx.send(Message::Text(json)).await.map_err(|_| ()),
+                        None => Ok(()),
+                    },
+                };
+                if sent.is_err() { break }
             },
             msg = rx.next() => match msg {
                 Some(Ok(Message::Text(text))) => {

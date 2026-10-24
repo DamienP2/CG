@@ -383,6 +383,7 @@ version = "0.7.1"
 dependencies = [
  "cc",
  "cg-render",
+ "libc",
  "libloading 0.8.9",
  "serde",
  "socket2 0.5.10",

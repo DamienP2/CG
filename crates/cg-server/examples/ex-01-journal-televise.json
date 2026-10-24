@@ -11,10 +11,10 @@
    "Sommaire",
    "Ticker"
   ],
-  "description": "L’habillage complet d’un grand journal du soir : synthés nom et fonction dont les cartouches suivent la longueur du texte, lieu en direct, logo et heure, bandeau URGENT, titre plein écran, sommaire et ticker. Bleu nuit, blanc et un bleu électrique, typographie Inter.",
+  "description": "L’habillage complet d’un grand journal du soir : synthés nom et fonction dont les cartouches suivent la longueur du texte, lieu en direct, logo et heure, bandeau URGENT, titre plein écran, sommaire et ticker. Bleu nuit, blanc et un bleu électrique, typographie Inter.", "summary": "Synthés, lieu, logo, bandeau urgent et titres d’un grand JT.",
   "en": {
    "name": "National TV news",
-   "description": "A full evening news package: name and title lower thirds whose plates follow the text, live location, logo and clock, BREAKING banner, full-screen headline, running order and ticker."
+   "description": "A full evening news package: name and title lower thirds whose plates follow the text, live location, logo and clock, BREAKING banner, full-screen headline, running order and ticker.", "summary": "Name straps, location, logo, breaking strap and titles for a main newscast."
   },
   "cover": "headline"
  },

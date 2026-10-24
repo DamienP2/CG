@@ -1,6 +1,7 @@
 import { BookOpen, Download, FileJson, Hash, KeyRound, LayoutGrid } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { t, tn } from '../i18n';
+import { t, tc, tn } from '../i18n';
+import { InfoTip } from '../ui/InfoTip';
 import { api } from '../store';
 import { ApiButtons } from './ApiButtons';
 import { ApiOverview, ApiTag, useApiSpec } from './ApiDocs';
@@ -25,7 +26,7 @@ export function ApiPage() {
       <NavSection>{t('Documentation')}</NavSection>
       <NavItem on={view.kind === 'overview'} icon={<BookOpen size={15} />} label={t('Overview')} onClick={() => setView({ kind: 'overview' })} />
       {spec?.tags.map((tag) => (
-        <NavItem key={tag.name} on={view.kind === 'tag' && view.name === tag.name} icon={<Hash size={15} />} label={tag.name} count={byTag.get(tag.name)?.length ?? 0} onClick={() => setView({ kind: 'tag', name: tag.name })} />
+        <NavItem key={tag.name} on={view.kind === 'tag' && view.name === tag.name} icon={<Hash size={15} />} label={tc('api', tag.name)} count={byTag.get(tag.name)?.length ?? 0} onClick={() => setView({ kind: 'tag', name: tag.name })} />
       ))}
       <NavSection>{t('Tools')}</NavSection>
       <a className="lib-nav-item" href="/premiere/strata-premiere.zip" title={t('The Premiere Pro panel, set to this server (it updates itself from it)')}>
@@ -43,7 +44,15 @@ export function ApiPage() {
   if (view.kind === 'keys') {
     body = (
       <>
-        <PageHead title={t('API keys')} sub={t('Permanent keys for Companion, newsroom systems and scripts.')} />
+        <PageHead
+          title={t('API keys')}
+          sub={
+            <>
+              {t('Permanent keys for Companion, newsroom systems and scripts.')}
+              <InfoTip text={`${t('For automation (Companion / Stream Deck, newsroom systems, scripts): send')} Authorization: Bearer pcg_…. ${t('A key acts with the rights of its user — create a dedicated operator account scoped to the right channels for each system.')}`} />
+            </>
+          }
+        />
         <ApiKeys keys={keys} reload={loadKeys} />
       </>
     );
@@ -72,7 +81,7 @@ export function ApiPage() {
     const ops = byTag.get(view.name) ?? [];
     body = (
       <>
-        <PageHead title={view.name} sub={tn(ops.length, '{n} operation · click it to see its parameters and answers', '{n} operations · click one to see its parameters and answers')} />
+        <PageHead title={tc('api', view.name)} sub={tn(ops.length, '{n} operation', '{n} operations')} />
         <ApiTag spec={spec} ops={ops} />
       </>
     );

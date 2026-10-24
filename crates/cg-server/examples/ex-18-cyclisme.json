@@ -11,10 +11,10 @@
    "Carte",
    "Kilomètres"
   ],
-  "description": "Une étape de grand tour en direct : profil de l’étape avec ses cols, carte du parcours (hors ligne), kilomètres restants, écarts entre l’échappée et le peloton, classement général (tableau importé ou lu dans le flux des temps) et fiche coureur. Les temps et écarts peuvent venir d’une source de données.",
+  "description": "Une étape de grand tour en direct : profil de l’étape avec ses cols, carte du parcours (hors ligne), kilomètres restants, écarts entre l’échappée et le peloton, classement général (tableau importé ou lu dans le flux des temps) et fiche coureur. Les temps et écarts peuvent venir d’une source de données.", "summary": "Profil de l’étape, parcours, écarts et kilomètres restants.",
   "en": {
    "name": "Cycling · mountain stage",
-   "description": "A grand tour stage live: stage profile with its climbs, an offline route map, kilometres to go, gaps between the breakaway and the bunch, general classification (a table imported or read from the timing feed) and a rider card. Times and gaps may come from a data source."
+   "description": "A grand tour stage live: stage profile with its climbs, an offline route map, kilometres to go, gaps between the breakaway and the bunch, general classification (a table imported or read from the timing feed) and a rider card. Times and gaps may come from a data source.", "summary": "Stage profile, route, gaps and distance to go."
   },
   "cover": "profile"
  },

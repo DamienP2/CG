@@ -2,10 +2,12 @@ import { Cpu, Plus, Search, Trash2, Video, VideoOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
+import { InfoTip } from '../ui/InfoTip';
+import { errorProps } from '../ui/serverError';
 import { inputMessage as messageText, useLiveFrame } from '../engine/liveInputs';
 import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
 import { useMetrics, type InputMetrics } from '../engine/metrics';
-import { coresLabel, fps as fpsText, fpsTone, inputTone, num } from '../perf/format';
+import { corePct, fps as fpsText, fpsTone, inputTone, num } from '../perf/format';
 import '../perf/perf.css';
 import { deviceOf, hardwareOf } from '../hardware/model';
 import { navigate } from '../router';
@@ -218,7 +220,10 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
     <div className="outputs-page">
       <aside className="lib-nav">
         <div className="lib-nav-section">
-          <span className="grow">{t('Inputs')}</span>
+          <span className="grow">
+            {t('Inputs')}
+            <InfoTip text={t('Cameras, encoders, NDI or SDI sources coming into the server. The Video widget shows them in the graphics.')} />
+          </span>
           <button className="icon-btn ghost" title={t('Add an input')} onClick={add}>
             <Plus size={14} />
           </button>
@@ -243,7 +248,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
         <button className="oc-channel vs-item add" onClick={add}>
           <Plus size={13} /> {t('Add an input')}
         </button>
-        <p className="lib-nav-hint">{t('Cameras, encoders, NDI or SDI sources coming into the server. The Video widget shows them in the graphics.')}</p>
       </aside>
 
       <main className="oc-main">
@@ -388,7 +392,7 @@ function Inspector({
           </div>
           <div>
             <small>CPU</small>
-            <strong>{coresLabel(rates.cpu)}</strong>
+            <strong>{corePct(rates.cpu)}</strong>
           </div>
         </div>
       )}
@@ -491,7 +495,11 @@ function Inspector({
               ))}
             </div>
           )}
-          {ndi.error && <span className="set-hint vs-error">{ndi.error}</span>}
+          {ndi.error && (
+            <span className="set-hint vs-error" title={errorProps(ndi.error).title}>
+              {errorProps(ndi.error).text}
+            </span>
+          )}
           <span className="set-hint">{t('As receivers list it: “HOST (name)”. Pick a source found on the network, or type its name.')}</span>
         </div>
       )}
@@ -568,9 +576,11 @@ function Preview({ id, live }: { id: string; live: boolean }) {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="set-field">
-      <span className="set-label">{label}</span>
+      <span className="set-label">
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       {children}
-      {hint && <span className="set-hint">{hint}</span>}
     </label>
   );
 }
@@ -579,9 +589,11 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 function Group({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="set-field">
-      <span className="set-label">{label}</span>
+      <span className="set-label">
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       {children}
-      {hint && <span className="set-hint">{hint}</span>}
     </div>
   );
 }

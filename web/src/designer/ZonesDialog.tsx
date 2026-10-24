@@ -13,7 +13,8 @@ const COLORS = ['#8fa3ff', '#ff3b5c', '#22c55e', '#f5a524', '#38bdf8', '#e879f9'
  * on air independently. The list is the stacking order (top = front).
  */
 export function ZonesDialog({ onClose }: { onClose: () => void }) {
-  const { project, saveZones } = useApp();
+  const project = useApp((s) => s.project);
+  const saveZones = useApp((s) => s.saveZones);
   // Front-most first, like a layer panel.
   const [zones, setZones] = useState<Zone[]>(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer));
   const [busy, setBusy] = useState(false);

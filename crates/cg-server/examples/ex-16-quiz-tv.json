@@ -10,10 +10,10 @@
    "Scores",
    "Déclencheur"
   ],
-  "description": "Un jeu de questions-réponses de prime : question et quatre réponses (la bonne s’allume en vert quand la régie continue), chrono de 30 secondes en anneau qui passe au rouge, tableau des scores, titre de manche sur fond de rayons, présentation des candidats et vainqueur. Les questions peuvent venir d’une source de données.",
+  "description": "Un jeu de questions-réponses de prime : question et quatre réponses (la bonne s’allume en vert quand la régie continue), chrono de 30 secondes en anneau qui passe au rouge, tableau des scores, titre de manche sur fond de rayons, présentation des candidats et vainqueur. Les questions peuvent venir d’une source de données.", "summary": "Question, quatre réponses, chrono et scores des candidats.",
   "en": {
    "name": "TV quiz show",
-   "description": "A prime-time quiz: a question and four answers (the right one lights up green when the gallery continues), a 30-second ring timer that turns red, the scores, a round title over a sunburst, contestant straps and the winner. The questions may come from a data source."
+   "description": "A prime-time quiz: a question and four answers (the right one lights up green when the gallery continues), a 30-second ring timer that turns red, the scores, a round title over a sunburst, contestant straps and the winner. The questions may come from a data source.", "summary": "Question, four answers, timer and contestant scores."
   },
   "cover": "question"
  },

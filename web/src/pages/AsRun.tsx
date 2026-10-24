@@ -51,7 +51,7 @@ function badge(g: Group): string {
     case 'undo':
       return t('UNDONE');
     case 'clear':
-      return 'CLEAR';
+      return tc('asrun', 'CLEAR');
     case 'trigger':
       return 'TRIGGER';
     case 'row':
@@ -371,10 +371,10 @@ export function AsRun() {
         </div>
       </PageHead>
 
-      <div className="asr-toolbar">
+      <div className="asr-toolbar ux3-asr-row">
         <label className="search">
           <Search size={14} />
-          <input value={query} placeholder={t('Graphic, value, operator…')} onChange={(e) => setQuery(e.target.value)} />
+          <input value={query} placeholder={t('Search…')} title={t('Graphic, value, operator…')} onChange={(e) => setQuery(e.target.value)} />
           {query && (
             <button className="icon-btn ghost" title={t('Clear the search')} onClick={() => setQuery('')}>
               <X size={13} />

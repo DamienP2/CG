@@ -11,10 +11,10 @@
    "QR code",
    "9:16"
   ],
-  "description": "Une vente en direct pour les réseaux et le web, pensée d’abord en 9:16 : fiche produit avec prix barré et remise, offre flash avec compte à rebours, stock restant qui baisse, QR code pour acheter, animatrice et nombre de spectateurs, achats récents qui défilent et code promo. Prix et stock peuvent venir du catalogue.",
+  "description": "Une vente en direct pour les réseaux et le web, pensée d’abord en 9:16 : fiche produit avec prix barré et remise, offre flash avec compte à rebours, stock restant qui baisse, QR code pour acheter, animatrice et nombre de spectateurs, achats récents qui défilent et code promo. Prix et stock peuvent venir du catalogue.", "summary": "Fiche produit, offre flash et stock pour une vente en direct.",
   "en": {
    "name": "Live shopping",
-   "description": "A live sale for social and the web, designed 9:16 first: product card with struck price and discount, flash offer with a countdown, remaining stock going down, a QR code to buy, the host with the viewer count, recent purchases scrolling and a promo code. Prices and stock may come from the catalogue."
+   "description": "A live sale for social and the web, designed 9:16 first: product card with struck price and discount, flash offer with a countdown, remaining stock going down, a QR code to buy, the host with the viewer count, recent purchases scrolling and a promo code. Prices and stock may come from the catalogue.", "summary": "Product card, flash offer and stock for live selling."
   },
   "cover": "product"
  },

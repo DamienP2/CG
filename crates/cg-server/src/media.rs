@@ -157,6 +157,7 @@ async fn store(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .invalidate_assets();
+    s.thumbs.clear();
     list_dir(dir, prefix)
         .await?
         .into_iter()
@@ -175,6 +176,7 @@ async fn remove(s: &Shared, dir: &FsPath, name: &str) -> ApiResult<StatusCode> {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .invalidate_assets();
+            s.thumbs.clear();
             Ok(StatusCode::NO_CONTENT)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(not_found("file")),
@@ -476,6 +478,7 @@ async fn sequence(
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .invalidate_assets();
+    s.thumbs.clear();
     s.changed(format!("media:{id}"));
     Ok(Json(Sequence {
         frames,

@@ -10,10 +10,10 @@
    "Projection",
    "Participation"
   ],
-  "description": "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages, lus dans une source de données que l’automatisation met à jour), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.",
+  "description": "Une soirée électorale au ton éditorial, sur fond papier : résultats par candidat (barres et pourcentages, lus dans une source de données que l’automatisation met à jour), hémicycle dont les arcs se calculent à partir des sièges, carte des régions coloriée par candidat en tête, bandeau de projection, participation et dépouillement en direct, synthés des analystes. Playfair Display et Inter.", "summary": "Résultats par candidat, participation et sièges en direct.",
   "en": {
    "name": "Election night",
-   "description": "An editorial election night on a paper background: results by candidate, a hemicycle whose arcs are computed from the seats, a map of the regions coloured by leading candidate, projection banner, live turnout and count, analyst lower thirds."
+   "description": "An editorial election night on a paper background: results by candidate, a hemicycle whose arcs are computed from the seats, a map of the regions coloured by leading candidate, projection banner, live turnout and count, analyst lower thirds.", "summary": "Live results per candidate, turnout and seats."
   },
   "cover": "results"
  },

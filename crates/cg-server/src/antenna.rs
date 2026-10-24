@@ -97,8 +97,15 @@ pub struct UndoStep {
     /// The zone it drove ("" for several).
     #[serde(default)]
     pub zone: String,
+    /// Graphics it took off air (Clear all), for the undo list.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub count: usize,
     #[serde(skip)]
     pub before: ChannelState,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// What a channel keeps about its operators.
@@ -329,6 +336,7 @@ mod tests {
                 action: "take".into(),
                 label: format!("#{i}"),
                 zone: String::new(),
+                count: 0,
                 before: ChannelState::default(),
             });
         }

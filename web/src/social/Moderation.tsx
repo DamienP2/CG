@@ -1,4 +1,4 @@
-import { Camera, Check, ChevronsRight, GripVertical, Pause, Pencil, Play, Search, Star, Undo2, X } from 'lucide-react';
+import { Camera, Check, ChevronsRight, CircleCheck, GripVertical, Inbox, Pause, Pencil, Play, Search, Star, Undo2, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { defaultData, holdFrame } from '../engine/evaluate';
 import { inFormat, projectFormats } from '../engine/formats';
@@ -169,6 +169,7 @@ export function Moderation({ projectId, desk }: { projectId: string; desk: Desk 
           </button>
         </header>
         <div className="mod-list">
+          {!incoming.length && <NoMessage icon={<Inbox size={22} />} />}
           {incoming.map((c) => (
             <IncomingCard key={c.message.id} card={c} selected={sel === c.message.id} onSelect={() => setSel(c.message.id)} projectId={projectId} onEdit={() => {
               setSel(c.message.id);
@@ -303,8 +304,19 @@ function Approved({ projectId, desk, sel, onSelect }: { projectId: string; desk:
             <QueueCard card={c} badge={i === 0 ? 'next' : undefined} selected={sel === c.message.id} onSelect={() => onSelect(c.message.id)} projectId={projectId} mode={desk.display.nameMode} />
           </div>
         ))}
+        {!desk.onAir && !desk.approved.length && <NoMessage icon={<CircleCheck size={22} />} />}
       </div>
     </section>
+  );
+}
+
+/** An empty column. */
+function NoMessage({ icon }: { icon: React.ReactNode }) {
+  return (
+    <div className="empty big ux3-no-msg">
+      {icon}
+      <p>{t('No message')}</p>
+    </div>
   );
 }
 

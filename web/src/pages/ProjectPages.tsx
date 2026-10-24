@@ -6,6 +6,7 @@ import { api, useApp } from '../store';
 import { FormatButtons } from '../designer/ProjectPanel';
 import { confirmDialog } from '../ui/dialogs';
 import { t } from '../i18n';
+import { InfoTip } from '../ui/InfoTip';
 
 type ProjectMeta = {
   id: string;
@@ -65,11 +66,10 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
 
   return (
     <div className="settings">
-      <div className="settings-inner narrow">
+      <div className="settings-inner ux3-full">
         <div className="settings-head">
           <div>
             <h1>{t('Project settings')}</h1>
-            <p className="muted">{t('Name, description and the format the templates are designed in.')}</p>
           </div>
         </div>
         <form className="set-card" onSubmit={save}>
@@ -78,18 +78,22 @@ export function ProjectSettings({ project }: { project: ProjectMeta }) {
             <h2>{t('General')}</h2>
           </header>
           <div className="set-body">
-            <label className="set-field">
-              <span className="set-label">{t('Name')}</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <label className="set-field">
-              <span className="set-label">{t('Description')}</span>
-              <input value={description} placeholder={t('What this project is for')} onChange={(e) => setDescription(e.target.value)} />
-            </label>
+            <div className="ux3-grid2">
+              <label className="set-field">
+                <span className="set-label">{t('Name')}</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} />
+              </label>
+              <label className="set-field">
+                <span className="set-label">{t('Description')}</span>
+                <input value={description} placeholder={t('What this project is for')} onChange={(e) => setDescription(e.target.value)} />
+              </label>
+            </div>
             <div className="set-field">
-              <span className="set-label">{t('Design format')}</span>
+              <span className="set-label">
+                {t('Design format')}
+                <InfoTip text={t('The original format of the templates. Changing it does not move or rescale existing layers; channels in another format scale the graphics to fit.')} />
+              </span>
               <FormatButtons width={format.width} height={format.height} rate={format.rate} onSize={(width, height) => setFormat({ ...format, width, height })} onRate={(rate) => setFormat({ ...format, rate })} />
-              <span className="set-hint">{t('The original format of the templates. Changing it does not move or rescale existing layers; channels in another format scale the graphics to fit.')}</span>
             </div>
             <div className="row end">
               <button className="btn primary" disabled={busy || !dirty || !name.trim()}>

@@ -25,6 +25,14 @@ pub enum Event {
     ProjectDeleted {
         id: String,
     },
+    /// A project saved with only one of its templates (or drafts) changed
+    /// or added: that template, not the whole project.
+    #[serde(rename_all = "camelCase")]
+    ProjectTemplate {
+        project_id: String,
+        draft: bool,
+        template: Box<cg_core::Template>,
+    },
     /// Channel list or loaded projects changed.
     Channels {
         channels: Vec<ChannelInfo>,
@@ -93,6 +101,62 @@ pub enum Event {
     },
 }
 
+/// An event as broadcast: written as JSON once, for every client that
+/// gets it as it is (not once per client).
+#[derive(Debug)]
+pub struct Sent {
+    pub event: Event,
+    json: std::sync::OnceLock<Option<axum::extract::ws::Utf8Bytes>>,
+}
+
+impl Sent {
+    pub fn json(&self) -> Option<axum::extract::ws::Utf8Bytes> {
+        self.json
+            .get_or_init(|| serde_json::to_string(&self.event).ok().map(Into::into))
+            .clone()
+    }
+}
+
+/// The events of the server, to the WebSocket clients and the control API.
+pub struct Events(broadcast::Sender<Arc<Sent>>);
+
+impl Events {
+    pub fn new(capacity: usize) -> Self {
+        Self(broadcast::channel(capacity).0)
+    }
+
+    pub fn send(&self, event: Event) -> Result<usize, broadcast::error::SendError<Arc<Sent>>> {
+        self.0.send(Arc::new(Sent {
+            event,
+            json: Default::default(),
+        }))
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<Arc<Sent>> {
+        self.0.subscribe()
+    }
+}
+
+/// The project a channel shows, for its clock: read without waiting on
+/// the locks a save or a command holds (an `Arc` swapped under a lock
+/// held only for that).
+#[derive(Default)]
+pub struct Loaded(std::sync::RwLock<Option<Arc<Project>>>);
+
+impl Loaded {
+    pub fn new(p: Option<Arc<Project>>) -> Self {
+        Self(std::sync::RwLock::new(p))
+    }
+
+    pub fn get(&self) -> Option<Arc<Project>> {
+        self.0.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub fn set(&self, p: Option<Arc<Project>>) {
+        *self.0.write().unwrap_or_else(|e| e.into_inner()) = p;
+    }
+}
+
 /// Messages accepted from WebSocket clients.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -142,6 +206,10 @@ pub struct ChannelRt {
     pub config: ChannelConfig,
     pub project_id: RwLock<Option<String>>,
     pub state: RwLock<ChannelState>,
+    /// The project loaded (`project_id`), for the clock (set with it).
+    pub loaded: Loaded,
+    /// The state the clock published last (the same one is not sent again).
+    pub published: Mutex<Option<ChannelState>>,
     /// Changed since it was last saved to disk.
     pub dirty: std::sync::atomic::AtomicBool,
     /// Zones held by operators, actions that can be undone.
@@ -252,8 +320,13 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub library: RwLock<Library>,
     pub channels: BTreeMap<String, Arc<ChannelRt>>,
-    pub events: broadcast::Sender<Event>,
+    pub events: Events,
     pub renderer: Mutex<Renderer>,
+    /// Thumbnails made last (PNG), see `crate::thumbs`.
+    pub thumbs: crate::thumbs::Thumbs,
+    /// Held while a project is written to disk: saves one after the other,
+    /// without holding the library (the playout clocks read it).
+    pub saving: tokio::sync::Mutex<()>,
     /// Users and sessions outlive engine restarts.
     pub auth: Arc<Auth>,
     /// Running orders received from the newsroom system (MOS).
@@ -375,12 +448,8 @@ impl AppState {
     }
 
     pub async fn summaries(&self) -> Vec<ProjectSummary> {
-        self.library
-            .read()
-            .await
-            .list()
-            .map(|p| ProjectSummary::from(p.as_ref()))
-            .collect()
+        let lib = self.library.read().await;
+        lib.list().map(|p| lib.summary(p)).collect()
     }
 
     pub async fn channel_infos(&self) -> Vec<ChannelInfo> {
@@ -393,19 +462,43 @@ impl AppState {
 
     pub async fn save_project(&self, mut project: Project) -> anyhow::Result<Arc<Project>> {
         project.ensure_zones();
-        let p = self.library.write().await.save(project)?;
-        let _ = self.events.send(Event::Project { project: p.clone() });
+        // Written (compact) off the library lock, saves in turn; the
+        // library is locked only to swap the project in.
+        let _saving = self.saving.lock().await;
+        let p = Arc::new(project);
+        let (dir, file) = (self.library.read().await.dir().to_path_buf(), p.clone());
+        tokio::task::spawn_blocking(move || Library::write_file(&dir, &file)).await??;
+        let old = self.library.write().await.insert(p.clone());
+        for ch in self.channels.values() {
+            let pid = ch.project_id.read().await;
+            if pid.as_deref() == Some(p.id.as_str()) {
+                ch.loaded.set(Some(p.clone()));
+            }
+        }
+        let event = match old.as_deref().and_then(|old| template_change(old, &p)) {
+            Some((draft, template)) => Event::ProjectTemplate {
+                project_id: p.id.clone(),
+                draft,
+                template: Box::new(template),
+            },
+            None => Event::Project { project: p.clone() },
+        };
+        let _ = self.events.send(event);
         Ok(p)
     }
 
     pub async fn delete_project(&self, id: &str) -> anyhow::Result<bool> {
-        let deleted = self.library.write().await.delete(id)?;
+        let deleted = {
+            let _saving = self.saving.lock().await;
+            self.library.write().await.delete(id)?
+        };
         if deleted {
             // Unload it from every channel showing it.
             for ch in self.channels.values() {
                 let mut pid = ch.project_id.write().await;
                 if pid.as_deref() == Some(id) {
                     *pid = None;
+                    ch.loaded.set(None);
                     ch.state.write().await.layers.clear();
                 }
             }
@@ -430,7 +523,15 @@ impl AppState {
                 return Err("no such project".into());
             }
         }
-        *ch.project_id.write().await = project_id;
+        {
+            let mut pid = ch.project_id.write().await;
+            let loaded = match &project_id {
+                Some(id) => self.project(id).await,
+                None => None,
+            };
+            *pid = project_id;
+            ch.loaded.set(loaded);
+        }
         ch.state.write().await.layers.clear();
         self.persist_loaded_projects().await;
         self.broadcast_channel(ch).await;
@@ -473,8 +574,16 @@ impl AppState {
         }
     }
 
-    /// Tells clients the state the playout clock just made.
+    /// Tells clients the state the playout clock just made (not the same
+    /// one again).
     pub fn publish_channel(&self, ch: &ChannelRt, state: ChannelState) {
+        {
+            let mut last = ch.published.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref() == Some(&state) {
+                return;
+            }
+            *last = Some(state.clone());
+        }
         ch.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = self.events.send(Event::Channel {
             channel_id: ch.config.id.clone(),
@@ -620,6 +729,11 @@ impl AppState {
                     action: action.into(),
                     label: label.clone(),
                     zone: zone.clone().unwrap_or_default(),
+                    count: if action == "clear" {
+                        before.layers.len().saturating_sub(st.layers.len())
+                    } else {
+                        0
+                    },
                     before,
                 });
             }
@@ -849,11 +963,83 @@ impl AppState {
     }
 }
 
+/// What clients do with an `Event::ProjectTemplate`: the template replaces
+/// the one with its id in the templates (or drafts), else is added last.
+pub fn apply_template(p: &mut Project, draft: bool, t: cg_core::Template) {
+    let list = if draft {
+        &mut p.drafts
+    } else {
+        &mut p.templates
+    };
+    match list.iter_mut().find(|x| x.id == t.id) {
+        Some(x) => *x = t,
+        None => list.push(t),
+    }
+}
+
+/// The one template (or draft) a save changed or added, when that is all
+/// it changed: `old` with it applied is `new`.
+fn template_change(old: &Project, new: &Project) -> Option<(bool, cg_core::Template)> {
+    for draft in [false, true] {
+        let (a, b) = if draft {
+            (&old.drafts, &new.drafts)
+        } else {
+            (&old.templates, &new.templates)
+        };
+        if b.len() != a.len() && b.len() != a.len() + 1 {
+            continue;
+        }
+        let Some(i) = (0..b.len()).find(|&i| a.get(i) != b.get(i)) else {
+            continue;
+        };
+        let t = b[i].clone();
+        let mut patched = old.clone();
+        apply_template(&mut patched, draft, t.clone());
+        return (patched == *new).then_some((draft, t));
+    }
+    None
+}
+
 /// Resolves once the watched flag becomes true (or its sender is gone).
 pub async fn until_true(mut rx: watch::Receiver<bool>) {
     while !*rx.borrow_and_update() {
         if rx.changed().await.is_err() {
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A save that changed one template is told as that template; clients
+    /// applying it get the saved project.
+    #[test]
+    fn one_template_changed_or_added() {
+        let old = cg_core::sample::demo_project();
+        let mut new = old.clone();
+        new.templates[1].name.push_str(" (2)");
+        let (draft, t) = template_change(&old, &new).unwrap();
+        assert!(!draft && t.id == new.templates[1].id);
+        let mut applied = old.clone();
+        apply_template(&mut applied, draft, t);
+        assert_eq!(applied, new);
+        // A new draft.
+        let mut new = old.clone();
+        let mut d = old.templates[0].clone();
+        d.id = "new-draft".into();
+        new.drafts.push(d);
+        assert_eq!(template_change(&old, &new).map(|c| c.0), Some(true));
+        // Two templates, or something else: the whole project.
+        let mut new = old.clone();
+        new.templates[0].name.push('x');
+        new.templates[1].name.push('x');
+        assert!(template_change(&old, &new).is_none());
+        let mut new = old.clone();
+        new.templates[0].name.push('x');
+        new.name.push('x');
+        assert!(template_change(&old, &new).is_none());
+        assert!(template_change(&old, &old).is_none());
     }
 }

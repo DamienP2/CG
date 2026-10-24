@@ -1,11 +1,12 @@
 import { FormatButtons } from '../designer/ProjectPanel';
-import { Check, CheckSquare, Copy, Database, GraduationCap, Download, Folder, FolderInput, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, Check, CheckSquare, ChevronRight, Clock, Copy, Database, GraduationCap, Download, Folder, FolderInput, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Settings as SettingsIcon, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
-import { projectPath, projectTab, type ProjectPage } from '../router';
+import { useShallow } from 'zustand/react/shallow';
+import { navigate, projectPath, type ProjectPage } from '../router';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { lang, t, tn } from '../i18n';
+import { lang, locale, t, tn } from '../i18n';
 import { NavItem, NavSection } from './SidePage';
 import { ImportModal } from './ImportModal';
 import { useMetrics, type ChannelMetrics } from '../engine/metrics';
@@ -66,8 +67,6 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
     e.preventDefault();
     setBusy(true);
     try {
-      // Opened now: a tab opened after the request would be blocked as a popup.
-      const tab = from ? null : window.open('about:blank');
       const p = await api<ProjectSummary>(
         'POST',
         '/api/projects',
@@ -80,19 +79,14 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
               height: size.height,
               frameRate: rate,
             },
-      ).catch((e) => {
-        tab?.close();
-        throw e;
-      });
+      );
       onClose();
       if (folder) {
         const f = useApp.getState().folders;
         await useApp.getState().saveFolders({ ...f, assign: { ...f.assign, [p.id]: folder } });
       }
-      if (tab) {
-        tab.name = projectTab(p.id);
-        tab.location.href = projectPath(p.id);
-      }
+      // A new project opens in this tab (a copy stays in the list).
+      if (!from) navigate(projectPath(p.id));
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -137,7 +131,58 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
 }
 
 type View = { kind: 'all' } | { kind: 'unfiled' } | { kind: 'folder'; name: string };
-type Sort = 'name' | 'templates';
+type Sort = 'recent' | 'name' | 'templates';
+
+/** "Modified 5 min ago", "Modified yesterday"… */
+function modifiedAgo(ms: number): string {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return t('Modified just now');
+  if (s < 3600) return t('Modified {n} min ago', { n: Math.floor(s / 60) });
+  if (s < 86400) return t('Modified {n} h ago', { n: Math.floor(s / 3600) });
+  const days = Math.floor(s / 86400);
+  if (days < 2) return t('Modified yesterday');
+  if (days < 14) return t('Modified {n} days ago', { n: days });
+  if (days < 60) return t('Modified {n} weeks ago', { n: Math.floor(days / 7) });
+  return tn(Math.floor(days / 30), 'Modified {n} month ago', 'Modified {n} months ago');
+}
+
+/** A thumbnail, with a skeleton until it has loaded. */
+function Thumb({ src, style }: { src: string; style?: React.CSSProperties }) {
+  // The address loaded (a new one shows the skeleton again).
+  const [loaded, setLoaded] = useState<string | null>(null);
+  const ok = loaded === src;
+  return (
+    <>
+      <img src={src} alt="" loading="lazy" draggable={false} style={style} ref={(el) => void (el?.complete && el.naturalWidth && !ok && setLoaded(src))} onLoad={() => setLoaded(src)} onError={() => setLoaded(src)} />
+      {!ok && <span className="ux3-skel" aria-hidden />}
+    </>
+  );
+}
+
+/** A plain click opens a link in this tab; Ctrl/Cmd-click, Shift-click or the middle button, in another one. */
+function openHere(e: React.MouseEvent<HTMLAnchorElement>) {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  navigate(e.currentTarget.getAttribute('href') ?? '/projects');
+}
+
+/** A card's "…" menu: opens upward when there is no room below. */
+function CardMenu({ children, page }: { children: React.ReactNode; page: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [up, setUp] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const below = el.getBoundingClientRect();
+    const room = (el.closest('.library')?.getBoundingClientRect().bottom ?? window.innerHeight) - 8;
+    if (!up && below.bottom > room) setUp(true);
+  }, [page, up]);
+  return (
+    <div ref={ref} className={`menu project-menu ux3-card-menu ${up ? 'ux3-up' : ''}`}>
+      {children}
+    </div>
+  );
+}
 
 interface ExampleInfo {
   id: string;
@@ -145,7 +190,8 @@ interface ExampleInfo {
   category: string;
   tags: string[];
   description: string;
-  en?: { name: string; description: string };
+  summary?: string;
+  en?: { name: string; description: string; summary?: string };
   templates: string[];
   formats: string[];
 }
@@ -179,20 +225,21 @@ function ExampleBank({ onClose }: { onClose: () => void }) {
           <GraduationCap size={18} />
           <h2>{t('Examples')}</h2>
           <div className="spacer" />
-          <button className="icon-btn ghost" title={t('Close')} onClick={onClose}>
+          <kbd className="ux3-esc">{t('Esc')}</kbd>
+          <button className="icon-btn ghost" title={t('Close (Esc)')} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
-        <p className="hint">{t('Complete graphics packages ready for air: news, sport, elections, weather, gaming… Add a copy, adapt it to your brand in the Designer and take its graphics in the Operator.')}</p>
-        <div className="example-grid">
+        <div className="example-grid ux3-examples">
           {examples === null && <p className="muted">{t('Loading…')}</p>}
           {examples?.map((d) => {
             const name = (!french && d.en?.name) || d.name;
             const description = (!french && d.en?.description) || d.description;
+            const summary = (!french && d.en?.summary) || d.summary || description;
             return (
               <div key={d.id} className="example-card">
                 <div className="example-cover">
-                  <img src={`/api/examples/${encodeURIComponent(d.id)}/cover.png`} alt="" loading="lazy" />
+                  <Thumb src={`/api/examples/${encodeURIComponent(d.id)}/cover.png?w=640`} />
                   <span className="example-num">{d.id.match(/^ex-(\d+)/)?.[1] ?? ''}</span>
                 </div>
                 <div className="example-body">
@@ -200,13 +247,10 @@ function ExampleBank({ onClose }: { onClose: () => void }) {
                     <strong>{name.replace(/^\d+ · /, '')}</strong>
                     {d.category && <span className="example-cat">{d.category}</span>}
                   </div>
-                  <p>{description}</p>
-                  <div className="example-tags">
+                  <p title={description}>{summary}</p>
+                  <div className="example-tags" title={[...d.formats, ...d.tags].join(' · ')}>
                     <span>{tn(d.templates.length, '{n} template', '{n} templates')}</span>
-                    {d.formats.map((f) => (
-                      <span key={f}>{f}</span>
-                    ))}
-                    {d.tags.map((x) => (
+                    {[...d.formats, ...d.tags].slice(0, 1).map((x) => (
                       <span key={x}>{x}</span>
                     ))}
                   </div>
@@ -224,7 +268,8 @@ function ExampleBank({ onClose }: { onClose: () => void }) {
 }
 
 export function Projects() {
-  const { projects, channels, auth, toast, folders, saveFolders } = useApp();
+  // Not the channels' live state: the list is not drawn again on each frame on air.
+  const { projects, channels, auth, toast, folders, saveFolders } = useApp(useShallow((s) => ({ projects: s.projects, channels: s.channels, auth: s.auth, toast: s.toast, folders: s.folders, saveFolders: s.saveFolders })));
   const metrics = useMetrics();
   const user = auth?.user;
   const design = can.design(user);
@@ -232,19 +277,29 @@ export function Projects() {
   const [examples, setExamples] = useState(false);
   const [view, setView] = useState<View>({ kind: 'all' });
   const [query, setQuery] = useState('');
-  const [sort, setSort] = useState<Sort>('name');
+  const [sort, setSort] = useState<Sort>('recent');
   const [dropOn, setDropOn] = useState<string | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
-  // Projects picked for an action on all of them (delete, move).
+  // The card menu shows the folders to move the project to.
+  const [menuMove, setMenuMove] = useState(false);
+  // Projects picked for an action on all of them (delete, move); picking
+  // starts with none (the Select button), or with the ones clicked.
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [picking, setPicking] = useState(false);
   const [anchor, setAnchor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    setMenuMove(false);
     if (!menu) return;
     const close = () => setMenu(null);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setMenu(null));
     window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', esc);
+    };
   }, [menu]);
   // A folder deleted elsewhere.
   useEffect(() => {
@@ -261,10 +316,17 @@ export function Projects() {
   const folderOf = (id: string) => (folders.folders.includes(folders.assign[id]) ? folders.assign[id] : null);
   const inView = (p: ProjectSummary) => (view.kind === 'all' ? true : view.kind === 'unfiled' ? !folderOf(p.id) : folderOf(p.id) === view.name);
   const q = query.trim().toLowerCase();
-  const shown = projects.filter((p) => inView(p) && (!q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))).sort((a, b) => (sort === 'templates' ? b.templates - a.templates : 0) || a.name.localeCompare(b.name));
+  const shown = projects
+    .filter((p) => inView(p) && (!q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)))
+    .sort((a, b) => (sort === 'templates' ? b.templates - a.templates : sort === 'recent' ? (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0) : 0) || a.name.localeCompare(b.name));
   const count = (f: string | null) => projects.filter((p) => folderOf(p.id) === f).length;
   const picked = projects.filter((p) => selected.has(p.id));
-  const selecting = selected.size > 0;
+  const selecting = picking || selected.size > 0;
+  /** Leaves the selection mode. */
+  const endPick = () => {
+    setSelected(new Set());
+    setPicking(false);
+  };
 
   // Esc empties the selection, Ctrl/Cmd+A takes every project shown.
   useEffect(() => {
@@ -272,9 +334,10 @@ export function Projects() {
     const key = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]');
       if (typing || document.querySelector('.modal-back')) return;
-      if (e.key === 'Escape' && selected.size) setSelected(new Set());
+      if (e.key === 'Escape' && selecting && !e.defaultPrevented) endPick();
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
+        setPicking(true);
         setSelected(new Set(shown.map((p) => p.id)));
       }
     };
@@ -328,13 +391,13 @@ export function Projects() {
     const list = folders.folders.includes(name) ? folders.folders : [...folders.folders, name].sort((a, b) => a.localeCompare(b));
     moveAll([...selected], name, list);
     toast(tn(selected.size, '{n} project moved to “{folder}”', '{n} projects moved to “{folder}”', { folder: name }), 'info');
-    setSelected(new Set());
+    endPick();
     setView({ kind: 'folder', name });
   };
   const moveSelection = (folder: string | null) => {
     moveAll([...selected], folder);
     toast(folder ? tn(selected.size, '{n} project moved to “{folder}”', '{n} projects moved to “{folder}”', { folder }) : tn(selected.size, '{n} project moved to the top level', '{n} projects moved to the top level'), 'info');
-    setSelected(new Set());
+    endPick();
     setMenu(null);
   };
   const renameFolder = async (old: string) => {
@@ -423,7 +486,7 @@ export function Projects() {
       });
     }
     setBusy(false);
-    setSelected(new Set());
+    endPick();
     if (list.length > 1) toast(tn(list.length - failed, '{n} project deleted', '{n} projects deleted'), 'info');
   };
 
@@ -440,7 +503,7 @@ export function Projects() {
       setDropOn(null);
       if (!ids.length) return;
       moveAll(ids, target);
-      if (ids.length > 1) setSelected(new Set());
+      if (ids.length > 1) endPick();
     },
   });
 
@@ -507,9 +570,7 @@ export function Projects() {
           <div className="settings-head">
             <div>
               <h1>{title}</h1>
-              <p className="muted">
-                {tn(shown.length, '{n} project', '{n} projects')} · {t('each one opens in its own browser tab')}
-              </p>
+              <p className="muted">{tn(shown.length, '{n} project', '{n} projects')}</p>
             </div>
             <div className="spacer" />
             {design && (
@@ -529,7 +590,7 @@ export function Projects() {
 
           {selecting ? (
             <div className="bulk-bar" onPointerDown={(e) => e.stopPropagation()}>
-              <button className="icon-btn ghost" title={t('Clear the selection (Esc)')} onClick={() => setSelected(new Set())}>
+              <button className="icon-btn ghost" title={t('Clear the selection (Esc)')} onClick={endPick}>
                 <X size={15} />
               </button>
               <strong>{tn(selected.size, '{n} project selected', '{n} projects selected')}</strong>
@@ -538,9 +599,10 @@ export function Projects() {
                   <CheckSquare size={13} /> {t('Select all ({n})', { n: shown.length })}
                 </button>
               )}
+              {selected.size === 0 && <span className="ux3-pick-hint">{t('Click the projects to select')}</span>}
               <div className="spacer" />
               <div className="menu-wrap">
-                <button className="btn small" disabled={busy} onClick={() => setMenu(menu === '@bulk' ? null : '@bulk')}>
+                <button className="btn small" disabled={busy || !selected.size} onClick={() => setMenu(menu === '@bulk' ? null : '@bulk')}>
                   <FolderInput size={13} /> {t('Move to')}
                 </button>
                 {menu === '@bulk' && (
@@ -560,10 +622,12 @@ export function Projects() {
                   </div>
                 )}
               </div>
-              <button className="btn small" disabled={busy} onClick={() => void newFolderWithSelection()}>
-                <FolderPlus size={13} /> {t('New folder with them')}
-              </button>
-              <button className="btn small danger" disabled={busy} onClick={() => void removeAll(picked)}>
+              {selected.size > 0 && (
+                <button className="btn small" disabled={busy} onClick={() => void newFolderWithSelection()}>
+                  <FolderPlus size={13} /> {t('New folder with them')}
+                </button>
+              )}
+              <button className="btn small danger" disabled={busy || !selected.size} onClick={() => void removeAll(picked)}>
                 <Trash2 size={13} /> {busy ? t('Deleting…') : t('Delete')}
               </button>
             </div>
@@ -575,17 +639,24 @@ export function Projects() {
               </label>
               <div className="spacer" />
               {design && shown.length > 0 && (
-                <button className="btn small ghost" title={t('Pick projects to delete or move them together (Ctrl+A: all)')} onClick={() => setSelected(new Set(shown.map((p) => p.id)))}>
+                <button className="btn small ghost" title={t('Pick projects to delete or move them together (Ctrl+A: all)')} onClick={() => setPicking(true)}>
                   <CheckSquare size={13} /> {t('Select')}
                 </button>
               )}
-              <label className="sort">
+              <span className="sort">
                 {t('Sort')}
-                <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-                  <option value="name">{t('Name')}</option>
-                  <option value="templates">{t('Templates')}</option>
-                </select>
-              </label>
+                <span className="seg ux3-sort" role="radiogroup" aria-label={t('Sort')}>
+                  <button role="radio" aria-checked={sort === 'recent'} className={sort === 'recent' ? 'on' : ''} onClick={() => setSort('recent')}>
+                    <Clock size={13} /> {t('Recent')}
+                  </button>
+                  <button role="radio" aria-checked={sort === 'name'} className={sort === 'name' ? 'on' : ''} onClick={() => setSort('name')}>
+                    {t('Name')}
+                  </button>
+                  <button role="radio" aria-checked={sort === 'templates'} className={sort === 'templates' ? 'on' : ''} onClick={() => setSort('templates')}>
+                    {t('Templates')}
+                  </button>
+                </span>
+              </span>
             </div>
           )}
 
@@ -596,16 +667,23 @@ export function Projects() {
               const isOn = selected.has(p.id);
               const link = (sub: ProjectPage, icon: React.ReactNode, label: string, show = true) =>
                 show && (
-                  <a className="project-link" href={projectPath(p.id, sub)} target={projectTab(p.id)} title={t('Open the {page} in the project’s tab', { page: label.toLowerCase() })}>
+                  <a className="project-link" href={projectPath(p.id, sub)} onClick={openHere}>
                     {icon}
                     <span>{label}</span>
+                  </a>
+                );
+              /** A page of the project, in the "…" menu. */
+              const page = (sub: ProjectPage, icon: React.ReactNode, label: string, show = true) =>
+                show && (
+                  <a href={projectPath(p.id, sub)} onClick={(e) => (openHere(e), setMenu(null))}>
+                    {icon} {label}
                   </a>
                 );
               const ratio = p.width / p.height;
               return (
                 <div
                   key={p.id}
-                  className={`project-card ${isOn ? 'picked' : ''}`}
+                  className={`project-card ${isOn ? 'picked' : ''} ${menu === p.id ? 'ux3-menu-open' : ''}`}
                   draggable={design}
                   onDragStart={(e) => {
                     const ids = isOn ? [...selected] : [p.id];
@@ -616,18 +694,17 @@ export function Projects() {
                   <a
                     className="project-cover"
                     href={projectPath(p.id, design ? 'designer' : 'operator')}
-                    target={projectTab(p.id)}
                     draggable={false}
                     style={{ aspectRatio: String(Math.max(16 / 9, ratio)) }}
                     onClick={(e) => {
                       // While picking, a click on a project picks it.
-                      if (!selecting) return;
+                      if (!selecting) return openHere(e);
                       e.preventDefault();
                       toggle(p.id, e.shiftKey);
                     }}
                   >
                     {p.cover ? (
-                      <img src={`/api/projects/${encodeURIComponent(p.id)}/templates/${encodeURIComponent(p.cover)}/thumbnail.png?v=${p.templates}-${p.rundown}`} alt="" loading="lazy" draggable={false} style={{ aspectRatio: String(ratio) }} />
+                      <Thumb src={`/api/projects/${encodeURIComponent(p.id)}/templates/${encodeURIComponent(p.cover)}/thumbnail.png?w=640`} style={{ aspectRatio: String(ratio) }} />
                     ) : (
                       <span className="project-cover-empty">{t('No template yet')}</span>
                     )}
@@ -659,38 +736,51 @@ export function Projects() {
                     <div className="project-head">
                       <strong>{p.name}</strong>
                       <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
-                        <button className="icon-btn ghost" title={t('More')} onClick={() => setMenu(menu === p.id ? null : p.id)}>
+                        <button className={`icon-btn ghost ${menu === p.id ? 'on' : ''}`} title={t('More')} aria-expanded={menu === p.id} onClick={() => setMenu(menu === p.id ? null : p.id)}>
                           <MoreHorizontal size={16} />
                         </button>
-                        {menu === p.id && (
-                          <div className="menu project-menu">
-                            {design && (
-                              <>
-                                <div className="menu-label">{t('Move to')}</div>
-                                <button disabled={!folder} onClick={() => (moveTo(p.id, null), setMenu(null))}>
-                                  <Inbox size={13} /> {t('Top level')}
-                                </button>
-                                {folders.folders.map((f) => (
-                                  <button key={f} disabled={folder === f} onClick={() => (moveTo(p.id, f), setMenu(null))}>
-                                    <Folder size={13} /> {f}
-                                  </button>
-                                ))}
-                                <div className="menu-sep" />
-                                <button onClick={() => (setDialog({ from: p }), setMenu(null))}>
-                                  <Copy size={13} /> {t('Duplicate')}
-                                </button>
-                              </>
-                            )}
-                            <a href={`/api/projects/${encodeURIComponent(p.id)}/export`} onClick={() => setMenu(null)}>
-                              <Download size={13} /> {t('Export')}
-                            </a>
-                            {design && (
-                              <button className="danger" onClick={() => (void removeAll([p]), setMenu(null))}>
-                                <Trash2 size={13} /> {t('Delete')}
+                        {menu === p.id &&
+                          (menuMove ? (
+                            <CardMenu page={1}>
+                              <button onClick={() => setMenuMove(false)}>
+                                <ArrowLeft size={13} /> {t('Move to')}
                               </button>
-                            )}
-                          </div>
-                        )}
+                              <div className="menu-sep" />
+                              <button disabled={!folder} onClick={() => (moveTo(p.id, null), setMenu(null))}>
+                                <Inbox size={13} /> {t('Top level')}
+                              </button>
+                              {folders.folders.map((f) => (
+                                <button key={f} disabled={folder === f} onClick={() => (moveTo(p.id, f), setMenu(null))}>
+                                  <Folder size={13} /> {f}
+                                </button>
+                              ))}
+                            </CardMenu>
+                          ) : (
+                            <CardMenu page={0}>
+                              {page('data', <Database size={13} />, t('Data'), design)}
+                              {page('media', <Images size={13} />, t('Assets'), can.operate(user))}
+                              {page('settings', <SettingsIcon size={13} />, t('Settings'), design)}
+                              <div className="menu-sep" />
+                              <a href={`/api/projects/${encodeURIComponent(p.id)}/export`} onClick={() => setMenu(null)}>
+                                <Download size={13} /> {t('Export')}
+                              </a>
+                              {design && (
+                                <>
+                                  <button onClick={() => (setDialog({ from: p }), setMenu(null))}>
+                                    <Copy size={13} /> {t('Duplicate')}
+                                  </button>
+                                  <button className="ux3-sub" onClick={() => setMenuMove(true)}>
+                                    <FolderInput size={13} /> {t('Move…')}
+                                    <ChevronRight size={13} className="ux3-sub-chev" />
+                                  </button>
+                                  <div className="menu-sep" />
+                                  <button className="danger" onClick={() => (void removeAll([p]), setMenu(null))}>
+                                    <Trash2 size={13} /> {t('Delete')}
+                                  </button>
+                                </>
+                              )}
+                            </CardMenu>
+                          ))}
                       </div>
                     </div>
                     <p className="project-desc">{p.description || <span className="muted">{t('No description')}</span>}</p>
@@ -698,6 +788,11 @@ export function Projects() {
                       <span>
                         <Layers size={12} /> {tn(p.templates, '{n} template', '{n} templates')}
                       </span>
+                      {p.modifiedAt !== undefined && (
+                        <span title={new Date(p.modifiedAt).toLocaleString(locale())}>
+                          <Clock size={12} /> {modifiedAgo(p.modifiedAt)}
+                        </span>
+                      )}
                       {folder && view.kind !== 'folder' && (
                         <span>
                           <Folder size={12} /> {folder}
@@ -705,23 +800,14 @@ export function Projects() {
                       )}
                     </div>
                   </div>
-                  <div className="project-links">
+                  <div className="project-links ux3-two">
                     {link('designer', <PenTool size={15} />, t('Designer'), design)}
                     {link('operator', <Radio size={15} />, t('Operator'), can.operate(user))}
-                    {link('data', <Database size={15} />, t('Data'), design)}
-                    {link('media', <Images size={15} />, t('Assets'), can.operate(user))}
-                    {link('settings', <SettingsIcon size={15} />, t('Settings'), design)}
                   </div>
                 </div>
               );
             })}
-            {design && view.kind !== 'unfiled' && !q && !selecting && (
-              <button className="project-new" onClick={() => setDialog({})}>
-                <Plus size={22} />
-                <span>{view.kind === 'folder' ? t('New project in {folder}', { folder: view.name }) : t('New project')}</span>
-              </button>
-            )}
-            {shown.length === 0 && (q || !design) && (
+            {shown.length === 0 && (
               <div className="empty big">
                 <Radio size={22} />
                 <p>{q ? t('No project matches.') : t('No project here.')}</p>

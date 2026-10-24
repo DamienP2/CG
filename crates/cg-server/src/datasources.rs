@@ -109,6 +109,9 @@ pub struct Status {
     pub bytes: usize,
     /// The value's broken rules (always sent, so clients clear old ones).
     pub issues: Vec<Issue>,
+    /// Fetches failed in a row (each waits twice as long, up to a minute).
+    #[serde(skip)]
+    pub failures: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -280,6 +283,7 @@ impl Hub {
         match result {
             Ok((v, bytes)) => {
                 st.error = None;
+                st.failures = 0;
                 st.bytes = bytes;
                 if st.value.as_ref() == Some(&v) {
                     return false;
@@ -296,6 +300,7 @@ impl Hub {
             }
             Err(e) => {
                 st.error = Some(e);
+                st.failures = st.failures.saturating_add(1);
                 false
             }
         }
@@ -310,13 +315,19 @@ impl Hub {
             .iter()
             .filter(|s| s.enabled && s.kind.url().is_some())
             .filter(|s| {
-                status
-                    .get(&s.id)
-                    .and_then(|st| st.checked_at)
-                    .is_none_or(|t| now - t >= i64::from(s.interval.max(2)) * 1000)
+                status.get(&s.id).is_none_or(|st| {
+                    st.checked_at
+                        .is_none_or(|t| now - t >= retry_after(s.interval, st.failures))
+                })
             })
             .cloned()
             .collect()
+    }
+
+    /// The error of the last fetch, if it failed.
+    fn error(&self, id: &str) -> Option<String> {
+        let status = self.status.read().unwrap_or_else(|e| e.into_inner());
+        status.get(id).and_then(|st| st.error.clone())
     }
 
     /// Forgets when a source was last checked, so it is fetched now.
@@ -331,6 +342,17 @@ impl Hub {
         }
         self.wake.notify_one();
     }
+}
+
+/// Milliseconds before a source is fetched again: its interval; after
+/// failures, twice as long each time, up to a minute (or its interval).
+fn retry_after(interval: u32, failures: u32) -> i64 {
+    let every = i64::from(interval.max(2)) * 1000;
+    if failures == 0 {
+        return every;
+    }
+    let backoff = (every << failures.min(6)).min(60_000);
+    every.max(backoff)
 }
 
 fn value_path(dir: &Path, id: &str) -> PathBuf {
@@ -363,8 +385,15 @@ pub async fn run(shared: Shared) {
             if let Err(e) = &res {
                 tracing::debug!(source = %s.id, "data source: {e}");
             }
+            // Still failing the same way: clients have that status already.
+            let again = res
+                .as_ref()
+                .err()
+                .is_some_and(|e| shared.data.error(&s.id).as_ref() == Some(e));
             let changed = shared.data.record(&s.id, res);
-            updated(&shared, &s.id, changed).await;
+            if !again {
+                updated(&shared, &s.id, changed).await;
+            }
         }
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(1)) => {}
@@ -733,6 +762,16 @@ mod tests {
             Some("1")
         );
         assert_eq!(lookup(&v, "match.team[0].name", &d).as_deref(), Some("PSG"));
+    }
+
+    #[test]
+    fn failing_sources_wait_longer() {
+        assert_eq!(retry_after(5, 0), 5_000);
+        assert_eq!(retry_after(2, 1), 4_000);
+        assert_eq!(retry_after(2, 3), 16_000);
+        assert_eq!(retry_after(2, 30), 60_000);
+        // A source checked less often than that keeps its interval.
+        assert_eq!(retry_after(300, 4), 300_000);
     }
 
     #[test]

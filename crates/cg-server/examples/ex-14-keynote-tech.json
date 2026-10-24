@@ -11,10 +11,10 @@
    "QR code",
    "Graphique"
   ],
-  "description": "Une keynote ou une conférence tech prête à diffuser : carton d’intervenant, session en cours avec la salle et l’heure, programme de la journée, question du public avec QR code pour en poser, QR code vers les slides, écran d’attente avec compte à rebours et chiffre clé avec son graphique.",
+  "description": "Une keynote ou une conférence tech prête à diffuser : carton d’intervenant, session en cours avec la salle et l’heure, programme de la journée, question du public avec QR code pour en poser, QR code vers les slides, écran d’attente avec compte à rebours et chiffre clé avec son graphique.", "summary": "Intervenant, session en cours, programme et questions du public.",
   "en": {
    "name": "Tech keynote",
-   "description": "A tech keynote or conference ready for air: speaker card, current session with room and time, the day’s agenda, an audience question with a QR code to ask more, a QR code to the slides, a holding screen with a countdown and a key figure with its chart."
+   "description": "A tech keynote or conference ready for air: speaker card, current session with room and time, the day’s agenda, an audience question with a QR code to ask more, a QR code to the slides, a holding screen with a countdown and a key figure with its chart.", "summary": "Speaker, current session, schedule and audience questions."
   },
   "cover": "speaker"
  },

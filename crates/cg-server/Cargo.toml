@@ -63,5 +63,9 @@ libc = "0.2"
 windows-service = "0.8"
 windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }
 
+[build-dependencies]
+# Gzipped copies of the web app, made at build time (build.rs).
+flate2 = "1"
+
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

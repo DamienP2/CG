@@ -977,13 +977,13 @@ fn cell_picture(
     };
     // The shape, inside the clip already given.
     let shape = rrect(bx, by, bw, bh, r).and_then(|path| {
+        // Inside the clip given: multiplied only where the shape is
+        // (`mask::intersect`, the same values).
+        if let Some(parent) = m.or(d.mask) {
+            return Some(crate::mask::intersect(parent, &path, d.tf));
+        }
         let mut mk = Mask::new(d.pm.width(), d.pm.height())?;
         mk.fill_path(&path, FillRule::Winding, true, d.tf);
-        if let Some(parent) = m.or(d.mask) {
-            for (a, b) in mk.data_mut().iter_mut().zip(parent.data()) {
-                *a = ((*a as u16 * *b as u16 + 127) / 255) as u8;
-            }
-        }
         Some(mk)
     });
     let op0 = d.opacity;

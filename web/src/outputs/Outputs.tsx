@@ -1,4 +1,4 @@
-import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
+import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { VIDEO_FORMATS, slateStyleOf, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
@@ -9,10 +9,12 @@ import { ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { t, tc, tn } from '../i18n';
+import { friendlyError } from '../ui/serverError';
+import { InfoTip } from '../ui/InfoTip';
 import { InputsMode } from './Inputs';
 import { OnSwitch } from './OnSwitch';
 import { useMetrics, type OutputMetrics } from '../engine/metrics';
-import { coresLabel, fps as fpsText, fpsTone, num, outputTone, pct, pictureTone } from '../perf/format';
+import { corePct, fps as fpsText, fpsTone, num, outputTone, pct, pictureTone } from '../perf/format';
 import './streams.css';
 import '../perf/perf.css';
 
@@ -218,6 +220,8 @@ export function Outputs() {
   const [status, setStatus] = useState<Record<string, Record<string, OutputState>>>({});
   const [current, setCurrent] = useState<string | null>(null);
   const [sel, setSel] = useState<string>('program');
+  // Narrow screens: the inspector is a drawer over the graph.
+  const [panel, setPanel] = useState(false);
   const [layout, setLayout] = useState<Layout>(readLayout);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -236,13 +240,28 @@ export function Outputs() {
     }
   };
   const planeRef = useRef<HTMLDivElement>(null);
-  // The menu of other formats closes on a click elsewhere.
+  // The menu of other formats closes on a click elsewhere (or Esc).
   useEffect(() => {
     if (!moreFormats) return;
     const close = () => setMoreFormats(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), close());
     window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', esc);
+    };
   }, [moreFormats]);
+  // Esc: the add menu of the canvas, then the drawer of the inspector.
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('.modal-back')) return;
+      if (addMenu) (e.preventDefault(), setAddMenu(null));
+      else if (panel) (e.preventDefault(), setPanel(false));
+    };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  });
   // Arrange lays the nodes out from left to right (the graph is only known further down).
   const arrangeRef = useRef<() => void>(() => {});
   const cv = useCanvasView('outputs', '.oc-node', { onArrange: () => arrangeRef.current() });
@@ -333,7 +352,7 @@ export function Outputs() {
   for (const k of Object.keys(pos)) if (own[k]) pos[k] = own[k];
 
   const savedDest = (id: string) => !!saved && pictures(saved).some((p) => dests(p).some((d) => d.value.id === id));
-  const destStatus = (d: Dest): { tone: 'ok' | 'warn' | 'idle'; text: string } => {
+  const destStatus = (d: Dest): { tone: 'ok' | 'warn' | 'idle'; text: string; raw?: string } => {
     if (!d.picture) return { tone: 'idle', text: t('Not connected: drag a wire from a format to it') };
     if (d.kind === 'html5') return { tone: 'ok', text: t('Web link') };
     if (!isOn(d)) return { tone: 'idle', text: tc('output', 'Off') };
@@ -341,7 +360,7 @@ export function Outputs() {
     const s = status[ch.id]?.[d.value.id];
     if (!s) return { tone: 'idle', text: t('Starting…') };
     if (s.message === 'Off') return { tone: 'idle', text: tc('output', 'Off') };
-    return s.ok ? { tone: 'ok', text: !s.message || s.message === 'Running' ? t('Running') : s.message } : { tone: 'warn', text: s.message };
+    return s.ok ? { tone: 'ok', text: !s.message || s.message === 'Running' ? t('Running') : friendlyError(s.message), raw: s.message } : { tone: 'warn', text: friendlyError(s.message), raw: s.message };
   };
   const projectName = (id?: string | null) => projects.find((p) => p.id === id)?.name;
   const liveCh = live.find((c) => c.id === ch?.id);
@@ -358,7 +377,7 @@ export function Outputs() {
     return o && { text: `${fpsText(o.fps)} fps`, tone: outputTone(o, chMetrics.rate), title: o.dropped ? t('{n} frames dropped in the last 10 s', { n: o.dropped }) : t('Frames sent per second') };
   };
 
-  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; badge?: string; chip?: { text: string; tone: string; title: string }; on?: boolean; loose?: boolean };
+  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; raw?: string; badge?: string; chip?: { text: string; tone: string; title: string }; on?: boolean; loose?: boolean };
   const nodes: GNode[] = ch
     ? [
         {
@@ -372,7 +391,7 @@ export function Outputs() {
         ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${slateName(p) ? `\n${t('Without project: {name}', { name: slateName(p) })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
         ...allDests.map((d) => {
           const st = destStatus(d);
-          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch, hw), tone: st.tone, status: st.text, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : undefined, chip: d.kind === 'html5' || !d.picture ? undefined : rateChip(d.value.id), on: d.kind === 'html5' ? undefined : isOn(d), loose: !d.picture };
+          return { id: d.value.id, kind: d.kind, title: destTitle(d), sub: destSub(d, ch, hw), tone: st.tone, status: st.text, raw: st.raw, badge: d.kind === 'stream' ? streamBadge(d.value as StreamOutput) : undefined, chip: d.kind === 'html5' || !d.picture ? undefined : rateChip(d.value.id), on: d.kind === 'html5' ? undefined : isOn(d), loose: !d.picture };
         }),
       ]
     : [];
@@ -648,6 +667,9 @@ export function Outputs() {
   const warns = (c: ChannelConfig) => Object.values(status[c.id] ?? {}).some((s) => !s.ok);
 
   const inputCount = (cfg.inputs ?? []).length;
+  // The inspector's notes, gathered while it renders (shown as one "i").
+  const notes: string[] = [];
+  const note = (text: string) => void notes.push(text);
   return (
     <div className="vs-page">
       <div className="vs-modes">
@@ -661,7 +683,7 @@ export function Outputs() {
             <span className="count">{inputCount}</span>
           </button>
         </div>
-        <span className="muted small vs-mode-hint">{mode === 'outputs' ? t('What the channels send: web pages, SDI, ST 2110, NDI and streams.') : t('Live video coming into the server, for the Video widget of the graphics.')}</span>
+        {mode === 'outputs' ? <InfoTip text={t('What the channels send: web pages, SDI, ST 2110, NDI and streams.')} /> : <InfoTip text={t('Live video coming into the server, for the Video widget of the graphics.')} />}
       </div>
       {mode === 'inputs' ? (
         <InputsMode cfg={cfg} saved={info.config} edit={edit} />
@@ -669,7 +691,10 @@ export function Outputs() {
         <div className="outputs-page">
           <aside className="lib-nav">
             <div className="lib-nav-section">
-              <span className="grow">{t('Locations')}</span>
+              <span className="grow">
+                {t('Locations')}
+                <InfoTip text={t('A location groups the channels of one place: a studio, a truck, the web desk… Each channel is an independent playout.')} />
+              </span>
               <button className="icon-btn ghost" title={t('Add a location')} onClick={addLocation}>
                 <Plus size={14} />
               </button>
@@ -717,11 +742,10 @@ export function Outputs() {
                 </div>
               );
             })}
-            <p className="lib-nav-hint">{t('A location groups the channels of one place: a studio, a truck, the web desk… Each channel is an independent playout.')}</p>
           </aside>
 
           {ch && (
-            <main className="oc-main">
+            <main className={`oc-main ${panel ? 'ux3-panel-open' : ''}`}>
               <header className="oc-head">
                 <div>
                   <div className="row">
@@ -841,7 +865,7 @@ export function Outputs() {
                       const k = KIND[n.kind];
                       const Icon = k.icon;
                       return (
-                        <div key={n.id} data-node={n.id} className={`oc-node ${n.kind} ${n.id === selNode?.id ? 'sel' : ''} ${n.on === false ? 'off' : ''} ${n.loose ? 'loose' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, width: widthOf(n.id), ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)}>
+                        <div key={n.id} data-node={n.id} className={`oc-node ${n.kind} ${n.id === selNode?.id ? 'sel' : ''} ${n.on === false ? 'off' : ''} ${n.loose ? 'loose' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, width: widthOf(n.id), ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)} onDoubleClick={() => setPanel(true)}>
                           <div className="oc-node-head">
                             <span className="oc-icon">
                               <Icon size={15} />
@@ -858,7 +882,7 @@ export function Outputs() {
                           <div className="oc-node-sub">{n.sub}</div>
                           <div className="oc-node-status">
                             <span className={`oc-dot ${n.tone}`} />
-                            <span className="oc-status-text" title={n.status}>
+                            <span className="oc-status-text" title={n.raw ?? n.status}>
                               {n.status}
                             </span>
                             {n.chip && (
@@ -902,6 +926,9 @@ export function Outputs() {
                   </div>
                   {cv.controls}
                 </div>
+                <button className="btn small ux3-drawer-btn" onClick={() => setPanel(true)}>
+                  <PanelRightOpen size={14} /> {t('Properties')}
+                </button>
 
                 <aside className="oc-inspector">
                   {selNode && (
@@ -909,7 +936,11 @@ export function Outputs() {
                       <span className="oc-swatch" />
                       <div className="grow">
                         <small>{t(KIND[selNode.kind].label)}</small>
-                        <strong>{selNode.title}</strong>
+                        <strong>
+                          {selNode.title}
+                          {/* The notes of the panel (filled while it renders, below). */}
+                          <Notes list={notes} />
+                        </strong>
                       </div>
                       {selDest && selDest.kind !== 'html5' && <OnSwitch on={isOn(selDest)} onChange={(v) => setOn(selDest.value.id, v)} label={isOn(selDest) ? tc('output', 'On') : tc('output', 'Off')} />}
                       {(selDest || (selPic && selPic.id !== 'main')) && (
@@ -917,9 +948,12 @@ export function Outputs() {
                           <Trash2 size={15} />
                         </button>
                       )}
+                      <button className="icon-btn ghost ux3-drawer-close" title={t('Close the panel')} onClick={() => setPanel(false)}>
+                        <PanelRightClose size={15} />
+                      </button>
                     </div>
                   )}
-                  {selDest && !selDest.picture && <Hint>{t('Not connected: this destination is kept but not started. Drag a wire from a format to its input to send it again.')}</Hint>}
+                  {selDest && !selDest.picture && note(t('Not connected: this destination is kept but not started. Drag a wire from a format to its input to send it again.'))}
 
                   {selNode?.kind === 'program' && (
                     <>
@@ -997,7 +1031,7 @@ export function Outputs() {
                           ))}
                         </select>
                       </Field>
-                      <Hint>{t('The playout of this channel: what the operator takes goes to every format and destination wired to it.')}</Hint>
+                      {note(t('The playout of this channel: what the operator takes goes to every format and destination wired to it.'))}
                       {cfg.channels.length > 1 && (
                         <button className="btn small danger" onClick={removeChannel}>
                           <Trash2 size={13} /> {t('Remove the channel')}
@@ -1009,7 +1043,7 @@ export function Outputs() {
                   {selPic && (
                     <>
                       {selPic.id === 'main' ? (
-                        <Hint>{t("The channel's main format, {size} (its video format, set on the Program).", { size: `${selPic.width}×${selPic.height}` })}</Hint>
+                        note(t("The channel's main format, {size} (its video format, set on the Program).", { size: `${selPic.width}×${selPic.height}` }))
                       ) : (
                         <>
                           <Field label={t('Name')}>
@@ -1046,7 +1080,10 @@ export function Outputs() {
                         </>
                       )}
                       <div className="set-field">
-                        <span className="set-label">{t('Still picture without project')}</span>
+                        <span className="set-label">
+                          {t('Still picture without project')}
+                          <InfoTip text={t("Shown full frame on this format's outputs while no project is loaded.")} />
+                        </span>
                         <div className="easing-picks">
                           {SLATES.map((sl) => {
                             const on = slateStyleOf(selPic) === sl.id;
@@ -1095,9 +1132,8 @@ export function Outputs() {
                             </div>
                           </div>
                         )}
-                        <span className="set-hint">{t("Shown full frame on this format's outputs while no project is loaded.")}</span>
                       </div>
-                      <Hint>{t("One take drives every format. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit.")}</Hint>
+                      {note(t("One take drives every format. Each one uses the project format closest in aspect ratio (a template's 9:16 layout, if it has one), letterboxed to fit."))}
                     </>
                   )}
 
@@ -1131,7 +1167,7 @@ export function Outputs() {
                               </a>
                             </div>
                           </div>
-                          <Hint>{cfg.publicOutputs ? t('A web page playing the graphics live: browser source in OBS, vMix, CasparCG, a web player or a screen. No login needed.') : t('A web page playing the graphics live. Output pages need a login (Settings › Public output pages).')}</Hint>
+                          {note(cfg.publicOutputs ? t('A web page playing the graphics live: browser source in OBS, vMix, CasparCG, a web player or a screen. No login needed.') : t('A web page playing the graphics live. Output pages need a login (Settings › Public output pages).'))}
                         </>
                       );
                     })()}
@@ -1185,7 +1221,7 @@ export function Outputs() {
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware')}>
                             <Cpu size={13} /> {t('Edit in I/O')}
                           </button>
-                          <Hint>{t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.')}</Hint>
+                          {note(t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.'))}
                         </>
                       );
                     })()}
@@ -1260,7 +1296,7 @@ export function Outputs() {
                               <span className="muted small">{t('Apply to generate the SDP files.')}</span>
                             )}
                           </div>
-                          <Hint>{two ? t('Two ST 2110-20 streams, what most vision mixers and keyers expect. RTP timing follows the system clock: keep this server PTP-disciplined.') : t('One stream carrying the alpha, for receivers that read this sampling (check your mixer accepts it). RTP timing follows the system clock: keep this server PTP-disciplined.')}</Hint>
+                          {note(two ? t('Two ST 2110-20 streams, what most vision mixers and keyers expect. RTP timing follows the system clock: keep this server PTP-disciplined.') : t('One stream carrying the alpha, for receivers that read this sampling (check your mixer accepts it). RTP timing follows the system clock: keep this server PTP-disciplined.'))}
                         </>
                       );
                     })()}
@@ -1283,7 +1319,7 @@ export function Outputs() {
                           <Field label={t('NDI runtime (all NDI outputs)')} hint={t('Leave empty to use the NDI runtime installed with Strata. Only to force another libndi.')}>
                             <input value={cfg.ndiLibrary ?? ''} placeholder={info.os === 'macos' ? '/usr/local/lib/libndi.dylib' : info.os === 'windows' ? 'C:\\Program Files\\NDI\\…\\Processing.NDI.Lib.x64.dll' : '/usr/lib/libndi.so.6'} onChange={(e) => edit((c) => void (c.ndiLibrary = e.target.value))} />
                           </Field>
-                          <Hint>{t('Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). The NDI runtime comes with the Strata installers (macOS, Windows).')}</Hint>
+                          {note(t('Seen by every NDI receiver on the network (TriCaster, vMix, OBS, Studio Monitor…). The NDI runtime comes with the Strata installers (macOS, Windows).'))}
                         </>
                       );
                     })()}
@@ -1345,14 +1381,16 @@ export function Outputs() {
                           )}
                           {o.protocol === 'hls' ? (
                             <div className="set-field">
-                              <span className="set-label">{t('Playback address')}</span>
+                              <span className="set-label">
+                                {t('Playback address')}
+                                {savedDest(o.id) ? <InfoTip text={t('Served by this server, for players and CDNs that pull HLS.')} /> : <InfoTip text={t('Apply to start the stream.')} />}
+                              </span>
                               <div className="oc-link">
                                 <code title={hls}>{hls}</code>
                                 <button className="icon-btn" title={t('Copy')} onClick={() => void copy(hls)}>
                                   {copied === hls ? <Check size={14} /> : <Copy size={14} />}
                                 </button>
                               </div>
-                              <span className="set-hint">{savedDest(o.id) ? t('Served by this server, for players and CDNs that pull HLS.') : t('Apply to start the stream.')}</span>
                             </div>
                           ) : (
                             <Field
@@ -1391,12 +1429,14 @@ export function Outputs() {
                             <input type="checkbox" checked={o.audio} onChange={(e) => editDest<StreamOutput>((d) => void (d.audio = e.target.checked))} />
                             {t('Audio track (silent stereo)')}
                           </label>
-                          {o.protocol === 'rtmp' && !o.audio && <Hint>{t('Most RTMP platforms (YouTube, Facebook, Twitch) refuse a stream without audio.')}</Hint>}
+                          {o.protocol === 'rtmp' && !o.audio && note(t('Most RTMP platforms (YouTube, Facebook, Twitch) refuse a stream without audio.'))}
                           <div className="set-field">
-                            <OnSwitch on={!!o.hwEncode} onChange={(v) => editDest<StreamOutput>((d) => void (d.hwEncode = v))} label={t('Hardware encoding (GPU)')} />
-                            <span className="set-hint">{t('VideoToolbox on a Mac, NVENC / Quick Sync / AMF elsewhere; falls back to the processor when none works.')}</span>
+                            <span className="ux3-row">
+                              <OnSwitch on={!!o.hwEncode} onChange={(v) => editDest<StreamOutput>((d) => void (d.hwEncode = v))} label={t('Hardware encoding (GPU)')} />
+                              <InfoTip text={t('VideoToolbox on a Mac, NVENC / Quick Sync / AMF elsewhere; falls back to the processor when none works.')} />
+                            </span>
                           </div>
-                          <Hint>{t('Streams carry no transparency: the graphics are laid over the background colour.')} {t('Encoded by ffmpeg, which must be installed on the server.')}</Hint>
+                          {note(`${t('Streams carry no transparency: the graphics are laid over the background colour.')} ${t('Encoded by ffmpeg, which must be installed on the server.')}`)}
                         </>
                       );
                     })()}
@@ -1427,7 +1467,7 @@ export function Outputs() {
                           </div>
                           <div>
                             <small>CPU</small>
-                            <strong>{coresLabel(o.cpu)}</strong>
+                            <strong>{corePct(o.cpu)}</strong>
                           </div>
                         </div>
                       );
@@ -1526,9 +1566,11 @@ const bitrateLabel = (kbps: number) => (kbps >= 1000 ? `${+(kbps / 1000).toFixed
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="set-field">
-      <span className="set-label">{label}</span>
+      <span className="set-label">
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       {children}
-      {hint && <span className="set-hint">{hint}</span>}
     </label>
   );
 }
@@ -1537,13 +1579,16 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 function Group({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="set-field">
-      <span className="set-label">{label}</span>
+      <span className="set-label">
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       {children}
-      {hint && <span className="set-hint">{hint}</span>}
     </div>
   );
 }
 
-function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="oc-hint">{children}</p>;
+/** The notes of the inspector, as one "i" after its title. */
+function Notes({ list }: { list: string[] }) {
+  return list.length ? <InfoTip text={list.join('\n\n')} /> : null;
 }

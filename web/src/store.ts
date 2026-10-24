@@ -8,6 +8,8 @@ import type { ChannelInfo, ChannelState, Command, DataStatus, Project, ProjectSu
 type ServerEvent =
   | { type: 'hello'; user: User | null; serverName: string; serverTime: number; timezone: string; channels: ChannelInfo[]; projects: ProjectSummary[] }
   | { type: 'project'; project: Project }
+  /** A project saved with only this template (or draft) changed or added. */
+  | { type: 'projectTemplate'; projectId: string; draft: boolean; template: Template }
   | { type: 'projectDeleted'; id: string }
   | { type: 'channels'; channels: ChannelInfo[] }
   | { type: 'channel'; channelId: string; state: ChannelState; serverTime: number }
@@ -102,6 +104,18 @@ interface AppStore {
 }
 
 let socket: WebSocket | null = null;
+/** The WebSocket was connected before (a hello after it is a reconnection). */
+let reconnected = false;
+
+/** `p` with a template (or draft) replaced, or added when new: as the server
+ * changed it (crates/cg-server/src/state.rs, apply_template). */
+function withTemplate(p: Project | undefined, draft: boolean, t: Template): Project | undefined {
+  if (!p) return undefined;
+  const list = (draft ? p.drafts : p.templates) ?? [];
+  const at = list.findIndex((x) => x.id === t.id);
+  const next = at < 0 ? [...list, t] : list.map((x, i) => (i === at ? t : x));
+  return draft ? { ...p, drafts: next } : { ...p, templates: next };
+}
 
 /** The client's clock, on the same steady scale as the animation frames. */
 export const clientNow = () => performance.timeOrigin + performance.now();
@@ -289,16 +303,22 @@ export const useApp = create<AppStore>((set, get) => {
                 set({ projects: msg.projects });
                 api<Folders>('GET', '/api/folders').then((folders) => set({ folders }), () => {});
               }
-              // Refresh projects edited while we were away.
+              // Refresh projects edited while we were away (not on the first
+              // connection: the page has just opened the project itself).
               const { projectId } = get();
-              if (projectId && !outputChannel) get().openProject(projectId);
+              if (projectId && !outputChannel && reconnected) get().openProject(projectId);
+              reconnected = true;
               break;
             }
+            case 'projectTemplate':
             case 'project': {
-              const full = { ...get().full, [msg.project.id]: msg.project };
-              const { id, name, description, width, height, frameRate, rundown } = msg.project;
-              const design = designTemplates(msg.project);
-              const summary: ProjectSummary = { id, name, description: description ?? '', width, height, frameRate, templates: design.length, rundown: rundown.length, cover: design[0]?.id };
+              const project = msg.type === 'project' ? msg.project : withTemplate(get().full[msg.projectId], msg.draft, msg.template);
+              // A template of a project not open here: nothing to update.
+              if (!project) break;
+              const full = { ...get().full, [project.id]: project };
+              const { id, name, description, width, height, frameRate, rundown } = project;
+              const design = designTemplates(project);
+              const summary: ProjectSummary = { id, name, description: description ?? '', width, height, frameRate, templates: design.length, rundown: rundown.length, cover: design[0]?.id, modifiedAt: Date.now() };
               const projects = get().projects.some((p) => p.id === id) ? get().projects.map((p) => (p.id === id ? summary : p)) : [...get().projects, summary];
               set({ full, projects: outputChannel ? get().projects : projects, ...select(get().projectId, full) });
               break;
@@ -437,6 +457,9 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     toast(message, kind = 'info') {
+      // The browser's own words for a request that got no answer (« Failed to fetch »…).
+      const offline = /Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|Network request failed/g;
+      message = message.replace(offline, (m) => (m === message.trim() ? t('The server does not answer') : t('the server does not answer')));
       const id = ++toastId;
       set({ toasts: [...get().toasts, { id, message, kind }] });
       setTimeout(() => set({ toasts: get().toasts.filter((t) => t.id !== id) }), 4000);
@@ -495,5 +518,14 @@ export const can = {
   admin: (u: User | null | undefined) => u?.role === 'admin',
 };
 
-export const thumbnailUrl = (projectId: string, t: Template, format = 'main', draft = false) =>
-  `/api/projects/${encodeURIComponent(projectId)}/templates/${encodeURIComponent(t.id)}/thumbnail.png?format=${encodeURIComponent(format)}${draft ? '&draft=true' : ''}&v=${JSON.stringify(t).length}`;
+/** A short hash of a text (FNV-1a), for versions in addresses. */
+const hashText = (s: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36) + s.length.toString(36);
+};
+
+/** A template's thumbnail, `width` pixels wide at most (the size shown × 2 for
+ * HiDPI screens). The version follows the template: browsers keep each one. */
+export const thumbnailUrl = (projectId: string, t: Template, format = 'main', draft = false, width = 480) =>
+  `/api/projects/${encodeURIComponent(projectId)}/templates/${encodeURIComponent(t.id)}/thumbnail.png?format=${encodeURIComponent(format)}${draft ? '&draft=true' : ''}&w=${width}&v=${hashText(JSON.stringify(t))}`;

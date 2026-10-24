@@ -422,6 +422,32 @@ def _fr_tree(o, key=None):
 
 # ----------------------------------------------------------------- package --
 
+# One-line card text of each example (the description is the long text).
+SUMMARIES = {
+    'ex-01-journal-televise': ('Synthés, lieu, logo, bandeau urgent et titres d’un grand JT.', 'Name straps, location, logo, breaking strap and titles for a main newscast.'),
+    'ex-02-info-continu': ('Bandeau permanent, alerte info et fil d’une chaîne d’info.', 'Permanent strap, breaking alert and news ticker for a news channel.'),
+    'ex-03-football': ('Score et chrono, compositions, buts et cartons d’un match.', 'Score and clock, line-ups, goals and cards for a match.'),
+    'ex-04-soiree-electorale': ('Résultats par candidat, participation et sièges en direct.', 'Live results per candidate, turnout and seats.'),
+    'ex-05-meteo': ('Carte des températures, villes et prévisions sur plusieurs jours.', 'Temperature map, cities and multi-day forecast.'),
+    'ex-06-bourse': ('Ticker des indices, cours et graphiques des marchés.', 'Index ticker, prices and market charts.'),
+    'ex-07-talk-show': ('Synthés des invités, thème du jour et citations à l’écran.', 'Guest straps, topic of the day and on-screen quotes.'),
+    'ex-08-esport-stream': ('Bandeau de match, caméras joueurs et partenaires en rotation.', 'Match bar, player cams and rotating sponsors.'),
+    'ex-09-grand-prix': ('Classement des pilotes, écarts et chrono de la course.', 'Driver standings, gaps and race timing.'),
+    'ex-10-tennis': ('Score jeux-sets-points, fiches et statistiques des joueurs.', 'Games-sets-points score, player cards and stats.'),
+    'ex-11-podcast-youtube': ('Synthé invité, chapitres et appel à s’abonner.', 'Guest strap, chapters and subscribe call to action.'),
+    'ex-12-festival-live': ('Artiste à l’antenne, programme de la soirée et messages.', 'Artist on stage, tonight’s line-up and messages.'),
+    'ex-13-documentaire': ('Titre, chapitres, citations et légendes d’archives.', 'Title, chapters, quotes and archive captions.'),
+    'ex-14-keynote-tech': ('Intervenant, session en cours, programme et questions du public.', 'Speaker, current session, schedule and audience questions.'),
+    'ex-15-ceremonie-prix': ('Catégories, nommés et révélation du lauréat en noir et or.', 'Categories, nominees and winner reveal in black and gold.'),
+    'ex-16-quiz-tv': ('Question, quatre réponses, chrono et scores des candidats.', 'Question, four answers, timer and contestant scores.'),
+    'ex-17-basket': ('Score, horloge de match, 24 secondes, fautes et temps morts.', 'Score, game clock, shot clock, fouls and timeouts.'),
+    'ex-18-cyclisme': ('Profil de l’étape, parcours, écarts et kilomètres restants.', 'Stage profile, route, gaps and distance to go.'),
+    'ex-19-matinale': ('Bandeau heure, météo et trafic, sujets du jour et messages.', 'Time, weather and traffic strap, top stories and messages.'),
+    'ex-20-live-shopping': ('Fiche produit, offre flash et stock pour une vente en direct.', 'Product card, flash offer and stock for live selling.'),
+    'ex-21-reseaux-sociaux': ('Messages validés des réseaux sociaux : carte, mur, bandeau, compteur.', 'Approved social messages: card, wall, ticker, counter.'),
+}
+
+
 class Package:
     """One example project."""
 
@@ -498,6 +524,11 @@ class Package:
         path = os.path.join(OUT, self.meta['id'] + '.json')
         with open(path, 'w') as fh:
             meta = dict(self.meta, name=fr(self.meta['name']), description=fr(self.meta['description']))
+            if self.meta['id'] in SUMMARIES:
+                summary, summary_en = SUMMARIES[self.meta['id']]
+                meta['summary'] = summary
+                if 'en' in meta:
+                    meta['en'] = dict(meta['en'], summary=summary_en)
             out = {'meta': meta, 'project': _fr_tree(self.p)}
             if self.sources:
                 out['sources'] = self.sources

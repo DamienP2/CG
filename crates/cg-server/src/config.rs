@@ -474,8 +474,14 @@ impl ServerConfig {
         if self.locations.is_empty() {
             self.locations.push(Location {
                 id: "main".into(),
-                name: "Main".into(),
+                name: "Principal".into(),
             });
+        }
+        // The default site of older versions had an English name.
+        for l in &mut self.locations {
+            if l.id == "main" && l.name == "Main" {
+                l.name = "Principal".into();
+            }
         }
         let known: HashSet<String> = self.locations.iter().map(|l| l.id.clone()).collect();
         let first = self.locations[0].id.clone();

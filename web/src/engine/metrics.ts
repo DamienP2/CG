@@ -119,9 +119,30 @@ export interface Warning {
 }
 
 let current: Metrics | null = null;
-let users = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
+let timerEvery = 0;
+/** How often each user wants them (ms): polled at the shortest. */
+const wanted: number[] = [];
 const subs = new Set<() => void>();
+
+/** Polls at the shortest interval asked, not while the page is hidden. */
+function schedule() {
+  const every = wanted.length ? Math.min(...wanted) : 0;
+  if (every === timerEvery) return;
+  if (timer) clearInterval(timer);
+  timer = null;
+  timerEvery = every;
+  if (!every) return;
+  // Not while the page is hidden: nothing shows them.
+  timer = setInterval(() => document.hidden || void poll(), every);
+}
+
+if (typeof document !== 'undefined') {
+  // Shown again: fresh figures at once.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && wanted.length) void poll();
+  });
+}
 
 async function poll() {
   try {
@@ -134,21 +155,18 @@ async function poll() {
   }
 }
 
-/** The latest metrics (every second while something shows them). */
-export function useMetrics(): Metrics | null {
+/** The latest metrics, every `every` ms while something shows them (3 s for
+ * the status in the top bar; the Performance page asks every second). */
+export function useMetrics(every = 3000): Metrics | null {
   useEffect(() => {
-    if (users++ === 0) {
-      void poll();
-      // Not while the page is hidden: nothing shows them.
-      timer = setInterval(() => document.hidden || void poll(), 1000);
-    }
+    if (!wanted.length) void poll();
+    wanted.push(every);
+    schedule();
     return () => {
-      if (--users === 0 && timer) {
-        clearInterval(timer);
-        timer = null;
-      }
+      wanted.splice(wanted.indexOf(every), 1);
+      schedule();
     };
-  }, []);
+  }, [every]);
   return useSyncExternalStore(
     (f) => (subs.add(f), () => subs.delete(f)),
     () => current,

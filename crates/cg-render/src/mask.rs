@@ -10,6 +10,8 @@
 //! frame-sized buffer kept per thread, so the values are the same, bit for bit.
 
 use std::cell::RefCell;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use tiny_skia::{FillRule, Mask, Paint, Path, Pixmap, Rect, Transform};
 
@@ -124,6 +126,89 @@ pub(crate) fn painted(
         );
         Some(out)
     })
+}
+
+/// Masks kept from frame to frame (a ticker's or a roll's faded zone: the
+/// same while its box does not move), by a key of what they are made of.
+#[derive(Default)]
+pub(crate) struct Kept {
+    entries: Vec<(u64, Arc<Mask>)>,
+}
+
+/// Masks kept at most (the least recently used go first).
+const KEPT: usize = 8;
+
+impl Kept {
+    /// The key of a mask of a `w` × `h` frame made of `nums` and `flag`,
+    /// inside `parent` (its values in `region`, the only ones the mask
+    /// reads, are part of the key).
+    pub fn key(
+        w: u32,
+        h: u32,
+        nums: &[f32],
+        flag: bool,
+        parent: Option<&Mask>,
+        region: tiny_skia::IntRect,
+    ) -> u64 {
+        let mut s = std::collections::hash_map::DefaultHasher::new();
+        (w, h, flag).hash(&mut s);
+        for n in nums {
+            n.to_bits().hash(&mut s);
+        }
+        match parent {
+            None => 0u64.hash(&mut s),
+            Some(m) => {
+                // FNV-like over words, in the region only.
+                let mut x = 0xcbf2_9ce4_8422_2325u64;
+                let mw = m.width() as usize;
+                let (x0, x1) = (
+                    region.left().max(0) as usize,
+                    (region.right().max(0) as usize).min(mw),
+                );
+                let (y0, y1) = (
+                    region.top().max(0) as usize,
+                    (region.bottom().max(0) as usize).min(m.height() as usize),
+                );
+                for y in y0..y1 {
+                    for c in m.data()[y * mw + x0.min(x1)..y * mw + x1].chunks(8) {
+                        let mut b = [0u8; 8];
+                        b[..c.len()].copy_from_slice(c);
+                        x = (x ^ u64::from_le_bytes(b)).wrapping_mul(0x0100_0000_01b3);
+                    }
+                }
+                (
+                    1u64,
+                    region.left(),
+                    region.top(),
+                    region.width(),
+                    region.height(),
+                    x,
+                )
+                    .hash(&mut s);
+            }
+        }
+        s.finish()
+    }
+
+    /// The mask of `key`, made by `make` when not kept.
+    pub fn get_or_make(
+        &mut self,
+        key: u64,
+        make: impl FnOnce() -> Option<Mask>,
+    ) -> Option<Arc<Mask>> {
+        if let Some(i) = self.entries.iter().position(|(k, _)| *k == key) {
+            let e = self.entries.remove(i);
+            let m = e.1.clone();
+            self.entries.push(e);
+            return Some(m);
+        }
+        let m = Arc::new(make()?);
+        if self.entries.len() >= KEPT {
+            self.entries.remove(0);
+        }
+        self.entries.push((key, m.clone()));
+        Some(m)
+    }
 }
 
 #[cfg(test)]

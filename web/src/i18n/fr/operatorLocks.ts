@@ -11,7 +11,7 @@ export const operatorLocks: Record<string, string> = {
   'free': 'libre',
   '{name} holds this zone': '{name} tient cette zone',
   // Undo
-  'undo|Clear all': 'Tout sortir',
+  'undo|Clear all': 'Tout effacer',
   'undo|Row': 'Ligne',
   'undo|Widget': 'Widget',
   'undo|Trigger': 'Déclencheur',

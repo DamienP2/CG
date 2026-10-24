@@ -1,6 +1,7 @@
 import { ArrowDownToLine, ArrowUpFromLine, Network, Plus, RefreshCw, Settings as SettingsIcon, Trash2, TriangleAlert, Tv } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { t, tc, tn } from '../i18n';
+import { friendlyError } from '../ui/serverError';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
 import { SaveBar } from '../settings/ui';
 import { useServerConfig } from '../settings/serverConfig';
@@ -465,7 +466,7 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
                 <select value={value} aria-label={`SDI ${k + 1}`} className={value ? '' : 'none'} onChange={(e) => void assign(k, e.target.value)}>
                   <option value="">—</option>
                   {canOut && roles.has('fill') && (
-                    <optgroup label="Fill">
+                    <optgroup label={t('Output · Fill')}>
                       {cfg.channels.map((ch) => (
                         <option key={ch.id} value={`fill:${ch.id}`}>
                           {channelLabel(cfg, ch)}
@@ -475,7 +476,7 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
                     </optgroup>
                   )}
                   {canOut && roles.has('key') && keyDefs.length > 0 && (
-                    <optgroup label="Key">
+                    <optgroup label={t('Output · Key')}>
                       {keyDefs.map((d) => (
                         <option key={d.id} value={`key:${d.id}`}>
                           {defLabel(d)}
@@ -532,8 +533,9 @@ function Sig({ dot, text }: { dot: 'ok' | 'warn' | 'err'; text: string }) {
   return (
     <span className="fio-sig">
       <span className={`fio-dot ${dot}`} />
+      {/* Server errors: short, the raw text in the tooltip. */}
       <span className="fio-sig-text" title={text}>
-        {text}
+        {friendlyError(text)}
       </span>
     </span>
   );

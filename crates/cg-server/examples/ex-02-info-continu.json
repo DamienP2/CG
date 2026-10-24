@@ -9,10 +9,10 @@
    "Direct",
    "Rubriques"
   ],
-  "description": "L’antenne d’une chaîne d’info en continu : bandeau permanent (rubrique, titre, heure et fil info), ALERTE INFO qui clignote, logo, direct avec lieu, titres de rubrique et synthés. Graphite et jaune signal, Barlow Condensed. Bandeau, alerte, logo et direct ont leur version 9:16 pour les réseaux sociaux.",
+  "description": "L’antenne d’une chaîne d’info en continu : bandeau permanent (rubrique, titre, heure et fil info), ALERTE INFO qui clignote, logo, direct avec lieu, titres de rubrique et synthés. Graphite et jaune signal, Barlow Condensed. Bandeau, alerte, logo et direct ont leur version 9:16 pour les réseaux sociaux.", "summary": "Bandeau permanent, alerte info et fil d’une chaîne d’info.",
   "en": {
    "name": "24/7 news channel",
-   "description": "A rolling news channel on air: permanent strap (section, headline, clock and news wire), flashing NEWS ALERT, logo, live tag, section titles and lower thirds. Strap, alert, logo and live tag also exist in 9:16 for social networks."
+   "description": "A rolling news channel on air: permanent strap (section, headline, clock and news wire), flashing NEWS ALERT, logo, live tag, section titles and lower thirds. Strap, alert, logo and live tag also exist in 9:16 for social networks.", "summary": "Permanent strap, breaking alert and news ticker for a news channel."
   },
   "cover": "bandeau"
  },

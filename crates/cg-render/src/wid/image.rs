@@ -40,6 +40,7 @@ fn reload(d: &mut Draw, st: &State, src: &str) {
         crate::fetch_url(src, true);
     }
     d.rd.images.remove(src);
+    d.rd.scaled.forget(src);
     let prefix = format!("{src}|");
     if let Some(m) = TINTED.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
         m.retain(|k, _| !k.starts_with(&prefix));
@@ -71,27 +72,59 @@ fn colorized(src: &Pixmap, mode: Colorize, tint: Color) -> Pixmap {
     out
 }
 
-/// A mask of `path` (layer space) inside the parents' clip.
+/// A mask of `path` (layer space) inside the parents' clip (the parents'
+/// one multiplied only where the path is, `mask::intersect`: the same values).
 fn path_mask(d: &Draw, path: &tiny_skia::Path) -> Option<Mask> {
+    if let Some(parent) = d.mask {
+        return Some(crate::mask::intersect(parent, path, d.tf));
+    }
     let mut m = Mask::new(d.pm.width(), d.pm.height())?;
     m.fill_path(path, FillRule::Winding, true, d.tf);
-    if let Some(parent) = d.mask {
-        for (a, b) in m.data_mut().iter_mut().zip(parent.data()) {
-            *a = ((*a as u16 * *b as u16 + 127) / 255) as u8;
-        }
-    }
     Some(m)
 }
 
 /// The built-in slate (when neither the picture nor the fallback exist):
 /// neutral, branded, never an error on air. Same drawing as the web's.
-fn slate(d: &mut Draw, [x, y, w, h]: [f32; 4], mask: &Mask) {
+/// Drawn once into a picture of its place on the frame and kept (`scaled`)
+/// while it does not move; that picture laid through `mask`.
+fn slate(d: &mut Draw, f: [f32; 4], mask: &Mask) {
+    let tf = d.tf;
+    let (fw, fh) = (d.pm.width(), d.pm.height());
+    let region = Rect::from_xywh(f[0], f[1], f[2].max(1.0), f[3].max(1.0))
+        .and_then(|r| crate::scaled::device_bounds(r, tf, fw, fh));
+    let axis = tf.kx == 0.0 && tf.ky == 0.0;
+    let Some(region) = region.filter(|_| axis) else {
+        slate_on(d.pm, tf, d.opacity, f, Some(mask));
+        return;
+    };
+    let (x0, y0) = (region.x(), region.y());
+    let local = Transform::from_translate(-(x0 as f32), -(y0 as f32)).pre_concat(tf);
+    let size = (region.width(), region.height());
+    let key = format!("slate|{:?}", f.map(f32::to_bits));
+    let (pm, opacity, keep) = (&mut *d.pm, d.opacity, !d.moving);
+    d.rd.scaled.with_picture(
+        &key,
+        local,
+        size,
+        keep,
+        |p| slate_on(p, local, 1.0, f, None),
+        |p| crate::scaled::composite(pm, p, x0, y0, opacity, Some(mask)),
+    );
+}
+
+fn slate_on(
+    pm: &mut Pixmap,
+    tf: Transform,
+    opacity: f32,
+    [x, y, w, h]: [f32; 4],
+    mask: Option<&Mask>,
+) {
     let Some(r) = Rect::from_xywh(x, y, w.max(1.0), h.max(1.0)) else {
         return;
     };
     let path = PathBuilder::from_rect(r);
-    let c1 = tiny_skia::Color::from_rgba8(0x1b, 0x14, 0x42, (255.0 * d.opacity) as u8);
-    let c2 = tiny_skia::Color::from_rgba8(0x3b, 0x0d, 0x2a, (255.0 * d.opacity) as u8);
+    let c1 = tiny_skia::Color::from_rgba8(0x1b, 0x14, 0x42, (255.0 * opacity) as u8);
+    let c2 = tiny_skia::Color::from_rgba8(0x3b, 0x0d, 0x2a, (255.0 * opacity) as u8);
     if let Some(shader) = LinearGradient::new(
         Point::from_xy(x, y),
         Point::from_xy(x + w, y + h),
@@ -104,7 +137,7 @@ fn slate(d: &mut Draw, [x, y, w, h]: [f32; 4], mask: &Mask) {
             anti_alias: true,
             ..Default::default()
         };
-        d.pm.fill_path(&path, &paint, FillRule::Winding, d.tf, Some(mask));
+        pm.fill_path(&path, &paint, FillRule::Winding, tf, mask);
     }
     let s = w.min(h);
     let (cx, cy, rr) = (x + w / 2.0, y + h / 2.0, s * 0.2);
@@ -113,13 +146,7 @@ fn slate(d: &mut Draw, [x, y, w, h]: [f32; 4], mask: &Mask) {
             width: s * 0.045,
             ..Default::default()
         };
-        d.pm.stroke_path(
-            &ring,
-            &paint_for(Color::WHITE, d.opacity),
-            &st,
-            d.tf,
-            Some(mask),
-        );
+        pm.stroke_path(&ring, &paint_for(Color::WHITE, opacity), &st, tf, mask);
     }
     let mut pb = PathBuilder::new();
     for (i, (u, v)) in SLATE_PULSE.iter().enumerate() {
@@ -138,7 +165,7 @@ fn slate(d: &mut Draw, [x, y, w, h]: [f32; 4], mask: &Mask) {
             ..Default::default()
         };
         let red = Color::from_hex("#ff3b5c").unwrap_or(Color::WHITE);
-        d.pm.stroke_path(&p, &paint_for(red, d.opacity), &st, d.tf, Some(mask));
+        pm.stroke_path(&p, &paint_for(red, opacity), &st, tf, mask);
     }
 }
 
@@ -200,6 +227,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         interpolate_text(&c.frames[s.idx.min(c.frames.len() - 1)], d.data)
     };
     reload(d, st, wanted.trim());
+    let moving = d.moving;
     let (w, h) = (d.w, d.h);
     let (f, radius) = frame_rect(c, w, h);
     let Some(frame_path) = rrect(f[0], f[1], f[2], f[3], radius) else {
@@ -230,12 +258,15 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let opacity = d.opacity;
     let tf = d.tf;
     let mut cache = TINTED.lock().unwrap_or_else(|e| e.into_inner());
-    let img: &Pixmap = if let Some(p) = &live {
-        p
-    } else if let Some(i) = d.rd.image(&source) {
-        i
-    } else {
+    if live.is_none() && d.rd.image(&source).is_none() {
         return true;
+    }
+    let img: &Pixmap = match &live {
+        Some(p) => p,
+        None => match d.rd.images.get(&source) {
+            Some(Some(i)) => i,
+            _ => return true,
+        },
     };
     let img: &Pixmap = if mode == Colorize::None || live.is_some() {
         img
@@ -266,25 +297,56 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         d.pm.fill_path(&frame_path, &paint, FillRule::Winding, tf, Some(&fmask));
     } else {
         let (win, pic) = place(c, (iw, ih), (f[2], f[3]), fit_now, cr);
+        // The picture's window in the frame (all of it: the frame's mask).
+        let whole =
+            win[0] <= 0.0 && win[1] <= 0.0 && win[0] + win[2] >= f[2] && win[1] + win[3] >= f[3];
+        let cut;
         let m = match Rect::from_xywh(
             f[0] + win[0],
             f[1] + win[1],
             win[2].max(0.01),
             win[3].max(0.01),
         ) {
-            Some(r) => crate::mask::intersect(&fmask, &PathBuilder::from_rect(r), tf),
-            None => fmask.clone(),
+            Some(r) if !whole => {
+                cut = crate::mask::intersect(&fmask, &PathBuilder::from_rect(r), tf);
+                &cut
+            }
+            _ => &fmask,
         };
         let img_tf = tf.pre_concat(
             Transform::from_translate(f[0] + pic[0], f[1] + pic[1])
                 .pre_scale(pic[2] / iw.max(1.0), pic[3] / ih.max(1.0)),
         );
-        let paint = PixmapPaint {
-            opacity,
-            quality: tiny_skia::FilterQuality::Bicubic,
-            ..Default::default()
-        };
-        d.pm.draw_pixmap(0, 0, img.as_ref(), &paint, img_tf, Some(&m));
+        if live.is_some() {
+            // A new picture every frame: drawn directly.
+            let paint = PixmapPaint {
+                opacity,
+                quality: tiny_skia::FilterQuality::Bicubic,
+                ..Default::default()
+            };
+            d.pm.draw_pixmap(0, 0, img.as_ref(), &paint, img_tf, Some(m));
+        } else {
+            // Scaled once to its size on the frame, in the window only.
+            let (fw, fh) = (d.pm.width(), d.pm.height());
+            let clip = Rect::from_xywh(f[0] + win[0], f[1] + win[1], win[2], win[3])
+                .and_then(|r| crate::scaled::device_bounds(r, tf, fw, fh));
+            let name = if mode == Colorize::None {
+                &source
+            } else {
+                &key
+            };
+            crate::scaled_picture(
+                &mut d.rd.scaled,
+                d.pm,
+                name,
+                img,
+                img_tf,
+                moving,
+                opacity,
+                Some(m),
+                clip,
+            );
+        }
     }
     drop(cache);
     stroke(d, &frame_path, &fmask);

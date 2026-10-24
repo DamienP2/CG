@@ -229,6 +229,7 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node', opts: C
     view,
     toWorld,
     visible,
+    setView,
     fit,
     arrange,
     resize,

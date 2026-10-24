@@ -1,3 +1,5 @@
+import { InfoTip } from '../ui/InfoTip';
+import { friendlyError } from '../ui/serverError';
 import { Cable, Copy, KeyRound, ListOrdered, Newspaper, Plug } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t, tn } from '../i18n';
@@ -46,17 +48,19 @@ export function MosPage() {
   const base = `${location.protocol}//${location.host}`;
   const plugin = `${base}/mos/plugin?key=pcg_…`;
   const state: 'ok' | 'warn' | 'off' = !mos.enabled ? 'off' : status?.listening ? 'ok' : 'warn';
-  const stateText = !mos.enabled ? t('Off') : status?.listening ? tn(status.connections, 'Listening · {n} connection', 'Listening · {n} connections') : (status?.error ?? t('Not listening'));
+  const stateText = !mos.enabled ? t('Off') : status?.listening ? tn(status.connections, 'Listening · {n} connection', 'Listening · {n} connections') : (status?.error ? friendlyError(status.error) : t('Not listening'));
   const orders = status?.runningOrders ?? [];
 
   const item = (s: Section, icon: React.ReactNode, label: string, extra?: Partial<React.ComponentProps<typeof NavItem>>) => <NavItem on={section === s} icon={icon} label={label} onClick={() => setSection(s)} {...extra} />;
   const nav = (
     <>
-      <NavSection>{t('Newsroom')}</NavSection>
+      <NavSection>
+        {t('Newsroom')}
+        <InfoTip text={t('Saga (Fonn Group), iNews, ENPS, Octopus… send their running orders over MOS 2.8. Each one becomes a playlist of the project.')} />
+      </NavSection>
       {item('connection', <Cable size={15} />, t('Connection'), { status: state })}
       {item('orders', <ListOrdered size={15} />, t('Running orders'), { count: orders.length })}
       {item('plugin', <Plug size={15} />, t('Journalist plugin'))}
-      <p className="lib-nav-hint">{t('Saga (Fonn Group), iNews, ENPS, Octopus… send their running orders over MOS 2.8. Each one becomes a playlist of the project.')}</p>
     </>
   );
 

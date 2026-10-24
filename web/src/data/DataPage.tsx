@@ -10,6 +10,8 @@ import { AddSourceMenu, SocialEditor, SocialSection, type SocialPick } from './S
 import { confirmDialog } from '../ui/dialogs';
 import { navigate } from '../router';
 import { locale, t } from '../i18n';
+import { errorProps } from '../ui/serverError';
+import { InfoTip } from '../ui/InfoTip';
 
 const KINDS: { type: DataSource['type']; label: string; hint: string; icon: typeof Database }[] = [
   { type: 'json', label: 'JSON API', hint: 'Any web service answering JSON (scores, weather, elections…)', icon: Braces },
@@ -60,7 +62,7 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
       <aside className="data-list">
         <header>
           <Database size={15} />
-          <h2>{projectId ? t('Data sources') : t('Shared data sources')}</h2>
+          <h2>{projectId ? t('Data') : t('Shared data sources')}</h2>
           <div className="spacer" />
           {edit && !projectId && <AddSourceMenu onData={() => (setSocial(null), setSel(null), setDraft(blank('json', null)))} onSocial={(platform) => (setDraft(null), setSocial({ platform }))} />}
           {edit && projectId && (
@@ -91,16 +93,16 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
               <K.icon size={14} />
               <span>
                 <strong>{s.name}</strong>
-                <em>{s.error ? s.error : hasWarnings(s) ? <WarnLine source={s} /> : s.type === 'push' ? t('{kind} · updated {ago}', { kind: t(K.label), ago: ago(s.updatedAt) }) : t('{kind} · checked {ago}', { kind: t(K.label), ago: ago(s.checkedAt) })}</em>
+                <em title={errorProps(s.error).title}>{s.error ? errorProps(s.error).text : hasWarnings(s) ? <WarnLine source={s} /> : s.type === 'push' ? t('{kind} · updated {ago}', { kind: t(K.label), ago: ago(s.updatedAt) }) : t('{kind} · checked {ago}', { kind: t(K.label), ago: ago(s.checkedAt) })}</em>
               </span>
               <i className={`status-dot ${s.error ? 'err' : hasWarnings(s) ? 'dr-warn' : s.updatedAt ? 'ok' : 'idle'}`} />
             </button>
           );
         })}
         {!sources.length && !draft && (
-          <p className="muted small pad">
-            {projectId ? t('No data source in this project yet. Connect a JSON API, a Google Sheet, an RSS feed… then bind template fields to it in the Designer.') : t('No shared data source yet. The sources here are offered in every project (Data canvas), next to its own.')}
-          </p>
+          <div className="ux3-empty-mini">
+            <Database size={14} /> {projectId ? t('No source in this project') : t('No shared source')}
+          </div>
         )}
         {!projectId && <SocialSection selected={social && 'id' in social ? social.id : null} onSelect={(id) => (setDraft(null), setSocial({ id }))} />}
         {projectId && (
@@ -117,14 +119,18 @@ export function DataPage({ projectId = null }: { projectId?: string | null }) {
                 <button key={s.id} className={`data-item shared ${sel === s.id && !draft ? 'selected' : ''}`} onClick={() => (setDraft(null), setSel(s.id))}>
                   <K.icon size={14} />
                   <span>
-                    <strong>{s.name}</strong>
-                    <em>{s.error ? s.error : hasWarnings(s) ? <WarnLine source={s} /> : t('{kind} · shared', { kind: t(K.label) })}</em>
+                    <strong data-badge={t('shared')}>{s.name}</strong>
+                    <em title={errorProps(s.error).title}>{s.error ? errorProps(s.error).text : hasWarnings(s) ? <WarnLine source={s} /> : t('{kind} · shared', { kind: t(K.label) })}</em>
                   </span>
                   <i className={`status-dot ${s.error ? 'err' : hasWarnings(s) ? 'dr-warn' : s.updatedAt ? 'ok' : 'idle'}`} />
                 </button>
               );
             })}
-            {!shared.length && <p className="muted small pad">{t('None. Shared sources are created in the main menu, Data.')}</p>}
+            {!shared.length && (
+              <div className="ux3-empty-mini">
+                <Database size={14} /> {t('No shared source')}
+              </div>
+            )}
           </>
         )}
       </aside>
@@ -246,10 +252,10 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
               <K.icon size={18} />
               <input className="se-name" placeholder={t('Name (e.g. Live score)')} value={s.name} disabled={!editable} onChange={(e) => patch({ name: e.target.value })} />
               {!isNew && info && (
-                <span className={`se-status ${info.error ? 'err' : ''}`}>
+                <span className={`se-status ${info.error ? 'err' : ''}`} title={errorProps(info.error).title}>
                   {info.error ? (
                     <>
-                      <CircleAlert size={13} /> {info.error}
+                      <CircleAlert size={13} /> {errorProps(info.error).text}
                     </>
                   ) : (
                     <>{t('Updated {ago}', { ago: ago(info.updatedAt) })}</>
@@ -283,7 +289,8 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
                 {(s.type === 'json' || s.type === 'xml') && (
                   <label>
                     <span>
-                      {t('Headers, one per line:')} <code>{t('Name: value')}</code> {t('(an API key…)')}
+                      {t('Headers')}
+                      <InfoTip text={t('One per line: “Name: value” (an API key…)')} />
                     </span>
                     <textarea
                       rows={2}
@@ -398,8 +405,8 @@ function SourceEditor({ source, info, isNew, editable, onSaved, onCancel, onDele
           </label>
         </div>
         {preview?.error && (
-          <p className="error-text">
-            <CircleAlert size={13} /> {preview.error}
+          <p className="error-text" title={errorProps(preview.error).title}>
+            <CircleAlert size={13} /> {errorProps(preview.error).text}
           </p>
         )}
         <SumIssues issues={issues} />

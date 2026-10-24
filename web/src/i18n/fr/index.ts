@@ -25,5 +25,8 @@ import { widgetsData } from './widgetsData';
 import { widgetsA } from './widgetsA';
 import { widgetsB } from './widgetsB';
 import { widgetsC } from './widgetsC';
+import { ux3 } from './ux3';
+import { ux1 } from './ux1';
+import { ux2 } from './ux2';
 
-export const fr: Record<string, string> = { ...common, ...home, ...importer, ...designer, ...data, ...dataRules, ...operator, ...operatorLocks, ...schedule, ...shortcuts, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC, ...asrun, ...buttons, ...socialSources, ...socialWidgets, ...social };
+export const fr: Record<string, string> = { ...common, ...home, ...importer, ...designer, ...data, ...dataRules, ...operator, ...operatorLocks, ...schedule, ...shortcuts, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC, ...asrun, ...buttons, ...socialSources, ...socialWidgets, ...social, ...ux3, ...ux1, ...ux2 };

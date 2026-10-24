@@ -1,5 +1,5 @@
-import { LayoutGrid, Copy, FileUp, Link2, Plus, Settings2, Redo2, Trash2, Undo2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Copy, FileUp, Link2, Plus, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
@@ -7,7 +7,7 @@ import { importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
-import { LockOverlay, useEditLock } from './Collab';
+import { LockOverlay, TopPublish, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { copyLayers, cutLayers, pasteClipboard } from './clipboard';
@@ -16,11 +16,13 @@ import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { TableEditor } from '../widgets/table-editor';
 import { exposeRows } from '../widgets/table-rows';
-import { GuidesMenu, SafeMenu, SplitButton, useGuidesView, ViewMenu } from './Guides';
+import { useGuidesView } from './Guides';
+import { DisplayMenu, type StageBackground } from './DisplayMenu';
 import { ProjectHistory, ProjectPanel } from './ProjectPanel';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { FormatBar } from './Formats';
 import { formatById } from '../engine/formats';
+import { zoneArea } from '../engine/zones';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
 import { projectPath, setLeaveGuard } from '../router';
@@ -81,7 +83,7 @@ function useLeaveUnpublished(project: Project | null) {
       () =>
         confirmDialog({
           title: t('Leave without publishing?'),
-          message: tn(changed, '{n} template has changes the Operator does not have yet. They stay saved here as drafts; publish them from the Project block to put them on air.', '{n} templates have changes the Operator does not have yet. They stay saved here as drafts; publish them from the Project block to put them on air.'),
+          message: tn(changed, '{n} template has changes the Operator does not have yet. They stay saved here as drafts; Publish, at the top, puts them on air.', '{n} templates have changes the Operator does not have yet. They stay saved here as drafts; Publish, at the top, puts them on air.'),
           confirm: t('Leave'),
           cancel: t('Stay'),
         }),
@@ -220,42 +222,14 @@ function duplicateSelection() {
   duplicateLayers(useDesigner.getState().selected);
 }
 
-/** Zones button: show them on the stage, see the list, manage them. */
-function ZonesMenu({ project, show, onShow, onManage }: { project: Project; show: boolean; onShow: (v: boolean) => void; onManage: () => void }) {
-  const current = useDesigner((s) => s.template?.zone);
-  return (
-    <SplitButton icon={<LayoutGrid size={13} />} label={t('Zones')} on={show} onToggle={() => onShow(!show)} title={t('screen zones')} width={260}>
-      <div className="zm-list">
-        {[...project.zones]
-          .sort((a, b) => b.layer - a.layer)
-          .map((z) => (
-            <div key={z.id} className={`zm-zone ${z.id === current ? 'mine' : ''}`} style={{ ['--zc' as string]: z.color }}>
-              <span className="zm-dot" />
-              <span>{z.name}</span>
-              <em>{z.id === current ? t('this template') : t('layer {n}', { n: z.layer })}</em>
-            </div>
-          ))}
-      </div>
-      <p className="zm-hint">{t('On the stage, drag a zone by its name and resize it with its handles.')}</p>
-      <button className="btn small" data-close onClick={onManage}>
-        <Settings2 size={13} /> {t('Manage zones…')}
-      </button>
-    </SplitButton>
-  );
-}
-
-const BG_LABELS = {
-  checker: 'transparent',
-  black: 'black',
-  studio: 'studio',
-} as const;
-
 function TemplateList({ project }: { project: Project }) {
   // Not the playhead: the list is not drawn again on each frame of the playback.
   const { template, load, format, update } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format, update: s.update })));
   // The template whose name is being edited (a click on the open template's name).
   const [renaming, setRenaming] = useState<string | null>(null);
-  const { saveTemplate, deleteTemplate, toast } = useApp();
+  const saveTemplate = useApp((s) => s.saveTemplate);
+  const deleteTemplate = useApp((s) => s.deleteTemplate);
+  const toast = useApp((s) => s.toast);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const create = async (base?: Template) => {
@@ -375,7 +349,8 @@ function TemplateList({ project }: { project: Project }) {
 
 const MIN_LEFT = 320;
 
-export function Designer() {
+// Memoised: the page around it follows the channels on air; the Designer does not show them.
+export const Designer = memo(function Designer() {
   const project = useApp((s) => s.project);
   // Not the playhead: the Designer is not drawn again on each frame of the playback (the stage and the timeline follow it).
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner(
@@ -393,10 +368,18 @@ export function Designer() {
     left: 320,
     right: 380,
     timeline: 300,
+    // Layout (Display menu): a side panel on the whole height, the timeline beside it (1) or under it (0).
+    leftFull: 0,
+    rightFull: 0,
+    // The timeline's layer column when it no longer lines up with the left panel.
+    layers: MIN_LEFT,
   });
   // Room for the timeline property values (two 5-digit fields).
   const left = Math.max(MIN_LEFT, layout.left);
-  const [background, setBackground] = useState<'checker' | 'black' | 'studio'>('checker');
+  const leftFull = !!layout.leftFull;
+  const rightFull = !!layout.rightFull;
+  const layersW = leftFull ? Math.max(MIN_LEFT, layout.layers) : left;
+  const [background, setBackground] = useState<StageBackground>('checker');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
   useShortcuts();
@@ -451,6 +434,26 @@ export function Designer() {
       l.props = p as Layer['props'];
     }
     if (name) l.name = name;
+    // In the middle of the template's zone (outside it, the stage greys it out).
+    const zone = !parent && template ? project.zones.find((z) => z.id === template.zone) : undefined;
+    if (zone && typeof l.props.width === 'number' && typeof l.props.height === 'number') {
+      const a = zoneArea(zone, useDesigner.getState().format, size.height > size.width);
+      const w = l.props.width as number;
+      const h = l.props.height as number;
+      const x = Math.round(a.x * size.width + (a.width * size.width - w) / 2);
+      const y = Math.round(a.y * size.height + (a.height * size.height - h) / 2);
+      l.props = { ...l.props, x: Math.max(0, Math.min(size.width - w, x)), y: Math.max(0, Math.min(size.height - h, y)) };
+    }
+    // Not exactly on a layer already there (the second rectangle on the first): shifted down and right.
+    if (template && typeof l.props.x === 'number' && typeof l.props.y === 'number') {
+      const taken = (x: number, y: number) => template.layers.some((o) => (o.parent ?? null) === (l.parent ?? null) && num(propValue(o, 'x', 0)) === x && num(propValue(o, 'y', 0)) === y);
+      let { x, y } = l.props as { x: number; y: number };
+      for (let i = 0; i < 20 && taken(x, y); i++) {
+        x += 40;
+        y += 40;
+      }
+      l.props = { ...l.props, x, y };
+    }
     // Video and Lottie start as a 16:9 box in the middle, until their file is chosen.
     if ((l.type === 'image' && l.video) || (l.type === 'group' && l.lottie !== undefined)) {
       const w = Math.round(size.width * 0.5);
@@ -467,16 +470,17 @@ export function Designer() {
 
   return (
     <div
-      className={`designer ${lock.state.status === 'held' ? 'locked' : ''}`}
+      className={`designer ${lock.state.status === 'held' ? 'locked' : ''} ${leftFull ? 'ux2-left-full' : ''} ${rightFull ? 'ux2-right-full' : ''}`}
       style={{
         ['--left-w' as string]: `${left}px`,
         ['--right-w' as string]: `${layout.right}px`,
         ['--tl-h' as string]: `${layout.timeline}px`,
+        ['--tl-layers-w' as string]: `${layersW}px`,
       }}
     >
       <aside className="panel left">
         <Splitter axis="x" className="edge-right" value={left} min={MIN_LEFT} max={520} reset={320} onChange={(v) => setLayout('left', v)} />
-        <ProjectPanel project={project} saveState={saveState} readOnly={lock.state.status === 'held'} />
+        <ProjectPanel project={project} readOnly={lock.state.status === 'held'} />
         <TemplateList project={project} />
       </aside>
       <main className="center">
@@ -491,6 +495,7 @@ export function Designer() {
                   <Redo2 size={15} />
                 </button>
                 <ProjectHistory project={project} readOnly={lock.state.status === 'held'} />
+                <TopPublish project={project} saving={saveState === 'pending'} readOnly={lock.state.status === 'held'} />
               </>,
               topSlot,
             )}
@@ -505,13 +510,17 @@ export function Designer() {
               <DataCanvasButton />
             </>
           )}
-          <ZonesMenu project={project} show={showZones} onShow={setShowZones} onManage={() => setZonesOpen(true)} />
-          <GuidesMenu />
-          <SafeMenu project={project} />
-          <ViewMenu />
-          <button className="btn small bg-toggle" title={t('Stage background: {bg} (click to change)', { bg: t(BG_LABELS[background]) })} onClick={() => setBackground(background === 'checker' ? 'black' : background === 'black' ? 'studio' : 'checker')}>
-            <span className={`bg-swatch stage-frame bg-${background}`} />
-          </button>
+          <DisplayMenu
+            project={project}
+            showZones={showZones}
+            onShowZones={setShowZones}
+            onManageZones={() => setZonesOpen(true)}
+            background={background}
+            onBackground={setBackground}
+            leftFull={leftFull}
+            rightFull={rightFull}
+            onLayout={(side, on) => setLayout(side, on ? 1 : 0)}
+          />
         </div>
         <div className="stage-holder">
           <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} />
@@ -523,7 +532,9 @@ export function Designer() {
       </aside>
       <div className="timeline-wrap">
         <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
-        <Timeline fps={fps} leftW={left} onAdd={add} />
+        {/* Beside a full-height left panel, the layer column has its own width. */}
+        {leftFull && <Splitter axis="x" className="ux2-tl-split" value={layersW} min={MIN_LEFT} max={520} reset={MIN_LEFT} onChange={(v) => setLayout('layers', v)} />}
+        <Timeline fps={fps} leftW={layersW} onAdd={add} />
       </div>
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
       {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
@@ -532,4 +543,4 @@ export function Designer() {
       <TableEditor />
     </div>
   );
-}
+});

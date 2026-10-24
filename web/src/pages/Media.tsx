@@ -86,11 +86,13 @@ function FontsPanel({ canEdit }: { canEdit: boolean }) {
 
 const ICON: Record<Kind, typeof File> = { image: ImageIcon, video: Film, audio: FileAudio, font: Type, other: File };
 
+/** "70 o", "49 Ko", "6,7 Mo" in French. */
 export function formatSize(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  const f = (v: number, digits: number) => v.toLocaleString(locale(), { maximumFractionDigits: digits });
+  if (n < 1024) return t('{n} B', { n: f(n, 0) });
+  if (n < 1024 ** 2) return t('{n} KB', { n: f(n / 1024, 0) });
+  if (n < 1024 ** 3) return t('{n} MB', { n: f(n / 1024 ** 2, 1) });
+  return t('{n} GB', { n: f(n / 1024 ** 3, 2) });
 }
 
 const formatDate = (ms: number) => new Date(ms).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
@@ -206,7 +208,6 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       )}
       <div className="lib-nav-foot">
         <HardDrive size={13} /> {files ? `${tn(files.length, '{n} file', '{n} files')} · ${formatSize(total)}` : '…'}
-        <span className="muted">{projectId ? t('Fonts are shared: see Assets on the main page.') : t('Every project can use these files.')}</span>
       </div>
     </>
   );
@@ -244,7 +245,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     >
       <PageHead
         title={fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Assets') : t('Shared assets')) : t(label)}
-        sub={fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : `${tn(shown.length, '{n} file', '{n} files')} · ${projectId ? t('images, videos and files of this project') : t('images, videos and files every project can use')}`}
+        sub={fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
       >
         {canUpload && (
           <label className="btn primary">

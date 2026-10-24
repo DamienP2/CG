@@ -202,16 +202,27 @@ pub(crate) fn stroke(d: &mut Draw, p: &Path, st: &StrokeStyle, r: FillRule) {
         StrokePosition::Center => d.stroke_paint(p, &paint, &stroke_of(st, width), None),
         StrokePosition::Inside | StrokePosition::Outside => {
             // Twice the width, half of it cut by the outline.
-            let mut m = Mask::new(d.pm.width(), d.pm.height()).expect("mask");
-            m.fill_path(p, r, true, d.tf);
-            if st.position == StrokePosition::Outside {
-                m.invert();
-            }
-            if let Some(parent) = d.mask {
-                for (a, b) in m.data_mut().iter_mut().zip(parent.data()) {
-                    *a = ((*a as u16 * *b as u16 + 127) / 255) as u8;
+            let inside = st.position == StrokePosition::Inside;
+            let m = match d.mask {
+                // Inside the parents' clip: multiplied only where the
+                // outline is (`mask::intersect`, the same values).
+                Some(parent) if inside && r == FillRule::Winding => {
+                    crate::mask::intersect(parent, p, d.tf)
                 }
-            }
+                _ => {
+                    let mut m = Mask::new(d.pm.width(), d.pm.height()).expect("mask");
+                    m.fill_path(p, r, true, d.tf);
+                    if !inside {
+                        m.invert();
+                    }
+                    if let Some(parent) = d.mask {
+                        for (a, b) in m.data_mut().iter_mut().zip(parent.data()) {
+                            *a = ((*a as u16 * *b as u16 + 127) / 255) as u8;
+                        }
+                    }
+                    m
+                }
+            };
             d.pm.stroke_path(p, &paint, &stroke_of(st, width * 2.0), d.tf, Some(&m));
         }
     }

@@ -11,10 +11,10 @@
    "Chapitres",
    "Écran de fin"
   ],
-  "description": "L’habillage complet d’un podcast filmé ou d’une chaîne YouTube : synthé invité à la largeur du nom, chapitres numérotés, appel à s’abonner animé (le bouton se clique et la cloche sonne), « J’aime », réseaux en rotation et écran de fin aux emplacements YouTube. Chaque graphique a sa mise en page 9:16 pour les Shorts.",
+  "description": "L’habillage complet d’un podcast filmé ou d’une chaîne YouTube : synthé invité à la largeur du nom, chapitres numérotés, appel à s’abonner animé (le bouton se clique et la cloche sonne), « J’aime », réseaux en rotation et écran de fin aux emplacements YouTube. Chaque graphique a sa mise en page 9:16 pour les Shorts.", "summary": "Synthé invité, chapitres et appel à s’abonner.",
   "en": {
    "name": "Podcast & YouTube channel",
-   "description": "A complete package for a filmed podcast or a YouTube channel: guest name strap that fits the name, numbered chapters, an animated subscribe call (the button gets clicked, the bell rings), a like call, rotating socials and an end screen laid out for YouTube’s elements. Every graphic has its 9:16 layout for Shorts."
+   "description": "A complete package for a filmed podcast or a YouTube channel: guest name strap that fits the name, numbered chapters, an animated subscribe call (the button gets clicked, the bell rings), a like call, rotating socials and an end screen laid out for YouTube’s elements. Every graphic has its 9:16 layout for Shorts.", "summary": "Guest strap, chapters and subscribe call to action."
   },
   "cover": "guest"
  },

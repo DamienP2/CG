@@ -7,8 +7,10 @@ import { Card } from '../settings/ui';
 import { useApp } from '../store';
 import { Logo } from '../ui/Logo';
 import { Bar, Dot } from './bits';
-import { bytes, channelTone, cores, coresLabel, fps, fpsTone, inputTone, memTone, num, outputTone, pct, pictureTone, type Tone } from './format';
+import { bytes, channelTone, corePct, cores, coresLabel, fps, fpsTone, inputTone, machinePct, memTone, num, outputTone, pct, pictureTone, type Tone } from './format';
 import { Logs } from './Logs';
+// The badges of the Video streams page (its stylesheet may not be loaded yet).
+import '../outputs/streams.css';
 
 /*
  * The Performance page (admins): what the machine, each channel's pictures
@@ -32,7 +34,7 @@ const INPUT_COLOR = '#a78bfa';
 const kindOf = (k: string) => KIND[k] ?? { label: k, badge: k.toUpperCase(), color: '#8b90aa', icon: Activity };
 
 export function Performance() {
-  const m = useMetrics();
+  const m = useMetrics(1000);
   const [section, setSection] = useState<Section>('overview');
   const item = (s: Section, icon: React.ReactNode, label: string, extra?: Partial<React.ComponentProps<typeof NavItem>>) => <NavItem on={section === s} icon={icon} label={label} onClick={() => setSection(s)} {...extra} />;
   const warns = m?.warnings.filter((w) => w.level !== 'info').length ?? 0;
@@ -56,30 +58,10 @@ export function Performance() {
 
   return (
     <SidePage nav={nav} className="perf-page">
-      <PageHead title={t('Performance')} sub={m ? `${m.machine.hostname} · ${m.machine.cpuName} · ${tn(m.machine.cores, '{n} core', '{n} cores')}` : t('Measuring…')}>
-        {m && <HeadGauges m={m} />}
-      </PageHead>
+      {/* The CPU shows once, in the tiles below. */}
+      <PageHead title={t('Performance')} sub={m ? `${m.machine.hostname} · ${m.machine.cpuName} · ${tn(m.machine.cores, '{n} core', '{n} cores')}` : t('Measuring…')} />
       {section === 'logs' ? <Logs /> : !m ? <div className="loading">{t('Measuring…')}</div> : section === 'overview' ? <Overview m={m} /> : <CapacityView m={m} />}
     </SidePage>
-  );
-}
-
-/** The machine at a glance, in the page header. */
-function HeadGauges({ m }: { m: Metrics }) {
-  const memPct = m.machine.memTotal ? (m.machine.memUsed / m.machine.memTotal) * 100 : 0;
-  return (
-    <div className="perf-head-gauges">
-      <div className="perf-gauge">
-        <span className="perf-gauge-k">CPU</span>
-        <span className={`perf-gauge-v tone-${loadTone(m.machine.cpu)}`}>{pct(m.machine.cpu)}</span>
-        <Bar value={m.machine.cpu} tone={loadTone(m.machine.cpu)} className="big" />
-      </div>
-      <div className="perf-gauge">
-        <span className="perf-gauge-k">{t('Memory')}</span>
-        <span className="perf-gauge-v">{t('{used} of {total}', { used: bytes(m.machine.memUsed), total: bytes(m.machine.memTotal) })}</span>
-        <Bar value={memPct} tone={memTone(memPct)} className="big" />
-      </div>
-    </div>
   );
 }
 
@@ -88,16 +70,19 @@ function HeadGauges({ m }: { m: Metrics }) {
 function Overview({ m }: { m: Metrics }) {
   const { machine, process: p } = m;
   const memPct = machine.memTotal ? (machine.memUsed / machine.memTotal) * 100 : 0;
+  // CPU in % of one core, with the number of cores.
+  const n = Math.max(1, machine.cores);
+  const coreCount = tn(n, '{n} core', '{n} cores');
   return (
     <>
       <div className="perf-tiles">
-        <Tile icon={<Cpu size={15} />} label={t('Processors')} value={pct(machine.cpu)} tone={loadTone(machine.cpu)} bar={machine.cpu} sub={t('{n} cores in use of {total}', { n: cores((machine.cpu * machine.cores) / 100), total: machine.cores })} />
+        <Tile icon={<Cpu size={15} />} label={t('Processors')} value={machinePct(machine.cpu, n)} unit={coreCount} tone={loadTone(machine.cpu)} bar={machine.cpu} sub={tn((machine.cpu * n) / 100, 'of {max} ({n} core in use)', 'of {max} ({n} cores in use)', { max: pct(n * 100), n: cores((machine.cpu * n) / 100) })} />
         <Tile icon={<MemoryStick size={15} />} label={t('Memory')} value={bytes(machine.memUsed)} tone={memTone(memPct)} bar={memPct} sub={t('of {total} · {pct}', { total: bytes(machine.memTotal), pct: pct(memPct) })} />
-        <Tile icon={<Logo size={15} />} label="Strata" value={pct(p.cpu)} sub={t('{mem} of memory', { mem: bytes(p.mem) })} />
-        <Tile icon={<Film size={15} />} label="ffmpeg" value={p.ffmpeg ? pct(p.ffmpegCpu) : '—'} sub={p.ffmpeg ? tn(p.ffmpeg, '{n} process (streams in and out)', '{n} processes (streams in and out)') : t('not running')} />
+        <Tile icon={<Logo size={15} />} label="Strata" value={machinePct(p.cpu, n)} unit={coreCount} sub={t('{mem} of memory', { mem: bytes(p.mem) })} />
+        <Tile icon={<Film size={15} />} label="ffmpeg" value={p.ffmpeg ? machinePct(p.ffmpegCpu, n) : '—'} unit={p.ffmpeg ? coreCount : undefined} sub={p.ffmpeg ? tn(p.ffmpeg, '{n} process (streams in and out)', '{n} processes (streams in and out)') : t('not running')} />
       </div>
 
-      <Warnings list={m.warnings} />
+      <Warnings list={m.warnings} cores={n} />
 
       {m.channels.map((c) => (
         <ChannelCard key={c.id} c={c} />
@@ -108,13 +93,16 @@ function Overview({ m }: { m: Metrics }) {
   );
 }
 
-function Tile({ icon, label, value, sub, tone, bar }: { icon: React.ReactNode; label: string; value: string; sub: string; tone?: Tone; bar?: number }) {
+function Tile({ icon, label, value, unit, sub, tone, bar }: { icon: React.ReactNode; label: string; value: string; unit?: string; sub: string; tone?: Tone; bar?: number }) {
   return (
     <div className="perf-tile">
       <span className="perf-tile-k">
         {icon} {label}
       </span>
-      <span className={`perf-tile-v ${tone ? `tone-${tone}` : ''}`}>{value}</span>
+      <span className={`perf-tile-v ${tone ? `tone-${tone}` : ''}`}>
+        {value}
+        {unit && <small className="ux3-cores">· {unit}</small>}
+      </span>
       {bar !== undefined && <Bar value={bar} tone={tone ?? 'ok'} />}
       <span className="perf-tile-sub">{sub}</span>
     </div>
@@ -123,7 +111,14 @@ function Tile({ icon, label, value, sub, tone, bar }: { icon: React.ReactNode; l
 
 const WARN_ICON = { error: CircleX, warn: TriangleAlert, info: Info };
 
-function Warnings({ list }: { list: Warning[] }) {
+/** A warning's text; the machine's CPU in % of one core, like the tiles. */
+function warningText(w: Warning, n: number): string {
+  const cpu = Number(w.vars?.cpu);
+  if (w.text === 'The machine is at {cpu} % of its processors' && Number.isFinite(cpu)) return t('The machine uses {cpu} of {max} ({cores})', { cpu: machinePct(cpu, n), max: pct(n * 100), cores: tn(n, '{n} core', '{n} cores') });
+  return t(w.text, translatedVars(w.vars));
+}
+
+function Warnings({ list, cores: n }: { list: Warning[]; cores: number }) {
   return (
     <Card icon={<TriangleAlert size={16} />} title={t('Warnings')} actions={list.length > 0 && <span className="count">{list.length}</span>}>
       {list.length === 0 ? (
@@ -138,7 +133,7 @@ function Warnings({ list }: { list: Warning[] }) {
               // The same problem keeps its place from one second to the next.
               <li key={`${w.text}|${JSON.stringify(w.vars)}|${i}`} className={`lv-${w.level}`}>
                 <Icon size={14} />
-                <span>{t(w.text, translatedVars(w.vars))}</span>
+                <span>{warningText(w, n)}</span>
               </li>
             );
           })}
@@ -238,7 +233,7 @@ function PictureBlock({ p, rate }: { p: PictureMetrics; rate: number }) {
                     </td>
                     <td className={`num tone-${o.ok ? fpsTone(o.fps, rate) : 'idle'}`}>{fps(o.fps)}</td>
                     <td className={`num ${o.dropped ? `tone-${tone}` : 'dim0'}`}>{num(o.dropped)}</td>
-                    <td className="num">{coresLabel(o.cpu)}</td>
+                    <td className="num">{corePct(o.cpu)}</td>
                   </tr>
                 );
               })}
@@ -300,7 +295,7 @@ function InputsCard({ inputs }: { inputs: InputMetrics[] }) {
                   </td>
                   <td className="num">{num(i.bufferMs)} ms</td>
                   <td className={`num ${i.dropped ? 'tone-warn' : 'dim0'}`}>{num(i.dropped)}</td>
-                  <td className="num">{coresLabel(i.cpu)}</td>
+                  <td className="num">{corePct(i.cpu)}</td>
                 </tr>
               ))}
             </tbody>

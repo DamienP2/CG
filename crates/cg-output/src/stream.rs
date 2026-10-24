@@ -1,7 +1,9 @@
 //! Stream outputs: SRT, UDP (MPEG-TS), RTMP and HLS, encoded by ffmpeg.
 //!
 //! The picture is laid over a background colour (these streams carry no
-//! alpha), sent to ffmpeg as raw RGB and encoded in H.264 (or HEVC), with a
+//! alpha), sent to ffmpeg as raw Y'CbCr 4:2:0 (BT.709, video levels: what
+//! the encoders take, so ffmpeg converts nothing) and encoded in H.264 (or
+//! HEVC), with a
 //! silent audio track when asked (most RTMP platforms want one). If ffmpeg
 //! stops (the receiver went away, the network dropped), it is started again
 //! two seconds later; meanwhile the output reports why.
@@ -239,7 +241,15 @@ pub fn args(
         "-f",
         "rawvideo",
         "-pix_fmt",
-        "rgb24",
+        "yuv420p",
+        "-colorspace",
+        "bt709",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-color_range",
+        "tv",
         "-s",
         &format!("{width}x{height}"),
         "-framerate",
@@ -263,6 +273,20 @@ pub fn args(
     }
     a.extend(["-c:v".to_string(), encoder.to_string()]);
     a.extend(encoder_args(encoder).into_iter().map(String::from));
+    // Tagged as made (players then decode BT.709, not their default).
+    a.extend(
+        [
+            "-colorspace",
+            "bt709",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-color_range",
+            "tv",
+        ]
+        .map(String::from),
+    );
     a.extend([
         "-b:v".into(),
         format!("{b}k"),
@@ -343,6 +367,126 @@ fn over_background_into(rgba: &[u8], bg: [u8; 3], out: &mut [u8]) {
     }
 }
 
+// BT.709, video levels, on 8-bit R'G'B' (Q16): Y' in 16..235, Cb/Cr
+// centred on 128 (16..240).
+const fn q16(v: f64) -> i32 {
+    (v * 65536.0 + if v >= 0.0 { 0.5 } else { -0.5 }) as i32
+}
+const Y_SCALE: f64 = 219.0 / 255.0;
+const C_SCALE: f64 = 224.0 / 255.0;
+const KY: [i32; 3] = [
+    q16(0.2126 * Y_SCALE),
+    q16(0.7152 * Y_SCALE),
+    q16(0.0722 * Y_SCALE),
+];
+const KCB: [i32; 3] = [
+    q16(-0.2126 / 1.8556 * C_SCALE),
+    q16(-0.7152 / 1.8556 * C_SCALE),
+    q16(0.5 * C_SCALE),
+];
+const KCR: [i32; 3] = [
+    q16(0.5 * C_SCALE),
+    q16(-0.7152 / 1.5748 * C_SCALE),
+    q16(-0.0722 / 1.5748 * C_SCALE),
+];
+
+#[inline(always)]
+fn luma(p: [i32; 3]) -> u8 {
+    ((KY[0] * p[0] + KY[1] * p[1] + KY[2] * p[2] + (16 << 16) + (1 << 15)) >> 16) as u8
+}
+
+/// Cb and Cr of the sum of four pixels.
+#[inline(always)]
+fn chroma4(s: [i32; 3]) -> (u8, u8) {
+    let c = |k: [i32; 3]| {
+        ((k[0] * s[0] + k[1] * s[1] + k[2] * s[2] + (128 << 18) + (1 << 17)) >> 18).clamp(0, 255)
+            as u8
+    };
+    (c(KCB), c(KCR))
+}
+
+/// Size of a 4:2:0 picture: its luma plane, and each chroma plane.
+fn yuv420_planes(width: usize, height: usize) -> (usize, usize) {
+    (width * height, width.div_ceil(2) * height.div_ceil(2))
+}
+
+/// The premultiplied RGBA picture over `bg`, as planar Y'CbCr 4:2:0
+/// (`yuv420p`: BT.709, video levels). `out` holds the conversion of `from`
+/// (when Some): only the row pairs where the pictures differ are done again.
+pub fn yuv420_from(frame: &Frame, from: Option<&Frame>, bg: [u8; 3], out: &mut Vec<u8>) {
+    let (w, h) = (frame.width as usize, frame.height as usize);
+    let (ys, cs) = yuv420_planes(w, h);
+    let len = ys + 2 * cs;
+    let rows = crate::changed_rows(frame, from).filter(|_| out.len() == len);
+    // Every byte is written below (a buffer used again needs no clearing).
+    out.resize(len, 0);
+    if w == 0 || h == 0 || frame.data.len() < w * h * 4 {
+        return;
+    }
+    let cw = w.div_ceil(2);
+    let bg_y = luma([bg[0] as i32, bg[1] as i32, bg[2] as i32]);
+    let (bg_cb, bg_cr) = chroma4([bg[0] as i32 * 4, bg[1] as i32 * 4, bg[2] as i32 * 4]);
+    let (y_plane, uv) = out.split_at_mut(ys);
+    let (u_plane, v_plane) = uv.split_at_mut(cs);
+    // The two rows of a pair over the background, as RGB.
+    let (mut rgb0, mut rgb1) = (vec![0u8; w * 3], vec![0u8; w * 3]);
+    let row = |r: usize| &frame.data[r * w * 4..(r + 1) * w * 4];
+    for cy in 0..h.div_ceil(2) {
+        let (r0, r1) = (cy * 2, (cy * 2 + 1).min(h - 1));
+        if let Some(rows) = &rows {
+            if !rows[r0] && !rows[r1] {
+                continue;
+            }
+        }
+        let empty = |r: usize| row(r).as_chunks::<4>().0.iter().all(|p| p[3] == 0);
+        if empty(r0) && empty(r1) {
+            // Most rows of a graphics picture: nothing over the background.
+            y_plane[r0 * w..(r1 + 1) * w].fill(bg_y);
+            u_plane[cy * cw..(cy + 1) * cw].fill(bg_cb);
+            v_plane[cy * cw..(cy + 1) * cw].fill(bg_cr);
+            continue;
+        }
+        over_background_into(row(r0), bg, &mut rgb0);
+        over_background_into(row(r1), bg, &mut rgb1);
+        luma_row(&rgb0, &mut y_plane[r0 * w..(r0 + 1) * w]);
+        if r1 > r0 {
+            luma_row(&rgb1, &mut y_plane[r1 * w..(r1 + 1) * w]);
+        }
+        chroma_rows(
+            &rgb0,
+            &rgb1,
+            &mut u_plane[cy * cw..(cy + 1) * cw],
+            &mut v_plane[cy * cw..(cy + 1) * cw],
+        );
+    }
+}
+
+/// Y' of a row of RGB.
+fn luma_row(rgb: &[u8], y: &mut [u8]) {
+    const K: [u32; 3] = [KY[0] as u32, KY[1] as u32, KY[2] as u32];
+    for (p, y) in rgb.as_chunks::<3>().0.iter().zip(y) {
+        let v = K[0] * p[0] as u32 + K[1] * p[1] as u32 + K[2] * p[2] as u32;
+        *y = ((v + (16 << 16) + (1 << 15)) >> 16) as u8;
+    }
+}
+
+/// Cb and Cr of two rows of RGB, a pair of columns each.
+fn chroma_rows(a: &[u8], b: &[u8], u: &mut [u8], v: &mut [u8]) {
+    let (pa, pb) = (a.as_chunks::<6>(), b.as_chunks::<6>());
+    let pairs = pa.0.iter().zip(pb.0).zip(u.iter_mut().zip(v.iter_mut()));
+    for ((a, b), (u, v)) in pairs {
+        let s = |i: usize| a[i] as i32 + a[i + 3] as i32 + b[i] as i32 + b[i + 3] as i32;
+        (*u, *v) = chroma4([s(0), s(1), s(2)]);
+    }
+    // An odd width: the last column alone.
+    if let (Some(u), Some(v)) = (u.get_mut(pa.0.len()), v.get_mut(pa.0.len())) {
+        if pa.1.len() == 3 && pb.1.len() == 3 {
+            let s = |i: usize| 2 * (pa.1[i] as i32 + pb.1[i] as i32);
+            (*u, *v) = chroma4([s(0), s(1), s(2)]);
+        }
+    }
+}
+
 fn hex_rgb(s: &str) -> [u8; 3] {
     let h = s.trim().trim_start_matches('#');
     let v = |i: usize| u8::from_str_radix(h.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0);
@@ -356,7 +500,7 @@ fn hex_rgb(s: &str) -> [u8; 3] {
 pub struct StreamSender {
     config: StreamConfig,
     tx: Option<SyncSender<Arc<Vec<u8>>>>,
-    /// Buffers ffmpeg is done with, used again (no 6 MB allocation a frame).
+    /// Buffers ffmpeg is done with, used again (no 3 MB allocation a frame).
     spare: Receiver<Arc<Vec<u8>>>,
     /// The picture sent last and its conversion (the same picture again,
     /// nothing moved: sent again as it is).
@@ -400,7 +544,7 @@ impl StreamSender {
                 OutputError::Unsupported(format!("ffmpeg is needed for stream outputs ({e})"))
             })?;
         let (tx, rx) = mpsc::sync_channel::<Arc<Vec<u8>>>(2);
-        let (back, spare) = mpsc::sync_channel::<Arc<Vec<u8>>>(3);
+        let (back, spare) = mpsc::sync_channel::<Arc<Vec<u8>>>(2);
         let error = Arc::new(Mutex::new(None));
         let child = Slot::default();
         let worker = std::thread::Builder::new()
@@ -568,12 +712,14 @@ impl OutputSink for StreamSender {
                 let at = buf.as_ptr() as usize;
                 let held = self.made.iter().position(|(p, _)| *p == at);
                 let from = held.map(|i| self.made.swap_remove(i).1);
-                over_background_from(frame, from.as_deref(), self.bg, &mut buf);
+                yuv420_from(frame, from.as_deref(), self.bg, &mut buf);
                 // (An address freed and taken again by a new buffer: its old picture forgotten.)
                 let at = buf.as_ptr() as usize;
                 self.made.retain(|(p, _)| *p != at);
                 self.made.push((at, frame.clone()));
-                if self.made.len() > 8 {
+                // The buffers in use: two waiting for ffmpeg, one written,
+                // the last one sent (older pictures are not kept).
+                if self.made.len() > 4 {
                     self.made.remove(0);
                 }
                 let buf = Arc::new(buf);
@@ -654,6 +800,55 @@ mod tests {
         let mut other = vec![7; 3];
         over_background_from(&new, Some(&old), [10, 20, 30], &mut other);
         assert_eq!(other, want);
+    }
+
+    /// BT.709 video levels, as ffmpeg's own conversion (one level off at most).
+    #[test]
+    fn yuv420_is_bt709_video_levels() {
+        let solid = |rgba: [u8; 4]| Frame {
+            width: 4,
+            height: 2,
+            data: rgba.repeat(8),
+            captured_at: std::time::SystemTime::now(),
+        };
+        let mut out = Vec::new();
+        let near = |a: u8, b: u8| a.abs_diff(b) <= 1;
+        for (px, want) in [
+            ([255, 255, 255, 255], (235, 128, 128)),
+            ([0, 0, 0, 255], (16, 128, 128)),
+            ([255, 0, 0, 255], (63, 102, 240)),
+            ([0, 255, 0, 255], (173, 42, 26)),
+            ([0, 0, 255, 255], (32, 240, 118)),
+        ] {
+            yuv420_from(&solid(px), None, [9, 9, 9], &mut out);
+            assert_eq!(out.len(), 8 + 2 + 2);
+            assert!(
+                near(out[0], want.0) && near(out[8], want.1) && near(out[10], want.2),
+                "{px:?}: {:?}",
+                (out[0], out[8], out[10])
+            );
+        }
+        // Nothing: the background.
+        yuv420_from(&solid([0, 0, 0, 0]), None, [255, 255, 255], &mut out);
+        assert_eq!((out[0], out[8], out[10]), (235, 128, 128));
+    }
+
+    #[test]
+    fn yuv420_redoes_only_rows_that_changed() {
+        let old = picture(33, 9, 1);
+        let mut new = old.clone();
+        for b in &mut new.data[33 * 4 * 3..33 * 4 * 5] {
+            *b /= 2;
+        }
+        let mut got = Vec::new();
+        yuv420_from(&old, None, [10, 20, 30], &mut got);
+        let mut want = Vec::new();
+        yuv420_from(&new, None, [10, 20, 30], &mut want);
+        assert_ne!(got, want);
+        yuv420_from(&new, Some(&old), [10, 20, 30], &mut got);
+        assert_eq!(got, want);
+        // Odd sizes: 17 × 5 luma, 9 × 3 chroma planes.
+        assert_eq!(want.len(), 33 * 9 + 2 * 17 * 5);
     }
 
     fn cfg(protocol: Protocol, url: &str) -> StreamConfig {

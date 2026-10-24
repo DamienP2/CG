@@ -19,6 +19,9 @@ pub struct ExampleInfo {
     #[serde(default)]
     pub tags: Vec<String>,
     pub description: String,
+    /// One line for the example's card (the description is the long text).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
     /// The template shown on the example's card (default: the first one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
@@ -32,6 +35,8 @@ pub struct ExampleInfo {
 pub struct Translation {
     pub name: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
 }
 
 /// An example as listed: its card plus what it contains.

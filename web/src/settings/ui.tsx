@@ -1,5 +1,6 @@
 import { Save } from 'lucide-react';
 import { t } from '../i18n';
+import { InfoTip } from '../ui/InfoTip';
 
 /** A titled block of settings. */
 export function Card({ icon, title, children, actions }: { icon: React.ReactNode; title: string; children: React.ReactNode; actions?: React.ReactNode }) {
@@ -19,9 +20,11 @@ export function Card({ icon, title, children, actions }: { icon: React.ReactNode
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="set-field">
-      <span className="set-label">{label}</span>
+      <span className="set-label">
+        {label}
+        {hint && <InfoTip text={hint} />}
+      </span>
       {children}
-      {hint && <span className="set-hint">{hint}</span>}
     </label>
   );
 }

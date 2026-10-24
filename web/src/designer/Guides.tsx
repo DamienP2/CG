@@ -1,10 +1,9 @@
-import { ChevronDown, Contrast, Eye, EyeOff, Move, Plus, Ruler, ShieldCheck, Trash2 } from 'lucide-react';
+import { Eye, Move, Plus, Trash2 } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { newId } from '../engine/evaluate';
 import type { Area, Guides, Project } from '../engine/types';
 import { api, useApp } from '../store';
-import { Segmented } from '../ui/fields';
 import { t } from '../i18n';
 
 /*
@@ -31,7 +30,7 @@ type View = {
 };
 
 export type StageView = 'program' | 'fill' | 'key';
-const STAGE_VIEWS: { id: StageView; label: string }[] = [
+export const STAGE_VIEWS: { id: StageView; label: string }[] = [
   { id: 'program', label: 'Program' },
   { id: 'fill', label: 'Fill' },
   { id: 'key', label: 'Key' },
@@ -379,105 +378,26 @@ function RectEditor({ width, height, px, rects, onChange, onDone }: { width: num
   );
 }
 
-/** A toolbar button whose main part shows / hides, and whose arrow opens the settings. */
-export function SplitButton({ icon, label, on, onToggle, title, children, width = 300 }: { icon: React.ReactNode; label: string; on: boolean; onToggle: () => void; title: string; children: React.ReactNode; width?: number }) {
-  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(null);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
-  return (
-    <div className="menu-wrap split-btn" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={`btn small ${on ? 'on' : 'off'}`} title={on ? t('Hide {what}', { what: title }) : t('Show {what}', { what: title })} onClick={onToggle}>
-        {on ? icon : <EyeOff size={13} />} {label}
-      </button>
-      <button
-        className={`btn small split-arrow ${on ? 'on' : 'off'}`}
-        title={t('{what}: settings', { what: title })}
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setOpen(open ? null : { left: Math.min(r.left - 80, window.innerWidth - width - 10), top: r.bottom + 6 });
-        }}
-      >
-        <ChevronDown size={12} />
-      </button>
-      {open && (
-        <div className="menu guides-menu" style={{ position: 'fixed', left: open.left, top: open.top, width }} onClick={(e) => (e.target as HTMLElement).closest('[data-close]') && setOpen(null)}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Toolbar: the stage as on air (program), its fill or its key, for the whole stage. */
-export function ViewMenu() {
-  const view = useGuidesView();
-  const mode = view.stageView ?? 'program';
-  const label = t(STAGE_VIEWS.find((v) => v.id === mode)!.label);
-  const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(null);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
-  const on = mode !== 'program' ? 'on' : '';
-  return (
-    <div className="menu-wrap split-btn" onPointerDown={(e) => e.stopPropagation()}>
-      <button className={`btn small ${on}`} title={t('Output view: {view} (click to change)', { view: label })} onClick={() => view.set({ stageView: STAGE_VIEWS[(STAGE_VIEWS.findIndex((v) => v.id === mode) + 1) % STAGE_VIEWS.length].id })}>
-        <Contrast size={13} /> {label}
-      </button>
-      <button
-        className={`btn small split-arrow ${on}`}
-        title={t('Output view: choose')}
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setOpen(open ? null : { left: Math.min(r.left - 80, window.innerWidth - 270), top: r.bottom + 6 });
-        }}
-      >
-        <ChevronDown size={12} />
-      </button>
-      {open && (
-        <div className="menu guides-menu" style={{ position: 'fixed', left: open.left, top: open.top, width: 260 }}>
-          <Segmented
-            value={mode}
-            onChange={(v) => {
-              view.set({ stageView: v });
-              setOpen(null);
-            }}
-            options={STAGE_VIEWS.map((v) => ({ value: v.id, label: t(v.label) }))}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Toolbar: rulers and guides (show / hide), snapping. */
-export function GuidesMenu() {
+/** Display menu (DisplayMenu): settings of the rulers and guides, snapping. */
+export function GuidesSettings() {
   const view = useGuidesView();
   return (
-    <SplitButton icon={<Ruler size={13} />} label={t('Guides')} on={view.guides} onToggle={() => view.set({ guides: !view.guides })} title={t('rulers and guides')} width={200}>
-      <label className="switch gm-switch">
-        <input type="checkbox" checked={view.snap} onChange={(e) => view.set({ snap: e.target.checked })} />
-        {t('Snap to guides')}
-      </label>
-    </SplitButton>
+    <label className="switch gm-switch">
+      <input type="checkbox" checked={view.snap} onChange={(e) => view.set({ snap: e.target.checked })} />
+      {t('Snap to guides')}
+    </label>
   );
 }
 
-/** Toolbar: safe areas and areas to keep clear (show / hide, edit on the stage, margins). */
-export function SafeMenu({ project }: { project: Project }) {
+/** Display menu (DisplayMenu): the safe areas and areas to keep clear, edited on the stage, margins, areas. */
+export function SafeSettings({ project }: { project: Project }) {
   const view = useGuidesView();
   const [g, setG] = useProjectGuides(project);
   const W = project.width;
   const H = project.height;
   const pctv = (v: number) => Math.round(v * 1000) / 10;
   return (
-    <SplitButton icon={<ShieldCheck size={13} />} label={t('Safe area')} on={view.safe} onToggle={() => view.set({ safe: !view.safe, editSafe: false })} title={t('safe areas and areas to keep clear')} width={330}>
+    <>
       <button className={`btn small ${view.editSafe ? 'primary' : ''}`} data-close onClick={() => view.set({ editSafe: !view.editSafe })}>
         <Move size={13} /> {view.editSafe ? t('Done editing') : t('Edit on the stage')}
       </button>
@@ -515,7 +435,7 @@ export function SafeMenu({ project }: { project: Project }) {
       <p className="hint">
         <Eye size={11} /> {t('In px of the main format ({w}×{h}). Edit on the stage to move and resize them.', { w: W, h: H })}
       </p>
-    </SplitButton>
+    </>
   );
 }
 

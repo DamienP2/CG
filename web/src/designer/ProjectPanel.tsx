@@ -5,14 +5,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { ProjectPublish } from './Collab';
 import { useDesigner } from './designerStore';
 import { draftOf } from '../engine/drafts';
 import { locale, t, tn } from '../i18n';
 
 /*
- * Left panel, above the templates: the project — its name, format,
- * autosave state and the Publish of its changes. The history of versions
+ * Left panel, above the templates: the project — its name and format (its
+ * autosave state and Publish are in the top bar, TopPublish). The history of versions
  * (kept at each publish, or by hand) with restore is in the top bar
  * (ProjectHistory).
  */
@@ -103,16 +102,11 @@ const when = (ms: number) => {
       });
 };
 
-export function ProjectPanel({ project, saveState, readOnly }: { project: Project; saveState: 'saved' | 'pending'; readOnly: boolean }) {
+export function ProjectPanel({ project, readOnly }: { project: Project; readOnly: boolean }) {
   const toast = useApp((s) => s.toast);
-  const [savedAt, setSavedAt] = useState(Date.now());
   const [formatOpen, setFormatOpen] = useState(false);
   const url = `/api/projects/${encodeURIComponent(project.id)}`;
   const fps = +(project.frameRate.num / project.frameRate.den).toFixed(2);
-
-  useEffect(() => {
-    if (saveState === 'saved') setSavedAt(Date.now());
-  }, [saveState]);
 
   const meta = (patch: Partial<{ name: string; width: number; height: number; frameRate: Project['frameRate']; language: string }>) =>
     api('PUT', url, { name: project.name, description: project.description ?? '', width: project.width, height: project.height, frameRate: project.frameRate, ...patch }).catch((e) => toast((e as Error).message, 'error'));
@@ -141,9 +135,6 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
     <section className="project-panel">
       <header>
         <span>{t('Project')}</span>
-        <span className={`pp-save ${readOnly ? 'ro' : saveState}`} title={t('Changes are saved automatically')}>
-          {readOnly ? t('Read only') : saveState === 'saved' ? t('Saved · {when}', { when: when(savedAt) }) : t('Saving…')}
-        </span>
       </header>
       <div className="pjp-body">
         <div className="pjp-title">
@@ -168,9 +159,6 @@ export function ProjectPanel({ project, saveState, readOnly }: { project: Projec
             </label>
           </>
         )}
-        <div className="pjp-publish">
-          <ProjectPublish project={project} readOnly={readOnly} />
-        </div>
       </div>
     </section>
   );

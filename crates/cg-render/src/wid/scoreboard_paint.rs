@@ -146,6 +146,99 @@ pub(crate) fn path(cmds: &[Cmd]) -> Option<Path> {
     crate::wid::shape::path(cmds)
 }
 
+/// `p` without its contours lying wholly outside the `w` × `h` frame
+/// (through `tf`, with `margin` pixels around it). Such a contour draws
+/// nothing on the frame (filled, it adds nothing to the winding outside of
+/// its bounds; stroked, its outline stays within `margin` of them), so the
+/// picture is the same without the work: a map projects the whole world,
+/// most of it out of view when zoomed in. None: all of it may show;
+/// `Some(None)`: none of it does.
+pub(crate) fn in_view(
+    p: &Path,
+    tf: Transform,
+    w: u32,
+    h: u32,
+    margin: f32,
+) -> Option<Option<Path>> {
+    use tiny_skia::PathSegment as S;
+    let (fx0, fy0, fx1, fy1) = (-margin, -margin, w as f32 + margin, h as f32 + margin);
+    let outside = |r: tiny_skia::Rect| -> bool {
+        let mut pts = [
+            Point::from_xy(r.left(), r.top()),
+            Point::from_xy(r.right(), r.top()),
+            Point::from_xy(r.left(), r.bottom()),
+            Point::from_xy(r.right(), r.bottom()),
+        ];
+        tf.map_points(&mut pts);
+        let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for q in pts {
+            x0 = x0.min(q.x);
+            y0 = y0.min(q.y);
+            x1 = x1.max(q.x);
+            y1 = y1.max(q.y);
+        }
+        x1 < fx0 || y1 < fy0 || x0 > fx1 || y0 > fy1
+    };
+    let b = p.bounds();
+    // Wholly in view: as it is.
+    {
+        let mut pts = [
+            Point::from_xy(b.left(), b.top()),
+            Point::from_xy(b.right(), b.top()),
+            Point::from_xy(b.left(), b.bottom()),
+            Point::from_xy(b.right(), b.bottom()),
+        ];
+        tf.map_points(&mut pts);
+        if pts
+            .iter()
+            .all(|q| q.x >= fx0 && q.y >= fy0 && q.x <= fx1 && q.y <= fy1)
+        {
+            return None;
+        }
+    }
+    let segs: Vec<S> = p.segments().collect();
+    // Contours: (first segment, end, bounds).
+    let mut keep: Vec<(usize, usize)> = Vec::new();
+    let mut dropped = false;
+    let mut i = 0;
+    while i < segs.len() {
+        let start = i;
+        let mut pts: Vec<Point> = Vec::new();
+        loop {
+            match segs[i] {
+                S::MoveTo(a) | S::LineTo(a) => pts.push(a),
+                S::QuadTo(a, b) => pts.extend([a, b]),
+                S::CubicTo(a, b, c) => pts.extend([a, b, c]),
+                S::Close => {}
+            }
+            i += 1;
+            if i >= segs.len() || matches!(segs[i], S::MoveTo(_)) {
+                break;
+            }
+        }
+        match tiny_skia::Rect::from_points(&pts) {
+            Some(r) if outside(r) => dropped = true,
+            _ => keep.push((start, i)),
+        }
+    }
+    if !dropped {
+        return None;
+    }
+    let mut pb = tiny_skia::PathBuilder::new();
+    for (a, b) in keep {
+        for sg in &segs[a..b] {
+            match *sg {
+                S::MoveTo(p) => pb.move_to(p.x, p.y),
+                S::LineTo(p) => pb.line_to(p.x, p.y),
+                S::QuadTo(p1, p) => pb.quad_to(p1.x, p1.y, p.x, p.y),
+                S::CubicTo(p1, p2, p) => pb.cubic_to(p1.x, p1.y, p2.x, p2.y, p.x, p.y),
+                S::Close => pb.close(),
+            }
+        }
+    }
+    Some(pb.finish())
+}
+
 /// Text options.
 #[derive(Clone, Copy)]
 pub(crate) struct T {
@@ -290,10 +383,17 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
             return;
         }
         let Some(p) = path(cmds) else { return };
+        let (w, h) = (self.d.pm.width(), self.d.pm.height());
+        let seen = in_view(&p, self.d.tf, w, h, 2.0);
+        let p = match &seen {
+            None => &p,
+            Some(Some(part)) => part,
+            Some(None) => return,
+        };
         let paint = self.paint(c);
         self.d
             .pm
-            .fill_path(&p, &paint, FillRule::Winding, self.d.tf, self.mask.as_ref());
+            .fill_path(p, &paint, FillRule::Winding, self.d.tf, self.mask.as_ref());
     }
 
     pub fn fill(&mut self, cmds: &[Cmd], c: &str) {
@@ -393,13 +493,38 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
             s.line_cap = tiny_skia::LineCap::Round;
             s.line_join = tiny_skia::LineJoin::Round;
         }
+        // Only what can show: the outline of a contour stays within its
+        // width (miter joins: twice) of it.
+        let tf = self.d.tf;
+        let (w, h) = (self.d.pm.width(), self.d.pm.height());
+        let k = (tf.sx.abs() + tf.kx.abs()).max(tf.ky.abs() + tf.sy.abs());
+        let margin = width * k * 2.0 + 4.0;
+        let mut p = match in_view(&p, tf, w, h, margin) {
+            None => p,
+            Some(Some(part)) => part,
+            Some(None) => return,
+        };
         if let Some((on, off)) = dash {
-            s.dash = StrokeDash::new(vec![on, off], 0.0);
+            // Dashed as tiny-skia does (each contour from its start), then
+            // the dashes out of view dropped (the same picture: dashing is
+            // the first thing `stroke_path` does).
+            let Some(dash) = StrokeDash::new(vec![on, off], 0.0) else {
+                return;
+            };
+            let res = tiny_skia::PathStroker::compute_resolution_scale(&tf);
+            let Some(dashed) = p.dash(&dash, res) else {
+                return;
+            };
+            p = match in_view(&dashed, tf, w, h, margin) {
+                None => dashed,
+                Some(Some(part)) => part,
+                Some(None) => return,
+            };
         }
         let paint = self.paint(c);
         self.d
             .pm
-            .stroke_path(&p, &paint, &s, self.d.tf, self.mask.as_ref());
+            .stroke_path(&p, &paint, &s, tf, self.mask.as_ref());
     }
 
     pub fn stroke(&mut self, cmds: &[Cmd], c: &str, width: f32, round: bool) {
@@ -569,5 +694,83 @@ impl<'x, 'a, 'b> Pt<'x, 'a, 'b> {
         let a = self.alpha;
         let m = self.mask.clone();
         self.d.image(src, t, a, m.as_ref()).is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tiny_skia::{LineCap, LineJoin, PathBuilder, Pixmap};
+
+    /// Contours in view, across its edge, and far out of it (a map's world).
+    fn world() -> Path {
+        let mut pb = PathBuilder::new();
+        for (x, y) in [
+            (10.0, 10.0),
+            (-30.0, 40.0),
+            (400.0, 50.0),
+            (-900.0, -700.0),
+            (5000.0, 30.0),
+        ] {
+            pb.move_to(x, y);
+            pb.line_to(x + 60.0, y + 5.0);
+            pb.cubic_to(x + 80.0, y + 30.0, x + 40.0, y + 70.0, x + 10.0, y + 50.0);
+            pb.close();
+        }
+        // An open polyline leaving the frame and coming back.
+        pb.move_to(20.0, 90.0);
+        for k in 0..40 {
+            pb.line_to(
+                20.0 + k as f32 * 37.0 % 700.0 - 200.0,
+                90.0 + (k % 3) as f32 * 9.0,
+            );
+        }
+        pb.finish().unwrap()
+    }
+
+    /// Dropping what is out of view draws the same pixels, filled, stroked,
+    /// dashed, through a transform.
+    #[test]
+    fn what_is_out_of_view_draws_nothing() {
+        let p = world();
+        let tf = Transform::from_row(1.3, 0.1, -0.05, 1.2, 7.5, -3.25);
+        let (w, h) = (240, 160);
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(200, 30, 90, 180);
+        paint.anti_alias = true;
+        let part = in_view(&p, tf, w, h, 2.0).unwrap().unwrap();
+        assert!(part.len() < p.len());
+        let mut a = Pixmap::new(w, h).unwrap();
+        let mut b = Pixmap::new(w, h).unwrap();
+        a.fill_path(&p, &paint, FillRule::Winding, tf, None);
+        b.fill_path(&part, &paint, FillRule::Winding, tf, None);
+        assert_eq!(a.data(), b.data());
+        let mut s = Stroke {
+            width: 3.0,
+            line_cap: LineCap::Round,
+            line_join: LineJoin::Round,
+            ..Default::default()
+        };
+        let margin = 3.0 * 1.4 * 2.0 + 4.0;
+        let part = in_view(&p, tf, w, h, margin).unwrap().unwrap();
+        let (mut a, mut b) = (Pixmap::new(w, h).unwrap(), Pixmap::new(w, h).unwrap());
+        a.stroke_path(&p, &paint, &s, tf, None);
+        b.stroke_path(&part, &paint, &s, tf, None);
+        assert_eq!(a.data(), b.data());
+        // Dashed: the dashes out of view dropped.
+        let dash = StrokeDash::new(vec![7.0, 4.0], 0.0).unwrap();
+        let dashed = part
+            .dash(&dash, tiny_skia::PathStroker::compute_resolution_scale(&tf))
+            .unwrap();
+        let dashed = in_view(&dashed, tf, w, h, margin).unwrap().unwrap();
+        let (mut a, mut b) = (Pixmap::new(w, h).unwrap(), Pixmap::new(w, h).unwrap());
+        b.stroke_path(&dashed, &paint, &s, tf, None);
+        s.dash = Some(dash);
+        a.stroke_path(&p, &paint, &s, tf, None);
+        assert_eq!(a.data(), b.data());
+        // All of it in view: left as it is; none of it: nothing to draw.
+        assert!(in_view(&p, Transform::from_scale(0.001, 0.001), w, h, 2.0).is_none());
+        let far = Transform::from_translate(10_000.0, 0.0);
+        assert!(matches!(in_view(&p, far, w, h, 2.0), Some(None)));
     }
 }

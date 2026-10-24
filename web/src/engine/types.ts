@@ -498,6 +498,8 @@ export interface ProjectSummary {
   rundown: number;
   /** Template shown on the card. */
   cover?: string;
+  /** Last saved (ms since 1970). */
+  modifiedAt?: number;
 }
 
 export interface ChannelInfo {

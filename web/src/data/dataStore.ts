@@ -24,14 +24,30 @@ export const useData = create<DataState>((set, get) => ({
   },
   onStatus(id, status) {
     const prev = get().sources.find((s) => s.id === id);
-    const changed = prev?.updatedAt !== status.updatedAt;
-    set({
-      sources: get().sources.map((s) => (s.id === id ? { ...s, ...status } : s)),
-      versions: changed ? { ...get().versions, [id]: (get().versions[id] ?? 0) + 1 } : get().versions,
-    });
-    if (!prev) void get().load();
+    const last = lastUpdate.has(id) ? lastUpdate.get(id) : prev?.updatedAt;
+    lastUpdate.set(id, status.updatedAt);
+    if (last !== status.updatedAt) set({ versions: { ...get().versions, [id]: (get().versions[id] ?? 0) + 1 } });
+    // The list is fetched when first used: it will have this status.
+    if (!get().loaded) return;
+    if (!prev) {
+      // A source the list does not have (new, or of a project not shown): the list again, once.
+      if (!reloaded.has(id)) {
+        reloaded.add(id);
+        void get().load().catch(() => {});
+      }
+      return;
+    }
+    // The same status again (a source still failing): nothing to show.
+    const same = (Object.keys(status) as (keyof DataSourceInfo)[]).every((k) => JSON.stringify(prev[k]) === JSON.stringify(status[k as keyof DataStatus]));
+    if (same) return;
+    set({ sources: get().sources.map((s) => (s.id === id ? { ...s, ...status } : s)) });
   },
 }));
+
+/** Last `updatedAt` seen of each source (its value changed when it moves). */
+const lastUpdate = new Map<string, number | null | undefined>();
+/** Sources the list was fetched again for. */
+const reloaded = new Set<string>();
 
 /** Sources, loaded on first use: the shared ones and those of the projects the user sees. */
 export function useSources() {

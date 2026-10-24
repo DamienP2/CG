@@ -10,10 +10,10 @@
    "Statistiques",
    "Cinq de départ"
   ],
-  "description": "Un match de basket à l’américaine : tableau de score avec horloge de match, horloge des 24 secondes, fautes, temps morts et possession (pilotés au clavier par l’opérateur ou par le flux des stats), fiche joueur avec ses statistiques, score par quart-temps, comparatif des équipes et cinq de départ.",
+  "description": "Un match de basket à l’américaine : tableau de score avec horloge de match, horloge des 24 secondes, fautes, temps morts et possession (pilotés au clavier par l’opérateur ou par le flux des stats), fiche joueur avec ses statistiques, score par quart-temps, comparatif des équipes et cinq de départ.", "summary": "Score, horloge de match, 24 secondes, fautes et temps morts.",
   "en": {
    "name": "Basketball",
-   "description": "An NBA-style basketball game: scoreboard with game clock, 24-second shot clock, fouls, timeouts and possession (driven by the operator or the stats feed), player card with his stats, score by quarter, team comparison and starting five."
+   "description": "An NBA-style basketball game: scoreboard with game clock, 24-second shot clock, fouls, timeouts and possession (driven by the operator or the stats feed), player card with his stats, score by quarter, team comparison and starting five.", "summary": "Score, game clock, shot clock, fouls and timeouts."
   },
   "cover": "player"
  },

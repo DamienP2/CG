@@ -10,6 +10,14 @@ use serde::Serialize;
 pub struct Library {
     dir: PathBuf,
     projects: BTreeMap<String, Arc<Project>>,
+    /// When each project was last saved (ms since 1970): its file's date.
+    modified: BTreeMap<String, u64>,
+}
+
+/// Milliseconds since 1970 of a file's last change, or of now.
+fn millis(t: std::time::SystemTime) -> u64 {
+    t.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 /// What lists and pickers need, without the templates.
@@ -27,6 +35,9 @@ pub struct ProjectSummary {
     /// Template shown on the project's card (the first one).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
+    /// Last saved (ms since 1970), for the "recent" order of the projects.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<u64>,
 }
 
 impl From<&Project> for ProjectSummary {
@@ -41,6 +52,7 @@ impl From<&Project> for ProjectSummary {
             templates: p.design_templates().count(),
             rundown: p.rundown.len(),
             cover: p.design_templates().next().map(|t| t.id.clone()),
+            modified_at: None,
         }
     }
 }
@@ -88,6 +100,7 @@ impl Library {
         let mut lib = Self {
             dir,
             projects: BTreeMap::new(),
+            modified: BTreeMap::new(),
         };
         for entry in std::fs::read_dir(&lib.dir)? {
             let path = entry?.path();
@@ -101,6 +114,9 @@ impl Library {
                         tracing::info!(id = p.id, "project migrated to zones");
                         lib.save(p)?;
                     } else {
+                        if let Ok(t) = std::fs::metadata(&path).and_then(|m| m.modified()) {
+                            lib.modified.insert(p.id.clone(), millis(t));
+                        }
                         lib.projects.insert(p.id.clone(), Arc::new(p));
                     }
                 }
@@ -143,27 +159,54 @@ impl Library {
         self.projects.values()
     }
 
+    /// What lists show of a project, with when it was last saved.
+    pub fn summary(&self, p: &Project) -> ProjectSummary {
+        ProjectSummary {
+            modified_at: self.modified.get(&p.id).copied(),
+            ..ProjectSummary::from(p)
+        }
+    }
+
     pub fn first_id(&self) -> Option<String> {
         self.projects.keys().next().cloned()
     }
 
     pub fn save(&mut self, project: Project) -> std::io::Result<Arc<Project>> {
+        Self::write_file(&self.dir, &project)?;
+        let p = Arc::new(project);
+        self.insert(p.clone());
+        Ok(p)
+    }
+
+    /// Where the project files are.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    /// Writes a project's file in `dir` (compact JSON; done without
+    /// holding the library, see `AppState::save_project`).
+    pub fn write_file(dir: &Path, project: &Project) -> std::io::Result<()> {
         if !valid_id(&project.id) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "invalid project id",
             ));
         }
-        let path = self.dir.join(format!("{}.json", project.id));
+        let path = dir.join(format!("{}.json", project.id));
         let tmp = path.with_extension("json.tmp");
         std::fs::write(
             &tmp,
-            serde_json::to_vec_pretty(&project).map_err(std::io::Error::other)?,
+            serde_json::to_vec(project).map_err(std::io::Error::other)?,
         )?;
-        std::fs::rename(&tmp, &path)?;
-        let p = Arc::new(project);
-        self.projects.insert(p.id.clone(), p.clone());
-        Ok(p)
+        std::fs::rename(&tmp, &path)
+    }
+
+    /// Puts a project written with `write_file` in the library; the
+    /// version it replaces.
+    pub fn insert(&mut self, p: Arc<Project>) -> Option<Arc<Project>> {
+        self.modified
+            .insert(p.id.clone(), millis(std::time::SystemTime::now()));
+        self.projects.insert(p.id.clone(), p)
     }
 
     fn versions_dir(&self, id: &str) -> PathBuf {
@@ -235,6 +278,7 @@ impl Library {
         if self.projects.remove(id).is_none() {
             return Ok(false);
         }
+        self.modified.remove(id);
         let path = self.dir.join(format!("{id}.json"));
         match std::fs::remove_file(path) {
             Ok(()) => Ok(true),
@@ -266,6 +310,27 @@ mod tests {
         assert_eq!(Library::load(&dir).unwrap().list().count(), 2);
         assert!(lib.delete("copy").unwrap());
         assert_eq!(Library::load(&dir).unwrap().list().count(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn summaries_carry_the_last_save() {
+        let dir = std::env::temp_dir().join(format!("cg-lib-mtime-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut lib = Library::load(&dir).unwrap();
+        let mut p = cg_core::sample::demo_project();
+        p.id = "dated".into();
+        lib.save(p).unwrap();
+        let at = lib.summary(&lib.get("dated").unwrap()).modified_at.unwrap();
+        assert!(at > 1_600_000_000_000);
+        // After a restart: the file's date.
+        let again = Library::load(&dir).unwrap();
+        let back = again
+            .summary(&again.get("dated").unwrap())
+            .modified_at
+            .unwrap();
+        assert!(back.abs_diff(at) < 5_000);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

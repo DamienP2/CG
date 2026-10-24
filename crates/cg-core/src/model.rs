@@ -2005,7 +2005,7 @@ impl Project {
                 None => {
                     let z = Zone {
                         id: format!("layer-{layer}"),
-                        name: format!("Layer {layer}"),
+                        name: format!("Calque {}", i64::from(layer) + 1),
                         layer,
                         color: ZONE_COLORS[self.zones.len() % ZONE_COLORS.len()].into(),
                         transition: ZoneTransition::Sequential,
@@ -2022,7 +2022,7 @@ impl Project {
         if self.zones.is_empty() {
             self.zones.push(Zone {
                 id: "main".into(),
-                name: "Main".into(),
+                name: "Principal".into(),
                 layer: 10,
                 color: ZONE_COLORS[0].into(),
                 transition: ZoneTransition::Sequential,
@@ -2063,7 +2063,7 @@ impl Project {
         if self.playlists.is_empty() {
             self.playlists.push(Playlist {
                 id: "main".into(),
-                name: "Main".into(),
+                name: "Principal".into(),
                 auto_next: Default::default(),
                 looping: Default::default(),
             });

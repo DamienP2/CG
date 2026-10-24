@@ -11,10 +11,11 @@ import { areaClip, zoneArea } from '../engine/zones';
 import type { Layer, Project, Template } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
+import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
 import { snapShift, snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
 
 interface Box {
   id: string;
@@ -43,6 +44,8 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   const [boxes, setBoxes] = useState<Box[]>([]);
   // The other layers: a faint frame, so the template's layout reads at a glance.
   const [ghosts, setGhosts] = useState<Box[]>([]);
+  // Right-click menu of the layer under the pointer (the timeline's, ClipboardMenu).
+  const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
   const widgetRun = useDesigner((s) => s.widgetRun);
   const widgetState = useDesigner((s) => s.widgetState);
   const running = Object.values(widgetRun).some((r) => r.pausedAge === undefined);
@@ -225,6 +228,11 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       return;
     }
     const l = st.template && findLayer(st.template, id);
+    // Right button: the layer is selected for its menu (onContextMenu), not dragged.
+    if (e.button === 2) {
+      if (!st.selected.includes(id)) st.select([id]);
+      return;
+    }
     if (l?.locked) return;
     let sel = st.selected;
     if (e.shiftKey) sel = sel.includes(id) ? sel.filter((s) => s !== id) : [...sel, id];
@@ -248,7 +256,20 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   return (
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
       <div className={`stage-frame bg-${shown.background}`} onPointerDown={(e) => e.stopPropagation()}>
-        <div ref={sceneRef} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} style={{ position: 'relative' }}>
+        <div
+          ref={sceneRef}
+          onPointerDown={onPointerDown}
+          onDoubleClick={onDoubleClick}
+          onContextMenu={(e) => {
+            const id = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]')?.dataset.layerId;
+            if (!id) return;
+            e.preventDefault();
+            const st = useDesigner.getState();
+            if (!st.selected.includes(id)) st.select([id]);
+            setCtx({ x: e.clientX, y: e.clientY, layerId: id });
+          }}
+          style={{ position: 'relative' }}
+        >
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
             <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
@@ -280,6 +301,12 @@ export function Stage({ project: _project, size, showZones, background }: { proj
       <div className="stage-info">
         {project.width}×{project.height} · {Math.round(scale * 100)}%
       </div>
+      {/* Its clicks do not reach the stage (which would drop the selection). */}
+      {ctx && (
+        <div onPointerDown={(e) => e.stopPropagation()}>
+          <ClipboardMenu at={ctx} onClose={() => setCtx(null)} />
+        </div>
+      )}
     </div>
   );
 }
@@ -361,7 +388,7 @@ function Overview({
         </div>
       </div>
       <div className="stage-info">
-        {t('All templates · {n} · click a graphic to open its template', { n: templates.length })} · {size.width}×{size.height} · {Math.round(scale * 100)}%
+        {tn(templates.length, '{n} template', '{n} templates')} · {size.width}×{size.height} · {Math.round(scale * 100)}%
       </div>
     </div>
   );

@@ -1,30 +1,36 @@
-import { Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
-import { useEffect, useState } from 'react';
-import { Designer } from './designer/Designer';
-import { Operator } from './operator/Operator';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Output } from './output/Output';
-import { ApiPage } from './pages/ApiPage';
-import { MosPage } from './mos/MosPage';
-import { LANGS, setLang, t, tc, useLang, type Lang } from './i18n';
+import { t, tc, useLang } from './i18n';
 import { Login } from './pages/Login';
-import { MosPlugin } from './mos/Plugin';
-import { EmbedPreview } from './embed/Preview';
 import { Projects } from './pages/Projects';
-import { MediaLibrary } from './pages/Media';
-import { Outputs } from './outputs/Outputs';
-import { Performance } from './perf/Performance';
-import { AsRun } from './pages/AsRun';
-import { Hardware } from './hardware/Hardware';
-import { LoadMeter, UsageMeter } from './ui/LoadMeter';
-import { Users } from './pages/Users';
-import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
-import { ProjectSettings } from './pages/ProjectPages';
-import { Settings } from './settings/Settings';
-import { Social } from './social/Social';
-import { api, can, useApp } from './store';
+import { can, useApp } from './store';
+import { StatusPill } from './ui/StatusPill';
+import { UserMenu } from './ui/UserMenu';
+import { NavGroup, type NavEntry } from './ui/NavMenu';
+import { ShortcutsOverlay } from './operator/ShortcutsOverlay';
+
+// The heavy pages load when opened: the project list and the outputs do not carry the Designer.
+const Designer = lazy(() => import('./designer/Designer').then((m) => ({ default: m.Designer })));
+const Operator = lazy(() => import('./operator/Operator').then((m) => ({ default: m.Operator })));
+const ApiPage = lazy(() => import('./pages/ApiPage').then((m) => ({ default: m.ApiPage })));
+const MosPage = lazy(() => import('./mos/MosPage').then((m) => ({ default: m.MosPage })));
+const MosPlugin = lazy(() => import('./mos/Plugin').then((m) => ({ default: m.MosPlugin })));
+const EmbedPreview = lazy(() => import('./embed/Preview').then((m) => ({ default: m.EmbedPreview })));
+const MediaLibrary = lazy(() => import('./pages/Media').then((m) => ({ default: m.MediaLibrary })));
+const Outputs = lazy(() => import('./outputs/Outputs').then((m) => ({ default: m.Outputs })));
+const Performance = lazy(() => import('./perf/Performance').then((m) => ({ default: m.Performance })));
+const AsRun = lazy(() => import('./pages/AsRun').then((m) => ({ default: m.AsRun })));
+const Hardware = lazy(() => import('./hardware/Hardware').then((m) => ({ default: m.Hardware })));
+const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })));
+const DataPage = lazy(() => import('./data/DataPage').then((m) => ({ default: m.DataPage })));
+const ProjectSettings = lazy(() => import('./pages/ProjectPages').then((m) => ({ default: m.ProjectSettings })));
+const Settings = lazy(() => import('./settings/Settings').then((m) => ({ default: m.Settings })));
+const Social = lazy(() => import('./social/Social').then((m) => ({ default: m.Social })));
 
 const LAST_PROJECT = 'pulse.lastProject';
 const LAST_CHANNEL = 'pulse.lastChannel';
@@ -53,16 +59,30 @@ function useRoute(): Route {
   return route;
 }
 
+/** While a page's code loads. */
+const pageLoading = () => <div className="loading">{t('Loading…')}</div>;
+
 export function App() {
   const route = useRoute();
-  if (route.page === 'mosPlugin') return <MosPlugin />;
-  if (route.page === 'embedPreview') return <EmbedPreview />;
+  if (route.page === 'mosPlugin')
+    return (
+      <Suspense fallback={null}>
+        <MosPlugin />
+      </Suspense>
+    );
+  if (route.page === 'embedPreview')
+    return (
+      <Suspense fallback={null}>
+        <EmbedPreview />
+      </Suspense>
+    );
   if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} rendition={route.rendition} />;
   return <Studio route={route} />;
 }
 
 function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin' | 'embedPreview' }> }) {
-  const { auth, init, connect, projects, channels, toasts } = useApp();
+  // Not the channels' live state: the pages that show it read it themselves.
+  const { auth, init, connect, projects, channels } = useApp(useShallow((s) => ({ auth: s.auth, init: s.init, connect: s.connect, projects: s.projects, channels: s.channels })));
   const user = auth?.user;
   // Every text is drawn again in the new language.
   const lang = useLang((s) => s.lang);
@@ -95,54 +115,22 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
     <div className="app" key={lang}>
       {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">{t('Opening…')}</div> : <Home route={route} />}
       <DialogHost />
-      <div className="toasts">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>
-            {t.message}
-          </div>
-        ))}
-      </div>
+      <ShortcutsOverlay />
+      <Toasts />
     </div>
   );
 }
 
-/** FR | EN: kept for the user on the server. */
-function LangSwitch() {
-  const lang = useLang((s) => s.lang);
-  const pick = (l: Lang) => {
-    if (l === lang) return;
-    setLang(l);
-    const { auth, toast } = useApp.getState();
-    if (!auth?.user) return;
-    useApp.setState({ auth: { ...auth, user: { ...auth.user, lang: l } } });
-    api('PUT', '/api/me/lang', { lang: l }).catch((e) => toast((e as Error).message, 'error'));
-  };
+function Toasts() {
+  const toasts = useApp((s) => s.toasts);
   return (
-    <div className="lang-switch" role="group" aria-label={t('Language')}>
-      {LANGS.map((l) => (
-        <button key={l.id} className={lang === l.id ? 'on' : ''} title={l.name} onClick={() => pick(l.id)}>
-          {l.label}
-        </button>
+    <div className="toasts">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast ${t.kind}`}>
+          {t.message}
+        </div>
       ))}
     </div>
-  );
-}
-
-function UserMenu() {
-  const { auth, connected, logout } = useApp();
-  const user = auth!.user!;
-  return (
-    <>
-      <span className={`conn ${connected ? 'ok' : 'ko'}`} title={connected ? t('Connected to engine') : t('Reconnecting…')} />
-      <div className="user-menu" title={`${user.username} · ${t(user.role)}`}>
-        <span className="avatar">{(user.displayName || user.username).slice(0, 1).toUpperCase()}</span>
-        <span className="user-name">{user.displayName || user.username}</span>
-        <LangSwitch />
-        <button className="icon-btn ghost" title={t('Sign out')} onClick={logout}>
-          <LogOut size={14} />
-        </button>
-      </div>
-    </>
   );
 }
 
@@ -153,51 +141,70 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
     document.title = 'Strata Graphics';
   }, []);
   const tab = (page: Route['page'], path: string, icon: React.ReactNode, label: string) => (
-    <button className={route.page === page ? 'on' : ''} title={label} onClick={() => navigate(path)}>
+    <button className={route.page === page ? 'on' : ''} aria-current={route.page === page ? 'page' : undefined} onClick={() => navigate(path)}>
       {icon} <span className="tab-label">{label}</span>
     </button>
   );
+  const entry = (id: Route['page'], path: string, icon: React.ReactNode, label: string): NavEntry => ({ id, path, icon, label });
+  const admin = can.admin(user);
+  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams')), entry('hardware', '/hardware', <CircuitBoard size={14} />, t('I/O')), entry('mos', '/mos', <Newspaper size={14} />, 'MOS')] : [];
+  const system = [
+    ...(admin ? [entry('performance', '/performance', <Gauge size={14} />, t('Performance'))] : []),
+    entry('asrun', '/asrun', <ClipboardList size={14} />, tc('tab', 'As-run')),
+    ...(admin ? [entry('users', '/users', <UsersIcon size={14} />, t('Users'))] : []),
+    entry('api', '/api-docs', <Braces size={14} />, 'API'),
+    entry('settings', '/settings', <SettingsIcon size={14} />, t('Settings')),
+  ];
   return (
     <>
       <nav className="topbar">
         <Brand />
-        <div className="tabs home-tabs">
+        <div className="tabs home-tabs ux1-home-tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, t('Projects'))}
           {tab('media', '/media', <Images size={14} />, t('Assets'))}
           {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
-          {can.admin(user) && tab('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams'))}
-          {can.admin(user) && tab('hardware', '/hardware', <CircuitBoard size={14} />, t('I/O'))}
-          {can.admin(user) && tab('performance', '/performance', <Gauge size={14} />, t('Performance'))}
-          {tab('asrun', '/asrun', <ClipboardList size={14} />, tc('tab', 'As-run'))}
-          {can.admin(user) && tab('mos', '/mos', <Newspaper size={14} />, 'MOS')}
-          {can.admin(user) && tab('users', '/users', <UsersIcon size={14} />, t('Users'))}
-          {tab('api', '/api-docs', <Braces size={14} />, 'API')}
-          {tab('settings', '/settings', <SettingsIcon size={14} />, t('Settings'))}
+          <NavGroup icon={<Radio size={14} />} label={tc('menu', 'Broadcast')} entries={broadcast} current={route.page} />
+          <NavGroup icon={<Server size={14} />} label={t('System')} entries={system} current={route.page} />
         </div>
         <div className="spacer" />
-        <LoadMeter />
-        <UserMenu />
+        <StatusPill />
+        <UserMenu named />
       </nav>
       <div className="content">
-        {route.page === 'projects' && <Projects />}
-        {route.page === 'media' && <MediaLibrary />}
-        {route.page === 'data' && <DataPage />}
-        {route.page === 'outputs' && <Outputs />}
-        {route.page === 'hardware' && <Hardware />}
-        {route.page === 'performance' && <Performance />}
-        {route.page === 'asrun' && <AsRun />}
-        {route.page === 'settings' && <Settings />}
-        {route.page === 'mos' && <MosPage />}
-        {route.page === 'users' && <Users />}
-        {route.page === 'api' && <ApiPage />}
+        <Suspense fallback={pageLoading()}>
+          {route.page === 'projects' && <Projects />}
+          {route.page === 'media' && <MediaLibrary />}
+          {route.page === 'data' && <DataPage />}
+          {route.page === 'outputs' && <Outputs />}
+          {route.page === 'hardware' && <Hardware />}
+          {route.page === 'performance' && <Performance />}
+          {route.page === 'asrun' && <AsRun />}
+          {route.page === 'settings' && <Settings />}
+          {route.page === 'mos' && <MosPage />}
+          {route.page === 'users' && <Users />}
+          {route.page === 'api' && <ApiPage />}
+        </Suspense>
       </div>
     </>
   );
 }
 
+/** « 2 on air »: what the operated channel shows (only this follows its live state). */
+function AirIndicator({ channelId, name }: { channelId: string; name: string }) {
+  const onAir = useApp((s) => Object.keys(s.live[channelId]?.state.layers ?? {}).length);
+  return (
+    <span className={`air-indicator ${onAir ? 'live' : ''}`} title={name}>
+      <Tv size={13} /> {onAir ? t('{n} on air', { n: onAir }) : t('Off air')}
+    </span>
+  );
+}
+
 /** The pages of one project: designer, operator, data and project settings. */
 function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> }) {
-  const { auth, connected, projects, channels, project, openProject, live } = useApp();
+  // Not `live`: the shell is not drawn again on each frame of the channels.
+  const { auth, connected, projects, channels, project, openProject } = useApp(
+    useShallow((s) => ({ auth: s.auth, connected: s.connected, projects: s.projects, channels: s.channels, project: s.project, openProject: s.openProject })),
+  );
   const user = auth!.user!;
   const { projectId, sub } = route;
   const summary = projects.find((p) => p.id === projectId);
@@ -232,7 +239,6 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
     useApp.getState().selectChannel(operated.id);
   }, [operated?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onAir = operated ? Object.keys(live[operated.id]?.state.layers ?? {}).length : 0;
   const tab = (s: ProjectPage, icon: React.ReactNode, label: string) =>
     allowed(s) && (
       <button className={sub === s ? 'on' : ''} title={label} onClick={() => navigate(projectPath(projectId, s, s === 'operator' ? operated?.id : null))}>
@@ -240,6 +246,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
       </button>
     );
   const ready = project && project.id === projectId;
+  const projectName = summary?.name ?? project?.name ?? '…';
 
   let page: React.ReactNode;
   if (!known) page = <div className="loading">{t('This project does not exist or you cannot access it.')}</div>;
@@ -260,36 +267,29 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
       <nav className="topbar">
         <Brand />
         <span className="topbar-sep" aria-hidden />
-        <span className="project-title" title={summary?.description || undefined}>
+        <span className="project-title" title={summary?.description ? `${projectName}\n${summary.description}` : projectName}>
           <small>{t('Project')}</small>
-          <span>{summary?.name ?? project?.name ?? '…'}</span>
+          <span>{projectName}</span>
         </span>
         <div className="tabs project-tabs">
           {tab('designer', <PenTool size={14} />, t('Designer'))}
           {tab('operator', <Radio size={14} />, t('Operator'))}
           {tab('social', <MessagesSquare size={14} />, t('Social'))}
-          {tab('data', <Database size={14} />, t('Connectors'))}
+          {tab('data', <Database size={14} />, t('Data'))}
           {tab('media', <Images size={14} />, t('Assets'))}
           {tab('settings', <SettingsIcon size={14} />, t('Settings'))}
         </div>
         <div className="spacer" />
         {/* Filled by the page (the Designer's undo, redo and history). */}
         <div id="topbar-slot" className="topbar-slot" />
-        {sub === 'designer' && project && (
-          <span className="project-info">
-            {project.width}×{project.height} · {+(project.frameRate.num / project.frameRate.den).toFixed(2)} fps
-          </span>
-        )}
-        {sub === 'operator' && operated && operated.projectId === projectId && (
-          <span className={`air-indicator ${onAir ? 'live' : ''}`} title={operated.name}>
-            <Tv size={13} /> {onAir ? t('{n} on air', { n: onAir }) : t('Off air')}
-          </span>
-        )}
+        {sub === 'operator' && operated && operated.projectId === projectId && <AirIndicator channelId={operated.id} name={operated.name} />}
         {/* The project's own tab: the Performance page opens in another one. */}
-        <UsageMeter />
+        <StatusPill newTab />
         <UserMenu />
       </nav>
-      <div className="content">{page}</div>
+      <div className="content">
+        <Suspense fallback={pageLoading()}>{page}</Suspense>
+      </div>
     </>
   );
 }

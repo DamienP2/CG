@@ -145,7 +145,12 @@ export function seqInfo(c: Config, st: State | undefined, nowMs: number, ageSecs
  * re-rendered while `active`; elsewhere (preview, Designer) the time given.
  */
 function useNow(time: TimeCtx, item: PlayoutItem | undefined, active: boolean) {
-  const lives = useApp((s) => s.live);
+  // When the state holding this item arrived: only that channel's news draw it again.
+  const liveAt = useApp((s) => {
+    if (!item) return undefined;
+    for (const l of Object.values(s.live)) if (Object.values(l.state.layers).includes(item)) return l.at;
+    return undefined;
+  });
   const [, tick] = useState(0);
   const onAir = !!item && active;
   useEffect(() => {
@@ -155,9 +160,8 @@ function useNow(time: TimeCtx, item: PlayoutItem | undefined, active: boolean) {
   }, [onAir]);
   const anchor = useRef({ time, at: Date.now() });
   if (anchor.current.time !== time) anchor.current = { time, at: Date.now() };
-  const live = item && Object.values(lives).find((l) => Object.values(l.state.layers).includes(item));
-  if (!item || !live) return { nowMs: time.nowMs, ageSecs: time.ageSecs };
-  return { nowMs: time.nowMs + Date.now() - anchor.current.at, ageSecs: (item.age ?? 0) / (time.fps ?? 50) + Math.max(0, Date.now() - live.at) / 1000 };
+  if (!item || liveAt === undefined) return { nowMs: time.nowMs, ageSecs: time.ageSecs };
+  return { nowMs: time.nowMs + Date.now() - anchor.current.at, ageSecs: (item.age ?? 0) / (time.fps ?? 50) + Math.max(0, Date.now() - liveAt) / 1000 };
 }
 
 /** Seconds left as −m:ss. */

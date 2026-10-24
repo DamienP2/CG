@@ -10,10 +10,10 @@
    "Tableau",
    "Devises"
   ],
-  "description": "Un habillage d’économie au look terminal : ticker des indices avec flèches de hausse et de baisse, alimenté par une source de données (ou saisi par l’opérateur), graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.",
+  "description": "Un habillage d’économie au look terminal : ticker des indices avec flèches de hausse et de baisse, alimenté par une source de données (ou saisi par l’opérateur), graphique de séance (données collées en CSV), fiche valeur dont la couleur suit le signe de la variation, tableau des marchés (négatifs en rouge) et devises en rotation. Noir, vert et rouge de marché, JetBrains Mono et Space Grotesk.", "summary": "Ticker des indices, cours et graphiques des marchés.",
   "en": {
    "name": "Stock markets",
-   "description": "A terminal-style business package: index ticker with up / down arrows chosen by the operator, intraday chart (data pasted as CSV), stock quote card whose colour follows the sign of the change, market table (negatives in red) and rotating currencies."
+   "description": "A terminal-style business package: index ticker with up / down arrows chosen by the operator, intraday chart (data pasted as CSV), stock quote card whose colour follows the sign of the change, market table (negatives in red) and rotating currencies.", "summary": "Index ticker, prices and market charts."
   },
   "cover": "chart"
  },

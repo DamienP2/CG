@@ -5,6 +5,7 @@ import { api, changeEvents, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Segmented } from '../ui/fields';
 import { locale, t, tn } from '../i18n';
+import { errorProps, friendlyError } from '../ui/serverError';
 import { PLATFORMS, PLATFORM_IDS, PlatformBadge, type Platform } from '../social/PlatformBadge';
 
 /*
@@ -86,9 +87,9 @@ export function useSocialSources() {
 const DAY = 86_400_000;
 
 /** What the list says of a connection, and the colour of its dot. */
-function state(s: SocialInfo): { text: string; dot: string } {
+function state(s: SocialInfo): { text: string; dot: string; raw?: string } {
   if (!s.enabled) return { text: t('Not enabled'), dot: 'idle' };
-  if (s.error) return { text: s.error, dot: 'err' };
+  if (s.error) return { text: friendlyError(s.error), dot: 'err', raw: s.error };
   if (s.expiresAt && s.expiresAt - Date.now() < 7 * DAY) {
     const days = Math.floor((s.expiresAt - Date.now()) / DAY);
     return { text: days < 0 ? t('Token expired') : tn(days, 'Token expires in {n} day', 'Token expires in {n} days'), dot: 'soc-warn' };
@@ -113,7 +114,7 @@ export function SocialSection({ selected, onSelect }: { selected: string | null;
             <PlatformBadge platform={s.platform} />
             <span>
               <strong>{s.name}</strong>
-              <em title={st.text}>{st.text}</em>
+              <em title={st.raw ?? st.text}>{st.text}</em>
             </span>
             <i className={`status-dot ${st.dot}`} />
           </button>
@@ -131,8 +132,13 @@ export function AddSourceMenu({ onData, onSocial }: { onData: () => void; onSoci
   useEffect(() => {
     if (!at) return;
     const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setAt(null);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setAt(null));
     window.addEventListener('pointerdown', close, true);
-    return () => window.removeEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', esc);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', esc);
+    };
   }, [at]);
   const pick = (f: () => void) => () => (setAt(null), f());
   return (
@@ -388,8 +394,8 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
           {t('Enabled')}
         </label>
         {info?.error && (
-          <p className="error-text">
-            <CircleAlert size={13} /> {info.error}
+          <p className="error-text" title={errorProps(info.error).title}>
+            <CircleAlert size={13} /> {errorProps(info.error).text}
           </p>
         )}
         <div className="se-actions soc-actions">

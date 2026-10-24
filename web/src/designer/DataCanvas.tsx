@@ -795,11 +795,36 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const v = cv.visible();
     return { x: Math.round(v.x + v.w / 2 - 160), y: Math.round(v.y + 80 + ((flow.nodes.length * 30) % 200)) };
   };
+  /** The first free place in view (from the top left) for a node `w` wide; below the others when the view is full. */
+  const freeInView = (w: number, h = 120): Pt => {
+    const world = document.querySelector('.data-canvas .logic-canvas');
+    const rects = [...(world?.querySelectorAll<HTMLElement>('.logic-node') ?? [])].map((el) => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }));
+    const free = (x: number, y: number) => !rects.some((r) => x < r.x + r.w + 24 && x + w + 24 > r.x && y < r.y + r.h + 24 && y + h + 24 > r.y);
+    const v = cv.visible();
+    const pad = 32;
+    for (let y = v.y + pad; y + h <= v.y + v.h - pad; y += 24) for (let x = v.x + pad; x + w <= v.x + v.w - pad; x += 24) if (free(x, y)) return { x: Math.round(x), y: Math.round(y) };
+    return freeSpot(world, inView(), w, h);
+  };
+  /** A node already on the canvas: brought into view and flashed. */
+  const focusNode = (id: string) => {
+    const el = document.querySelector<HTMLElement>(`.data-canvas [data-node-id="${CSS.escape(id)}"]`);
+    const vp = cv.ref.current;
+    if (!el || !vp) return;
+    const v = cv.visible();
+    const inside = el.offsetLeft >= v.x && el.offsetTop >= v.y && el.offsetLeft + el.offsetWidth <= v.x + v.w && el.offsetTop + Math.min(el.offsetHeight, 160) <= v.y + v.h;
+    if (!inside) {
+      const zoom = cv.view.zoom;
+      cv.setView({ zoom, x: vp.clientWidth / 2 - (el.offsetLeft + el.offsetWidth / 2) * zoom, y: vp.clientHeight / 3 - el.offsetTop * zoom });
+    }
+    el.classList.remove('ux2-flash');
+    void el.offsetWidth;
+    el.classList.add('ux2-flash');
+  };
   /**
    * Adds a node from the palette: a click puts it in view, a drag where it
    * is dropped — on a data wire, it goes in between.
    */
-  const fromPalette = (e: React.PointerEvent, label: string, add: (at: Pt, edge?: number) => void) => {
+  const fromPalette = (e: React.PointerEvent, label: string, add: (at: Pt, edge?: number) => void, width: number = W.step, onClick?: () => void) => {
     if (e.button !== 0) return;
     e.preventDefault();
     const start = { x: e.clientX, y: e.clientY };
@@ -813,7 +838,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       window.removeEventListener('pointerup', up);
       setGhost(null);
       const world = document.querySelector('.data-canvas .logic-canvas');
-      if (!moved) return add(freeSpot(world, inView()));
+      if (!moved) return onClick ? onClick() : add(freeInView(width));
       const el = document.elementFromPoint(ev.clientX, ev.clientY) as Element | null;
       if (!el?.closest('.logic-canvas')) return;
       const edge = el.closest('[data-edge]')?.getAttribute('data-edge');
@@ -845,7 +870,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   };
   const addDataset = (at: Pt, edge?: number) => {
     const taken = new Set([...template.fields.map((f) => f.key), ...flow.nodes.flatMap((n) => (n.type === 'dataset' ? [n.key] : []))]);
-    const name = `Data set ${flow.nodes.filter((n) => n.type === 'dataset').length + 1}`;
+    const name = t('Data set {n}', { n: flow.nodes.filter((n) => n.type === 'dataset').length + 1 });
     editFlow((f) => {
       const n: FlowNode = { id: newId(), ...at, type: 'dataset', key: fieldKey(name, taken), name, change: 'outIn' };
       f.nodes.push(n);
@@ -881,11 +906,16 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           <button
             className="kind-field"
             onPointerDown={(e) =>
-              fromPalette(e, t('Variable'), (at) => {
-                let made = '';
-                update((t) => void (made = newField(t, `Field ${t.fields.length + 1}`, 'text', '')));
-                setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: at } }));
-              })
+              fromPalette(
+                e,
+                t('Variable'),
+                (at) => {
+                  let made = '';
+                  update((tpl) => void (made = newField(tpl, t('Field {n}', { n: tpl.fields.length + 1 }), 'text', '')));
+                  setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: at } }));
+                },
+                W.field,
+              )
             }
           >
             <Variable size={14} />
@@ -898,7 +928,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           {offered.map((s, i) => (
             <span key={s.id} style={{ display: 'contents' }}>
               {!s.project && (i === 0 || offered[i - 1].project) && <div className="dc-pal-sub">{t('Shared')}</div>}
-              <button className="kind-source" onPointerDown={(e) => fromPalette(e, s.name, addSource(s.id))}>
+              <button
+                className="kind-source"
+                onPointerDown={(e) => {
+                  // Already on the canvas: a click shows it (a drag still adds another).
+                  const there = flow.nodes.find((n) => n.type === 'source' && n.source === s.id);
+                  fromPalette(e, s.name, addSource(s.id), W.source, there && (() => focusNode(there.id)));
+                }}
+              >
                 <Database size={14} />
                 <span>
                   <strong>{s.name}</strong>
@@ -931,7 +968,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           })}
 
           <div className="dc-pal-title">{t('Into the graphic')}</div>
-          <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, t('Data set'), addDataset)}>
+          <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, t('Data set'), addDataset, W.source)}>
             <Rows3 size={14} />
             <span>
               <strong>{t('Data set')}</strong>

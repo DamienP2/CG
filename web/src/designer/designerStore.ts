@@ -341,7 +341,9 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
     const { props = {}, ...rest } = made as { props?: Record<string, unknown> };
     const w = Number(props.width ?? 600);
     const h = Number(props.height ?? 400);
-    return { ...base, type, ...rest, props: { ...props, ...centered(w, h) } } as Layer;
+    // A rectangle is dark, like a panel: a text added on it reads at once (texts are white).
+    const own = type === 'rect' ? { fill: [0.071, 0.078, 0.114, 1] } : {};
+    return { ...base, type, ...rest, props: { ...own, ...props, ...centered(w, h) } } as Layer;
   }
   switch (type) {
     case 'group':
@@ -353,8 +355,10 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
     case 'text':
       return {
         ...base,
+        // Named by its default text, in the interface's language.
+        name: t('New text'),
         type,
-        text: 'New text',
+        text: t('New text'),
         fontFamily: 'Inter',
         fontWeight: 700,
         align: 'left',

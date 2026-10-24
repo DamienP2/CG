@@ -56,10 +56,6 @@ export function ApiKeys({ keys, reload }: { keys: ApiKey[]; reload: () => void }
 
   return (
     <>
-      <p className="hint">
-        {t('For automation (Companion / Stream Deck, newsroom systems, scripts): send')} <code>Authorization: Bearer pcg_…</code>.{' '}
-        {t('A key acts with the rights of its user — create a dedicated operator account scoped to the right channels for each system.')}
-      </p>
       {secret && (
         <div className="key-secret">
           <strong>{secret.again ? t('Key “{name}”:', { name: secret.name }) : t('Key “{name}” created — copy it now:', { name: secret.name })}</strong>

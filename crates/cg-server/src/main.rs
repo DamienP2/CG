@@ -30,6 +30,7 @@ mod service;
 mod social;
 mod state;
 mod sync;
+mod thumbs;
 mod update;
 mod web;
 mod webimages;
@@ -45,7 +46,7 @@ use std::time::SystemTime;
 
 use axum::routing::get;
 use clap::{Args, Parser, Subcommand};
-use tokio::sync::{broadcast, watch, Notify, RwLock};
+use tokio::sync::{watch, Notify, RwLock};
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -244,7 +245,9 @@ enum ServiceCmd {
 
 fn init_logging(log_file: Option<PathBuf>) {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "info,tower_http=warn".into());
+        // tiny-skia warns of every empty shape it is asked to fill (a shape
+        // scaled from zero, ten times a second while it animates): not news.
+        .unwrap_or_else(|_| "info,tower_http=warn,tiny_skia=error".into());
     let path = log_file.clone();
     let file = log_file.and_then(|p| {
         std::fs::create_dir_all(p.parent()?).ok()?;
@@ -509,13 +512,15 @@ pub async fn serve(
                     config: c.clone(),
                     // What it had on air before the restart.
                     state: RwLock::new(state::load_on_air(&data_dir, &c.id, pid.as_deref())),
+                    loaded: state::Loaded::new(pid.as_deref().and_then(|id| library.get(id))),
                     project_id: RwLock::new(pid),
+                    published: Default::default(),
                     dirty: Default::default(),
                     ops: Default::default(),
                 }),
             );
         }
-        let (events, _) = broadcast::channel(256);
+        let events = state::Events::new(256);
         let (closing, _) = watch::channel(false);
         let shared: Shared = Arc::new(AppState {
             data_dir: data_dir.clone(),
@@ -523,6 +528,8 @@ pub async fn serve(
             channels,
             events,
             renderer: Mutex::new(cg_render::Renderer::new(data_dir.join("assets"))),
+            thumbs: Default::default(),
+            saving: Default::default(),
             auth: auth.clone(),
             mos: mos_store.clone(),
             data: data_hub.clone(),
@@ -556,6 +563,7 @@ pub async fn serve(
             // OSC and TCP control (Bitfocus Buttons…), when enabled.
             tokio::spawn(apiv1::serve(shared.clone())),
             tokio::spawn(schedule::run(shared.clone())),
+            tokio::spawn(engine::give_back_memory()),
         ];
 
         let app = api::router()
@@ -572,6 +580,8 @@ pub async fn serve(
             None => app.fallback(web::embedded),
         };
         let app = app
+            // JSON and text gzipped for clients that take it (web.rs).
+            .layer(axum::middleware::from_fn(web::compress))
             .layer(CorsLayer::permissive())
             .with_state(shared.clone());
 

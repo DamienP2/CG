@@ -11,10 +11,10 @@
    "Partenaire",
    "9:16"
   ],
-  "description": "La diffusion en direct d’un festival : synthé artiste et titre en très grand, présentation plein écran de l’artiste, programme de la soirée (tableau que la régie remplit ou importe), prochain concert avec compte à rebours, bug de scène avec l’heure et partenaire en rotation. Style franc et lisible de loin, déclinable en 9:16.",
+  "description": "La diffusion en direct d’un festival : synthé artiste et titre en très grand, présentation plein écran de l’artiste, programme de la soirée (tableau que la régie remplit ou importe), prochain concert avec compte à rebours, bug de scène avec l’heure et partenaire en rotation. Style franc et lisible de loin, déclinable en 9:16.", "summary": "Artiste à l’antenne, programme de la soirée et messages.",
   "en": {
    "name": "Live festival",
-   "description": "A festival live stream: very large artist and song strap, full screen artist intro, the night’s line-up (a table typed or imported), next show with its countdown, a stage bug with the time and rotating sponsors. Bold and readable from afar, with a 9:16 layout."
+   "description": "A festival live stream: very large artist and song strap, full screen artist intro, the night’s line-up (a table typed or imported), next show with its countdown, a stage bug with the time and rotating sponsors. Bold and readable from afar, with a 9:16 layout.", "summary": "Artist on stage, tonight’s line-up and messages."
   },
   "cover": "artist"
  },

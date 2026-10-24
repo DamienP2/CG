@@ -243,7 +243,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         }
     }
     let zm = zone_mask(d, (0.0, 0.0, w, h), c.fade.then_some((!vert, c.fade_size)));
-    let zm = zm.as_ref();
+    let zm = zm.as_deref();
     let now = d.time.now_ms;
     let age = d.time.age_secs;
     match c.mode {
@@ -252,12 +252,14 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             let t = travel(&c, len, bl.last().map(|b| b.y + b.h / 2.0), h);
             let p = progress(&c, st, t.x, now, age) as f32 * t.x;
             let off = t.a - p;
-            for b in &bl {
-                let y = off + b.y;
-                if y > h || y + b.h < 0.0 {
-                    continue;
+            if !roll_strip(d, &c, &bl, len, off, zm) {
+                for b in &bl {
+                    let y = off + b.y;
+                    if y > h || y + b.h < 0.0 {
+                        continue;
+                    }
+                    draw_block(d, &c, b, y, zm);
                 }
-                draw_block(d, &c, b, y, zm);
             }
         }
         Mode::Crawl => {
@@ -384,6 +386,90 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         }
     }
     true
+}
+
+/// A roll whose content top is at `off` (layer pixels), from a strip of
+/// its content drawn once (`strip::roll`). False when the layer is turned or
+/// skewed (drawn directly then).
+fn roll_strip(
+    d: &mut Draw,
+    c: &Config,
+    bl: &[Block],
+    len: f32,
+    off: f32,
+    zm: Option<&Mask>,
+) -> bool {
+    use std::hash::{Hash, Hasher};
+    let key = {
+        let mut k = std::collections::hash_map::DefaultHasher::new();
+        format!("{c:?}{bl:?}").hash(&mut k);
+        k.finish()
+    };
+    let margin = crate::strip::MARGIN as f32;
+    let sy = d.tf.sy;
+    let Draw {
+        rd,
+        pm,
+        r,
+        layer,
+        time,
+        data,
+        frame,
+        hold,
+        fps,
+        state,
+        lang,
+        w,
+        h,
+        tf,
+        opacity,
+        ..
+    } = d;
+    crate::strip::roll(
+        rd,
+        pm,
+        &layer.id,
+        key,
+        *tf,
+        (*w, *h),
+        len,
+        &[off],
+        *opacity,
+        zm,
+        &mut |rd, chunk, t| {
+            // The chunk's rows, in strip rows.
+            let (c0, c1) = (margin - t.ty, margin - t.ty + chunk.height() as f32);
+            let mut sub = Draw {
+                rd,
+                pm: chunk,
+                r,
+                layer,
+                tf: t,
+                mask: None,
+                opacity: 1.0,
+                w: *w,
+                h: *h,
+                time: *time,
+                data,
+                frame: *frame,
+                hold: *hold,
+                fps: *fps,
+                state,
+                lang,
+                runs: None,
+                follow: None,
+                moving: false,
+            };
+            for b in bl {
+                let y0 = sy * b.y + margin;
+                let y1 = sy * (b.y + b.h) + margin;
+                if y1 + 32.0 < c0 || y0 - 32.0 > c1 {
+                    continue;
+                }
+                draw_block(&mut sub, c, b, b.y, None);
+            }
+        },
+    )
 }
 
 /// Tallest thing of the crawl line (panel band).

@@ -1085,7 +1085,7 @@ pub struct Watcher {
     s: Shared,
     user: Option<User>,
     only: Option<String>,
-    events: broadcast::Receiver<Event>,
+    events: broadcast::Receiver<std::sync::Arc<crate::state::Sent>>,
     poke: broadcast::Receiver<()>,
     closing: tokio::sync::watch::Receiver<bool>,
     last: String,
@@ -1111,7 +1111,10 @@ impl Watcher {
             Event::Channel { channel_id, .. } | Event::ZoneLocks { channel_id, .. } => {
                 only.is_none_or(|c| c == channel_id)
             }
-            Event::Channels { .. } | Event::Project { .. } | Event::ProjectDeleted { .. } => true,
+            Event::Channels { .. }
+            | Event::Project { .. }
+            | Event::ProjectTemplate { .. }
+            | Event::ProjectDeleted { .. } => true,
             _ => false,
         }
     }
@@ -1123,7 +1126,7 @@ impl Watcher {
             if self.sent_at.is_some() {
                 let woke = tokio::select! {
                     e = self.events.recv() => match e {
-                        Ok(e) => Self::concerns(self.only.as_deref(), &e),
+                        Ok(e) => Self::concerns(self.only.as_deref(), &e.event),
                         Err(broadcast::error::RecvError::Lagged(_)) => true,
                         Err(broadcast::error::RecvError::Closed) => return None,
                     },

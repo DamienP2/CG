@@ -26,6 +26,19 @@ export const cores = (v: number) => num(v, v >= 10 ? 1 : 2);
 /** "0.39 cores", "1 core" (French: singular under 2). */
 export const coresLabel = (v: number) => tn(v, '{n} core', '{n} cores', { n: cores(v) });
 
+/*
+ * Processor use is shown in % of one core (100 % = one core busy), with the
+ * number of cores: "250 % · 4 cores" (at most 400 %). The server gives the
+ * machine and its processes in % of the whole machine (0–100) and threads in
+ * cores (1.02): these turn either into the same unit.
+ */
+/** Cores in use (1.02) → "102 %". */
+export const corePct = (used: number) => pct(used * 100);
+/** A share of the whole machine (0–100) on `n` cores → % of one core: 100 % of 4 cores → "400 %". */
+export const machinePct = (v: number, n: number) => pct(v * Math.max(1, n));
+/** "400 % · 4 cores": the CPU of the machine (or of a process) and its cores. */
+export const cpuLabel = (v: number, n: number) => `${machinePct(v, n)} · ${tn(n, '{n} core', '{n} cores')}`;
+
 /** "12 GB", "850 MB" (never broken across lines). */
 export function bytes(n: number): string {
   const s = n >= 1024 ** 3 ? t('{n} GB', { n: num(n / 1024 ** 3, 1) }) : t('{n} MB', { n: num(n / 1024 ** 2, 0) });

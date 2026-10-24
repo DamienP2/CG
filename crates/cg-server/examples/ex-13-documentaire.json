@@ -11,10 +11,10 @@
    "Carte",
    "Générique"
   ],
-  "description": "Un habillage de documentaire tout en retenue : titre du film, cartons de chapitre en chiffres romains, citations, légendes d’archives tapées à la machine (date et lieu), intervenants sans cartouche, carte de situation hors ligne et générique de fin en pages. Serif élégant, filets dorés, fondus lents.",
+  "description": "Un habillage de documentaire tout en retenue : titre du film, cartons de chapitre en chiffres romains, citations, légendes d’archives tapées à la machine (date et lieu), intervenants sans cartouche, carte de situation hors ligne et générique de fin en pages. Serif élégant, filets dorés, fondus lents.", "summary": "Titre, chapitres, citations et légendes d’archives.",
   "en": {
    "name": "Documentary",
-   "description": "A restrained documentary package: film title, chapter cards with roman numerals, quotes, typewritten archive captions (date and place), plate-free name straps, an offline location map and paged end credits. Elegant serif, gold hairlines, slow dissolves."
+   "description": "A restrained documentary package: film title, chapter cards with roman numerals, quotes, typewritten archive captions (date and place), plate-free name straps, an offline location map and paged end credits. Elegant serif, gold hairlines, slow dissolves.", "summary": "Title, chapters, quotes and archive captions."
   },
   "cover": "title"
  },

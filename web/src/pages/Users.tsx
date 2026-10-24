@@ -184,7 +184,7 @@ export function Users() {
 
   return (
     <SidePage nav={nav}>
-      <PageHead title={title} sub={`${tn(shown.length, '{n} user', '{n} users')} · ${t('roles decide what people can do; project and channel scopes decide where.')}`}>
+      <PageHead title={title} sub={tn(shown.length, '{n} user', '{n} users')}>
         <button className="btn primary" onClick={() => setEditing(blank(view.kind === 'role' ? view.role : 'operator'))}>
           <Plus size={14} /> {t('New user')}
         </button>
