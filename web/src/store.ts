@@ -15,7 +15,24 @@ type ServerEvent =
   | { type: 'lock'; projectId: string; templateId: string; lock: EditLock | null; takenFrom: string | null }
   | { type: 'folders'; folders: Folders }
   | { type: 'changed'; what: string }
+  | { type: 'presence'; present: Present[] }
+  | { type: 'zoneLocks'; channelId: string; locks: ZoneLock[]; takenFrom: string | null }
   | { type: 'error'; message: string };
+
+/** Someone with the Operator open on a channel. */
+export interface Present {
+  userId: string;
+  userName: string;
+  channelId: string;
+}
+
+/** A zone of a channel held by one operator. */
+export interface ZoneLock {
+  zone: string;
+  userId: string;
+  userName: string;
+  since: number;
+}
 
 /** Folders of the project list (one level) and the folder of each project. */
 export interface Folders {
@@ -60,6 +77,10 @@ interface AppStore {
   project: Project | null;
   channelId: string | null;
   toasts: Toast[];
+  /** Who has the Operator open, on which channel. */
+  presence: Present[];
+  /** Zones held by operators, per channel. */
+  zoneLocks: Record<string, ZoneLock[]>;
 
   init: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
@@ -134,6 +155,14 @@ export interface EditLock {
 /** Lock changes pushed by the server (`detail`: the event). */
 export const lockEvents = new EventTarget();
 
+/** Other server events, by their `type` (`detail`: the event). */
+export const serverEvents = new EventTarget();
+
+/** Sends a message on the socket (dropped while disconnected). */
+export function sendWs(msg: object) {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+}
+
 /** Lists changed by another client (`media`, `media:<project>`, `sources`, `config`). */
 export const changeEvents = new EventTarget();
 
@@ -193,6 +222,8 @@ export const useApp = create<AppStore>((set, get) => {
     project: null,
     channelId: null,
     toasts: [],
+    presence: [],
+    zoneLocks: {},
 
     async init() {
       try {
@@ -297,9 +328,19 @@ export const useApp = create<AppStore>((set, get) => {
             case 'data':
               useData.getState().onStatus(msg.source, msg.status);
               break;
+            case 'presence':
+              set({ presence: msg.present });
+              break;
+            case 'zoneLocks':
+              set({ zoneLocks: { ...get().zoneLocks, [msg.channelId]: msg.locks } });
+              serverEvents.dispatchEvent(new CustomEvent('zoneLocks', { detail: msg }));
+              break;
             case 'error':
               get().toast(msg.message, 'error');
               break;
+            default:
+              // Events other parts of the app listen to (`asRun`, `schedule`…).
+              serverEvents.dispatchEvent(new CustomEvent((msg as { type: string }).type, { detail: msg }));
           }
         };
       };
