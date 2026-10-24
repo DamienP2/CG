@@ -413,6 +413,9 @@ pub struct Config {
     pub text_color: String,
     pub ref_line: RefLine,
     pub texts: Texts,
+    /// Sparkline: the first series alone filling the box (columns, line
+    /// or area), without panel, titles, axes or texts.
+    pub spark: bool,
 }
 
 /// The poll sample of a new chart.
@@ -459,6 +462,7 @@ impl Default for Config {
             text_color: String::new(),
             ref_line: RefLine::default(),
             texts: Texts::default(),
+            spark: false,
         }
     }
 }
@@ -580,7 +584,9 @@ pub fn resolve_grid(c: &Config, data: &Data) -> Vec<Vec<String>> {
         // CSV, or JSON rows (a data set's table).
         Source::Csv => {
             let t = interpolate_text(&c.csv, data);
-            if t.trim_start().starts_with('[') {
+            if let Some(g) = number_list(&t) {
+                g
+            } else if t.trim_start().starts_with('[') {
                 super::table::parse_rows(&t)
             } else {
                 parse_csv(&t)
@@ -592,6 +598,20 @@ pub fn resolve_grid(c: &Config, data: &Data) -> Vec<Vec<String>> {
             .map(|r| r.iter().map(|s| interpolate_text(s, data)).collect())
             .collect(),
     }
+}
+
+/// A JSON list of numbers (`[58, 61, …]`: a count per minute) as one
+/// series, its rows numbered from 1.
+fn number_list(t: &str) -> Option<Vec<Vec<String>>> {
+    let v: Vec<serde_json::Value> = serde_json::from_str(t.trim()).ok()?;
+    if v.is_empty() || !v.iter().all(|x| x.is_number()) {
+        return None;
+    }
+    let mut g = vec![vec![String::new(), "Value".to_string()]];
+    for (i, x) in v.iter().enumerate() {
+        g.push(vec![(i + 1).to_string(), x.to_string()]);
+    }
+    Some(g)
 }
 
 /// The settings with the data values in the titles.
@@ -1306,6 +1326,46 @@ mod tests {
             g,
             vec![vec!["Party", "Votes"], vec!["Yes", "12"], vec!["No", "8"]]
         );
+    }
+
+    #[test]
+    fn a_list_of_numbers_draws_a_sparkline() {
+        let c = Config {
+            source: Source::Csv,
+            csv: "{{series}}".into(),
+            spark: true,
+            ..Default::default()
+        };
+        let mut d = Data::new();
+        d.insert("series".into(), "[3, 0, 5, 8]".into());
+        let g = resolve_grid(&c, &d);
+        assert_eq!(g.len(), 5);
+        assert_eq!(g[4], vec!["4", "8"]);
+        let st = State::default();
+        let inp = |c: &Config| {
+            layout(&Input {
+                cfg: c,
+                st: &st,
+                grid: &g,
+                w: 80.0,
+                h: 40.0,
+                fs: 26.0,
+                age_ms: 5000.0,
+                now: 0,
+                lang: "fr",
+            })
+            .prims
+        };
+        // A column per value above zero, the highest one the box's height; no text.
+        let p = inp(&c);
+        assert_eq!(p.len(), 3);
+        assert!(p.iter().all(|x| matches!(x, Prim::Shape(_))));
+        // A line: one stroke.
+        let line = Config {
+            chart_type: ChartType::Lines,
+            ..c.clone()
+        };
+        assert_eq!(inp(&line).len(), 1);
     }
 
     #[test]

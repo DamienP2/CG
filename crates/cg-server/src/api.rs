@@ -26,6 +26,8 @@ pub fn router() -> Router<Shared> {
     Router::new()
         .merge(crate::media::router())
         .merge(crate::apiv1::router())
+        .merge(crate::social::api::router())
+        .merge(crate::social::moderation::router())
         .route("/api/auth/state", get(auth_state))
         .route("/api/auth/setup", post(auth_setup))
         .route("/api/auth/login", post(auth_login))
@@ -661,19 +663,20 @@ async fn create_from_example(
 ) -> ApiResult<Json<ProjectSummary>> {
     let _edit = s.edits.lock().await;
     require(me.can_create_projects())?;
-    let (mut p, sources) = crate::examples::project(&id).ok_or_else(|| not_found("example"))?;
-    p.id = cg_core::new_id();
+    let new_id = cg_core::new_id();
+    let (mut p, sources) =
+        crate::examples::project(&id, &new_id).ok_or_else(|| not_found("example"))?;
+    p.id = new_id;
     p.rundown.iter_mut().for_each(|r| r.id = cg_core::new_id());
-    // The shared data sources it reads, with their sample value, unless
-    // they exist already (they are never replaced).
+    // The data sources it reads (shared, or the new project's own), with
+    // their sample value, unless they exist already (never replaced).
     let mut added = false;
     for ex in sources {
         let sid = ex.source.id.clone();
         if s.data.get(&sid).is_some() {
             continue;
         }
-        let mut src = ex.source;
-        src.project = None;
+        let src = ex.source;
         s.data.put(src).map_err(internal)?;
         added = true;
         match ex.value {
@@ -3116,6 +3119,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                         true
                     }
                     Event::Schedule { channel_id, .. } => viewer.user.is_some() && viewer.sees_channel(channel_id),
+                    Event::Social { project_id, .. } => viewer.user.as_ref().is_some_and(|u| u.sees_project(project_id)),
                     Event::Error { .. } => false,
                 };
                 if !visible {

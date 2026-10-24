@@ -458,6 +458,24 @@ fn begin_out(project: &Project, item: &mut PlayoutItem) -> bool {
 /// that keep what they show react (`wid::on_data`: a chart freezes the data
 /// of the take, or tweens to the new values).
 fn data_changed(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data) {
+    widgets_react(project, item, old, crate::wid::on_data);
+}
+
+/// The data of a graphic on air was changed by its data sources (`old` →
+/// `item.data`, the server's bindings): the widgets that play a change of
+/// their list react (`wid::on_source_data`: the social wall's cards).
+pub fn source_data_changed(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data) {
+    widgets_react(project, item, old, crate::wid::on_source_data);
+}
+
+type React = fn(
+    &crate::model::Layer,
+    &mut serde_json::Value,
+    &crate::anim::Data,
+    &crate::wid::ActCtx,
+) -> bool;
+
+fn widgets_react(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data, react: React) {
     let Some(t) = project.template(&item.template_id) else {
         return;
     };
@@ -473,7 +491,7 @@ fn data_changed(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Da
             .get(&l.id)
             .cloned()
             .unwrap_or(serde_json::Value::Null);
-        if crate::wid::on_data(l, &mut st, old, &ctx) {
+        if react(l, &mut st, old, &ctx) {
             item.widgets.insert(l.id.clone(), st);
         }
     }

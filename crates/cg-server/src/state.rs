@@ -82,6 +82,12 @@ pub enum Event {
         channel_id: String,
         items: Vec<crate::schedule::View>,
     },
+    /// A project's social desk changed (`crate::social::moderation`).
+    #[serde(rename_all = "camelCase")]
+    Social {
+        project_id: String,
+        change: Box<crate::social::moderation::Change>,
+    },
     Error {
         message: String,
     },
@@ -254,6 +260,10 @@ pub struct AppState {
     pub mos: Arc<crate::mos::Store>,
     /// Data connectors and their latest values.
     pub data: Arc<crate::datasources::Hub>,
+    /// Social network connections and their messages.
+    pub social: Arc<crate::social::Hub>,
+    /// What each project does with them: moderation, hashtags, on air.
+    pub moderation: Arc<crate::social::moderation::Desk>,
     /// Who edits which template in the designer.
     pub locks: Arc<crate::locks::Locks>,
     /// Held from reading a project to saving it, so two edits at the same
@@ -800,11 +810,16 @@ pub fn bind_state(
             }
             changed |= cg_core::datapath::bind(t, data, store);
         };
+        let old = item.data.clone();
         one(
             &item.template_id,
             item.rundown_id.as_deref(),
             &mut item.data,
         );
+        if item.data != old {
+            // Widgets that play a change of their list (the social wall's cards).
+            cg_core::playout::source_data_changed(project, item, &old);
+        }
         if let Some(q) = &mut item.next {
             one(&q.template_id, q.rundown_id.as_deref(), &mut q.data);
         }

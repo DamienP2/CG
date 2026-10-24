@@ -1040,6 +1040,8 @@ impl Renderer {
             | LayerKind::Chart { .. }
             | LayerKind::Map { .. }
             | LayerKind::Scoreboard { .. }
+            | LayerKind::SocialWall { .. }
+            | LayerKind::SocialBadge { .. }
             | LayerKind::Web { .. } => Motion::Still,
             // Clocks, tickers, rolls, counters… (by the time on air).
             _ => Motion::Moving,
@@ -1633,6 +1635,8 @@ impl Renderer {
             | LayerKind::Chart { .. }
             | LayerKind::Map { .. }
             | LayerKind::Scoreboard { .. }
+            | LayerKind::SocialWall { .. }
+            | LayerKind::SocialBadge { .. }
             | LayerKind::Web { .. } => {}
             LayerKind::QrCode {
                 data, background, ..

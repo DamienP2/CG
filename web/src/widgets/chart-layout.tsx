@@ -85,6 +85,8 @@ export interface Config {
   refLine?: { on?: boolean; value?: number; label?: string };
   /** Texts the chart writes itself (empty = in the project's language). */
   texts?: { noData?: string; others?: string; total?: string };
+  /** Sparkline: the first series alone filling the box (columns, line or area), without panel, titles, axes or texts. */
+  spark?: boolean;
 }
 export interface Hl {
   kind: HlKind;
@@ -153,6 +155,7 @@ export function cfg(c: Config) {
     textColor: c.textColor ?? '',
     refLine: { on: false, value: 0, label: '', ...c.refLine },
     texts: { noData: '', others: '', total: '', ...c.texts },
+    spark: c.spark ?? false,
   };
 }
 
@@ -175,9 +178,21 @@ export function resolveGrid(c: Cfg, data: Data): string[][] {
   if (c.source === 'csv') {
     // CSV, or JSON rows (a data set's table).
     const t = interpolateText(c.csv, data);
-    return t.trimStart().startsWith('[') ? parseRows(t) : parseCsv(t);
+    return numberList(t) ?? (t.trimStart().startsWith('[') ? parseRows(t) : parseCsv(t));
   }
   return c.data.map((r) => r.map((s) => interpolateText(String(s ?? ''), data)));
+}
+
+/** A JSON list of numbers (a count per minute) as one series, its rows numbered from 1 (mirrors `number_list`). */
+function numberList(t: string): string[][] | null {
+  let v: unknown;
+  try {
+    v = JSON.parse(t.trim());
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(v) || !v.length || !v.every((x) => typeof x === 'number')) return null;
+  return [['', 'Value'], ...v.map((x, i) => [String(i + 1), String(x)])];
 }
 
 export function withData(c: Cfg, data: Data): Cfg {
@@ -612,6 +627,10 @@ export function layout(inp: Input): Out {
   const cx: Ctx = { c, st: s, p, tm, k: updK(c, s, inp.now), kh: hlK(c, s, inp.now), fs: inp.fs, hidden: 0, ink: inksOf(c), lang: inp.lang };
   const { w, h, fs } = inp;
   const out: Out = { prims: [], hidden: 0, pieNeg: [], pieZero: false, pieOthers: 0, pieMissing: 0 };
+  if (c.spark) {
+    out.prims = spark(cx, w, h);
+    return out;
+  }
   if (c.panel.on) out.prims.push({ ...shape(rectD(0, 0, w, h, [28])), fill: c.panel.color, opacity: c.panel.opacity });
   const pad = Math.round(fs * 1.4);
   let top = pad;
@@ -682,6 +701,38 @@ interface P {
   v: number;
   ci: number;
   interp: boolean;
+}
+
+/** Sparkline: the first series filling the box, growing (columns) or drawn (line, area) from the take (mirrors `spark`). */
+function spark(cx: Ctx, w: number, h: number): Prim[] {
+  const c = cx.c;
+  const vals = cx.p.cats.map((k) => k.vals[0] ?? 0);
+  const n = vals.length;
+  const g: Prim[] = [];
+  if (!n) return g;
+  const { color, width } = seriesStyle(c, 0);
+  const lo = vals.reduce((a, v) => Math.min(a, v), 0);
+  const hi = vals.reduce((a, v) => Math.max(a, v), lo);
+  const span = Math.max(hi - lo, 1e-6);
+  const e = cx.tm.ep(cx.tm.age);
+  if (c.chartType === 'columns' || c.chartType === 'pie') {
+    const slot = w / n;
+    const bw = Math.max(slot * 0.7, 1);
+    const r = Math.min(bw / 2, 3);
+    vals.forEach((v, i) => {
+      const bh = ((v - lo) / span) * h * e;
+      if (bh <= 0) return;
+      g.push({ ...shape(rectD(i * slot + (slot - bw) / 2, h - bh, bw, bh, [r, r, 0, 0])), fill: color });
+    });
+    return g;
+  }
+  const lw = Math.max(Math.min(width, h / 4), 1);
+  const step = n > 1 ? w / (n - 1) : 0;
+  const pts = vals.map((v, i) => [i * step, clamp(h - ((v - lo) / span) * h, lw / 2, h - lw / 2)] as [number, number]);
+  const clip: [number, number, number, number] = [0, 0, w * e, h];
+  if (c.chartType === 'areas') g.push({ ...shape(`${pathLine(pts, c.smooth)}L${pts[n - 1][0]} ${h}L${pts[0][0]} ${h}Z`), fill: color, fillOpacity: c.areaOpacity, clip });
+  g.push({ ...shape(pathLine(pts, c.smooth)), stroke: color, width: lw, round: true, clip });
+  return g;
 }
 
 function xy(cx: Ctx, o: [number, number, number, number]): Prim[] {

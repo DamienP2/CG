@@ -66,6 +66,8 @@ pub struct ItemStatus {
     pub playlist: String,
     pub zone: String,
     pub tally: Tally,
+    /// Rows (or values) of its data sources breaking their rules.
+    pub warnings: usize,
 }
 
 /// What a graphic on air does by itself next, the soonest.
@@ -261,6 +263,7 @@ pub fn project_status(
             playlist: r.playlist.clone(),
             zone: p.item_zone(r).map(|z| z.id.clone()).unwrap_or_default(),
             tally: tally(&r.id),
+            warnings: 0,
         })
         .collect();
     let zones = p
@@ -336,10 +339,17 @@ pub async fn channel_status(s: &Shared, ch: &ChannelRt, user: Option<&User>) -> 
     };
     let st = ch.state.read().await.clone();
     let locks = ch.ops.locks();
-    let (next, items, mut zones) = match &project {
+    let (next, mut items, mut zones) = match &project {
         Some(p) => project_status(p, &st, &cue_of(&id)),
         None => Default::default(),
     };
+    if let Some(p) = &project {
+        for (it, r) in items.iter_mut().zip(&p.rundown) {
+            if let Some(t) = p.template(&r.template_id) {
+                it.warnings = s.data.warnings(cg_core::datapath::sources(t));
+            }
+        }
+    }
     for z in &mut zones {
         z.locked_by = locks
             .iter()

@@ -952,6 +952,8 @@ const MENU: { type?: LayerType; widget?: string; label: string; soon?: typeof Vi
   { type: 'web', label: 'Iframe', soon: Code, hint: 'A web page or your HTML code (HTML5 outputs)' },
   { label: 'Animation (Lottie)', soon: Sparkles, action: 'lottie', hint: 'A Lottie / Bodymovin file (.json, .zip, .lottie) added as layers' },
   { type: 'scoreboard', label: 'Scoreboard' },
+  { type: 'socialWall', label: 'Social wall' },
+  { type: 'socialBadge', label: 'Social badge' },
 ];
 type Menu = MenuItem & { action?: 'video' | 'lottie' };
 const menu = (): Menu[] =>

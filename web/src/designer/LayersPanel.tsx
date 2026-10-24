@@ -1,4 +1,4 @@
-import { Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Timer, Type, Video } from 'lucide-react';
+import { BadgeCheck, MessagesSquare, Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Timer, Type, Video } from 'lucide-react';
 import type { Layer, LayerType, Template } from '../engine/types';
 import { descendants, findLayer } from './designerStore';
 import { num, propValue } from '../engine/evaluate';
@@ -29,6 +29,8 @@ export const ICONS: Record<LayerType, typeof Square> = {
   map: MapIcon,
   scoreboard: Trophy,
   web: Globe,
+  socialWall: MessagesSquare,
+  socialBadge: BadgeCheck,
 };
 
 /** A layer's icon: Video and Lottie layers are an image and a group underneath; a clock layer is a Clock or, stopwatch or countdown, a Time. */

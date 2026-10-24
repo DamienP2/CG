@@ -21,6 +21,7 @@ import { changedKeys, hasControls, hasMore, heldAt, newPreviewRun, partKeys, Pre
 import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
 import { maxChars, shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
+import { DataWarning } from './DataWarning';
 import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
@@ -1134,6 +1135,7 @@ function GraphicRow(props: {
         </span>
         <MiniTimeline template={tpl} air={air} />
       </span>
+      <DataWarning template={tpl} />
       {props.lockedBy && <LockedBy lock={props.lockedBy} />}
       {props.schedule}
       {props.editable && (
@@ -1501,6 +1503,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
           )}
         </span>
         <span className="spacer" />
+        <DataWarning template={tpl} />
         {tpl && (
           <button className={`opx-btn small ${waiting ? 'amber' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={t('F2 / Space')}>
             <ChevronsRight size={13} /> Continue {count('resume')}

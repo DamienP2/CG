@@ -426,6 +426,7 @@ dependencies = [
  "image",
  "jiff",
  "libc",
+ "regex-automata",
  "resvg",
  "ring",
  "roxmltree",

@@ -17,6 +17,8 @@ export interface Item {
   cat?: string;
   text?: string;
   on?: boolean;
+  /** The layer's itemFormat (a list's elements as text). */
+  format?: string;
 }
 export interface Cat {
   name?: string;
@@ -47,6 +49,8 @@ export interface Config {
   emptyMode?: 'message' | 'hide';
   emptyText?: string;
   startFull?: boolean;
+  /** The elements of a linked list (JSON objects, a data set's rows) as text: `{name} · {text}` takes their keys (empty = their text). */
+  itemFormat?: string;
 }
 interface Run {
   at: number;
@@ -92,20 +96,28 @@ export function cfg(c: Config) {
     emptyMode: c.emptyMode ?? 'message',
     emptyText: c.emptyText ?? '',
     startFull: c.startFull ?? false,
+    itemFormat: c.itemFormat ?? '',
   };
 }
 type K = ReturnType<typeof cfg>;
 
 // ----------------------------------------------------- tape (mirror) --
-const it0 = (i: Item) => ({ cat: i.cat ?? '', text: i.text ?? '', on: i.on !== false });
+const it0 = (i: Item) => ({ cat: i.cat ?? '', text: i.text ?? '', on: i.on !== false, format: i.format ?? '' });
 export function layerItems(l: TL): Item[] {
-  if (l.items?.length) return l.items.map(it0);
+  const fmt = (i: Item) => ({ ...i, format: l.itemFormat ?? '' });
+  if (l.items?.length) return l.items.map(it0).map(fmt);
   return String(l.text ?? '')
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((text) => ({ cat: '', text, on: true }));
+    .map((text) => fmt({ cat: '', text, on: true }));
 }
+/** `{key}` of a format replaced by an element's values (mirrors `formatted`). */
+export function formatted(format: string, get: (k: string) => string | undefined): string {
+  return format.replace(/\{([^}]*)\}/g, (_, k: string) => get(k.trim()) ?? '').trim();
+}
+/** A JSON value as text (mirrors datapath::text). */
+const jsonText = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
 export function expand(items: Item[], data: Data): Item[] {
   const out: Item[] = [];
   for (const raw of items) {
@@ -121,14 +133,14 @@ export function expand(items: Item[], data: Data): Item[] {
           const ti = Math.max(0, findCol(tb.head, ['text', 'title', 'headline']));
           const ci = findCol(tb.head, ['cat', 'category']);
           for (const r of tb.rows) {
-            const text = (r[ti] ?? '').trim();
+            const text = it.format ? formatted(it.format, (k) => r[findCol(tb.head, [k.toLowerCase()])]) : (r[ti] ?? '').trim();
             if (text) out.push({ cat: ci >= 0 ? (r[ci] ?? '') : it.cat, text, on: true });
           }
           continue;
         }
         if (Array.isArray(a)) {
           for (const v of a) {
-            const text = typeof v === 'string' ? v : v && typeof v === 'object' ? String(v.text ?? v.title ?? '') : JSON.stringify(v);
+            const text = typeof v === 'string' ? v : v && typeof v === 'object' ? (it.format ? formatted(it.format, (k) => (k in v ? jsonText(v[k]) : undefined)) : String(v.text ?? v.title ?? '')) : JSON.stringify(v);
             const cat = v && typeof v === 'object' && typeof (v.cat ?? v.category) === 'string' ? (v.cat ?? v.category) : it.cat;
             if (text.trim()) out.push({ cat, text: text.trim(), on: true });
           }
@@ -671,9 +683,10 @@ export default defineWidget({
           ) : (
             <>
               <Content path="text" multiline placeholder={t('One item per line')} />
-              <Btns list={[{ label: t('Items'), title: t('Convert to items (categories, on / off)'), onClick: () => set('items', layerItems(l)) }]} />
+              <Btns list={[{ label: t('Items'), title: t('Convert to items (categories, on / off)'), onClick: () => set('items', layerItems(l).map((i) => ({ cat: i.cat, text: i.text, on: i.on }))) }]} />
             </>
           )}
+          {/\{\{\w+\}\}/.test([l.text ?? '', ...k.items.map((x) => x.text ?? '')].join(' ')) && <Text label={t('Item format')} path="itemFormat" value={k.itemFormat} placeholder="{name} · {text}" />}
           <Toggle label={t('Title')} path="title.on" value={k.title.on} />
           {k.title.on && (
             <>

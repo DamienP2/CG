@@ -295,6 +295,7 @@ export default defineWidget({
               ['pie', t('Pie')],
             ]}
           />
+          <Toggle label={t('Sparkline')} path="spark" value={c.spark} />
           {type === 'columns' && (
             <>
               <Seg

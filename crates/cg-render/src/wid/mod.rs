@@ -15,6 +15,8 @@ pub(crate) mod qrcode;
 mod quad;
 mod scoreboard;
 mod shape;
+mod socialbadge;
+mod socialwall;
 mod table;
 mod text;
 mod ticker;
@@ -238,6 +240,8 @@ pub(crate) fn draw(d: &mut Draw) -> bool {
         "map" => map::draw(d, &state(&raw)),
         "qrcode" => qrcode::draw(d, &state(&raw)),
         "scoreboard" => scoreboard::draw(d, &state(&raw)),
+        "socialwall" => socialwall::draw(d, &state(&raw)),
+        "socialbadge" => socialbadge::draw(d, &state(&raw)),
         // No browser here: its box stays empty on these outputs.
         "web" => true,
         _ => false,
@@ -279,6 +283,8 @@ pub(crate) fn motion(d: &mut Draw) -> Option<Motion> {
         "progress" => progress::motion(d, &state(raw)),
         "chart" => chart::motion(d, &state(raw)),
         "scoreboard" => scoreboard::motion(d, &state(raw)),
+        "socialwall" => socialwall::motion(d, &state(raw)),
+        "socialbadge" => socialbadge::motion(d, &state(raw)),
         "map" => map::motions(d, &state(raw)).map(|(under, _)| under),
         // Tickers, credits, typewriters: by the time on air.
         _ => Some(Motion::Moving),

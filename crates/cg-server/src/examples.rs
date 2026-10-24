@@ -88,12 +88,32 @@ pub fn list() -> Vec<ExampleSummary> {
         .collect()
 }
 
-/// A copy of an example, ready to be saved as a new project, and the data
-/// sources it reads.
-pub fn project(id: &str) -> Option<(Project, Vec<ExampleSource>)> {
-    all()
-        .find(|d| d.meta.id == id)
-        .map(|d| (d.project, d.sources))
+/// Written in an example, the id of the project made from it: a data
+/// source of that project only (`social-{{project}}`, the source of the
+/// project's social messages) and the fields reading it.
+pub const PROJECT: &str = "{{project}}";
+
+/// A copy of an example, ready to be saved as the new project `project_id`,
+/// and the data sources it reads (shared ones, and the project's own).
+pub fn project(id: &str, project_id: &str) -> Option<(Project, Vec<ExampleSource>)> {
+    let (json, d) = FILES.iter().find_map(|j| {
+        let d = serde_json::from_str::<ExampleFile>(j).ok()?;
+        (d.meta.id == id).then_some((j, d))
+    })?;
+    let own: Vec<bool> = d
+        .sources
+        .iter()
+        .map(|s| s.source.id.contains(PROJECT))
+        .collect();
+    let mut d = if json.contains(PROJECT) {
+        serde_json::from_str(&json.replace(PROJECT, project_id)).ok()?
+    } else {
+        d
+    };
+    for (s, own) in d.sources.iter_mut().zip(own) {
+        s.source.project = own.then(|| project_id.to_string());
+    }
+    Some((d.project, d.sources))
 }
 
 /// The example and the template of its card.
@@ -420,6 +440,22 @@ mod tests {
             // Given again, or drawn on the kept picture of what does not move.
             assert!(reused + started > 5, "{ex}: {reused} {started}");
         }
+    }
+
+    #[test]
+    fn a_project_source_takes_the_new_projects_id() {
+        let (p, sources) = project("ex-21-reseaux-sociaux", "p42").expect("example");
+        let own = sources
+            .iter()
+            .find(|s| s.source.id == "social-p42")
+            .expect("the project's social source");
+        assert_eq!(own.source.project.as_deref(), Some("p42"));
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains(PROJECT), "no placeholder left");
+        assert!(json.contains("\"source\":\"social-p42\""));
+        // Shared sources stay shared.
+        let (_, sources) = project("ex-20-live-shopping", "p42").expect("example");
+        assert!(sources.iter().all(|s| s.source.project.is_none()));
     }
 
     #[test]

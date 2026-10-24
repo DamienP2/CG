@@ -19,6 +19,8 @@ pub mod qrcode;
 pub mod quad;
 pub mod scoreboard;
 pub mod shape;
+pub mod socialbadge;
+pub mod socialwall;
 pub mod table;
 pub mod text;
 pub mod ticker;
@@ -63,6 +65,8 @@ pub fn widget_id(kind: &LayerKind) -> Option<&'static str> {
         LayerKind::QrCode { .. } => "qrcode",
         LayerKind::Scoreboard { .. } => "scoreboard",
         LayerKind::Web { .. } => "web",
+        LayerKind::SocialWall { .. } => "socialwall",
+        LayerKind::SocialBadge { .. } => "socialbadge",
         _ => return None,
     })
 }
@@ -102,7 +106,20 @@ pub fn act(
         LayerKind::QrCode { .. } => go!(qrcode),
         LayerKind::Scoreboard { .. } => go!(scoreboard),
         LayerKind::Web { .. } => go!(web),
+        LayerKind::SocialWall { .. } => go!(socialwall),
+        LayerKind::SocialBadge { .. } => go!(socialbadge),
         _ => Err("this layer has no operator actions".into()),
+    }
+}
+
+/// The graphic's data changed on air by its data sources (`old` →
+/// `ctx.data`): only the widgets that play a change of their list react
+/// (the social wall); the others follow the source as it is. True when the
+/// layer's state changed.
+pub fn on_source_data(layer: &Layer, state: &mut Value, old: &Data, ctx: &ActCtx) -> bool {
+    match &layer.kind {
+        LayerKind::SocialWall { .. } => on_data(layer, state, old, ctx),
+        _ => false,
     }
 }
 
@@ -115,6 +132,20 @@ pub fn on_data(layer: &Layer, state: &mut Value, old: &Data, ctx: &ActCtx) -> bo
         LayerKind::Chart { .. } => {
             let mut st: chart::State = serde_json::from_value(state.clone()).unwrap_or_default();
             if !chart::on_data(layer, &mut st, old, ctx) {
+                return false;
+            }
+            match serde_json::to_value(st) {
+                Ok(v) => {
+                    *state = v;
+                    true
+                }
+                Err(_) => false,
+            }
+        }
+        LayerKind::SocialWall { .. } => {
+            let mut st: socialwall::State =
+                serde_json::from_value(state.clone()).unwrap_or_default();
+            if !socialwall::on_data(layer, &mut st, old, ctx) {
                 return false;
             }
             match serde_json::to_value(st) {

@@ -5,6 +5,7 @@ mod apiv1;
 mod asrun;
 mod auth;
 mod config;
+mod datarules;
 mod datasources;
 mod decklink;
 mod engine;
@@ -26,6 +27,7 @@ mod render;
 mod rt;
 mod schedule;
 mod service;
+mod social;
 mod state;
 mod sync;
 mod update;
@@ -405,6 +407,8 @@ pub async fn serve(
     let auth = Arc::new(auth::Auth::load(&data_dir));
     let mos_store = Arc::new(mos::Store::load(&data_dir));
     let data_hub = Arc::new(datasources::Hub::load(&data_dir));
+    let social_hub = Arc::new(social::Hub::load(&data_dir));
+    let moderation = Arc::new(social::moderation::Desk::load(&data_dir));
     let locks = Arc::new(locks::Locks::default());
     let output_status = Arc::new(state::OutputStatus::default());
     // Live inputs keep running across engine restarts.
@@ -522,6 +526,8 @@ pub async fn serve(
             auth: auth.clone(),
             mos: mos_store.clone(),
             data: data_hub.clone(),
+            social: social_hub.clone(),
+            moderation: moderation.clone(),
             locks: locks.clone(),
             edits: Default::default(),
             output_status: output_status.clone(),
@@ -545,6 +551,8 @@ pub async fn serve(
         let engine = vec![
             tokio::spawn(mos::serve(shared.clone())),
             tokio::spawn(datasources::run(shared.clone())),
+            tokio::spawn(social::run::run(shared.clone())),
+            tokio::spawn(social::moderation::run(shared.clone())),
             // OSC and TCP control (Bitfocus Buttons…), when enabled.
             tokio::spawn(apiv1::serve(shared.clone())),
             tokio::spawn(schedule::run(shared.clone())),

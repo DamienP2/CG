@@ -1,4 +1,4 @@
-import { Braces, CircuitBoard, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, LogOut, Newspaper, PenTool, Radio, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
 import { useEffect, useState } from 'react';
@@ -23,6 +23,7 @@ import { DataPage } from './data/DataPage';
 import { navigate, parseRoute, projectPath, type ProjectPage, type Route } from './router';
 import { ProjectSettings } from './pages/ProjectPages';
 import { Settings } from './settings/Settings';
+import { Social } from './social/Social';
 import { api, can, useApp } from './store';
 
 const LAST_PROJECT = 'pulse.lastProject';
@@ -211,7 +212,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   }, [summary?.name]);
 
   // Pages a role cannot see.
-  const allowed = (s: ProjectPage) => (s === 'operator' || s === 'media' ? can.operate(user) : can.design(user));
+  const allowed = (s: ProjectPage) => (s === 'operator' || s === 'social' || s === 'media' ? can.operate(user) : can.design(user));
   useEffect(() => {
     if (!allowed(sub)) navigate(projectPath(projectId, can.design(user) ? 'designer' : 'operator'), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,6 +245,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   if (!known) page = <div className="loading">{t('This project does not exist or you cannot access it.')}</div>;
   else if (!ready) page = <div className="loading">{t('Opening the project…')}</div>;
   else if (sub === 'designer') page = <Designer key={project.id} />;
+  else if (sub === 'social') page = <Social key={projectId} projectId={projectId} />;
   else if (sub === 'data') page = <DataPage key={projectId} projectId={projectId} />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
   else if (sub === 'settings') page = <ProjectSettings project={summary ?? { ...project, description: project.description ?? '' }} />;
@@ -265,6 +267,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         <div className="tabs project-tabs">
           {tab('designer', <PenTool size={14} />, t('Designer'))}
           {tab('operator', <Radio size={14} />, t('Operator'))}
+          {tab('social', <MessagesSquare size={14} />, t('Social'))}
           {tab('data', <Database size={14} />, t('Connectors'))}
           {tab('media', <Images size={14} />, t('Assets'))}
           {tab('settings', <SettingsIcon size={14} />, t('Settings'))}

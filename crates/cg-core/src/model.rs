@@ -581,6 +581,18 @@ pub enum LayerKind {
         #[serde(flatten)]
         x: crate::wid::web::Config,
     },
+    /// Social wall: approved messages of a social source as cards.
+    #[serde(rename_all = "camelCase")]
+    SocialWall {
+        #[serde(flatten)]
+        x: crate::wid::socialwall::Config,
+    },
+    /// A social platform's badge, or a person's avatar.
+    #[serde(rename_all = "camelCase")]
+    SocialBadge {
+        #[serde(flatten)]
+        x: crate::wid::socialbadge::Config,
+    },
     /// Horizontal bar chart / poll: one "Label: value" per line.
     #[serde(rename_all = "camelCase")]
     BarChart {

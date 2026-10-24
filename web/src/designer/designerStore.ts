@@ -302,6 +302,8 @@ export const LABELS: Record<LayerType, string> = {
   map: 'Map',
   scoreboard: 'Scoreboard',
   web: 'Iframe',
+  socialWall: 'Social wall',
+  socialBadge: 'Social badge',
 };
 
 /** Widget presets offered in the toolbar menu (a type plus overrides). */

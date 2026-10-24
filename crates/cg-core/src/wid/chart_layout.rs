@@ -528,6 +528,10 @@ pub fn layout(inp: &Input) -> Out {
     };
     let (w, h, fs) = (inp.w, inp.h, inp.fs);
     let mut out = Out::default();
+    if c.spark {
+        out.prims = spark(&cx, w, h);
+        return out;
+    }
     if c.panel.on {
         let mut s = shape(rect_cmds(0.0, 0.0, w, h, &[28.0]));
         s.fill = Some(c.panel.color.clone());
@@ -677,6 +681,72 @@ pub fn layout(inp: &Input) -> Out {
     }
     out.hidden = cx.hidden;
     out
+}
+
+/// Sparkline: the first series filling the box, growing (columns) or drawn
+/// (line, area) from the take.
+fn spark(cx: &Ctx, w: f32, h: f32) -> Vec<Prim> {
+    let c = cx.c;
+    let vals: Vec<f32> =
+        cx.p.cats
+            .iter()
+            .map(|k| k.vals.first().copied().flatten().unwrap_or(0.0))
+            .collect();
+    let n = vals.len();
+    let mut g = Vec::new();
+    if n == 0 {
+        return g;
+    }
+    let (color, width, _) = series_style(c, 0);
+    let lo = vals.iter().copied().fold(0.0f32, f32::min);
+    let hi = vals.iter().copied().fold(lo, f32::max);
+    let span = (hi - lo).max(1e-6);
+    let e = cx.tm.ep(cx.tm.age);
+    if c.chart_type == ChartType::Columns || c.chart_type == ChartType::Pie {
+        let slot = w / n as f32;
+        let bw = (slot * 0.7).max(1.0);
+        let r = (bw / 2.0).min(3.0);
+        for (i, v) in vals.iter().enumerate() {
+            let bh = (v - lo) / span * h * e;
+            if bh <= 0.0 {
+                continue;
+            }
+            let x = i as f32 * slot + (slot - bw) / 2.0;
+            let mut s = shape(rect_cmds(x, h - bh, bw, bh, &[r, r, 0.0, 0.0]));
+            s.fill = Some(color.clone());
+            g.push(Prim::Shape(s));
+        }
+        return g;
+    }
+    let lw = width.min(h / 4.0).max(1.0);
+    let step = if n > 1 { w / (n - 1) as f32 } else { 0.0 };
+    let pts: Vec<(f32, f32)> = vals
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let y = h - (v - lo) / span * h;
+            (i as f32 * step, clamp(y, lw / 2.0, h - lw / 2.0))
+        })
+        .collect();
+    let clip = Some([0.0, 0.0, w * e, h]);
+    if c.chart_type == ChartType::Areas {
+        let mut d = path_line(&pts, c.smooth);
+        d.push(Cmd::Line(pts[n - 1].0, h));
+        d.push(Cmd::Line(pts[0].0, h));
+        d.push(Cmd::Close);
+        let mut s = shape(d);
+        s.fill = Some(color.clone());
+        s.fill_opacity = c.area_opacity;
+        s.clip = clip;
+        g.push(Prim::Shape(s));
+    }
+    let mut s = shape(path_line(&pts, c.smooth));
+    s.stroke = Some(color);
+    s.width = lw;
+    s.round = true;
+    s.clip = clip;
+    g.push(Prim::Shape(s));
+    g
 }
 
 fn xy(cx: &mut Ctx, o: (f32, f32, f32, f32)) -> Vec<Prim> {

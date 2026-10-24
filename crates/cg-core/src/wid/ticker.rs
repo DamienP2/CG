@@ -98,6 +98,9 @@ pub struct Item {
     pub cat: String,
     pub text: String,
     pub on: bool,
+    /// The layer's `item_format` (a list's elements as text).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub format: String,
 }
 
 impl Default for Item {
@@ -106,6 +109,7 @@ impl Default for Item {
             cat: String::new(),
             text: String::new(),
             on: true,
+            format: String::new(),
         }
     }
 }
@@ -190,6 +194,9 @@ pub struct Config {
     pub empty_text: String,
     /// Crawl: the zone is full at the In (else the text enters from the edge).
     pub start_full: bool,
+    /// The elements of a linked list (JSON objects, a data set's rows) as
+    /// text: `{name} · {text}` takes their keys (empty = their text).
+    pub item_format: String,
 }
 
 impl Default for Config {
@@ -217,6 +224,7 @@ impl Default for Config {
             empty_mode: EmptyMode::Message,
             empty_text: String::new(),
             start_full: false,
+            item_format: String::new(),
         }
     }
 }
@@ -249,18 +257,45 @@ pub fn of(layer: &Layer) -> Option<Ticker<'_>> {
 
 /// The list of the layer: its items, or the lines of the old text.
 pub fn layer_items(t: &Ticker) -> Vec<Item> {
+    let fmt = |mut i: Item| {
+        i.format = t.c.item_format.clone();
+        i
+    };
     if !t.c.items.is_empty() {
-        return t.c.items.clone();
+        return t.c.items.iter().cloned().map(fmt).collect();
     }
     t.text
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
-        .map(|l| Item {
-            text: l.to_string(),
-            ..Item::default()
+        .map(|l| {
+            fmt(Item {
+                text: l.to_string(),
+                ..Item::default()
+            })
         })
         .collect()
+}
+
+/// `{key}` of a format replaced by an element's values.
+pub fn formatted(format: &str, get: &dyn Fn(&str) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut rest = format;
+    while let Some(i) = rest.find('{') {
+        out.push_str(&rest[..i]);
+        match rest[i + 1..].find('}') {
+            Some(j) => {
+                out.push_str(&get(rest[i + 1..i + 1 + j].trim()).unwrap_or_default());
+                rest = &rest[i + 2 + j..];
+            }
+            None => {
+                out.push_str(&rest[i..]);
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_string()
 }
 
 /// Items to show: enabled, interpolated, a linked value expanded into its
@@ -278,15 +313,21 @@ pub fn expand(items: &[Item], data: &Data) -> Vec<Item> {
                     let text = find_col(&head, &["text", "title", "headline"]).unwrap_or(0);
                     let cat = find_col(&head, &["cat", "category"]);
                     for r in &rows {
-                        let t = r.get(text).map(|s| s.trim()).unwrap_or("");
+                        let t = if it.format.is_empty() {
+                            r.get(text).map(|s| s.trim()).unwrap_or("").to_string()
+                        } else {
+                            formatted(&it.format, &|k| {
+                                find_col(&head, &[k]).and_then(|i| r.get(i)).cloned()
+                            })
+                        };
                         if !t.is_empty() {
                             out.push(Item {
                                 cat: cat
                                     .and_then(|i| r.get(i))
                                     .cloned()
                                     .unwrap_or_else(|| it.cat.clone()),
-                                text: t.to_string(),
-                                on: true,
+                                text: t,
+                                ..Item::default()
                             });
                         }
                     }
@@ -295,6 +336,14 @@ pub fn expand(items: &[Item], data: &Data) -> Vec<Item> {
                 for v in a {
                     let (text, cat) = match &v {
                         serde_json::Value::String(s) => (s.clone(), it.cat.clone()),
+                        serde_json::Value::Object(o) if !it.format.is_empty() => (
+                            formatted(&it.format, &|k| o.get(k).map(crate::datapath::text)),
+                            o.get("cat")
+                                .or_else(|| o.get("category"))
+                                .and_then(|x| x.as_str())
+                                .map(String::from)
+                                .unwrap_or_else(|| it.cat.clone()),
+                        ),
                         serde_json::Value::Object(o) => (
                             o.get("text")
                                 .or_else(|| o.get("title"))
@@ -313,7 +362,7 @@ pub fn expand(items: &[Item], data: &Data) -> Vec<Item> {
                         out.push(Item {
                             cat,
                             text: text.trim().to_string(),
-                            on: true,
+                            ..Item::default()
                         });
                     }
                 }
@@ -324,7 +373,7 @@ pub fn expand(items: &[Item], data: &Data) -> Vec<Item> {
             out.push(Item {
                 cat: it.cat.clone(),
                 text: line.to_string(),
-                on: true,
+                ..Item::default()
             });
         }
     }
@@ -1135,5 +1184,28 @@ mod tests {
         let e = expand(&[it("{{news}}")], &d);
         assert_eq!(e.len(), 2);
         assert_eq!(e[0].cat, "SPORT");
+    }
+
+    #[test]
+    fn a_list_of_messages_reads_with_the_item_format() {
+        let l = layer(
+            r#"{"id":"a","name":"T","type":"ticker","text":"{{msgs}}","separator":" ","speed":100,"fontFamily":"Inter","fontWeight":700,"itemFormat":"{name} · {text}","props":{}}"#,
+        );
+        let items = layer_items(&of(&l).unwrap());
+        let mut d = Data::new();
+        d.insert(
+            "msgs".into(),
+            r#"[{"name":"Sophie L.","text":"Pourquoi ?","n":3},{"name":"","text":"Seul"}]"#.into(),
+        );
+        let e = expand(&items, &d);
+        let texts: Vec<&str> = e.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(texts, vec!["Sophie L. · Pourquoi ?", "· Seul"]);
+        // A data set's table: by its column names.
+        d.insert(
+            "msgs".into(),
+            r#"[["name","text"],["Kevin","Brest !"]]"#.into(),
+        );
+        assert_eq!(expand(&items, &d)[0].text, "Kevin · Brest !");
+        assert_eq!(formatted("{n} min", &|_| Some("58".into())), "58 min");
     }
 }

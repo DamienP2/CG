@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value as Json};
 
+use crate::datarules::{Issue, Rule};
 use crate::state::{now_ms, Event, Shared};
 
 /// Largest document accepted.
@@ -32,6 +33,9 @@ pub struct Source {
     pub interval: u32,
     #[serde(default = "yes")]
     pub enabled: bool,
+    /// Checked after every fetch or push (see `crate::datarules`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<Rule>,
 }
 
 fn default_interval() -> u32 {
@@ -103,6 +107,8 @@ pub struct Status {
     pub checked_at: Option<i64>,
     pub error: Option<String>,
     pub bytes: usize,
+    /// The value's broken rules (always sent, so clients clear old ones).
+    pub issues: Vec<Issue>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -144,6 +150,7 @@ impl Hub {
                 status.insert(
                     s.id.clone(),
                     Status {
+                        issues: issues_of(&dir, s, &v),
                         value: Some(v),
                         updated_at: at,
                         ..Default::default()
@@ -201,6 +208,7 @@ impl Hub {
 
     /// Creates or replaces a source.
     pub fn put(&self, source: Source) -> anyhow::Result<()> {
+        let id = source.id.clone();
         let mut list = self.sources.write().unwrap_or_else(|e| e.into_inner());
         match list.iter_mut().find(|s| s.id == source.id) {
             Some(s) => *s = source,
@@ -208,8 +216,34 @@ impl Hub {
         }
         self.save(&list)?;
         drop(list);
+        self.recheck(&id);
         self.wake.notify_one();
         Ok(())
+    }
+
+    /// Checks the current value again (its rules changed).
+    fn recheck(&self, id: &str) {
+        let Some(src) = self.get(id) else { return };
+        let mut all = self.status.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(st) = all.get_mut(id) {
+            st.issues = st
+                .value
+                .as_ref()
+                .map(|v| issues_of(&self.dir, &src, v))
+                .unwrap_or_default();
+        }
+    }
+
+    /// How many warnings sources show (rows with issues, else issues).
+    pub fn warnings<'a>(&self, ids: impl IntoIterator<Item = &'a str>) -> usize {
+        let status = self.status.read().unwrap_or_else(|e| e.into_inner());
+        let mut ids: Vec<&str> = ids.into_iter().collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids.iter()
+            .filter_map(|id| status.get(*id))
+            .map(|st| crate::datarules::warning_count(&st.issues))
+            .sum()
     }
 
     pub fn delete(&self, id: &str) -> anyhow::Result<bool> {
@@ -239,6 +273,7 @@ impl Hub {
     /// Records a fetch or push. Returns true when the value changed.
     pub fn record(&self, id: &str, result: Result<(Json, usize), String>) -> bool {
         let now = now_ms();
+        let src = self.get(id);
         let mut all = self.status.write().unwrap_or_else(|e| e.into_inner());
         let st = all.entry(id.to_string()).or_default();
         st.checked_at = Some(now);
@@ -252,6 +287,9 @@ impl Hub {
                 if std::fs::create_dir_all(self.dir.join("values")).is_ok() {
                     let _ = std::fs::write(value_path(&self.dir, id), v.to_string());
                 }
+                st.issues = src
+                    .map(|s| issues_of(&self.dir, &s, &v))
+                    .unwrap_or_default();
                 st.value = Some(v);
                 st.updated_at = Some(now);
                 true
@@ -297,6 +335,19 @@ impl Hub {
 
 fn value_path(dir: &Path, id: &str) -> PathBuf {
     dir.join("values").join(format!("{id}.json"))
+}
+
+/// The broken rules of a value; image paths are looked up in the media
+/// (`<data>/assets`, next to `dir`).
+fn issues_of(dir: &Path, s: &Source, v: &Json) -> Vec<Issue> {
+    if s.rules.is_empty() {
+        return Vec::new();
+    }
+    let assets = dir.parent().unwrap_or(dir).join("assets");
+    let project = s.project.as_deref();
+    crate::datarules::evaluate(&s.rules, v, &|p| {
+        crate::datarules::asset_exists(&assets, project, p)
+    })
 }
 
 /// Fetches due sources, forever (one engine cycle).
@@ -696,5 +747,48 @@ mod tests {
             None
         );
         assert_eq!(google_sheet_csv("https://example.com/a.csv"), None);
+    }
+
+    #[test]
+    fn rules_old_files_load_and_issues_follow_the_value() {
+        let dir = std::env::temp_dir().join(format!("cg-ds-rules-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("data")).unwrap();
+        // Written before rules existed.
+        std::fs::write(
+            dir.join("data/sources.json"),
+            r#"[{"id":"el","name":"Élections","type":"push","format":"json","interval":30,"enabled":true}]"#,
+        )
+        .unwrap();
+        let hub = Hub::load(&dir);
+        let mut src = hub.get("el").expect("old source loads");
+        assert!(src.rules.is_empty());
+        assert!(!serde_json::to_string(&src).unwrap().contains("rules"));
+
+        let bad = serde_json::json!([{"score": 118}, {"score": 40}]);
+        assert!(hub.record("el", Ok((bad.clone(), 0))));
+        assert!(hub.list()[0].status.issues.is_empty());
+        // Rules added: the current value is checked again.
+        src.rules =
+            serde_json::from_str(r#"[{"field":"score","type":"number","max":100}]"#).unwrap();
+        hub.put(src).unwrap();
+        let issues = hub.list()[0].status.issues.clone();
+        assert_eq!((issues.len(), issues[0].row), (1, Some(0)));
+        assert_eq!(hub.warnings(["el", "el", "other"]), 1);
+        let json = serde_json::to_value(&hub.list()[0]).unwrap();
+        assert_eq!(json["issues"][0]["message"], "max");
+        assert_eq!(json["rules"][0]["type"], "number");
+        // Saved with the rules, and loaded back with its issues.
+        assert_eq!(Hub::load(&dir).list()[0].status.issues, issues);
+        // Valid data clears them.
+        hub.record("el", Ok((serde_json::json!([{"score": 60}]), 0)));
+        assert!(hub.list()[0].status.issues.is_empty());
+        assert_eq!(hub.warnings(["el"]), 0);
+        let json = serde_json::to_value(&hub.list()[0]).unwrap();
+        assert_eq!(json["issues"], serde_json::json!([]));
+        // A failed fetch keeps the issues of the value still used.
+        hub.record("el", Ok((bad, 0)));
+        hub.record("el", Err("down".into()));
+        assert_eq!(hub.list()[0].status.issues.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

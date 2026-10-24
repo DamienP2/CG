@@ -1804,6 +1804,7 @@ mod dataset_table_tests {
                 cat: String::new(),
                 text: "{{ds__table}}".into(),
                 on: true,
+                format: String::new(),
             }],
             &data,
         );

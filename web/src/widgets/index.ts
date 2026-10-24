@@ -21,9 +21,11 @@ import map from './map';
 import qrcode from './qrcode';
 import web from './web';
 import scoreboard from './scoreboard';
+import socialwall from './socialwall';
+import socialbadge from './socialbadge';
 
 /** In the order of the spec. */
-export const WIDGET_LIST: WidgetDef[] = [quad, polygon, ellipse, text, image, pen, clock, time, table, ticker, credits, typewriter, counter, progress, chart, map, qrcode, scoreboard, web] as unknown as WidgetDef[];
+export const WIDGET_LIST: WidgetDef[] = [quad, polygon, ellipse, text, image, pen, clock, time, table, ticker, credits, typewriter, counter, progress, chart, map, qrcode, scoreboard, socialwall, socialbadge, web] as unknown as WidgetDef[];
 
 /** By layer type (a `clock` layer: the Clock; widgetOf(layer) tells the Clock from the Time). */
 export const WIDGETS: Partial<Record<LayerType, WidgetDef>> = Object.fromEntries([...WIDGET_LIST].reverse().map((w) => [w.type, w]));
