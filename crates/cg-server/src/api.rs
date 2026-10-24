@@ -50,6 +50,12 @@ pub fn router() -> Router<Shared> {
         .route("/api/examples/{id}/cover.png", get(example_cover))
         .route("/api/projects/import", post(import_project))
         .route(
+            "/api/import/analyze",
+            post(import_analyze).layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024)),
+        )
+        .route("/api/import/{token}/files/{name}", get(import_file))
+        .route("/api/import/{token}/create", post(import_create))
+        .route(
             "/api/projects/{id}",
             get(get_project)
                 .put(put_project_meta)
@@ -714,6 +720,166 @@ async fn import_project(
         p.id = cg_core::new_id();
     }
     let p = s.save_project(p).await.map_err(internal)?;
+    Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
+#[derive(Deserialize)]
+struct AnalyzeQuery {
+    /// The file's name (its extension tells the format).
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Analysis {
+    token: String,
+    #[serde(flatten)]
+    converted: crate::import::Converted,
+}
+
+/// Reads an After Effects, MOGRT, Photoshop or SVG file into templates and a
+/// report of each layer, for the import modal (nothing is created yet).
+async fn import_analyze(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Query(q): Query<AnalyzeQuery>,
+    body: Bytes,
+) -> ApiResult<Json<Analysis>> {
+    require(me.can_create_projects())?;
+    let st = s.clone();
+    let fonts = tokio::task::spawn_blocking(move || {
+        st.renderer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .font_families()
+    })
+    .await
+    .map_err(internal)?;
+    let token = cg_core::new_id();
+    let ctx = crate::import::Ctx {
+        prefix: crate::import::stage_prefix(&token),
+        fonts: fonts.into_iter().map(|f| f.family).collect(),
+        zone: cg_core::Zone::defaults()[0].id.clone(),
+    };
+    let mut converted =
+        tokio::task::spawn_blocking(move || crate::import::analyze(&q.name, &body, &ctx))
+            .await
+            .map_err(internal)?
+            .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e))?;
+    crate::import::stage(&token, &me.username, std::mem::take(&mut converted.files));
+    Ok(Json(Analysis { token, converted }))
+}
+
+/// A picture of an analysed file (the modal's preview).
+async fn import_file(
+    CurrentUser(me): CurrentUser,
+    Path((token, name)): Path<(String, String)>,
+) -> ApiResult<Response> {
+    let bytes = crate::import::staged_file(&token, &me.username, &name)
+        .ok_or((StatusCode::NOT_FOUND, "no such file".to_string()))?;
+    let mime = match name
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "svg" => "image/svg+xml",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        "webm" => "video/webm",
+        _ => "application/octet-stream",
+    };
+    Ok(([(header::CONTENT_TYPE, mime)], bytes).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportCreate {
+    name: String,
+    width: u32,
+    height: u32,
+    frame_rate: FrameRate,
+    /// The templates kept (layers switched off already taken out).
+    templates: Vec<Template>,
+}
+
+/// Creates the project of an analysed file: its templates (published) and
+/// the pictures they use.
+async fn import_create(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(token): Path<String>,
+    Json(c): Json<ImportCreate>,
+) -> ApiResult<Json<ProjectSummary>> {
+    let _edit = s.edits.lock().await;
+    require(me.can_create_projects())?;
+    check_format(c.width, c.height, c.frame_rate)?;
+    if c.name.trim().is_empty() {
+        return Err(bad("a project needs a name"));
+    }
+    if c.templates.is_empty() {
+        return Err(bad("nothing to import"));
+    }
+    let files = crate::import::take_staged(&token, &me.username).ok_or((
+        StatusCode::GONE,
+        "this import has expired: open the file again".to_string(),
+    ))?;
+    let mut p = Project {
+        guides: Default::default(),
+        language: "fr".into(),
+        id: cg_core::new_id(),
+        name: c.name.trim().to_string(),
+        description: String::new(),
+        width: c.width,
+        height: c.height,
+        frame_rate: c.frame_rate,
+        templates: Vec::new(),
+        rundown: Vec::new(),
+        zones: cg_core::Zone::defaults(),
+        playlists: Vec::new(),
+        formats: Vec::new(),
+        drafts: Vec::new(),
+        starter: None,
+    };
+    // The pictures the kept templates use go to the project's media.
+    let stage = crate::import::stage_prefix(&token);
+    let json = serde_json::to_string(&c.templates).map_err(internal)?;
+    let dir = crate::media::project_dir(&s, &p.id);
+    let mut wrote = false;
+    for (name, bytes) in &files {
+        if json.contains(&format!("{stage}{name}")) {
+            tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
+            tokio::fs::write(dir.join(name), bytes)
+                .await
+                .map_err(internal)?;
+            wrote = true;
+        }
+    }
+    if wrote {
+        s.renderer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .invalidate_assets();
+    }
+    let templates: Vec<Template> =
+        serde_json::from_str(&json.replace(&stage, &crate::media::project_prefix(&p.id)))
+            .map_err(internal)?;
+    let zone = p.zones.first().map(|z| z.id.clone()).unwrap_or_default();
+    for mut t in templates {
+        t.id = cg_core::new_id();
+        t.zone = zone.clone();
+        let id = t.id.clone();
+        p.drafts.push(t);
+        p.publish(&id);
+    }
+    let p = s.save_project(p).await.map_err(internal)?;
+    tracing::info!(user = me.username, project = p.name, "project imported");
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
