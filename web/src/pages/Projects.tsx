@@ -7,6 +7,7 @@ import { projectPath, projectTab, type ProjectPage } from '../router';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { lang, t, tn } from '../i18n';
 import { NavItem, NavSection } from './SidePage';
+import { ImportModal } from './ImportModal';
 import { useMetrics, type ChannelMetrics } from '../engine/metrics';
 import { Bar } from '../perf/bits';
 import { fps as fpsText, fpsTone, pct, slowest, worstTone } from '../perf/format';
@@ -366,7 +367,14 @@ export function Projects() {
     setView({ kind: 'all' });
   };
 
+  const [importing, setImporting] = useState(false);
+  const imported = (p: ProjectSummary) => {
+    setImporting(false);
+    if (view.kind === 'folder') moveTo(p.id, view.name);
+    toast(t('Imported “{name}”', { name: p.name }));
+  };
   const importFile = async (file: File) => {
+    setImporting(false);
     try {
       const p = await api<ProjectSummary>('POST', '/api/projects/import', JSON.parse(await file.text()));
       if (view.kind === 'folder') moveTo(p.id, view.name);
@@ -509,10 +517,9 @@ export function Projects() {
                 <button className="btn" title={t('Ready-to-air graphics packages to start from')} onClick={() => setExamples(true)}>
                   <GraduationCap size={14} /> {t('Examples')}
                 </button>
-                <label className="btn" title={t('Import a .strata.json file')}>
+                <button className="btn" title={t('After Effects, Motion Graphics template, Photoshop, SVG or Strata project')} onClick={() => setImporting(true)}>
                   <Upload size={14} /> {t('Import')}
-                  <input type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])} />
-                </label>
+                </button>
                 <button className="btn primary" onClick={() => setDialog({})}>
                   <Plus size={14} /> {t('New project')}
                 </button>
@@ -724,6 +731,7 @@ export function Projects() {
         </div>
       </main>
       {examples && <ExampleBank onClose={() => setExamples(false)} />}
+      {importing && <ImportModal onClose={() => setImporting(false)} onCreated={imported} onProject={importFile} />}
       {dialog && <NewProject from={dialog.from} folder={view.kind === 'folder' ? view.name : undefined} onClose={() => setDialog(null)} />}
     </div>
   );

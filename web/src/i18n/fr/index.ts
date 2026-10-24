@@ -9,6 +9,7 @@ import { common } from './common';
 import { data } from './data';
 import { designer } from './designer';
 import { home } from './home';
+import { importer } from './importer';
 import { operator } from './operator';
 import { widgets } from './widgets';
 import { widgetsData } from './widgetsData';
@@ -16,4 +17,4 @@ import { widgetsA } from './widgetsA';
 import { widgetsB } from './widgetsB';
 import { widgetsC } from './widgetsC';
 
-export const fr: Record<string, string> = { ...common, ...home, ...designer, ...data, ...operator, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC };
+export const fr: Record<string, string> = { ...common, ...home, ...importer, ...designer, ...data, ...operator, ...widgets, ...widgetsData, ...widgetsA, ...widgetsB, ...widgetsC };

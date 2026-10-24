@@ -191,6 +191,11 @@ pub struct Comp {
     pub variables: Vec<VariableReport>,
     /// Has animations of its own (else the modal offers an in / out preset).
     pub animated: bool,
+    /// The whole composition as one picture, when the file has it (the
+    /// SVG itself, a PSD's composite): the list's thumbnail, and « import
+    /// as one picture ».
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flat: Option<String>,
 }
 
 /// What a file holds, converted.
