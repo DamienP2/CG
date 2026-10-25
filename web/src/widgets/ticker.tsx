@@ -698,7 +698,8 @@ export default defineWidget({
           after={(x) => {
             const tl = x as unknown as TL;
             if (!tl.itemFormat) tl.itemFormat = '{name} · {text}';
-            if (tl.items?.length) tl.items = [];
+            // The items typed by hand go: the data set's rows are the items.
+            if (tl.items?.length) tl.items = tl.items.filter((i) => /\{\{\w+__table\}\}/.test(i.text ?? ''));
           }}
         />
         <Section id="ticker-items" title={t('Content')}>

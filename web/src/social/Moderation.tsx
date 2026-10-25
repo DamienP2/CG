@@ -1,23 +1,19 @@
-import { Camera, Check, ChevronsRight, CircleCheck, GripVertical, Inbox, Pause, Pencil, Play, Search, Star, Undo2, X } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { defaultData, holdFrame } from '../engine/evaluate';
-import { inFormat, projectFormats } from '../engine/formats';
-import { LiveTime } from '../engine/LiveTime';
-import { Scene, Viewport } from '../engine/Scene';
-import type { Project, Template } from '../engine/types';
-import { useBoundData } from '../data/dataStore';
+import { Check, GripVertical, Inbox, Pause, Pencil, RotateCcw, Search, Star, Undo2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { connectionState, useSocialSources, type SocialInfo } from '../data/SocialSources';
-import { lang, locale, t, tc } from '../i18n';
+import { locale, t, tc, tn } from '../i18n';
 import { Dropdown } from '../ui/Dropdown';
 import { Segmented } from '../ui/fields';
 import { useApp } from '../store';
 import { PlatformBadge } from './PlatformBadge';
-import { act, airName, airText, save, useSocial, type Card, type Desk, type NameMode, type Tag } from './socialStore';
+import { act, airName, airText, save, useSocial, type Card, type Desk, type Leave, type NameMode, type Order, type Tag } from './socialStore';
 
 /*
- * Moderation: the messages coming in, those approved (in the order they
- * go on air), and what is on air. Keys: A approve, R reject, E edit,
- * S star, ↑↓ move through the messages.
+ * Moderation: the messages coming in (filtered), the pool on air (its
+ * rotation, order and how messages leave it), and the message selected
+ * (edited before air, its own rule). The desk never touches the antenna:
+ * the Operator takes the graphics reading the pool on air.
+ * Keys: A approve, R reject, E edit, S star, ↑↓ move through the messages.
  */
 
 /** The label of a tag, as shown on a message. */
@@ -78,23 +74,38 @@ function Shown({ text }: { text: string }) {
 
 const time = (at: number, seconds = true) => new Date(at).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: seconds ? '2-digit' : undefined });
 
-/** Time left until `at` (server clock, ms), in whole seconds. */
-function useLeft(at: number | null) {
+/** Server clock, every second (ages and times left). */
+function useNow() {
   const offset = useApp((s) => s.serverOffset);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (at === null) return;
-    const h = setInterval(() => setNow(Date.now()), 250);
+    const h = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(h);
-  }, [at]);
-  return at === null ? null : Math.max(0, Math.ceil((at - now - offset) / 1000));
+  }, []);
+  return now + offset;
 }
 
+const ago = (ms: number) => (ms < 60_000 ? t('{n} s ago', { n: Math.max(0, Math.round(ms / 1000)) }) : ms < 3_600_000 ? t('{n} min ago', { n: Math.floor(ms / 60_000) }) : t('{n} h ago', { n: Math.floor(ms / 3_600_000) }));
+
+/** The kinds a message can be filtered by. */
+type Kind = 'question' | 'photo' | 'link' | 'check';
+const KINDS: [Kind, () => string][] = [
+  ['question', () => t('Questions')],
+  ['photo', () => t('Photos')],
+  ['link', () => t('Links')],
+  ['check', () => t('To check')],
+];
+const has = (c: Card, kind: Kind) => (kind === 'photo' ? !!c.message.photos?.length : c.tags.some((g) => g.kind === kind));
+
 export function Moderation({ projectId, desk, onConnections }: { projectId: string; desk: Desk; onConnections: () => void }) {
-  const project = useApp((s) => (s.project?.id === projectId ? s.project : null));
+  const connections = useSocial((s) => s.connections);
   const [sel, setSel] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [photos, setPhotos] = useState(false);
+  // Filters: connections (none: all), kinds (none: all), hidden statuses.
+  const [sources, setSources] = useState<Set<string>>(new Set());
+  const [kinds, setKinds] = useState<Set<Kind>>(new Set());
+  const [hideAuto, setHideAuto] = useState(true);
+  const [hideDup, setHideDup] = useState(false);
   // Frozen: the list stays as it is while new messages wait.
   const [frozen, setFrozen] = useState<Set<string> | null>(null);
   const [editing, setEditing] = useState(0);
@@ -103,22 +114,32 @@ export function Moderation({ projectId, desk, onConnections }: { projectId: stri
     const q = query.trim().toLowerCase();
     return desk.incoming
       .filter((c) => !frozen || frozen.has(c.message.id))
-      .filter((c) => !photos || c.message.photos?.length)
+      .filter((c) => !sources.size || sources.has(c.message.sourceId))
+      .filter((c) => !kinds.size || [...kinds].some((k) => has(c, k)))
+      .filter((c) => !hideAuto || !c.tags.some((g) => g.kind === 'autoReject'))
+      .filter((c) => !hideDup || !c.tags.some((g) => g.kind === 'duplicate'))
       .filter((c) => !q || `${c.author} ${c.shown} ${c.message.author.city ?? ''}`.toLowerCase().includes(q))
       .slice()
       .reverse();
-  }, [desk.incoming, query, photos, frozen]);
+  }, [desk.incoming, query, sources, kinds, hideAuto, hideDup, frozen]);
   const waiting = frozen ? desk.incoming.filter((c) => !frozen.has(c.message.id)).length : 0;
-  const all = useMemo(() => [...incoming, ...(desk.onAir ? [desk.onAir] : []), ...desk.approved], [incoming, desk.onAir, desk.approved]);
+  const pool = useMemo(() => [...(desk.onAir ? [desk.onAir] : []), ...desk.approved], [desk.onAir, desk.approved]);
+  const all = useMemo(() => [...incoming, ...pool, ...desk.retired], [incoming, pool, desk.retired]);
   const selected = all.find((c) => c.message.id === sel) ?? null;
   const isIncoming = (id: string) => incoming.some((c) => c.message.id === id);
+  const toggle = <T,>(set: Set<T>, v: T) => {
+    const next = new Set(set);
+    if (next.has(v)) next.delete(v);
+    else next.add(v);
+    return next;
+  };
 
   // Keys: on the selected message.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement;
     if (el.closest('input, textarea, select, [contenteditable="true"]') || e.metaKey || e.ctrlKey || e.altKey) return;
-    const list = sel && !isIncoming(sel) ? [...(desk.onAir ? [desk.onAir] : []), ...desk.approved] : incoming;
+    const list = sel && !isIncoming(sel) ? pool : incoming;
     const i = list.findIndex((c) => c.message.id === sel);
     const move = (d: number) => {
       const next = list[Math.min(list.length - 1, Math.max(0, i + d))];
@@ -150,8 +171,9 @@ export function Moderation({ projectId, desk, onConnections }: { projectId: stri
     return () => removeEventListener('keydown', h);
   }, []);
 
+  const followed = desk.sources.map((id) => connections.find((c) => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c);
   return (
-    <div className="mod-cols">
+    <div className={`mod-cols ${selected ? '' : 'two'}`}>
       <section className="mod-col">
         <header className="mod-head">
           <b>{t('Incoming')}</b>
@@ -161,31 +183,56 @@ export function Moderation({ projectId, desk, onConnections }: { projectId: stri
             <Search size={13} />
             <input value={query} placeholder={t('Search')} onChange={(e) => setQuery(e.target.value)} />
           </label>
-          <button className={`mod-chip ${photos ? 'on' : ''}`} onClick={() => setPhotos(!photos)}>
-            <Camera size={12} /> {t('Photos')}
-          </button>
           <button className={`mod-chip ${frozen ? 'on' : ''}`} onClick={() => setFrozen(frozen ? null : new Set(desk.incoming.map((c) => c.message.id)))}>
             <Pause size={12} /> {t('Freeze')}
             {waiting > 0 && <span className="mod-waiting">+{waiting}</span>}
           </button>
         </header>
+        {desk.sources.length > 0 && (
+          <div className="mod-filters">
+            {followed.length > 1 &&
+              followed.map((c) => (
+                <button key={c.id} className={`mod-chip ${sources.has(c.id) ? 'on' : ''}`} title={c.name} onClick={() => setSources(toggle(sources, c.id))}>
+                  <PlatformBadge platform={c.platform} size={14} />
+                </button>
+              ))}
+            {KINDS.map(([k, label]) => (
+              <button key={k} className={`mod-chip ${kinds.has(k) ? 'on' : ''}`} onClick={() => setKinds(toggle(kinds, k))}>
+                {label()}
+              </button>
+            ))}
+            <span className="spacer" />
+            <button className={`mod-chip ${hideAuto ? 'on' : ''}`} title={t('Hide the automatic rejects')} onClick={() => setHideAuto(!hideAuto)}>
+              {t('Auto rejects')}
+            </button>
+            <button className={`mod-chip ${hideDup ? 'on' : ''}`} title={t('Hide the duplicates')} onClick={() => setHideDup(!hideDup)}>
+              {t('Duplicates')}
+            </button>
+          </div>
+        )}
         <div className="mod-list">
           {!incoming.length && (desk.sources.length ? <Waiting desk={desk} /> : <NoConnection onConnections={onConnections} />)}
           {incoming.map((c) => (
-            <IncomingCard key={c.message.id} card={c} selected={sel === c.message.id} onSelect={() => setSel(c.message.id)} projectId={projectId} onEdit={() => {
-              setSel(c.message.id);
-              setEditing((n) => n + 1);
-            }} />
+            <IncomingCard
+              key={c.message.id}
+              card={c}
+              selected={sel === c.message.id}
+              onSelect={() => setSel(c.message.id)}
+              projectId={projectId}
+              onEdit={() => {
+                setSel(c.message.id);
+                setEditing((n) => n + 1);
+              }}
+            />
           ))}
         </div>
       </section>
-      <Approved projectId={projectId} desk={desk} sel={sel} onSelect={setSel} />
-      <section className="mod-col mod-air">
-        <AirHead projectId={projectId} desk={desk} project={project} />
-        {project && <AirPreview project={project} templateId={desk.display.templateId} />}
-        <AirCard projectId={projectId} desk={desk} />
-        {selected && <EditPanel key={`${selected.message.id}-${editing}`} projectId={projectId} card={selected} mode={desk.display.nameMode} focus={editing > 0} onClose={() => setSel(null)} />}
-      </section>
+      <Pool projectId={projectId} desk={desk} sel={sel} onSelect={setSel} />
+      {selected && (
+        <section className="mod-col">
+          <EditPanel key={`${selected.message.id}-${editing}`} projectId={projectId} card={selected} desk={desk} focus={editing > 0} onClose={() => setSel(null)} />
+        </section>
+      )}
     </div>
   );
 }
@@ -218,11 +265,7 @@ function IncomingCard({ card: c, selected, onSelect, onEdit, projectId }: { card
         </div>
         <div className="mod-text" title={c.words?.length ? c.words.join(', ') : undefined}>
           <Shown text={c.shown} />
-          {n > 0 && (
-            <span className="mod-chip small">
-              <Camera size={11} /> {n}
-            </span>
-          )}
+          {n > 0 && <span className="mod-chip small">{tn(n, '{n} photo', '{n} photos')}</span>}
         </div>
         <Tags tags={c.tags} words={c.words} />
       </div>
@@ -244,12 +287,37 @@ function IncomingCard({ card: c, selected, onSelect, onEdit, projectId }: { card
   );
 }
 
-/** The approved messages, in the order they go on air (dragged to reorder). */
-function Approved({ projectId, desk, sel, onSelect }: { projectId: string; desk: Desk; sel: string | null; onSelect: (id: string) => void }) {
+/** How messages leave the pool, as a choice. */
+type LeaveKind = 'hand' | 'airs' | 'minutes';
+const leaveKind = (l: Leave): LeaveKind => (l.airs > 0 ? 'airs' : l.minutes > 0 ? 'minutes' : 'hand');
+const leaveOf = (kind: LeaveKind, n: number): Leave => ({ airs: kind === 'airs' ? Math.max(1, n) : 0, minutes: kind === 'minutes' ? Math.max(1, n) : 0 });
+const leaveText = (l: Leave) => (l.airs > 0 ? tn(l.airs, 'after {n} pass', 'after {n} passes') : l.minutes > 0 ? t('after {n} min', { n: l.minutes }) : t('by hand'));
+
+/** A number in a chip, sent when left or on Enter. */
+function NumChip({ label, value, unit, min, onChange, title }: { label?: string; value: number; unit?: string; min: number; onChange: (n: number) => void; title?: string }) {
+  const [v, setV] = useState(String(value));
+  useEffect(() => setV(String(value)), [value]);
+  const send = () => {
+    const n = Math.max(min, Math.round(Number(v)) || min);
+    setV(String(n));
+    if (n !== value) onChange(n);
+  };
+  return (
+    <label className="mod-chip mod-secs static" title={title}>
+      {label}
+      <input type="number" min={min} value={v} onChange={(e) => setV(e.target.value)} onBlur={send} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
+      {unit}
+    </label>
+  );
+}
+
+/** The pool on air: its settings, the message on air, the next ones (dragged to reorder), those that left. */
+function Pool({ projectId, desk, sel, onSelect }: { projectId: string; desk: Desk; sel: string | null; onSelect: (id: string) => void }) {
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<number | null>(null);
-  const [secs, setSecs] = useState(String(desk.display.rotationSecs));
-  useEffect(() => setSecs(String(desk.display.rotationSecs)), [desk.display.rotationSecs]);
+  const [gone, setGone] = useState(false);
+  const d = desk.display;
+  const now = useNow();
   const drop = (at: number) => {
     if (!drag) return;
     const ids = desk.approved.map((c) => c.message.id).filter((id) => id !== drag);
@@ -262,24 +330,50 @@ function Approved({ projectId, desk, sel, onSelect }: { projectId: string; desk:
     setDrag(null);
     setOver(null);
   };
-  const rotation = (on: boolean, n = Number(secs)) => act(projectId, 'rotation', { on, secs: Math.max(2, Math.round(n) || desk.display.rotationSecs) });
+  const display = (patch: Partial<typeof d>) => save(projectId, 'display', { ...d, ...patch });
+  const kind = leaveKind(d.leave);
+  const left = d.rotation && desk.rotationAt !== null ? Math.max(0, Math.ceil((desk.rotationAt - now) / 1000)) : null;
   return (
     <section className="mod-col">
       <header className="mod-head">
-        <b>{t('Approved')}</b>
-        <span className="mod-count">{desk.approved.length}</span>
+        <b>{t('Pool on air')}</b>
+        <span className="mod-count">{desk.approved.length + (desk.onAir ? 1 : 0)}</span>
         <span className="spacer" />
-        <label className="mod-chip mod-secs" title={t('Rotation')}>
-          {t('Rotation')}
-          <input type="number" min={2} max={3600} value={secs} onChange={(e) => setSecs(e.target.value)} onBlur={() => Number(secs) !== desk.display.rotationSecs && rotation(desk.display.rotation)} onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()} />
-          {t('s')}
-        </label>
-        <label className="switch">
-          <input type="checkbox" checked={desk.display.rotation} onChange={(e) => rotation(e.target.checked)} />
+        <NumChip label={t('Rotation')} value={d.rotationSecs} unit={t('s')} min={2} title={t('One message every N seconds')} onChange={(n) => act(projectId, 'rotation', { on: d.rotation, secs: n })} />
+        <label className="switch" title={t('Rotation')}>
+          <input type="checkbox" checked={d.rotation} onChange={(e) => act(projectId, 'rotation', { on: e.target.checked, secs: d.rotationSecs })} />
         </label>
       </header>
+      <div className="mod-filters">
+        <Dropdown
+          className="mod-set"
+          title={t('Order')}
+          value={d.order}
+          options={[
+            { value: 'arrival' as Order, label: t('As approved') },
+            { value: 'starred' as Order, label: t('Starred first') },
+            { value: 'random' as Order, label: t('Random') },
+          ]}
+          onChange={(order) => display({ order })}
+        />
+        <Dropdown
+          className="mod-set"
+          title={t('Leaves the pool')}
+          value={kind}
+          options={[
+            { value: 'hand' as LeaveKind, label: t('Leaves by hand') },
+            { value: 'airs' as LeaveKind, label: t('Leaves after passes') },
+            { value: 'minutes' as LeaveKind, label: t('Leaves after minutes') },
+          ]}
+          onChange={(k) => display({ leave: leaveOf(k, k === 'airs' ? d.leave.airs || 3 : d.leave.minutes || 10) })}
+        />
+        {kind === 'airs' && <NumChip value={d.leave.airs} unit={t('passes')} min={1} onChange={(n) => display({ leave: leaveOf('airs', n) })} />}
+        {kind === 'minutes' && <NumChip value={d.leave.minutes} unit={t('min')} min={1} onChange={(n) => display({ leave: leaveOf('minutes', n) })} />}
+        <span className="spacer" />
+        <NumChip label={t('At most')} value={d.max} unit={t('messages')} min={0} title={t('Most messages in the pool (0: no limit)')} onChange={(n) => display({ max: n })} />
+      </div>
       <div className="mod-list mod-queue" onDragOver={(e) => e.preventDefault()} onDrop={() => drop(desk.approved.length)}>
-        {desk.onAir && <QueueCard card={desk.onAir} badge="air" selected={sel === desk.onAir.message.id} onSelect={() => onSelect(desk.onAir!.message.id)} projectId={projectId} mode={desk.display.nameMode} />}
+        {desk.onAir && <QueueCard card={desk.onAir} badge="air" left={left} now={now} selected={sel === desk.onAir.message.id} onSelect={() => onSelect(desk.onAir!.message.id)} projectId={projectId} desk={desk} />}
         {desk.approved.map((c, i) => (
           <div
             key={c.message.id}
@@ -302,10 +396,22 @@ function Approved({ projectId, desk, sel, onSelect }: { projectId: string; desk:
               drop(i);
             }}
           >
-            <QueueCard card={c} badge={i === 0 ? 'next' : undefined} selected={sel === c.message.id} onSelect={() => onSelect(c.message.id)} projectId={projectId} mode={desk.display.nameMode} />
+            <QueueCard card={c} badge={i === 0 && d.order === 'arrival' ? 'next' : undefined} now={now} selected={sel === c.message.id} onSelect={() => onSelect(c.message.id)} projectId={projectId} desk={desk} />
           </div>
         ))}
-        {!desk.onAir && !desk.approved.length && <NoMessage icon={<CircleCheck size={22} />} />}
+        {!desk.onAir && !desk.approved.length && <NoMessage icon={<Inbox size={22} />} />}
+        {desk.retired.length > 0 && (
+          <>
+            <button className="mod-gone-head" onClick={() => setGone(!gone)}>
+              {t('Left the pool')} <span className="mod-count">{desk.retired.length}</span>
+            </button>
+            {gone &&
+              desk.retired
+                .slice()
+                .reverse()
+                .map((c) => <QueueCard key={c.message.id} card={c} badge="gone" now={now} selected={sel === c.message.id} onSelect={() => onSelect(c.message.id)} projectId={projectId} desk={desk} />)}
+          </>
+        )}
       </div>
     </section>
   );
@@ -354,12 +460,16 @@ function NoMessage({ icon }: { icon: React.ReactNode }) {
   );
 }
 
-function QueueCard({ card: c, badge, selected, onSelect, projectId, mode }: { card: Card; badge?: 'air' | 'next'; selected: boolean; onSelect: () => void; projectId: string; mode: NameMode }) {
+/** A message of the pool: on air, waiting, or gone; its passes and its rule. */
+function QueueCard({ card: c, badge, left, now, selected, onSelect, projectId, desk }: { card: Card; badge?: 'air' | 'next' | 'gone'; left?: number | null; now: number; selected: boolean; onSelect: () => void; projectId: string; desk: Desk }) {
   const m = c.message;
-  const name = airName(c, c.nameMode ?? mode);
+  const name = airName(c, c.nameMode ?? desk.display.nameMode);
+  const rule = c.leave ?? desk.display.leave;
+  const own = !!c.leave;
+  const passes = rule.airs > 0 ? `${c.airs ?? 0} / ${rule.airs}` : String(c.airs ?? 0);
   return (
-    <div className={`mod-qcard ${badge === 'air' ? 'air' : ''} ${selected ? 'sel' : ''}`} onClick={onSelect}>
-      <GripVertical size={14} className="mod-grip" />
+    <div className={`mod-qcard ${badge === 'air' ? 'air' : ''} ${badge === 'gone' ? 'gone' : ''} ${selected ? 'sel' : ''}`} onClick={onSelect}>
+      {badge === 'gone' ? <span /> : <GripVertical size={14} className="mod-grip" />}
       <PlatformBadge platform={m.platform} size={20} />
       <div className="mod-msg-body">
         <div className="mod-who">
@@ -373,122 +483,69 @@ function QueueCard({ card: c, badge, selected, onSelect, projectId, mode }: { ca
           </div>
         )}
         {m.photos?.[0] && <img className="mod-photo" src={m.photos[0]} alt="" loading="lazy" />}
+        <div className="mod-meta">
+          <span title={own ? t('Its own rule: {rule}', { rule: leaveText(rule) }) : t('The pool’s rule: {rule}', { rule: leaveText(rule) })}>
+            {t('Passes')} <b>{passes}</b>
+            {own && ' ★'}
+          </span>
+          {c.lastAir && badge !== 'air' && (
+            <span>
+              {t('Last')} <b>{ago(now - c.lastAir)}</b>
+            </span>
+          )}
+          {c.approvedAt && (
+            <span>
+              {t('Approved')} <b>{time(c.approvedAt, false)}</b>
+              {c.by ? ` ${t('by {name}', { name: c.by })}` : ''}
+            </span>
+          )}
+          {badge === 'gone' && c.retiredAt && (
+            <span>
+              {t('Left')} <b>{ago(now - c.retiredAt)}</b>
+            </span>
+          )}
+          {badge === 'air' && left !== null && left !== undefined && (
+            <span>
+              {t('Left on air')} <b>{t('{n} s', { n: left })}</b>
+            </span>
+          )}
+        </div>
       </div>
       <div className="mod-qside" onClick={(e) => e.stopPropagation()}>
         {badge === 'air' && <span className="mod-badge air">{tc('queue', 'ON AIR')}</span>}
         {badge === 'next' && <span className="mod-badge next">{t('NEXT')}</span>}
         <div className="mod-qa">
-          {badge !== 'air' && (
-            <button className="take" title={t('Take')} onClick={() => act(projectId, 'take', { id: m.id })}>
-              <Play size={12} />
+          {badge === 'gone' ? (
+            <button className="take" title={t('Back in the pool')} onClick={() => act(projectId, 'restore', { id: m.id })}>
+              <RotateCcw size={12} />
             </button>
+          ) : (
+            <>
+              {badge === 'air' && (
+                <button className="take" title={t('Next (skip)')} disabled={!desk.approved.length} onClick={() => act(projectId, 'next', { from: m.id })}>
+                  <Undo2 size={12} style={{ transform: 'scaleX(-1)' }} />
+                </button>
+              )}
+              <button title={t('Back to incoming')} onClick={() => act(projectId, 'remove', { id: m.id })}>
+                <Undo2 size={12} />
+              </button>
+              <button className={c.starred ? 'star' : ''} title={t('Star (S)')} onClick={() => act(projectId, 'star', { id: m.id })}>
+                <Star size={12} fill={c.starred ? 'currentColor' : 'none'} />
+              </button>
+              <button className="no" title={t('Out of the pool')} onClick={() => act(projectId, 'retire', { id: m.id })}>
+                <X size={13} />
+              </button>
+            </>
           )}
-          {badge !== 'air' && (
-            <button title={t('Back to incoming')} onClick={() => act(projectId, 'remove', { id: m.id })}>
-              <Undo2 size={12} />
-            </button>
-          )}
-          <button className={c.starred ? 'star' : ''} title={t('Star (S)')} onClick={() => act(projectId, 'star', { id: m.id })}>
-            <Star size={12} fill={c.starred ? 'currentColor' : 'none'} />
-          </button>
         </div>
       </div>
     </div>
   );
 }
 
-/** "À l'antenne": the template showing the messages, and its channel. */
-function AirHead({ projectId, desk, project }: { projectId: string; desk: Desk; project: Project | null }) {
-  const channels = useApp((s) => s.channels).filter((c) => c.projectId === projectId);
-  const d = desk.display;
-  // The channel the project is loaded on, when there is one only.
-  useEffect(() => {
-    if (!channels.some((c) => c.id === d.channelId) && channels.length === 1) void save(projectId, 'display', { ...d, channelId: channels[0].id });
-  }, [channels.map((c) => c.id).join(), d.channelId]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <header className="mod-head">
-      <b>{t('On air')}</b>
-      <span className="spacer" />
-      {channels.length > 1 && <Dropdown value={d.channelId} options={channels.map((c) => ({ value: c.id, label: c.name }))} placeholder={t('Channel')} onChange={(v) => save(projectId, 'display', { ...d, channelId: v })} />}
-      <Dropdown className={`mod-template ${d.templateId ? '' : 'mod-template-pick'}`} value={d.templateId} options={(project?.templates ?? []).map((tp) => ({ value: tp.id, label: tp.name }))} placeholder={d.templateId ? t('Template') : t('Pick the message template')} onChange={(v) => save(projectId, 'display', { ...d, templateId: v })} />
-    </header>
-  );
-}
-
-/** The template with the data it reads now (the message on air). */
-function AirPreview({ project, templateId }: { project: Project; templateId: string }) {
-  const template = project.templates.find((x) => x.id === templateId);
-  const format = projectFormats(project)[0];
-  return <div className="mod-monitor">{template ? <Screen width={format.width} height={format.height}>{<PreviewOf project={project} template={template} />}</Screen> : <div className="mod-monitor-empty">{t('No template')}</div>}</div>;
-}
-
-function PreviewOf({ project, template }: { project: Project; template: Template }) {
-  const base = useMemo(() => defaultData(inFormat(template, null)), [template]);
-  const bound = useBoundData(template, base);
-  const data = useMemo(() => ({ ...base, ...bound }), [base, bound]);
-  const fps = project.frameRate.num / project.frameRate.den || 25;
-  const hold = holdFrame(template);
-  return (
-    <LiveTime ageSecs={hold / fps} fps={fps} lang={lang()}>
-      <Scene template={template} frame={hold} data={data} />
-    </LiveTime>
-  );
-}
-
-/** Content scaled to fit its box. */
-function Screen({ width, height, children }: { width: number; height: number; children: React.ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.2);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setScale(Math.max(0.01, Math.min(el.clientWidth / width, el.clientHeight / height))));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [width, height]);
-  return (
-    <div className="mod-screen" ref={ref} style={{ aspectRatio: `${width} / ${height}` }}>
-      <Viewport width={width} height={height} scale={scale}>
-        {children}
-      </Viewport>
-    </div>
-  );
-}
-
-/** The message on air: next, out, and the time to the next rotation. */
-function AirCard({ projectId, desk }: { projectId: string; desk: Desk }) {
-  const left = useLeft(desk.display.rotation ? desk.rotationAt : null);
-  const c = desk.onAir;
-  return (
-    <div className={`mod-aircard ${c ? 'live' : ''}`}>
-      {c ? (
-        <>
-          <PlatformBadge platform={c.message.platform} size={20} />
-          <b className="mod-air-name">{airName(c, c.nameMode ?? desk.display.nameMode) || c.author}</b>
-        </>
-      ) : (
-        <span className="muted">{t('Nothing on air')}</span>
-      )}
-      <span className="spacer" />
-      {left !== null && <span className="mod-count">{t('{n} s', { n: left })}</span>}
-      {c ? (
-        <button className="btn" disabled={!desk.approved.length} onClick={() => act(projectId, 'next', { from: c.message.id })}>
-          <ChevronsRight size={14} /> {t('NEXT')}
-        </button>
-      ) : (
-        <button className="btn mod-take" disabled={!desk.approved.length} onClick={() => act(projectId, 'next', {})}>
-          <Play size={13} /> {t('TAKE')}
-        </button>
-      )}
-      <button className="btn mod-out" disabled={!c} onClick={() => act(projectId, 'out')}>
-        {t('OUT')}
-      </button>
-    </div>
-  );
-}
-
-/** "Edit before air": the text, and how the author is named. */
-function EditPanel({ projectId, card, mode, focus, onClose }: { projectId: string; card: Card; mode: NameMode; focus: boolean; onClose: () => void }) {
+/** The message: its text before air, how the author is named, its own rule to leave the pool. */
+function EditPanel({ projectId, card, desk, focus, onClose }: { projectId: string; card: Card; desk: Desk; focus: boolean; onClose: () => void }) {
+  const mode = desk.display.nameMode;
   const [text, setText] = useState(airText(card));
   const [name, setName] = useState<NameMode>(card.nameMode ?? mode);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -501,6 +558,10 @@ function EditPanel({ projectId, card, mode, focus, onClose }: { projectId: strin
     await act(projectId, 'edit', { id: card.message.id, text, nameMode: name });
     ref.current?.blur();
   };
+  const inPool = card.status === 'approved';
+  const own = card.leave;
+  const kind: 'common' | LeaveKind = own ? leaveKind(own) : 'common';
+  const rule = (k: 'common' | LeaveKind, n?: number) => (k === 'common' ? act(projectId, 'rule', { id: card.message.id, common: true }) : act(projectId, 'rule', { id: card.message.id, ...leaveOf(k, n ?? (k === 'airs' ? own?.airs || 3 : own?.minutes || 10)) }));
   return (
     <div className="mod-edit">
       <div className="mod-edit-head">
@@ -536,6 +597,28 @@ function EditPanel({ projectId, card, mode, focus, onClose }: { projectId: strin
           {tc('edit', 'Confirm')}
         </button>
       </div>
+      {inPool && (
+        <>
+          <div className="mod-edit-head">
+            <b>{t('Leaves the pool')}</b>
+            <span className="spacer" />
+            <span className="muted">{tn(card.airs ?? 0, '{n} pass', '{n} passes')}</span>
+          </div>
+          <Segmented
+            value={kind}
+            onChange={(k) => void rule(k)}
+            options={[
+              { value: 'common', label: t('Pool’s rule') },
+              { value: 'hand', label: t('By hand') },
+              { value: 'airs', label: t('Passes') },
+              { value: 'minutes', label: t('Minutes') },
+            ]}
+          />
+          {kind === 'airs' && <NumChip label={t('After')} value={own!.airs} unit={t('passes')} min={1} onChange={(n) => rule('airs', n)} />}
+          {kind === 'minutes' && <NumChip label={t('After')} value={own!.minutes} unit={t('min')} min={1} onChange={(n) => rule('minutes', n)} />}
+          {kind === 'common' && <span className="muted">{leaveText(desk.display.leave)}</span>}
+        </>
+      )}
     </div>
   );
 }

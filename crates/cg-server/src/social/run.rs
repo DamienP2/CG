@@ -1,7 +1,9 @@
-//! Runs the connections: one task per enabled connection, restarted when it
-//! changes, reconnecting with a growing delay when the platform fails.
+//! Runs the connections: one task per connection wanted (enabled, and
+//! followed by a project or under test), restarted when it changes,
+//! reconnecting with a growing delay when the platform fails. A connection
+//! nobody follows stays idle: the platform is not polled (quota).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -10,9 +12,20 @@ use tokio::task::{AbortHandle, JoinSet};
 use super::{Author, Hub, Message, Platform, SocialSource, Status};
 use crate::state::{now_ms, Shared};
 
-/// The connections that read their platform: the enabled ones.
-pub fn wanted(all: &[SocialSource]) -> Vec<SocialSource> {
-    all.iter().filter(|s| s.enabled).cloned().collect()
+/// The connections that read their platform: the enabled ones that at
+/// least one project follows (`followers`: projects per connection id), or
+/// that a test runs on (`testing`).
+pub fn wanted(
+    all: &[SocialSource],
+    followers: &HashMap<String, usize>,
+    testing: &HashSet<String>,
+) -> Vec<SocialSource> {
+    all.iter()
+        .filter(|s| {
+            s.enabled && (followers.get(&s.id).is_some_and(|n| *n > 0) || testing.contains(&s.id))
+        })
+        .cloned()
+        .collect()
 }
 
 pub async fn run(shared: Shared) {
@@ -28,7 +41,10 @@ async fn supervise(hub: Arc<Hub>) {
         tokio::pin!(changed);
         changed.as_mut().enable();
         while set.try_join_next().is_some() {}
-        let want = wanted(&hub.all());
+        let all = hub.all();
+        let followers = hub.followers();
+        let (testing, next_expiry) = hub.testing();
+        let want = wanted(&all, &followers, &testing);
         tasks.retain(|id, (print, task)| {
             let keep = want.iter().any(|s| &s.id == id && &fingerprint(s) == print);
             if !keep {
@@ -44,6 +60,13 @@ async fn supervise(hub: Arc<Hub>) {
             }
             keep
         });
+        for s in &all {
+            let running = want.iter().any(|w| w.id == s.id);
+            let idle = s.enabled && !running;
+            if hub.status(&s.id).idle != idle {
+                hub.set_status(&s.id, |st| st.idle = idle);
+            }
+        }
         for s in want {
             if !tasks.contains_key(&s.id) {
                 let print = fingerprint(&s);
@@ -52,7 +75,17 @@ async fn supervise(hub: Arc<Hub>) {
                 tasks.insert(id, (print, task));
             }
         }
-        changed.await;
+        // Until something changes, or the first test window ends.
+        match next_expiry {
+            Some(at) => {
+                let wait = Duration::from_millis((at - now_ms()).max(0) as u64);
+                tokio::select! {
+                    _ = changed => {}
+                    _ = tokio::time::sleep(wait) => {}
+                }
+            }
+            None => changed.await,
+        }
     }
 }
 
@@ -129,33 +162,58 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    #[test]
-    fn a_disabled_connection_does_not_run() {
-        let s = |id: &str, enabled| SocialSource {
+    fn source(id: &str, platform: Platform, enabled: bool) -> SocialSource {
+        SocialSource {
             id: id.into(),
             name: id.into(),
-            platform: Platform::Twitch,
+            platform,
             enabled,
             settings: BTreeMap::from([("channel".into(), "lefigaro_live".into())]),
-        };
-        let want = wanted(&[s("on", true), s("off", false)]);
-        assert_eq!(want.len(), 1);
-        assert_eq!(want[0].id, "on");
+        }
+    }
+
+    /// `<data>/social/projects/<project>.json` following `sources`.
+    fn follow(dir: &std::path::Path, project: &str, sources: &[&str]) {
+        let projects = dir.join("social").join("projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        std::fs::write(
+            projects.join(format!("{project}.json")),
+            serde_json::json!({ "sources": sources, "rules": {} }).to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_connection_is_wanted_when_enabled_and_followed_or_under_test() {
+        let all = [
+            source("followed", Platform::Twitch, true),
+            source("tested", Platform::Twitch, true),
+            source("alone", Platform::Twitch, true),
+            source("off", Platform::Twitch, false),
+        ];
+        let followers = HashMap::from([("followed".to_string(), 2), ("off".to_string(), 1)]);
+        let testing = HashSet::from(["tested".to_string()]);
+        let ids: Vec<String> = wanted(&all, &followers, &testing)
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(ids, ["followed", "tested"]);
+        // Enabled, but nobody follows it and no test runs: not wanted.
+        assert!(wanted(&all, &HashMap::new(), &HashSet::new()).is_empty());
+        // Followed, but disabled: not wanted.
+        let followers = HashMap::from([("off".to_string(), 1)]);
+        assert!(wanted(&all, &followers, &HashSet::new()).is_empty());
     }
 
     #[tokio::test]
-    async fn only_enabled_connections_are_started_and_a_change_restarts_them() {
+    async fn only_followed_or_tested_connections_are_started_and_a_change_restarts_them() {
         let dir = std::env::temp_dir().join(format!("social-{}", uuid::Uuid::new_v4().simple()));
         let hub = Arc::new(Hub::load(&dir));
-        let wa = |id: &str, enabled| SocialSource {
-            id: id.into(),
-            name: id.into(),
-            platform: Platform::Whatsapp,
-            enabled,
-            settings: BTreeMap::new(),
-        };
+        let wa = |id: &str, enabled| source(id, Platform::Whatsapp, enabled);
         hub.put(wa("on", true)).unwrap();
+        hub.put(wa("alone", true)).unwrap();
         hub.put(wa("off", false)).unwrap();
+        follow(&dir, "jt", &["on", "off"]);
         let task = tokio::spawn(supervise(hub.clone()));
         let status = |id: &str| {
             hub.list()
@@ -165,12 +223,29 @@ mod tests {
                 .status
         };
         tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(status("on").connected);
-        assert!(!status("off").connected);
-        hub.put(wa("on", false)).unwrap();
+        // Followed and enabled: runs. Enabled alone: idle. Disabled: nothing.
+        assert!(status("on").connected && !status("on").idle);
+        assert!(!status("alone").connected && status("alone").idle);
+        assert!(!status("off").connected && !status("off").idle);
+        // The project follows the other one (the lead notifies `changed`).
+        follow(&dir, "jt", &["alone"]);
+        hub.changed.notify_waiters();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!status("on").connected && status("on").idle);
+        assert!(status("alone").connected && !status("alone").idle);
+        // Enabling a followed one starts it; disabling a running one stops it.
+        hub.put(wa("alone", false)).unwrap();
+        follow(&dir, "jt", &["alone", "off"]);
         hub.put(wa("off", true)).unwrap();
         tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(!status("on").connected);
+        assert!(!status("alone").connected && !status("alone").idle);
+        assert!(status("off").connected);
+        // A test window starts an idle connection, and its end stops it.
+        hub.test("on", 400);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(status("on").connected && !status("on").idle);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!status("on").connected && status("on").idle);
         assert!(status("off").connected);
         task.abort();
         let _ = std::fs::remove_dir_all(dir);

@@ -48,6 +48,20 @@ export interface Card {
   nameMode?: NameMode;
   starred: boolean;
   by?: string;
+  /** Passes on air. */
+  airs?: number;
+  lastAir?: number;
+  approvedAt?: number;
+  /** Its own rule to leave the pool (undefined: the pool's). */
+  leave?: Leave;
+  retiredAt?: number;
+}
+
+export type Order = 'arrival' | 'starred' | 'random';
+/** When a message leaves the pool: after `airs` passes, `minutes` after approval (0: never); both 0: by hand. */
+export interface Leave {
+  airs: number;
+  minutes: number;
 }
 
 interface Filter {
@@ -68,12 +82,15 @@ export interface Rules {
   blocked: { enabled: boolean; accounts: string[] };
 }
 
+/** The pool on air: rotation, order, how messages leave it, how authors are named. */
 export interface Display {
-  templateId: string;
-  channelId: string;
   rotation: boolean;
   rotationSecs: number;
   nameMode: NameMode;
+  order: Order;
+  leave: Leave;
+  /** Most messages in the pool (0: no limit). */
+  max: number;
 }
 
 export interface Hashtag {
@@ -97,6 +114,8 @@ export interface Desk {
   incoming: Card[];
   approved: Card[];
   onAir: Card | null;
+  /** Left the pool, oldest first. */
+  retired: Card[];
   rotationAt: number | null;
   toxRejects: number;
   builtinWords: number;
@@ -115,7 +134,7 @@ export interface Connection {
 type Change =
   | { kind: 'incoming'; cards: Card[] }
   | { kind: 'removed'; ids: string[] }
-  | { kind: 'queue'; approved: Card[]; onAir: Card | null; rotationAt: number | null }
+  | { kind: 'queue'; approved: Card[]; onAir: Card | null; retired: Card[]; rotationAt: number | null }
   | { kind: 'settings'; settings: Pick<Desk, 'sources' | 'rules' | 'display'> }
   | { kind: 'hashtags'; hashtags: Hashtag[] }
   | { kind: 'reload' };
@@ -161,7 +180,7 @@ export const useSocial = create<SocialState>((set, get) => ({
         break;
       }
       case 'queue':
-        set({ desk: { ...d, approved: c.approved, onAir: c.onAir, rotationAt: c.rotationAt } });
+        set({ desk: { ...d, approved: c.approved, onAir: c.onAir, retired: c.retired, rotationAt: c.rotationAt } });
         break;
       case 'settings':
         set({ desk: { ...d, ...c.settings } });
@@ -203,7 +222,7 @@ export function useDesk(projectId: string) {
 
 const base = (projectId: string) => `/api/projects/${encodeURIComponent(projectId)}/social`;
 
-/** A moderation or on-air action (errors toasted). */
+/** A moderation or pool action (errors toasted). */
 export async function act(projectId: string, action: string, body: object = {}) {
   try {
     await api('POST', `${base(projectId)}/${action}`, body);

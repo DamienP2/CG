@@ -51,8 +51,12 @@ function contentOf(l: Layer): string[] {
   return typeof (l as { text?: unknown }).text === 'string' ? ['text'] : [];
 }
 /** Content ports taking a whole table (a data set's All rows). */
-const TABLE_PORTS: Record<string, string> = { table: 'link', credits: 'link', chart: 'csv', ticker: 'items' };
+const TABLE_PORTS: Record<string, string> = { table: 'link', credits: 'link', chart: 'csv', ticker: 'items', socialWall: 'items' };
 const takesTable = (l: Layer, port: string) => TABLE_PORTS[l.type] === port;
+/** The content port of a layer taking a data set's All rows, if it has one. */
+export const tablePortOf = (l: Layer): string | undefined => TABLE_PORTS[l.type];
+/** The layer's items are one text (the social wall's JSON), not a list (the ticker's). */
+const textItems = (l: Layer) => l.type === 'socialWall';
 const CONTENT_LABEL: Record<string, string> = { src: 'Picture', text: 'Text', link: 'Rows', csv: 'Rows', items: 'Items', 'title.text': 'Title' };
 type Item = { cat?: string; text?: string; on?: boolean };
 const contentValue = (l: Layer, port: string) => {
@@ -81,7 +85,7 @@ function wireContent(x: Layer, port: string, key: string) {
   if (port === 'text') {
     const cur = String(l.text ?? '');
     if (!cur.includes(token)) l.text = cur.trim() && /\{\{\w+\}\}/.test(cur) ? `${cur} ${token}` : token;
-  } else if (port === 'items') l.items = [{ cat: '', text: token, on: true }];
+  } else if (port === 'items' && !textItems(x)) l.items = [{ cat: '', text: token, on: true }];
   else {
     setPath(l, port, token);
     if (x.type === 'chart' && port === 'csv') l.source = 'csv';
@@ -91,7 +95,7 @@ function wireContent(x: Layer, port: string, key: string) {
 function unwireContent(x: Layer, port: string, key: string) {
   const token = `{{${key}}}`;
   const l = x as unknown as Record<string, unknown>;
-  if (port === 'items') {
+  if (port === 'items' && !textItems(x)) {
     l.items = ((l.items as Item[] | undefined) ?? []).filter((i) => !(i.text ?? '').includes(token));
     return;
   }
@@ -107,6 +111,11 @@ function unwireContent(x: Layer, port: string, key: string) {
 }
 /** A {{key}} in a layer's text or picture. */
 const tokensIn = (l: Layer, port: string, key: string) => contentValue(l, port).includes(`{{${key}}}`);
+/** The data set whose All rows the layer's table port reads (`{{key__table}}` alone there): its key. */
+export function tableKeyAt(l: Layer): string | null {
+  const port = TABLE_PORTS[l.type];
+  return port ? (/^\{\{(\w+)__table\}\}$/.exec(contentValue(l, port).trim())?.[1] ?? null) : null;
+}
 
 /** Setting ports of a layer: the settings set from the data (or waiting for a wire). */
 const settingPortsOf = (l: Layer) =>
@@ -357,6 +366,78 @@ function compile(t: Template, flow: DataFlow) {
   if (!t.dataflow) delete t.dataflow;
 }
 
+/** Changes the data graph of `t` (the one saved, else `base`: its old bindings migrated, as the canvas draws them), then the bindings it gives. */
+export function editDataflow(t: Template, fn: (f: DataFlow) => void, base?: DataFlow | null) {
+  const f: DataFlow = structuredClone(t.dataflow ?? base ?? migrate(t));
+  fn(f);
+  compile(t, f);
+}
+/** Wires `from` into `to` (its only input), unless that makes a loop. */
+export function linkFlow(f: DataFlow, from: string, to: string) {
+  let cur: string | undefined = from;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    if (cur === to) return;
+    seen.add(cur);
+    cur = f.edges.find((e) => e.to === cur)?.from;
+  }
+  f.edges = f.edges.filter((e) => e.to !== to);
+  f.edges.push({ from, to });
+}
+/** A new data set node named `name` at `at`, in `f`; its key comes from its name, not a variable's nor another set's. */
+export function newDataset(t: Template, f: DataFlow, name: string, at: Pt): FlowNode & { type: 'dataset' } {
+  const taken = new Set([...t.fields.map((x) => x.key), ...f.nodes.flatMap((n) => (n.type === 'dataset' ? [n.key] : []))]);
+  const n = { id: newId(), ...at, type: 'dataset' as const, key: fieldKey(name, taken), name, change: 'outIn' as const };
+  f.nodes.push(n);
+  return n;
+}
+/**
+ * Feeds a layer's table port from a source's list through a new data set
+ * (source → data set → the layer), as wiring the data set's All rows by hand
+ * does. The source node is shared with the chains already reading that list.
+ * Gives the data set's key (null: the layer takes no table).
+ */
+export function feedTable(t: Template, l: Layer, source: string, list: string): string | null {
+  const port = TABLE_PORTS[l.type];
+  if (!port) return null;
+  let key = '';
+  editDataflow(t, (f) => {
+    let src = f.nodes.find((n): n is FlowNode & { type: 'source' } => n.type === 'source' && n.source === source && n.list === list);
+    if (!src) {
+      // Under the chains already there.
+      const y = f.nodes.reduce((m, n) => Math.max(m, n.y + 380), 40);
+      src = { id: newId(), x: COLS.source, y, type: 'source', source, list };
+      f.nodes.push(src);
+    }
+    const ds = newDataset(t, f, l.name, { x: src.x + W.source + 90, y: src.y });
+    linkFlow(f, src.id, ds.id);
+    key = ds.key;
+  });
+  wireContent(l, port, tableKey(key));
+  return key;
+}
+/**
+ * Takes the data set out of a layer's table port; when nothing else reads it
+ * (no layer, variable or operation), the data set goes with the nodes that
+ * fed only it. The port keeps what else it held.
+ */
+export function unfeedTable(t: Template, l: Layer) {
+  const port = TABLE_PORTS[l.type];
+  const key = tableKeyAt(l);
+  if (!port || !key) return;
+  unwireContent(l, port, tableKey(key));
+  if (JSON.stringify([t.layers, t.fields, t.logic ?? null]).includes(`${key}_`)) return;
+  editDataflow(t, (f) => {
+    let cur = f.nodes.find((n) => n.type === 'dataset' && n.key === key)?.id;
+    while (cur) {
+      const into = f.edges.find((e) => e.to === cur)?.from;
+      f.nodes = f.nodes.filter((n) => n.id !== cur);
+      f.edges = f.edges.filter((e) => e.from !== cur && e.to !== cur);
+      cur = into && !f.edges.some((e) => e.from === into) ? into : undefined;
+    }
+  });
+}
+
 export function DataCanvas() {
   const { open, set: setOpen } = useDataCanvas();
   const template = useDesigner((s) => s.template);
@@ -517,12 +598,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       if (n) Object.assign(n, patch);
     }, key);
   /** Changes the data graph, then the bindings it gives. */
-  const editFlow = (fn: (f: DataFlow) => void, key?: string) =>
-    update((t) => {
-      const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
-      fn(f);
-      compile(t, f);
-    }, key);
+  const editFlow = (fn: (f: DataFlow) => void, key?: string) => update((t) => editDataflow(t, fn, migrated), key);
   const setFlowNode = (id: string, fn: (n: FlowNode) => void, key?: string) =>
     editFlow((f) => {
       const n = f.nodes.find((x) => x.id === id);
@@ -536,7 +612,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       const def = t.fields.find((f) => f.key === key)?.default ?? '';
       if (port.startsWith('s:')) unbindSetting(x, port.slice(2));
       else if (contentOf(x).includes(port)) {
-        if (port === 'items') (x as unknown as { items: Item[] }).items = def.split('\n').filter(Boolean).map((text) => ({ cat: '', text, on: true }));
+        if (port === 'items' && !textItems(x)) (x as unknown as { items: Item[] }).items = def.split('\n').filter(Boolean).map((text) => ({ cat: '', text, on: true }));
         else setPath(x, port, def);
       } else delete x.bindings[port as Prop];
       dropField(t, key);
@@ -545,18 +621,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const key = fieldKey(label, new Set(t.fields.map((f) => f.key)));
     t.fields.push({ key, label, kind, default: def });
     return key;
-  };
-  /** Wires `from` into `to` (its only input), unless that makes a loop. */
-  const link = (f: DataFlow, from: string, to: string) => {
-    let cur: string | undefined = from;
-    const seen = new Set<string>();
-    while (cur && !seen.has(cur)) {
-      if (cur === to) return;
-      seen.add(cur);
-      cur = f.edges.find((e) => e.to === cur)?.from;
-    }
-    f.edges = f.edges.filter((e) => e.to !== to);
-    f.edges.push({ from, to });
   };
 
   // Data set columns: where their ports are (the node reports its columns).
@@ -650,11 +714,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const d = port?.dataset ?? {};
     if (w.kind === 'flow') {
       const kind = kindOf(flow, w.id);
-      if (d.flow) editFlow((f) => link(f, w.id, d.flow!));
+      if (d.flow) editFlow((f) => linkFlow(f, w.id, d.flow!));
       else if (d.field)
         update((t) => {
           const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
-          link(f, w.id, `field:${d.field}`);
+          linkFlow(f, w.id, `field:${d.field}`);
           compile(t, f);
           // A text variable fed with pictures, numbers… takes their type.
           const x = t.fields.find((y) => y.key === d.field);
@@ -667,7 +731,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         if (!l || !x) return;
         update((t) => {
           const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
-          link(f, w.id, `field:${x.key}`);
+          linkFlow(f, w.id, `field:${x.key}`);
           compile(t, f);
           const y = t.fields.find((z) => z.key === x.key);
           if (y && kind && y.kind === 'text' && kind !== 'text') y.kind = kind;
@@ -681,7 +745,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
         update((t) => {
           made = newField(t, `Field ${t.fields.length + 1}`, kind ?? 'text', '');
           const f: DataFlow = structuredClone(t.dataflow ?? migrated ?? { nodes: [], edges: [] });
-          link(f, w.id, `field:${made}`);
+          linkFlow(f, w.id, `field:${made}`);
           compile(t, f);
         });
         const spot = freeSpot(document.querySelector('.data-canvas .logic-canvas'), { x: at.x, y: at.y - HEAD / 2 });
@@ -871,11 +935,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     setLayout((l) => ({ ...l, pos: { ...l.pos, ...moved } }));
   };
   const addDataset = (at: Pt, edge?: number) => {
-    const taken = new Set([...template.fields.map((f) => f.key), ...flow.nodes.flatMap((n) => (n.type === 'dataset' ? [n.key] : []))]);
     const name = t('Data set {n}', { n: flow.nodes.filter((n) => n.type === 'dataset').length + 1 });
     editFlow((f) => {
-      const n: FlowNode = { id: newId(), ...at, type: 'dataset', key: fieldKey(name, taken), name, change: 'outIn' };
-      f.nodes.push(n);
+      const n = newDataset(template, f, name, at);
       // Dropped on a wire: fed from where it starts.
       const e = edge !== undefined ? f.edges[edge] : undefined;
       if (e) f.edges.push({ from: e.from, to: n.id });
@@ -1179,7 +1241,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                             <span className="dc-value live" title={t('Result: {value}', { value: result })}>
                               {result === '' ? t('(empty)') : (tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')))}
                             </span>
-                          ) : port === 'items' ? (
+                          ) : port === 'items' && !textItems(l) ? (
                             <span className="dc-value">{raw ? tn(raw.split('\n').length, '{n} item (Inspector)', '{n} items (Inspector)') : t('No items')}</span>
                           ) : (
                             <input

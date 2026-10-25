@@ -970,7 +970,7 @@ pub enum FieldKind {
     Table,
 }
 
-/// A data input exposed to the operator (Singular "control node" / Flowics input).
+/// A data input exposed to the operator (a field of the template).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Field {

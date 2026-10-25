@@ -11,6 +11,8 @@ export const ux3: Record<string, string> = {
   'Address unreachable': 'Adresse injoignable',
   'Platform unreachable ({why})': 'Plateforme injoignable ({why})',
   'Platform unreachable': 'Plateforme injoignable',
+  'No API key': 'Pas de clé d’API',
+  'No access token': 'Pas de jeton d’accès',
   '{name} unreachable': '{name} injoignable',
   'Unreadable answer': 'Réponse illisible',
   'The answer is not valid JSON': 'Réponse JSON invalide',

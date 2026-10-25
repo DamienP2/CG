@@ -15,6 +15,8 @@ import { ON_AIR, SocialSource } from './socialSource';
 export interface Config {
   /** The messages: `{{key}}` of a field holding a JSON list of messages (or a data set's table). */
   items?: string;
+  /** The messages typed by hand, kept while a data set feeds the wall (back by hand, they return). */
+  handItems?: string;
   /** Cards shown at most (the first ones of the list). */
   max?: number;
   anchor?: 'top' | 'bottom';
@@ -54,6 +56,8 @@ export interface Msg {
   text: string;
   avatar: string;
   photo: string;
+  amount: string;
+  time: string;
 }
 /** The last change of the cards shown (mirrors `State`). */
 export interface State {
@@ -95,16 +99,26 @@ type Cfg = ReturnType<typeof cfg>;
 // --------------------------------------------------------------- messages --
 
 const cell = (v: unknown) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
+/** A message from its keys (a table's columns), matched by name whatever their case (mirrors `Msg::of`). */
 export function msgOf(o: Record<string, unknown>): Msg {
-  const g = (k: string) => cell(o[k]);
-  const m: Msg = { id: g('id'), platform: g('platform').toLowerCase(), platformName: g('platformName'), name: g('name'), handle: g('handle'), city: g('city'), text: g('text'), avatar: g('avatar'), photo: g('photo') };
+  const keys = Object.keys(o);
+  const g = (k: string) => {
+    const hit = k in o ? k : keys.find((x) => x.toLowerCase() === k.toLowerCase());
+    return hit === undefined ? '' : cell(o[hit]);
+  };
+  const m: Msg = { id: g('id'), platform: g('platform').toLowerCase(), platformName: g('platformName'), name: g('name'), handle: g('handle'), city: g('city'), text: g('text'), avatar: g('avatar'), photo: g('photo'), amount: g('amount'), time: g('time') };
   if (!m.name) m.name = m.handle;
   if (!m.id) m.id = `${m.name}|${m.text}`;
   return m;
 }
 const fullMsg = (m: Partial<Msg>): Msg => msgOf(m as Record<string, unknown>);
+const hasText = (m: Msg) => !!(m.text || m.name);
 
-/** The messages of a value: a JSON list of objects, a data set's table or an object with one under `approved` (mirrors `parse`). */
+/**
+ * The messages of a value: a JSON list of objects, a data set's table
+ * (`[[header…], [cells…]…]`: its columns by name, a row's id its index when
+ * there is no id column) or an object with one under `approved` (mirrors `parse`).
+ */
 export function parse(text: string): Msg[] {
   const t0 = text.trim();
   if (!t0.startsWith('[') && !t0.startsWith('{')) return [];
@@ -116,11 +130,21 @@ export function parse(text: string): Msg[] {
   }
   const list: unknown[] = Array.isArray(v) ? v : v && typeof v === 'object' && Array.isArray((v as { approved?: unknown }).approved) ? (v as { approved: unknown[] }).approved : [];
   const tb = headerRows(list);
-  if (tb) return tb.rows.map((r) => msgOf(Object.fromEntries(tb.head.map((k, i) => [k, r[i] ?? '']))));
+  if (tb) {
+    const head = tb.head.map((h) => h.trim());
+    const ids = head.some((h) => h.toLowerCase() === 'id');
+    return tb.rows
+      .map((r, i) => {
+        const m = msgOf(Object.fromEntries(head.map((k, j) => [k, r[j] ?? ''])));
+        if (!ids) m.id = String(i);
+        return m;
+      })
+      .filter(hasText);
+  }
   return list
     .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
     .map(msgOf)
-    .filter((m) => m.text || m.name);
+    .filter(hasText);
 }
 
 export const messages = (c: Cfg, data: Data) => parse(interpolateText(c.items, data)).slice(0, Math.max(1, c.max));
@@ -565,7 +589,7 @@ export default defineWidget({
     const c = cfg(layer as unknown as Config);
     return (
       <>
-        <SocialSource label={t('Messages')} picks={[ON_AIR.approved('items')]} />
+        <SocialSource label={t('Messages')} picks={[ON_AIR.approved('items', 'handItems')]} />
         <Section id="sw-content" title={t('Content')}>
           <Content label={t('Messages')} path="items" value={c.items} multiline placeholder="{{messages}}" />
           <Num label={t('Cards shown')} path="max" value={c.max} min={1} max={12} />

@@ -1,4 +1,4 @@
-//! Relations between values (MXMZ-style logic): a small node graph per
+//! Relations between values (the Logic canvas): a small node graph per
 //! template, evaluated every frame after animation and data bindings.
 //!
 //! Sources (a layer property, the measured size of a text, a data field, a

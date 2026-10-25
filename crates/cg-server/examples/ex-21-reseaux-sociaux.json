@@ -1387,7 +1387,7 @@
  "sources": [
   {
    "id": "social-{{project}}",
-   "name": "Social",
+   "name": "Modération",
    "type": "push",
    "format": "json",
    "value": {

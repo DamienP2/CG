@@ -152,6 +152,10 @@ pub struct Status {
     pub hook_at: Option<i64>,
     /// The account read, as the platform names it ("Le Figaro TV").
     pub account: Option<String>,
+    /// Enabled, but not reading its platform: no project follows it (and
+    /// no test runs). See `run::wanted`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub idle: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,8 +174,19 @@ pub struct Hub {
     status: RwLock<HashMap<String, Status>>,
     recent: RwLock<HashMap<String, VecDeque<Message>>>,
     tx: broadcast::Sender<Message>,
-    /// Woken when the connections change (connectors restart).
+    /// Woken when the connections change (connectors restart), when the
+    /// connections a project follows change, and when a test starts.
     pub changed: tokio::sync::Notify,
+    /// Test windows (`POST …/test`): connection id → until (ms). The
+    /// connector runs meanwhile, followed or not.
+    pub testing: RwLock<HashMap<String, i64>>,
+}
+
+/// The connections a project follows (`<data>/social/projects/<id>.json`).
+#[derive(Deserialize)]
+struct Followed {
+    #[serde(default)]
+    sources: Vec<String>,
 }
 
 impl Hub {
@@ -189,7 +204,49 @@ impl Hub {
             recent: RwLock::default(),
             tx: broadcast::channel(4096).0,
             changed: tokio::sync::Notify::new(),
+            testing: RwLock::default(),
         }
+    }
+
+    /// How many projects follow each connection, from their files.
+    pub fn followers(&self) -> HashMap<String, usize> {
+        let mut out = HashMap::new();
+        let Ok(rd) = std::fs::read_dir(self.dir.join("projects")) else {
+            return out;
+        };
+        for e in rd.flatten() {
+            if e.path().extension().and_then(|x| x.to_str()) != Some("json") {
+                continue;
+            }
+            let f = std::fs::read(e.path())
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Followed>(&b).ok());
+            for id in f.map(|f| f.sources).unwrap_or_default() {
+                *out.entry(id).or_default() += 1;
+            }
+        }
+        out
+    }
+
+    /// Opens a test window: the connector runs for `ms` even when no
+    /// project follows it (the supervisor starts it).
+    pub fn test(&self, id: &str, ms: i64) {
+        let until = crate::state::now_ms() + ms;
+        self.testing
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string(), until);
+        self.changed.notify_waiters();
+    }
+
+    /// The connections under test now, and when the first window ends
+    /// (ms). Windows over are dropped.
+    pub fn testing(&self) -> (std::collections::HashSet<String>, Option<i64>) {
+        let now = crate::state::now_ms();
+        let mut testing = self.testing.write().unwrap_or_else(|e| e.into_inner());
+        testing.retain(|_, until| *until > now);
+        let next = testing.values().min().copied();
+        (testing.keys().cloned().collect(), next)
     }
 
     /// New messages of every connection.
@@ -266,11 +323,6 @@ impl Hub {
             .collect()
     }
 
-    /// `<data>/social`.
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
-
     /// With its secrets (connectors only).
     pub fn get(&self, id: &str) -> Option<SocialSource> {
         self.sources
@@ -327,6 +379,10 @@ impl Hub {
             .unwrap_or_else(|e| e.into_inner())
             .remove(id);
         self.recent
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
+        self.testing
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .remove(id);

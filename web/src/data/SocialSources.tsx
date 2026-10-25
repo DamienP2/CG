@@ -1,18 +1,20 @@
-import { CircleAlert, Copy, Plus, Save, Trash2 } from 'lucide-react';
+import { CircleAlert, Copy, Play, Plus, Save, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api, changeEvents, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Segmented } from '../ui/fields';
-import { locale, t, tn } from '../i18n';
+import { locale, t, tc, tn } from '../i18n';
 import { errorProps, friendlyError } from '../ui/serverError';
 import { PLATFORMS, PLATFORM_IDS, PlatformBadge, type Platform } from '../social/PlatformBadge';
 
 /*
  * Social network connections, shared by every project (main menu › Data):
  * the "Social networks" part of the Data page's list, the editor of a
- * connection and its live messages. What a project does with the messages
- * is its own (project › Social).
+ * connection and its test (the platform is read on demand: a connection
+ * reads its platform only while a project follows it, or while a test
+ * runs). What a project does with the messages is its own (project ›
+ * Social).
  */
 
 export interface SocialSource {
@@ -34,8 +36,18 @@ export interface SocialInfo extends SocialSource {
   expiresAt?: number | null;
   hookAt?: number | null;
   account?: string | null;
+  /** Enabled, but reading nothing: no project follows it. */
+  idle?: boolean;
   /** Projects following it. */
   projects: number;
+}
+
+/** What `POST /api/social/sources/{id}/test` answers. */
+export interface SocialTest {
+  ok: boolean;
+  state: SocialInfo;
+  messages: SocialMessage[];
+  tookMs: number;
 }
 
 export interface SocialMessage {
@@ -95,6 +107,7 @@ export function connectionState(s: SocialInfo): { text: string; dot: string; raw
     return { text: days < 0 ? t('Token expired') : tn(days, 'Token expires in {n} day', 'Token expires in {n} days'), dot: 'soc-warn' };
   }
   if (s.warning) return { text: s.warning, dot: 'soc-warn' };
+  if (s.idle) return { text: t('Idle · no project follows it'), dot: 'idle' };
   if (s.offAir) return { text: t('No live'), dot: 'idle' };
   if (!s.connected) return { text: t('Connecting…'), dot: 'idle' };
   const rate = t('{n} msg/min', { n: s.perMin });
@@ -410,77 +423,102 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
           )}
         </div>
       </div>
-      {info ? <Feed info={info} /> : <div className="se-preview" />}
+      {info ? <TestPanel info={info} editable={editable} dirty={dirty} /> : <div className="se-preview" />}
     </div>
   );
 }
 
-/** Messages per 10 s over the last 80 s. */
-function spark(list: SocialMessage[]) {
-  const now = Date.now();
-  const bars = new Array(8).fill(0);
-  for (const m of list) {
-    const i = 7 - Math.floor((now - m.at) / 10_000);
-    if (i >= 0 && i < 8) bars[i]++;
-  }
-  const max = Math.max(1, ...bars);
-  return bars.map((n) => Math.max(6, (n / max) * 100));
+/** One line of state: the list's dot and text. */
+function StateLine({ info, children }: { info: SocialInfo; children?: React.ReactNode }) {
+  const st = connectionState(info);
+  return (
+    <div className="soc-state" title={st.raw ?? st.text}>
+      <i className={`status-dot ${st.dot}`} />
+      <span>{st.text}</span>
+      {children}
+    </div>
+  );
 }
 
-/** The last messages of a connection, newest first. */
-export function Feed({ info }: { info: SocialInfo }) {
-  const [list, setList] = useState<SocialMessage[]>([]);
-  useEffect(() => {
-    let live = true;
-    const get = () =>
-      api<SocialMessage[]>('GET', `/api/social/sources/${encodeURIComponent(info.id)}/messages?limit=100`)
-        .then((l) => live && setList(l))
-        .catch(() => {});
-    get();
-    const timer = setInterval(get, 2000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [info.id]);
+/**
+ * The right column of a connection: a test on demand (the platform is read
+ * for 20 s, the result comes back within 8 s) and its outcome, the state
+ * and the last messages. Before any test: the connection's state as the
+ * list gives it.
+ */
+function TestPanel({ info, editable, dirty }: { info: SocialInfo; editable: boolean; dirty: boolean }) {
+  const toast = useApp((st) => st.toast);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<SocialTest | null>(null);
+  const run = async () => {
+    setBusy(true);
+    try {
+      setResult(await api<SocialTest>('POST', `/api/social/sources/${encodeURIComponent(info.id)}/test`));
+    } catch (e) {
+      toast((e as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const why = !info.enabled ? t('Not enabled') : dirty ? t('Save the connection first') : undefined;
+  return (
+    <div className="se-preview soc-test">
+      <div className="se-preview-head soc-feed-head">
+        <strong>{tc('heading', 'Test')}</strong>
+        <div className="spacer" />
+        {editable && (
+          <button className="btn primary" disabled={busy || !!why} title={why} onClick={run}>
+            <Play size={14} /> {t('Test')}
+          </button>
+        )}
+      </div>
+      {busy ? (
+        <div className="soc-state">
+          <i className="status-dot idle" />
+          <span>{t('Testing…')}</span>
+        </div>
+      ) : result ? (
+        <>
+          <StateLine info={result.state}>
+            <span className="muted small">{t('in {n} s', { n: (result.tookMs / 1000).toFixed(1) })}</span>
+          </StateLine>
+          {result.messages.map((m) => (
+            <MessageCard key={m.id} m={m} />
+          ))}
+        </>
+      ) : (
+        <StateLine info={info} />
+      )}
+    </div>
+  );
+}
+
+/** A message, as the connection brought it in. */
+function MessageCard({ m }: { m: SocialMessage }) {
   const time = (at: number) => new Date(at).toLocaleTimeString(locale(), { hour12: false });
   return (
-    <div className="se-preview soc-feed">
-      <div className="se-preview-head soc-feed-head">
-        <strong>{t('Messages')}</strong>
-        <span className="muted small">{t('{n} / min', { n: info.perMin })}</span>
-        <div className="spacer" />
-        <span className="soc-spark">
-          {spark(list).map((h, i) => (
-            <i key={i} style={{ height: `${h}%` }} />
-          ))}
-        </span>
-      </div>
-      {list.map((m) => (
-        <div key={m.id} className="soc-msg">
-          <PlatformBadge platform={m.platform} />
-          <div className="soc-msg-body">
-            <div className="soc-msg-who">
-              <strong>{m.author.name || m.author.handle || '—'}</strong>
-              {m.author.handle && m.author.handle !== m.author.name && <span className="muted">@{m.author.handle}</span>}
-              {m.author.city && <span className="muted">· {m.author.city}</span>}
-              <span className="spacer" />
-              <time>{time(m.at)}</time>
-            </div>
-            <div className="soc-msg-text">
-              {m.amount && <span className="soc-amount">{m.platform === 'youtube' ? `Super Chat ${m.amount}` : m.amount}</span>}
-              {m.text}
-            </div>
-            {!!m.photos?.length && (
-              <div className="soc-photos">
-                {m.photos.map((p) => (
-                  <img key={p} src={p} alt="" loading="lazy" />
-                ))}
-              </div>
-            )}
-          </div>
+    <div className="soc-msg">
+      <PlatformBadge platform={m.platform} />
+      <div className="soc-msg-body">
+        <div className="soc-msg-who">
+          <strong>{m.author.name || m.author.handle || '—'}</strong>
+          {m.author.handle && m.author.handle !== m.author.name && <span className="muted">@{m.author.handle}</span>}
+          {m.author.city && <span className="muted">· {m.author.city}</span>}
+          <span className="spacer" />
+          <time>{time(m.at)}</time>
         </div>
-      ))}
+        <div className="soc-msg-text">
+          {m.amount && <span className="soc-amount">{m.platform === 'youtube' ? `Super Chat ${m.amount}` : m.amount}</span>}
+          {m.text}
+        </div>
+        {!!m.photos?.length && (
+          <div className="soc-photos">
+            {m.photos.map((p) => (
+              <img key={p} src={p} alt="" loading="lazy" />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ export const socialSources: Record<string, string> = {
   'Token expires in {n} day': 'Jeton expire dans {n} j',
   'Token expires in {n} days': 'Jeton expire dans {n} j',
   'No live': 'Hors direct',
+  'Idle · no project follows it': 'En veille · aucun projet ne la suit',
   '{n} msg/min': '{n} msg/min',
   '{n} / min': '{n} / min',
   'Delete the connection “{name}”?': 'Supprimer la connexion « {name} » ?',
@@ -15,6 +16,11 @@ export const socialSources: Record<string, string> = {
   Read: 'Lire',
   'Webhook address': 'Adresse du webhook',
   Messages: 'Messages',
+  // The test of a connection (right column).
+  'heading|Test': 'Test',
+  'Testing…': 'Test en cours…',
+  'in {n} s': 'en {n} s',
+  'Save the connection first': 'Enregistrez d’abord la connexion',
   // Settings of the platforms.
   'Current live of the channel': 'Direct en cours de la chaîne',
   'Given video': 'Vidéo précise',

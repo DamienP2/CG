@@ -32,6 +32,10 @@ pub struct Config {
     /// The messages: `{{key}}` of a field holding a JSON list of messages
     /// (or a data set's table).
     pub items: String,
+    /// The messages typed by hand, kept while a data set feeds the wall
+    /// (back by hand, they return).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub hand_items: String,
     /// Cards shown at most (the first ones of the list).
     pub max: u32,
     pub anchor: Anchor,
@@ -67,6 +71,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             items: String::new(),
+            hand_items: String::new(),
             max: 3,
             anchor: Anchor::Top,
             gap: 12.0,
@@ -108,6 +113,8 @@ pub struct Msg {
     pub text: String,
     pub avatar: String,
     pub photo: String,
+    pub amount: String,
+    pub time: String,
 }
 
 fn cell(v: Option<&serde_json::Value>) -> String {
@@ -119,9 +126,16 @@ fn cell(v: Option<&serde_json::Value>) -> String {
 }
 
 impl Msg {
-    /// From a JSON object of the social source (or a table row as one).
+    /// From a JSON object of the social source (or a table row as one):
+    /// its keys matched by name, whatever their case.
     pub fn of(o: &serde_json::Map<String, serde_json::Value>) -> Msg {
-        let g = |k: &str| cell(o.get(k));
+        let g = |k: &str| {
+            cell(o.get(k).or_else(|| {
+                o.iter()
+                    .find(|(x, _)| x.eq_ignore_ascii_case(k))
+                    .map(|(_, v)| v)
+            }))
+        };
         let mut m = Msg {
             id: g("id"),
             platform: g("platform").to_lowercase(),
@@ -132,6 +146,8 @@ impl Msg {
             text: g("text"),
             avatar: g("avatar"),
             photo: g("photo"),
+            amount: g("amount"),
+            time: g("time"),
         };
         if m.name.is_empty() {
             m.name = m.handle.clone();
@@ -144,7 +160,8 @@ impl Msg {
 }
 
 /// The messages of a value: a JSON list of objects, a data set's table
-/// (`[[header…], [cells…]…]`) or an object with one under `approved`.
+/// (`[[header…], [cells…]…]`: its columns by name, a row's id its index
+/// when there is no id column) or an object with one under `approved`.
 pub fn parse(text: &str) -> Vec<Msg> {
     let t = text.trim();
     if !t.starts_with('[') && !t.starts_with('{') {
@@ -161,23 +178,32 @@ pub fn parse(text: &str) -> Vec<Msg> {
             .unwrap_or_default(),
         _ => Vec::new(),
     };
+    let has_text = |m: &Msg| !m.text.is_empty() || !m.name.is_empty();
     if let Some((head, rows)) = super::table::header_rows(&list) {
+        let head: Vec<String> = head.iter().map(|h| h.trim().to_string()).collect();
+        let ids = head.iter().any(|h| h.eq_ignore_ascii_case("id"));
         return rows
             .iter()
-            .map(|r| {
+            .enumerate()
+            .map(|(i, r)| {
                 let o = head
                     .iter()
                     .zip(r)
                     .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                     .collect();
-                Msg::of(&o)
+                let mut m = Msg::of(&o);
+                if !ids {
+                    m.id = i.to_string();
+                }
+                m
             })
+            .filter(has_text)
             .collect();
     }
     list.iter()
         .filter_map(|v| v.as_object())
         .map(Msg::of)
-        .filter(|m| !m.text.is_empty() || !m.name.is_empty())
+        .filter(has_text)
         .collect()
 }
 
@@ -776,5 +802,35 @@ mod tests {
         let m = parse(o);
         assert_eq!((m[0].id.as_str(), m[0].name.as_str()), ("7", "@kev"));
         assert!(parse("pas du JSON").is_empty());
+    }
+
+    #[test]
+    fn a_table_maps_its_columns_by_name_and_numbers_its_rows() {
+        // Columns in any case; no id column: the row's index is its id.
+        let t = r#"[["Name","TEXT","platformName","Platform","city","time"],
+            ["Ana","Bravo","YouTube","YouTube","Lyon","20:13"],
+            ["","","","","",""],
+            ["","Charlie","X","x","","20:14"]]"#;
+        let m = parse(t);
+        assert_eq!(m.len(), 2, "an empty row is no card");
+        assert_eq!(m[0].id, "0");
+        assert_eq!(m[0].name, "Ana");
+        assert_eq!(m[0].text, "Bravo");
+        assert_eq!(m[0].platform_name, "YouTube");
+        assert_eq!(m[0].platform, "youtube");
+        assert_eq!((m[0].city.as_str(), m[0].time.as_str()), ("Lyon", "20:13"));
+        assert_eq!((m[1].id.as_str(), m[1].platform.as_str()), ("2", "x"));
+        // An id column (any case) gives the ids; a handle stands in for a name.
+        let t = r#"[["ID","handle","text"],["m7","@kev","Salut"]]"#;
+        let m = parse(t);
+        assert_eq!((m[0].id.as_str(), m[0].name.as_str()), ("m7", "@kev"));
+        // The same through a layer's data.
+        let mut d = Data::new();
+        d.insert("wall__table".into(), t.to_string());
+        let c = Config {
+            items: "{{wall__table}}".into(),
+            ..Default::default()
+        };
+        assert_eq!(messages(&c, &d).len(), 1);
     }
 }

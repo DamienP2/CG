@@ -15,7 +15,7 @@ import { t } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
 
 /*
- * Relations editor (MXMZ-style logic): sources → operations → targets,
+ * Relations editor (the Logic canvas): sources → operations → targets,
  * wired on a canvas. Values update live at the playhead with the preview
  * data, and the same graph runs in the Rust renderer.
  */

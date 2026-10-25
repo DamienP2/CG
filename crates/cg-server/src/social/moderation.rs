@@ -1,13 +1,16 @@
 //! A project's social desk: the shared connections it follows, the
 //! messages coming in (kept in memory), its rules (`rules`), what its
 //! moderators approve, edit and reject, the hashtags it counts
-//! (`hashtags`), and what goes on air. Several moderators work at once:
-//! every change is sent to the others (`Event::Social`), and actions are
-//! idempotent by message id.
+//! (`hashtags`), and the pool of approved messages it turns on air.
+//! Several moderators work at once: every change is sent to the others
+//! (`Event::Social`), and actions are idempotent by message id.
 //!
-//! Templates read it as the project data source `social-<project id>`
-//! (`SourceValue`). TAKE, SUIVANT and OUT go through `AppState::command`
-//! like any other action on air; the rotation does SUIVANT every N seconds.
+//! The desk never touches a channel: templates read it as the project data
+//! source `social-<project id>` (`SourceValue`: the message on air, the
+//! next, the pool, the hashtags), and the Operator takes the graphics
+//! reading it on air like any other. The rotation goes to the next message
+//! of the pool every N seconds; a message leaves the pool after its passes
+//! or its time (the pool's rule, or its own).
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -18,13 +21,12 @@ use axum::extract::{Path as UrlPath, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use cg_core::{Command, Phase, Project};
+use cg_core::Project;
 use serde::{Deserialize, Serialize};
 
 use super::hashtags::{self, Hashtag};
 use super::rules::{self, Rules, Status, Tag};
 use super::{Author, Message, Platform};
-use crate::antenna::Actor;
 use crate::api::{bad, not_found, require, visible_project, ApiResult};
 use crate::auth::{Acting, CurrentUser, User};
 use crate::state::{now_ms, Event, Shared};
@@ -35,6 +37,8 @@ pub const INCOMING: usize = 1000;
 const FORGOTTEN: usize = 2000;
 /// Texts kept to find duplicates.
 const TEXTS: usize = 5000;
+/// Messages kept after they left the pool (they can come back).
+const RETIRED: usize = 200;
 
 /// The data source templates read: `social-<project id>`.
 pub fn source_id(project: &str) -> String {
@@ -54,28 +58,52 @@ pub enum NameMode {
     Anonymous,
 }
 
-/// What goes on air, and how.
+/// The order the pool goes on air in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Order {
+    /// As approved.
+    #[default]
+    Arrival,
+    /// The starred ones first.
+    Starred,
+    Random,
+}
+
+/// When a message leaves the pool: after `airs` passes, or `minutes` after
+/// it was approved (0: never); both 0: by hand.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Leave {
+    pub airs: u32,
+    pub minutes: u32,
+}
+
+/// The pool on air: its rotation, order, how messages leave it, how authors
+/// are named.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Display {
-    /// The template showing a message ("Carte message").
-    pub template_id: String,
-    /// The channel it goes on (one the project is loaded on).
-    pub channel_id: String,
-    /// SUIVANT by itself every `rotation_secs`.
+    /// The next message by itself every `rotation_secs`.
     pub rotation: bool,
     pub rotation_secs: u32,
     pub name_mode: NameMode,
+    pub order: Order,
+    /// The pool's rule (a message may have its own).
+    pub leave: Leave,
+    /// Most messages in the pool (0: no limit): the oldest not starred leave.
+    pub max: u32,
 }
 
 impl Default for Display {
     fn default() -> Self {
         Self {
-            template_id: String::new(),
-            channel_id: String::new(),
-            rotation: false,
+            rotation: true,
             rotation_secs: 8,
             name_mode: NameMode::Initial,
+            order: Order::Arrival,
+            leave: Leave::default(),
+            max: 0,
         }
     }
 }
@@ -108,6 +136,19 @@ pub struct Card {
     /// Who approved it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub by: String,
+    /// Passes on air.
+    #[serde(default)]
+    pub airs: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_air: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<i64>,
+    /// Its own rule to leave the pool, instead of the pool's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leave: Option<Leave>,
+    /// When it left the pool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retired_at: Option<i64>,
     /// Same text came shortly before (kept to apply the rules again).
     #[serde(skip)]
     duplicate: bool,
@@ -130,6 +171,11 @@ impl Card {
             name_mode: None,
             starred: false,
             by: String::new(),
+            airs: 0,
+            last_air: None,
+            approved_at: None,
+            leave: None,
+            retired_at: None,
             duplicate: ctx.duplicate,
             author_messages: ctx.author_messages,
         };
@@ -172,9 +218,11 @@ pub struct Saved {
     pub rules: Rules,
     pub hashtags: Vec<Hashtag>,
     pub display: Display,
-    /// In the order they go on air (without the one on air).
+    /// The pool, in the order they go on air (without the one on air).
     pub approved: Vec<Card>,
     pub on_air: Option<Card>,
+    /// Left the pool, oldest first (they can come back).
+    pub retired: VecDeque<Card>,
     pub rejected: VecDeque<String>,
     pub aired: VecDeque<String>,
 }
@@ -209,6 +257,7 @@ enum Place {
     Incoming(usize),
     Approved(usize),
     OnAir,
+    Retired(usize),
 }
 
 impl Desk1 {
@@ -219,10 +268,14 @@ impl Desk1 {
         if let Some(i) = self.saved.approved.iter().position(|c| c.id() == id) {
             return Some(Place::Approved(i));
         }
-        self.incoming
+        if let Some(i) = self.incoming.iter().position(|c| c.id() == id) {
+            return Some(Place::Incoming(i));
+        }
+        self.saved
+            .retired
             .iter()
             .position(|c| c.id() == id)
-            .map(Place::Incoming)
+            .map(Place::Retired)
     }
 
     fn card_mut(&mut self, id: &str) -> Option<&mut Card> {
@@ -230,6 +283,7 @@ impl Desk1 {
             Place::OnAir => self.saved.on_air.as_mut(),
             Place::Approved(i) => self.saved.approved.get_mut(i),
             Place::Incoming(i) => self.incoming.get_mut(i),
+            Place::Retired(i) => self.saved.retired.get_mut(i),
         }
     }
 
@@ -281,7 +335,7 @@ impl Desk1 {
             self.tox_rejects += 1;
         }
         if card.status == Status::Approved {
-            self.saved.approved.push(card);
+            self.enter_pool(card, now);
             self.queue_changed = true;
             return;
         }
@@ -301,7 +355,7 @@ impl Desk1 {
         }
     }
 
-    fn approve(&mut self, id: &str, by: &str) -> bool {
+    fn approve(&mut self, id: &str, by: &str, now: i64) -> bool {
         let Some(Place::Incoming(i)) = self.place(id) else {
             return false;
         };
@@ -310,7 +364,187 @@ impl Desk1 {
         };
         c.status = Status::Approved;
         c.by = by.to_string();
+        self.enter_pool(c, now);
+        true
+    }
+
+    /// Into the pool, with a fresh clock; the pool's size rule applies.
+    fn enter_pool(&mut self, mut c: Card, now: i64) {
+        c.approved_at = Some(now);
+        c.retired_at = None;
         self.saved.approved.push(c);
+        self.cap(now);
+    }
+
+    /// The rule a message leaves the pool by.
+    fn rule(&self, c: &Card) -> Leave {
+        c.leave.unwrap_or(self.saved.display.leave)
+    }
+
+    fn airs_up(&self, c: &Card) -> bool {
+        let r = self.rule(c);
+        r.airs > 0 && c.airs >= r.airs
+    }
+
+    fn minutes_up(&self, c: &Card, now: i64) -> bool {
+        let r = self.rule(c);
+        r.minutes > 0
+            && c.approved_at
+                .is_some_and(|t| now - t >= i64::from(r.minutes) * 60_000)
+    }
+
+    /// Out of the pool, kept to come back.
+    fn retire_card(&mut self, mut c: Card, now: i64) {
+        c.retired_at = Some(now);
+        Self::forget(&mut self.saved.aired, c.message.id.clone());
+        self.saved.retired.push_back(c);
+        while self.saved.retired.len() > RETIRED {
+            self.saved.retired.pop_front();
+        }
+        self.queue_changed = true;
+    }
+
+    /// Messages whose time in the pool is up leave it (the one on air
+    /// finishes its pass). True when some left.
+    fn expire(&mut self, now: i64) -> bool {
+        let mut gone = false;
+        let mut i = 0;
+        while i < self.saved.approved.len() {
+            if self.minutes_up(&self.saved.approved[i], now) {
+                let c = self.saved.approved.remove(i);
+                self.retire_card(c, now);
+                gone = true;
+            } else {
+                i += 1;
+            }
+        }
+        gone
+    }
+
+    /// Too many in the pool: the oldest not starred leave (the oldest at all
+    /// when every one is starred).
+    fn cap(&mut self, now: i64) -> bool {
+        let max = self.saved.display.max as usize;
+        if max == 0 {
+            return false;
+        }
+        let mut gone = false;
+        while self.saved.approved.len() > max {
+            let i = self
+                .saved
+                .approved
+                .iter()
+                .position(|c| !c.starred)
+                .unwrap_or(0);
+            let c = self.saved.approved.remove(i);
+            self.retire_card(c, now);
+            gone = true;
+        }
+        gone
+    }
+
+    /// The pass on air ends: back in the pool, or out of it.
+    fn end_pass(&mut self, now: i64) {
+        if let Some(c) = self.saved.on_air.take() {
+            if self.airs_up(&c) || self.minutes_up(&c, now) {
+                self.retire_card(c, now);
+            } else {
+                self.saved.approved.push(c);
+            }
+        }
+    }
+
+    /// The next message of the pool, by the order.
+    fn pick_next(&mut self, now: i64) -> Option<Card> {
+        if self.saved.approved.is_empty() {
+            return None;
+        }
+        let i = match self.saved.display.order {
+            Order::Arrival => 0,
+            Order::Starred => self
+                .saved
+                .approved
+                .iter()
+                .position(|c| c.starred)
+                .unwrap_or(0),
+            Order::Random => {
+                let n = self.saved.approved.len() as u64;
+                ((now as u64).wrapping_mul(6_364_136_223_846_793_005) >> 33) as usize % n as usize
+            }
+        };
+        Some(self.saved.approved.remove(i))
+    }
+
+    /// SUIVANT: the next message on air (only while `from`, when given, is
+    /// still the one on air). False when nothing changed.
+    fn advance(&mut self, from: Option<&str>, now: i64) -> bool {
+        if from.is_some() && from != self.saved.on_air.as_ref().map(|c| c.id()) {
+            return false;
+        }
+        self.expire(now);
+        if self.saved.approved.is_empty() {
+            // The one on air stays (its pass goes on).
+            self.rotation_at = self
+                .saved
+                .display
+                .rotation
+                .then(|| now + self.rotation_ms());
+            return false;
+        }
+        self.end_pass(now);
+        let Some(mut c) = self.pick_next(now) else {
+            return false;
+        };
+        c.airs += 1;
+        c.last_air = Some(now);
+        self.saved.on_air = Some(c);
+        self.queue_changed = true;
+        self.rotation_at = self
+            .saved
+            .display
+            .rotation
+            .then(|| now + self.rotation_ms());
+        true
+    }
+
+    /// Nothing on air while the pool has messages: the first goes on air.
+    fn fill_air(&mut self, now: i64) -> bool {
+        self.saved.on_air.is_none() && !self.saved.approved.is_empty() && self.advance(None, now)
+    }
+
+    /// Out of the pool by hand (the one on air goes too: the next comes).
+    fn retire(&mut self, id: &str, now: i64) -> bool {
+        match self.place(id) {
+            Some(Place::Approved(i)) => {
+                let c = self.saved.approved.remove(i);
+                self.retire_card(c, now);
+                true
+            }
+            Some(Place::OnAir) => {
+                let c = self.saved.on_air.take().unwrap();
+                self.retire_card(c, now);
+                self.fill_air(now);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Back in the pool, with a fresh clock and its passes kept.
+    fn restore(&mut self, id: &str, now: i64) -> bool {
+        let Some(Place::Retired(i)) = self.place(id) else {
+            return false;
+        };
+        let Some(mut c) = self.saved.retired.remove(i) else {
+            return false;
+        };
+        c.status = Status::Approved;
+        if self.airs_up(&c) {
+            // Its passes are spent: counted again from here.
+            c.airs = 0;
+        }
+        self.enter_pool(c, now);
+        self.queue_changed = true;
         true
     }
 
@@ -318,6 +552,7 @@ impl Desk1 {
         let c = match self.place(id) {
             Some(Place::Incoming(i)) => self.incoming.remove(i),
             Some(Place::Approved(i)) => Some(self.saved.approved.remove(i)),
+            Some(Place::Retired(i)) => self.saved.retired.remove(i),
             _ => None,
         };
         let Some(c) = c else { return false };
@@ -363,55 +598,6 @@ impl Desk1 {
             .any(|(a, c)| a != c.id())
     }
 
-    /// The message on air goes: back at the end of the queue when starred.
-    fn retire(&mut self) {
-        if let Some(c) = self.saved.on_air.take() {
-            if c.starred {
-                self.saved.approved.push(c);
-            } else {
-                Self::forget(&mut self.saved.aired, c.message.id);
-            }
-        }
-    }
-
-    /// Puts a message on air: `id`, or the next one (only while `from` is
-    /// still on air). False when nothing changed.
-    fn advance(&mut self, pick: &Pick, by: &str, now: i64) -> Result<bool, String> {
-        let card = match pick {
-            Pick::Id(id) => match self.place(id) {
-                Some(Place::OnAir) => return Ok(false),
-                Some(Place::Approved(i)) => self.saved.approved.remove(i),
-                Some(Place::Incoming(i)) => {
-                    let mut c = self.incoming.remove(i).ok_or("message not found")?;
-                    c.status = Status::Approved;
-                    c.by = by.to_string();
-                    self.gone.push(c.message.id.clone());
-                    c
-                }
-                None => return Err("message not found".into()),
-            },
-            Pick::Next { from } => {
-                let on = self.saved.on_air.as_ref().map(|c| c.id().to_string());
-                if from.is_some() && *from != on {
-                    return Ok(false);
-                }
-                if self.saved.approved.is_empty() {
-                    return Ok(false);
-                }
-                self.saved.approved.remove(0)
-            }
-        };
-        self.retire();
-        self.saved.on_air = Some(card);
-        self.queue_changed = true;
-        self.rotation_at = self
-            .saved
-            .display
-            .rotation
-            .then(|| now + self.rotation_ms());
-        Ok(true)
-    }
-
     fn rotation_ms(&self) -> i64 {
         i64::from(self.saved.display.rotation_secs.clamp(2, 3600)) * 1000
     }
@@ -428,6 +614,7 @@ impl Desk1 {
         Change::Queue {
             approved: self.saved.approved.clone(),
             on_air: self.saved.on_air.clone().map(Box::new),
+            retired: self.saved.retired.iter().cloned().collect(),
             rotation_at: self.rotation_at,
         }
     }
@@ -458,16 +645,6 @@ impl Desk1 {
     }
 }
 
-/// Which message goes on air.
-#[derive(Debug, Clone)]
-pub enum Pick {
-    Id(String),
-    /// The first of the queue, if `from` is still the one on air.
-    Next {
-        from: Option<String>,
-    },
-}
-
 /// Connections followed, rules and display options.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -494,6 +671,7 @@ pub enum Change {
     Queue {
         approved: Vec<Card>,
         on_air: Option<Box<Card>>,
+        retired: Vec<Card>,
         rotation_at: Option<i64>,
     },
     Settings {
@@ -673,8 +851,6 @@ fn timezone(s: &Shared) -> jiff::tz::TimeZone {
 pub struct Desk {
     dir: PathBuf,
     projects: Mutex<HashMap<String, Desk1>>,
-    /// One TAKE / SUIVANT / OUT at a time.
-    air: tokio::sync::Mutex<()>,
 }
 
 impl Desk {
@@ -707,7 +883,6 @@ impl Desk {
         Self {
             dir,
             projects: Mutex::new(projects),
-            air: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -760,6 +935,7 @@ impl Desk {
             incoming: d.incoming.iter().cloned().collect(),
             approved: d.saved.approved.clone(),
             on_air: d.saved.on_air.clone(),
+            retired: d.saved.retired.iter().cloned().collect(),
             rotation_at: d.rotation_at,
             tox_rejects: d.tox_rejects,
             builtin_words: rules::builtin_count(),
@@ -780,6 +956,7 @@ pub struct View {
     pub incoming: Vec<Card>,
     pub approved: Vec<Card>,
     pub on_air: Option<Card>,
+    pub retired: Vec<Card>,
     pub rotation_at: Option<i64>,
     pub tox_rejects: u32,
     pub builtin_words: usize,
@@ -801,7 +978,7 @@ fn ensure_source(s: &Shared, project: &str) {
     // From JSON: the fields left out take their defaults.
     let src = serde_json::json!({
         "id": id,
-        "name": "Social",
+        "name": "Modération",
         "project": project,
         "type": "push",
         "format": "json",
@@ -846,169 +1023,12 @@ async fn publish(s: &Shared, project: &str) {
     crate::datasources::updated(s, &source_id(project), changed).await;
 }
 
-// ------------------------------------------------------------- on air ----
+// ---------------------------------------------------------------- pool ----
 
-/// Where the project's message template goes on air.
-struct Target {
-    channel: String,
-    project: std::sync::Arc<Project>,
-    template: String,
-}
-
-async fn target(s: &Shared, project: &str) -> Result<Target, String> {
-    let display = s.moderation.with(project, |d| d.saved.display.clone());
-    if display.template_id.is_empty() {
-        return Err("choose the template showing the messages".into());
-    }
-    let ch = s
-        .channel(&display.channel_id)
-        .ok_or("choose the channel the messages go on")?;
-    if ch.project_id.read().await.as_deref() != Some(project) {
-        return Err("the project is not loaded on this channel".into());
-    }
-    let p = s.project(project).await.ok_or("no such project")?;
-    if p.template(&display.template_id).is_none() {
-        return Err("the template showing the messages no longer exists".into());
-    }
-    Ok(Target {
-        channel: display.channel_id,
-        project: p,
-        template: display.template_id,
-    })
-}
-
-impl Target {
-    /// The playout layer the template is on air on (not going out).
-    async fn layer(&self, s: &Shared) -> Option<(u32, cg_core::Data)> {
-        let ch = s.channel(&self.channel)?;
-        let st = ch.state.read().await;
-        st.layers.iter().find_map(|(l, it)| {
-            let shown = match &it.next {
-                Some(n) => n.template_id == self.template,
-                None => {
-                    it.template_id == self.template
-                        && !matches!(it.phase, Phase::Out | Phase::OutHold)
-                }
-            };
-            shown.then(|| (*l, it.data.clone()))
-        })
-    }
-
-    /// Refused when another operator holds the template's zone.
-    fn check_lock(&self, s: &Shared, actor: &Actor) -> Result<(), String> {
-        let take = Command::Take {
-            zone: None,
-            layer: None,
-            template_id: self.template.clone(),
-            data: None,
-            rundown_id: None,
-        };
-        let zone = crate::antenna::command_zone(&self.project, &take);
-        if let Some(l) = zone.and_then(|z| s.channel(&self.channel)?.ops.held_by_other(&z, actor)) {
-            return Err(format!("{} holds this zone", l.user_name));
-        }
-        Ok(())
-    }
-
-    /// The source's new value on air: an update of the template on air
-    /// (its data change animation), or a take.
-    async fn show(&self, s: &Shared, actor: &Actor, take: bool) -> Result<(), String> {
-        let cmd = match self.layer(s).await {
-            Some((layer, data)) => {
-                let Some(t) = self.project.template(&self.template) else {
-                    return Ok(());
-                };
-                let mut bound = data.clone();
-                cg_core::datapath::bind(t, &mut bound, &s.data.store());
-                let changed: cg_core::Data = bound
-                    .into_iter()
-                    .filter(|(k, v)| data.get(k) != Some(v))
-                    .collect();
-                if changed.is_empty() {
-                    return Ok(());
-                }
-                Command::Update {
-                    zone: None,
-                    layer: Some(layer),
-                    data: changed,
-                    fade: true,
-                }
-            }
-            None if take => Command::Take {
-                zone: None,
-                layer: None,
-                template_id: self.template.clone(),
-                data: None,
-                rundown_id: None,
-            },
-            None => return Ok(()),
-        };
-        s.command(&self.channel, cmd, actor).await.map(|_| ())
-    }
-}
-
-/// TAKE (a message) or SUIVANT (the next one).
-pub async fn take(s: &Shared, project: &str, pick: Pick, actor: &Actor) -> Result<(), String> {
-    let _one = s.moderation.air.lock().await;
-    let target = target(s, project).await?;
-    target.check_lock(s, actor)?;
-    let now = now_ms();
-    let changed = s
-        .moderation
-        .edit(project, |d| d.advance(&pick, &actor.name, now))?;
-    // The same message again: taken again if it went out meanwhile.
-    let on_air = target.layer(s).await.is_some();
-    if !changed && (on_air || matches!(pick, Pick::Next { .. })) {
-        return Ok(());
-    }
-    let value_changed = record(s, project);
-    let res = target.show(s, actor, true).await;
-    crate::datasources::updated(s, &source_id(project), value_changed).await;
+/// A change of the pool: everyone sees it, and the source is written.
+async fn pool_changed(s: &Shared, project: &str) {
     flush_one(s, project);
-    res
-}
-
-/// OUT: the template goes out, nothing is on air.
-pub async fn out(s: &Shared, project: &str, actor: &Actor) -> Result<(), String> {
-    let _one = s.moderation.air.lock().await;
-    if let Ok(target) = target(s, project).await {
-        if let Some((layer, _)) = target.layer(s).await {
-            target.check_lock(s, actor)?;
-            s.command(
-                &target.channel,
-                Command::TakeOut {
-                    zone: None,
-                    layer: Some(layer),
-                },
-                actor,
-            )
-            .await?;
-        }
-    }
-    let changed = s.moderation.edit(project, |d| {
-        let was = d.saved.on_air.is_some();
-        d.retire();
-        d.rotation_at = None;
-        d.queue_changed |= was;
-        was
-    });
-    if changed {
-        publish(s, project).await;
-    }
-    flush_one(s, project);
-    Ok(())
-}
-
-/// After an edit of the message on air: its new text on air.
-async fn refresh_air(s: &Shared, project: &str, actor: &Actor) -> Result<(), String> {
-    let _one = s.moderation.air.lock().await;
-    let changed = record(s, project);
-    let res = match target(s, project).await {
-        Ok(t) if t.layer(s).await.is_some() => t.show(s, actor, false).await,
-        _ => Ok(()),
-    };
-    crate::datasources::updated(s, &source_id(project), changed).await;
-    res
+    publish(s, project).await;
 }
 
 /// Sends what changed since the last flush (new messages, the queue).
@@ -1081,31 +1101,22 @@ impl Desk {
     }
 }
 
+/// The pool turns: messages whose time is up leave, nothing on air while
+/// the pool has messages is filled, the rotation goes to the next one.
 async fn rotate(s: &Shared, projects: &[String], now: i64) {
     for p in projects {
-        let due = s.moderation.with(p, |d| {
+        let changed = s.moderation.with(p, |d| {
+            let mut changed = d.expire(now);
+            changed |= d.fill_air(now);
             let due = d.saved.display.rotation && d.rotation_at.is_some_and(|t| t <= now);
-            due.then(|| d.saved.on_air.as_ref().map(|c| c.id().to_string()))
+            if due {
+                changed |= d.advance(None, now);
+            }
+            changed
         });
-        let Some(from) = due else { continue };
-        // Only while the template is on air; an empty queue waits.
-        let on_air = match target(s, p).await {
-            Ok(t) => t.layer(s).await.is_some(),
-            Err(_) => false,
-        };
-        let empty = s.moderation.with(p, |d| d.saved.approved.is_empty());
-        if !on_air || empty {
-            s.moderation.with(p, |d| {
-                d.rotation_at = on_air.then(|| now + d.rotation_ms());
-                d.queue_changed = true;
-            });
-            flush_one(s, p);
-            continue;
-        }
-        if let Err(e) = take(s, p, Pick::Next { from }, &Actor::auto("Rotation")).await {
-            tracing::debug!(project = %p, "social rotation: {e}");
-            s.moderation
-                .with(p, |d| d.rotation_at = Some(now + d.rotation_ms()));
+        if changed {
+            s.moderation.edit(p, |_| ());
+            pool_changed(s, p).await;
         }
     }
 }
@@ -1229,6 +1240,8 @@ pub async fn follow(s: &Shared, project: &str, sources: Vec<String>) {
     let settings = s.moderation.with(project, |d| d.settings());
     send(s, project, Change::Settings { settings });
     send(s, project, Change::Reload);
+    // The connections read their platform only while followed.
+    s.social.changed.notify_one();
     publish(s, project).await;
 }
 
@@ -1311,34 +1324,21 @@ async fn put_display(
     UrlPath(id): UrlPath<String>,
     Json(mut display): Json<Display>,
 ) -> ApiResult<StatusCode> {
-    let p = moderator(&s, &me, &id).await?;
-    if !display.template_id.is_empty() && p.template(&display.template_id).is_none() {
-        return Err(not_found("template"));
-    }
-    if !display.channel_id.is_empty() && !me.sees_channel(&display.channel_id) {
-        return Err(not_found("channel"));
-    }
+    moderator(&s, &me, &id).await?;
     display.rotation_secs = display.rotation_secs.clamp(2, 3600);
+    display.max = display.max.min(10_000);
     let now = now_ms();
     let settings = s.moderation.edit(&id, |d| {
-        let mode = d.saved.display.name_mode != display.name_mode;
         d.saved.display = display;
         d.rotation_at = (d.saved.display.rotation && d.saved.on_air.is_some())
             .then(|| d.rotation_at.unwrap_or(now + d.rotation_ms()));
+        d.cap(now);
+        d.expire(now);
         d.queue_changed = true;
-        (d.settings(), mode)
+        d.settings()
     });
-    send(
-        &s,
-        &id,
-        Change::Settings {
-            settings: settings.0,
-        },
-    );
-    flush_one(&s, &id);
-    if settings.1 {
-        publish(&s, &id).await;
-    }
+    send(&s, &id, Change::Settings { settings });
+    pool_changed(&s, &id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1355,9 +1355,14 @@ struct ActionIn {
     from: Option<String>,
     /// Hashtag reset.
     tag: Option<String>,
+    /// A message's own rule to leave the pool (`common`: the pool's).
+    airs: Option<u32>,
+    minutes: Option<u32>,
+    common: Option<bool>,
 }
 
-/// approve, reject, edit, star, remove, reorder, take, next, out, rotation, reset.
+/// approve, reject, edit, star, remove, reorder, next, retire, restore,
+/// rule, rotation, reset.
 async fn post_action(
     State(s): State<Shared>,
     Acting(me, actor): Acting,
@@ -1366,32 +1371,20 @@ async fn post_action(
 ) -> ApiResult<StatusCode> {
     moderator(&s, &me, &id).await?;
     let msg = || a.id.clone().ok_or_else(|| bad("which message (id)?"));
-    let on_air_ops = matches!(action.as_str(), "take" | "next" | "out");
-    if on_air_ops {
-        let ch = s
-            .moderation
-            .with(&id, |d| d.saved.display.channel_id.clone());
-        require(ch.is_empty() || me.can_operate(&ch))?;
-    }
-    let refused = |e: String| {
-        let code = if e.contains("holds this zone") {
-            StatusCode::CONFLICT
-        } else {
-            StatusCode::BAD_REQUEST
-        };
-        (code, e)
-    };
     let now = now_ms();
     match action.as_str() {
         "approve" => {
             let m = msg()?;
-            if s.moderation.edit(&id, |d| d.approve(&m, &actor.name)) {
-                s.moderation.with(&id, |d| {
-                    d.gone.push(m);
+            if s.moderation.edit(&id, |d| {
+                let ok = d.approve(&m, &actor.name, now);
+                if ok {
+                    d.gone.push(m.clone());
+                    d.fill_air(now);
                     d.queue_changed = true;
-                });
-                flush_one(&s, &id);
-                publish(&s, &id).await;
+                }
+                ok
+            }) {
+                pool_changed(&s, &id).await;
             }
         }
         "reject" => {
@@ -1445,10 +1438,8 @@ async fn post_action(
                 return Err(not_found("message"));
             };
             flush_one(&s, &id);
-            match place {
-                Place::OnAir => refresh_air(&s, &id, &actor).await.map_err(refused)?,
-                Place::Approved(_) => publish(&s, &id).await,
-                Place::Incoming(_) => {}
+            if !matches!(place, Place::Incoming(_)) {
+                publish(&s, &id).await;
             }
         }
         "star" => {
@@ -1476,20 +1467,51 @@ async fn post_action(
                 publish(&s, &id).await;
             }
         }
-        "take" => take(&s, &id, Pick::Id(msg()?), &actor)
-            .await
-            .map_err(refused)?,
-        "next" => take(
-            &s,
-            &id,
-            Pick::Next {
-                from: a.from.clone(),
-            },
-            &actor,
-        )
-        .await
-        .map_err(refused)?,
-        "out" => out(&s, &id, &actor).await.map_err(refused)?,
+        "next" => {
+            if s.moderation
+                .edit(&id, |d| d.advance(a.from.as_deref(), now))
+            {
+                pool_changed(&s, &id).await;
+            }
+        }
+        "retire" => {
+            let m = msg()?;
+            if s.moderation.edit(&id, |d| d.retire(&m, now)) {
+                pool_changed(&s, &id).await;
+            }
+        }
+        "restore" => {
+            let m = msg()?;
+            if s.moderation.edit(&id, |d| d.restore(&m, now)) {
+                pool_changed(&s, &id).await;
+            }
+        }
+        "rule" => {
+            let m = msg()?;
+            let ok = s.moderation.edit(&id, |d| {
+                let place = d.place(&m)?;
+                let c = d.card_mut(&m)?;
+                c.leave = if a.common.unwrap_or(false) {
+                    None
+                } else {
+                    Some(Leave {
+                        airs: a.airs.unwrap_or(0),
+                        minutes: a.minutes.unwrap_or(0),
+                    })
+                };
+                let c = c.clone();
+                match place {
+                    Place::Incoming(_) => d.new_cards.push(c),
+                    _ => d.queue_changed = true,
+                }
+                d.expire(now);
+                Some(())
+            });
+            if ok.is_none() {
+                return Err(not_found("message"));
+            }
+            pool_changed(&s, &id).await;
+        }
         "rotation" => {
             let settings = s.moderation.edit(&id, |d| {
                 let disp = &mut d.saved.display;
@@ -1607,15 +1629,16 @@ mod tests {
         for m in [&m1, &m2, &m3, &m1] {
             d.ingest(m, now);
         }
-        // Once each; the trusted one straight to the queue, the insult rejected.
+        // Once each; the trusted one straight to the pool, the insult rejected.
         assert_eq!(d.incoming.len(), 2);
         assert_eq!(d.incoming[1].status, Status::Rejected);
         assert_eq!(d.tox_rejects, 1);
         assert_eq!(d.saved.approved.len(), 1);
+        assert_eq!(d.saved.approved[0].approved_at, Some(now));
         assert!(d.queue_changed);
         // Idempotent actions.
-        assert!(d.approve("yt:1", "Camille"));
-        assert!(!d.approve("yt:1", "Camille"));
+        assert!(d.approve("yt:1", "Camille", now));
+        assert!(!d.approve("yt:1", "Camille", now));
         assert!(d.reject("yt:2"));
         assert!(!d.reject("yt:2"));
         d.ingest(&m2, now);
@@ -1625,20 +1648,13 @@ mod tests {
         let c = d.card_mut("yt:1").unwrap();
         c.edit = Some("Pourquoi la réforme ne concerne pas les indépendants ?".into());
         c.starred = true;
-        // On air: the first of the queue, only while `from` is still on air.
-        assert!(d
-            .advance(&Pick::Next { from: None }, "Camille", now)
-            .unwrap());
-        assert!(!d
-            .advance(
-                &Pick::Next {
-                    from: Some("other".into())
-                },
-                "Camille",
-                now
-            )
-            .unwrap());
-        assert!(!d.advance(&Pick::Id("yt:1".into()), "Camille", now).unwrap());
+        // Nothing on air: the first of the pool goes.
+        assert!(d.fill_air(now));
+        assert!(!d.fill_air(now));
+        assert_eq!(d.saved.on_air.as_ref().unwrap().id(), "yt:1");
+        assert_eq!(d.saved.on_air.as_ref().unwrap().airs, 1);
+        // SUIVANT only while `from` is still on air.
+        assert!(!d.advance(Some("other"), now));
         let tz = jiff::tz::TimeZone::UTC;
         let v = d.value(now, &tz);
         let json = serde_json::to_value(&v).unwrap();
@@ -1690,24 +1706,66 @@ mod tests {
         // Read back as the contract says.
         let back: SourceValue = serde_json::from_value(json).unwrap();
         assert_eq!(back, v);
-        // Next: the starred one goes back to the end of the queue.
-        assert!(d
-            .advance(
-                &Pick::Next {
-                    from: Some("yt:1".into())
-                },
-                "Rotation",
-                now
-            )
-            .unwrap());
+        // SUIVANT: no rule to leave, the message goes back to the end of the pool.
+        assert!(d.advance(Some("yt:1"), now));
         assert_eq!(d.saved.on_air.as_ref().unwrap().id(), "yt:3");
         assert_eq!(d.saved.approved[0].id(), "yt:1");
-        d.retire();
-        assert!(d.saved.on_air.is_none());
+        assert!(d.saved.retired.is_empty());
+        // The pool's rule: one pass. yt:3 leaves at the next SUIVANT; yt:1 (two
+        // passes then) leaves after.
+        d.saved.display.leave.airs = 1;
+        assert!(d.advance(None, now));
+        assert_eq!(d.saved.on_air.as_ref().unwrap().id(), "yt:1");
+        assert_eq!(d.saved.on_air.as_ref().unwrap().airs, 2);
+        assert_eq!(d.saved.retired.len(), 1);
+        assert_eq!(d.saved.retired[0].id(), "yt:3");
         assert!(d.saved.aired.contains(&"yt:3".to_string()));
-        // Out of the queue: back with the incoming ones.
+        // The pool is empty: the one on air stays.
+        assert!(!d.advance(None, now));
+        assert_eq!(d.saved.on_air.as_ref().unwrap().id(), "yt:1");
+        // Back in the pool: passes counted again (they were spent), and on air
+        // at the next SUIVANT; a message's own rule wins over the pool's.
+        assert!(d.restore("yt:3", now));
+        assert!(!d.restore("yt:3", now));
+        assert_eq!(d.saved.approved[0].airs, 0);
+        d.card_mut("yt:3").unwrap().leave = Some(Leave {
+            airs: 0,
+            minutes: 0,
+        });
+        assert!(d.advance(None, now));
+        assert_eq!(d.saved.on_air.as_ref().unwrap().id(), "yt:3");
+        assert_eq!(
+            d.saved.retired.iter().map(|c| c.id()).collect::<Vec<_>>(),
+            ["yt:1"]
+        );
+        // The pool is empty again (yt:1 spent its pass): yt:3 stays, its own
+        // rule never ends it.
+        assert!(!d.advance(None, now + 1));
+        assert_eq!(d.saved.on_air.as_ref().unwrap().id(), "yt:3");
+        // Minutes: a message too long in the pool leaves it, by its own clock.
+        assert!(d.restore("yt:1", now - 120_000));
+        d.saved.display.leave = Leave {
+            airs: 0,
+            minutes: 1,
+        };
+        assert!(d.expire(now));
+        assert!(d.saved.approved.is_empty());
+        // Out of the pool by hand, from the air: nothing on air.
+        assert!(d.retire("yt:3", now));
+        assert!(d.saved.on_air.is_none());
+        assert_eq!(d.saved.retired.len(), 2);
+        // Back with the incoming ones.
+        assert!(d.restore("yt:1", now));
         assert!(d.unapprove("yt:1"));
         assert_eq!(d.incoming.back().unwrap().status, Status::Pending);
+        // The pool's size: the oldest not starred leave.
+        d.saved.display.leave = Leave::default();
+        d.saved.display.max = 1;
+        d.approve("yt:1", "Camille", now);
+        d.saved.approved.last_mut().unwrap().starred = false;
+        assert!(d.restore("yt:3", now));
+        assert_eq!(d.saved.approved.len(), 1);
+        assert_eq!(d.saved.approved[0].id(), "yt:3");
     }
 
     #[test]
@@ -1787,38 +1845,14 @@ mod tests {
         })
     }
 
-    /// The message text and phase of the template on air.
-    async fn shown(s: &Shared, tid: &str) -> Option<(String, Phase)> {
-        let st = s.channel("main")?.state.read().await.clone();
-        st.layers
-            .values()
-            .find(|it| it.template_id == tid)
-            .map(|it| {
-                let text = it.data.get("socialText").cloned().unwrap_or_default();
-                (text, it.phase)
-            })
-    }
-
     #[tokio::test]
-    async fn from_a_connection_to_air_through_the_channel_commands() {
+    async fn from_a_connection_to_the_source_through_the_pool() {
         let dir =
             std::env::temp_dir().join(format!("social-desk-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         let s = test_state(&dir);
         let pid = s.summaries().await[0].id.clone();
         let sid = source_id(&pid);
-        // A template reading the message on air.
-        let mut p = (*s.project(&pid).await.unwrap()).clone();
-        let tid = p.templates[0].id.clone();
-        p.templates[0].fields.push(
-            serde_json::from_value(serde_json::json!({
-                "key": "socialText", "label": "Message", "kind": "text",
-                "binding": { "source": sid, "path": "onAir.text" },
-            }))
-            .unwrap(),
-        );
-        s.save_project(p).await.unwrap();
-        s.load_project("main", Some(pid.clone())).await.unwrap();
         // A shared connection, followed by the project.
         s.social
             .put(SocialSource {
@@ -1830,10 +1864,9 @@ mod tests {
             })
             .unwrap();
         follow(&s, &pid, vec!["yt".into()]).await;
-        assert_eq!(
-            s.data.get(&sid).unwrap().project.as_deref(),
-            Some(pid.as_str())
-        );
+        let src = s.data.get(&sid).unwrap();
+        assert_eq!(src.project.as_deref(), Some(pid.as_str()));
+        assert_eq!(src.name, "Modération");
         let mut rx = s.social.subscribe();
         for (n, text) in [
             (1, "Bravo pour l’invité, très clair"),
@@ -1843,70 +1876,51 @@ mod tests {
             s.moderation.incoming(&rx.recv().await.unwrap());
         }
         assert_eq!(s.moderation.view(&pid).incoming.len(), 2);
-        // Approved, then TAKE: through the channel's commands.
+        // Approved: the first goes on air by itself, the source says so.
+        let now = now_ms();
         for id in ["yt:1", "yt:2"] {
-            assert!(s.moderation.edit(&pid, |d| d.approve(id, "Camille")));
+            assert!(s.moderation.edit(&pid, |d| d.approve(id, "Camille", now)));
         }
-        let me = Actor::auto("Test");
-        assert!(
-            take(&s, &pid, Pick::Next { from: None }, &me)
-                .await
-                .is_err(),
-            "no template chosen yet"
-        );
-        s.moderation.edit(&pid, |d| {
-            d.saved.display.template_id = tid.clone();
-            d.saved.display.channel_id = "main".into();
-        });
-        take(&s, &pid, Pick::Next { from: None }, &me)
-            .await
-            .unwrap();
-        let (text, _) = shown(&s, &tid).await.expect("taken");
-        assert_eq!(text, "Bravo pour l’invité, très clair");
-        assert_eq!(s.data.value(&sid).unwrap()["next"]["id"], "yt:2");
-        // SUIVANT: the template on air changes its data.
-        take(
-            &s,
-            &pid,
-            Pick::Next {
-                from: Some("yt:1".into()),
-            },
-            &me,
-        )
-        .await
-        .unwrap();
-        let (text, phase) = shown(&s, &tid).await.unwrap();
-        assert_eq!(text, "Question pour le ministre : et les retraités ?");
-        assert!(!matches!(phase, Phase::Out | Phase::OutHold));
-        // Twice the same SUIVANT (two moderators): once.
-        take(
-            &s,
-            &pid,
-            Pick::Next {
-                from: Some("yt:1".into()),
-            },
-            &me,
-        )
-        .await
-        .unwrap();
-        assert_eq!(s.moderation.view(&pid).on_air.unwrap().message.id, "yt:2");
-        // An edit of the message on air goes on air.
+        rotate(&s, std::slice::from_ref(&pid), now).await;
+        let v = s.data.value(&sid).unwrap();
+        assert_eq!(v["onAir"]["id"], "yt:1");
+        assert_eq!(v["onAir"]["text"], "Bravo pour l’invité, très clair");
+        assert_eq!(v["next"]["id"], "yt:2");
+        // The rotation: the next one when its time comes, not before.
+        rotate(&s, std::slice::from_ref(&pid), now + 1000).await;
+        assert_eq!(s.data.value(&sid).unwrap()["onAir"]["id"], "yt:1");
+        rotate(&s, std::slice::from_ref(&pid), now + 9000).await;
+        let view = s.moderation.view(&pid);
+        assert_eq!(view.on_air.as_ref().unwrap().message.id, "yt:2");
+        assert_eq!(view.approved[0].message.id, "yt:1");
+        assert_eq!(view.approved[0].airs, 1);
+        assert_eq!(s.data.value(&sid).unwrap()["onAir"]["id"], "yt:2");
+        // An edit of the message on air reaches the source.
         s.moderation.edit(&pid, |d| {
             d.card_mut("yt:2").unwrap().edit = Some("Et les retraités ?".into())
         });
-        refresh_air(&s, &pid, &me).await.unwrap();
-        assert_eq!(shown(&s, &tid).await.unwrap().0, "Et les retraités ?");
-        // OUT.
-        out(&s, &pid, &me).await.unwrap();
-        let gone = shown(&s, &tid)
-            .await
-            .is_none_or(|(_, ph)| matches!(ph, Phase::Out | Phase::OutHold));
-        assert!(gone);
-        assert!(s.data.value(&sid).unwrap()["onAir"].is_null());
+        publish(&s, &pid).await;
+        assert_eq!(
+            s.data.value(&sid).unwrap()["onAir"]["text"],
+            "Et les retraités ?"
+        );
+        // Time in the pool is up: the message leaves it at the next turn.
+        s.moderation
+            .edit(&pid, |d| d.saved.display.leave.minutes = 1);
+        rotate(&s, std::slice::from_ref(&pid), now + 61_000).await;
+        let view = s.moderation.view(&pid);
+        assert!(view.approved.is_empty());
+        assert_eq!(view.retired.len(), 1);
+        assert_eq!(view.on_air.as_ref().unwrap().message.id, "yt:2");
+        assert!(s.data.value(&sid).unwrap()["approved"]
+            .as_array()
+            .unwrap()
+            .is_empty());
         // Written, and read back after a restart.
         let back = Desk::load(&dir);
         assert_eq!(back.view(&pid).sources, vec!["yt".to_string()]);
-        assert_eq!(back.view(&pid).display.channel_id, "main");
+        assert_eq!(back.view(&pid).retired[0].message.id, "yt:1");
+        assert_eq!(back.view(&pid).display.leave.minutes, 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

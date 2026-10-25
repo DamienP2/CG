@@ -15237,28 +15237,44 @@ a.lib-nav-item {
   font-family: var(--mono);
   font-size: 11px;
 }
-.soc-actions {
-  margin-top: auto;
-  padding-top: 12px;
+/* The form and the test column scroll by themselves: Save / Delete stay
+   at the bottom of the form, in reach. */
+.soc-editor {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
 }
-.soc-feed {
+.soc-editor .se-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 0;
+}
+.soc-actions {
+  position: sticky;
+  bottom: 0;
+  margin: auto -18px 0;
+  padding: 12px 18px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+.soc-test {
   gap: 8px;
+  min-height: 0;
   overflow-y: auto;
 }
 .soc-feed-head {
   align-items: center;
 }
-.soc-spark {
+.soc-state {
   display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 22px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
 }
-.soc-spark i {
-  width: 4px;
-  background: var(--accent);
-  border-radius: 1px;
-  opacity: 0.75;
+.soc-state > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .soc-msg {
   display: flex;
@@ -15941,73 +15957,6 @@ a.lib-nav-item {
   border-radius: 6px;
   background: var(--panel-3);
 }
-.mod-air {
-  overflow-y: auto;
-}
-.mod-air .mod-template {
-  min-width: 150px;
-}
-.mod-monitor {
-  margin: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #07080c;
-  overflow: hidden;
-  flex: none;
-}
-.mod-screen {
-  position: relative;
-  width: 100%;
-  background: repeating-conic-gradient(#14161f 0 25%, #10121a 0 50%) 0 0 / 20px 20px;
-}
-.mod-screen > * {
-  position: absolute !important;
-  inset: 0;
-  margin: auto;
-}
-.mod-monitor-empty {
-  aspect-ratio: 16 / 9;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-}
-.mod-aircard {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-.mod-aircard.live {
-  border-color: rgba(255, 59, 92, 0.45);
-}
-.mod-air-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mod-aircard .btn {
-  padding: 5px 10px;
-  font-weight: 600;
-}
-.mod-take {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-.mod-take:hover:not(:disabled) {
-  background: var(--accent-2) !important;
-}
-.mod-out {
-  background: var(--live-btn);
-  border-color: var(--live);
-  color: #fff;
-}
 .mod-out:hover:not(:disabled) {
   background: #ff5a75 !important;
 }
@@ -16329,10 +16278,6 @@ button.mod-word {
 @media (max-width: 1100px) {
   .mod-cols {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .mod-air {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--line);
   }
   .mod-rule {
     grid-template-columns: auto minmax(0, 1fr) 100px;
@@ -17692,14 +17637,72 @@ button.ux1-pill.lost:hover {
   font-size: 12px;
   color: var(--text-2);
 }
-.mod-air .mod-template-pick {
-  border-color: var(--accent);
-  color: var(--text);
-}
 .soc-wired {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   color: var(--text-2);
+}
+
+/* Moderation: filters, the pool's settings, the messages' passes */
+.mod-cols.two {
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+}
+.mod-filters {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.mod-filters .mod-set {
+  width: auto;
+  flex: none;
+  height: 24px;
+  font-size: 12px;
+}
+.mod-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: var(--fs-11);
+  color: var(--text-3);
+}
+.mod-meta b {
+  color: var(--text-2);
+  font-weight: 600;
+}
+.mod-qcard.gone {
+  opacity: 0.6;
+}
+.mod-qcard.gone:hover,
+.mod-qcard.gone.sel {
+  opacity: 1;
+}
+.mod-gone-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 2px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--text-3);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+}
+.mod-gone-head:hover {
+  color: var(--text);
+}
+.mod-edit .mod-chip {
+  align-self: flex-start;
 }

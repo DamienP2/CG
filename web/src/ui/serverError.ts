@@ -35,6 +35,8 @@ export function friendlyError(raw: string | null | undefined): string {
   if ((m = s.match(/^the server answered (.+)$/i))) return t('The server answered {status}', { status: m[1] });
   if ((m = s.match(/^the platform answered (.+)$/i))) return t('The platform answered {status}', { status: m[1] });
   if ((m = s.match(/^cannot (?:listen on|bind) port (\d+).*address already in use/i))) return t('Port {port} already in use', { port: m[1] });
+  if (/^no API key/i.test(s)) return t('No API key');
+  if (/^no (?:access|bearer|page access) token/i.test(s)) return t('No access token');
   if (/Blackmagic Desktop Video is not installed/i.test(s)) return t('Blackmagic driver missing');
   if (/NDI runtime found but not loadable/i.test(s)) return t('NDI runtime unreadable');
   if (/NDI runtime not found/i.test(s)) return t('NDI runtime missing');

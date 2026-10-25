@@ -4771,6 +4771,69 @@
     }
    }
   },
+  "/api/social/sources/{id}/test": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "post": {
+    "tags": [
+     "Social networks"
+    ],
+    "summary": "Test a connection: read its platform now",
+    "description": "A connection reads its platform only while a project follows it (`projects` > 0), or while a test runs; otherwise it is `idle`. The test runs the connector for 20 s (a connection already running is just read), and answers as soon as it is connected, fails, or brings a message in, or after 8 s. A webhook connection (tiktok, whatsapp, sms) cannot be fetched: its state and the last messages received are given at once. **Rights:** admin, designer.",
+    "responses": {
+     "200": {
+      "description": "The outcome",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "required": [
+          "ok",
+          "state",
+          "messages",
+          "tookMs"
+         ],
+         "properties": {
+          "ok": {
+           "type": "boolean",
+           "description": "Connected, or a message came in (no error)."
+          },
+          "state": {
+           "$ref": "#/components/schemas/SocialSource",
+           "description": "The connection as the list gives it, once the test is over."
+          },
+          "messages": {
+           "type": "array",
+           "items": {
+            "$ref": "#/components/schemas/SocialMessage"
+           },
+           "description": "Its 5 latest messages, newest first."
+          },
+          "tookMs": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The connection is not enabled"
+     },
+     "404": {
+      "description": "No such connection"
+     }
+    }
+   }
+  },
   "/api/social/hook/{id}": {
    "parameters": [
     {
@@ -5046,7 +5109,7 @@
     "tags": [
      "Social networks"
     ],
-    "summary": "Template, channel, rotation and name mode",
+    "summary": "The pool on air: rotation, order, how messages leave it, name mode",
     "description": "**Rights:** admin, designer, operator who see the project.",
     "requestBody": {
      "required": true,
@@ -5089,9 +5152,10 @@
        "star",
        "remove",
        "reorder",
-       "take",
        "next",
-       "out",
+       "retire",
+       "restore",
+       "rule",
        "rotation",
        "reset"
       ]
@@ -5102,8 +5166,8 @@
     "tags": [
      "Social networks"
     ],
-    "summary": "Moderate, or drive what goes on air",
-    "description": "Idempotent by message id: `approve`, `reject`, `remove` (out of the queue), `star` (`on`), `edit` (`text`, `nameMode`) take `id`; `reorder` takes `ids` (the queue in order). `take` (`id`), `next` (`from`: only while this one is on air) and `out` go through the channel commands (zone locks, undo, as-run log): the template is taken, or updated when already on air. `rotation` (`on`, `secs`): next by itself. `reset` (`tag`): a hashtag from zero.\n\n**Rights:** admin, designer, operator who see the project. On air: the right to operate the channel.",
+    "summary": "Moderate, or drive the pool on air",
+    "description": "Idempotent by message id: `approve` (into the pool; the first goes on air by itself), `reject`, `remove` (back with the incoming ones), `star` (`on`), `edit` (`text`, `nameMode`) take `id`; `reorder` takes `ids` (the pool in order). `next` (`from`: only while this one is on air) goes to the next message of the pool; `retire` (`id`) takes a message out of the pool, `restore` (`id`) puts it back; `rule` (`id`, then `airs` / `minutes`, or `common: true`) gives a message its own rule to leave the pool. `rotation` (`on`, `secs`): next by itself. `reset` (`tag`): a hashtag from zero. The desk never touches a channel: the project data source `social-<project id>` (« Modération ») carries the message on air, the next one and the pool, and the Operator takes the graphics reading it.\n\n**Rights:** admin, designer, operator who see the project.",
     "requestBody": {
      "required": true,
      "content": {
@@ -6876,6 +6940,11 @@
       "readOnly": true,
       "description": "Connected, but no live is running."
      },
+     "idle": {
+      "type": "boolean",
+      "readOnly": true,
+      "description": "Enabled, but reading nothing: no project follows it and no test runs."
+     },
      "expiresAt": {
       "type": [
        "integer",
@@ -7125,22 +7194,43 @@
      }
     }
    },
+   "SocialLeave": {
+    "type": "object",
+    "description": "When a message leaves the pool: after `airs` passes, or `minutes` after it was approved (0: never); both 0: by hand.",
+    "properties": {
+     "airs": {
+      "type": "integer"
+     },
+     "minutes": {
+      "type": "integer"
+     }
+    }
+   },
    "SocialDisplay": {
     "type": "object",
+    "description": "The pool on air.",
     "properties": {
-     "templateId": {
-      "type": "string",
-      "description": "The template showing a message"
-     },
-     "channelId": {
-      "type": "string",
-      "description": "A channel the project is loaded on"
-     },
      "rotation": {
-      "type": "boolean"
+      "type": "boolean",
+      "description": "The next message by itself every `rotationSecs`"
      },
      "rotationSecs": {
       "type": "integer"
+     },
+     "order": {
+      "type": "string",
+      "enum": [
+       "arrival",
+       "starred",
+       "random"
+      ]
+     },
+     "leave": {
+      "$ref": "#/components/schemas/SocialLeave"
+     },
+     "max": {
+      "type": "integer",
+      "description": "Most messages in the pool (0: no limit): the oldest not starred leave"
      },
      "nameMode": {
       "type": "string",
@@ -7158,6 +7248,25 @@
     "properties": {
      "message": {
       "type": "object"
+     },
+     "airs": {
+      "type": "integer",
+      "description": "Passes on air"
+     },
+     "lastAir": {
+      "type": "integer",
+      "description": "ms"
+     },
+     "approvedAt": {
+      "type": "integer",
+      "description": "ms"
+     },
+     "leave": {
+      "$ref": "#/components/schemas/SocialLeave"
+     },
+     "retiredAt": {
+      "type": "integer",
+      "description": "ms, when it left the pool"
      },
      "status": {
       "type": "string",
@@ -7307,6 +7416,13 @@
         "type": "null"
        }
       ]
+     },
+     "retired": {
+      "type": "array",
+      "description": "Left the pool, oldest first",
+      "items": {
+       "$ref": "#/components/schemas/SocialCard"
+      }
      },
      "rotationAt": {
       "type": [

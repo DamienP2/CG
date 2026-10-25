@@ -1,9 +1,11 @@
 //! `/api/social/…`: the connections (main menu › Data), their messages, and
 //! the webhooks the platforms call.
 
+use std::time::Duration;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, put};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +13,7 @@ use super::{webhooks, Message, Platform, SocialSource, SourceInfo};
 use crate::api::{bad, internal, not_found, require, ApiResult};
 use crate::auth::CurrentUser;
 use crate::library::valid_id;
-use crate::state::Shared;
+use crate::state::{now_ms, Shared};
 
 pub fn router() -> Router<Shared> {
     Router::new()
@@ -21,6 +23,7 @@ pub fn router() -> Router<Shared> {
             put(put_source).delete(delete_source),
         )
         .route("/api/social/sources/{id}/messages", get(messages))
+        .route("/api/social/sources/{id}/test", post(test_source))
         .route(
             "/api/social/hook/{id}",
             get(webhooks::hook_get).post(webhooks::hook_post),
@@ -36,31 +39,8 @@ pub struct Listed {
     pub projects: usize,
 }
 
-#[derive(Deserialize)]
-struct Followed {
-    #[serde(default)]
-    sources: Vec<String>,
-}
-
-/// How many projects follow each connection (`<data>/social/projects/*.json`).
-fn followers(s: &Shared) -> std::collections::HashMap<String, usize> {
-    let mut out = std::collections::HashMap::new();
-    let Ok(rd) = std::fs::read_dir(s.social.dir().join("projects")) else {
-        return out;
-    };
-    for e in rd.flatten() {
-        let f = std::fs::read(e.path())
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Followed>(&b).ok());
-        for id in f.map(|f| f.sources).unwrap_or_default() {
-            *out.entry(id).or_default() += 1;
-        }
-    }
-    out
-}
-
 fn listed(s: &Shared) -> Vec<Listed> {
-    let follow = followers(s);
+    let follow = s.social.followers();
     s.social
         .list()
         .into_iter()
@@ -126,6 +106,73 @@ async fn delete_source(
     }
     s.changed("social");
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// How long a test keeps the connector running, and how long the call
+/// waits for its outcome.
+const TEST_WINDOW_MS: i64 = 20_000;
+const TEST_WAIT: Duration = Duration::from_secs(8);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestResult {
+    /// The platform answered (connected, or a message came in).
+    pub ok: bool,
+    /// The connection as the list gives it, once the test is over.
+    pub state: Listed,
+    /// Its 5 latest messages, newest first.
+    pub messages: Vec<Message>,
+    pub took_ms: i64,
+}
+
+/// Reads the platform now, followed or not (those who create projects).
+/// The connector runs for `TEST_WINDOW_MS`; the call answers as soon as it
+/// is connected, fails, or brings a message in, or after `TEST_WAIT`. A
+/// webhook connection (tiktok, whatsapp, sms) cannot be fetched: its state
+/// and last messages received are given at once.
+async fn test_source(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<TestResult>> {
+    require(me.can_create_projects())?;
+    let Some(src) = s.social.get(&id) else {
+        return Err(not_found("connection"));
+    };
+    if !src.enabled {
+        return Err(bad("the connection is not enabled"));
+    }
+    let start = now_ms();
+    let mut ok = has_hook(src.platform);
+    if !ok {
+        s.social.test(&id, TEST_WINDOW_MS);
+        let deadline = tokio::time::Instant::now() + TEST_WAIT;
+        loop {
+            let st = s.social.status(&id);
+            let got = s.social.recent(&id).last().is_some_and(|m| m.at >= start);
+            if st.error.is_some() || st.connected || st.off_air || got {
+                ok = st.error.is_none() && (st.connected || got);
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+    }
+    let state = listed(&s)
+        .into_iter()
+        .find(|l| l.info.source.id == id)
+        .ok_or_else(|| not_found("connection"))?;
+    let mut messages = s.social.recent(&id);
+    messages.reverse();
+    messages.truncate(5);
+    Ok(Json(TestResult {
+        ok,
+        state,
+        messages,
+        took_ms: now_ms() - start,
+    }))
 }
 
 #[derive(Deserialize)]

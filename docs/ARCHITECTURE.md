@@ -1,13 +1,13 @@
 # Architecture
 
-## Ce qu'on reprend de chaque produit
+## Les choix
 
-| | MXMZ | Singular.live | Flowics | **Strata** |
-| --- | --- | --- | --- | --- |
-| Création | Timeline et keyframes façon AE, stop points | Composer web, animations par états | Templates paramétrables | Timeline et keyframes AE dans le navigateur, marqueurs pause et out |
-| Rendu | Moteur natif, sortie SDI | Navigateur (HTML5) | Navigateur (HTML5) | **Un seul modèle de scène, deux moteurs** : Rust (baseband) et DOM (HTML5) |
-| Sorties | SDI, NDI | Overlay URL | Overlay URL | HTML5, SDI (DeckLink), **ST 2110-20 fill + key** |
-| Exploitation | Playlist | Control app | Data sources, automation | Rundown, couches de playout, API REST et WebSocket |
+| | **Strata** |
+| --- | --- |
+| Création | Timeline et keyframes dans le navigateur, marqueurs pause et out, canvas de données et de logique |
+| Rendu | **Un seul modèle de scène, deux moteurs** : Rust (baseband) et DOM (HTML5) |
+| Sorties | HTML5, NDI, Stream (SRT, RTMP, HLS), SDI (DeckLink), **ST 2110-20 fill + key** |
+| Exploitation | Conducteur, zones et couches de playout, API REST et WebSocket, MOS, surfaces de contrôle |
 
 ## Vue d'ensemble
 
@@ -35,7 +35,7 @@
 ### `cg-core` : le contrat
 - **Modèle** (`model.rs`) : `Project`, puis `Template`, puis `Layer` (group, rect, ellipse, text, image et les widgets), avec ses `props` statiques, ses `tracks` de keyframes et ses `bindings` vers des champs de données. Le modèle est sérialisé en JSON camelCase ; il a un miroir TypeScript dans `web/src/engine/types.ts`.
 - **Animation** (`anim.rs`, `easing.rs`) : chaque keyframe porte l'easing du segment qui en part (sémantique After Effects). Les fonctions d'easing sont implémentées à l'identique en Rust et en TypeScript (`web/src/engine/evaluate.ts`), y compris les bezier façon CSS.
-- **Playout** (`playout.rs`) : logique MXMZ. *Take* joue jusqu'à la première pause, *Continue* jusqu'à la suivante (ou jusqu'au marqueur out), *Take out* saute au marqueur out puis joue jusqu'à la fin, après quoi le graphique est retiré. Les commandes s'appliquent par **couche de playout**, ce qui permet d'avoir plusieurs graphiques simultanément.
+- **Playout** (`playout.rs`) : *Take* joue jusqu'à la première pause, *Continue* jusqu'à la suivante (ou jusqu'au marqueur out), *Take out* saute au marqueur out puis joue jusqu'à la fin, après quoi le graphique est retiré. Les commandes s'appliquent par **couche de playout**, ce qui permet d'avoir plusieurs graphiques simultanément.
 
 - **Logic** (`logic.rs`) : graphe de relations par template (sources → opérations → cibles), évalué à chaque image après l'animation et les bindings, dans l'ordre topologique (les cycles sont ignorés). La mesure des textes est fournie par le moteur de rendu (police réelle). Miroir TypeScript : `web/src/engine/logic.ts`.
 - **Import After Effects** (`lottie.rs`) : conversion d'un export Bodymovin / Lottie en `Template` (calques, parentage et précomps en groupes, keyframes et easing, textes en champs de données, marqueurs). `cg-server/src/ae_import.rs` lit les archives (`.zip`, `.lottie`), décode les images et refuse les `.mogrt` avec une explication.
@@ -85,7 +85,7 @@ Le serveur repose sur axum et tokio.
 - [ ] Import de fichiers Lottie / After Effects (bodymovin).
 
 **Exploitation et données**
-- [ ] Sources de données (Google Sheets, JSON/HTTP polling, CSV, webhooks) avec mapping vers les champs, comme dans Flowics.
+- [x] Sources de données (Google Sheets, JSON/HTTP, CSV, XML, RSS, push) avec liaison vers les champs.
 - [ ] MOS (iNews, ENPS, Octopus), Companion / Stream Deck, raccourcis configurables.
 - [x] Multi-chaînes, multi-utilisateurs, droits (admin / designer / opérateur / lecture seule).
 - [x] Bibliothèque de projets, import et export.
