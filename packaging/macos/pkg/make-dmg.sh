@@ -8,7 +8,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../../.." && pwd)
 WORK=$(mktemp -d)
 cleanup() {
-  [ -d "$WORK/mnt/.fseventsd" ] && hdiutil detach "$WORK/mnt" -quiet 2>/dev/null
+  [ -d "$WORK/mnt/.fseventsd" ] && hdiutil detach -force "$WORK/mnt" -quiet 2>/dev/null
   rm -rf "$WORK"
   return 0
 }
@@ -41,13 +41,29 @@ cp "$PKG" "$STAGE/$NAME"
 # Custom Finder icon on the package file.
 osascript -l JavaScript -e "ObjC.import('AppKit'); \$.NSWorkspace.sharedWorkspace.setIconForFileOptions(\$.NSImage.alloc.initWithContentsOfFile('$WORK/icon.icns'), '$STAGE/$NAME', 0)" >/dev/null
 
+# The volume's own icon needs the image mounted (the custom-icon flag sits on
+# the volume root). The icon file itself travels in the source folder.
+cp "$WORK/icon.icns" "$STAGE/.VolumeIcon.icns"
 retry hdiutil create -ov -quiet -fs HFS+ -volname "Strata Graphics $VERSION" -srcfolder "$STAGE" -format UDRW "$WORK/rw.dmg"
 mkdir -p "$WORK/mnt"
-retry hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$WORK/mnt" "$WORK/rw.dmg"
-cp "$WORK/icon.icns" "$WORK/mnt/.VolumeIcon.icns"
-SetFile -a C "$WORK/mnt" 2>/dev/null || xattr -wx com.apple.FinderInfo "0000000000000000040000000000000000000000000000000000000000000000" "$WORK/mnt"
-retry hdiutil detach -quiet "$WORK/mnt" || retry hdiutil detach -force -quiet "$WORK/mnt"
 rm -f "$OUT"
-retry hdiutil convert -ov -quiet "$WORK/rw.dmg" -format UDZO -o "$OUT"
+if retry hdiutil attach -quiet -nobrowse -noautoopen -mountpoint "$WORK/mnt" "$WORK/rw.dmg"; then
+  # Spotlight indexing the fresh volume is what keeps it busy on the build machines.
+  mdutil -i off "$WORK/mnt" >/dev/null 2>&1 || true
+  SetFile -a C "$WORK/mnt" 2>/dev/null || xattr -wx com.apple.FinderInfo "0000000000000000040000000000000000000000000000000000000000000000" "$WORK/mnt"
+  sync
+  DEV=$(hdiutil info | awk -v m="$WORK/mnt" '$NF == m { print $1; exit }')
+  if retry hdiutil detach -quiet "$WORK/mnt" || retry hdiutil detach -force -quiet "$WORK/mnt" || { [ -n "$DEV" ] && retry diskutil unmountDisk force "$DEV"; }; then
+    retry hdiutil convert -ov -quiet "$WORK/rw.dmg" -format UDZO -o "$OUT"
+  else
+    # The volume stays busy: an image straight from the folder (no custom
+    # icon on the volume, the package keeps its own) rather than no image.
+    echo "the image cannot be unmounted: building it without the volume icon" >&2
+    retry hdiutil create -ov -quiet -fs HFS+ -volname "Strata Graphics $VERSION" -srcfolder "$STAGE" -format UDZO "$OUT"
+  fi
+else
+  echo "the image cannot be mounted: building it without the volume icon" >&2
+  retry hdiutil create -ov -quiet -fs HFS+ -volname "Strata Graphics $VERSION" -srcfolder "$STAGE" -format UDZO "$OUT"
+fi
 echo "built $OUT"
 exit 0
