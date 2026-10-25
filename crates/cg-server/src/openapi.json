@@ -4771,40 +4771,6 @@
     }
    }
   },
-  "/api/social/sources/{id}/test": {
-   "parameters": [
-    {
-     "name": "id",
-     "in": "path",
-     "required": true,
-     "schema": {
-      "type": "string"
-     }
-    }
-   ],
-   "post": {
-    "tags": [
-     "Social networks"
-    ],
-    "summary": "Publish three sample messages",
-    "description": "Realistic messages of the connection’s platform, new each time, as if they came from it. **Rights:** admin, designer.",
-    "responses": {
-     "200": {
-      "description": "The messages published",
-      "content": {
-       "application/json": {
-        "schema": {
-         "type": "array",
-         "items": {
-          "$ref": "#/components/schemas/SocialMessage"
-         }
-        }
-       }
-      }
-     }
-    }
-   }
-  },
   "/api/social/hook/{id}": {
    "parameters": [
     {

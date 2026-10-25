@@ -3,11 +3,11 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post, put};
+use axum::routing::{get, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use super::{samples, webhooks, Message, Platform, SocialSource, SourceInfo};
+use super::{webhooks, Message, Platform, SocialSource, SourceInfo};
 use crate::api::{bad, internal, not_found, require, ApiResult};
 use crate::auth::CurrentUser;
 use crate::library::valid_id;
@@ -21,7 +21,6 @@ pub fn router() -> Router<Shared> {
             put(put_source).delete(delete_source),
         )
         .route("/api/social/sources/{id}/messages", get(messages))
-        .route("/api/social/sources/{id}/test", post(test))
         .route(
             "/api/social/hook/{id}",
             get(webhooks::hook_get).post(webhooks::hook_post),
@@ -147,27 +146,5 @@ async fn messages(
     let mut list = s.social.recent(&id);
     list.reverse();
     list.truncate(q.limit.unwrap_or(100).min(super::RECENT));
-    Ok(Json(list))
-}
-
-/// Publishes three sample messages of the platform.
-async fn test(
-    State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
-    Path(id): Path<String>,
-) -> ApiResult<Json<Vec<Message>>> {
-    require(me.can_create_projects())?;
-    let src = s.social.get(&id).ok_or_else(|| not_found("connection"))?;
-    let list = samples::samples(&src);
-    if list.iter().any(|m| !m.photos.is_empty()) {
-        let path = s.assets_dir().join(samples::PHOTO);
-        if !path.exists() {
-            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
-            std::fs::write(&path, samples::photo_jpeg()).map_err(internal)?;
-        }
-    }
-    for m in &list {
-        s.social.publish(m.clone());
-    }
     Ok(Json(list))
 }

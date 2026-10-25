@@ -56,7 +56,9 @@ const takesTable = (l: Layer, port: string) => TABLE_PORTS[l.type] === port;
 const CONTENT_LABEL: Record<string, string> = { src: 'Picture', text: 'Text', link: 'Rows', csv: 'Rows', items: 'Items', 'title.text': 'Title' };
 type Item = { cat?: string; text?: string; on?: boolean };
 const contentValue = (l: Layer, port: string) => {
-  if (port === 'items') return ((l as { items?: Item[] }).items ?? []).map((i) => i.text ?? '').join('\n');
+  // The ticker's items are a list (the social wall's are a text).
+  const items = (l as { items?: unknown }).items;
+  if (port === 'items' && Array.isArray(items)) return (items as Item[]).map((i) => i.text ?? '').join('\n');
   return String(getPath(l, port) ?? '');
 };
 /** "12 rows · Team, Pts…" for a data set's whole table. */

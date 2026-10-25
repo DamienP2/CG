@@ -18,6 +18,7 @@ export const socialSources: Record<string, string> = {
   // Settings of the platforms.
   'Current live of the channel': 'Direct en cours de la chaîne',
   'Given video': 'Vidéo précise',
+  'Video (its live chat, else its comments)': 'Vidéo (son chat en direct, sinon ses commentaires)',
   'YouTube channel': 'Chaîne YouTube',
   'Twitch channel': 'Chaîne Twitch',
   'Current live of the page': 'Direct en cours de la page',

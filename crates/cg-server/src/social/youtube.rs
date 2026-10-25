@@ -1,5 +1,7 @@
-//! YouTube live chat, read with the Data API v3 and an API key: the chat of
-//! a given video, or of the channel's live of the moment.
+//! YouTube, read with the Data API v3 and an API key: the live chat of a
+//! given video or of the channel's live of the moment; a given video that
+//! is not live gives its comments instead (the newest first, then the new
+//! ones as they come).
 
 use std::time::Duration;
 
@@ -12,8 +14,10 @@ use super::{Author, Hub, Message, SocialSource};
 const API: &str = "https://www.googleapis.com/youtube/v3";
 /// Looking for a channel's live costs 100 of the 10 000 units of a day.
 const SEARCH_EVERY: Duration = Duration::from_secs(15 * 60);
-/// A video not live yet is checked again (1 unit).
-const VIDEO_EVERY: Duration = Duration::from_secs(60);
+/// The comments of a video are read again (1 unit).
+const COMMENTS_EVERY: Duration = Duration::from_secs(45);
+/// Comments read at the first pass of a video (the newest).
+const FIRST_COMMENTS: usize = 20;
 
 /// The video id from an id or a link (watch?v=, youtu.be/, /live/).
 pub fn video_of(s: &str) -> String {
@@ -120,8 +124,13 @@ pub async fn run(hub: &Hub, src: &SocialSource) -> Result<(), String> {
             st.account = Some(account).filter(|a| !a.is_empty())
         });
         let Some(chat) = chat else {
-            connected(hub, src, true);
-            tokio::time::sleep(if by_video { VIDEO_EVERY } else { SEARCH_EVERY }).await;
+            if by_video {
+                // Not a live: its comments, until a live chat opens on it.
+                comments(hub, src, key, &video).await?;
+            } else {
+                connected(hub, src, true);
+                tokio::time::sleep(SEARCH_EVERY).await;
+            }
             continue;
         };
         connected(hub, src, false);
@@ -173,6 +182,87 @@ async fn poll(
         let wait = a.body["pollingIntervalMillis"].as_u64().unwrap_or(5000);
         tokio::time::sleep(Duration::from_millis(wait.clamp(2000, 60_000))).await;
     }
+}
+
+/// Reads the comments of a video (not live) as they come, until a live chat
+/// opens on it: the newest at the first pass, then the ones newer than the
+/// last read.
+async fn comments(hub: &Hub, src: &SocialSource, key: &str, video: &str) -> Result<(), String> {
+    let mut seen: Option<String> = None;
+    loop {
+        let v = call(
+            &format!(
+                "commentThreads?part=snippet&order=time&maxResults=100&textFormat=plainText&videoId={}",
+                enc(video)
+            ),
+            key,
+        )
+        .await?;
+        connected(hub, src, false);
+        let (list, newest) = parse_comments(src, &v, video, seen.as_deref());
+        let list = if seen.is_none() {
+            list.into_iter().take(FIRST_COMMENTS).collect()
+        } else {
+            list
+        };
+        // Oldest first: the wall shows them in the order they came.
+        for m in list.into_iter().rev() {
+            hub.publish(m);
+        }
+        if newest.is_some() {
+            seen = newest;
+        } else if seen.is_none() {
+            seen = Some(String::new());
+        }
+        tokio::time::sleep(COMMENTS_EVERY).await;
+        // A live started on the video: its chat takes over.
+        if chat_of(video, key).await?.0.is_some() {
+            return Ok(());
+        }
+    }
+}
+
+/// The comments of a `commentThreads` page newer than `after` (a
+/// `publishedAt`), newest first, and the newest `publishedAt` of the page.
+pub fn parse_comments(
+    src: &SocialSource,
+    page: &Value,
+    video: &str,
+    after: Option<&str>,
+) -> (Vec<Message>, Option<String>) {
+    let mut out = Vec::new();
+    let mut newest: Option<String> = None;
+    for item in page["items"].as_array().into_iter().flatten() {
+        let sn = &item["snippet"]["topLevelComment"]["snippet"];
+        let at = sn["publishedAt"].as_str().unwrap_or("");
+        if newest.as_deref().is_none_or(|n| at > n) {
+            newest = Some(at.to_string());
+        }
+        if after.is_some_and(|a| at <= a) {
+            continue;
+        }
+        let Some(id) = item["id"].as_str() else {
+            continue;
+        };
+        let text = sn["textOriginal"]
+            .as_str()
+            .or_else(|| sn["textDisplay"].as_str())
+            .unwrap_or("");
+        let author = Author {
+            id: sn["authorChannelId"]["value"].as_str().unwrap_or("").into(),
+            name: sn["authorDisplayName"]
+                .as_str()
+                .unwrap_or("")
+                .trim_start_matches('@')
+                .into(),
+            avatar: sn["authorProfileImageUrl"].as_str().unwrap_or("").into(),
+            ..Default::default()
+        };
+        let mut m = message(src, id, author, text);
+        m.url = format!("https://www.youtube.com/watch?v={video}&lc={id}");
+        out.push(m);
+    }
+    (out, newest)
 }
 
 /// What is read (`settings.read`: chat, superChats, members, polls).
@@ -324,6 +414,39 @@ mod tests {
         assert_eq!(all[2].text, "Bienvenue Yanis !");
         let supers = parse(&src, &page, "x8Kq", &Read::of("superChats"));
         assert_eq!(supers.len(), 1);
+    }
+
+    #[test]
+    fn comments_of_a_video_newer_than_the_last_read() {
+        let src = SocialSource {
+            id: "yt".into(),
+            name: "YouTube".into(),
+            platform: Platform::Youtube,
+            enabled: true,
+            settings: Default::default(),
+        };
+        let page: Value = serde_json::json!({
+          "items": [
+            {"id": "c2", "snippet": {"topLevelComment": {"snippet": {
+               "textOriginal": "Et pour les retraités ?", "authorDisplayName": "@martine",
+               "authorProfileImageUrl": "https://yt3.ggpht.com/m.jpg",
+               "authorChannelId": {"value": "UCm"}, "publishedAt": "2026-10-25T10:02:00Z"}}}},
+            {"id": "c1", "snippet": {"topLevelComment": {"snippet": {
+               "textDisplay": "Merci pour ce JT", "authorDisplayName": "Marc B.",
+               "authorChannelId": {"value": "UCb"}, "publishedAt": "2026-10-25T10:01:00Z"}}}}
+          ]
+        });
+        let (all, newest) = parse_comments(&src, &page, "x8Kq", None);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].id, "yt:c2");
+        assert_eq!(all[0].author.name, "martine");
+        assert_eq!(all[0].text, "Et pour les retraités ?");
+        assert_eq!(all[0].url, "https://www.youtube.com/watch?v=x8Kq&lc=c2");
+        assert_eq!(all[1].text, "Merci pour ce JT");
+        assert_eq!(newest.as_deref(), Some("2026-10-25T10:02:00Z"));
+        let (new, _) = parse_comments(&src, &page, "x8Kq", Some("2026-10-25T10:01:00Z"));
+        assert_eq!(new.len(), 1);
+        assert_eq!(new[0].id, "yt:c2");
     }
 
     #[test]

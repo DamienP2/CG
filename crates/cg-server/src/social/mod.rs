@@ -21,7 +21,6 @@ mod meta;
 pub mod moderation;
 pub mod rules;
 pub mod run;
-mod samples;
 mod twitch;
 mod webhooks;
 mod x;

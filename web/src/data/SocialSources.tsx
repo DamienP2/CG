@@ -1,4 +1,4 @@
-import { CircleAlert, Copy, FlaskConical, Plus, Save, Trash2 } from 'lucide-react';
+import { CircleAlert, Copy, Plus, Save, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api, changeEvents, useApp } from '../store';
@@ -187,7 +187,7 @@ const FORMS: Record<Platform, { mode?: Mode; fields: Field[]; hook?: boolean }> 
     },
     fields: [
       { key: 'channel', label: 'YouTube channel', placeholder: '@lefigarotv · UC…', when: ['mode', 'channelLive'] },
-      { key: 'video', label: 'Video', placeholder: 'youtube.com/watch?v=…', when: ['mode', 'video'] },
+      { key: 'video', label: 'Video (its live chat, else its comments)', placeholder: 'youtube.com/watch?v=…', when: ['mode', 'video'] },
       { key: 'apiKey', label: 'API key', secret: true },
     ],
   },
@@ -313,13 +313,6 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
       toast((e as Error).message, 'error');
     }
   };
-  const test = async () => {
-    try {
-      await api('POST', `/api/social/sources/${encodeURIComponent(s.id)}/test`);
-    } catch (e) {
-      toast((e as Error).message, 'error');
-    }
-  };
   const copy = (text: string) =>
     navigator.clipboard
       ?.writeText(text)
@@ -408,11 +401,6 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
           {isNew && (
             <button className="btn small" onClick={onClose}>
               {t('Cancel')}
-            </button>
-          )}
-          {editable && !isNew && (
-            <button className="btn small" onClick={test}>
-              <FlaskConical size={13} /> {t('Test')}
             </button>
           )}
           {editable && dirty && (
