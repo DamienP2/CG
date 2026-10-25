@@ -1,4 +1,4 @@
-// Progress bar: linear (horizontal / vertical), ring, segmented — settings, drawing, inspector and Operator controls.
+// Progress bar: linear (horizontal / vertical), ring, segmented — settings, drawing, inspector and control centre.
 // Same picture as crates/cg-render/src/wid/progress.rs; values and actions in crates/cg-core/src/wid/progress.rs.
 import { useContext, useRef, useState, type ReactNode } from 'react';
 import { SceneLayers } from '../engine/sceneLayers';
@@ -7,16 +7,16 @@ import * as T from './timer-fmt';
 import { display as counterDisplay, partsOf } from './counter';
 import { useDesigner } from '../designer/designerStore';
 import { Dropdown } from '../ui/Dropdown';
-import { SlidersHorizontal } from 'lucide-react';
+import { Database, Minus, Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { confirmDialog } from '../ui/dialogs';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
-import { textWidth } from '../engine/widgets';
+import { layerAgeFrames, textWidth } from '../engine/widgets';
 import type { Data, Layer, PlayoutItem } from '../engine/types';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
-import { Btns, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Row, Section, Seg, Sep, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
-import { OpBar, SetField } from './opbar';
-import { t } from '../i18n';
+import { ColorPick, Content, defineWidget, hex, ListEditor, Num, Row, Section, Seg, Text, Toggle, useFrame, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Centre, GAP, type Line2Item } from './centre';
+import { t, tc } from '../i18n';
 
 export interface Config {
   shape?: 'linear' | 'ring' | 'segments';
@@ -487,7 +487,6 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
             <Content label={t('Max')} path="max" value="100" placeholder="100" />
           </>
         )}
-        {c.input !== 'follow' && <Num label={t('Step + / −')} path="step" value={5} min={0} step={1} precision={2} />}
         <Content label={t('Goal')} path="goal" value="" />
         {c.goal.trim() !== '' && (
           <>
@@ -697,16 +696,31 @@ function Inspector({ layer, data, edit }: { layer: L; data: Data; edit: (fn: (l:
 
 // -------------------------------------------------------------- operator --
 
-type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: PlayoutItem; time: { nowMs: number; ageSecs: number } };
+type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: PlayoutItem; time: { nowMs: number; ageSecs: number; fps?: number } };
 
-/** The value followed (input Follow) as the Operator sees it: the graphic's timer or counter and its state on air. */
-function useFollowed(layer: L, item: PlayoutItem | undefined, data: Data, now: number, age: number) {
+/** The layers of the graphic the bar belongs to: the one on air, the Designer's, else the project's template holding it. */
+function useGraphicLayers(layer: L, item: PlayoutItem | undefined): Layer[] {
   const project = useApp((s) => s.project);
+  const tpl = useDesigner((s) => s.template);
+  const found = item ? project?.templates.find((t) => t.id === item.templateId) : tpl?.layers.some((x) => x.id === layer.id) ? tpl : project?.templates.find((t) => t.layers.some((x) => x === (layer as Layer) || x.id === layer.id));
+  return found?.layers ?? [];
+}
+
+/**
+ * The value followed (input Follow) as the Operator sees it: the graphic's timer or counter and
+ * its state on air, at the followed layer's own time on air (its clock: 0 until a manual start,
+ * still while paused), as the renderer. `age`: the graphic's, `since`: seconds since its last update.
+ */
+function useFollowed(layer: L, item: PlayoutItem | undefined, data: Data, now: number, age: number, since: number, fps: number) {
   const tz = useApp((s) => s.timezone) ?? '';
+  const layers = useGraphicLayers(layer, item);
   const c = cfg(layer);
   if (c.input !== 'follow') return null;
-  const tpl = project?.templates.find((t) => (item ? t.id === item.templateId : t.layers.some((x) => x === (layer as Layer) || x.id === layer.id)));
-  return followed(tpl?.layers ?? [], c, item ? (id) => item.widgets?.[id] : undefined, data, now, age, tz);
+  const fl = item ? layers.find((x) => x.id === c.follow) : undefined;
+  const clock = fl && item?.clocks?.[fl.id];
+  const still = !!fl && ((!!fl.manualStart && !clock) || clock?.pausedAt != null);
+  const fAge = fl && item ? layerAgeFrames(item, item.age ?? 0, fl) / fps + (still ? 0 : since) : age;
+  return followed(layers, c, item ? (id) => item.widgets?.[id] : undefined, data, now, fAge, tz);
 }
 
 /** The value shown now, and its operator's state. */
@@ -715,8 +729,9 @@ function useShown({ layer, state, data, item, time }: OpP) {
   if (got.current.age !== time.ageSecs) got.current = { age: time.ageSecs, at: Date.now() };
   const serverOffset = useApp((s) => s.serverOffset) ?? 0;
   const now = Date.now() + (item ? serverOffset : 0);
-  const age = got.current.age + (Date.now() - got.current.at) / 1000;
-  const e = effOf(layer, data, useFollowed(layer, item, data, now, age));
+  const since = (Date.now() - got.current.at) / 1000;
+  const age = got.current.age + since;
+  const e = effOf(layer, data, useFollowed(layer, item, data, now, age, since, time.fps ?? 50));
   const st = state as State | undefined;
   const v = e.shown(st, now, age);
   return { e, st, v };
@@ -724,22 +739,26 @@ function useShown({ layer, state, data, item, time }: OpP) {
 
 const pctText = (e: ReturnType<typeof effOf>, v: number) => {
   const [f, bad] = e.frac(v);
-  return bad ? '—' : `${fmtNum(f * 100, e.c.decimals)} %`;
+  return bad ? '—' : `${fmtNum(f * 100, e.c.decimals)} %`;
 };
 
-/** The one bar of the progress (validated grammar §1, same order as the counter), identical in
- *  the Designer's Operator section and the Operator's rows: readout % · − / + · field + Set · ⋯.
- *  Input « Follow »: the percentage and ↺ back to the data only. */
+/**
+ * The control centre of the progress bar (web/src/widgets/centre.tsx). Line 1: the percentage,
+ * the value over its max (set by hand or not), or the widget followed. Line 2: − / + the step,
+ * a value to set, reset, back to the data; following a widget: back to the data only. Line 3:
+ * the step (exposable).
+ */
 function ProgressBar(p: OpP) {
   useFrame();
   const { layer, act, item } = p;
   const { e, st, v } = useShown(p);
+  const layers = useGraphicLayers(layer, item);
   const c = e.c;
   const follow = c.input === 'follow';
   const stepTxt = fmtNum(c.step, 2).replace(/\.?0+$/, '');
   const manual = st?.value != null;
   const resetMsg = item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined;
-  const inp = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLSpanElement>(null);
   // Confirmations only on air (the X key asks like the button). ↑ / ↓ adjust; V types the value.
   useKeys(
     follow
@@ -753,52 +772,35 @@ function ProgressBar(p: OpP) {
             if (resetMsg && !(await confirmDialog({ title: resetMsg, confirm: t('Yes') }))) return;
             act('reset');
           },
-          v: () => setTimeout(() => inp.current?.focus(), 30),
+          v: () => setTimeout(() => field.current?.querySelector('input')?.focus(), 30),
         },
   );
-  if (follow)
-    return (
-      <OpBar>
-        <Readout sub={manual ? t('SET BY HAND') : undefined}>{pctText(e, v)}</Readout>
-        <Sep />
-        <Btns list={[{ label: t('↺ Reset'), title: t('Back to the data'), disabled: !manual, onClick: () => act('data') }]} />
-      </OpBar>
-    );
+  const followedName = layers.find((l) => l.id === c.follow)?.name ?? '';
+  const sub = follow ? t('follows “{name}”', { name: followedName }) : `${fmtNum(v, c.decimals)} / ${fmtNum(e.hi, decOf(e.hi))}${c.unit ? ` ${c.unit}` : ''}${manual ? ` · ${tc('cc', 'by hand')}` : ''}`;
+  const toData = { icon: Database, label: tc('cc', 'Data'), title: t('Back to the data'), disabled: !manual, onClick: () => act('data') };
+  const actions: Line2Item[] = follow
+    ? [toData]
+    : [
+        { icon: Minus, text: `− ${stepTxt}`, label: `− ${stepTxt}`, key: '↓', onClick: () => act('dec') },
+        { icon: Plus, text: `+ ${stepTxt}`, label: `+ ${stepTxt}`, key: '↑', onClick: () => act('inc') },
+        {
+          field: true,
+          placeholder: c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`,
+          title: t('Set value'),
+          width: 76,
+          onSet: (x) => {
+            if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
+            act('set', { value: parseNum(x) });
+          },
+        },
+        GAP,
+        { icon: RotateCcw, label: tc('cc', 'Reset'), key: 'X', confirm: resetMsg, onClick: () => act('reset') },
+        toData,
+      ];
   return (
-    <OpBar more={<More {...p} />}>
-      <Readout sub={`${fmtNum(v, c.decimals)} / ${fmtNum(e.hi, decOf(e.hi))}${c.unit ? ` ${c.unit}` : ''}${manual ? ` · ${t('SET BY HAND')}` : ''}`}>{pctText(e, v)}</Readout>
-      <Sep />
-      <Btns
-        list={[
-          { label: `− ${stepTxt}`, title: `− ${stepTxt} · ↓`, onClick: () => act('dec') },
-          { label: `+ ${stepTxt}`, title: `+ ${stepTxt} · ↑`, onClick: () => act('inc') },
-        ]}
-      />
-      <Sep />
-      <SetField
-        inputRef={inp}
-        width={76}
-        placeholder={c.input === 'percent' ? '0 – 100' : `${fmtNum(e.lo, 0)} – ${fmtNum(e.hi, 0)}`}
-        title={t('Set value')}
-        onSet={(x) => {
-          if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
-          act('set', { value: parseNum(x) });
-        }}
-      />
-    </OpBar>
-  );
-}
-
-/** Under ⋯: back to the min, back to the data. */
-function More({ layer, state, act, item }: OpP) {
-  const st = state as State | undefined;
-  return (
-    <Btns
-      list={[
-        { label: t('↺ Reset'), title: `${t('Reset')} · X`, confirm: item ? t('{name} is on air: back to the min?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-        { label: t('Back to the data'), disabled: st?.value == null, onClick: () => act('data') },
-      ]}
-    />
+    <Centre name={layer.name} readout={{ v: pctText(e, v), sub }} actions={actions}>
+      {!follow && <Num label={tc('cc', 'Step')} path="step" value={5} min={0} step={1} precision={2} />}
+    </Centre>
   );
 }
 
@@ -855,9 +857,6 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <View layer={layer} r={r} w={w} h={h} data={data} nowMs={time.nowMs} ageSecs={time.ageSecs} state={state} />,
   Inspector: ({ layer, data, edit }) => <Inspector layer={layer} data={data} edit={edit} />,
   Operator: ({ layer, state, data, act, item, time }) => <ProgressBar layer={layer} state={state} data={data} act={act} item={item} time={time} />,
-  Compact: ({ layer, state, data, act, item, time }) => <ProgressBar layer={layer} state={state} data={data} act={act} item={item} time={time} />,
-  More: ({ layer, state, data, act, item, time }) => <More layer={layer} state={state} data={data} act={act} item={item} time={time} />,
-  hasMore: (l) => cfg(l).input !== 'follow',
   warnings: (l, { data, state }) => warnings(l, data, state),
 });
 

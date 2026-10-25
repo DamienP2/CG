@@ -2,13 +2,14 @@
 // Same picture as crates/cg-render/src/wid/qrcode.rs; structure / payload / geometry mirror crates/cg-core/src/wid/qrcode.rs.
 // The matrix comes from the server (`/api/qr?data=…&ec=…`, the Rust `qrcode` crate): one encoder for both renderers.
 import { useEffect, useReducer, useRef } from 'react';
-import { ChevronDown, Link, QrCode } from 'lucide-react';
+import { ChevronDown, QrCode, SkipBack, SkipForward } from 'lucide-react';
+import { Dropdown } from '../ui/Dropdown';
 import { col, interpolateText, num, toHex, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { AssetPicker, ColorGroupRow } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
-import { Area, ColorPick, Content, defineWidget, ListEditor, Num, Readout, Row, Section, Seg, Select, Toggle, type Warning } from './kit';
-import { Segmented } from '../ui/fields';
+import { Area, ColorPick, Content, defineWidget, ListEditor, Num, Row, Section, Seg, Select, Toggle, useKeys, type Warning } from './kit';
+import { Centre } from './centre';
 import { t, tc, tn } from '../i18n';
 
 type Ecl = 'L' | 'M' | 'Q' | 'H';
@@ -32,6 +33,8 @@ export interface Config {
   label?: { on?: boolean; text?: string; size?: number; color?: string; bg?: string; pos?: 'below' | 'beside' | 'above'; font?: string; weight?: number; upper?: boolean };
   /** URL type: addresses prepared for the Operator (none = the layer's `data`). */
   addresses?: Address[];
+  /** The Operator gets the list of the prepared addresses (the centre's row, when exposed; the arrows stay). */
+  opAddress?: boolean;
 }
 export interface Address {
   name?: string;
@@ -66,6 +69,7 @@ function cfg(c: Config) {
     minPx: c.minPx ?? 6,
     label: { on: false, text: 'Scan to vote', size: 34, color: '#ffffff', bg: '#7c5cff', pos: 'below' as 'below' | 'beside' | 'above', font: 'Inter', weight: 800, upper: false, ...c.label },
     addresses: (c.addresses ?? []).map((a) => ({ name: '', url: '', caption: '', ...a })),
+    opAddress: c.opAddress ?? true,
   };
 }
 type Cfg = ReturnType<typeof cfg>;
@@ -639,6 +643,40 @@ function Addresses({ layer, edit }: { layer: QrLayer; edit: (fn: (l: QrLayer) =>
   );
 }
 
+/** The address without its scheme, cut to `max` characters. */
+const shortUrl = (u: string, max = 40) => {
+  const s = u.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+};
+
+/**
+ * The control centre (web/src/widgets/centre.tsx), when several addresses are prepared. Line 1:
+ * the address on air (its number, its caption or address). Line 2: previous / next. Line 3: the
+ * list of the prepared addresses (the Operator gets it when the Designer exposes `opAddress`).
+ */
+function QrBar({ layer, state, act }: { layer: QrLayer; state: unknown; act: (op: string, args?: unknown) => void }) {
+  const c = cfg(layer);
+  const n = c.addresses.length;
+  const cur = Math.min((state as State | undefined)?.addr ?? 0, Math.max(0, n - 1));
+  const a = c.addresses[cur];
+  const go = (i: number) => n > 0 && act('address', { i: ((i % n) + n) % n });
+  useKeys({ ArrowLeft: () => go(cur - 1), ArrowRight: () => go(cur + 1) });
+  return (
+    <Centre
+      name={(layer as { name?: string }).name}
+      readout={{ k: t('Address'), v: cur + 1, of: n, sub: a ? <span title={a.url}>{a.caption.trim() ? a.caption : shortUrl(a.url)}</span> : undefined }}
+      actions={[
+        { icon: SkipBack, label: tc('cc', 'Previous'), key: '←', disabled: n < 2, onClick: () => go(cur - 1) },
+        { icon: SkipForward, label: tc('cc', 'Next'), key: '→', disabled: n < 2, onClick: () => go(cur + 1) },
+      ]}
+    >
+      <Row label={t('Address')} expose="opAddress" exposeValue={c.opAddress}>
+        <Dropdown value={String(cur)} options={c.addresses.map((x, i) => ({ value: String(i), label: x.name || x.url || String(i + 1) }))} onChange={(v) => go(+v)} />
+      </Row>
+    </Centre>
+  );
+}
+
 export default defineWidget({
   id: 'qrcode',
   type: 'qrCode',
@@ -824,37 +862,8 @@ export default defineWidget({
       </>
     );
   },
-  // The Designer's Operator section (D9): the address shown and the menu of the prepared addresses.
-  Operator: ({ layer, state, act }) => {
-    const c = cfg(layer as QrLayer);
-    const cur = Math.min((state as State | undefined)?.addr ?? 0, Math.max(0, c.addresses.length - 1));
-    const a = c.addresses[cur];
-    return (
-      <>
-        <Readout sub={(a?.caption.trim() ? a.caption : c.label.text) || undefined}>
-          <span style={{ fontSize: 16 }}>{a?.url || '—'}</span>
-        </Readout>
-        <Segmented value={String(cur)} onChange={(v) => act('address', { i: +v })} options={c.addresses.map((x, i) => ({ value: String(i), label: x.name || x.url || String(i + 1) }))} />
-      </>
-    );
-  },
-  // On air: the menu of the prepared addresses.
-  Compact: ({ layer, state, act }) => {
-    const c = cfg(layer as QrLayer);
-    const cur = Math.min((state as State | undefined)?.addr ?? 0, Math.max(0, c.addresses.length - 1));
-    return (
-      <div className="wk-oprow">
-        <Link size={13} className="muted" />
-        <select className="opx-output" title={t('Address')} value={cur} onChange={(e) => act('address', { i: +e.target.value })}>
-          {c.addresses.map((a, i) => (
-            <option key={i} value={i}>
-              {a.name || a.url}
-            </option>
-          ))}
-        </select>
-      </div>
-    );
-  },
+  // The control centre: the prepared address on air, the arrows, the list (exposable).
+  Operator: ({ layer, state, act }) => <QrBar layer={layer as QrLayer} state={state} act={act} />,
   controls: (l) => cfg(l as QrLayer).kind === 'url' && cfg(l as QrLayer).addresses.length > 1,
   warnings: (layer, { data, state, r }) => {
     const L = layer as QrLayer;

@@ -3,18 +3,19 @@
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
 import { memo, useEffect, useMemo, useState } from 'react';
-import { ScrollText } from 'lucide-react';
+import { Flag, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import { parseDuration } from '../engine/widgets';
-import type { Data } from '../engine/types';
+import type { Data, PlayoutItem } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
 import { confirmDialog } from '../ui/dialogs';
 import { loadFonts, useFonts } from '../engine/fonts';
-import { Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Row, Section, Seg, Sep, Toggle, Transport, useBound, useKeys, type Warning } from './kit';
-import { OpBar } from './opbar';
+import { Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
+import { Centre, StartRow, WaitsContinue, WaitsTrigger, type Line2Item } from './centre';
 import { familyCss, FitLine, FONT, OpField, tw, useLiveTime } from './table-text';
+import { layerTime } from './ticker';
 import { t, tc, tl } from '../i18n';
 
 type Kind = 'section' | 'line' | 'logo' | 'space';
@@ -521,8 +522,7 @@ Lighting | Manon Gauthier
 
 [logo PULSE TV]`;
 
-type CL = Config & { props: Record<string, unknown>; manualStart?: boolean };
-const STATUS_LABEL = { running: 'RUNNING', paused: 'PAUSED', done: 'DONE', idle: 'IDLE' } as const;
+type CL = Config & { id: string; name?: string; props: Record<string, unknown>; manualStart?: boolean; startOn?: 'continue' | 'trigger'; startTrigger?: string };
 const sizeOf = (l: CL, r?: Record<string, unknown>) => [num((r?.width as number) ?? (l.props.width as number) ?? 1100), num((r?.height as number) ?? (l.props.height as number) ?? 1000)];
 
 function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Warning[] {
@@ -570,7 +570,7 @@ function PasteBox({ init, onChange }: { init: string; onChange: (v: string) => v
   return <textarea rows={14} value={v} placeholder={'# Section\nRole | Name'} style={{ width: '100%', minWidth: 360, fontFamily: 'var(--mono, monospace)', fontSize: 12 }} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => (setV(e.target.value), onChange(e.target.value))} />;
 }
 
-type OpP = { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz?: string; fps?: number } };
+type OpP = { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz?: string; fps?: number; held?: boolean } };
 
 /** Where the credits are now, for the Operator's controls. */
 function useRun({ layer, state, data, time }: OpP) {
@@ -588,61 +588,65 @@ function useRun({ layer, state, data, time }: OpP) {
   return { l, k, st, g, f, rem, status, now, travel: { travel: g.x } };
 }
 
-/** The one bar of the credits (validated grammar §1), identical in the Designer's Operator
- *  section and the Operator's rows: time left (ends at) · toggle, ⏭, FINISH, ↺ · duration · ⋯. */
+/**
+ * The control centre of the credits (web/src/widgets/centre.tsx). Line 1: the time left, when
+ * it ends (or its state), its start on air. Line 2: play / pause, next card (pages), finish,
+ * reset, ∓10 s of the time left. Line 3: how it starts (Designer), the duration of the whole
+ * roll (the template's in the Designer, the air's in the Operator), the end time (Operator).
+ */
 function CreditsBar(p: OpP) {
-  const { act, item, time } = p;
-  const { l, k, st, g, rem, status, now, travel } = useRun(p);
+  const { act } = p;
+  const item = p.item as PlayoutItem | undefined;
+  const mode = useCentreMode();
+  const b = useBound();
+  const designer = mode === 'designer';
+  const l0 = p.layer as CL;
+  const time = layerTime(l0, item, p.time, !!(p.state as State | undefined)?.started);
+  const { l, k, st, g, rem, status, now, travel } = useRun({ ...p, time });
   const tz = time.defaultTz || undefined;
-  const state: 'stop' | 'run' | 'pause' | 'ended' = status === 'running' ? 'run' : status === 'paused' ? 'pause' : status === 'done' ? 'ended' : 'stop';
+  const running = status === 'running';
+  const play = () => act(status === 'paused' ? 'resume' : 'start', travel);
   // Space stays the Operator's CONTINUE.
   useKeys({
     s: () => act('start', travel),
-    p: () => act(status === 'running' ? 'pause' : status === 'paused' ? 'resume' : 'start', travel),
+    p: () => (running ? act('pause', travel) : play()),
     ArrowRight: () => k.mode === 'pages' && act('next', travel),
   });
+  const sub = running ? t('ends at {time}', { time: fmtClock(now + rem * 1000, tz) }) : status === 'paused' ? tc('cc', 'paused') : status === 'done' ? tc('cc', 'finished') : tc('cc', 'ready');
+  // Waiting for its start on air: Continue (F2) or its trigger (the server starts it, see credits.rs).
+  const waiting = !!item && !!l.manualStart && !st.started;
+  const status1 = waiting ? l.startOn === 'trigger' ? <WaitsTrigger name={l.startTrigger ?? ''} /> : <WaitsContinue /> : undefined;
+  const resetMsg = item ? t('{name} is on air: back to the start of the credits?', { name: l.name ?? '' }) : undefined;
+  const actions: Line2Item[] = [
+    running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause', travel) } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play },
+    k.mode === 'pages' && { icon: SkipForward, label: tc('credits', 'Next card'), key: '→', onClick: () => act('next', travel) },
+    { icon: Flag, label: t('Finish'), disabled: status === 'done', onClick: () => act('finish', travel) },
+    { icon: RotateCcw, label: tc('cc', 'Reset'), confirm: resetMsg, onClick: () => act('reset') },
+    { icon: Minus, text: '−10 s', label: t('Remaining −10 s'), onClick: () => act('adjust', { seconds: -10, ...travel }) },
+    { icon: Plus, text: '+10 s', label: t('Remaining +10 s'), onClick: () => act('adjust', { seconds: 10, ...travel }) },
+  ];
+  // The time of the whole roll: the template's speed in the Designer, the air's in the Operator (what is left takes its share).
+  const total = designer ? 1 / Math.max(1e-9, nominal(k, g.x)) : 1 / Math.max(1e-9, realRate(k, st, g.x));
+  const setTotal = (v: string) => {
+    const s = parseDuration(v);
+    // Not a duration: the field shows the current one again.
+    if (s == null || s <= 0) return;
+    if (!designer) return act('duration', { seconds: s, ...travel });
+    b.set('speedMode', 'duration');
+    b.set('duration', Math.round(s));
+  };
   return (
-    <OpBar more={<CreditsMore {...p} />}>
-      <Readout sub={status === 'running' ? t('ends at {time}', { time: fmtClock(now + rem * 1000, tz) }) : t(STATUS_LABEL[status])}>{mss(rem)}</Readout>
-      <Sep />
-      <Transport
-        state={state}
-        item={item}
-        name={(l as { name?: string }).name ?? ''}
-        onStart={() => act('start', travel)}
-        onPause={() => act('pause', travel)}
-        onResume={() => act('resume', travel)}
-        next={k.mode === 'pages' ? { onClick: () => act('next', travel), title: `${tc('credits', 'Next card')} · →` } : undefined}
-        end={{ label: t('Finish'), disabled: status === 'done', onClick: () => act('finish', travel) }}
-        reset={() => act('reset')}
-      />
-      <Sep />
-      {/* The time of the whole roll (its speed); what is left takes its share. */}
-      <OpField
-        width={62}
-        title={t('Duration')}
-        value={mss(Math.round(1 / Math.max(1e-9, realRate(k, st, g.x))))}
-        placeholder="mm:ss"
-        onSubmit={(v) => {
-          const s = parseDuration(v);
-          // Not a duration: the field shows the current one again.
-          if (s != null && s > 0) act('duration', { seconds: s, ...travel });
-        }}
-      />
-    </OpBar>
-  );
-}
-
-/** Under ⋯: nudge the remaining time, set the end time. */
-function CreditsMore(p: OpP) {
-  const { act, time } = p;
-  const { rem, status, now, travel } = useRun(p);
-  const tz = time.defaultTz || undefined;
-  return (
-    <div className="wk-oprow">
-      <Btns list={[-10, -1, 1, 10].map((d) => ({ label: `${d > 0 ? '+' : '−'}${Math.abs(d)} s`, title: t('Remaining'), onClick: () => act('adjust', { seconds: d, ...travel }) }))} />
-      <OpField width={80} title={t('End at')} value={status === 'done' ? '' : fmtClock(now + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />
-    </div>
+    <Centre name={l.name} readout={{ v: mss(rem), sub }} status={status1} actions={actions}>
+      <StartRow layer={designer ? (b.obj as CL) : l} />
+      <Row label={t('Duration')} title={t('The whole roll, mm:ss')}>
+        <OpField width={70} title={t('Duration')} value={mss(Math.round(total))} placeholder="mm:ss" onSubmit={setTotal} />
+      </Row>
+      {!designer && (
+        <Row label={t('End at')}>
+          <OpField width={84} title={t('End at')} value={status === 'done' ? '' : fmtClock(now + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />
+        </Row>
+      )}
+    </Centre>
   );
 }
 
@@ -854,15 +858,6 @@ export default defineWidget({
             ]}
           />
           <Seg
-            label={t('Launch')}
-            value={!!l.manualStart}
-            onChange={(v) => edit((x) => void ((x as CL).manualStart = v || undefined))}
-            options={[
-              [false, t('At the In')],
-              [true, t('Manual')],
-            ]}
-          />
-          <Seg
             label={t('End')}
             path="end"
             value={k.end}
@@ -886,12 +881,11 @@ export default defineWidget({
       </>
     );
   },
-  // One row: remaining time, start / pause / resume, the duration, the end time, next card, reset.
-  Compact: (p) => <CreditsBar {...p} />,
-  More: (p) => <CreditsMore {...p} />,
   // The Operator's preview holds it until its Play: not started yet.
   plays: () => 'start',
   Operator: (p) => <CreditsBar {...p} />,
+  // A manual start on Continue waits for it (credits.rs starts it on F2), unless the operator started it himself.
+  waits: (l, state) => !!l.manualStart && l.startOn !== 'trigger' && !(state as State | undefined)?.started,
   warnings: (layer, { data, state, r }) => {
     const l = layer as unknown as CL;
     const [w, h] = sizeOf(l, r as never);

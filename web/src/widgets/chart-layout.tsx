@@ -3,6 +3,7 @@
 // so that the Rust and the web renderers draw the same chart.
 import { interpolateText } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import type { AdvanceMode } from './centre';
 import { parseCsv } from './kit';
 import { roundedPolygon } from './shape';
 import { parseRows } from './table';
@@ -87,6 +88,13 @@ export interface Config {
   texts?: { noData?: string; others?: string; total?: string };
   /** Sparkline: the first series alone filling the box (columns, line or area), without panel, titles, axes or texts. */
   spark?: boolean;
+  /** The reveal steps are chained from the take: every `autoSecs` seconds, on Continue, or on a trigger (`autoOn`). */
+  autoSteps?: boolean;
+  autoSecs?: number;
+  autoOn?: AdvanceMode;
+  autoTrigger?: string;
+  /** Put forward from the take: '' = nothing, `s2` = series 3, `c0` = the first category (column, point or slice). */
+  hlDefault?: string;
 }
 export interface Hl {
   kind: HlKind;
@@ -111,6 +119,15 @@ export interface State {
   hl?: Hl;
   prevHl?: Hl;
   hlAt?: number;
+  /** The operator acted (else the Designer's chained steps and highlight apply from the take). */
+  ctl?: boolean;
+  /** Steps chained: one more every `interval` s from `autoAt` (`on` timed), or on Continue / on the trigger (`interval` 0). */
+  auto?: boolean;
+  interval?: number;
+  autoAt?: number;
+  on?: AdvanceMode;
+  trigger?: string;
+  pausedAt?: number;
 }
 
 export const SAMPLE = [
@@ -156,6 +173,11 @@ export function cfg(c: Config) {
     refLine: { on: false, value: 0, label: '', ...c.refLine },
     texts: { noData: '', others: '', total: '', ...c.texts },
     spark: c.spark ?? false,
+    autoSteps: c.autoSteps ?? false,
+    autoSecs: c.autoSecs ?? 5,
+    autoOn: c.autoOn ?? 'timed',
+    autoTrigger: c.autoTrigger ?? '',
+    hlDefault: c.hlDefault ?? '',
   };
 }
 
@@ -168,7 +190,7 @@ export type Cfg = ReturnType<typeof cfg>;
 const NO_HL: Hl = { kind: 'none', idx: -1 };
 export function st(s: unknown): Required<State> & { cur?: string[][]; prevAxis?: [number, number]; mode?: RevealMode } {
   const x = (s ?? {}) as State;
-  return { prev: [], prevSeries: [], prevN: 0, at: 0, step: 0, stepAt: [], hlAt: 0, ...x, hl: x.hl ?? NO_HL, prevHl: x.prevHl ?? NO_HL } as never;
+  return { prev: [], prevSeries: [], prevN: 0, at: 0, step: 0, stepAt: [], hlAt: 0, ctl: false, auto: false, interval: 0, autoAt: 0, on: 'timed', trigger: '', pausedAt: 0, ...x, hl: x.hl ?? NO_HL, prevHl: x.prevHl ?? NO_HL } as never;
 }
 export type St = ReturnType<typeof st>;
 

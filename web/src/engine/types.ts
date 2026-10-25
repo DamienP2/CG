@@ -93,8 +93,10 @@ export type Layer = LayerKind & {
   parent?: string | null;
   visible: boolean;
   locked: boolean;
-  /** Timed widgets wait for the operator to start them. */
+  /** Timed widgets wait for the operator to start them (on Continue, or on `startTrigger` when `startOn` is 'trigger'). */
   manualStart?: boolean;
+  startOn?: 'continue' | 'trigger';
+  startTrigger?: string;
   /** Scale X and Y change together. */
   scaleLock?: boolean;
   /** Width and height keep their ratio when resized (fields and stage handles). */

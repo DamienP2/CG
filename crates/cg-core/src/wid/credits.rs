@@ -840,11 +840,8 @@ pub fn act(
             )
         }
     };
-    let age = if layer.manual_start {
-        0.0
-    } else {
-        ctx.age_secs
-    };
+    // The layer's time on air (0 while a manual start waits for its Play).
+    let age = ctx.age_secs;
     let f = progress(c, st, x, now, age);
     let done = f >= 1.0 - 1e-9;
     let rebase = |st: &mut State| {
@@ -992,6 +989,26 @@ pub fn act(
     Ok(())
 }
 
+/// Continue (F2): a manual start (on Continue) not started yet starts.
+pub fn on_continue(layer: &Layer, st: &mut State, ctx: &ActCtx) -> bool {
+    if !layer.manual_start || layer.start_on.as_deref() == Some("trigger") || st.started {
+        return false;
+    }
+    act(layer, st, "start", &serde_json::Value::Null, ctx).is_ok()
+}
+
+/// The trigger `name`: a manual start on this trigger, not started yet, starts.
+pub fn on_trigger(layer: &Layer, st: &mut State, name: &str, ctx: &ActCtx) -> bool {
+    if !layer.manual_start
+        || layer.start_on.as_deref() != Some("trigger")
+        || !super::same_trigger(&layer.start_trigger, name)
+        || st.started
+    {
+        return false;
+    }
+    act(layer, st, "start", &serde_json::Value::Null, ctx).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1012,6 +1029,32 @@ mod tests {
             age_secs: 0.0,
             data: d,
         }
+    }
+
+    #[test]
+    fn a_manual_start_starts_on_continue_or_on_its_trigger() {
+        let d = Data::new();
+        let mut l = layer(Config {
+            entries: parse(TEXT),
+            ..Default::default()
+        });
+        // At the In: Continue is not for it.
+        let mut st = State::default();
+        assert!(!on_continue(&l, &mut st, &ctx(&d, 1000)));
+        // On Continue: it starts once, then Continue is for the others.
+        l.manual_start = true;
+        assert!(on_continue(&l, &mut st, &ctx(&d, 1000)));
+        assert!(st.started && st.running && st.anchor == 1000);
+        assert!(!on_continue(&l, &mut st, &ctx(&d, 2000)));
+        assert!(!on_trigger(&l, &mut st, "go", &ctx(&d, 2000)));
+        // On a trigger: its name only.
+        l.start_on = Some("trigger".into());
+        l.start_trigger = "Go".into();
+        let mut st = State::default();
+        assert!(!on_continue(&l, &mut st, &ctx(&d, 3000)));
+        assert!(!on_trigger(&l, &mut st, "stop", &ctx(&d, 3000)));
+        assert!(on_trigger(&l, &mut st, " go ", &ctx(&d, 3000)));
+        assert!(st.started && st.running);
     }
 
     #[test]

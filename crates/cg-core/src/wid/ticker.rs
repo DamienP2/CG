@@ -768,20 +768,17 @@ fn index(args: &serde_json::Value, key: &str, len: usize) -> Result<usize, Strin
     Ok(i)
 }
 
-/// Makes the state explicit (started from the time on air).
+/// Makes the state explicit (started from the layer's time on air: 0 while
+/// a manual start waits for its Continue / trigger, then its clock).
 fn materialize(t: &Ticker, layer: &Layer, st: &mut State, ctx: &ActCtx) {
     if st.started {
         return;
     }
-    let age = if layer.manual_start {
-        0.0
-    } else {
-        ctx.age_secs
-    };
-    st.base = clock(t, st, ctx.now_ms, age);
+    st.base = clock(t, st, ctx.now_ms, ctx.age_secs);
     st.anchor = ctx.now_ms;
     st.started = true;
-    st.running = !layer.manual_start;
+    // A manual start not started yet (no time on air) waits for its Play.
+    st.running = !layer.manual_start || ctx.age_secs > 0.0;
     // The runs stay empty: the tape keeps following the layer's items (and
     // their edits in the Designer) until the operator edits the queue.
 }
@@ -805,7 +802,7 @@ fn push_run(st: &mut State, run: Run) {
 }
 
 /// Applies an operator action (`op`, with its `args`) to the state.
-/// start · pause · resume · speed {px | delta} · next · clear ·
+/// start · pause · resume · speed {px | delta} · next · reload · clear ·
 /// add {text, cat, on, index?} · edit {index, text?, cat?, on?} · delete {index} ·
 /// move {from, to} · toggle {index, on?} · set {items} ·
 /// insert {text, cat, when: "now" | "after", keep?}.
@@ -820,6 +817,9 @@ pub fn act(
     let h = height(layer);
     let now = ctx.now_ms;
     match op {
+        // The graphic's sources are read again (the server does it): the
+        // items follow them, nothing to change here.
+        "reload" => return Ok(()),
         "start" => {
             st.started = true;
             st.running = true;
@@ -1024,6 +1024,47 @@ mod tests {
             text: s.into(),
             ..Item::default()
         }
+    }
+
+    #[test]
+    fn a_manual_start_keeps_its_place_once_started_on_air() {
+        // Started by Continue (its clock): 3 s on air at 100 px/s, a pause keeps the 300 px.
+        let l = layer(
+            r#"{"id":"t","name":"T","type":"ticker","text":"A\nB","separator":"-","speed":100,"manualStart":true,"props":{}}"#,
+        );
+        let d = Data::new();
+        let t = of(&l).unwrap();
+        let mut st = State::default();
+        let cx = ActCtx {
+            now_ms: 10_000,
+            age_secs: 3.0,
+            data: &d,
+        };
+        act(&l, &mut st, "pause", &serde_json::Value::Null, &cx).unwrap();
+        assert!(st.started && !st.running);
+        assert!((clock(&t, &st, 20_000, 0.0) - 300.0).abs() < 1e-9);
+        // Not started yet (no time on air): a pause leaves it at its start, waiting.
+        let mut st = State::default();
+        act(
+            &l,
+            &mut st,
+            "pause",
+            &serde_json::Value::Null,
+            &ctx(&d, 10_000),
+        )
+        .unwrap();
+        assert!(st.started && !st.running && st.base == 0.0);
+        // Reload changes nothing of the state.
+        let before = st.clone();
+        act(
+            &l,
+            &mut st,
+            "reload",
+            &serde_json::Value::Null,
+            &ctx(&d, 11_000),
+        )
+        .unwrap();
+        assert_eq!(st, before);
     }
 
     #[test]

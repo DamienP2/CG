@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use cg_core::anim::interpolate_text;
-use cg_core::wid::image::{crop, fit, frame_rect, place, seq, Colorize, Config, Crop, Fit, State};
+use cg_core::wid::image::{
+    crop, fit, frame_rect, manual, place, seq, Colorize, Config, Crop, Fit, State,
+};
 use cg_core::{Color, LayerKind, Prop};
 use tiny_skia::{
     FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Mask, Paint, PathBuilder, Pixmap,
@@ -223,7 +225,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             .clone()
             .unwrap_or_else(|| interpolate_text(src, d.data))
     } else {
-        let s = seq(c, st, d.time.now_ms, d.time.age_secs);
+        let s = seq(c, st, manual(d.layer, c), d.time.now_ms, d.time.age_secs);
         interpolate_text(&c.frames[s.idx.min(c.frames.len() - 1)], d.data)
     };
     reload(d, st, wanted.trim());

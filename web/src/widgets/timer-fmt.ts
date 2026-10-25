@@ -91,6 +91,8 @@ export interface Config {
   bannerColor?: string;
   startMode?: StartMode;
   startAt?: string;
+  /** Seconds the Operator's − / + squares add (1, 10 or 60). */
+  adjStep?: number;
 }
 
 /** What the operator changed (mirrors `State` in Rust): timestamps only. */
@@ -152,6 +154,7 @@ export const DEF = {
   bannerColor: '#ff3b5c',
   startMode: 'manual' as StartMode,
   startAt: '20:00:00',
+  adjStep: 10,
 };
 export type Cfg = typeof DEF & { timerMode?: TimerMode; tzOffset?: number; roundUp?: boolean };
 export const cfg = (c: Config): Cfg => ({ ...DEF, ...c, affix: { ...DEF.affix, ...c.affix }, plate: { ...DEF.plate, ...c.plate }, analog: { ...DEF.analog, ...c.analog } }) as Cfg;
@@ -660,8 +663,9 @@ export function eff(l: ClockLayer, data: Data, project = ''): Eff {
       manualStart: !!l.manualStart,
       format,
       zone,
-      // « External » is gone: it behaved as Manual.
-      start: c.startMode === 'ext' ? 'manual' : c.startMode,
+      // The layer's manual start (Continue / trigger) carries the wait: its clock starts the
+      // timer. Older layers still waiting for Play keep « manual »; « External » behaved as it.
+      start: c.startMode === 'at' ? 'at' : l.manualStart ? 'auto' : c.startMode === 'ext' ? 'manual' : c.startMode,
       roundUp: c.roundUp ?? true,
       atZero: c.atZero,
       cdTime: c.cdTarget === 'time',

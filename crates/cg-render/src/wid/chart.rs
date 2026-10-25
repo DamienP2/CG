@@ -3,7 +3,7 @@
 
 use ab_glyph::{Font, ScaleFont};
 use cg_core::wid::chart::{
-    layout, shown_grid, with_data, Anchor, Input, PShape, PText, Prim, State,
+    layout, shown, shown_grid, with_data, Anchor, Input, PShape, PText, Prim, State,
 };
 use cg_core::{Color, LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{FillRule, LineCap, LineJoin, Stroke, StrokeDash, Transform};
@@ -111,6 +111,8 @@ pub(crate) fn motion(d: &mut Draw, st: &State) -> Option<crate::cache::Motion> {
     let LayerKind::Chart { x: c } = &d.layer.kind else {
         return None;
     };
+    // The take's chained steps and highlight, the timed steps revealed so far.
+    let st = &shown(c, st, d.time.now_ms, d.time.age_secs, d.data);
     let grid = shown_grid(c, st, d.data);
     let c = with_data(c, d.data);
     let out = layout(&Input {
@@ -131,6 +133,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let LayerKind::Chart { x: c } = &d.layer.kind else {
         return false;
     };
+    let st = &shown(c, st, d.time.now_ms, d.time.age_secs, d.data);
     let grid = shown_grid(c, st, d.data);
     let c = with_data(c, d.data);
     let out = layout(&Input {

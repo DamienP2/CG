@@ -3,17 +3,17 @@
 // Same picture as crates/cg-render/src/wid/image.rs; geometry and actions mirror crates/cg-core/src/wid/image.rs.
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { api, uploadAsset, useApp } from '../store';
-import { Film, Image, Radio } from 'lucide-react';
+import { Film, Image, Pause, Play, Radio, RefreshCw, RotateCcw } from 'lucide-react';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { inputMessage, useInputs, useLiveFrame } from '../engine/liveInputs';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
 import type { Data, PlayoutItem } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
 import { AssetPicker, ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Readout, Row, Section, Seg, Sep, Toggle, Transport, useBound, useExposable, useKeys, type Warning, withDefaults } from './kit';
+import { Bound, Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, Handle, hex, Note, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useExposable, useKeys, type Warning, withDefaults } from './kit';
+import { Centre, StartRow, WaitsContinue, WaitsTrigger } from './centre';
 import { confirmDialog } from '../ui/dialogs';
-import { OpBar, ReloadBtn } from './opbar';
-import { lang, t, tn } from '../i18n';
+import { lang, t, tc, tn } from '../i18n';
 
 export interface Crop {
   l: number;
@@ -127,7 +127,7 @@ export function seqInfo(c: Config, st: State | undefined, nowMs: number, ageSecs
   const k = cfg(c);
   const [first, count] = clipRange(c);
   const n = Math.max(1, count);
-  const driven = k.start === 'manual' || !!st?.own;
+  const driven = k.start === 'manual' || !!(c as { manualStart?: boolean }).manualStart || !!st?.own;
   const el = Math.max(0, !driven ? ageSecs : st?.playing ? (nowMs - (st.atMs ?? 0)) / 1000 : (st?.pausedEl ?? 0));
   const loops = k.playMode === 'loop' ? Infinity : k.playMode === 'once' ? 1 : Math.max(1, k.loops);
   const fps = clamp(k.fps, 0.1, 120);
@@ -163,12 +163,6 @@ function useNow(time: TimeCtx, item: PlayoutItem | undefined, active: boolean) {
   if (!item || liveAt === undefined) return { nowMs: time.nowMs, ageSecs: time.ageSecs };
   return { nowMs: time.nowMs + Date.now() - anchor.current.at, ageSecs: (item.age ?? 0) / (time.fps ?? 50) + Math.max(0, Date.now() - liveAt) / 1000 };
 }
-
-/** Seconds left as −m:ss. */
-const left = (s: number) => {
-  const v = Math.ceil(Math.max(0, s) - 1e-6);
-  return `−${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`;
-};
 
 // --------------------------------------------------------------- pictures --
 // Natural sizes and failures, per source (module level: warnings read them too).
@@ -426,46 +420,93 @@ function PictureRow() {
   );
 }
 
-/** The one media bar (validated grammar §1, D5), identical in the Designer's Operator section
- *  and the Operator's rows: time left · ▶ Play / ❚❚ Pause / ▶ Resume · ⟲ Restart. A still
- *  picture at a web address keeps its RELOAD pill; a live input has no controls. */
+type StartLayer = { id: string; name?: string; manualStart?: boolean; startOn?: 'continue' | 'trigger'; startTrigger?: string };
+
+/** The sequence waits for the operator: the layer's manual start, or the older `start: manual`. */
+const manualOf = (l: Config & { manualStart?: boolean }) => !!l.manualStart || cfg(l).start === 'manual';
+
+/** Seconds left as mm:ss. */
+const leftText = (s: number) => {
+  const v = Math.ceil(Math.max(0, s) - 1e-6);
+  return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`;
+};
+
+/**
+ * The control centre (web/src/widgets/centre.tsx). A sequence (animation, video file): the time
+ * left, how it waits for its start; Play / Pause, Restart; how it starts, how it plays. A still
+ * picture at a web address: Refresh. A live input: nothing (`controls`).
+ */
 function MediaBar({ layer, state, data, act, time, item }: { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; time: TimeCtx; item?: PlayoutItem }) {
-  const l = layer as ImgLayer & { name?: string };
+  const l = layer as ImgLayer & StartLayer;
   const k = cfg(l);
+  const b = useBound();
+  const designer = useCentreMode() === 'designer';
   const st = (state ?? {}) as State;
   const now = useNow(time, item, k.frames.length > 0);
   const s = k.frames.length ? seqInfo(l, st, now.nowMs, now.ageSecs) : null;
-  // The preview and the Designer's try-out hold it on its first frame until a control is used.
-  const held = !item && state == null;
-  const running = !!s && s.running && !held;
-  const paused = !!s && !s.ended && !running && st.playing === false;
-  const pstate: 'stop' | 'run' | 'pause' | 'ended' = !s ? 'stop' : running ? 'run' : paused ? 'pause' : s.ended ? 'ended' : 'stop';
+  // The preview and the Designer's try-out hold it on its first frame until its Play.
+  const held = time.held !== undefined ? !!time.held : !item && state == null;
+  const manual = manualOf(l);
+  // Started by hand: waits on its first frame until the operator (Continue, its trigger, Play) starts it.
+  const waiting = !!s && manual && !st.own && !held;
+  const running = !!s && s.running && !held && !waiting;
+  const paused = !!s && !s.ended && !running && !waiting && (st.playing === false || held);
+  const pstate: 'stop' | 'run' | 'pause' | 'ended' = !s ? 'stop' : running ? 'run' : s.ended ? 'ended' : paused ? 'pause' : 'stop';
   // Confirmations only on air (the T key does as the ⟲ button).
   const restart = async () => {
     if (item && !(await confirmDialog({ title: t('{name} is on air: start it again from its start value?', { name: l.name ?? '' }), confirm: t('Yes') }))) return;
     act('restart');
   };
+  const play = () => act(pstate === 'run' ? 'pause' : pstate === 'ended' || held ? 'restart' : 'play');
+  const web = !k.video && webPicture(l, data);
   useKeys(
     s
       ? {
-          p: () => (pstate === 'run' ? act('pause') : pstate === 'pause' ? act('play') : act('restart')),
+          p: play,
           t: () => void restart(),
         }
-      : {},
+      : web
+        ? { r: () => act('reload') }
+        : {},
   );
   if (k.input.trim()) return null;
-  if (!s)
-    return k.video || !webPicture(l, data) ? null : (
-      <OpBar>
-        <ReloadBtn title={t('Reload the picture')} onClick={() => act('reload')} />
-      </OpBar>
-    );
+  if (!s) return web ? <Centre name={l.name} actions={[{ icon: RefreshCw, label: tc('cc', 'Refresh'), key: 'R', onClick: () => act('reload') }]} /> : null;
+  // The settings of line 3 as the template (or the take) has them.
+  const kb = cfg((b.obj ?? l) as Config);
+  const status = item && waiting ? l.startOn === 'trigger' ? <WaitsTrigger name={l.startTrigger ?? ''} /> : <WaitsContinue /> : undefined;
+  const sub = s.ended ? tc('cc', 'finished') : s.loops === 1 ? tc('cc', 'left') : `${tc('cc', 'left')} · ${tc('cc', 'loop {n}', { n: s.lap })}`;
+  // The start row writes the layer's manual start; the older `start: manual` then goes.
+  const setStart = (path: string, v: unknown, coalesce?: boolean) => {
+    b.set(path, v, coalesce);
+    if (path === 'manualStart' && k.start === 'manual') b.set('start', undefined);
+  };
   return (
-    <OpBar>
-      <Readout>{left(s.remaining)}</Readout>
-      <Sep />
-      <Transport state={pstate} media item={item} name={l.name ?? ''} onStart={() => act(held || s.ended ? 'restart' : 'play')} onPause={() => act('pause')} onResume={() => act('play')} restart={() => act('restart')} />
-    </OpBar>
+    <Centre
+      name={l.name}
+      readout={{ v: leftText(s.remaining), sub }}
+      status={status}
+      actions={[
+        pstate === 'run' ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: play } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play },
+        { icon: RotateCcw, label: tc('cc', 'Restart'), key: 'T', confirm: item ? t('{name} is on air: start it again from its start value?', { name: l.name ?? '' }) : undefined, onClick: () => act('restart') },
+      ]}
+    >
+      {designer && (
+        <Bound obj={b.obj} set={setStart} data={b.data}>
+          <StartRow layer={{ ...l, manualStart: manual || undefined }} />
+        </Bound>
+      )}
+      <Seg
+        label={tc('cc', 'Playback')}
+        path="playMode"
+        value={k.playMode}
+        options={[
+          ['loop', tc('cc', 'Loop')],
+          ['once', tc('cc', 'Once')],
+          ['count', tc('cc', 'N times')],
+        ]}
+      />
+      {kb.playMode === 'count' && <Num label={t('Times')} path="loops" value={k.loops} min={1} max={999} />}
+    </Centre>
   );
 }
 
@@ -615,8 +656,13 @@ export default defineWidget({
     const k = cfg(layer as unknown as ImgLayer);
     return !k.input.trim() && k.frames.length > 0 && 'start';
   },
-  Compact: ({ layer, state, data, act, time, item }) => <MediaBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   Operator: ({ layer, state, data, act, time, item }) => <MediaBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  // A sequence started by hand waits for Continue (F2) until the operator starts it (mirrors waits_start).
+  waits: (layer, state) => {
+    const l = layer as unknown as ImgLayer & { manualStart?: boolean; startOn?: string };
+    const k = cfg(l);
+    return k.frames.length > 0 && !k.input.trim() && manualOf(l) && l.startOn !== 'trigger' && !(state as State | undefined)?.own;
+  },
 
   Overlay: ({ layer, w, h, scale, edit }) => {
     useStore();
@@ -688,7 +734,7 @@ export default defineWidget({
     const missingFrames = k.frames.filter((f) => status(interpolateText(f, data)).s === 'missing').length;
     if (k.frames.length && missingFrames) out.push({ level: 'warn', text: tn(missingFrames, '{n} frame of the sequence cannot be found: the fallback shows in their place.', '{n} frames of the sequence cannot be found: the fallback shows in their place.'), op: true });
     if (k.colorize !== 'none' && r.missing) out.push({ level: 'info', text: t('Colorize does not apply to the fallback picture.') });
-    if (k.frames.length && !r.missing && (k.start === 'manual' || (state as State | undefined)?.own)) {
+    if (k.frames.length && !r.missing && (manualOf(l as Config & { manualStart?: boolean }) || (state as State | undefined)?.own)) {
       const s = seqInfo(l, state as State, Date.now(), 0);
       if (!s.running) out.push({ level: 'info', text: s.ended ? t('Sequence finished on frame {n}/{total}.', { n: s.idx + 1, total: s.n }) : t('Sequence paused on frame {n}/{total}.', { n: s.idx + 1, total: s.n }), op: 'only' });
     }
@@ -816,15 +862,6 @@ function Playback({ k }: { k: ReturnType<typeof cfg> }) {
         ]}
       />
       {k.playMode === 'count' && <Num label={t('Times')} path="loops" value={k.loops} min={1} max={999} />}
-      <Seg
-        label={t('Launch')}
-        path="start"
-        value={k.start}
-        options={[
-          ['in', t('At the In')],
-          ['manual', t('Manual')],
-        ]}
-      />
     </>
   );
 }

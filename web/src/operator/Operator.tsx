@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, Layers, Lock, MoreHorizontal, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -10,15 +10,16 @@ import { defaultData, holdFrame, interpolateText, newId, parseHex, toHex } from 
 import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
-import { PlayToggle } from '../widgets/kit';
+import { CentreModeContext } from '../widgets/kit';
+import { Centre, OperatorBound, StartStatus } from '../widgets/centre';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { KeyScope, MoreToggle, ReadoutFps, Row } from '../widgets/kit';
+import { KeyScope, Row } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
-import { changedKeys, hasControls, hasMore, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, type PreviewRun, type WidgetPart } from './WidgetTabs';
+import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
 import { maxChars, shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
@@ -157,9 +158,10 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
   return t?.markers.find((m) => m.kind === 'pause' && Math.abs(m.frame - p.frame) < 0.5);
 }
 
-/** Continue would move it on: held on a pause, playing towards one, or paused while going out (as the server's `resume`, crates/cg-core/src/playout.rs). */
+/** Continue would move it on: a widget waits for it (its next page, its start), or the graphic is held on a pause, playing towards one, or paused while going out (as the server's `resume`, crates/cg-core/src/playout.rs). */
 function canContinue(p: PlayoutItem, t: Template | undefined): boolean {
   if (!t || p.phase === 'out') return false;
+  if (widgetWaits(t.layers, p)) return true;
   if (p.phase === 'outHold') return true;
   return Math.max(p.target, p.frame) < holdFrame(t) - 1e-6;
 }
@@ -280,7 +282,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // The widget of a graphic on air whose keys are on (`zone:layer`, a click on its row), and the ⋯ unfolded.
   const [airWidget, setAirWidget] = useState<string | null>(null);
   const [airMore, setAirMore] = useState<Record<string, boolean>>({});
-  const [pvMore, setPvMore] = useState<Record<string, boolean>>({});
   // Reordering the graphics by dragging their grip.
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ id: string; where: 'before' | 'after' } | null>(null);
@@ -687,17 +688,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   {shownParts
                     .filter((p) => p.controls)
                     .map((p) => (
-                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} more={!!pvMore[p.layer.id]} onMore={(open) => setPvMore({ ...pvMore, [p.layer.id]: open })} />
+                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} />
                     ))}
                 </div>
               )}
-              {shownParts
-                .filter((p) => p.controls && pvMore[p.layer.id] && hasMore(p.layer, previewData, pv.widgets[p.layer.id]))
-                .map((p) => (
-                  <div key={p.layer.id} className="opx-wbar">
-                    <PreviewControls key={`${item.id}-${p.layer.id}-more`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} show="more" />
-                  </div>
-                ))}
               <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${Number.isFinite(layout.fields) ? layout.fields : 50}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
                 {hasContent && (
                 <div className="opx-fields-col">
@@ -1394,46 +1388,28 @@ interface AirWidgets {
 }
 
 /**
- * The controls of a widget of the graphic on air (web/src/widgets), on one row: its name, a small
- * readout, icon buttons, the ⋯ of its More controls (unfolded in a row under it). A click on the
- * row selects it: only then its keyboard shortcuts work. Its full panel stays mounted, hidden, for them.
+ * The control centre of a widget of the graphic on air (web/src/widgets/centre.tsx): its state,
+ * its actions, its exposed settings (written into the take). A click on it selects it: only then
+ * its keyboard shortcuts work.
  */
-function SpecControls({ layer, item, act, fps, lang, selected, onSelect, more, onMore }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; fps: number; lang: string; selected: boolean; onSelect: () => void; more: boolean; onMore: (open: boolean) => void }) {
+function SpecControls({ layer, item, act, setData, fps, lang, selected, onSelect }: { layer: Layer; item: PlayoutItem; act: (op: string, args?: unknown) => void; setData: (patch: Record<string, string>) => void; fps: number; lang: string; selected: boolean; onSelect: () => void }) {
   const def = widgetOf(layer)!;
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const state = item.widgets?.[layer.id];
-  const Compact = def.Compact;
   const Op = def.Operator;
-  const More = def.More;
-  if (!Compact) return null;
-  const time = { nowMs: Date.now() + offset, ageSecs: (item.age ?? 0) / fps, defaultTz: tz, fps, lang };
-  const withMore = !!More && hasMore(layer, item.data, state);
-  const open = withMore && more;
+  if (!Op) return null;
+  // The layer's own time on air: still while it waits for its start, or paused.
+  const time = { nowMs: Date.now() + offset, ageSecs: layerAgeFrames(item, item.age ?? 0, layer) / fps, defaultTz: tz, fps, lang };
   return (
     <KeyScope.Provider value={selected}>
-      <div className={`opx-widget opx-wrow ${selected ? 'sel' : ''}`} onClick={onSelect}>
-        <span className="opx-widget-name">
-          <strong>{layer.name}</strong>
-        </span>
-        <MoreToggle.Provider value={withMore ? { open, toggle: () => onMore(!open) } : null}>
-          <Compact layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
-        </MoreToggle.Provider>
-        {Op && (
-          <div hidden>
-            {/* Not seen: its readouts need not follow each frame. */}
-            <ReadoutFps.Provider value={4}>
-              <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
-            </ReadoutFps.Provider>
-          </div>
-        )}
+      <div className={`opx-widget cc-host ${selected ? 'sel' : ''}`} onClick={onSelect}>
+        <CentreModeContext.Provider value="operator">
+          <OperatorBound layer={layer} data={item.data} setData={setData}>
+            <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} setData={setData} />
+          </OperatorBound>
+        </CentreModeContext.Provider>
       </div>
-      {open && More && (
-        <div className="opx-widget opx-wrow" onClick={onSelect}>
-          <span className="opx-widget-name" />
-          <More layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} />
-        </div>
-      )}
     </KeyScope.Provider>
   );
 }
@@ -1601,7 +1577,9 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
   // A Text scrolls by itself: no start / pause for it in the Operator.
   const timed = tpl.layers.filter((l) => isTimed(l) && l.type !== 'text');
   // Pauses waiting for a trigger, and values set by hand until one.
-  const triggers = [...new Set([...tpl.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])), ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : []))])];
+  // …and the widgets' triggers (a start, the next page): every setting named `…Trigger` of a layer.
+  const widgetTriggers = tpl.layers.flatMap((l) => Object.entries(l as unknown as Record<string, unknown>).flatMap(([k, v]) => (/Trigger$/.test(k) && typeof v === 'string' && v.trim() ? [v.trim()] : [])));
+  const triggers = [...new Set([...tpl.markers.flatMap((m) => (m.kind === 'pause' && m.resume?.type === 'trigger' ? [m.resume.name] : [])), ...Object.entries(item.data).flatMap(([k, v]) => (k.endsWith('__manual') && v.startsWith('trigger:') ? [v.slice(8)] : [])), ...widgetTriggers])];
   const waiting = pauseOf(item, project);
   return (
     <div className="opx-controls">
@@ -1619,7 +1597,7 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
       )}
       {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
-        .filter((l) => l.visible && !!widgetOf(l)?.Compact && hasControls(l, item.data))
+        .filter((l) => l.visible && !!widgetOf(l)?.Operator && hasControls(l, item.data))
         .map((l) => {
           const key = `${zone.id}:${l.id}`;
           return (
@@ -1630,10 +1608,9 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
               fps={project.frameRate.num / project.frameRate.den || 50}
               lang={project.language || 'fr'}
               act={(op, args) => command({ action: 'act', target: l.id, op, args, ...target })}
+              setData={(patch) => command({ action: 'update', data: patch, fade: false, ...target })}
               selected={widget.selected === key}
               onSelect={() => widget.onSelect(key)}
-              more={!!widget.more[key]}
-              onMore={(open) => widget.onMore(key, open)}
             />
           );
         })}
@@ -1642,17 +1619,19 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
         .map((l) => {
           const c = item.clocks?.[l.id];
           const running = c ? c.pausedAt == null : !l.manualStart;
-          const paused = !!c && c.pausedAt != null;
           const toggle = () => command({ action: 'widget', target: l.id, control: 'toggle', ...target });
           return (
-            <div key={l.id} className="opx-widget opx-wrow">
-              <span className="opx-widget-name">
-                <strong>{l.name}</strong>
-              </span>
-              <PlayToggle state={running ? 'run' : paused ? 'pause' : 'stop'} media onStart={toggle} onPause={toggle} onResume={toggle} />
-              <button className="opx-btn wk-btn sq" title={`${t('Restart')} · T`} onClick={() => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target })}>
-                <span className="wk-g">⟲</span>
-              </button>
+            <div key={l.id} className="opx-widget cc-host">
+              <CentreModeContext.Provider value="operator">
+                <Centre
+                  name={l.name}
+                  status={<StartStatus layer={l} item={item} />}
+                  actions={[
+                    running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: toggle } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: toggle },
+                    { icon: RotateCcw, label: tc('cc', 'Restart'), key: 'T', onClick: () => command({ action: 'widget', target: l.id, control: running ? 'restart' : 'reset', ...target }) },
+                  ]}
+                />
+              </CentreModeContext.Provider>
             </div>
           );
         })}

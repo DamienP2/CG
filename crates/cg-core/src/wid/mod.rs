@@ -112,6 +112,70 @@ pub fn act(
     }
 }
 
+/// Continue (F2) pressed on the graphic: a widget waiting for it goes on
+/// (its next page, step, view, its start…) and takes the press. True when
+/// the layer's state changed (the timeline's pause then stays).
+pub fn on_continue(layer: &Layer, state: &mut Value, ctx: &ActCtx) -> bool {
+    macro_rules! go {
+        ($m:ident) => {{
+            let mut st: $m::State = serde_json::from_value(state.clone()).unwrap_or_default();
+            if !$m::on_continue(layer, &mut st, ctx) {
+                return false;
+            }
+            match serde_json::to_value(st) {
+                Ok(v) => {
+                    *state = v;
+                    true
+                }
+                Err(_) => false,
+            }
+        }};
+    }
+    match &layer.kind {
+        LayerKind::Table { .. } => go!(table),
+        LayerKind::Image { .. } => go!(image),
+        LayerKind::Chart { .. } => go!(chart),
+        LayerKind::Map { .. } => go!(map),
+        LayerKind::Typewriter { .. } => go!(typewriter),
+        LayerKind::Credits { .. } => go!(credits),
+        _ => false,
+    }
+}
+
+/// The trigger `name` fired: a widget waiting for it goes on. True when the
+/// layer's state changed.
+pub fn on_trigger(layer: &Layer, state: &mut Value, name: &str, ctx: &ActCtx) -> bool {
+    macro_rules! go {
+        ($m:ident) => {{
+            let mut st: $m::State = serde_json::from_value(state.clone()).unwrap_or_default();
+            if !$m::on_trigger(layer, &mut st, name, ctx) {
+                return false;
+            }
+            match serde_json::to_value(st) {
+                Ok(v) => {
+                    *state = v;
+                    true
+                }
+                Err(_) => false,
+            }
+        }};
+    }
+    match &layer.kind {
+        LayerKind::Table { .. } => go!(table),
+        LayerKind::Image { .. } => go!(image),
+        LayerKind::Chart { .. } => go!(chart),
+        LayerKind::Map { .. } => go!(map),
+        LayerKind::Typewriter { .. } => go!(typewriter),
+        LayerKind::Credits { .. } => go!(credits),
+        _ => false,
+    }
+}
+
+/// The two names match as trigger names do (trimmed, any case).
+pub fn same_trigger(a: &str, b: &str) -> bool {
+    !a.trim().is_empty() && a.trim().eq_ignore_ascii_case(b.trim())
+}
+
 /// The graphic's data changed on air by its data sources (`old` →
 /// `ctx.data`): only the widgets that play a change of their list react
 /// (the social wall); the others follow the source as it is. True when the

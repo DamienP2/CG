@@ -3,7 +3,7 @@
 //! rotation, then the 3D tilt as a perspective), so both renderers agree.
 
 use cg_core::wid::map::{
-    attribution, hex_mix, place_name, project, route_line, route_progress, view_at, world,
+    attribution, hex_mix, place_name, project, route_line, route_progress, shown, view_at, world,
     zone_fills, AttStyle, BaseStyle, Config, Corner, Ll, MarkerIcon, Projection, State, View,
     ZoneMode,
 };
@@ -1059,6 +1059,8 @@ pub(crate) fn motions(
         return None;
     };
     let now = d.time.now_ms;
+    // The take's chained views and highlight, the timed views gone to so far.
+    let st = &shown(c, st, now, d.time.age_secs);
     let (v, flying) = view_at(c, st, now, d.w as f64);
     let pulse = st.layer(c, "zones")
         && v.zoom <= 10.0
@@ -1092,6 +1094,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         return false;
     };
     let now = d.time.now_ms;
+    let st = &shown(c, st, now, d.time.age_secs);
     let data = d.data;
     let (w, h) = (d.w as f64, d.h as f64);
     let lang = d.lang.to_string();

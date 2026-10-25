@@ -1,16 +1,17 @@
 // Chart: settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/chart.rs; layout mirrored in chart-layout.tsx; actions in crates/cg-core/src/wid/chart.rs.
 import { Dropdown } from '../ui/Dropdown';
-import { ChartColumn, ChevronLeft, ChevronRight, ChevronsRight, ListOrdered, Star } from 'lucide-react';
+import { ChartColumn, ChevronsRight, Pause, Play, RefreshCw, SkipBack, SkipForward, Square, Zap } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
-import { t, tl, tn } from '../i18n';
+import { t, tc, tl, tn } from '../i18n';
 import { GroupRow } from '../designer/Inspector';
-import { ColorPick, Content, defineWidget, GridEditor, Num, OpRow, Readout, Row, Section, Seg, Select, Sep, Text, Toggle, useKeys, type Warning } from './kit';
-import { OpBar, ReloadBtn } from './opbar';
-import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Config as LConfig, type Out, type Prim, type State as LState } from './chart-layout';
+import { ColorPick, Content, defineWidget, GridEditor, Num, RangeNum, Row, Section, Seg, Select, Text, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
+import { ADVANCE_MODES, Centre, Countdown, Dots, GAP, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
+import { useLiveTime } from './table-text';
+import { cfg, fmt, layout, parse, PAL, resolveGrid, revealMode, SAMPLE, seriesStyle, shownGrid, sliceColor, st, steps, withData, type Cfg, type Config as LConfig, type Hl, type Out, type Prim, type St, type State as LState } from './chart-layout';
 
 /** Settings of the layer (flattened into it; every field optional). */
 export type Config = LConfig;
@@ -51,7 +52,7 @@ const SAMPLES: Record<string, { data: string[][]; axis: { suffix: string; decima
 /** Layout of the layer at a moment (both the stage and the warnings use it). */
 function run(layer: Config, data: Data, state: unknown, w: number, h: number, fs: number, ageMs: number, now: number, lang: string): Out {
   const c0 = cfg(layer);
-  const s = st(state);
+  const s = shownState(c0, st(state), now, ageMs / 1000, data);
   const grid = shownGrid(c0, s, data);
   return layout({ cfg: withData(c0, data), st: s, grid, w, h, fs, ageMs, now, lang });
 }
@@ -65,10 +66,10 @@ function FamilyPick({ value, onChange }: { value: string; onChange: (v: string) 
 
 /** Highlight choices: none, each series (several), each column / point / slice. */
 function hlOptions(c: ReturnType<typeof cfg>, P: ReturnType<typeof parse>): [string, string][] {
-  return [['none', t('None')], ...(c.chartType !== 'pie' && P.ser.length > 1 ? P.ser.map((x, j) => [`s${j}`, x] as [string, string]) : []), ...P.cats.map((x) => [`c${x.ri}`, x.name] as [string, string])];
+  return [['', t('None')], ...(c.chartType !== 'pie' && P.ser.length > 1 ? P.ser.map((x, j) => [`s${j}`, x] as [string, string]) : []), ...P.cats.map((x) => [`c${x.ri}`, x.name] as [string, string])];
 }
-const hlValue = (s: ReturnType<typeof st>) => (s.hl.kind === 'series' ? `s${s.hl.idx}` : s.hl.kind === 'category' ? `c${s.hl.idx}` : 'none');
-const hlArgs = (v: string) => (v === 'none' ? { kind: 'none' } : { kind: v[0] === 's' ? 'series' : 'category', idx: +v.slice(1) });
+const hlValue = (s: St) => (s.hl.kind === 'series' ? `s${s.hl.idx}` : s.hl.kind === 'category' ? `c${s.hl.idx}` : '');
+const hlArgs = (v: string) => (!v || v === 'none' ? { kind: 'none' } : { kind: v[0] === 's' ? 'series' : 'category', idx: +v.slice(1) });
 
 let seq = 0;
 function Svg({ prims, w, h, font }: { prims: Prim[]; w: number; h: number; font: string }) {
@@ -139,67 +140,184 @@ function Svg({ prims, w, h, font }: { prims: Prim[]; w: number; h: number; font:
 
 const fsOf = (r: Resolved | undefined, layer: { props: Record<string, unknown> }) => num((r?.fontSize ?? layer.props.fontSize ?? 26) as number);
 
-/** The one bar of the chart (validated grammar §1), identical in the Designer's Operator section
- *  and the Operator's rows: the reveal step (or new data waiting) · back / next / all · RELOAD · ⋯. */
-function ChartBar({ layer, state, data, act, item }: { layer: Parameters<typeof cfg>[0]; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown }) {
+// ------------------------------------------------------------ chained steps --
+
+const clampN = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+
+/** The highlight written in the template (`hlDefault`): `s2` = series 3, `c0` = the first category; anything else = none (mirrors hl_of). */
+export function hlOf(v: string): Hl {
+  const s = v.trim();
+  const idx = +s.slice(1);
+  if (!/^[sc]\d+$/.test(s) || idx < 0) return { kind: 'none', idx: -1 };
+  return { kind: s[0] === 's' ? 'series' : 'category', idx };
+}
+
+/** The state on air: the operator's once he acted, else the Designer's chained steps (from the take) and highlight (mirrors live). */
+export function live(c: Cfg, s: St, now: number, ageSecs: number): St {
+  if (s.ctl) return s;
+  const o = { ...s };
+  if (o.hl.kind === 'none' && !o.hlAt) {
+    o.hl = hlOf(c.hlDefault);
+    o.prevHl = o.hl;
+  }
+  if (c.autoSteps && !o.auto) {
+    o.on = c.autoOn;
+    o.trigger = c.autoTrigger.trim();
+    if (c.autoOn === 'timed') {
+      if (c.autoSecs > 0) Object.assign(o, { auto: true, interval: clampN(c.autoSecs, 0.5, 3600), autoAt: Math.max(1, now - Math.trunc(Math.max(0, ageSecs) * 1000)) });
+    } else Object.assign(o, { auto: true, interval: 0 });
+  }
+  return o;
+}
+
+/** The step shown at `now` (1 to `n`): the step set, plus the intervals elapsed when the steps are timed (mirrors shown_step). */
+export function shownStep(s: St, n: number, now: number): number {
+  const base = Math.min(Math.max(1, s.step), Math.max(1, n));
+  if (s.auto && s.interval > 0 && s.autoAt > 0 && base < n) {
+    const t = s.pausedAt ? s.pausedAt : now;
+    const step = Math.max(1, Math.trunc(s.interval * 1000));
+    const k = Math.floor(Math.max(0, t - s.autoAt) / step);
+    return Math.min(n, base + k);
+  }
+  return base;
+}
+const autoStepAt = (s: St, t: number) => s.autoAt + (t + 1 - Math.max(1, s.step)) * Math.max(1, Math.trunc(s.interval * 1000));
+
+/** The state as drawn at `now`: the take's chain and highlight applied, the timed steps revealed so far, with their times (mirrors shown). */
+export function shownState(c: Cfg, s: St, now: number, ageSecs: number, data: Data): St {
+  const o = live(c, s, now, ageSecs);
+  const n = steps(c, o, parse(c, shownGrid(c, o, data)));
+  if (!n) return o;
+  const base = Math.max(1, o.step);
+  const sh = shownStep(o, n, now);
+  if (sh <= base) return { ...o, step: sh };
+  const stepAt = o.stepAt.slice();
+  while (stepAt.length < n) stepAt.push(0);
+  for (let t = base; t < sh; t++) stepAt[t] = autoStepAt(o, t);
+  return { ...o, step: sh, stepAt, autoAt: autoStepAt(o, sh - 1) };
+}
+
+/** Seconds left before the next timed step (undefined = not running, or at the last step), mirrors next_in. */
+export function nextIn(s: St, n: number, now: number): number | undefined {
+  if (!s.auto || !(s.interval > 0) || !(s.autoAt > 0) || shownStep(s, n, now) >= n) return undefined;
+  const t = s.pausedAt ? s.pausedAt : now;
+  const step = s.interval * 1000;
+  const e = Math.max(0, t - s.autoAt) % step;
+  return (step - e) / 1000;
+}
+
+/** The steps wait for Continue (F2): chained on it, not at the last step (mirrors waits_continue). */
+export const waitsContinue = (s: St, n: number, now: number) => !!s.auto && s.on === 'continue' && n > 0 && shownStep(s, n, now) < n;
+
+/** The steps and highlight of the chart on air now (the take's chain until the operator acts). */
+function useChart(layer: Config, state: unknown, data: Data, time: { nowMs: number; ageSecs: number; held?: boolean }) {
+  const { now, age } = useLiveTime(time);
   const c = cfg(layer);
-  const s = st(state);
+  const s = live(c, st(state), now, age);
   const P = parse(c, shownGrid(c, s, data));
   const n = steps(c, s, P);
-  const step = Math.min(Math.max(1, s.step), n);
-  // The data on air waits for a Reload (kept since the take, by the server).
-  const pending = c.onAir === 'reload' && !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(resolveGrid(c, data));
-  useKeys({ r: () => act('reload'), ArrowRight: () => n && act('next'), ArrowLeft: () => n && act('prev') });
+  return { c, s, P, n, step: n ? shownStep(s, n, now) : 0, now };
+}
+
+/** The series / column / slice put forward: in the Designer the template's (hlDefault, exposable), in the Operator the one on air. */
+function HlRow({ c, P, value, onChange }: { c: Cfg; P: ReturnType<typeof parse>; value: string; onChange: (v: string) => void }) {
+  const options = hlOptions(c, P);
   return (
-    <OpBar more={<ChartMore layer={layer} state={state} data={data} act={act} item={item} />}>
-      {(n > 0 || pending) && <Readout sub={pending ? <span style={{ color: '#facc15' }}>● {t('New data')}</span> : undefined}>{n ? `${step}/${n}` : '—'}</Readout>}
-      {n > 0 && (
-        <>
-          <Sep />
-          <OpRow
-            noMore
-            list={[
-              { icon: ChevronLeft, title: `${t('Back')} · ←`, disabled: step <= 1, onClick: () => act('prev') },
-              { icon: ChevronRight, title: `${t('Next step')} · →`, disabled: step >= n, onClick: () => act('next') },
-              { icon: ChevronsRight, title: t('Show all'), disabled: step >= n, onClick: () => act('showAll') },
-            ]}
-          />
-        </>
-      )}
-      <Sep />
-      <ReloadBtn title={`${t('Reload data')} · R`} onClick={() => act('reload')} />
-    </OpBar>
+    <Row label={t('Put forward')} expose="hlDefault" exposeValue={value} exposeOptions={options}>
+      <Dropdown value={options.some(([v]) => v === value) ? value : ''} options={options.map(([v, label]) => ({ value: v, label }))} onChange={onChange} />
+    </Row>
   );
 }
 
-/** Under ⋯: highlight a series / a column / a slice, the reveal mode, back to the live data (try-out). */
-function ChartMore({ layer, state, data, act, item }: { layer: Parameters<typeof cfg>[0]; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown }) {
-  const c = cfg(layer);
-  const s = st(state);
-  const P = parse(c, shownGrid(c, s, data));
-  const mode = revealMode(c, s);
+type OpP = { layer: Config; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
+
+/**
+ * The control centre of the chart (web/src/widgets/centre.tsx). Line 1: the reveal step and how
+ * the steps are revealed (or new data waiting for a Refresh), the countdown to the next step or
+ * what it waits for. Line 2: by hand → previous / next / show all; timed → play / pause, stop;
+ * on Continue → Continue, stop; on a trigger → fire it, stop; then Refresh. Line 3: chain the
+ * steps, how the next one comes, the time per step or the trigger (in the Operator, on the air
+ * only), the reveal (exposable), the series / column / slice put forward (exposable).
+ */
+function ChartBar(p: OpP) {
+  const { act, layer, data, item } = p;
+  const mode = useCentreMode();
+  const b = useBound();
+  const { c, s, P, n, step, now } = useChart(layer, p.state, data, p.time);
+  const pie = c.chartType === 'pie';
+  // The data on air waits for a Refresh (kept since the take, by the server).
+  const pending = c.onAir === 'reload' && !!s.cur && JSON.stringify(s.cur) !== JSON.stringify(resolveGrid(c, data));
+  // Held by the preview: its timed steps wait for their Play.
+  const held = !!p.time.held;
+  const chained = !!s.auto;
+  const on: AdvanceMode = chained ? s.on : 'timed';
+  const running = chained && on === 'timed' && !s.pausedAt && !held;
+  const trigger = s.trigger || c.autoTrigger;
+  const secs = s.interval || c.autoSecs || 5;
+  const left = nextIn(s, n, now);
+  // The Designer edits the template (what the take starts with); the Operator the air only.
+  const designer = mode === 'designer';
+  const setChained = (v: boolean) => (designer ? b.set('autoSteps', v) : act(v ? 'advance' : 'stop', v ? { on: c.autoOn, seconds: c.autoSecs, trigger: c.autoTrigger } : undefined));
+  const setOn = (v: AdvanceMode) => (designer ? b.set('autoOn', v) : act('advance', { on: v, seconds: secs, trigger }));
+  const setSecs = (v: number) => (designer ? b.set('autoSecs', v) : act('auto', { seconds: v }));
+  const setTrigger = (v: string) => (designer ? b.set('autoTrigger', v) : act('advance', { on: 'trigger', trigger: v }));
+  const chainedShown = designer ? c.autoSteps : chained;
+  const onShown = designer ? c.autoOn : on;
+  const secsShown = designer ? c.autoSecs : secs;
+  const triggerShown = designer ? c.autoTrigger : trigger;
+  useKeys({
+    ArrowLeft: () => n && act('prev'),
+    ArrowRight: () => n && act('next'),
+    p: () => n > 1 && on === 'timed' && act(running ? 'pause' : chained ? 'resume' : 'auto', chained ? undefined : { seconds: secs }),
+    r: () => act('reload'),
+  });
+  const mode3 = revealMode(c, s);
+  const words = mode3 === 'series' ? t('Series by series') : pie ? t('Slice by slice') : t('Category by category');
+  const status = n < 2 || !chained ? undefined : on === 'timed' ? (running && left !== undefined ? <Countdown left={left} total={s.interval || secs} /> : undefined) : on === 'continue' ? (waitsContinue(s, n, now) ? <WaitsContinue /> : undefined) : <WaitsTrigger name={trigger} />;
+  const actions: Line2Item[] = [
+    ...(n > 0
+      ? !chained
+        ? [
+            { icon: SkipBack, label: tc('cc', 'Previous'), key: '←', disabled: step <= 1, onClick: () => act('prev') },
+            { icon: SkipForward, label: tc('cc', 'Next'), key: '→', disabled: step >= n, onClick: () => act('next') },
+            { icon: ChevronsRight, label: t('Show all'), disabled: step >= n, onClick: () => act('showAll') },
+          ]
+        : on === 'timed'
+          ? [running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause') } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: () => act(s.pausedAt ? 'resume' : 'auto', s.pausedAt ? undefined : { seconds: secs }) }]
+          : on === 'continue'
+            ? [{ icon: ChevronsRight, label: tc('cc', 'Continue'), key: 'F2', main: true, disabled: !waitsContinue(s, n, now), onClick: () => act('next') }]
+            : [{ icon: Zap, label: trigger || tc('cc', 'Fire the trigger'), main: true, onClick: () => act(step >= n ? 'first' : 'next') }]
+      : []),
+    n > 0 && chained && { icon: Square, label: tc('cc', 'Stop'), onClick: () => act('stop') },
+    GAP,
+    { icon: RefreshCw, label: tc('cc', 'Refresh'), key: 'R', onClick: () => act('reload') },
+  ];
+  const readout = n > 0 || pending ? { k: t('Step'), v: n ? step : '—', of: n || undefined, sub: pending ? <span style={{ color: '#facc15' }}>● {t('New data')}</span> : n ? words : undefined, after: n ? <Dots at={step - 1} count={n} /> : undefined } : undefined;
   return (
-    <div className="wk-oprow">
-      <Star size={13} className="muted" />
-      <select className="opx-output" title={t('Put forward')} value={hlValue(s)} onChange={(e) => act('highlight', hlArgs(e.target.value))}>
-        {hlOptions(c, P).map(([v, label]) => (
-          <option key={v} value={v}>
-            {label}
-          </option>
-        ))}
-      </select>
-      <ListOrdered size={13} className="muted" />
-      <select className="opx-output" title={t('Reveal')} value={mode} onChange={(e) => act('revealMode', { mode: e.target.value })}>
-        <option value="all">{t('All at once')}</option>
-        {c.chartType !== 'pie' && <option value="series">{t('Series by series')}</option>}
-        <option value="categories">{c.chartType === 'pie' ? t('Slice by slice') : t('Category by category')}</option>
-      </select>
-      {!!s.cur && !item && (
-        <button className="opx-btn wk-btn ghost" title={t('The try-out holds the data of its last Reload.')} onClick={() => act('reset')}>
-          <span>{t('Back to the live data')}</span>
-        </button>
+    <Centre name={(layer as { name?: string }).name} readout={readout} status={status} actions={actions}>
+      <Toggle label={t('Chain the steps')} value={chainedShown} onChange={setChained} />
+      {chainedShown && <Seg label={t('Next step')} value={onShown} onChange={setOn} options={ADVANCE_MODES()} />}
+      {chainedShown && onShown === 'timed' && <RangeNum label={t('Time per step')} value={secsShown} min={2} max={30} step={1} unit="s" onRelease onChange={setSecs} />}
+      {chainedShown && onShown === 'trigger' && <Text label={tc('cc', 'Trigger name')} value={triggerShown} onChange={setTrigger} />}
+      <Seg
+        label={t('Reveal')}
+        path="reveal"
+        value={pie && c.reveal === 'series' ? 'all' : c.reveal}
+        options={[
+          ['all', t('All at once')],
+          ...(pie ? [] : [['series', t('By series')] as const]),
+          ['categories', pie ? t('By slice') : t('By category')],
+        ]}
+      />
+      <HlRow c={c} P={P} value={designer ? c.hlDefault : hlValue(s)} onChange={(v) => (designer ? b.set('hlDefault', v) : act('highlight', hlArgs(v)))} />
+      {!!s.cur && !item && designer && (
+        <Row label="">
+          <button className="opx-btn wk-btn ghost" title={t('The try-out holds the data of its last Reload.')} onClick={() => act('reset')}>
+            <span>{t('Back to the live data')}</span>
+          </button>
+        </Row>
       )}
-    </div>
+    </Centre>
   );
 }
 
@@ -614,9 +732,19 @@ export default defineWidget({
       </>
     );
   },
-  Compact: ({ layer, state, data, act, item }) => <ChartBar layer={layer} state={state} data={data} act={act} item={item} />,
-  Operator: ({ layer, state, data, act, item }) => <ChartBar layer={layer} state={state} data={data} act={act} item={item} />,
-  More: ({ layer, state, data, act, item }) => <ChartMore layer={layer} state={state} data={data} act={act} item={item} />,
+  Operator: (p) => <ChartBar {...p} />,
+  // Chained on Continue: F2 reveals the next step (until the last one).
+  waits: (l, state, data, item) => {
+    const c = cfg(l);
+    const now = Date.now();
+    const s = live(c, st(state), now, (item.age ?? 0) / 50);
+    return waitsContinue(s, steps(c, s, parse(c, shownGrid(c, s, data))), now);
+  },
+  // Timed steps: the Operator's preview holds them on the step shown until their Play.
+  plays: (l, data) => {
+    const c = cfg(l);
+    return c.autoSteps && c.autoOn === 'timed' && c.autoSecs > 0 && steps(c, st(undefined), parse(c, resolveGrid(c, data))) > 1 && 'onAir';
+  },
   warnings: (layer, { data, state, r }) => {
     const c = cfg(layer);
     const s = st(state);

@@ -2,16 +2,16 @@
 // mapped columns, header row / column, merges, widths fixed / auto / %, styles per level, borders, conditional
 // formatting, sort, pagination (pages or continuous scroll) and a cascade of the rows.
 // Same picture as crates/cg-render/src/wid/table.rs; model and actions mirror crates/cg-core/src/wid/table.rs.
-import { ChevronLeft, ChevronRight, Pencil, Table } from 'lucide-react';
+import { ChevronsRight, Pause, Pencil, Play, RefreshCw, SkipBack, SkipForward, Square, Table, Zap } from 'lucide-react';
 import { Dropdown } from '../ui/Dropdown';
 import { useEffect, useState } from 'react';
 import { interpolateText, num as vnum, parseHex, toHex } from '../engine/evaluate';
 import type { Data } from '../engine/types';
-import { t, tl, tn } from '../i18n';
+import { t, tc, tl, tn } from '../i18n';
 import { useTableEditor } from './table-editor-store';
 import { ColorField } from '../ui/fields';
-import { clamp, defineWidget, easeOut, Handle, hex, OpRow, parseCsv, PlayToggle, Readout, Row, Sep, SliderNum, useBound, useKeys, type Warning } from './kit';
-import { OpBar, ReloadBtn, SetField } from './opbar';
+import { clamp, defineWidget, easeOut, Handle, hex, parseCsv, RangeNum, Row, Seg, Text, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
+import { ADVANCE_MODES, Centre, Countdown, Dots, GAP, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
 import { cased, TextCell, tw, useLiveTime, type CellText, type Overflow } from './table-text';
 import { textWidth } from '../engine/textFit';
 
@@ -92,9 +92,11 @@ export interface Config {
   pageMode?: 'pages' | 'scroll';
   scrollSpeed?: number;
   indicator?: boolean;
-  /** Pages turn by themselves from the take, every `autoSecs` seconds. */
+  /** Pages are chained from the take: every `autoSecs` seconds, on Continue, or on a trigger (`autoOn`). */
   autoPages?: boolean;
   autoSecs?: number;
+  autoOn?: AdvanceMode;
+  autoTrigger?: string;
   /** Key of the row highlighted from the take ('' = none). */
   hlKey?: string;
   cascade?: { on?: boolean; style?: 'slide' | 'fade' | 'flip'; offset?: number; dur?: number };
@@ -142,6 +144,9 @@ export interface State {
   auto?: boolean;
   interval?: number;
   autoAt?: number;
+  /** How the pages go on when chained (timed: every `interval` s). */
+  on?: AdvanceMode;
+  trigger?: string;
   pausedAt?: number;
   hl?: string;
 }
@@ -185,6 +190,8 @@ export function cfg(c: Config) {
     indicator: c.indicator ?? true,
     autoPages: c.autoPages ?? false,
     autoSecs: c.autoSecs ?? 6,
+    autoOn: c.autoOn ?? 'timed',
+    autoTrigger: c.autoTrigger ?? '',
     hlKey: c.hlKey ?? '',
     cascade: { on: true, style: 'slide' as const, offset: 70, dur: 450, ...c.cascade },
     emptyMode: c.emptyMode ?? 'message',
@@ -360,7 +367,13 @@ export function live(k: K, st: State, now: number, ageSecs: number): State {
   if (st.ctl) return st;
   const s = { ...st };
   if (!s.hl) s.hl = k.hlKey.trim();
-  if (k.autoPages && !s.auto && k.pageMode === 'pages' && k.autoSecs > 0) Object.assign(s, { auto: true, interval: clamp(k.autoSecs, 0.5, 3600), autoAt: Math.max(1, now - Math.trunc(Math.max(0, ageSecs) * 1000)) });
+  if (k.autoPages && !s.auto && k.pageMode === 'pages') {
+    s.on = k.autoOn;
+    s.trigger = k.autoTrigger.trim();
+    if (k.autoOn === 'timed') {
+      if (k.autoSecs > 0) Object.assign(s, { auto: true, interval: clamp(k.autoSecs, 0.5, 3600), autoAt: Math.max(1, now - Math.trunc(Math.max(0, ageSecs) * 1000)) });
+    } else Object.assign(s, { auto: true, interval: 0 });
+  }
   return s;
 }
 
@@ -698,21 +711,23 @@ export default defineWidget({
   Inspector: ({ layer }) => <TableCard layer={layer as unknown as TL} />,
   quiet: true,
   Operator: (p) => <TableBar {...p} />,
-  Compact: (p) => <TableBar {...p} />,
-  More: (p) => <TableMore {...p} />,
-  hasMore: (l, data) => {
+  // Chained on Continue: F2 turns the page (until the last one).
+  waits: (l, state, data, item) => {
     const k = cfg(l);
-    return k.pageMode === 'pages' && pageCount(k, model(k, data)) > 1;
+    if (k.pageMode !== 'pages') return false;
+    const m = model(k, data);
+    const now = Date.now();
+    return waitsContinue(live(k, (state ?? {}) as State, now, (item.age ?? 0) / 50), pageCount(k, m), now);
   },
   // Pages to turn, a row to highlight or data to reload.
   controls: (l, data) => {
     const k = cfg(l);
     return !!k.link.trim() || model(k, data).rows.length > 0;
   },
-  // Auto pages: the Operator's preview holds them on the page shown until their Play.
+  // Timed pages: the Operator's preview holds them on the page shown until their Play.
   plays: (l, data) => {
     const k = cfg(l);
-    return k.pageMode === 'pages' && k.autoPages && k.autoSecs > 0 && pageCount(k, model(k, data)) > 1 && 'onAir';
+    return k.pageMode === 'pages' && k.autoPages && k.autoOn === 'timed' && k.autoSecs > 0 && pageCount(k, model(k, data)) > 1 && 'onAir';
   },
   Overlay: ({ layer, scale, edit }) => {
     const k = cfg(layer);
@@ -735,74 +750,97 @@ function useTable({ layer, state, data, time }: OpP) {
   return { k, m, st, pages, page, now, scroll: k.pageMode === 'scroll' };
 }
 
-/** The highlighted row, chosen among the rows (their key). */
-function HlPick({ m, value, onChange }: { m: M; value: string; onChange: (v: string) => void }) {
+/** The pages wait for Continue (F2): chained on it, not on the last page (mirrors waits_continue). */
+export function waitsContinue(st: State, pages: number, now: number): boolean {
+  return !!st.auto && st.on === 'continue' && currentPage(st, pages, now)[0] + 1 < pages;
+}
+
+/** Seconds left before the next timed page (undefined = not running), mirrors next_in. */
+function nextIn(st: State, now: number): number | undefined {
+  if (!st.auto || !(st.interval ?? 0) || !(st.autoAt ?? 0)) return undefined;
+  const t = st.pausedAt ? st.pausedAt : now;
+  const step = st.interval! * 1000;
+  const e = Math.max(0, t - st.autoAt!) % step;
+  return (step - e) / 1000;
+}
+
+/** The highlighted row, chosen among the rows (their key); in the Designer the template's (hlKey, exposable), in the Operator the one on air. */
+function HlRow({ m, value, onChange }: { m: M; value: string; onChange: (v: string) => void }) {
+  const options = [{ value: '', label: '—' }, ...m.rows.map((r) => ({ value: r.key, label: `${r.rank}. ${r.key}` }))];
   return (
-    <span className="dd-cell" title={t('Highlight row')} style={{ flex: '0 0 130px', width: 130 }}>
-      <Dropdown value={value} options={[{ value: '', label: '—' }, ...m.rows.map((r) => ({ value: r.key, label: `${r.rank}. ${r.key}` }))]} onChange={onChange} />
-    </span>
+    <Row label={tc('cc', 'Highlighted row')} expose="hlKey" exposeValue={value} exposeOptions={options.map((o) => [o.value, o.label] as [string, string])}>
+      <Dropdown value={value} options={options} onChange={onChange} />
+    </Row>
   );
 }
 
-/** The one bar of the table (validated grammar §1), identical in the Designer's Operator section
- *  and the Operator's rows: page x/y · previous / next · auto-pages toggle (and its interval) ·
- *  the highlighted row · RELOAD (linked data) · ⋯ (go to a page). */
+/**
+ * The control centre of the table (web/src/widgets/centre.tsx). Line 1: the page and its dots,
+ * the countdown to the next page or what it waits for. Line 2: manual → previous / next;
+ * timed → play / pause, stop; on Continue → Continue, stop; on a trigger → fire it, stop; then
+ * Refresh (linked data). Line 3: chain the pages, how the next page comes, the time per page or
+ * the trigger (always in the Operator, on the air only), the highlighted row (exposable).
+ */
 function TableBar(p: OpP) {
-  const { act } = p;
-  const { k, m, st, pages, page, scroll } = useTable(p);
+  const { act, layer } = p;
+  const mode = useCentreMode();
+  const b = useBound();
+  const { k, m, st, pages, page, now, scroll } = useTable(p);
   const turns = !scroll && pages > 1;
   // Held by the preview: its auto pages wait for their Play.
   const held = !!p.time.held;
-  const auto = !!st.auto;
-  const state: 'stop' | 'run' | 'pause' = auto && !st.pausedAt && !held ? 'run' : auto ? 'pause' : 'stop';
+  const chained = !!st.auto;
+  const on: AdvanceMode = chained ? (st.on ?? 'timed') : 'timed';
+  const running = chained && on === 'timed' && !st.pausedAt && !held;
+  const trigger = st.trigger ?? k.autoTrigger;
+  const secs = st.interval || k.autoSecs || 6;
+  const left = nextIn(st, now);
+  // The Designer edits the template (what the take starts with); the Operator the air only.
+  const designer = mode === 'designer';
+  const setChained = (v: boolean) => (designer ? b.set('autoPages', v) : act(v ? 'advance' : 'stop', v ? { on: k.autoOn, seconds: k.autoSecs, trigger: k.autoTrigger } : undefined));
+  const setOn = (v: AdvanceMode) => (designer ? b.set('autoOn', v) : act('advance', { on: v, seconds: secs, trigger }));
+  const setSecs = (v: number) => (designer ? b.set('autoSecs', v) : act('auto', { seconds: v }));
+  const setTrigger = (v: string) => (designer ? b.set('autoTrigger', v) : act('advance', { on: 'trigger', trigger: v }));
+  const chainedShown = designer ? k.autoPages : chained;
+  const onShown = designer ? k.autoOn : on;
+  const secsShown = designer ? k.autoSecs : secs;
+  const triggerShown = designer ? k.autoTrigger : trigger;
   useKeys({
     ArrowLeft: () => !scroll && act('prev'),
     ArrowRight: () => !scroll && act('next'),
-    p: () => turns && act(state === 'run' ? 'pause' : state === 'pause' ? 'resume' : 'auto', state === 'stop' ? { seconds: st.interval || k.autoSecs || 6 } : undefined),
+    p: () => turns && on === 'timed' && act(running ? 'pause' : chained ? 'resume' : 'auto', chained ? undefined : { seconds: secs }),
     r: () => k.link.trim() && act('reload'),
   });
+  const status = !turns || !chained ? undefined : on === 'timed' ? (running && left !== undefined ? <Countdown left={left} total={st.interval ?? secs} /> : undefined) : on === 'continue' ? (waitsContinue(st, pages, now) ? <WaitsContinue /> : undefined) : <WaitsTrigger name={trigger} />;
+  const actions: Line2Item[] = !scroll
+    ? [
+        ...(!chained
+          ? [
+              { icon: SkipBack, label: tc('cc', 'Previous'), key: '←', disabled: pages < 2, onClick: () => act('prev') },
+              { icon: SkipForward, label: tc('cc', 'Next'), key: '→', disabled: pages < 2, onClick: () => act('next') },
+            ]
+          : on === 'timed'
+            ? [running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause') } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: () => act(st.pausedAt ? 'resume' : 'auto', st.pausedAt ? undefined : { seconds: secs }) }]
+            : on === 'continue'
+              ? [{ icon: ChevronsRight, label: tc('cc', 'Continue'), key: 'F2', main: true, disabled: !waitsContinue(st, pages, now), onClick: () => act('next') }]
+              : [{ icon: Zap, label: trigger || tc('cc', 'Fire the trigger'), main: true, onClick: () => act('next') }]),
+        chained && { icon: Square, label: tc('cc', 'Stop'), onClick: () => act('stop') },
+        GAP,
+        !!k.link.trim() && { icon: RefreshCw, label: tc('cc', 'Refresh'), key: 'R', onClick: () => act('reload') },
+      ]
+    : [!!k.link.trim() && { icon: RefreshCw, label: tc('cc', 'Refresh'), key: 'R', onClick: () => act('reload') }];
   return (
-    <OpBar more={turns ? <TableMore {...p} /> : undefined}>
-      {!scroll && m.rows.length > 0 && <Readout>{`${page + 1}/${pages}`}</Readout>}
+    <Centre name={(layer as { name?: string }).name} readout={!scroll && m.rows.length > 0 ? { k: tc('cc', 'Page'), v: page + 1, of: pages, after: <Dots at={page} count={pages} /> } : undefined} status={status} actions={actions}>
       {!scroll && (
         <>
-          <Sep />
-          <OpRow
-            noMore
-            list={[
-              { icon: ChevronLeft, title: `${t('Previous')} · ←`, disabled: pages < 2, onClick: () => act('prev') },
-              { icon: ChevronRight, title: `${t('Next')} · →`, disabled: pages < 2, onClick: () => act('next') },
-            ]}
-          />
+          <Toggle label={t('Chain the pages')} value={chainedShown} onChange={setChained} />
+          {chainedShown && <Seg label={t('Next page')} value={onShown} onChange={setOn} options={ADVANCE_MODES()} />}
+          {chainedShown && onShown === 'timed' && <RangeNum label={t('Time per page')} value={secsShown} min={2} max={30} step={1} unit="s" onRelease onChange={setSecs} />}
+          {chainedShown && onShown === 'trigger' && <Text label={tc('cc', 'Trigger name')} value={triggerShown} onChange={setTrigger} />}
         </>
       )}
-      {turns && <PlayToggle state={state} onStart={() => act('auto', { seconds: st.interval || k.autoSecs || 6 })} onPause={() => act('pause')} onResume={() => act('resume')} />}
-      {turns && auto && <SliderNum value={st.interval ?? 6} min={2} max={30} step={1} unit="s" title={t('Interval')} onRelease onChange={(v) => act('auto', { seconds: v })} />}
-      {m.rows.length > 0 && (
-        <>
-          <Sep />
-          <HlPick m={m} value={st.hl ?? ''} onChange={(v) => act('highlight', { row: v })} />
-        </>
-      )}
-      {!!k.link.trim() && (
-        <>
-          <Sep />
-          <ReloadBtn title={`${t('Reload data')} · R`} onClick={() => act('reload')} />
-        </>
-      )}
-    </OpBar>
-  );
-}
-
-/** Under ⋯: go to a page. */
-function TableMore(p: OpP) {
-  const { act } = p;
-  const { pages, scroll } = useTable(p);
-  if (scroll || pages < 2) return null;
-  return (
-    <div className="wk-oprow">
-      <SetField width={56} placeholder={`1–${pages}`} title={t('Go to page')} onSet={(v) => void act('go', { page: v })} />
-    </div>
+      {m.rows.length > 0 && <HlRow m={m} value={designer ? k.hlKey : (st.hl ?? '')} onChange={(v) => (designer ? b.set('hlKey', v) : act('highlight', { row: v }))} />}
+    </Centre>
   );
 }
 

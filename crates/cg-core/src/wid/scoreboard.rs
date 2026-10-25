@@ -595,6 +595,19 @@ pub struct Config {
     /// The texts the board writes (periods, banners…), by English wording;
     /// a missing or empty one is written in the project's language.
     pub texts: BTreeMap<String, String>,
+    /// The rows of the control centre the Operator gets (when the Designer
+    /// exposes them): the clock field, the fouls, timeouts, cards /
+    /// suspensions, shot clock and shoot-out pads, the swap of the teams.
+    pub op_clock: bool,
+    pub op_fouls: bool,
+    pub op_timeouts: bool,
+    pub op_susp: bool,
+    pub op_shot: bool,
+    pub op_shootout: bool,
+    pub op_swap: bool,
+    /// The score typed by hand, the added time.
+    pub op_score: bool,
+    pub op_added: bool,
 }
 
 impl Default for Config {
@@ -620,6 +633,15 @@ impl Default for Config {
             bg: "#05060c".into(),
             font: "Inter".into(),
             texts: BTreeMap::new(),
+            op_clock: true,
+            op_fouls: true,
+            op_timeouts: true,
+            op_susp: true,
+            op_shot: true,
+            op_shootout: false,
+            op_swap: false,
+            op_score: true,
+            op_added: true,
         }
     }
 }
@@ -1872,6 +1894,29 @@ mod tests {
                 .unwrap();
         l.kind = LayerKind::Scoreboard { x: c };
         l
+    }
+
+    #[test]
+    fn control_centre_rows_have_their_defaults() {
+        // An older layer: the common pads exposed, the shoot-out and the swap not.
+        let l: Layer = serde_json::from_str(
+            r#"{"id":"s","name":"Score","type":"scoreboard","props":{},"preset":"basketball"}"#,
+        )
+        .unwrap();
+        let LayerKind::Scoreboard { x: c } = &l.kind else {
+            panic!()
+        };
+        assert!(c.op_clock && c.op_fouls && c.op_timeouts && c.op_susp && c.op_shot);
+        assert!(c.op_score && c.op_added);
+        assert!(!c.op_shootout && !c.op_swap);
+        let l: Layer = serde_json::from_str(
+            r#"{"id":"s","name":"Score","type":"scoreboard","props":{},"opSwap":true,"opFouls":false}"#,
+        )
+        .unwrap();
+        let LayerKind::Scoreboard { x: c } = &l.kind else {
+            panic!()
+        };
+        assert!(c.op_swap && !c.op_fouls);
     }
 
     fn go(

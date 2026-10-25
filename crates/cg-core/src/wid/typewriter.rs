@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use super::table::AutoOn;
 use super::text::graphemes;
 use super::ActCtx;
 use crate::anim::interpolate_text;
@@ -95,9 +96,16 @@ pub struct Config {
     pub erase: Erase,
     /// Graphemes per second.
     pub erase_rate: f64,
-    /// Seconds a typed text stays before it is erased.
+    /// Seconds a typed text stays before it is erased (the pause between
+    /// two texts, chained by time).
     pub hold: f64,
     pub chain_loop: bool,
+    /// The texts are chained: the next one comes by itself (`next_on`).
+    pub auto_next: bool,
+    /// How the next text comes: after `hold` seconds, on Continue (F2) or
+    /// on the trigger `next_trigger`.
+    pub next_on: AutoOn,
+    pub next_trigger: String,
     /// Older layers: the layout is now always frozen (the whole text laid
     /// out from the start: no word jumps line); kept so they load.
     pub frozen: bool,
@@ -134,6 +142,9 @@ impl Default for Config {
             erase_rate: 90.0,
             hold: 1.6,
             chain_loop: false,
+            auto_next: true,
+            next_on: AutoOn::Timed,
+            next_trigger: String::new(),
             frozen: true,
             on_edit: OnEdit::Restart,
             auto_shrink: false,
@@ -172,6 +183,39 @@ pub struct State {
     pub since: Option<i64>,
     /// Elapsed time at which "Show all" was pressed.
     pub all_at: Option<f64>,
+    /// The chaining changed on air (None = the template's): chained or not,
+    /// how the next text comes, the pause between texts, the trigger.
+    pub auto: Option<bool>,
+    pub on: Option<AutoOn>,
+    pub secs: Option<f64>,
+    pub trigger: Option<String>,
+}
+
+/// How the texts are chained on air: the template's settings, or what the
+/// operator changed (`advance` / `stop`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Chain {
+    pub auto: bool,
+    pub on: AutoOn,
+    /// The pause between two texts, s (the text stays typed that long).
+    pub hold: f64,
+    pub trigger: String,
+    pub looping: bool,
+}
+
+pub fn chain(c: &Config, st: &State) -> Chain {
+    Chain {
+        auto: st.auto.unwrap_or(c.auto_next),
+        on: st.on.unwrap_or(c.next_on),
+        hold: st.secs.unwrap_or(c.hold).max(0.0),
+        trigger: st
+            .trigger
+            .clone()
+            .unwrap_or_else(|| c.next_trigger.clone())
+            .trim()
+            .to_string(),
+        looping: c.chain_loop,
+    }
 }
 
 /// Elapsed seconds of the run.
@@ -347,14 +391,23 @@ pub fn texts(layer: &Layer, data: &crate::anim::Data) -> Vec<String> {
         .collect()
 }
 
+/// Text `i` has a next one (the operator's Next goes there).
 pub fn has_next(c: &Config, n: usize, i: usize) -> bool {
     n > 1 && (c.chain_loop || i + 1 < n)
+}
+
+/// The next text comes by itself after text `i`: chained by time (then the
+/// text is erased after its pause; else it stays, until Next, Continue or
+/// the trigger).
+pub fn auto_next(c: &Config, st: &State, n: usize, i: usize) -> bool {
+    let ch = chain(c, st);
+    has_next(c, n, i) && ch.auto && ch.on == AutoOn::Timed
 }
 
 /// The text shown at elapsed `e` of a run started at `start`, and the
 /// elapsed time within it. `tl(i)` gives the timeline of text `i`.
 pub fn position(
-    c: &Config,
+    ch: &Chain,
     n: usize,
     start: usize,
     e: f64,
@@ -363,17 +416,19 @@ pub fn position(
     if n == 0 {
         return (0, e);
     }
-    let cycle = |t: &Timeline| t.type_end + c.hold.max(0.0) + t.erase_dur;
+    let timed = ch.auto && ch.on == AutoOn::Timed;
+    let next = |i: usize| timed && n > 1 && (ch.looping || i + 1 < n);
+    let cycle = |t: &Timeline| t.type_end + ch.hold + t.erase_dur;
     let mut i = start.min(n - 1);
     let mut e = e.max(0.0);
-    if c.chain_loop && n > 1 {
+    if timed && ch.looping && n > 1 {
         let total: f64 = (0..n).map(|j| cycle(&tl(j))).sum();
         if total > 1e-6 {
             e %= total;
         }
     }
     for _ in 0..(4 * n + 4) {
-        if !has_next(c, n, i) {
+        if !next(i) {
             return (i, e);
         }
         let cy = cycle(&tl(i));
@@ -394,14 +449,57 @@ pub fn now_at(
     e: f64,
     tl: &mut dyn FnMut(usize) -> Timeline,
 ) -> (usize, f64) {
+    let ch = chain(c, st);
     let mut e = e;
     if let Some(a) = st.all_at {
         if e >= a {
-            let (i, ea) = position(c, n, st.idx, a, tl);
+            let (i, ea) = position(&ch, n, st.idx, a, tl);
             e += (tl(i).type_end - ea).max(0.0);
         }
     }
-    position(c, n, st.idx, e, tl)
+    position(&ch, n, st.idx, e, tl)
+}
+
+/// The next text waits for Continue (F2): chained on it, the text shown
+/// fully typed, and not the last one.
+pub fn waits_continue(layer: &Layer, st: &State, ctx: &ActCtx) -> bool {
+    let Some((c, rate)) = layer_parts(layer) else {
+        return false;
+    };
+    let ch = chain(c, st);
+    let list = texts(layer, ctx.data);
+    let n = list.len();
+    if st.mode == Mode::Idle || n < 2 || !(ch.auto && ch.on == AutoOn::Continue) {
+        return false;
+    }
+    let mut tl = |i: usize| timeline(c, rate, list.get(i).map_or("", |s| s.as_str()), i, None);
+    let e = elapsed(st, ctx.now_ms, ctx.age_secs);
+    let (cur, el) = now_at(c, st, n, e, &mut tl);
+    cur + 1 < n && el >= tl(cur).type_end - 1e-9
+}
+
+/// Continue (F2): the next text when it waits for it.
+pub fn on_continue(layer: &Layer, st: &mut State, ctx: &ActCtx) -> bool {
+    if !waits_continue(layer, st, ctx) {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
+}
+
+/// The trigger `name`: the next text when the texts are chained on it (the
+/// last one goes back to the first).
+pub fn on_trigger(layer: &Layer, st: &mut State, name: &str, ctx: &ActCtx) -> bool {
+    let Some((c, _)) = layer_parts(layer) else {
+        return false;
+    };
+    let ch = chain(c, st);
+    if st.mode == Mode::Idle
+        || texts(layer, ctx.data).len() < 2
+        || !(ch.auto && ch.on == AutoOn::Trigger && super::same_trigger(&ch.trigger, name))
+    {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
 }
 
 /// Rate of the layer (its `speed`).
@@ -414,8 +512,11 @@ fn layer_parts(layer: &Layer) -> Option<(&Config, f64)> {
 
 /// Applies an operator action. Ops: `start`, `pause`, `resume`, `toggle`
 /// (pause / resume), `showAll`, `next`, `clear`, `reset`, `edited`
-/// (`{typed}`: the current text was changed while typing). Args may carry
-/// `cur`: the text the Operator sees (exact with the line unit).
+/// (`{typed}`: the current text was changed while typing), `advance`
+/// (`{on?, seconds?, trigger?}`: the texts chained, how the next one comes,
+/// the pause between them, the trigger), `stop` (not chained: the text shown
+/// stays). Args may carry `cur`: the text the Operator sees (exact with the
+/// line unit).
 pub fn act(
     layer: &Layer,
     st: &mut State,
@@ -436,14 +537,27 @@ pub fn act(
     if let Some(i) = args.get("cur").and_then(|v| v.as_u64()) {
         cur = (i as usize).min(n - 1);
     }
+    // The run (re)starts there; what the operator set of the chaining stays.
     let run_from = |st: &mut State, idx: usize, base: f64| {
-        *st = State {
-            mode: Mode::Run,
-            idx,
-            base,
-            since: Some(ctx.now_ms),
-            all_at: None,
-        };
+        st.mode = Mode::Run;
+        st.idx = idx;
+        st.base = base;
+        st.since = Some(ctx.now_ms);
+        st.all_at = None;
+    };
+    let pause_at = |st: &mut State, idx: usize, base: f64| {
+        st.mode = Mode::Paused;
+        st.idx = idx;
+        st.base = base;
+        st.since = None;
+        st.all_at = None;
+    };
+    // The chaining changed: the text shown keeps its place (fully typed, its
+    // pause counts from now).
+    let rebase = |st: &mut State, tl: &mut dyn FnMut(usize) -> Timeline| match st.mode {
+        Mode::Auto | Mode::Run => run_from(st, cur, el.min(tl(cur).type_end)),
+        Mode::Paused => pause_at(st, cur, el.min(tl(cur).type_end)),
+        Mode::Idle => {}
     };
     match op {
         "start" => run_from(st, cur, 0.0),
@@ -451,13 +565,7 @@ pub fn act(
             let running = matches!(st.mode, Mode::Auto | Mode::Run);
             if running && op != "resume" {
                 // Keep the position: rebase on the text shown.
-                *st = State {
-                    mode: Mode::Paused,
-                    idx: cur,
-                    base: el,
-                    since: None,
-                    all_at: None,
-                };
+                pause_at(st, cur, el);
             } else if st.mode == Mode::Paused && op != "pause" {
                 st.mode = Mode::Run;
                 st.since = Some(ctx.now_ms);
@@ -469,23 +577,13 @@ pub fn act(
             if st.mode == Mode::Auto {
                 run_from(st, cur, el);
             } else if st.mode == Mode::Idle {
-                *st = State {
-                    mode: Mode::Paused,
-                    idx: cur,
-                    base: 0.0,
-                    since: None,
-                    all_at: None,
-                };
+                pause_at(st, cur, 0.0);
             } else if st.idx != cur {
                 // Rebase on the text shown so "all" applies to it.
-                let since = st.since.map(|_| ctx.now_ms);
-                *st = State {
-                    mode: st.mode,
-                    idx: cur,
-                    base: el,
-                    since,
-                    all_at: None,
-                };
+                st.idx = cur;
+                st.base = el;
+                st.since = st.since.map(|_| ctx.now_ms);
+                st.all_at = None;
             }
             let e2 = elapsed(st, ctx.now_ms, ctx.age_secs);
             st.all_at = Some(e2);
@@ -497,18 +595,38 @@ pub fn act(
             }
         }
         "next" => run_from(st, (cur + 1) % n, 0.0),
-        "clear" => {
+        "clear" | "reset" => {
             *st = State {
                 mode: Mode::Idle,
-                idx: cur,
+                idx: if op == "clear" { cur } else { 0 },
+                auto: st.auto,
+                on: st.on,
+                secs: st.secs,
+                trigger: st.trigger.take(),
                 ..Default::default()
             }
         }
-        "reset" => {
-            *st = State {
-                mode: Mode::Idle,
-                ..Default::default()
+        "advance" => {
+            if let Some(on) = args.get("on").and_then(|v| v.as_str()) {
+                st.on = Some(match on {
+                    "timed" => AutoOn::Timed,
+                    "continue" => AutoOn::Continue,
+                    "trigger" => AutoOn::Trigger,
+                    _ => return Err(format!("unknown mode `{on}`")),
+                });
             }
+            if let Some(s) = args.get("seconds").and_then(|v| v.as_f64()) {
+                st.secs = Some(s.clamp(0.0, 3600.0));
+            }
+            if let Some(t) = args.get("trigger").and_then(|v| v.as_str()) {
+                st.trigger = Some(t.trim().to_string());
+            }
+            st.auto = Some(true);
+            rebase(st, &mut tl);
+        }
+        "stop" => {
+            st.auto = Some(false);
+            rebase(st, &mut tl);
         }
         "edited" => {
             let t = tl(cur);
@@ -629,5 +747,66 @@ mod tests {
         act(&l, &mut st, "clear", &json!({}), &ctx(9700)).unwrap();
         assert_eq!(st.mode, Mode::Idle);
         assert!(act(&l, &mut st, "nope", &json!({}), &ctx(0)).is_err());
+    }
+
+    #[test]
+    fn chained_texts() {
+        // "Hello world. Bye": 16 characters at 10 / s, typed in 1.6 s; then "Two" (0.3 s), "Three".
+        let l =
+            layer(json!({"more":[{"text":"Two"},{"text":"Three"}],"nextOn":"continue","hold":1.0}));
+        let data = Default::default();
+        let ctx = |now: i64, age: f64| ActCtx {
+            now_ms: now,
+            age_secs: age,
+            data: &data,
+        };
+        // From the take, the texts wait for Continue: not while typing.
+        let mut st = State::default();
+        assert!(!waits_continue(&l, &st, &ctx(1000, 1.0)));
+        assert!(!on_continue(&l, &mut st, &ctx(1000, 1.0)));
+        assert_eq!(st.mode, Mode::Auto);
+        // Fully typed: Continue goes to the next text, which starts from nothing.
+        assert!(on_continue(&l, &mut st, &ctx(5000, 5.0)));
+        assert_eq!((st.mode, st.idx), (Mode::Run, 1));
+        assert!(!on_continue(&l, &mut st, &ctx(5100, 5.1)));
+        assert!(on_continue(&l, &mut st, &ctx(6000, 6.0)));
+        assert_eq!(st.idx, 2);
+        // Not on the last text.
+        assert!(!on_continue(&l, &mut st, &ctx(9000, 9.0)));
+        // The texts never erase themselves when they are chained on Continue.
+        let LayerKind::Typewriter { x, .. } = &l.kind else {
+            panic!()
+        };
+        assert!(!auto_next(x, &st, 3, 0));
+        // A trigger: only its name, and it wraps.
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &json!({"on":"trigger","trigger":"suite"}),
+            &ctx(9000, 9.0),
+        )
+        .unwrap();
+        assert!(!on_trigger(&l, &mut st, "other", &ctx(9100, 9.1)));
+        assert!(on_trigger(&l, &mut st, " SUITE ", &ctx(9100, 9.1)));
+        assert_eq!(st.idx, 0);
+        // Stop: not chained, the text shown stays; timed again from Advance: it erases itself after the pause.
+        act(&l, &mut st, "stop", &json!({}), &ctx(9200, 9.2)).unwrap();
+        assert!(!chain(x, &st).auto);
+        assert!(!auto_next(x, &st, 3, 0));
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &json!({"on":"timed","seconds":2}),
+            &ctx(9300, 9.3),
+        )
+        .unwrap();
+        let ch = chain(x, &st);
+        assert!(ch.auto && ch.on == AutoOn::Timed && ch.hold == 2.0);
+        assert!(auto_next(x, &st, 3, 0));
+        // Clear keeps what the operator set of the chaining.
+        act(&l, &mut st, "reset", &json!({}), &ctx(9400, 9.4)).unwrap();
+        assert_eq!((st.mode, st.secs), (Mode::Idle, Some(2.0)));
     }
 }

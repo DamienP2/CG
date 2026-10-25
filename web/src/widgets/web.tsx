@@ -2,11 +2,11 @@
 // the previews show it; the engine's own outputs (SDI, NDI, ST 2110) leave its box empty.
 // Model: crates/cg-core/src/wid/web.rs.
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { Globe } from 'lucide-react';
+import { Globe, RefreshCw } from 'lucide-react';
 import type { Data } from '../engine/types';
-import { Content, defineWidget, Num, Section, Seg, Toggle, type Warning } from './kit';
-import { OpBar, ReloadBtn } from './opbar';
-import { t } from '../i18n';
+import { Content, defineWidget, Num, RangeNum, Section, Seg, Toggle, useKeys, type Warning } from './kit';
+import { Centre } from './centre';
+import { t, tc } from '../i18n';
 
 export interface Config {
   source?: 'url' | 'html';
@@ -182,22 +182,37 @@ function View({ layer, w, h, data, state, nowMs, designer }: { layer: WebLayer; 
   );
 }
 
-/** The Operator's row: the page's state (a dot), reload. */
-function Compact({ layer, act }: { layer: WebLayer; act: (op: string, args?: unknown) => void }) {
+/** The address without its scheme, cut to `max` characters. */
+const shortUrl = (u: string, max = 48) => {
+  const s = u.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+};
+
+/**
+ * The control centre (web/src/widgets/centre.tsx). Line 1: the address and whether the page
+ * loaded (a dot). Line 2: Refresh. Line 3: the periodic reload (exposable).
+ */
+function WebBar({ layer, data, act }: { layer: WebLayer; data: Data; act: (op: string, args?: unknown) => void }) {
+  const k = cfg(layer);
   const st = useStatus(layer.id);
-  const dot = st?.s === 'error' ? { c: 'var(--live)', txt: `● ${t('Page not loaded')}` } : st?.s === 'loading' ? { c: 'var(--warn)', txt: '●' } : st ? { c: 'var(--pvw)', txt: '●' } : null;
-  const tip = st?.s === 'error' ? st.msg || t('Page not loaded') : st?.s === 'loading' ? t('Loading…') : t('Page loaded');
+  useKeys({ r: () => act('reload') });
+  const dot = st?.s === 'error' ? { c: 'var(--live)', tip: st.msg || t('Page not loaded') } : st?.s === 'loading' ? { c: 'var(--warn)', tip: t('Loading…') } : st ? { c: 'var(--pvw)', tip: t('Page loaded') } : null;
+  const address = k.source === 'html' ? t('HTML code') : shortUrl(urlOf(k.url, data)) || '—';
   return (
-    <OpBar>
-      {dot && (
-        <b className="wk-oprow-v">
-          <span style={{ color: dot.c }} title={tip}>
-            {dot.txt}
+    <Centre
+      name={(layer as { name?: string }).name}
+      readout={{ v: null, sub: <span title={k.source === 'html' ? undefined : urlOf(k.url, data)}>{address}</span> }}
+      status={
+        dot && (
+          <span className="cc-st" title={dot.tip} style={{ color: dot.c }}>
+            ●
           </span>
-        </b>
-      )}
-      <ReloadBtn title={t('Reload the page')} onClick={() => act('reload')} />
-    </OpBar>
+        )
+      }
+      actions={[{ icon: RefreshCw, label: tc('cc', 'Refresh'), key: 'R', onClick: () => act('reload') }]}
+    >
+      <RangeNum label={t('Refresh every')} path="refresh" value={k.refresh} min={0} max={3600} step={1} unit="s" onRelease />
+    </Centre>
   );
 }
 
@@ -228,7 +243,6 @@ export default defineWidget({
           {k.source === 'url' ? <Content label={t('Address')} path="url" value="" placeholder="https://…" expose /> : <Content label="HTML" path="html" value="" multiline placeholder="<div>…</div>" />}
           {k.source === 'url' && <Toggle label={t('Through the server')} path="proxy" value={true} />}
           <Num label={t('Zoom')} path="zoom" value={k.zoom} min={10} max={400} unit="%" />
-          <Num label={t('Reload every')} path="refresh" value={k.refresh} min={0} max={86400} unit="s" />
           {(k.source === 'html' || k.proxy) && (
             <Seg
               label={t('Background')}
@@ -244,8 +258,7 @@ export default defineWidget({
       </>
     );
   },
-  Compact: ({ layer, act }) => <Compact layer={layer as unknown as WebLayer} act={act} />,
-  Operator: ({ layer, act }) => <Compact layer={layer as unknown as WebLayer} act={act} />,
+  Operator: ({ layer, data, act }) => <WebBar layer={layer as unknown as WebLayer} data={data} act={act} />,
   warnings: (l) => {
     const k = cfg(l as unknown as WebLayer);
     const out: Warning[] = [{ level: 'info', op: true, text: t('Web page: HTML5 outputs and previews only (not SDI, NDI, ST 2110).') }];

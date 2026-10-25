@@ -11,6 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use super::table::AutoOn;
 use super::ActCtx;
 use crate::anim::{interpolate_text, Data};
 use crate::model::{Layer, LayerKind};
@@ -416,6 +417,15 @@ pub struct Config {
     /// Sparkline: the first series alone filling the box (columns, line
     /// or area), without panel, titles, axes or texts.
     pub spark: bool,
+    /// The reveal steps are chained from the take: every `auto_secs`
+    /// seconds, on Continue, or on a trigger (`auto_on`).
+    pub auto_steps: bool,
+    pub auto_secs: f64,
+    pub auto_on: AutoOn,
+    pub auto_trigger: String,
+    /// Put forward from the take: "" = nothing, `s2` = series 3, `c0` =
+    /// the first category (column, point or slice).
+    pub hl_default: String,
 }
 
 /// The poll sample of a new chart.
@@ -463,6 +473,11 @@ impl Default for Config {
             ref_line: RefLine::default(),
             texts: Texts::default(),
             spark: false,
+            auto_steps: false,
+            auto_secs: 5.0,
+            auto_on: AutoOn::Timed,
+            auto_trigger: String::new(),
+            hl_default: String::new(),
         }
     }
 }
@@ -531,6 +546,18 @@ pub struct State {
     pub hl: Hl,
     pub prev_hl: Hl,
     pub hl_at: i64,
+    /// The operator acted (else the Designer's chained steps and highlight apply from the take).
+    pub ctl: bool,
+    /// Steps chained: one more every `interval` s counted from `auto_at`
+    /// (`on` timed), or on Continue / on the trigger `trigger` (`interval`
+    /// then 0). The step shown is `step` plus the intervals elapsed.
+    pub auto: bool,
+    pub interval: f64,
+    pub auto_at: i64,
+    pub on: AutoOn,
+    pub trigger: String,
+    /// Paused at (Unix ms), 0 = running.
+    pub paused_at: i64,
 }
 
 // ------------------------------------------------------------------- data --
@@ -1183,10 +1210,167 @@ pub fn on_data(layer: &Layer, st: &mut State, old: &Data, ctx: &ActCtx) -> bool 
     true
 }
 
+// ---------------------------------------------------------- chained steps --
+
+/// The highlight written in the template (`hl_default`): `s2` = series 3,
+/// `c0` = the first category; anything else = none.
+pub fn hl_of(s: &str) -> Hl {
+    let s = s.trim();
+    let (kind, idx) = if let Some(n) = s.strip_prefix('s') {
+        (HlKind::Series, n.parse::<i32>().ok())
+    } else if let Some(n) = s.strip_prefix('c') {
+        (HlKind::Category, n.parse::<i32>().ok())
+    } else {
+        (HlKind::None, None)
+    };
+    match idx {
+        Some(idx) if idx >= 0 => Hl { kind, idx },
+        _ => Hl::default(),
+    }
+}
+
+/// The state on air: the operator's once he acted, else the Designer's
+/// chained steps (counted from the take) and highlight.
+pub fn live(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> State {
+    if st.ctl {
+        return st.clone();
+    }
+    let mut s = st.clone();
+    if s.hl.kind == HlKind::None && s.hl_at == 0 {
+        s.hl = hl_of(&c.hl_default);
+        s.prev_hl = s.hl;
+    }
+    if c.auto_steps && !s.auto {
+        s.on = c.auto_on;
+        s.trigger = c.auto_trigger.trim().to_string();
+        if c.auto_on == AutoOn::Timed {
+            if c.auto_secs > 0.0 {
+                s.auto = true;
+                s.interval = c.auto_secs.clamp(0.5, 3600.0);
+                s.auto_at = (now_ms - (age_secs.max(0.0) * 1000.0) as i64).max(1);
+            }
+        } else {
+            s.auto = true;
+            s.interval = 0.0;
+        }
+    }
+    s
+}
+
+/// The step shown at `now` (1 to `n`): the step set, plus the intervals
+/// elapsed when the steps are timed (they stop at the last one).
+pub fn shown_step(st: &State, n: usize, now_ms: i64) -> usize {
+    let base = (st.step.max(1) as usize).min(n.max(1));
+    if st.auto && st.interval > 0.0 && st.auto_at > 0 && base < n {
+        let t = if st.paused_at > 0 {
+            st.paused_at
+        } else {
+            now_ms
+        };
+        let step = ((st.interval * 1000.0) as i64).max(1);
+        let k = ((t - st.auto_at).max(0) / step) as usize;
+        return (base + k).min(n);
+    }
+    base
+}
+
+/// When the timed step `t` (0-based, after the step set) was revealed.
+fn auto_step_at(st: &State, t: usize) -> i64 {
+    let base = st.step.max(1) as usize;
+    st.auto_at + (t + 1 - base) as i64 * ((st.interval * 1000.0) as i64).max(1)
+}
+
+/// The state as drawn at `now`: the take's chain and highlight applied, the
+/// timed steps revealed so far (with their times). What the renderers lay out.
+pub fn shown(c: &Config, st: &State, now_ms: i64, age_secs: f64, data: &Data) -> State {
+    let mut s = live(c, st, now_ms, age_secs);
+    let n = steps(c, &s, &parse(c, &shown_grid(c, &s, data)));
+    if n > 0 {
+        settle(&mut s, n, now_ms);
+    }
+    s
+}
+
+/// Makes the step shown at `now` the step set (its timed reveals kept).
+fn settle(st: &mut State, n: usize, now_ms: i64) {
+    let base = st.step.max(1) as usize;
+    let sh = shown_step(st, n, now_ms);
+    if sh > base {
+        if st.step_at.len() < n {
+            st.step_at.resize(n, 0);
+        }
+        for t in base..sh {
+            st.step_at[t] = auto_step_at(st, t);
+        }
+        // The count goes on from the last reveal (its phase kept).
+        st.auto_at = auto_step_at(st, sh - 1);
+    }
+    st.step = sh as u32;
+}
+
+/// Seconds left before the next timed step (None = not running, or at the last step).
+pub fn next_in(st: &State, n: usize, now_ms: i64) -> Option<f64> {
+    if !st.auto || st.interval <= 0.0 || st.auto_at <= 0 || shown_step(st, n, now_ms) >= n {
+        return None;
+    }
+    let t = if st.paused_at > 0 {
+        st.paused_at
+    } else {
+        now_ms
+    };
+    let step = st.interval * 1000.0;
+    let e = (t - st.auto_at).max(0) as f64 % step;
+    Some((step - e) / 1000.0)
+}
+
+/// The steps wait for Continue (F2): chained on it, not at the last step.
+pub fn waits_continue(st: &State, n: usize, now_ms: i64) -> bool {
+    st.auto && st.on == AutoOn::Continue && n > 0 && shown_step(st, n, now_ms) < n
+}
+
+/// Continue (F2): the next step when the steps wait for it.
+pub fn on_continue(layer: &Layer, st: &mut State, ctx: &ActCtx) -> bool {
+    let Ok(c) = config(layer) else {
+        return false;
+    };
+    let live_st = live(c, st, ctx.now_ms, ctx.age_secs);
+    let n = steps(c, &live_st, &parse(c, &shown_grid(c, &live_st, ctx.data)));
+    if !waits_continue(&live_st, n, ctx.now_ms) {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
+}
+
+/// The trigger `name`: the next step when the steps wait for it (the last
+/// step goes back to the first).
+pub fn on_trigger(layer: &Layer, st: &mut State, name: &str, ctx: &ActCtx) -> bool {
+    let Ok(c) = config(layer) else {
+        return false;
+    };
+    let live_st = live(c, st, ctx.now_ms, ctx.age_secs);
+    let n = steps(c, &live_st, &parse(c, &shown_grid(c, &live_st, ctx.data)));
+    if !(n > 0
+        && live_st.auto
+        && live_st.on == AutoOn::Trigger
+        && super::same_trigger(&live_st.trigger, name))
+    {
+        return false;
+    }
+    let op = if shown_step(&live_st, n, ctx.now_ms) >= n {
+        "first"
+    } else {
+        "next"
+    };
+    act(layer, st, op, &serde_json::Value::Null, ctx).is_ok()
+}
+
 /// Operator actions:
 /// - `reload` {cut?}: takes the current data; values tween from what is shown.
-/// - `next` / `prev`: reveals the next step / hides the last one.
+/// - `next` / `prev`: reveals the next step / hides the last one; `first`: back to the first.
 /// - `showAll`: reveals every remaining step (staggered).
+/// - `auto` {seconds}: the steps go on by themselves (chained, timed);
+///   `advance` {on: timed | continue | trigger, seconds?, trigger?} ·
+///   `pause` · `resume` · `stop` (not chained, back to the first step).
 /// - `revealMode` {mode: all|series|categories}: starts over at step 1.
 /// - `highlight` {kind: none|series|category|slice, idx}: same again = off.
 /// - `reset`: back to the live data, nothing highlighted.
@@ -1199,22 +1383,37 @@ pub fn act(
 ) -> Result<(), String> {
     let c = config(layer)?;
     let now = ctx.now_ms;
+    // From now on the operator's state: what was on air so far, kept.
+    *st = live(c, st, now, ctx.age_secs);
+    st.ctl = true;
+    let n = steps(c, st, &parse(c, &shown_grid(c, st, ctx.data)));
+    if n > 0 {
+        settle(st, n, now);
+    }
+    // A timed chain counts again from now when the operator moves the step.
+    let restart = |st: &mut State| {
+        if st.auto && st.interval > 0.0 {
+            st.auto_at = now;
+            if st.paused_at > 0 {
+                st.paused_at = now;
+            }
+        }
+    };
     match op {
         "reload" => {
             let cut = args.get("cut").and_then(|v| v.as_bool()).unwrap_or(false);
             reload(c, st, ctx.data, now, cut);
             Ok(())
         }
-        "next" | "prev" | "showAll" => {
-            let p = parse(c, &shown_grid(c, st, ctx.data));
-            let n = steps(c, st, &p);
+        "next" | "prev" | "showAll" | "first" => {
             if n == 0 {
                 return Err("reveal is set to \"All at once\"".into());
             }
-            let cur = st.step.max(1) as usize;
+            let cur = (st.step.max(1) as usize).min(n);
             let next = match op {
                 "next" => (cur + 1).min(n),
                 "prev" => cur.saturating_sub(1).max(1),
+                "first" => 1,
                 _ => n,
             };
             if st.step_at.len() < n {
@@ -1224,6 +1423,86 @@ pub fn act(
                 st.step_at[t] = now + (k as f32 * c.anim.stagger) as i64;
             }
             st.step = next as u32;
+            restart(st);
+            Ok(())
+        }
+        "auto" => {
+            let secs = args
+                .get("seconds")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(if st.interval > 0.0 { st.interval } else { 5.0 });
+            if secs <= 0.0 {
+                st.auto = false;
+                st.paused_at = 0;
+                return Ok(());
+            }
+            if !(0.5..=3600.0).contains(&secs) {
+                return Err("interval: 0.5 to 3600 s".into());
+            }
+            if st.auto && st.auto_at > 0 {
+                // New interval: keep the step, count from now.
+                st.auto_at = if st.paused_at > 0 { st.paused_at } else { now };
+            } else {
+                st.auto_at = now;
+                st.paused_at = 0;
+            }
+            st.auto = true;
+            st.on = AutoOn::Timed;
+            st.interval = secs;
+            Ok(())
+        }
+        "advance" => {
+            let on = match args.get("on").and_then(|v| v.as_str()).unwrap_or("timed") {
+                "continue" => AutoOn::Continue,
+                "trigger" => AutoOn::Trigger,
+                "timed" => AutoOn::Timed,
+                other => return Err(format!("unknown advance mode “{other}”")),
+            };
+            if let Some(name) = args.get("trigger").and_then(|v| v.as_str()) {
+                st.trigger = name.trim().to_string();
+            }
+            if on == AutoOn::Timed {
+                let secs =
+                    args.get("seconds")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(if st.interval > 0.0 {
+                            st.interval
+                        } else {
+                            c.auto_secs
+                        });
+                return act(
+                    layer,
+                    st,
+                    "auto",
+                    &serde_json::json!({ "seconds": secs }),
+                    ctx,
+                );
+            }
+            st.auto = true;
+            st.on = on;
+            st.interval = 0.0;
+            st.auto_at = 0;
+            st.paused_at = 0;
+            Ok(())
+        }
+        "stop" => {
+            st.auto = false;
+            st.paused_at = 0;
+            st.step = 1;
+            st.step_at.clear();
+            Ok(())
+        }
+        "pause" => {
+            if st.auto && st.paused_at == 0 {
+                st.paused_at = now;
+            }
+            Ok(())
+        }
+        "resume" => {
+            if st.auto && st.paused_at > 0 {
+                st.auto_at += now - st.paused_at;
+                st.paused_at = 0;
+            }
             Ok(())
         }
         "revealMode" => {
@@ -1233,6 +1512,7 @@ pub fn act(
             st.mode = Some(m);
             st.step = 1;
             st.step_at.clear();
+            restart(st);
             Ok(())
         }
         "highlight" => {
@@ -1264,7 +1544,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    fn layer(c: Config) -> Layer {
+    pub(super) fn layer(c: Config) -> Layer {
         Layer {
             id: "c".into(),
             name: "Chart".into(),
@@ -1273,6 +1553,8 @@ mod tests {
             visible: true,
             locked: false,
             manual_start: false,
+            start_on: None,
+            start_trigger: String::new(),
             scale_lock: false,
             lock_ratio: false,
             drop_shadow: false,
@@ -1470,5 +1752,95 @@ mod tests {
         assert!(
             act(&l, &mut st, "next", &serde_json::Value::Null, &ctx).is_err() || st.mode.is_some()
         );
+    }
+}
+
+#[cfg(test)]
+mod chained_steps {
+    use super::*;
+
+    #[test]
+    fn steps_chained_from_the_take_on_continue_and_on_a_trigger() {
+        let mut c = Config {
+            reveal: RevealMode::Series,
+            auto_steps: true,
+            auto_secs: 5.0,
+            hl_default: "s1".into(),
+            ..Default::default()
+        };
+        let d = Data::new();
+        let cx = ActCtx {
+            now_ms: 100_000,
+            age_secs: 12.0,
+            data: &d,
+        };
+        // Timed from the take (on air 12 s ago, 5 s per step): the third of the three series
+        // shows, the highlight is the template's.
+        let st = live(&c, &State::default(), 100_000, 12.0);
+        assert!(st.auto && st.on == AutoOn::Timed && st.interval == 5.0 && st.auto_at == 88_000);
+        assert_eq!(shown_step(&st, 3, 100_000), 3);
+        assert_eq!(shown_step(&st, 3, 92_000), 1);
+        assert_eq!(shown_step(&st, 3, 93_500), 2);
+        assert_eq!(next_in(&st, 3, 93_500), Some(4.5));
+        assert_eq!(next_in(&st, 3, 100_000), None);
+        assert_eq!(
+            st.hl,
+            Hl {
+                kind: HlKind::Series,
+                idx: 1
+            }
+        );
+        let sh = shown(&c, &State::default(), 93_500, 5.5, &d);
+        assert_eq!((sh.step, sh.step_at[1]), (2, 93_000));
+        // Chained on Continue: F2 reveals the steps, until the last one.
+        c.auto_on = AutoOn::Continue;
+        let l = super::tests::layer(c.clone());
+        let mut st = State::default();
+        assert!(waits_continue(&live(&c, &st, 100_000, 12.0), 3, 100_000));
+        assert!(on_continue(&l, &mut st, &cx));
+        assert_eq!(st.step, 2);
+        assert!(st.ctl && st.auto && st.on == AutoOn::Continue);
+        assert!(on_continue(&l, &mut st, &cx));
+        assert_eq!(st.step, 3);
+        assert!(!on_continue(&l, &mut st, &cx));
+        // A trigger: only its name, and it wraps to the first step.
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &serde_json::json!({"on": "trigger", "trigger": "scores"}),
+            &cx,
+        )
+        .unwrap();
+        assert!(!on_trigger(&l, &mut st, "other", &cx));
+        assert!(on_trigger(&l, &mut st, " SCORES ", &cx));
+        assert_eq!(st.step, 1);
+        assert!(on_trigger(&l, &mut st, "scores", &cx));
+        assert_eq!(st.step, 2);
+        // Stop: not chained, back to the first step; timed again from Advance, paused.
+        act(&l, &mut st, "stop", &serde_json::Value::Null, &cx).unwrap();
+        assert!(!st.auto && st.step == 1);
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &serde_json::json!({"on": "timed", "seconds": 4}),
+            &cx,
+        )
+        .unwrap();
+        assert!(st.auto && st.on == AutoOn::Timed && st.interval == 4.0 && st.auto_at == 100_000);
+        assert_eq!(shown_step(&st, 3, 108_500), 3);
+        let cx2 = ActCtx {
+            now_ms: 104_500,
+            age_secs: 16.5,
+            data: &d,
+        };
+        act(&l, &mut st, "pause", &serde_json::Value::Null, &cx2).unwrap();
+        assert_eq!(shown_step(&st, 3, 130_000), 2);
+        act(&l, &mut st, "resume", &serde_json::Value::Null, &cx2).unwrap();
+        assert_eq!(shown_step(&st, 3, 104_600), 2);
+        // Next by hand settles the shown step and counts again from now.
+        act(&l, &mut st, "prev", &serde_json::Value::Null, &cx2).unwrap();
+        assert_eq!((st.step, st.auto_at), (1, 104_500));
     }
 }

@@ -6,16 +6,18 @@
 // is a pure function of the elapsed time (time on air, or the operator's
 // timestamps): the state never counts.
 import { useEffect, useRef, type CSSProperties } from 'react';
-import { Keyboard } from 'lucide-react';
+import { ChevronsRight, Keyboard, Pause, Play, SkipForward, Trash2 } from 'lucide-react';
 import { col, cssColor, interpolateText, num } from '../engine/evaluate';
-import type { Data, FontStyle, Layer } from '../engine/types';
+import type { Data, FontStyle, Layer, PlayoutItem } from '../engine/types';
+import { layerAgeFrames } from '../engine/widgets';
 import { graphemes } from '../engine/textFit';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Section, Seg, Sep, Toggle, Transport, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, RangeNum, Section, Seg, Text, Toggle, useBound, useCentreMode, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { ADVANCE_MODES, Centre, Countdown, GAP, StartRow, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
 import { fontCss, measure } from './text';
 import { useLiveTime } from './table-text';
+import { layerTime } from './ticker';
 import { confirmDialog } from '../ui/dialogs';
-import { OpBar } from './opbar';
 import { t, tc } from '../i18n';
 
 export interface Config {
@@ -37,8 +39,14 @@ export interface Config {
   cursorHide?: boolean;
   erase?: 'backspace' | 'block';
   eraseRate?: number;
+  /** The pause between two texts chained by time: a typed text stays that long before it is erased. */
   hold?: number;
   chainLoop?: boolean;
+  /** The texts are chained: the next one comes by itself (`nextOn`). */
+  autoNext?: boolean;
+  /** How the next text comes: after `hold` seconds, on Continue (F2) or on the trigger `nextTrigger`. */
+  nextOn?: AdvanceMode;
+  nextTrigger?: string;
   /** Older layers: the layout is now always frozen (no word jumps line). */
   frozen?: boolean;
   onEdit?: 'restart' | 'continue';
@@ -59,6 +67,11 @@ export interface State {
   base?: number;
   since?: number | null;
   allAt?: number | null;
+  /** The chaining changed on air (null = the template's). */
+  auto?: boolean | null;
+  on?: AdvanceMode | null;
+  secs?: number | null;
+  trigger?: string | null;
 }
 
 const D: Required<Config> = {
@@ -79,6 +92,9 @@ const D: Required<Config> = {
   eraseRate: 90,
   hold: 1.6,
   chainLoop: false,
+  autoNext: true,
+  nextOn: 'timed',
+  nextTrigger: '',
   frozen: true,
   onEdit: 'restart',
   autoShrink: false,
@@ -159,7 +175,20 @@ export function timeline(c: K, rate: number, text: string, idx: number, lines?: 
   return { g, units, t, unitOf, appear, typeEnd: (t[k - 1] ?? 0) + appear, eraseDur: c.erase === 'block' ? 0.45 : n / Math.max(1, c.eraseRate) };
 }
 
+/** How the texts are chained on air: the template's settings, or what the operator changed (mirrors chain()). */
+export interface Chain {
+  auto: boolean;
+  on: AdvanceMode;
+  /** The pause between two texts, s. */
+  hold: number;
+  trigger: string;
+  looping: boolean;
+}
+export const chainOf = (c: K, st: State): Chain => ({ auto: st.auto ?? c.autoNext, on: st.on ?? c.nextOn, hold: Math.max(0, st.secs ?? c.hold), trigger: (st.trigger ?? c.nextTrigger).trim(), looping: c.chainLoop });
+/** Text `i` has a next one (Next goes there). */
 export const hasNext = (c: K, n: number, i: number) => n > 1 && (c.chainLoop || i + 1 < n);
+/** The next text comes by itself after text `i`: chained by time (then it erases itself after its pause). */
+export const autoNext = (ch: Chain, n: number, i: number) => n > 1 && (ch.looping || i + 1 < n) && ch.auto && ch.on === 'timed';
 
 export function elapsed(st: State, nowMs: number, age: number): number {
   const mode = st.mode ?? 'auto';
@@ -168,18 +197,19 @@ export function elapsed(st: State, nowMs: number, age: number): number {
   return st.base ?? 0;
 }
 
-function position(c: K, n: number, start: number, e: number, tl: (i: number) => Timeline): [number, number] {
+function position(ch: Chain, n: number, start: number, e: number, tl: (i: number) => Timeline): [number, number] {
   if (!n) return [0, e];
-  const cycle = (t: Timeline) => t.typeEnd + Math.max(0, c.hold) + t.eraseDur;
+  const cycle = (t: Timeline) => t.typeEnd + ch.hold + t.eraseDur;
   let i = Math.min(start, n - 1);
   e = Math.max(0, e);
-  if (c.chainLoop && n > 1) {
+  const timed = ch.auto && ch.on === 'timed';
+  if (timed && ch.looping && n > 1) {
     let total = 0;
     for (let j = 0; j < n; j++) total += cycle(tl(j));
     if (total > 1e-6) e %= total;
   }
   for (let guard = 0; guard < 4 * n + 4; guard++) {
-    if (!hasNext(c, n, i)) return [i, e];
+    if (!autoNext(ch, n, i)) return [i, e];
     const cy = cycle(tl(i));
     if (e < cy) return [i, e];
     e -= cy;
@@ -190,11 +220,12 @@ function position(c: K, n: number, start: number, e: number, tl: (i: number) => 
 
 /** The text shown and its elapsed time, "Show all" included (mirrors now_at). */
 export function nowAt(c: K, st: State, n: number, e: number, tl: (i: number) => Timeline): [number, number] {
+  const ch = chainOf(c, st);
   if (st.allAt != null && e >= st.allAt) {
-    const [i, ea] = position(c, n, st.idx ?? 0, st.allAt, tl);
+    const [i, ea] = position(ch, n, st.idx ?? 0, st.allAt, tl);
     e += Math.max(0, tl(i).typeEnd - ea);
   }
-  return position(c, n, st.idx ?? 0, e, tl);
+  return position(ch, n, st.idx ?? 0, e, tl);
 }
 
 // --------------------------------------------------------------- layout --
@@ -285,11 +316,12 @@ export interface Vis {
   phase: 'typing' | 'hold' | 'erasing' | 'done' | 'idle';
 }
 
-export function visible(c: K, tl: Timeline, e: number, next: boolean, idle: boolean): Vis {
+/** `hold`: the pause between two texts, s (the text stays typed that long). */
+export function visible(c: K, tl: Timeline, e: number, next: boolean, idle: boolean, hold = c.hold): Vis {
   const n = tl.g.length;
   const k = new Array<number>(n).fill(0);
   if (idle) return { k, shown: 0, block: 1, phase: 'idle' };
-  const holdEnd = tl.typeEnd + Math.max(0, c.hold);
+  const holdEnd = tl.typeEnd + Math.max(0, hold);
   if (e < tl.typeEnd || !next || e < holdEnd) {
     let shown = 0;
     for (let i = 0; i < n; i++) {
@@ -353,10 +385,12 @@ export function runOf(l: TwLayer, st: State, data: Data, size0: number, ls: numb
   const e = elapsed(st, nowMs, age);
   const [idx, el] = idle ? [Math.min(st.idx ?? 0, n - 1), 0] : nowAt(c, st, n, e, tlOf);
   const tl = tlOf(idx);
-  const next = hasNext(c, n, idx);
-  const vis = visible(c, tl, el, next, idle);
+  const ch = chainOf(c, st);
+  // The text erases itself only when the next one comes by itself (chained by time).
+  const next = autoNext(ch, n, idx);
+  const vis = visible(c, tl, el, next, idle, ch.hold);
   const [g, lay] = layOf(idx);
-  return { c, list, n, idx, tl, vis, g, lay, px, py, bw, bh, font, m, next };
+  return { c, list, n, idx, el, tl, vis, g, lay, px, py, bw, bh, font, m, next, ch, more: hasNext(c, n, idx) };
 }
 
 // --------------------------------------------------------------- render --
@@ -434,9 +468,9 @@ function Render({ layer, r, w, h, data, time, state }: { layer: TwLayer; r: impo
 
 // ------------------------------------------------------------- operator --
 
-type OpP = { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
+type OpP = { layer: TwLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean; fps?: number } };
 
-/** Where the typing is now, for the bar (time on air advancing between two updates). */
+/** Where the typing is now, for the centre (time on air advancing between two updates). */
 function useTw({ layer, state, data, time }: OpP) {
   const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
@@ -444,50 +478,92 @@ function useTw({ layer, state, data, time }: OpP) {
   return { st, R };
 }
 
-/** The one bar of the typewriter (validated grammar §1), identical in the Designer's Operator
- *  section and the Operator's rows: readout typed/total · toggle, ⏭ · Show all · Clear (red). */
+/** The next text waits for Continue (F2): chained on it, the text shown fully typed, not the last one (mirrors waits_continue). */
+const waitsNext = (R: ReturnType<typeof runOf>, st: State) => st.mode !== 'idle' && R.n > 1 && R.ch.auto && R.ch.on === 'continue' && R.idx + 1 < R.n && R.el >= R.tl.typeEnd - 1e-9;
+
+/**
+ * The control centre of the typewriter (web/src/widgets/centre.tsx). Line 1: typed / total
+ * characters, the text shown, what it waits for (its start, the next text). Line 2: play /
+ * pause, next text, show all, clear. Line 3: how it starts (Designer), how the texts are
+ * chained (both modes, on the air only in the Operator), the speed (exposable).
+ */
 function TwBar(p: OpP) {
-  const { layer, act, item, time } = p;
-  const { st, R } = useTw(p);
-  const mode = st.mode ?? 'auto';
-  // Held by the preview, nothing typed yet: it waits for its Start.
-  const running = (mode === 'auto' && !time.held) || mode === 'run';
-  const done = R.vis.phase === 'done' && !R.next;
-  const state: 'stop' | 'run' | 'pause' | 'ended' = mode === 'paused' ? 'pause' : done ? 'ended' : running ? 'run' : 'stop';
+  const { layer, act } = p;
+  const item = p.item as PlayoutItem | undefined;
+  const mode = useCentreMode();
+  const b = useBound();
+  const designer = mode === 'designer';
+  const time = layerTime(layer, item, p.time, ((p.state as State | undefined)?.mode ?? 'auto') !== 'auto');
+  const { st, R } = useTw({ ...p, time });
+  const md = st.mode ?? 'auto';
+  const n = R.n;
+  const several = n > 1;
+  // Held by the preview (or waiting for its start on air), nothing typed yet: it waits for its Play.
+  const running = (md === 'auto' && !time.held) || md === 'run';
+  const typedAll = md !== 'idle' && R.el >= R.tl.typeEnd - 1e-9;
   const cur = { cur: R.idx };
   const clearMsg = item ? t('{name} is on air: clear the screen?', { name: layer.name }) : undefined;
-  // Confirmations only on air (a key does as its button). Enter and Space stay the Operator's TAKE and CONTINUE.
-  const clear = async () => {
+  const clear = () => act(several ? 'reset' : 'clear', cur);
+  const clearKey = async () => {
     if (clearMsg && !(await confirmDialog({ title: clearMsg, confirm: t('Yes') }))) return;
-    act(R.list.length > 1 ? 'reset' : 'clear', cur);
+    clear();
   };
+  const play = () => act(md === 'paused' ? 'resume' : 'start', cur);
+  // The Designer edits the template (what the take starts with); the Operator the air only.
+  const c = R.c;
+  const ch: Chain = designer ? { auto: c.autoNext, on: c.nextOn, hold: c.hold, trigger: c.nextTrigger, looping: c.chainLoop } : R.ch;
+  const setChained = (v: boolean) => (designer ? b.set('autoNext', v) : act(v ? 'advance' : 'stop', v ? { on: ch.on, seconds: ch.hold, trigger: ch.trigger, ...cur } : cur));
+  const setOn = (v: AdvanceMode) => (designer ? b.set('nextOn', v) : act('advance', { on: v, seconds: ch.hold, trigger: ch.trigger, ...cur }));
+  const setSecs = (v: number) => (designer ? b.set('hold', v) : act('advance', { seconds: v, ...cur }));
+  const setTrigger = (v: string) => (designer ? b.set('nextTrigger', v) : act('advance', { on: 'trigger', trigger: v, ...cur }));
+  // Confirmations only on air (a key does as its button). Enter and Space stay the Operator's TAKE and CONTINUE.
   useKeys({
     s: () => act('start', cur),
-    p: () => act('toggle', cur),
-    x: () => void clear(),
-    ArrowRight: () => R.list.length > 1 && act('next', cur),
+    p: () => (running ? act('pause', cur) : play()),
+    x: () => void clearKey(),
+    ArrowRight: () => several && act('next', cur),
   });
+  // Line 1: its start on air, else the next text (the countdown of its pause, » F2, ⚡ name).
+  const waitsStart = !!layer.manualStart && !!item && !item.clocks?.[layer.id] && md === 'auto';
+  const holdLeft = R.tl.typeEnd + ch.hold - R.el;
+  const status = waitsStart ? (
+    layer.startOn === 'trigger' ? (
+      <WaitsTrigger name={layer.startTrigger ?? ''} />
+    ) : (
+      <WaitsContinue />
+    )
+  ) : !several || !ch.auto ? undefined : ch.on === 'timed' ? (
+    running && typedAll && R.next && holdLeft > 0 ? (
+      <Countdown left={holdLeft} total={ch.hold} />
+    ) : undefined
+  ) : ch.on === 'continue' ? (
+    waitsNext(R, st) ? (
+      <WaitsContinue />
+    ) : undefined
+  ) : (
+    <WaitsTrigger name={ch.trigger} />
+  );
+  const actions: Line2Item[] = [
+    running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause', cur) } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play },
+    several && { icon: SkipForward, label: t('Next text'), key: '→', onClick: () => act('next', cur) },
+    { icon: ChevronsRight, label: t('Show all'), disabled: md !== 'paused' && R.vis.phase !== 'typing' && md !== 'idle', onClick: () => act('showAll', cur) },
+    GAP,
+    { icon: Trash2, label: tc('cc', 'Clear'), key: 'X', tone: 'red', confirm: clearMsg, onClick: clear },
+  ];
+  const unitName = c.unit === 'char' ? t('char/s') : c.unit === 'word' ? t('words/s') : t('lines/s');
   return (
-    <OpBar>
-      <Readout sub={R.list.length > 1 ? t('Text {n}/{total}', { n: R.idx + 1, total: R.list.length }) : undefined}>{`${R.vis.shown}/${R.g.length}`}</Readout>
-      <Sep />
-      <Transport
-        state={state}
-        item={item}
-        name={layer.name}
-        onStart={() => act('start', cur)}
-        onPause={() => act('pause', cur)}
-        onResume={() => act('resume', cur)}
-        next={R.list.length > 1 ? { onClick: () => act('next', cur), title: `${t('Next text')} · →` } : undefined}
-      />
-      <Sep />
-      <Btns
-        list={[
-          { label: t('Show all'), disabled: mode !== 'paused' && R.vis.phase !== 'typing' && mode !== 'idle', onClick: () => act('showAll', cur) },
-          { label: t('Clear'), cls: 'red', title: `${t('Clear')} · X`, confirm: clearMsg, onClick: () => act(R.list.length > 1 ? 'reset' : 'clear', cur) },
-        ]}
-      />
-    </OpBar>
+    <Centre name={layer.name} readout={{ v: R.vis.shown, of: R.g.length, sub: several ? t('Text {n}/{total}', { n: R.idx + 1, total: n }) : undefined }} status={status} actions={actions}>
+      <StartRow layer={designer ? (b.obj as TwLayer) : layer} />
+      {several && (
+        <>
+          <Toggle label={t('Chain the texts')} value={ch.auto} onChange={setChained} />
+          {ch.auto && <Seg label={t('Next text')} value={ch.on} onChange={setOn} options={ADVANCE_MODES()} />}
+          {ch.auto && ch.on === 'timed' && <RangeNum label={t('Pause between texts')} value={ch.hold} min={0.5} max={20} step={0.5} precision={1} unit="s" onRelease onChange={setSecs} />}
+          {ch.auto && ch.on === 'trigger' && <Text label={tc('cc', 'Trigger name')} value={ch.trigger} onChange={setTrigger} />}
+        </>
+      )}
+      {c.speedMode === 'rate' ? <RangeNum label={t('Speed')} path="speed" value={layer.speed} min={1} max={80} unit={unitName} onRelease /> : <RangeNum label={t('Duration')} path="duration" value={c.duration} min={0.5} max={20} step={0.5} precision={1} unit="s" onRelease />}
+    </Centre>
   );
 }
 
@@ -498,10 +574,12 @@ function EditedWatch(p: OpP) {
   const { st, R } = useTw(p);
   const mode = st.mode ?? 'auto';
   const text = R.list[R.idx] ?? '';
+  // Held by the preview (nothing typed yet): an edit changes nothing, and an action would release it.
+  const held = !!p.time.held;
   const seen = useRef<{ idx: number; text: string; shown: number } | null>(null);
   useEffect(() => {
     const s = seen.current;
-    if (s && s.idx === R.idx && s.text !== text && (mode === 'run' || mode === 'paused' || mode === 'auto') && R.vis.phase === 'typing') act('edited', { cur: R.idx, typed: s.shown });
+    if (s && !held && s.idx === R.idx && s.text !== text && (mode === 'run' || mode === 'paused' || mode === 'auto') && R.vis.phase === 'typing') act('edited', { cur: R.idx, typed: s.shown });
     seen.current = { idx: R.idx, text, shown: R.vis.shown };
   });
   return null;
@@ -608,19 +686,9 @@ function Inspector({ layer, edit }: { layer: TwLayer; edit: (fn: (l: TwLayer) =>
             ['continue', t('Continue')],
           ]}
         />
-        <Seg
-          label={t('Launch')}
-          value={!!layer.manualStart}
-          onChange={(v) => edit((l) => void (l.manualStart = v || undefined))}
-          options={[
-            [false, t('At the In')],
-            [true, t('Manual')],
-          ]}
-        />
       </Section>
       {c.more.length > 0 && (
         <Section id="tw-chain" title={t('Chaining')}>
-          <Num label={tc('typewriter', 'Hold')} path="hold" value={c.hold} min={0} max={10} step={0.1} precision={1} unit="s" />
           <Seg
             label={t('Erase')}
             path="erase"
@@ -666,7 +734,13 @@ export default defineWidget({
       <TwBar layer={layer} state={state} data={data} act={act} time={time} item={item} />
     </>
   ),
-  Compact: ({ layer, state, data, act, time, item }) => <TwBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
+  // Chained on Continue: F2 brings the next text once the one shown is typed (until the last one).
+  waits: (l, state, data, item) => {
+    const st = (state ?? {}) as State;
+    if (textsOf(l, data).length < 2 || !chainOf(cfg(l), st).auto) return false;
+    const R = runOf(l, st, data, num(l.props.fontSize ?? 64), num(l.props.letterSpacing ?? 0), num(l.props.width ?? 800), num(l.props.height ?? 200), Date.now(), layerAgeFrames(item, item.age ?? 0, l) / 50);
+    return waitsNext(R, st);
+  },
   // The Operator's preview holds it until its Start: nothing typed yet.
   plays: () => 'start',
   warnings: (layer, { data, state, r }) => {

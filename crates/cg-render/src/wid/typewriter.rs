@@ -4,7 +4,7 @@
 //! the part not typed yet is simply not drawn, so no word ever jumps line.
 
 use cg_core::wid::typewriter::{
-    elapsed, has_next, now_at, texts, timeline, Appear, Config, Erase, Mode, State, Timeline,
+    auto_next, elapsed, now_at, texts, timeline, Appear, Config, Erase, Mode, State, Timeline,
 };
 use cg_core::{LayerKind, Prop, TextAlign, VerticalAlign};
 use tiny_skia::{FillRule, PathBuilder};
@@ -138,7 +138,8 @@ pub(crate) struct Vis {
     pub phase: &'static str,
 }
 
-pub(crate) fn visible(c: &Config, tl: &Timeline, e: f64, next: bool, idle: bool) -> Vis {
+/// `hold`: the pause between two texts, s (the text stays typed that long).
+pub(crate) fn visible(c: &Config, tl: &Timeline, e: f64, next: bool, idle: bool, hold: f64) -> Vis {
     let n = tl.g.len();
     let mut k = vec![0.0f32; n];
     if idle {
@@ -149,7 +150,7 @@ pub(crate) fn visible(c: &Config, tl: &Timeline, e: f64, next: bool, idle: bool)
             phase: "idle",
         };
     }
-    let hold_end = tl.type_end + c.hold.max(0.0);
+    let hold_end = tl.type_end + hold.max(0.0);
     if e < tl.type_end || !next || e < hold_end {
         let mut shown = 0;
         for (i, kv) in k.iter_mut().enumerate() {
@@ -262,8 +263,10 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         now_at(c, st, n, e, &mut tl_of)
     };
     let tl = tl_of(idx);
-    let next = has_next(c, n, idx);
-    let vis = visible(c, &tl, el, next, idle);
+    // The text erases itself only when the next one comes by itself (chained by time).
+    let next = auto_next(c, st, n, idx);
+    let hold = cg_core::wid::typewriter::chain(c, st).hold;
+    let vis = visible(c, &tl, el, next, idle, hold);
     let (g, lay) = lay_of(idx);
 
     // Plate.

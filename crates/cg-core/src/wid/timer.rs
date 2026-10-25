@@ -351,6 +351,8 @@ pub struct Config {
     // start
     pub start_mode: StartMode,
     pub start_at: String,
+    /// Seconds the Operator's − / + squares add (1, 10 or 60).
+    pub adj_step: f64,
 }
 
 impl Default for Config {
@@ -406,6 +408,7 @@ impl Default for Config {
             banner_color: "#ff3b5c".into(),
             start_mode: StartMode::Manual,
             start_at: "20:00:00".into(),
+            adj_step: 10.0,
         }
     }
 }
@@ -497,7 +500,12 @@ pub fn eff_in<'a>(layer: &'a Layer, data: &Data, project_lang: &str) -> Option<E
             manual_start: layer.manual_start,
             format: fmt,
             zone,
+            // The layer's manual start (Continue / trigger) carries the wait: its clock
+            // starts the timer. Older layers still waiting for Play keep « manual »;
+            // « External » behaved as it.
             start: match c.start_mode {
+                StartMode::At => StartMode::At,
+                _ if layer.manual_start => StartMode::Auto,
                 StartMode::Ext => StartMode::Manual,
                 m => m,
             },
@@ -1390,6 +1398,35 @@ mod tests {
         .unwrap();
         assert_eq!(text(&l, &st, T0 + 69_000, 0), "45:01");
         assert_eq!(text(&l, &st, T0 + 72_000, 0), "45:07");
+    }
+
+    #[test]
+    fn a_layer_starting_on_continue_follows_its_clock() {
+        // The layer's start (Continue / trigger) wins over the older « manual » wait: the
+        // timer follows the layer's clock, 0 until the server starts it.
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"timer","format":"mm:ss","timerMode":"countdown","cdDuration":60000,"startMode":"manual","manualStart":true,"props":{}}"#,
+        );
+        let d = data();
+        let e = eff(&l, &d).unwrap();
+        assert_eq!(e.start, StartMode::Auto);
+        assert!(e.manual_start);
+        assert_eq!(e.c.adj_step, 10.0);
+        assert_eq!(text(&l, &State::default(), T0, 0), "01:00");
+        assert_eq!(text(&l, &State::default(), T0, 12_000), "00:48");
+        // Without the layer's start, « manual » still waits for Play.
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"timer","format":"mm:ss","timerMode":"countdown","cdDuration":60000,"startMode":"manual","adjStep":60,"props":{}}"#,
+        );
+        let e = eff(&l, &d).unwrap();
+        assert_eq!(e.start, StartMode::Manual);
+        assert_eq!(e.c.adj_step, 60.0);
+        assert_eq!(text(&l, &State::default(), T0, 12_000), "01:00");
+        // A fixed time of day stays.
+        let l = layer(
+            r#"{"id":"a","name":"C","type":"clock","mode":"timer","format":"mm:ss","timerMode":"countdown","startMode":"at","manualStart":true,"props":{}}"#,
+        );
+        assert_eq!(eff(&l, &d).unwrap().start, StartMode::At);
     }
 
     #[test]

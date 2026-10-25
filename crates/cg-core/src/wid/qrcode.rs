@@ -219,6 +219,9 @@ pub struct Config {
     pub label: Label,
     /// URL type: addresses prepared for the Operator (none = the layer's `data`).
     pub addresses: Vec<Address>,
+    /// The Operator gets the list of the prepared addresses (the control
+    /// centre's row, when the Designer exposes it; the arrows stay).
+    pub op_address: bool,
 }
 
 impl Default for Config {
@@ -242,6 +245,7 @@ impl Default for Config {
             min_px: 6,
             label: Label::default(),
             addresses: Vec::new(),
+            op_address: true,
         }
     }
 }

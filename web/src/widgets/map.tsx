@@ -5,13 +5,15 @@
 // Same picture as crates/cg-render/src/wid/map.rs (line for line); actions in
 // crates/cg-core/src/wid/map.rs; geometry and logic in ./map-geo.ts.
 import { useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Map as MapIcon, MapPin, Route as RouteIcon, RotateCcw, Search, Shapes, Star, Tag } from 'lucide-react';
+import { ChevronsRight, Map as MapIcon, MapPin, Pause, Play, Route as RouteIcon, RotateCcw, Search, Shapes, SkipBack, SkipForward, Square, Tag, Zap, type LucideIcon } from 'lucide-react';
 import { num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { t, tc, tl, tn } from '../i18n';
 import { useApp } from '../store';
-import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, OpRow, Row, Section, Seg, Text, Toggle, useKeys, type Warning } from './kit';
-import { OpBar } from './opbar';
+import { Dropdown } from '../ui/Dropdown';
+import { Btns, ColorPick, defineWidget, GridEditor, ListEditor, Num, RangeNum, Row, Section, Seg, Text, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
+import { ADVANCE_MODES, Centre, Countdown, Dots, GAP, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
+import { useLiveTime } from './table-text';
 import { col, ellipse, poly, rrect, Pt, type Cmd, type RGBA } from './scoreboard-paint';
 import {
   attribution,
@@ -21,8 +23,10 @@ import {
   hexMix,
   keyOf,
   layerOn,
+  live,
   markerOn,
   markerPos,
+  nextIn,
   normLon,
   placeName,
   placeNames,
@@ -31,9 +35,13 @@ import {
   routeOn,
   routeProgress,
   sample,
+  shownState,
+  shownView,
+  startIndex,
   STYLES,
   unproject,
   viewAt,
+  waitsContinue,
   world,
   wraps,
   zoneFills,
@@ -671,19 +679,6 @@ const LAYER_NAMES = { markers: 'Markers', routes: 'Routes', zones: 'Zones', labe
 const LAYER_ICONS = { markers: MapPin, routes: RouteIcon, zones: Shapes, labels: Tag } as const;
 
 type Act = (op: string, args?: unknown) => void;
-interface OpP {
-  layer: Config;
-  state: unknown;
-  act: Act;
-  item?: unknown;
-  lang?: string;
-}
-
-/** What the map shows: the place gone to, the key view or nothing (the template's view). */
-function shownName(k: K, s: State, lang: string): string | undefined {
-  if (s.goto) return placeName(k, s.goto.name, s.goto.name, lang);
-  return s.cur != null ? k.views[s.cur]?.name : undefined;
-}
 
 /** « Aller à… »: a city, a zone (name or code) or « lat, lon »; Enter goes there. */
 function GotoField({ act, lang, width = 120 }: { act: Act; lang: string; width?: number }) {
@@ -701,7 +696,8 @@ function GotoField({ act, lang, width = 120 }: { act: Act; lang: string; width?:
   return (
     <>
       <input
-        style={{ width, height: 28 }}
+        className="cc-fld"
+        style={{ width }}
         value={q}
         list={open ? id : undefined}
         placeholder={t('Go to…')}
@@ -721,91 +717,129 @@ function GotoField({ act, lang, width = 120 }: { act: Act; lang: string; width?:
           ))}
         </datalist>
       )}
-      <button className="opx-sq" title={t('Go to…')} disabled={!q.trim()} onClick={go}>
-        <Search size={13} />
+      <button className="cc-sq" title={t('Go to…')} disabled={!q.trim()} onClick={go}>
+        <Search size={15} />
       </button>
     </>
   );
 }
 
-/** The one bar of the map (validated grammar §1), identical in the Designer's Operator section
- *  and the Operator's rows: the view shown · previous / next view, ↺ · « Go to… » · ⋯ (layers…). */
-function MapBar({ layer, state, act, item, lang = 'fr' }: OpP) {
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
-  const shown = shownName(k, s, lang);
-  useKeys({ ArrowRight: () => act('next'), ArrowLeft: () => act('prev') });
-  return (
-    <OpBar more={<More layer={layer} state={state} act={act} lang={lang} />}>
-      <OpRow
-        noMore
-        value={
-          shown && (
-            <span title={shown} style={{ display: 'inline-block', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>
-              {shown}
-            </span>
-          )
-        }
-        list={[
-          k.views.length > 0 && { icon: ChevronLeft, title: t('Previous view'), onClick: () => act('prev') },
-          k.views.length > 0 && { icon: ChevronRight, title: `${t('Next view')} · →`, onClick: () => act('next') },
-          { icon: RotateCcw, title: t('Reset'), confirm: item ? t('{name} is on air: back to the template view?', { name: (layer as { name?: string }).name ?? t('Map') }) : undefined, onClick: () => act('reset') },
-        ]}
-      />
-      <GotoField act={act} lang={lang} />
-    </OpBar>
-  );
-}
+type OpP = { layer: Config; state: unknown; act: Act; item?: unknown; lang?: string; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
 /** A zone's name in the lists (departements with their code). */
 const zoneLabel = (k: K, z: Zone, level: string, lang: string) => `${level === 'deps' ? `${z.id} ` : ''}${placeName(k, z.en || z.name, z.name, lang)}`;
 const zoneOptions = (k: K, lang: string) => zonesOf(k.zones.level).map((z) => ({ value: z.id, label: zoneLabel(k, z, k.zones.level, lang) })).sort((a, b) => (k.zones.level === 'deps' ? 0 : a.label.localeCompare(b.label, lang)));
 
-/** Under ⋯: the layers, the zone put forward, the markers, a route to draw. */
-function More({ layer, state, act, lang = 'fr' }: OpP) {
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
+/** A pad of a row: on (violet) or off; an icon, or a short text. */
+function Pad({ on, title, icon: Icon, text, onClick }: { on: boolean; title: string; icon?: LucideIcon; text?: string; onClick: () => void }) {
   return (
-    <div className="wk-oprow">
-      <OpRow
-        noMore
-        list={(['markers', 'routes', 'zones', 'labels'] as const).map((l) => {
-          const on = layerOn(k, s, l);
-          return { icon: LAYER_ICONS[l], title: t(LAYER_NAMES[l]), tone: on ? 'violet' : undefined, onClick: () => act('layer', { name: l, on: !on }) };
-        })}
-      />
-      <Star size={13} className="muted" />
-      <select className="opx-output" title={t('Put forward')} value={s.highlight ?? ''} onChange={(e) => act('highlight', { zone: e.target.value })}>
-        <option value="">—</option>
-        {zoneOptions(k, lang).map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+    <button className={`cc-sq ${on ? 'violet' : ''} ${text ? 'txt' : ''}`} title={title} aria-pressed={on} onClick={onClick}>
+      {text ? <span className="cc-txt">{text}</span> : Icon && <Icon size={15} />}
+    </button>
+  );
+}
+const PADS: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 4 };
+
+/**
+ * The control centre of the map (web/src/widgets/centre.tsx). Line 1: the key view shown (or the
+ * place gone to), the countdown to the next view or what it waits for. Line 2: by hand → previous
+ * / next; timed → play / pause, stop; on Continue → Continue, stop; on a trigger → fire it, stop;
+ * then Reset. Line 3: chain the views, how the next one comes, the time per view or the trigger
+ * (in the Operator, on the air only), « Go to », the zone put forward (exposable), a route to draw,
+ * the layers and the markers (pads, exposable).
+ */
+function MapBar(p: OpP) {
+  const { act, layer, item, lang = 'fr' } = p;
+  const mode = useCentreMode();
+  const b = useBound();
+  const designer = mode === 'designer';
+  const { now, age } = useLiveTime(p.time);
+  const k = cfg(layer);
+  const s = live(k, (p.state ?? {}) as State, now, age);
+  const n = k.views.length;
+  const [idx, kk] = shownView(k, s, now);
+  const cur = idx ?? (s.goto ? undefined : startIndex(k));
+  const place = s.goto && !kk ? placeName(k, s.goto.name, s.goto.name, lang) : undefined;
+  const name = place ?? (cur != null ? k.views[cur]?.name : undefined);
+  // Held by the preview: its timed views wait for their Play.
+  const held = !!p.time.held;
+  const chained = !!s.auto;
+  const on: AdvanceMode = chained ? (s.on ?? 'timed') : 'timed';
+  const running = chained && on === 'timed' && !s.pausedAt && !held;
+  const trigger = s.trigger || k.autoTrigger;
+  const secs = s.interval || k.autoSecs || 6;
+  const left = nextIn(s, now);
+  // The Designer edits the template (what the take starts with); the Operator the air only.
+  const setChained = (v: boolean) => (designer ? b.set('autoViews', v) : act(v ? 'advance' : 'stop', v ? { on: k.autoOn, seconds: k.autoSecs, trigger: k.autoTrigger } : undefined));
+  const setOn = (v: AdvanceMode) => (designer ? b.set('autoOn', v) : act('advance', { on: v, seconds: secs, trigger }));
+  const setSecs = (v: number) => (designer ? b.set('autoSecs', v) : act('auto', { seconds: v }));
+  const setTrigger = (v: string) => (designer ? b.set('autoTrigger', v) : act('advance', { on: 'trigger', trigger: v }));
+  const chainedShown = designer ? k.autoViews : chained;
+  const onShown = designer ? k.autoOn : on;
+  const secsShown = designer ? k.autoSecs : secs;
+  const triggerShown = designer ? k.autoTrigger : trigger;
+  useKeys({
+    ArrowLeft: () => n > 0 && act('prev'),
+    ArrowRight: () => n > 0 && act('next'),
+    p: () => n > 1 && on === 'timed' && act(running ? 'pause' : chained ? 'resume' : 'auto', chained ? undefined : { seconds: secs }),
+  });
+  const status = n < 2 || !chained ? undefined : on === 'timed' ? (running && left !== undefined ? <Countdown left={left} total={s.interval || secs} /> : undefined) : on === 'continue' ? (waitsContinue(k, s, now) ? <WaitsContinue /> : undefined) : <WaitsTrigger name={trigger} />;
+  const actions: Line2Item[] = [
+    ...(n > 0
+      ? !chained
+        ? [
+            { icon: SkipBack, label: tc('cc', 'Previous'), key: '←', onClick: () => act('prev') },
+            { icon: SkipForward, label: tc('cc', 'Next'), key: '→', onClick: () => act('next') },
+          ]
+        : on === 'timed'
+          ? [running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause') } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: () => act(s.pausedAt ? 'resume' : 'auto', s.pausedAt ? undefined : { seconds: secs }) }]
+          : on === 'continue'
+            ? [{ icon: ChevronsRight, label: tc('cc', 'Continue'), key: 'F2', main: true, disabled: !waitsContinue(k, s, now), onClick: () => act('next') }]
+            : [{ icon: Zap, label: trigger || tc('cc', 'Fire the trigger'), main: true, onClick: () => act('next') }]
+      : []),
+    n > 0 && chained && { icon: Square, label: tc('cc', 'Stop'), onClick: () => act('stop') },
+    GAP,
+    { icon: RotateCcw, label: tc('cc', 'Reset'), confirm: item ? t('{name} is on air: back to the template view?', { name: (layer as { name?: string }).name ?? t('Map') }) : undefined, onClick: () => act('reset') },
+  ];
+  const readout = n > 0 ? { k: t('View'), v: cur != null ? cur + 1 : '—', of: n, sub: name, after: <Dots at={cur ?? -1} count={n} /> } : name ? { v: name } : undefined;
+  const zones = [{ value: '', label: '—' }, ...zoneOptions(k, lang)];
+  const hl = designer ? k.hlZone : (s.highlight ?? '');
+  return (
+    <Centre name={(layer as { name?: string }).name} readout={readout} status={status} actions={actions}>
+      <Toggle label={t('Chain the views')} value={chainedShown} onChange={setChained} />
+      {chainedShown && <Seg label={t('Next view')} value={onShown} onChange={setOn} options={ADVANCE_MODES()} />}
+      {chainedShown && onShown === 'timed' && <RangeNum label={t('Time per view')} value={secsShown} min={2} max={30} step={1} unit="s" onRelease onChange={setSecs} />}
+      {chainedShown && onShown === 'trigger' && <Text label={tc('cc', 'Trigger name')} value={triggerShown} onChange={setTrigger} />}
+      <Row label={tc('cc', 'Go to')}>
+        <GotoField act={act} lang={lang} />
+      </Row>
+      <Row label={t('Put forward')} expose="hlZone" exposeValue={hl} exposeOptions={zones.map((z) => [z.value, z.label] as [string, string])}>
+        <Dropdown value={zones.some((z) => z.value === hl) ? hl : ''} options={zones} onChange={(v) => (designer ? b.set('hlZone', v) : act('highlight', { zone: v }))} />
+      </Row>
       {k.routes.length > 0 && (
-        <>
-          <RouteIcon size={13} className="muted" />
-          <select className="opx-output" title={t('Draw a route')} value="" onChange={(e) => e.target.value && act('route', { id: e.target.value })}>
-            <option value="">{t('Draw a route')}</option>
-            {k.routes.map((r) => (
-              <option key={keyOf(r)} value={keyOf(r)}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </>
+        <Row label={t('Route')}>
+          <Dropdown value="" options={[{ value: '', label: t('Draw a route') }, ...k.routes.map((r) => ({ value: keyOf(r), label: r.name }))]} onChange={(v) => v && act('route', { id: v })} />
+        </Row>
       )}
-      {k.markers.length > 0 && (
-        <OpRow
-          noMore
-          list={k.markers.map((m) => {
-            const on = markerOn(s, m);
-            return { icon: MapPin, tag: m.name || '—', title: m.name, tone: on ? 'violet' : undefined, onClick: () => act('marker', { id: keyOf(m), on: !on }) };
+      <Row label={t('Layers')} expose="opLayers" exposeValue={true}>
+        <span style={PADS}>
+          {(['markers', 'routes', 'zones', 'labels'] as const).map((l) => {
+            const on = designer ? k.layers[l] : layerOn(k, s, l);
+            return <Pad key={l} on={on} icon={LAYER_ICONS[l]} title={tc('cc', LAYER_NAMES[l])} onClick={() => (designer ? b.set(`layers.${l}`, !on) : act('layer', { name: l, on: !on }))} />;
           })}
-        />
+        </span>
+      </Row>
+      {k.markers.length > 0 && (
+        <Row label={tc('cc', 'Markers')} expose="opMarkers" exposeValue={true}>
+          <span style={PADS}>
+            {k.markers.map((m, i) => {
+              const on = designer ? m.on : markerOn(s, m);
+              return <Pad key={keyOf(m) || i} on={on} text={m.name || '—'} title={m.name} onClick={() => (designer ? b.set(`markers.${i}.on`, !on) : act('marker', { id: keyOf(m), on: !on }))} />;
+            })}
+          </span>
+        </Row>
       )}
-    </div>
+    </Centre>
   );
 }
 
@@ -872,7 +906,9 @@ export default defineWidget({
   live: () => true,
   Render: ({ layer, w, h, data, time, state, designer, lang }) => {
     const p = new Pt();
-    paint(p, cfg(layer), (state ?? {}) as State, data, time.nowMs, w, h, !!designer, lang ?? 'fr');
+    const k = cfg(layer);
+    // The take's chained views and highlight, the timed views gone to so far.
+    paint(p, k, shownState(k, (state ?? {}) as State, time.nowMs, time.ageSecs), data, time.nowMs, w, h, !!designer, lang ?? 'fr');
     return p.svg(w, h);
   },
   Overlay: ({ layer, w, h, scale, edit }) => (cfg(layer).dragPans ? <PanOverlay layer={layer} w={w} h={h} scale={scale} edit={edit as never} /> : null),
@@ -1142,9 +1178,18 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, act, item, lang }) => <MapBar layer={layer} state={state} act={act} item={item} lang={lang} />,
-  Compact: ({ layer, state, act, item, lang }) => <MapBar layer={layer} state={state} act={act} item={item} lang={lang} />,
-  More: ({ layer, state, act, lang }) => <More layer={layer} state={state} act={act} lang={lang} />,
+  Operator: (p) => <MapBar {...p} />,
+  // Chained on Continue: F2 goes to the next view (until the last one).
+  waits: (l, state, _data, item) => {
+    const k = cfg(l);
+    const now = Date.now();
+    return waitsContinue(k, live(k, (state ?? {}) as State, now, (item.age ?? 0) / 50), now);
+  },
+  // Timed views: the Operator's preview holds them on the view shown until their Play.
+  plays: (l) => {
+    const k = cfg(l);
+    return k.autoViews && k.autoOn === 'timed' && k.autoSecs > 0 && k.views.length > 1 && 'onAir';
+  },
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;

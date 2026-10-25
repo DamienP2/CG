@@ -771,9 +771,15 @@ pub struct Layer {
     pub visible: bool,
     #[serde(default)]
     pub locked: bool,
-    /// Timed widgets (timer, ticker…) wait for the operator to start them.
+    /// Timed widgets (timer, ticker…) wait for the operator to start them:
+    /// on Continue, or on the trigger `start_trigger` when `start_on` is
+    /// "trigger".
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub manual_start: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_on: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub start_trigger: String,
     /// Scale X and Y change together (designer setting).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scale_lock: bool,
@@ -1465,6 +1471,21 @@ impl Template {
             if let Some(kind) = legacy_scroll(&l.kind) {
                 l.kind = kind;
                 changed = true;
+            }
+            // A timer started by hand (« Manual » / « External ») now waits for Continue (F2)
+            // as every layer does (manual_start): its own start mode is At the In from then on.
+            if let LayerKind::Clock { x, .. } = &mut l.kind {
+                use crate::wid::timer::{StartMode, TimerMode};
+                if matches!(
+                    x.timer_mode,
+                    Some(TimerMode::Stopwatch | TimerMode::Countdown)
+                ) && matches!(x.start_mode, StartMode::Manual | StartMode::Ext)
+                    && !l.manual_start
+                {
+                    l.manual_start = true;
+                    x.start_mode = StartMode::Auto;
+                    changed = true;
+                }
             }
             // A typewriter wired to a data set's table takes its rows as lines, like a Text.
             if let LayerKind::Typewriter { text, .. } = &mut l.kind {

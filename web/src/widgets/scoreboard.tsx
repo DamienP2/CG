@@ -3,16 +3,17 @@
 // Same picture as crates/cg-render/src/wid/scoreboard.rs (line for line);
 // rules and actions in crates/cg-core/src/wid/scoreboard.rs.
 import { useState } from 'react';
-import { CircleCheck, CircleX, Flag, Hand, Minus, Plus, RotateCcw, SkipForward, Timer, Trophy, Undo2, UserMinus } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Minus, Pause, Play, RotateCcw, SkipBack, SkipForward, Trophy, Undo2 } from 'lucide-react';
 import { interpolateText, num } from '../engine/evaluate';
 import type { Data } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { Dropdown } from '../ui/Dropdown';
 import { useApp } from '../store';
-import { t, tl } from '../i18n';
+import { t, tc, tl } from '../i18n';
 import { hexMix } from './map-geo';
 import { AssetPicker } from '../designer/Inspector';
-import { Btns, ColorPick, Content, defineWidget, getPath, MoreButton, Num, OpRow, PlayToggle, Readout, Row, Section, Seg, Select, Text, Toggle, type Warning, useBound, useFrame, useKeys } from './kit';
+import { Btns, ColorPick, Content, defineWidget, getPath, Num, Row, Section, Seg, Select, Text, Toggle, type Warning, useBound, useFrame, useKeys } from './kit';
+import { Centre, GAP, SetInput } from './centre';
 import { col, ink, mix, poly, rrect, tf, ellipse, Pt, type Cmd } from './scoreboard-paint';
 
 export type Sport = 'football' | 'rugby' | 'basketball' | 'handball' | 'volleyball' | 'tennis' | 'generic';
@@ -66,6 +67,16 @@ export interface Config {
   font?: string;
   /** The texts the board writes, by English wording (empty = in the project's language). */
   texts?: Record<string, string>;
+  /** The rows of the control centre the Operator gets (when the Designer exposes them). */
+  opClock?: boolean;
+  opFouls?: boolean;
+  opTimeouts?: boolean;
+  opSusp?: boolean;
+  opShot?: boolean;
+  opShootout?: boolean;
+  opSwap?: boolean;
+  opScore?: boolean;
+  opAdded?: boolean;
 }
 
 interface TeamState {
@@ -295,6 +306,15 @@ function cfg(c: Config) {
     bg: c.bg ?? '#05060c',
     font: c.font ?? 'Inter',
     texts: c.texts ?? {},
+    opClock: c.opClock ?? true,
+    opFouls: c.opFouls ?? true,
+    opTimeouts: c.opTimeouts ?? true,
+    opSusp: c.opSusp ?? true,
+    opShot: c.opShot ?? true,
+    opShootout: c.opShootout ?? false,
+    opSwap: c.opSwap ?? false,
+    opScore: c.opScore ?? true,
+    opAdded: c.opAdded ?? true,
   };
 }
 type K = ReturnType<typeof cfg>;
@@ -992,89 +1012,58 @@ function pointTypes(k: K): [number, number][] {
   return [...seen.entries()].sort((a, b) => b[0] - a[0]);
 }
 
-/** The Operator's compact rows: the score and clock, undo, start / pause; then per team − (its last point) and one + per point type. */
-function Compact({ layer, state, data, act }: OpP) {
-  const now = useFrame();
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
-  const pr = P(k);
-  const n = teamCount(k);
-  const order = Array.from({ length: n }, (_, i) => (s.swapped ? n - 1 - i : i));
-  const sc = scores(k, s, data, now);
-  const tn = tennisOf(s);
-  const ck = clockOn(k, s) ? clockText(k, s, now) : null;
-  const hasClock = pr.kind === 'points' && k.clock.dir !== 'none';
-  const score = pr.kind === 'tennis' ? `${tn.games.join('–')} · ${[0, 1].map((i) => tennisPts(tn, i)).join('–')}` : sc.join('–');
-  const types = pointTypes(k);
+/** A small text pad of the centre (a team's foul, a shot clock value…). */
+function Pad({ text, title, disabled, color, onClick }: { text: string; title: string; disabled?: boolean; color?: string; onClick: () => void }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-      <div className="wk-oprow">
-        <b className="wk-oprow-v">{ck ? `${score} · ${ck[0]}` : score}</b>
-        {hasClock && <PlayToggle state={s.clock?.running ? 'run' : (s.clock?.base ?? 0) > 0 ? 'pause' : 'stop'} onStart={() => act('clockStart')} onPause={() => act('clockPause')} onResume={() => act('clockStart')} />}
-        <OpRow noMore list={[{ icon: Undo2, title: t('Undo'), disabled: !(s.hist?.length ?? 0), onClick: () => act('undo') }]} />
-        <MoreButton />
-      </div>
-      <div className="wk-oprow" style={{ gap: 10 }}>
-        {order.map((i) => {
-          const sh = shortOf(team(k, i));
-          return (
-            <OpRow
-              key={i}
-              noMore
-              list={[
-                { icon: Minus, tag: sh, title: pr.kind === 'tennis' ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh }), onClick: () => act('sub', { team: i }) },
-                ...types.map(([v, j]) => ({ icon: Plus, tag: String(v), title: pr.kind === 'points' ? `${sh} +${v}` : t('POINT {team}', { team: sh }), onClick: () => act('add', { team: i, pts: j }) })),
-              ]}
-            />
-          );
-        })}
-      </div>
-    </div>
+    <button className="cc-sq txt" title={title} disabled={disabled} style={color ? { color } : undefined} onClick={onClick}>
+      <span className="cc-txt">{text}</span>
+    </button>
   );
 }
 
-/** Under ⋯: period, possession, fouls, timeouts, shot clock, suspensions, shoot-out kicks. */
-function More({ layer, state, data, act, lang }: OpP) {
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
-  const pr = P(k);
-  const n = teamCount(k);
-  const order = Array.from({ length: n }, (_, i) => (s.swapped ? n - 1 - i : i));
-  void data;
-  const sh = (i: number) => shortOf(team(k, i));
-  const per = s.period ?? 0;
-  const next = pr.periods[per + 1];
-  const card = k.preset === 'handball' ? '2 min' : k.preset === 'rugby' ? 'yellow' : '';
+/** The score typed by hand: one small field per team (placeholder: its score now) and the Régler square → `set`. */
+function ScoreSet({ n, names, scores, onSet }: { n: number; names: string[]; scores: number[]; onSet: (scores: string[]) => void }) {
+  const [v, setV] = useState<string[]>([]);
+  const dirty = v.some((x) => x?.trim());
+  const send = () => {
+    if (!dirty) return;
+    onSet(Array.from({ length: n }, (_, i) => (v[i]?.trim() ? v[i].trim() : String(scores[i]))));
+    setV([]);
+  };
   return (
-    <OpRow
-      noMore
-      list={[
-        k.fields.period && pr.kind !== 'tennis' && { icon: SkipForward, tag: next ? tr(k, lang ?? 'fr', next) : undefined, title: t('Next period'), disabled: !next, onClick: () => act('nextPeriod') },
-        k.fields.poss && { icon: Flag, tag: sh(((s.poss ?? 0) + 1) % n), title: `${t(pr.poss)} → ${sh(((s.poss ?? 0) + 1) % n)}`, onClick: () => act('possession') },
-        ...(k.fields.fouls && pr.kind !== 'tennis' ? order.map((i) => ({ icon: Hand, tag: sh(i), title: t('Foul {team}', { team: sh(i) }), onClick: () => act('foul', { team: i }) })) : []),
-        ...(k.fields.timeouts && pr.timeouts > 0 ? order.map((i) => ({ icon: Timer, tag: sh(i), title: t('Timeout {team}', { team: sh(i) }), disabled: ts(s, i).toUsed >= pr.timeouts, onClick: () => act('timeout', { team: i }) })) : []),
-        ...(shotOn(k, s) ? [k.shot.len, k.shot.reset].map((v) => ({ icon: RotateCcw, tag: String(v), title: t('Shot clock: {n} s', { n: v }), onClick: () => act('shot', { s: v }) })) : []),
-        ...(k.fields.susp ? order.map((i) => ({ icon: UserMinus, tag: sh(i), title: t('Suspension {team}', { team: sh(i) }), onClick: () => (card ? act('card', { team: i, color: card }) : act('suspension', { team: i })) })) : []),
-        ...(shootoutOn(k, s)
-          ? order.flatMap((i) => [
-              { icon: CircleCheck, tag: sh(i), tone: 'green' as const, title: t('Kick scored · {team}', { team: sh(i) }), onClick: () => act('penalty', { team: i, scored: true }) },
-              { icon: CircleX, tag: sh(i), title: t('Kick missed · {team}', { team: sh(i) }), onClick: () => act('penalty', { team: i, scored: false }) },
-            ])
-          : []),
-      ]}
-    />
+    <>
+      {Array.from({ length: n }, (_, i) => (
+        <input
+          key={i}
+          className="cc-fld mono"
+          style={{ width: 56 }}
+          inputMode="numeric"
+          title={names[i]}
+          placeholder={String(scores[i])}
+          value={v[i] ?? ''}
+          onChange={(e) => setV(Object.assign([...v], { [i]: e.target.value.replace(/[^\d]/g, '') }))}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') send();
+            if (e.key === 'Escape') setV([]);
+          }}
+        />
+      ))}
+      <button className="cc-sq" disabled={!dirty} title={tc('cc', 'Set')} onClick={send}>
+        <ArrowRight size={15} />
+      </button>
+    </>
   );
 }
 
-/** It has advanced controls under ⋯. */
-function hasMore(layer: Config, state: unknown) {
-  const k = cfg(layer);
-  const s = (state ?? {}) as State;
-  const pr = P(k);
-  return (k.fields.period && pr.kind !== 'tennis') || k.fields.poss || (k.fields.fouls && pr.kind !== 'tennis') || (k.fields.timeouts && pr.timeouts > 0) || shotOn(k, s) || k.fields.susp || shootoutOn(k, s);
-}
-
-function Operator({ layer, state, data, act, lang: lg, item }: OpP) {
+/**
+ * The control centre (web/src/widgets/centre.tsx). Line 1: the score, the period and the clock,
+ * the shot clock. Line 2: the clock's Play / Pause, Undo, the next period, the possession, the
+ * reset of the match. Then one row per team: − and the + of each point type. Line 3: the clock
+ * field, the fouls, timeouts, cards / suspensions, shot clock and shoot-out pads, the swap of the
+ * teams — each exposable (the Designer chooses what the Operator gets).
+ */
+function Board({ layer, state, data, act, lang: lg, item }: OpP) {
   const now = useFrame();
   const lang = lg ?? 'fr';
   const k = cfg(layer);
@@ -1083,161 +1072,142 @@ function Operator({ layer, state, data, act, lang: lg, item }: OpP) {
   const n = teamCount(k);
   const order = Array.from({ length: n }, (_, i) => (s.swapped ? n - 1 - i : i));
   const sc = scores(k, s, data, now);
-  const a = activeSource(k, s, data, now);
-  const aCol = a.id === 'feed' ? '#22c55e' : a.id === 'lost' ? '#f59e0b' : '#a594ff';
-  const ck = clockOn(k, s) ? clockText(k, s, now) : null;
   const tn = tennisOf(s);
-  const [setV, setSetV] = useState<string[]>([]);
-  const [clk, setClk] = useState('');
-  const [who, setWho] = useState(0);
-  const [player, setPlayer] = useState('');
+  const tennis = pr.kind === 'tennis';
+  const ck = clockOn(k, s) ? clockText(k, s, now) : null;
   const hasClock = pr.kind === 'points' && k.clock.dir !== 'none';
+  const running = !!s.clock?.running;
+  const score = tennis ? `${tn.games.join('–')} · ${[0, 1].map((i) => tennisPts(tn, i)).join('–')}` : sc.join(' – ');
+  const period = tennis ? tennisTag(tn) && tr(k, lang, tennisTag(tn)) : tr(k, lang, pr.periods[s.period ?? 0] ?? '');
+  const a = activeSource(k, s, data, now);
+  // The source in control, when a feed gives the score: ● flux / flux perdu / manuel.
+  const src = a.id === 'feed' ? ['#22c55e', t('feed')] : a.id === 'lost' ? ['#f59e0b', t('feed lost')] : a.id === 'priority' ? ['#a594ff', tc('cc', 'manual')] : null;
+  const subText = [period, ck ? `${ck[0]}${s.added ? ` +${s.added}` : ''}` : ''].filter(Boolean).join(' · ');
+  const sub = src ? (
+    <>
+      {subText && `${subText} · `}
+      <span style={{ color: src[0] }} title={activeText(a, k.source.rule)}>
+        ●
+      </span>{' '}
+      {src[1]}
+    </>
+  ) : (
+    subText || undefined
+  );
+  const types = pointTypes(k);
+  const sh = (i: number) => shortOf(team(k, i));
+  const per = s.period ?? 0;
+  const next = pr.periods[per + 1];
+  const hist = s.hist?.length ?? 0;
   const first = order[0];
   const second = order[1];
+  const toggleClock = () => hasClock && act(running ? 'clockPause' : 'clockStart');
   useKeys({
     q: () => act('add', { team: first }),
-    p: () => act('add', { team: second }),
+    m: () => act('add', { team: second }),
+    p: toggleClock,
     z: () => act('undo'),
   });
-  const score = pr.kind === 'tennis' ? `${tn.games.join('–')} · ${[0, 1].map((i) => tennisPts(tn, i)).join('–')}` : sc.join('–');
-  const ign = s.fx?.ignAt && now - s.fx.ignAt < 2500;
-  const hist = s.hist?.length ?? 0;
-  return (
-    <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: `${aCol}22`, border: `1px solid ${aCol}`, fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
-        <span style={{ width: 10, height: 10, borderRadius: '50%', background: aCol, boxShadow: `0 0 8px ${aCol}` }} />
-        {t('ACTIVE SOURCE: {source}', { source: activeText(a, k.source.rule) })}
-      </div>
-      <Readout sub={`${pr.kind === 'tennis' ? tennisTag(tn) && tr(k, lang, tennisTag(tn)) : tr(k, lang, pr.periods[s.period ?? 0] ?? '')}${ck ? ` · ${ck[0]}${s.added ? ` +${s.added}` : ''} ${s.clock?.running ? '▶' : '❚❚'}` : ''}${shotOn(k, s) ? ` · ${shotText(k, s, now)[0]}` : ''}${ign ? ` · ${t('⚠ double press ignored')}` : ''}`}>{score}</Readout>
-      {order.map((i) => {
-        const sh = shortOf(team(k, i));
+  const shot = shotOn(k, s);
+  const shootout = shootoutOn(k, s);
+  const cards = k.fields.cards && pr.cards.length > 0;
+  const susp = k.fields.susp && !pr.cards.includes('2 min');
+  const rows = order.map((i) => (
+    <div key={i} className="cc-team">
+      <span className="cc-tn" title={team(k, i).name}>
+        {sh(i)}
+      </span>
+      <button className="cc-sq" title={tennis ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh(i) })} onClick={() => act('sub', { team: i })}>
+        <Minus size={15} />
+      </button>
+      {types.map(([v, j], x) => {
+        const key = x === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'M' : undefined) : undefined;
+        const label = pr.kind === 'points' ? `${sh(i)} +${v}` : t('POINT {team}', { team: sh(i) });
         return (
-          <Btns
-            key={i}
-            label={sh}
-            list={[
-              { label: '−', cls: 'huge ghost', title: pr.kind === 'tennis' ? t('Remove a point in this game') : t('{team}: cancel its last point', { team: sh }), onClick: () => act('sub', { team: i }) },
-              ...pr.pts.map((pt, j) => ({ label: pr.kind === 'points' ? t(pt.label) : t('POINT {team}', { team: sh }), cls: 'huge', keyHint: j === 0 && n === 2 ? (i === first ? 'Q' : i === second ? 'P' : undefined) : undefined, onClick: () => act('add', { team: i, pts: j }) })),
-            ]}
-          />
+          <button key={v} className="cc-sq txt" title={key ? `${label} · ${key}` : label} onClick={() => act('add', { team: i, pts: j })}>
+            <span className="cc-txt">+{v}</span>
+          </button>
         );
       })}
-      {pr.kind === 'tennis' ? (
-        <>
-          <Btns label={t('Free entry')} list={[{ label: tn.free ? t('Free entry ON') : t('Free entry off'), cls: tn.free ? 'amber' : 'ghost', title: t('Type the points by hand (fallback)'), onClick: () => act('tennisFree', { on: !tn.free }) }]} />
-          {tn.free && (
-            <Row label={t('Points / games')}>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {[0, 1].map((i) => (
-                  <input key={`p${i}`} style={{ width: 70 }} placeholder={`${shortOf(team(k, i))} pts`} defaultValue={tn.freePts[i]} onBlur={(e) => act('tennisFree', { pts: [i ? tn.freePts[0] : e.target.value, i ? e.target.value : tn.freePts[1]] })} />
-                ))}
-                {[0, 1].map((i) => (
-                  <input key={`g${i}`} style={{ width: 60 }} type="number" min={0} max={7} placeholder={t('games')} defaultValue={tn.games[i]} onBlur={(e) => act('tennisFree', { games: [i ? tn.games[0] : +e.target.value, i ? +e.target.value : tn.games[1]] })} />
-                ))}
-              </div>
-            </Row>
-          )}
-        </>
-      ) : (
-        <Row label={t('Set score')}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            {Array.from({ length: n }, (_, i) => (
-              <input key={i} type="number" min={0} max={999} style={{ width: 64 }} value={setV[i] ?? ''} placeholder={shortOf(team(k, i))} onChange={(e) => setSetV(Object.assign([...setV], { [i]: e.target.value }))} title={shortOf(team(k, i))} />
-            ))}
-            <button
-              className="opx-btn wk-btn violet"
-              onClick={() => {
-                act('set', { scores: Array.from({ length: n }, (_, i) => setV[i] ?? String(sc[i])) });
-                setSetV([]);
-              }}
-            >
-              {t('Set score')}
-            </button>
-          </div>
+    </div>
+  ));
+  return (
+    <Centre
+      name={(layer as { name?: string }).name}
+      readout={{ v: score, sub }}
+      status={
+        shot && running ? (
+          <span className="cc-st" title={t('Shot clock')}>
+            {shotText(k, s, now)[0]}
+          </span>
+        ) : undefined
+      }
+      actions={[
+        hasClock && (running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: toggleClock } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: toggleClock }),
+        { icon: Undo2, label: t('Undo'), key: 'Z', disabled: !hist, onClick: () => act('undo') },
+        k.fields.period && !tennis && { icon: SkipBack, label: t('Prev period'), disabled: per <= 0, onClick: () => act('prevPeriod') },
+        k.fields.period && !tennis && { icon: SkipForward, label: next ? `${t('Next period')} · ${tr(k, lang, next)}` : t('Next period'), disabled: !next, onClick: () => act('nextPeriod') },
+        k.fields.poss && { icon: ArrowLeftRight, label: `${t(pr.poss)} → ${sh(((s.poss ?? 0) + 1) % n)}`, onClick: () => act('possession') },
+        GAP,
+        { icon: RotateCcw, label: t('Reset match'), tone: 'red', confirm: item ? t('Reset the whole match (scores, clock, cards)? Undo stays available.') : undefined, onClick: () => act('reset') },
+      ]}
+      rows={rows}
+    >
+      <Row label={t('Score')} expose="opScore" exposeValue={k.opScore}>
+        <ScoreSet n={n} names={order.map((i) => team(k, i).name)} scores={order.map((i) => sc[i])} onSet={(v) => act('set', { scores: order.reduce<string[]>((acc, i, x) => Object.assign(acc, { [i]: v[x] }), []) })} />
+      </Row>
+      {hasClock && (
+        <Row label={tc('cc', 'Clock')} expose="opClock" exposeValue={k.opClock}>
+          <SetInput placeholder="mm:ss" title={t('Set clock')} onSet={(v) => (/^\d{1,3}:\d{2}$/.test(v.trim()) ? void act('clockSet', { time: v.trim() }) : t('Clock format: mm:ss'))} />
         </Row>
       )}
-      {pr.kind !== 'tennis' && (
-        <Btns
-          label={t('Period')}
-          list={[
-            { label: t('Prev period'), cls: 'big', disabled: (s.period ?? 0) <= 0, onClick: () => act('prevPeriod') },
-            { label: t('Next period'), cls: 'big', disabled: (s.period ?? 0) >= pr.periods.length - 1, onClick: () => act('nextPeriod') },
-          ]}
-        />
-      )}
       {hasClock && (
-        <>
-          <Btns
-            label={t('Clock')}
-            list={[
-              s.clock?.running ? { label: t('❚❚ Pause'), cls: 'big amber', onClick: () => act('clockPause') } : (s.clock?.base ?? 0) > 0 ? { label: t('▶ Resume'), cls: 'big violet', onClick: () => act('clockStart') } : { label: t('▶ Start'), cls: 'big green', onClick: () => act('clockStart') },
-              { label: t('↺ Reset'), cls: 'big ghost', confirm: item ? t('Reset the clock of this period?') : undefined, onClick: () => act('clockReset') },
-            ]}
-          />
-          <Row label={t('Set clock')}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input className="mono" style={{ width: 80 }} value={clk} placeholder="mm:ss" onChange={(e) => setClk(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && clk.trim() && (act('clockSet', { time: clk }), setClk('')))} />
-              <button className="opx-btn wk-btn violet" disabled={!clk.trim()} onClick={() => (act('clockSet', { time: clk }), setClk(''))}>
-                {t('Set')}
-              </button>
-            </div>
-          </Row>
-          <Btns
-            label={t('Adjust')}
-            list={(
-              [
-                [-60, '−1 min'],
-                [-1, '−1 s'],
-                [1, '+1 s'],
-                [60, '+1 min'],
-              ] as const
-            ).map(([d, l]) => ({ label: l, onClick: () => act('clockAdjust', { secs: d }) }))}
-          />
-          {shotOn(k, s) && <Btns label={t('Shot clock')} list={[k.shot.len, k.shot.reset].map((v) => ({ label: `${v} s`, onClick: () => act('shot', { s: v }) }))} />}
-          <Btns label={t('Added time')} list={[...[1, 2, 3, 4, 5].map((m) => ({ label: `+${m}`, cls: s.added === m ? 'violet' : '', onClick: () => act('added', { min: m }) })), { label: t('None'), cls: 'ghost', onClick: () => act('added', { min: 0 }) }]} />
-        </>
+        <Row label={t('Added time')} expose="opAdded" exposeValue={k.opAdded}>
+          {[1, 2, 3, 5].map((m) => (
+            <Pad key={m} text={`+${m}`} title={s.added === m ? t('Added time: {n} min (click again to clear)', { n: m }) : t('Added time: {n} min', { n: m })} color={s.added === m ? 'var(--accent)' : undefined} onClick={() => act('added', { min: s.added === m ? 0 : m })} />
+          ))}
+        </Row>
       )}
-      {shootoutOn(k, s) &&
-        order.map((i) => (
-          <Btns
-            key={`pen${i}`}
-            label={`${tr(k, lang, 'Penalties')} · ${shortOf(team(k, i))}`}
-            list={[
-              { label: t('Scored'), cls: 'green', onClick: () => act('penalty', { team: i, scored: true }) },
-              { label: t('Missed'), cls: 'red', onClick: () => act('penalty', { team: i, scored: false }) },
-            ]}
-          />
-        ))}
-      {(pr.cards.length > 0 || pr.timeouts > 0 || k.fields.fouls || pr.kind === 'points') && (
-        <>
-          <Seg label={t('Team')} value={who} onChange={(v) => setWho(+v)} options={Array.from({ length: n }, (_, i) => [i, shortOf(team(k, i))] as const)} />
-          <Row label={t('Player')}>
-            <input value={player} placeholder={t('#10 Name')} onChange={(e) => setPlayer(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
-          </Row>
-          <Btns
-            label={t('Event')}
-            list={[
-              pr.kind === 'points' && { label: `⚽ ${t(pr.pts[0].label)}`, cls: 'big green', title: t('Scores with the player in the banner'), onClick: () => act('goal', { team: who, player }) },
-              ...pr.cards.map((c) => ({ label: `▮ ${t(CARD_NAMES[c] ?? c)}`, cls: c === 'red' ? 'red' : c === 'yellow' ? 'amber' : '', onClick: () => act('card', { team: who, player, color: c }) })),
-              pr.timeouts > 0 && { label: t('Timeout ({n} left)', { n: Math.max(0, pr.timeouts - ts(s, who).toUsed) }), cls: 'big', disabled: ts(s, who).toUsed >= pr.timeouts, onClick: () => act('timeout', { team: who }) },
-              k.fields.fouls && { label: t('+ Foul'), onClick: () => act('foul', { team: who }) },
-              k.fields.susp && !pr.cards.includes('2 min') && { label: t('Suspension'), onClick: () => act('suspension', { team: who }) },
-            ]}
-          />
-        </>
+      {k.fields.fouls && !tennis && (
+        <Row label={t('Fouls')} expose="opFouls" exposeValue={k.opFouls}>
+          {order.map((i) => (
+            <Pad key={i} text={sh(i)} title={`${t('Foul {team}', { team: sh(i) })} · ${ts(s, i).fouls}`} onClick={() => act('foul', { team: i })} />
+          ))}
+        </Row>
       )}
-      <Btns
-        label={t('Board')}
-        list={[
-          { label: `${t(pr.poss)} → ${shortOf(team(k, ((s.poss ?? 0) + 1) % n))}`, cls: 'big', onClick: () => act('possession') },
-          { label: t('⇄ Swap sides'), cls: 'big', onClick: () => act('swap') },
-          { label: (s.version ?? k.version) === 'full' ? t('Compact') : t('Full'), cls: 'big', onClick: () => act('version') },
-        ]}
-      />
-      <Btns list={[{ label: hist ? t('↶ Undo last action ({n})', { n: hist }) : t('↶ Undo last action'), cls: 'big violet', keyHint: 'Z', disabled: !hist, onClick: () => act('undo') }]} />
-      {a.id === 'priority' && <Btns list={[{ label: t('Back to feed now'), cls: 'green', onClick: () => act('backToFeed') }]} />}
-      <Btns list={[{ label: t('Reset match'), cls: 'ghost', confirm: item ? t('Reset the whole match (scores, clock, cards)? Undo stays available.') : undefined, onClick: () => act('reset') }]} />
-    </>
+      {k.fields.timeouts && pr.timeouts > 0 && (
+        <Row label={t('Timeouts')} expose="opTimeouts" exposeValue={k.opTimeouts}>
+          {order.map((i) => (
+            <Pad key={i} text={sh(i)} title={t('Timeout ({n} left)', { n: Math.max(0, pr.timeouts - ts(s, i).toUsed) })} disabled={ts(s, i).toUsed >= pr.timeouts} onClick={() => act('timeout', { team: i })} />
+          ))}
+        </Row>
+      )}
+      {(cards || susp) && (
+        <Row label={cards ? t('Cards') : t('Suspension')} expose="opSusp" exposeValue={k.opSusp}>
+          {order.flatMap((i) =>
+            cards
+              ? pr.cards.map((c) => <Pad key={`${i}${c}`} text={sh(i)} color={CARD_COL[c]} title={`${t(CARD_NAMES[c] ?? c)} · ${sh(i)}`} onClick={() => act('card', { team: i, color: c })} />)
+              : [<Pad key={i} text={sh(i)} title={t('Suspension {team}', { team: sh(i) })} onClick={() => act('suspension', { team: i })} />],
+          )}
+        </Row>
+      )}
+      {shot && (
+        <Row label={t('Shot clock')} expose="opShot" exposeValue={k.opShot}>
+          {[k.shot.len, k.shot.reset].map((v) => (
+            <Pad key={v} text={String(v)} title={t('Shot clock: {n} s', { n: v })} onClick={() => act('shot', { s: v })} />
+          ))}
+        </Row>
+      )}
+      {shootout && (
+        <Row label={tr(k, lang, 'Penalties')} expose="opShootout" exposeValue={k.opShootout}>
+          {order.flatMap((i) => [
+            <Pad key={`${i}y`} text={`${sh(i)} ✓`} color="#22c55e" title={t('Kick scored · {team}', { team: sh(i) })} onClick={() => act('penalty', { team: i, scored: true })} />,
+            <Pad key={`${i}n`} text={`${sh(i)} ✗`} color="#ef4444" title={t('Kick missed · {team}', { team: sh(i) })} onClick={() => act('penalty', { team: i, scored: false })} />,
+          ])}
+        </Row>
+      )}
+      <Toggle label={t('Teams swapped')} expose="opSwap" exposeValue={k.opSwap} value={!!s.swapped} onChange={() => act('swap')} />
+    </Centre>
   );
 }
 
@@ -1511,10 +1481,7 @@ export default defineWidget({
       </>
     );
   },
-  Operator: ({ layer, state, data, act, lang, item }) => <Operator layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
-  Compact: ({ layer, state, data, act, lang, item }) => <Compact layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
-  More: ({ layer, state, data, act, lang, item }) => <More layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
-  hasMore: (l, _data, state) => hasMore(l, state),
+  Operator: ({ layer, state, data, act, lang, item }) => <Board layer={layer} state={state} data={data} act={act} lang={lang} item={item} />,
   warnings: (layer, { data, state, r }) => {
     const k = cfg(layer);
     const s = (state ?? {}) as State;

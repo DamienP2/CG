@@ -668,6 +668,17 @@ pub enum PageMode {
     Scroll,
 }
 
+/// How the pages go on when they are chained: by themselves every
+/// `auto_secs`, on Continue (F2), or on the trigger `auto_trigger`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AutoOn {
+    #[default]
+    Timed,
+    Continue,
+    Trigger,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum EmptyMode {
@@ -720,9 +731,12 @@ pub struct Config {
     pub scroll_speed: f64,
     /// "2 / 4" under the table.
     pub indicator: bool,
-    /// Pages turn by themselves from the take, every `auto_secs` seconds.
+    /// Pages are chained from the take: every `auto_secs` seconds, on
+    /// Continue, or on a trigger (`auto_on`).
     pub auto_pages: bool,
     pub auto_secs: f64,
+    pub auto_on: AutoOn,
+    pub auto_trigger: String,
     /// Key of the row highlighted from the take ("" = none).
     pub hl_key: String,
     pub cascade: Cascade,
@@ -787,6 +801,8 @@ impl Default for Config {
             indicator: true,
             auto_pages: false,
             auto_secs: 6.0,
+            auto_on: AutoOn::Timed,
+            auto_trigger: String::new(),
             hl_key: String::new(),
             cascade: Cascade::default(),
             empty_mode: EmptyMode::Message,
@@ -1283,10 +1299,13 @@ pub struct State {
     pub page: usize,
     /// When the page last changed (cascade), Unix ms; 0 = on air.
     pub page_at: i64,
-    /// Auto pages: on, every `interval` s, counted from `auto_at`.
+    /// Pages chained: every `interval` s counted from `auto_at` (`on` timed),
+    /// or on Continue / on the trigger `trigger` (`interval` then 0).
     pub auto: bool,
     pub interval: f64,
     pub auto_at: i64,
+    pub on: AutoOn,
+    pub trigger: String,
     /// Paused at (Unix ms), 0 = running.
     pub paused_at: i64,
     /// Key of the highlighted row ("" = none).
@@ -1303,12 +1322,55 @@ pub fn live(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> State {
     if s.hl.is_empty() {
         s.hl = c.hl_key.trim().to_string();
     }
-    if c.auto_pages && !s.auto && c.page_mode == PageMode::Pages && c.auto_secs > 0.0 {
-        s.auto = true;
-        s.interval = c.auto_secs.clamp(0.5, 3600.0);
-        s.auto_at = (now_ms - (age_secs.max(0.0) * 1000.0) as i64).max(1);
+    if c.auto_pages && !s.auto && c.page_mode == PageMode::Pages {
+        s.on = c.auto_on;
+        s.trigger = c.auto_trigger.trim().to_string();
+        if c.auto_on == AutoOn::Timed {
+            if c.auto_secs > 0.0 {
+                s.auto = true;
+                s.interval = c.auto_secs.clamp(0.5, 3600.0);
+                s.auto_at = (now_ms - (age_secs.max(0.0) * 1000.0) as i64).max(1);
+            }
+        } else {
+            s.auto = true;
+            s.interval = 0.0;
+        }
     }
     s
+}
+
+/// The pages wait for Continue (F2): chained on it, not on the last page.
+pub fn waits_continue(st: &State, pages: usize, now_ms: i64) -> bool {
+    st.auto && st.on == AutoOn::Continue && current_page(st, pages, now_ms).0 + 1 < pages
+}
+
+/// Continue (F2): the next page when the pages wait for it.
+pub fn on_continue(layer: &Layer, st: &mut State, ctx: &ActCtx) -> bool {
+    let Ok(c) = config(layer) else {
+        return false;
+    };
+    let pages = page_count(c, &model(c, ctx.data));
+    let live_st = live(c, st, ctx.now_ms, ctx.age_secs);
+    if !waits_continue(&live_st, pages, ctx.now_ms) {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
+}
+
+/// The trigger `name`: the next page when the pages wait for it (the last
+/// page goes back to the first).
+pub fn on_trigger(layer: &Layer, st: &mut State, name: &str, ctx: &ActCtx) -> bool {
+    let Ok(c) = config(layer) else {
+        return false;
+    };
+    let live_st = live(c, st, ctx.now_ms, ctx.age_secs);
+    if !(live_st.auto
+        && live_st.on == AutoOn::Trigger
+        && super::same_trigger(&live_st.trigger, name))
+    {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
 }
 
 /// Page shown at `now` and when it appeared (Unix ms, 0 = since on air).
@@ -1367,7 +1429,9 @@ fn go(st: &mut State, pages: usize, p: i64, now: i64) {
 }
 
 /// Applies an operator action (`op`, with its `args`) to the state.
-/// next · prev · go {page: 1…} · auto {seconds} · pause · resume · stop ·
+/// next · prev · go {page: 1…} · auto {seconds} (chained, timed) ·
+/// advance {on: timed | continue | trigger, seconds?, trigger?} · pause ·
+/// resume · stop (not chained, back to the first page) ·
 /// highlight {row: key or rank, "" = none} · reload (the rows come in
 /// again; the server reads the sources again).
 pub fn act(
@@ -1430,10 +1494,46 @@ pub fn act(
                 st.paused_at = 0;
             }
             st.auto = true;
+            st.on = AutoOn::Timed;
             st.interval = secs;
         }
-        "stop" => {
+        "advance" => {
+            let on = match args.get("on").and_then(|v| v.as_str()).unwrap_or("timed") {
+                "continue" => AutoOn::Continue,
+                "trigger" => AutoOn::Trigger,
+                "timed" => AutoOn::Timed,
+                other => return Err(format!("unknown advance mode “{other}”")),
+            };
+            if let Some(name) = args.get("trigger").and_then(|v| v.as_str()) {
+                st.trigger = name.trim().to_string();
+            }
+            if on == AutoOn::Timed {
+                let secs =
+                    args.get("seconds")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(if st.interval > 0.0 {
+                            st.interval
+                        } else {
+                            c.auto_secs
+                        });
+                return act(
+                    layer,
+                    st,
+                    "auto",
+                    &serde_json::json!({ "seconds": secs }),
+                    ctx,
+                );
+            }
             st.page = cur;
+            st.auto = true;
+            st.on = on;
+            st.interval = 0.0;
+            st.auto_at = 0;
+            st.paused_at = 0;
+        }
+        "stop" => {
+            st.page = 0;
+            st.page_at = now;
             st.auto = false;
             st.paused_at = 0;
         }
@@ -1490,16 +1590,16 @@ pub fn act(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn layer(c: Config) -> Layer {
+    pub(crate) fn layer(c: Config) -> Layer {
         let mut l: Layer =
             serde_json::from_str(r#"{"id":"t","name":"T","type":"table","props":{}}"#).unwrap();
         l.kind = LayerKind::Table { x: Box::new(c) };
         l
     }
-    fn sample(n: usize) -> Config {
+    pub(crate) fn sample(n: usize) -> Config {
         let mut grid = vec![vec!["Team".to_string(), "Pts".to_string()]];
         for i in 0..n {
             grid.push(vec![format!("T{i}"), format!("{}", i * 3)]);
@@ -1819,5 +1919,64 @@ mod dataset_table_tests {
             super::super::chart::resolve_grid(&ch, &data)[1],
             vec!["Director", "Ada"]
         );
+    }
+}
+
+#[cfg(test)]
+mod chained_pages {
+    use super::*;
+    use crate::anim::Data;
+
+    #[test]
+    fn pages_chained_on_continue_and_on_a_trigger() {
+        let mut c = super::tests::sample(10);
+        c.auto_pages = true;
+        c.auto_on = AutoOn::Continue;
+        let l = super::tests::layer(c.clone());
+        let d = Data::new();
+        let cx = ActCtx {
+            now_ms: 100_000,
+            age_secs: 13.0,
+            data: &d,
+        };
+        // From the take: chained on Continue, no timing.
+        let st = live(&c, &State::default(), 100_000, 13.0);
+        assert!(st.auto && st.on == AutoOn::Continue && st.interval == 0.0);
+        assert_eq!(current_page(&st, 3, 100_000).0, 0);
+        assert!(waits_continue(&st, 3, 100_000));
+        // Continue turns the pages, until the last one: then it is the timeline's.
+        let mut st = State::default();
+        assert!(on_continue(&l, &mut st, &cx));
+        assert_eq!(current_page(&st, 3, 100_000).0, 1);
+        assert!(on_continue(&l, &mut st, &cx));
+        assert_eq!(current_page(&st, 3, 100_000).0, 2);
+        assert!(!on_continue(&l, &mut st, &cx));
+        // A trigger: only its name, and it wraps.
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &serde_json::json!({"on": "trigger", "trigger": "scores"}),
+            &cx,
+        )
+        .unwrap();
+        assert!(!on_trigger(&l, &mut st, "other", &cx));
+        assert!(on_trigger(&l, &mut st, " SCORES ", &cx));
+        assert_eq!(current_page(&st, 3, 100_000).0, 0);
+        // Stop: not chained, back to the first page; timed again from Advance.
+        act(&l, &mut st, "next", &serde_json::Value::Null, &cx).unwrap();
+        act(&l, &mut st, "stop", &serde_json::Value::Null, &cx).unwrap();
+        assert!(!st.auto);
+        assert_eq!(current_page(&st, 3, 100_000).0, 0);
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &serde_json::json!({"on": "timed", "seconds": 5}),
+            &cx,
+        )
+        .unwrap();
+        assert!(st.auto && st.on == AutoOn::Timed && st.interval == 5.0);
+        assert_eq!(current_page(&st, 3, 106_000).0, 1);
     }
 }

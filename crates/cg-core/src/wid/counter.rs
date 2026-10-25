@@ -104,6 +104,9 @@ pub struct Config {
     pub step: f64,
     /// More + buttons of the Operator ("2, 3": +2 and +3).
     pub extra_steps: String,
+    /// The Operator's « Freeze the display » row is exposed through this
+    /// path (the value itself is not read).
+    pub op_freeze: bool,
     /// fr-FR, en-US, de-DE, de-CH, es-ES, en-IN.
     pub locale: String,
     /// + on positive values.
@@ -143,6 +146,7 @@ impl Default for Config {
             max: None,
             step: 1.0,
             extra_steps: String::new(),
+            op_freeze: false,
             locale: "fr-FR".into(),
             plus: false,
             compact: false,

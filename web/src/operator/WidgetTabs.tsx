@@ -3,11 +3,13 @@ import { api, useApp } from '../store';
 import { defaultData } from '../engine/evaluate';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
-import { KeyScope, MoreToggle, PlayToggle } from '../widgets/kit';
-import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type Template } from '../engine/types';
+import { Pause, Play, RotateCcw } from 'lucide-react';
+import { CentreModeContext, KeyScope } from '../widgets/kit';
+import { Centre, OperatorBound } from '../widgets/centre';
+import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type PlayoutItem, type Template } from '../engine/types';
 import { datasetUse, readsAllRows } from './DataSets';
 import { exposedFields, type ExposedLayer } from './Exposed';
-import { t } from '../i18n';
+import { tc } from '../i18n';
 
 /*
  * The graphic selected in the Operator, widget by widget (one tab each): its
@@ -40,10 +42,20 @@ export interface Parts {
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** A widget of the graphic on air waits for Continue (F2): a layer waiting for its start, a widget's next page… */
+export function widgetWaits(layers: Layer[], item: PlayoutItem): boolean {
+  return layers.some((l) => {
+    if (!l.visible) return false;
+    if (isTimed(l) && l.manualStart && l.startOn !== 'trigger' && !item.clocks?.[l.id]) return true;
+    const def = widgetOf(l);
+    return !!def?.waits?.(l as never, item.widgets?.[l.id], item.data, item);
+  });
+}
+
 /** The widget has controls with this data: its own (spec widgets) or start / pause (timed layers). */
 export function hasControls(l: Layer, data: Record<string, string> = {}): boolean {
   const def = widgetOf(l);
-  if (def?.Compact) return def.controls ? def.controls(l as never, data) : true;
+  if (def?.Operator) return def.controls ? def.controls(l as never, data) : true;
   return isTimed(l) && l.type !== 'text';
 }
 
@@ -139,7 +151,7 @@ export const newPreviewRun = (): PreviewRun => ({ active: false, since: Date.now
 export function heldAt(run: PreviewRun, l: Layer, data: Record<string, string>, holdSecs: number): number | undefined {
   if (l.id in run.widgets || l.id in run.clocks) return undefined;
   const def = widgetOf(l);
-  const from = def?.Compact ? def.plays?.(l as never, data) : isTimed(l) && l.type !== 'text' && 'start';
+  const from = def?.Operator ? def.plays?.(l as never, data) : isTimed(l) && l.type !== 'text' && 'start';
   return from === 'start' ? 0 : from === 'onAir' ? holdSecs : undefined;
 }
 
@@ -163,18 +175,11 @@ export function controlClock(run: PreviewRun, l: Layer, control: 'toggle' | 'res
   return { ...run, clocks: { ...run.clocks, [l.id]: c } };
 }
 
-/** The widget has advanced controls (More) to unfold under its compact row with these values. */
-export function hasMore(l: Layer, data: Record<string, string>, state: unknown): boolean {
-  const def = widgetOf(l);
-  return !!def?.More && (def.hasMore ? def.hasMore(l as never, data, state) : true);
-}
-
 /**
- * The controls of one widget, driving the preview only: its compact row (with the ⋯ of its More
- * controls: `more` open or not, `onMore` toggles), or its More controls (`show="more"`, in the bar
- * the Operator puts under it).
+ * The control centre of one widget, driving the preview only (and, for its exposed settings,
+ * the take's draft values through `onData`).
  */
-export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSecs, lang, show = 'compact', more, onMore }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; holdSecs: number; lang?: string; show?: 'compact' | 'more'; more?: boolean; onMore?: (open: boolean) => void }) {
+export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSecs, lang, onData }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; holdSecs: number; lang?: string; onData?: (patch: Record<string, string>) => void }) {
   const def = widgetOf(layer);
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
@@ -190,8 +195,8 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
       clearInterval(h);
     };
   }, []);
-  const Compact = def?.Compact;
-  if (Compact) {
+  const Op = def?.Operator;
+  if (Op) {
     // Held (heldAt): it waits for its Play as a manual start would, its time standing still.
     const at = heldAt(run, layer, data, holdSecs);
     const held = at !== undefined;
@@ -206,19 +211,15 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
     };
     const state = run.widgets[layer.id];
     const time = { nowMs: Date.now() + offset, ageSecs: at ?? ageSecs(), defaultTz: tz, fps, lang, held };
-    const More = def.More;
-    const withMore = !!More && hasMore(layer, data, state);
     // The preview's controls never take the keyboard (only the selected widget on air does).
     return (
       <KeyScope.Provider value={false}>
-        <div className="opx-pvctl">
-          {show === 'more' ? (
-            More && <More layer={lay as never} state={state} data={data} act={act} time={time} lang={lang} />
-          ) : (
-            <MoreToggle.Provider value={withMore ? { open: !!more, toggle: () => onMore?.(!more) } : null}>
-              <Compact layer={lay as never} state={state} data={data} act={act} time={time} lang={lang} />
-            </MoreToggle.Provider>
-          )}
+        <div className="opx-pvctl cc-host">
+          <CentreModeContext.Provider value="operator">
+            <OperatorBound layer={layer} data={data} setData={onData}>
+              <Op layer={lay as never} state={state} data={data} act={act} time={time} lang={lang} setData={onData} />
+            </OperatorBound>
+          </CentreModeContext.Provider>
         </div>
       </KeyScope.Provider>
     );
@@ -226,15 +227,19 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
   const c = run.clocks[layer.id];
   // Held at its start until its first Play (controlClock).
   const running = !!c && c.pausedAt == null;
-  const paused = !!c && c.pausedAt != null;
   const age = ageSecs() * fps;
   const toggle = () => setRun((r) => controlClock(r, layer, 'toggle', age));
   return (
-    <div className="opx-pvctl clock wk-oprow">
-      <PlayToggle state={running ? 'run' : paused ? 'pause' : 'stop'} media onStart={toggle} onPause={toggle} onResume={toggle} />
-      <button className="opx-btn wk-btn sq" title={`${t('Restart')} · T`} onClick={() => setRun((r) => controlClock(r, layer, running ? 'restart' : 'reset', age))}>
-        <span className="wk-g">⟲</span>
-      </button>
+    <div className="opx-pvctl cc-host">
+      <CentreModeContext.Provider value="operator">
+        <Centre
+          name={layer.name}
+          actions={[
+            running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: toggle } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: toggle },
+            { icon: RotateCcw, label: tc('cc', 'Restart'), key: 'T', onClick: () => setRun((r) => controlClock(r, layer, running ? 'restart' : 'reset', age)) },
+          ]}
+        />
+      </CentreModeContext.Provider>
     </div>
   );
 }

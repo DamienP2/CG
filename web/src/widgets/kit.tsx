@@ -75,6 +75,8 @@ export interface OperatorProps<T extends LayerType = LayerType> {
   time: TimeCtx;
   /** The project's language ("fr" by default). */
   lang?: string;
+  /** Writes values of the take (an exposed setting changed on air); undefined in the Designer. */
+  setData?: (patch: Record<string, string>) => void;
 }
 
 export interface OverlayProps<T extends LayerType = LayerType> {
@@ -115,14 +117,10 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   quiet?: boolean;
   /** Groups of the inspector, above Properties (replaces General). */
   Inspector?: (p: InspectorProps<T>) => ReactNode;
-  /** Controls in the Operator (graphic on air) and in the Designer's try-out. */
+  /** Its control centre (web/src/widgets/centre.tsx): in the Designer's panel, the Operator's preview bar and its On air card. */
   Operator?: (p: OperatorProps<T>) => ReactNode;
-  /** The same controls on one row (the Operator's widget bar and On air panel): a small readout, icon buttons. */
-  Compact?: (p: OperatorProps<T>) => ReactNode;
-  /** Advanced controls, unfolded under the compact row by its ⋯ button (same look as Compact). */
-  More?: (p: OperatorProps<T>) => ReactNode;
-  /** It has advanced controls now (default: when it has More): else no ⋯. */
-  hasMore?: (l: LayerOf<T>, data: Data, state: unknown) => boolean;
+  /** It waits for Continue (F2) on air: its next page, step, view, its start… (the Operator's Continue then serves it first). */
+  waits?: (l: LayerOf<T>, state: unknown, data: Data, item: PlayoutItem) => boolean;
   /** It has controls with these settings (default: when it has Operator controls). */
   controls?: (l: LayerOf<T>, data: Data) => boolean;
   /**
@@ -242,14 +240,33 @@ export function Section({ id, title, children, actions, level = 1, closed }: { i
 /** Settings a row exposes to the Operator: a path in the layer, several, or none. */
 export type Expose = string | readonly string[] | false | undefined;
 
-/** A labelled row of the inspector; `expose` adds its expose-to-Operator button. */
-export function Row({ label, children, title, lead, tail, expose, exposeValue, exposeOptions }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][] }) {
+/** Where a widget's control centre is drawn (web/src/widgets/centre.tsx): the Designer's panel or the Operator. */
+export type CentreMode = 'designer' | 'operator';
+export const CentreModeContext = createContext<CentreMode>('designer');
+export const useCentreMode = () => useContext(CentreModeContext);
+/** The Operator's filter of a centre's settings: a row with `expose` paths shows only when every path is exposed. */
+export const ExposedFilter = createContext<((paths: readonly string[]) => boolean) | null>(null);
+
+/** A labelled row of the inspector; `expose` adds its expose-to-Operator button. In the Operator
+ *  (ExposedFilter) a row with `expose` paths shows only when they are exposed, without the button. */
+export function Row({ label, children, title, lead, tail, expose, exposeValue, exposeOptions, stack }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; /** The control under its label (a wide choice), in a control centre. */ stack?: boolean }) {
+  const filter = useContext(ExposedFilter);
+  const paths = expose ? (typeof expose === 'string' ? [expose] : expose) : undefined;
+  if (filter) {
+    if (paths && !filter(paths)) return null;
+    return (
+      <div className={`row wk-row op ${label === undefined ? 'full' : ''} ${stack ? 'stack' : ''}`} title={title}>
+        {label !== undefined && <span className="prop-label">{label}</span>}
+        <div className="wk-ctl">{children}</div>
+      </div>
+    );
+  }
   return (
-    <div className={`row wk-row ${label === undefined ? 'full' : ''}`} title={title}>
+    <div className={`row wk-row ${label === undefined ? 'full' : ''} ${stack ? 'stack' : ''}`} title={title}>
       {lead ?? <span className="wk-gut" />}
       {label !== undefined && <span className="prop-label">{label}</span>}
       <div className="wk-ctl">{children}</div>
-      {tail ?? (expose ? <ExposeSetting paths={typeof expose === 'string' ? [expose] : expose} label={typeof label === 'string' ? label : undefined} value={exposeValue} options={exposeOptions} /> : <span className="wk-gut" />)}
+      {tail ?? (paths ? <ExposeSetting paths={paths} label={typeof label === 'string' ? label : undefined} value={exposeValue} options={exposeOptions} /> : <span className="wk-gut" />)}
     </div>
   );
 }
@@ -303,6 +320,8 @@ const opts = <V,>(o: readonly Opt<V>[]) => o.map((x) => (Array.isArray(x) ? (x a
 export function Seg<V extends string | number | boolean>(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: V; onChange?: (v: V) => void; options: readonly Opt<V>[]; title?: string }) {
   const [v, set] = useBind<V>(p.path, p.value, p.onChange);
   const o = opts(p.options);
+  // Three wide choices (Dès le IN · Continuer F2 · Déclencheur) go under their label in a control centre.
+  const wide = o.reduce((n, [, lab]) => n + (typeof lab === 'string' ? lab.length : 8), 0) > 24;
   return (
     <Row
       label={p.label}
@@ -310,6 +329,7 @@ export function Seg<V extends string | number | boolean>(p: { label?: ReactNode;
       exposeValue={p.exposeValue ?? (p.path ? v : undefined)}
       exposeOptions={p.exposeOptions ?? (p.path || typeof p.expose === 'string' ? o.map(([val, lab]) => [String(val), typeof lab === 'string' ? lab : String(val)] as [string, string]) : undefined)}
       title={p.title}
+      stack={wide}
     >
       <Segmented value={String(v)} onChange={(s) => set(o.find((x) => String(x[0]) === s)![0])} options={o.map(([val, lab, tip]) => ({ value: String(val), label: lab, title: tip }))} />
     </Row>
@@ -641,62 +661,8 @@ export function Btns({ list, label }: { list: (BtnSpec | false | null | undefine
   return label === undefined ? row : <Row label={label}>{row}</Row>;
 }
 
-/** The ONE play / pause button of a layer (validated grammar): fixed width so nothing
- *  moves under the finger; the colour tells the state (green start · amber pause · violet resume). */
-export function PlayToggle({ state, media, disabled, confirm, onStart, onPause, onResume }: { state: 'stop' | 'run' | 'pause' | 'ended'; media?: boolean; disabled?: boolean; confirm?: string; onStart: () => void; onPause: () => void; onResume: () => void }) {
-  const m =
-    state === 'run'
-      ? { cls: 'amber', label: t('❚❚ Pause'), on: onPause }
-      : state === 'pause'
-        ? { cls: 'violet', label: t('▶ Resume'), on: onResume }
-        : { cls: 'green', label: media ? t('▶ Play') : t('▶ Start'), on: onStart };
-  return (
-    <button
-      className={`opx-btn wk-btn wk-tog ${m.cls}`}
-      disabled={disabled}
-      title={`${m.label.replace(/^[▶❚\s]+/, '')} · P`}
-      onClick={async () => {
-        if (confirm && !(await confirmDialog({ title: confirm, confirm: t('Yes') }))) return;
-        m.on();
-      }}
-    >
-      <span>{m.label}</span>
-      <kbd className="kc">P</kbd>
-    </button>
-  );
-}
-
 /** A thin vertical rule between the control groups of a bar. */
 export const Sep = () => <span className="wk-sep" aria-hidden="true" />;
-
-/** The standard transport of a layer: ⏮? · Toggle · ⏭? · end of list? · ↺? · ⟲?.
- *  Icons are 30 px pills, their key lives in the tooltip; confirmations fire only on air (`item`). */
-export function Transport(p: { state: 'stop' | 'run' | 'pause' | 'ended'; media?: boolean; item?: unknown; name?: string; disabled?: boolean; onStart: () => void; onPause: () => void; onResume: () => void; top?: () => void; next?: { onClick: () => void; disabled?: boolean; title?: string }; end?: { label: string; title?: string; onClick: () => void; disabled?: boolean; cls?: string }; reset?: () => void; restart?: () => void }) {
-  const press = (action: () => void, confirmMsg?: string) => async () => {
-    if (confirmMsg && !(await confirmDialog({ title: confirmMsg, confirm: t('Yes') }))) return;
-    action();
-  };
-  const onAir = (msg: string) => (p.item ? msg : undefined);
-  const sq = (glyph: string, title: string, onClick: () => void, confirmMsg?: string, disabled?: boolean) => (
-    <button className="opx-btn wk-btn sq" title={title} disabled={disabled} onClick={press(onClick, confirmMsg)}>
-      <span className="wk-g">{glyph}</span>
-    </button>
-  );
-  return (
-    <div className="wk-btns">
-      {p.top && sq('⏮', `${t('From the top')} · S`, p.top, onAir(t('{name} is on air: start again from the top?', { name: p.name ?? '' })))}
-      <PlayToggle state={p.state} media={p.media} disabled={p.disabled} onStart={p.onStart} onPause={p.onPause} onResume={p.onResume} />
-      {p.next && sq('⏭', p.next.title ?? `${t('Next')} · →`, p.next.onClick, undefined, p.next.disabled)}
-      {p.end && (
-        <button className={`opx-btn wk-btn ${p.end.cls ?? ''}`} title={p.end.title} disabled={p.end.disabled} onClick={p.end.onClick}>
-          <span>{p.end.label}</span>
-        </button>
-      )}
-      {p.reset && sq('↺', `${t('Reset')} · X`, p.reset, onAir(t('{name} is on air: reset it to its start value?', { name: p.name ?? '' })))}
-      {p.restart && sq('⟲', `${t('Restart')} · T`, p.restart, onAir(t('{name} is on air: start it again from its start value?', { name: p.name ?? '' })))}
-    </div>
-  );
-}
 
 export interface ListField {
   key: string;
@@ -942,10 +908,10 @@ export function useKeys(map: Record<string, () => void>) {
   }, []);
 }
 
-/** The ⋯ of a compact row, given by the Operator when the widget has More controls. */
+/** The ⋯ of a compact row (the table editor's rows), given by its host. */
 export const MoreToggle = createContext<{ open: boolean; toggle: () => void } | null>(null);
 
-/** The ⋯ button (OpRow adds it by itself; for a Compact without OpRow). */
+/** The ⋯ button (OpRow adds it by itself). */
 export function MoreButton() {
   const more = useContext(MoreToggle);
   if (!more) return null;
@@ -992,16 +958,6 @@ export function OpRow({ value, list, noMore }: { value?: ReactNode; list: (OpBtn
           </button>
         ))}
       {!noMore && <MoreButton />}
-    </div>
-  );
-}
-
-/** Big monospace readout (current time, score…). */
-export function Readout({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
-  return (
-    <div className="wk-readout">
-      <b>{children}</b>
-      {sub && <span>{sub}</span>}
     </div>
   );
 }

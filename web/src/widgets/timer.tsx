@@ -1,21 +1,21 @@
 // Clock layers, shared by two widgets: the Clock (« Horloge », ./clock.tsx: time of day and
 // date) and the Time (« Temps », ./time.tsx: stopwatch and countdown). Both are `clock`
 // layers with the same settings; `timerMode` says which widget a layer is (widgetOf).
-// Here: the drawing, the inspector rows both use, the Operator controls and the warnings.
+// Here: the drawing, the inspector rows both use, the control centre and the warnings.
 // Same picture as crates/cg-render/src/wid/timer.rs; logic mirrored in ./timer-fmt.ts
 // (crates/cg-core/src/wid/timer.rs); actions in crates/cg-core/src/wid/timer.rs.
 import { Dropdown } from '../ui/Dropdown';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { LucideIcon } from 'lucide-react';
+import { Flag, Minus, Pause, Play, Plus, RotateCcw, RotateCw, type LucideIcon } from 'lucide-react';
 import { col, cssColor, num, type Resolved } from '../engine/evaluate';
-import { textWidth } from '../engine/widgets';
-import type { Data, Layer, FontStyle } from '../engine/types';
+import { layerAgeFrames, textWidth } from '../engine/widgets';
+import type { Data, Layer, FontStyle, PlayoutItem } from '../engine/types';
 import { FontControls, GroupRow } from '../designer/Inspector';
 import { useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
-import { Btns, ColorPick, Content, defineWidget, hex, Num, Readout, Row, Seg, Sep, Text, Toggle, Transport, useFrame, useKeys, type InspectorProps, type Warning } from './kit';
+import { Bound, ColorPick, Content, defineWidget, getPath, hex, Num, Row, Seg, Text, Toggle, useBound, useCentreMode, useFrame, useKeys, type InspectorProps, type Warning } from './kit';
+import { Centre, SetInput, StartRow, StartStatus, type Line2Item } from './centre';
 import * as T from './timer-fmt';
-import { OpBar, SetField } from './opbar';
 import { t, tc } from '../i18n';
 
 export type Config = T.Config;
@@ -568,9 +568,12 @@ export function WidthRows({ c }: { c: T.Cfg }) {
 
 // ------------------------------------------------------------- operator --
 
-type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz: string; fps?: number; held?: boolean } };
+type OpP = { layer: L; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: PlayoutItem; time: { nowMs: number; ageSecs: number; defaultTz: string; fps?: number; held?: boolean } };
 
-/** What the compact controls show now (time on air advancing between two updates). */
+/** The layer's clock on air has yet to start (a manual start) or is paused: its time on air stands still. */
+const clockStill = (layer: L, item: PlayoutItem | undefined) => !!item && ((!!layer.manualStart && !item.clocks?.[layer.id]) || item.clocks?.[layer.id]?.pausedAt != null);
+
+/** What the controls show now (time on air advancing between two updates). */
 function useNow({ layer, state, data, item, time }: OpP) {
   useFrame();
   const serverOffset = useApp((s) => s.serverOffset) ?? 0;
@@ -580,102 +583,140 @@ function useNow({ layer, state, data, item, time }: OpP) {
   const e = T.eff(layer, data);
   const st = state as State | undefined;
   const tz = time.defaultTz;
-  // Held by the preview: its time on air stands still.
-  const ageMs = got.current.age * 1000 + (time.held ? 0 : Date.now() - got.current.at);
+  const fps = time.fps ?? 25;
+  // On air the layer's own time (its clock: 0 until a manual start, still while paused), as the
+  // renderer; held by the preview, it stands still too.
+  const base = item ? (layerAgeFrames(item, item.age ?? 0, layer) / fps) * 1000 : got.current.age * 1000;
+  const still = !!time.held || clockStill(layer, item);
+  const ageMs = base + (still ? 0 : Date.now() - got.current.at);
   const r = T.run(e, st, now, ageMs, tz);
-  const d = T.display(e, st, { now, ageMs, fps: time.fps ?? 25, defaultTz: tz });
+  const d = T.display(e, st, { now, ageMs, fps, defaultTz: tz });
   return { e, r, d, now, tz };
 }
 
-/** The one bar of a timed layer (validated grammar §1), identical in the Designer's Operator
- *  section and the Operator's rows: readout · toggle ↺ ⟲ (Lap) · −10 s/+10 s · field + Set · ⋯. */
+/** A duration of the template (mm:ss), exposable: the countdown's duration, the stopwatch's start value. */
+function DurRow({ label, path, value, min }: { label: string; path: string; value: number; min?: number }) {
+  const b = useBound();
+  const cur = getPath(b.obj, path) as number | undefined;
+  return <DurField label={label} value={cur ?? value} min={min} onChange={(ms) => b.set(path, ms)} expose={path} />;
+}
+
+/** "20:00:00" of an instant in the countdown's zone. */
+function timeAt(ms: number, zone: T.ZoneSel, tz: string): string {
+  const c = T.compAt(ms, zone, tz);
+  return [c.h, c.mi, c.s].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
+/**
+ * The control centre of a stopwatch or countdown (web/src/widgets/centre.tsx; a clock has no
+ * controls). Line 1: the time shown and the mode, what it waits for on air. Line 2: Play / Pause,
+ * reset, restart, lap (stopwatch), − / + a step; a countdown to a time: reset only. Line 3: how it
+ * starts (Designer), a value to set, the start value (exposable), the target time (exposable),
+ * the step of − / + (exposable).
+ */
 function TimerBar(p: OpP) {
   const { layer, data, act, item } = p;
-  const { e, r, d } = useNow(p);
+  const mode = useCentreMode();
+  const designer = mode === 'designer';
+  const b = useBound();
+  const { e, r, d, tz } = useNow(p);
   const isTimed = T.timed(e);
   const tgt = T.isTarget(e);
-  const st0 = T.started(e, r);
   const paused = r.pausedAt != null;
-  // Held by the preview, it waits for its Play.
-  const running = st0 && !paused && !p.time.held;
-  const state: 'stop' | 'run' | 'pause' = running ? 'run' : paused ? 'pause' : 'stop';
-  const field = useRef<HTMLInputElement>(null);
+  // Waiting for Continue / its trigger on air (its clock has yet to start), or held by the preview: not running yet.
+  const waiting = !tgt && !r.pausedAt && !(p.state as State | undefined)?.ctl && !!item && !!layer.manualStart && !item.clocks?.[layer.id];
+  const running = T.started(e, r) && !paused && !p.time.held && !waiting;
+  const stepS = [1, 10, 60].includes(e.c.adjStep) ? e.c.adjStep : 10;
+  const stepTxt = stepS >= 60 ? `${stepS / 60} min` : `${stepS} s`;
+  const field = useRef<HTMLSpanElement>(null);
   // Confirmations only on air (a key does as its button).
+  const resetMsg = t('{name} is on air: reset it to its start value?', { name: layer.name });
+  const restartMsg = t('{name} is on air: start it again from its start value?', { name: layer.name });
   const confirmed = (msg: string, go: () => void) => async () => {
     if (item && !(await confirmDialog({ title: msg, confirm: t('Yes') }))) return;
     go();
   };
-  const reset = confirmed(t('{name} is on air: reset it to its start value?', { name: layer.name }), () => act('reset'));
-  const restart = confirmed(t('{name} is on air: start it again from its start value?', { name: layer.name }), () => act('restart'));
+  const reset = confirmed(resetMsg, () => act('reset'));
+  const restart = confirmed(restartMsg, () => act('restart'));
   const adj = (s: number) => act('adjust', { seconds: s });
+  const playPause = () => act(paused ? 'resume' : running ? 'pause' : 'start');
   // Space stays the Operator's CONTINUE; the value is typed in the field (V).
   useKeys(
     isTimed
       ? {
           s: () => act('start'),
-          p: () => !tgt && act(paused ? 'resume' : st0 ? 'pause' : 'start'),
+          p: () => !tgt && playPause(),
           x: () => void reset(),
           t: () => !tgt && void restart(),
           l: () => e.mode === 'stopwatch' && running && act('split'),
-          v: () => setTimeout(() => field.current?.focus(), 30),
-          '1': () => adj(-10),
-          '2': () => adj(-1),
-          '3': () => adj(1),
-          '4': () => adj(10),
-          '5': () => adj(60),
+          v: () => setTimeout(() => field.current?.querySelector('input')?.focus(), 30),
+          '1': () => !tgt && adj(-stepS),
+          '2': () => !tgt && adj(stepS),
         }
       : {},
   );
   if (!isTimed) return null;
   const [prefix, suffix] = T.affixes(e.c, data);
   const shown = `${prefix ? `${prefix} ` : ''}${T.segText(d.segs, e.c.sep)}${suffix ? ` ${suffix}` : ''}`;
+  // The template's layer (the Designer's host shows a held view of it): how it starts on air.
+  const real = ((b.obj as L | undefined)?.id ? b.obj : layer) as L;
+  // Older layers still waiting for Play are shown as starting on Continue; a change moves them to the layer's start.
+  const startView = e.start === 'manual' ? { ...real, manualStart: true } : real;
+  const startSet = (path: string, v: unknown, coalesce?: boolean) => {
+    b.set(path, v, coalesce);
+    if (e.start === 'manual') b.set('startMode', 'auto');
+  };
+  const sub = tgt ? t('until {time}', { time: r.targetMs != null ? timeAt(r.targetMs, e.targetZone, tz) : e.target || '--:--:--' }) : e.mode === 'countdown' ? tc('cc', 'countdown') : tc('cc', 'stopwatch');
+  const actions: Line2Item[] = tgt
+    ? [{ icon: RotateCcw, label: tc('cc', 'Reset'), key: 'X', confirm: item ? resetMsg : undefined, onClick: () => act('reset') }]
+    : [
+        running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: playPause } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: playPause },
+        { icon: RotateCcw, label: tc('cc', 'Reset'), key: 'X', confirm: item ? resetMsg : undefined, onClick: () => act('reset') },
+        { icon: RotateCw, label: tc('cc', 'Restart'), key: 'T', confirm: item ? restartMsg : undefined, onClick: () => act('restart') },
+        e.mode === 'stopwatch' && { icon: Flag, label: t('Lap'), key: 'L', disabled: !running, onClick: () => act('split') },
+        { icon: Minus, text: `−${stepTxt}`, label: `−${stepTxt}`, key: '1', onClick: () => adj(-stepS) },
+        { icon: Plus, text: `+${stepTxt}`, label: `+${stepTxt}`, key: '2', onClick: () => adj(stepS) },
+      ];
+  const setValue = (v: string) => {
+    const pr = tgt ? T.parseTarget(v) : T.parseDur(v);
+    if ('err' in pr) return pr.err;
+    if (!tgt && e.mode === 'stopwatch' && e.c.swLimitOn && 'ms' in pr && pr.ms > e.c.swLimit) return t('{value} is above the limit {limit}', { value: T.plainDur(pr.ms), limit: T.plainDur(e.c.swLimit) });
+    act('set', { value: v });
+  };
   return (
-    <OpBar more={<More {...p} />}>
-      <Readout>
-        <span style={{ color: d.color ? hex(d.color) : undefined, opacity: d.hidden ? 0.4 : 1 }}>{shown}</span>
-      </Readout>
-      <Sep />
-      {/* A countdown to a time keeps its top: no pause, no restart (= reset). */}
-      {tgt && !paused ? (
-        <Btns list={[{ label: <span className="wk-g">↺</span>, cls: 'sq', title: `${t('Reset')} · X`, confirm: item ? t('{name} is on air: reset it to its start value?', { name: layer.name }) : undefined, onClick: () => act('reset') }]} />
-      ) : (
-        <Transport state={state} item={item} name={layer.name} onStart={() => act('start')} onPause={() => act('pause')} onResume={() => act('resume')} reset={() => act('reset')} restart={tgt ? undefined : () => act('restart')} />
+    <Centre name={layer.name} readout={{ v: <span style={{ color: d.color ? hex(d.color) : undefined, opacity: d.hidden ? 0.4 : 1 }}>{shown}</span>, sub }} status={<StartStatus layer={layer} item={item} />} actions={actions}>
+      {!tgt && designer && (
+        <Bound obj={real} set={startSet} data={b.data}>
+          <StartRow layer={startView} />
+        </Bound>
       )}
-      {e.mode === 'stopwatch' && <Btns list={[{ label: t('Lap'), cls: 'big', title: `${t('Lap')} · L`, disabled: !running, onClick: () => act('split') }]} />}
-      <Sep />
-      <Btns
-        list={[
-          { label: '−10 s', title: '−10 s · 1', onClick: () => adj(-10) },
-          { label: '+10 s', title: '+10 s · 4', onClick: () => adj(10) },
-        ]}
-      />
-      <Sep />
-      <SetField
-        inputRef={field}
-        width={tgt ? 92 : 64}
-        placeholder={tgt ? '20:00:00' : 'mm:ss'}
-        title={tgt ? t('New target') : t('Set value')}
-        onSet={(v) => {
-          const pr = tgt ? T.parseTarget(v) : T.parseDur(v);
-          if ('err' in pr) return pr.err;
-          if (!tgt && e.mode === 'stopwatch' && e.c.swLimitOn && 'ms' in pr && pr.ms > e.c.swLimit) return t('{value} is above the limit {limit}', { value: T.plainDur(pr.ms), limit: T.plainDur(e.c.swLimit) });
-          act('set', { value: v });
-        }}
-      />
-    </OpBar>
-  );
-}
-
-/** Under ⋯: the fine adjustments (keys 2 · 3 · 5). */
-function More({ act }: OpP) {
-  return (
-    <Btns
-      list={[
-        { label: '−1 s', title: '−1 s · 2', onClick: () => act('adjust', { seconds: -1 }) },
-        { label: '+1 s', title: '+1 s · 3', onClick: () => act('adjust', { seconds: 1 }) },
-        { label: '+1 min', title: '+1 min · 5', onClick: () => act('adjust', { seconds: 60 }) },
-      ]}
-    />
+      {!tgt && designer && <Toggle label={t('At a fixed time')} value={e.start === 'at'} onChange={(v) => b.set('startMode', v ? 'at' : 'auto')} />}
+      {!tgt && designer && e.start === 'at' && (
+        <>
+          <Text label={t('Start at')} path="startAt" value="20:00:00" placeholder="20:00:00" />
+          <Toggle label={t('Run off air')} path="offAir" value={true} />
+        </>
+      )}
+      <Row label={t('Value')} title={tgt ? t('New target') : t('Set value')}>
+        <span ref={field} style={{ display: 'contents' }}>
+          <SetInput placeholder={tgt ? '20:00:00' : 'mm:ss'} title={tgt ? t('New target') : t('Set value')} onSet={setValue} width={tgt ? 92 : 76} />
+        </span>
+      </Row>
+      {!tgt && (e.mode === 'countdown' ? <DurRow label={t('Duration')} path="cdDuration" value={T.DEF.cdDuration} min={1000} /> : <DurRow label={t('Start value')} path="swStart" value={0} />)}
+      {tgt && <Text label={t('Target time')} path="tTime" value="20:00:00" placeholder="20:00:00" />}
+      {!tgt && (
+        <Seg
+          label={t('Step of − +')}
+          path="adjStep"
+          value={10}
+          options={[
+            [1, '1 s'],
+            [10, '10 s'],
+            [60, '1 min'],
+          ]}
+        />
+      )}
+    </Centre>
   );
 }
 
@@ -713,7 +754,7 @@ function warnings(layer: L, data: Data, state: unknown): Warning[] {
       );
     }
     if (e.start === 'ext') out.push({ level: 'info', op: true, text: t('Waiting for the external trigger (API).') });
-    if (e.start === 'auto') out.push({ level: 'info', op: 'only', text: t('Starts by itself at the In.') });
+    if (e.start === 'auto' && !e.manualStart) out.push({ level: 'info', op: 'only', text: t('Starts by itself at the In.') });
   }
   if (e.mode === 'stopwatch' && e.c.swLimitOn && e.c.swLimit <= e.c.swStart) out.push({ level: 'warn', text: t('The limit is not above the start value: it is ignored.') });
   return out;
@@ -736,8 +777,7 @@ export const clockWidget = (w: { id: string; label: string; icon: LucideIcon; cr
     Render: (p) => <TimerView layer={p.layer as L} r={p.r} w={p.w} h={p.h} data={p.data} time={p.time} state={p.state} fps={p.fps} designer={p.designer} lang={p.lang} />,
     Inspector: (p: InspectorProps<'clock'>) => <w.Inspector layer={p.layer as L} data={p.data} edit={p.edit as Edit} set={p.set} />,
     Operator: (p) => <TimerBar layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
-    Compact: (p) => <TimerBar layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
-    More: (p) => <More layer={p.layer as L} state={p.state} data={p.data} act={p.act} item={p.item} time={p.time} />,
+    // A clock has no controls at all: only a stopwatch or countdown has its centre.
     controls: (l, data) => T.timed(T.eff(l as L, data)),
     // The Operator's preview holds it at its start value until its Play (a countdown to a time follows the clock).
     plays: (l, data) => {

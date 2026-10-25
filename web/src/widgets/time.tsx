@@ -1,7 +1,7 @@
 // Time (« Temps »): the stopwatch or countdown of a `clock` layer (timerMode stopwatch /
-// countdown). Its inspector puts the value and its launch first, the look next, the rest
-// under More settings. Drawing, Operator controls (readout, Start / Pause / Resume, ⟲,
-// −/+, field + Set) and the shared rows in ./timer.tsx; logic in ./timer-fmt.ts.
+// countdown). Its inspector puts the value first, the look next, the rest under More
+// settings; how it starts on air is in its control centre (line 3). Drawing, control
+// centre and the shared rows in ./timer.tsx; logic in ./timer-fmt.ts.
 import { Timer } from 'lucide-react';
 import { ColorPick, Content, ListEditor, Num, Section, Seg, Select, Text, Toggle } from './kit';
 import * as T from './timer-fmt';
@@ -47,24 +47,6 @@ function Inspector({ layer, data, edit, set }: InspP) {
           </>
         ) : (
           <DurField label={t('Start value')} value={c.swStart} onChange={(v) => set('swStart', v)} expose="swStart" />
-        )}
-        <Seg
-          label={t('Launch')}
-          expose="startMode"
-          exposeValue={e.start}
-          value={e.start}
-          onChange={(v) => set('startMode', v)}
-          options={[
-            ['auto', t('At the In')],
-            ['manual', t('Manual')],
-            ['at', t('At a time')],
-          ]}
-        />
-        {e.start === 'at' && (
-          <>
-            <Text label={t('Start at')} path="startAt" value="20:00:00" placeholder="20:00:00" />
-            <Toggle label={t('Run off air')} path="offAir" value={true} />
-          </>
         )}
         {cd && (
           <Seg
@@ -188,6 +170,9 @@ export default clockWidget({
     uppercase: false,
     timerMode: 'countdown' as const,
     cdDuration: 300000,
+    // Starts on Continue (F2) or Play, as the layer's start says (startMode « manual » is the older wait).
+    manualStart: true,
+    startMode: 'auto' as const,
     steps: structuredClone(STEPS.countdown),
     props: { width: 900, height: 300, fontSize: 150, fill: [1, 1, 1, 1] },
   }),

@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
+pub use super::table::AutoOn;
 use super::ActCtx;
 use crate::anim::{interpolate_text, Data};
 use crate::model::{Layer, LayerKind};
@@ -1004,6 +1005,17 @@ pub struct Config {
     pub drag_pans: bool,
     /// Places renamed (labels, zones).
     pub names: Vec<Rename>,
+    /// The key views are chained from the take: every `auto_secs` seconds,
+    /// on Continue, or on a trigger (`auto_on`).
+    pub auto_views: bool,
+    pub auto_secs: f64,
+    pub auto_on: AutoOn,
+    pub auto_trigger: String,
+    /// Zone put forward from the take (its id, "" = none).
+    pub hl_zone: String,
+    /// The Operator's layer pads / marker pads are exposed (the Designer's choice).
+    pub op_layers: bool,
+    pub op_markers: bool,
 }
 
 impl Default for Config {
@@ -1031,6 +1043,13 @@ impl Default for Config {
             attribution: Attribution::default(),
             drag_pans: false,
             names: Vec::new(),
+            auto_views: false,
+            auto_secs: 6.0,
+            auto_on: AutoOn::Timed,
+            auto_trigger: String::new(),
+            hl_zone: String::new(),
+            op_layers: false,
+            op_markers: false,
         }
     }
 }
@@ -1057,6 +1076,18 @@ pub struct State {
     /// « Aller à… »: the place shown instead of a key view.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub goto: Option<Goto>,
+    /// The operator acted (else the Designer's chained views and highlight apply from the take).
+    pub ctl: bool,
+    /// Views chained: the next one every `interval` s counted from `auto_at`
+    /// (`on` timed), or on Continue / on the trigger `trigger` (`interval`
+    /// then 0). The view shown is `cur` plus the intervals elapsed (wrapping).
+    pub auto: bool,
+    pub interval: f64,
+    pub auto_at: i64,
+    pub on: AutoOn,
+    pub trigger: String,
+    /// Paused at (Unix ms), 0 = running.
+    pub paused_at: i64,
 }
 
 /// A place the operator went to, and its view.
@@ -1095,10 +1126,9 @@ fn start_index(c: &Config) -> Option<usize> {
     })
 }
 
-/// The view at `now` (ms) and the transition's progress (None = not moving).
-/// `box_w`: width of the layer (the fly's height depends on it).
-pub fn view_at(c: &Config, st: &State, now: i64, box_w: f64) -> (View, Option<f64>) {
-    let to = match (&st.goto, st.cur.and_then(|i| c.views.get(i))) {
+/// The view the state goes to (or shows): the place gone to, the key view, else the template's.
+fn target(c: &Config, st: &State) -> View {
+    match (&st.goto, st.cur.and_then(|i| c.views.get(i))) {
         (Some(g), _) => View {
             lat: g.lat,
             lon: g.lon,
@@ -1109,7 +1139,175 @@ pub fn view_at(c: &Config, st: &State, now: i64, box_w: f64) -> (View, Option<f6
         .clamped(),
         (None, Some(k)) => k.view(),
         (None, None) => c.view.clamped(),
+    }
+}
+
+// ---------------------------------------------------------- chained views --
+
+/// The state on air: the operator's once he acted, else the Designer's
+/// chained views (counted from the take) and zone put forward.
+pub fn live(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> State {
+    if st.ctl {
+        return st.clone();
+    }
+    let mut s = st.clone();
+    if s.highlight.is_empty() {
+        if let Some(z) = zone_of(c.zones.level, c.hl_zone.trim()) {
+            s.highlight = z.id.clone();
+        }
+    }
+    if c.auto_views && !s.auto && !c.views.is_empty() {
+        s.on = c.auto_on;
+        s.trigger = c.auto_trigger.trim().to_string();
+        if c.auto_on == AutoOn::Timed {
+            if c.auto_secs > 0.0 {
+                s.auto = true;
+                s.interval = c.auto_secs.clamp(0.5, 3600.0);
+                s.auto_at = (now_ms - (age_secs.max(0.0) * 1000.0) as i64).max(1);
+            }
+        } else {
+            s.auto = true;
+            s.interval = 0.0;
+        }
+    }
+    s
+}
+
+/// The key view the chain counts from: the one shown, else the template's view when it is one.
+fn base_index(c: &Config, st: &State) -> Option<usize> {
+    st.cur.or_else(|| start_index(c))
+}
+
+/// The key view after `k` timed advances from `base` (none = the template's view: the first comes first).
+fn index_after(base: Option<usize>, k: usize, n: usize) -> Option<usize> {
+    if k == 0 {
+        return base;
+    }
+    Some(match base {
+        Some(b) => (b + k) % n,
+        None => (k - 1) % n,
+    })
+}
+
+/// The key view shown at `now` (None = the template's view or a place gone
+/// to) and how many timed advances brought it.
+pub fn shown_view(c: &Config, st: &State, now_ms: i64) -> (Option<usize>, usize) {
+    let n = c.views.len();
+    if n == 0 || !st.auto || st.interval <= 0.0 || st.auto_at <= 0 {
+        return (st.cur, 0);
+    }
+    let t = if st.paused_at > 0 {
+        st.paused_at
+    } else {
+        now_ms
     };
+    let step = ((st.interval * 1000.0) as i64).max(1);
+    let k = ((t - st.auto_at).max(0) / step) as usize;
+    if k == 0 {
+        return (st.cur, 0);
+    }
+    (index_after(base_index(c, st), k, n), k)
+}
+
+/// Makes the view shown at `now` the view set (flying from the one before it).
+fn settle(c: &Config, st: &mut State, now_ms: i64) {
+    let (idx, k) = shown_view(c, st, now_ms);
+    if k == 0 {
+        return;
+    }
+    let n = c.views.len();
+    let step = ((st.interval * 1000.0) as i64).max(1);
+    let from = if k == 1 {
+        target(c, st)
+    } else {
+        index_after(base_index(c, st), k - 1, n)
+            .and_then(|i| c.views.get(i))
+            .map(|v| v.view())
+            .unwrap_or_else(|| c.view.clamped())
+    };
+    st.cur = idx;
+    st.goto = None;
+    st.at = st.auto_at + k as i64 * step;
+    st.from = (c.transition.dur > 0.0).then_some(from);
+    // The count goes on from the last advance (its phase kept).
+    st.auto_at = st.at;
+}
+
+/// The state as drawn at `now`: the take's chain and highlight applied, the
+/// timed views gone to so far. What the renderers draw.
+pub fn shown(c: &Config, st: &State, now_ms: i64, age_secs: f64) -> State {
+    let mut s = live(c, st, now_ms, age_secs);
+    settle(c, &mut s, now_ms);
+    s
+}
+
+/// Seconds left before the next timed view (None = not running).
+pub fn next_in(st: &State, now_ms: i64) -> Option<f64> {
+    if !st.auto || st.interval <= 0.0 || st.auto_at <= 0 {
+        return None;
+    }
+    let t = if st.paused_at > 0 {
+        st.paused_at
+    } else {
+        now_ms
+    };
+    let step = st.interval * 1000.0;
+    let e = (t - st.auto_at).max(0) as f64 % step;
+    Some((step - e) / 1000.0)
+}
+
+/// The views wait for Continue (F2): chained on it, not on the last view.
+pub fn waits_continue(c: &Config, st: &State, now_ms: i64) -> bool {
+    let n = c.views.len();
+    st.auto
+        && st.on == AutoOn::Continue
+        && n > 0
+        && shown_view(c, st, now_ms).0.is_none_or(|i| i + 1 < n)
+}
+
+/// Continue (F2): the next view when the views wait for it.
+pub fn on_continue(layer: &Layer, st: &mut State, ctx: &ActCtx) -> bool {
+    let LayerKind::Map { x: c } = &layer.kind else {
+        return false;
+    };
+    let live_st = live(c, st, ctx.now_ms, ctx.age_secs);
+    if !waits_continue(c, &live_st, ctx.now_ms) {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
+}
+
+/// The trigger `name`: the next view when the views wait for it (the last
+/// view goes back to the first).
+pub fn on_trigger(layer: &Layer, st: &mut State, name: &str, ctx: &ActCtx) -> bool {
+    let LayerKind::Map { x: c } = &layer.kind else {
+        return false;
+    };
+    let live_st = live(c, st, ctx.now_ms, ctx.age_secs);
+    if !(!c.views.is_empty()
+        && live_st.auto
+        && live_st.on == AutoOn::Trigger
+        && super::same_trigger(&live_st.trigger, name))
+    {
+        return false;
+    }
+    act(layer, st, "next", &serde_json::Value::Null, ctx).is_ok()
+}
+
+/// A timed chain counts again from now when the operator moves the view.
+fn restart(st: &mut State, now: i64) {
+    if st.auto && st.interval > 0.0 {
+        st.auto_at = now;
+        if st.paused_at > 0 {
+            st.paused_at = now;
+        }
+    }
+}
+
+/// The view at `now` (ms) and the transition's progress (None = not moving).
+/// `box_w`: width of the layer (the fly's height depends on it).
+pub fn view_at(c: &Config, st: &State, now: i64, box_w: f64) -> (View, Option<f64>) {
+    let to = target(c, st);
     let Some(from) = st.from else {
         return (to, None);
     };
@@ -1552,6 +1750,9 @@ fn find<T>(items: &[T], key: &str, keys: impl Fn(&T) -> (String, String)) -> Opt
 /// - `marker {id, on?}`: one marker (id or name).
 /// - `highlight {zone}`: a region by id or name (empty = none).
 /// - `route {id}`: (re)draws a route from now.
+/// - `auto {seconds}`: the views go on by themselves (chained, timed);
+///   `advance {on: timed | continue | trigger, seconds?, trigger?}` · `pause` ·
+///   `resume` · `stop` (not chained, back to the first view).
 pub fn act(
     layer: &Layer,
     st: &mut State,
@@ -1573,6 +1774,10 @@ pub fn act(
         .get(&crate::Prop::Height)
         .and_then(|v| v.as_number())
         .unwrap_or(840.0);
+    // From now on the operator's state: what was on air so far, kept.
+    *st = live(c, st, now, ctx.age_secs);
+    st.ctl = true;
+    settle(c, st, now);
     let go = |st: &mut State, i: usize| -> Result<(), String> {
         let k = c.views.get(i).ok_or("no such view")?;
         if !valid_ll(k.lat, k.lon) {
@@ -1587,6 +1792,7 @@ pub fn act(
         } else {
             st.from = None;
         }
+        restart(st, now);
         Ok(())
     };
     match op {
@@ -1611,12 +1817,101 @@ pub fn act(
             go(st, i)
         }
         "reset" => {
-            // Back to the template's view (flying there), no highlight, layers as designed.
+            // Back to the template's view (flying there), no highlight, layers as
+            // designed; the chain, kept, counts again from now.
             let (cur, _) = view_at(c, st, now, box_w);
-            *st = State::default();
+            *st = State {
+                ctl: true,
+                auto: st.auto,
+                on: st.on,
+                interval: st.interval,
+                trigger: std::mem::take(&mut st.trigger),
+                auto_at: if st.auto && st.interval > 0.0 { now } else { 0 },
+                ..State::default()
+            };
             if c.transition.dur > 0.0 {
                 st.from = Some(cur);
                 st.at = now;
+            }
+            Ok(())
+        }
+        "auto" => {
+            let secs = args
+                .get("seconds")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(if st.interval > 0.0 { st.interval } else { 6.0 });
+            if secs <= 0.0 {
+                st.auto = false;
+                st.paused_at = 0;
+                return Ok(());
+            }
+            if !(0.5..=3600.0).contains(&secs) {
+                return Err("interval: 0.5 to 3600 s".into());
+            }
+            if st.auto && st.auto_at > 0 {
+                // New interval: keep the view, count from now.
+                st.auto_at = if st.paused_at > 0 { st.paused_at } else { now };
+            } else {
+                st.auto_at = now;
+                st.paused_at = 0;
+            }
+            st.auto = true;
+            st.on = AutoOn::Timed;
+            st.interval = secs;
+            Ok(())
+        }
+        "advance" => {
+            let on = match args.get("on").and_then(|v| v.as_str()).unwrap_or("timed") {
+                "continue" => AutoOn::Continue,
+                "trigger" => AutoOn::Trigger,
+                "timed" => AutoOn::Timed,
+                other => return Err(format!("unknown advance mode “{other}”")),
+            };
+            if let Some(name) = args.get("trigger").and_then(|v| v.as_str()) {
+                st.trigger = name.trim().to_string();
+            }
+            if on == AutoOn::Timed {
+                let secs =
+                    args.get("seconds")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(if st.interval > 0.0 {
+                            st.interval
+                        } else {
+                            c.auto_secs
+                        });
+                return act(
+                    layer,
+                    st,
+                    "auto",
+                    &serde_json::json!({ "seconds": secs }),
+                    ctx,
+                );
+            }
+            st.auto = true;
+            st.on = on;
+            st.interval = 0.0;
+            st.auto_at = 0;
+            st.paused_at = 0;
+            Ok(())
+        }
+        "stop" => {
+            st.auto = false;
+            st.paused_at = 0;
+            if c.views.is_empty() {
+                return Ok(());
+            }
+            go(st, 0)
+        }
+        "pause" => {
+            if st.auto && st.paused_at == 0 {
+                st.paused_at = now;
+            }
+            Ok(())
+        }
+        "resume" => {
+            if st.auto && st.paused_at > 0 {
+                st.auto_at += now - st.paused_at;
+                st.paused_at = 0;
             }
             Ok(())
         }
@@ -1708,7 +2003,7 @@ pub fn act(
 mod tests {
     use super::*;
 
-    fn layer(c: Config) -> Layer {
+    pub(super) fn layer(c: Config) -> Layer {
         let mut l: Layer = serde_json::from_str(
             r#"{"id":"m","name":"Map","type":"map","props":{"width":1600,"height":840}}"#,
         )
@@ -1982,5 +2277,92 @@ mod tests {
         let (txt, req) = attribution(&c, &State::default(), 6.0, "fr");
         assert_eq!(txt, "Données\u{a0}: Natural Earth, IGN");
         assert!(req);
+    }
+}
+
+#[cfg(test)]
+mod chained_views {
+    use super::*;
+
+    #[test]
+    fn views_chained_from_the_take_on_continue_and_on_a_trigger() {
+        // Four key views (World, France, Paris, Stadium); the template's view is France (1).
+        let mut c = Config {
+            auto_views: true,
+            auto_secs: 5.0,
+            hl_zone: "Île-de-France".into(),
+            ..Default::default()
+        };
+        let d = Data::new();
+        let cx = ActCtx {
+            now_ms: 100_000,
+            age_secs: 12.0,
+            data: &d,
+        };
+        // Timed from the take (on air 12 s ago, 5 s per view): two advances from France → Stadium.
+        let st = live(&c, &State::default(), 100_000, 12.0);
+        assert!(st.auto && st.on == AutoOn::Timed && st.interval == 5.0 && st.auto_at == 88_000);
+        assert_eq!(st.highlight, "idf");
+        assert_eq!(shown_view(&c, &st, 92_000), (None, 0));
+        assert_eq!(shown_view(&c, &st, 93_500), (Some(2), 1));
+        assert_eq!(shown_view(&c, &st, 100_000), (Some(3), 2));
+        assert_eq!(shown_view(&c, &st, 110_000), (Some(1), 4));
+        assert_eq!(next_in(&st, 93_500), Some(4.5));
+        // Drawn: the view set, flying from the one before, the count going on in phase.
+        let sh = shown(&c, &State::default(), 100_000, 12.0);
+        assert_eq!((sh.cur, sh.at, sh.auto_at), (Some(3), 98_000, 98_000));
+        assert_eq!(sh.from.map(|v| v.zoom), Some(c.views[2].view().zoom));
+        assert_eq!(shown_view(&c, &sh, 103_500), (Some(0), 1));
+        // Chained on Continue: F2 turns the views, until the last one.
+        c.auto_on = AutoOn::Continue;
+        let l = super::tests::layer(c.clone());
+        let mut st = State::default();
+        assert!(waits_continue(&c, &live(&c, &st, 100_000, 12.0), 100_000));
+        assert!(on_continue(&l, &mut st, &cx));
+        assert_eq!(st.cur, Some(2));
+        assert!(st.ctl && st.auto && st.on == AutoOn::Continue);
+        assert!(on_continue(&l, &mut st, &cx));
+        assert_eq!(st.cur, Some(3));
+        assert!(!on_continue(&l, &mut st, &cx));
+        // A trigger: only its name, and it wraps.
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &serde_json::json!({"on": "trigger", "trigger": "villes"}),
+            &cx,
+        )
+        .unwrap();
+        assert!(!on_trigger(&l, &mut st, "other", &cx));
+        assert!(on_trigger(&l, &mut st, " VILLES ", &cx));
+        assert_eq!(st.cur, Some(0));
+        // Stop: not chained, back to the first view; timed again from Advance.
+        act(&l, &mut st, "next", &serde_json::Value::Null, &cx).unwrap();
+        act(&l, &mut st, "stop", &serde_json::Value::Null, &cx).unwrap();
+        assert!(!st.auto && st.cur == Some(0));
+        act(
+            &l,
+            &mut st,
+            "advance",
+            &serde_json::json!({"on": "timed", "seconds": 4}),
+            &cx,
+        )
+        .unwrap();
+        assert!(st.auto && st.on == AutoOn::Timed && st.interval == 4.0 && st.auto_at == 100_000);
+        assert_eq!(shown_view(&c, &st, 104_500), (Some(1), 1));
+        // Paused: the view stands; resumed: the count goes on.
+        let cx2 = ActCtx {
+            now_ms: 104_500,
+            age_secs: 16.5,
+            data: &d,
+        };
+        act(&l, &mut st, "pause", &serde_json::Value::Null, &cx2).unwrap();
+        assert_eq!(shown_view(&c, &st, 130_000), (Some(1), 0));
+        act(&l, &mut st, "resume", &serde_json::Value::Null, &cx2).unwrap();
+        assert_eq!(shown_view(&c, &st, 104_600), (Some(1), 0));
+        // Reset keeps the chain, counting again from now, back to the template's view.
+        act(&l, &mut st, "reset", &serde_json::Value::Null, &cx2).unwrap();
+        assert!(st.auto && st.cur.is_none() && st.auto_at == 104_500 && st.highlight.is_empty());
+        assert_eq!(shown_view(&c, &st, 108_600), (Some(2), 1));
     }
 }

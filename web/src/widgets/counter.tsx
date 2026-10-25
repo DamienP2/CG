@@ -1,4 +1,4 @@
-// Counter: settings, drawing, inspector and Operator controls.
+// Counter: settings, drawing, inspector and control centre.
 // Same picture as crates/cg-render/src/wid/counter.rs; number format, displayed
 // value and actions mirror crates/cg-core/src/wid/counter.rs.
 //
@@ -8,15 +8,15 @@
 // displayed. The operator's value holds until the source sends another one;
 // the freeze holds the display while the source keeps being read.
 import { type CSSProperties, type ReactNode } from 'react';
-import { Hash } from 'lucide-react';
+import { Hash, Minus, Plus, RotateCcw } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
-import type { Data, FontStyle, Layer } from '../engine/types';
+import type { Data, FontStyle, Layer, PlayoutItem } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
-import { Btns, clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Readout, Section, Seg, Select, Sep, Text, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Section, Seg, Select, Text, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { Centre, GAP, type Line2Item } from './centre';
 import { fontCss, measure } from './text';
 import { useLiveTime } from './table-text';
 import { confirmDialog } from '../ui/dialogs';
-import { OpBar, SetField } from './opbar';
 import { t, tc } from '../i18n';
 
 export interface Config {
@@ -25,6 +25,8 @@ export interface Config {
   step?: number;
   /** More + buttons of the Operator ("2, 3": +2 and +3). */
   extraSteps?: string;
+  /** The Operator's « Freeze the display » row (exposed through its path; the value itself is not read). */
+  opFreeze?: boolean;
   locale?: string;
   plus?: boolean;
   compact?: boolean;
@@ -69,6 +71,7 @@ const D: Required<Config> = {
   max: null,
   step: 1,
   extraSteps: '',
+  opFreeze: false,
   locale: 'fr-FR',
   plus: false,
   compact: false,
@@ -621,16 +624,22 @@ function Flip({ from, to, text, k, active, x, baseline, asc: a, size, cellW, fon
 
 // ------------------------------------------------------------- operator --
 
-type OpP = { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
+type OpP = { layer: CLayer; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: PlayoutItem; time: { nowMs: number; ageSecs: number; held?: boolean } };
 
-/** The one bar of the counter (validated grammar §1), identical in the Designer's Operator
- *  section and the Operator's rows: readout · − / + steps · empty field + Set · ⋯ (↺, ❄). */
+/**
+ * The control centre of the counter (web/src/widgets/centre.tsx). Line 1: the value shown, on air
+ * or frozen. Line 2: − / + the step, the extra steps, a value to set, reset. Line 3: freeze the
+ * display (a value from data; the Operator sees it when exposed), the step and the extra steps
+ * (exposable).
+ */
 function CounterBar(p: OpP) {
   const { layer, state, data, act, item, time } = p;
   const { now, age } = useLiveTime(time);
   const st = (state ?? {}) as State;
   const pt = partsOf(layer);
-  const [v] = display(pt, st, data, now, age, null);
+  // The readout: the value the number settles at (not the roll towards it).
+  const [shown, anim] = display(pt, st, data, now, age, null);
+  const v = anim ? anim.to : shown;
   const plain = { ...pt.fmt, plus: false, compact: false };
   const stepTxt = format(plain, pt.c.step);
   const wired = /\{\{\w+\}\}/.test(layer.to);
@@ -646,54 +655,30 @@ function CounterBar(p: OpP) {
     },
   });
   const value = format(pt.fmt, v);
+  const actions: Line2Item[] = [
+    { icon: Minus, text: `− ${stepTxt}`, label: `− ${stepTxt}`, key: '−', onClick: () => act('dec') },
+    { icon: Plus, text: `+ ${stepTxt}`, label: `+ ${stepTxt}`, key: '+', onClick: () => act('inc') },
+    ...extraSteps(pt.c).map((x) => ({ icon: Plus, text: `+ ${format(plain, x)}`, label: `+ ${format(plain, x)}`, onClick: () => act('inc', { by: x }) })),
+    {
+      field: true,
+      placeholder: t('Value'),
+      title: t('Set value'),
+      width: 64,
+      onSet: (x) => {
+        if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
+        act('set', { value: x });
+      },
+    },
+    GAP,
+    { icon: RotateCcw, label: tc('cc', 'Reset'), key: 'X', confirm: resetMsg, onClick: () => act('reset') },
+  ];
+  const sub = st.frozen ? tc('cc', 'frozen') : item ? tc('cc', 'on air') : undefined;
   return (
-    <OpBar more={<More {...p} />}>
-      {item ? (
-        // On air the label and the red edge stay; the try-out shows the plain readout (D9).
-        <span className="wk-readout" style={{ padding: '1px 10px 3px', borderRadius: 8, border: '1px solid var(--live)' }} title={st.frozen ? t('Frozen in the control room only: nothing changes on air.') : undefined}>
-          <b>{value}</b>
-          <span>
-            {t('ON AIR')}
-            {st.frozen ? ` · ${t('FROZEN')}` : ''}
-          </span>
-        </span>
-      ) : (
-        <Readout sub={st.frozen ? t('FROZEN') : undefined}>{value}</Readout>
-      )}
-      <Sep />
-      <Btns
-        list={[
-          { label: `− ${stepTxt}`, title: `− ${stepTxt} · −`, onClick: () => act('dec') },
-          { label: `+ ${stepTxt}`, title: `+ ${stepTxt} · +`, onClick: () => act('inc') },
-          ...extraSteps(pt.c).map((x) => ({ label: `+ ${format(plain, x)}`, onClick: () => act('inc', { by: x }) })),
-        ]}
-      />
-      <Sep />
-      <SetField
-        width={70}
-        placeholder={t('Value')}
-        title={t('Set value')}
-        onSet={(x) => {
-          if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
-          act('set', { value: x });
-        }}
-      />
-    </OpBar>
-  );
-}
-
-/** Under ⋯: back to the initial value, freeze the display (a value from data). */
-function More({ layer, state, act, item }: OpP) {
-  const st = (state ?? {}) as State;
-  const wired = /\{\{\w+\}\}/.test(layer.to);
-  const freezeTxt = st.frozen ? t('▶ Unfreeze display') : t('❄ Freeze display');
-  return (
-    <Btns
-      list={[
-        { label: t('↺ Reset'), title: `${t('Reset')} · X`, confirm: item ? t('{name} is on air: back to the initial value?', { name: layer.name }) : undefined, onClick: () => act('reset') },
-        wired && { label: freezeTxt, cls: st.frozen ? 'violet' : '', title: `${freezeTxt} · F`, onClick: () => act('freeze') },
-      ]}
-    />
+    <Centre name={layer.name} readout={{ v: value, sub }} actions={actions}>
+      {wired && <Toggle label={t('Freeze the display')} expose="opFreeze" exposeValue={true} value={!!st.frozen} onChange={() => act('freeze')} />}
+      <Num label={tc('cc', 'Step')} path="step" value={1} min={0.001} step={1} precision={3} />
+      <Text label={tc('cc', 'Extra steps')} path="extraSteps" value="" placeholder="2, 3" />
+    </Centre>
   );
 }
 
@@ -712,8 +697,6 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
         <Text label={t('Suffix')} path="suffix" value="" />
         <Text label={t('Count from')} path="from" value="0" />
         <Num label={t('Intro')} path="duration" value={2} min={0} step={0.1} precision={1} unit="s" />
-        <Num label={t('Step + / −')} path="step" value={1} min={0.001} step={1} precision={3} />
-        <Text label={t('Extra steps')} path="extraSteps" value="" placeholder="2, 3" />
         <Toggle label={t('Limits')} value={limits} onChange={(on) => edit((l) => void Object.assign(l, on ? { min: 0, max: 10000000 } : { min: undefined, max: undefined }))} />
         {limits && (
           <>
@@ -879,8 +862,6 @@ export default defineWidget({
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time, item }) => <CounterBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
-  Compact: ({ layer, state, data, act, time, item }) => <CounterBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
-  More: ({ layer, state, data, act, time, item }) => <More layer={layer} state={state} data={data} act={act} time={time} item={item} />,
   warnings: (layer, { data, state }) => {
     const out: Warning[] = [];
     const st = (state ?? {}) as State;

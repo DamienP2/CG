@@ -1030,12 +1030,6 @@ function Settings({ layer, k, live, size, setGrid, widthsAs, setShare, shareOf, 
         <Num label={t('Rows per page')} path="perPage" value={k.perPage} min={1} max={99} />
         {k.pageMode === 'scroll' && <Num label={t('Scroll speed')} path="scrollSpeed" value={k.scrollSpeed} min={1} max={2000} unit="px/s" />}
         {k.pageMode === 'pages' && k.indicator && <ColorPickRow label={t('Page dots colour')} path="indicatorColor" value={k.indicatorColor} />}
-        {k.pageMode === 'pages' && (
-          <>
-            <Toggle label={t('Auto pages')} path="autoPages" value={k.autoPages} text={t('From the In')} />
-            {k.autoPages && <Num label={t('Interval')} path="autoSecs" value={k.autoSecs} min={1} max={120} step={0.5} precision={1} unit="s" />}
-          </>
-        )}
         <Select label={t('Highlighted row')} path="hlKey" value={k.hlKey} options={keyOpts} />
       </Section>
       {k.cascade.on && (

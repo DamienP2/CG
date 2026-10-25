@@ -3,13 +3,15 @@
 // state (seeded from the layer's items); its edits apply at the next pass, without a jump.
 // Same picture as crates/cg-render/src/wid/ticker.rs; tape logic mirrors crates/cg-core/src/wid/ticker.rs.
 import { memo, useMemo, useState } from 'react';
-import { ArrowLeftRight } from 'lucide-react';
+import { ArrowLeftRight, Pause, Play, RefreshCw, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
-import type { Data, FontStyle } from '../engine/types';
+import type { Data, FontStyle, PlayoutItem } from '../engine/types';
+import { layerAgeFrames } from '../engine/widgets';
 import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
 import { useFonts } from '../engine/fonts';
-import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, SliderNum, Text, Toggle, Transport, useFrameValue, useKeys, type Warning } from './kit';
+import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, defineWidget, ease, ListEditor, Num, RangeNum, Row, Section, Seg, Text, Toggle, useBound, useCentreMode, useFrameValue, useKeys, type Warning } from './kit';
+import { Centre, GAP, StartRow, WaitsContinue, WaitsTrigger, type Line2Item } from './centre';
 import { FitLine, FONT_CSS, tw, useLiveClock } from './table-text';
 import { t, tc } from '../i18n';
 
@@ -69,8 +71,20 @@ export interface State {
   runs?: Run[];
 }
 
-type TL = Config & FontStyle & { text: string; separator: string; speed: number; props: Record<string, unknown>; manualStart?: boolean; name?: string };
+type TL = Config & FontStyle & { id: string; text: string; separator: string; speed: number; props: Record<string, unknown>; manualStart?: boolean; startOn?: 'continue' | 'trigger'; startTrigger?: string; name?: string };
 const PAD = 30;
+
+/**
+ * The time of a widget's control centre on air: the layer's own time on air (its clock, 0 while
+ * a manual start waits for its Continue / trigger), still while it waits or its clock is paused.
+ * Once the widget runs on its own state (`started`), the time on air no longer matters.
+ */
+export function layerTime<T extends { nowMs: number; ageSecs: number; held?: boolean; fps?: number }>(l: { id: string; manualStart?: boolean }, item: PlayoutItem | undefined, time: T, started: boolean): T {
+  if (!item || started) return time;
+  const c = item.clocks?.[l.id];
+  const still = c ? c.pausedAt != null : !!l.manualStart;
+  return { ...time, ageSecs: layerAgeFrames(item, item.age ?? 0, l as never) / (time.fps ?? 50), held: time.held || still };
+}
 
 export function cfg(c: Config) {
   return {
@@ -529,9 +543,9 @@ function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<stri
 }
 
 // ------------------------------------------------------------ operator --
-type OpP = { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean } };
+type OpP = { l: TL; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; held?: boolean; fps?: number } };
 
-/** What the Operator's rows need of the scene: whether the list has ended, followed on each frame but redrawn only when it flips. */
+/** What the centre needs of the scene, followed on each frame but redrawn only when it changes: the item shown (flip / roll), their count, the end of the list. */
 function useScene({ l, state, data, time }: OpP) {
   const at = useLiveClock(time);
   const k = cfg(l);
@@ -540,83 +554,94 @@ function useScene({ l, state, data, time }: OpP) {
   const h = num(l.props.height as number) || 80;
   const lk = lookOf(l, { fontSize: l.props.fontSize ?? 34, letterSpacing: l.props.letterSpacing ?? 0, fill: l.props.fill ?? [1, 1, 1, 1] });
   // Held by the preview (no state yet, its time standing still): nothing to follow.
-  const ended = useFrameValue(() => {
+  const key = useFrameValue(() => {
     const { now, age: onAir } = at();
-    return scene(l, k, st, data, lk, w, h, now, st.started ? 0 : onAir).ended;
+    const s = scene(l, k, st, data, lk, w, h, now, st.started ? 0 : onAir);
+    let idx = -1;
+    if (!s.crawl) {
+      const kk = Math.floor(s.e / s.P);
+      const cur = segs(s.placed, kk, kk + 1).find((g) => g.x <= kk + 1e-9)?.item;
+      if (cur) idx = s.q.findIndex((i) => i.text === cur.text && i.cat === cur.cat);
+    }
+    return `${s.ended ? 1 : 0}:${idx}:${s.q.length}`;
   }, !time.held);
-  return { k, st, sc: { ended } };
+  const [ended, idx, count] = key.split(':').map(Number);
+  return { k, st, sc: { ended: !!ended, idx, count } };
 }
 
 /** The category of an urgent item: one named URGENT, if any. */
 const urgentCat = (k: K) => k.cats.find((c) => c.name.trim().toUpperCase() === 'URGENT')?.name ?? '';
 
-/** A priority item, typed then inserted now (crawl: the next free slot, nothing on screen jumps). */
-function Priority({ k, act, bare }: { k: K; act: OpP['act']; bare?: boolean }) {
+/** A priority item, typed then inserted now (crawl: the next free slot, nothing on screen jumps); in the Designer (narrow panel, a ⚡ square), in the try-out. */
+function Priority({ k, act }: { k: K; act: OpP['act'] }) {
+  const designer = useCentreMode() === 'designer';
   const [text, setText] = useState('');
   const insert = () => {
     if (!text.trim()) return;
     act('insert', { text: text.trim(), cat: urgentCat(k), when: 'now' });
     setText('');
   };
-  const input = <input className="wk-prio" placeholder={t('Priority item')} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && insert())} />;
-  const btn = <Btns list={[{ label: bare ? '⚡' : t('⚡ Insert'), cls: `violet ${bare ? 'sq' : ''}`, title: bare ? t('⚡ Insert') : undefined, disabled: !text.trim(), onClick: insert }]} />;
-  return bare ? (
-    <>
-      {input}
-      {btn}
-    </>
-  ) : (
-    <Row label={t('Priority')}>
-      {input}
-      {btn}
+  return (
+    <Row label={tc('cc', 'Priority item')}>
+      <input placeholder={t('Text')} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.stopPropagation(), e.key === 'Enter' && insert())} />
+      <Btns list={[{ label: designer ? '⚡' : t('⚡ Insert'), cls: `violet ${designer ? 'sq' : ''}`, title: designer ? t('⚡ Insert') : undefined, disabled: !text.trim(), onClick: insert }]} />
     </Row>
   );
 }
 
-/** The live speed (px/s, as in the Designer; not in flip, one item at a time). */
-const LiveSpeed = ({ l, st, act, unit }: { l: TL; st: State; act: OpP['act']; unit?: boolean }) => <SliderNum value={Math.round(speedOf(l, st))} min={SPEED[0]} max={SPEED[1]} step={5} unit={unit ? 'px/s' : undefined} title={unit ? undefined : `${t('Speed')} (px/s)`} onRelease onChange={(v) => act('speed', { px: v })} />;
+/** The items come from data ({{key}}: a list, a data set): Refresh reads the sources again. */
+const fromData = (l: TL, k: K) => /\{\{\w+\}\}/.test([l.text ?? '', ...k.items.map((x) => x.text ?? '')].join(' '));
 
-/** The one bar of the ticker (validated grammar §1), identical in the Designer's Operator
- *  section and the Operator's rows: ⏮ · toggle · ⏭ · the speed · a priority item. */
+/**
+ * The control centre of the ticker (web/src/widgets/centre.tsx). Line 1: the item shown (flip /
+ * roll) or the speed (crawl), the mode, the end of the list, its start on air. Line 2: play /
+ * pause, back to the start, next item, refresh (items from data). Line 3: how it starts
+ * (Designer), the speed (exposable), a priority item.
+ */
 function TickerBar(p: OpP) {
-  const { l, act, item } = p;
-  const { k, st, sc } = useScene(p);
+  const { l, act } = p;
+  const item = p.item as PlayoutItem | undefined;
+  const mode = useCentreMode();
+  const b = useBound();
+  const designer = mode === 'designer';
+  const time = layerTime(l, item, p.time, !!(p.state as State | undefined)?.started);
+  const { k, st, sc } = useScene({ ...p, time });
   const paused = !!st.started && !st.running;
-  // Manual launch (or held in the preview): it waits for the operator.
-  const waiting = !!l.manualStart && !st.started;
-  const state: 'stop' | 'run' | 'pause' | 'ended' = sc.ended ? 'ended' : waiting ? 'stop' : paused ? 'pause' : 'run';
+  // Manual start (or held in the preview), nothing started: it waits for the operator (or its Continue / trigger on air).
+  const waiting = !st.started && !!l.manualStart && !item?.clocks?.[l.id];
+  const running = !waiting && !paused && !sc.ended;
+  const play = () => act(sc.ended || waiting ? 'start' : 'resume');
   // Space stays the Operator's CONTINUE.
   useKeys({
     s: () => act('start'),
-    p: () => act(sc.ended ? 'start' : waiting || paused ? 'resume' : 'pause'),
+    p: () => (running ? act('pause') : play()),
     ArrowRight: () => k.mode !== 'crawl' && act('next'),
     '+': () => k.mode !== 'flip' && act('speed', { delta: 20 }),
     '-': () => k.mode !== 'flip' && act('speed', { delta: -20 }),
+    r: () => fromData(l, k) && act('reload'),
   });
+  const modeName = k.mode === 'crawl' ? t('Crawl') : k.mode === 'roll' ? t('Roll') : t('Flip');
+  const sub = sc.ended ? tc('cc', 'end of the list') : modeName;
+  const readout = k.mode !== 'crawl' && sc.idx >= 0 ? { k: t('Item'), v: sc.idx + 1, of: sc.count, sub } : { v: `${Math.round(speedOf(l, st))} px/s`, sub };
+  const status = waiting && item ? startChip(l) : undefined;
+  const actions: Line2Item[] = [
+    running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause') } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play },
+    { icon: SkipBack, label: tc('cc', 'To the start'), key: 'S', onClick: () => act('start') },
+    k.mode !== 'crawl' && { icon: SkipForward, label: t('Next item'), key: '→', onClick: () => act('next') },
+    GAP,
+    fromData(l, k) && { icon: RefreshCw, label: tc('cc', 'Refresh'), key: 'R', onClick: () => act('reload') },
+  ];
   return (
-    <div className="wk-opbig">
-      <Transport
-        state={state}
-        item={item && !waiting ? item : undefined}
-        name={l.name ?? ''}
-        top={() => act('start')}
-        onStart={() => act(sc.ended ? 'start' : 'resume')}
-        onPause={() => act('pause')}
-        onResume={() => act('resume')}
-        next={{ onClick: () => act('next'), disabled: k.mode === 'crawl', title: `${t('Next item')} · →` }}
-      />
-      {k.mode !== 'flip' && (
-        <span className="wk-opbig-f">
-          <span className="wk-oplabel">{t('Speed')}</span>
-          <LiveSpeed l={l} st={st} act={act} />
-        </span>
-      )}
-      <span className="wk-opbig-f">
-        <Priority k={k} act={act} bare />
-      </span>
-    </div>
+    <Centre name={l.name} readout={readout} status={status} actions={actions}>
+      <StartRow layer={designer ? (b.obj as TL) : l} />
+      {k.mode !== 'flip' && <RangeNum label={t('Speed')} path="speed" value={l.speed ?? 140} min={SPEED[0]} max={SPEED[1]} step={5} unit="px/s" onRelease />}
+      <Priority k={k} act={act} />
+    </Centre>
   );
 }
+
+/** Line 1 of a ticker waiting for its start on air: Continue (F2) or its trigger. */
+const startChip = (l: TL) => (l.startOn === 'trigger' ? <WaitsTrigger name={l.startTrigger ?? ''} /> : <WaitsContinue />);
 
 // ----------------------------------------------------------- inspector --
 function warningsOf(l: TL, data: Data, state: unknown, W: number, H: number): Warning[] {
@@ -813,15 +838,6 @@ export default defineWidget({
           />
           {k.end === 'passes' && <Num label={t('Passes')} path="passes" value={k.passes} min={1} max={99} />}
           <Seg
-            label={t('Launch')}
-            value={!!l.manualStart}
-            onChange={(v) => set('manualStart', v || undefined)}
-            options={[
-              [false, t('At the In')],
-              [true, t('Manual')],
-            ]}
-          />
-          <Seg
             label={t('If empty')}
             path="emptyMode"
             value={k.emptyMode}
@@ -836,7 +852,8 @@ export default defineWidget({
     );
   },
   Operator: ({ layer, state, data, act, time, item }) => <TickerBar l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
-  Compact: ({ layer, state, data, act, time, item }) => <TickerBar l={layer as unknown as TL} state={state} data={data} act={act} time={time} item={item} />,
+  // A manual start on Continue waits for it (the server starts its clock on F2), unless the operator started it himself.
+  waits: (l, state, _data, item) => !!l.manualStart && l.startOn !== 'trigger' && !(state as State | undefined)?.started && !item.clocks?.[l.id],
   // The Operator's preview holds it until its Play: nothing has entered yet.
   plays: () => 'start',
   warnings: (layer, { data, state, r }) => {

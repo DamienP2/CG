@@ -412,3 +412,4 @@ export function qrModules(content: string): Qr | null {
   }
   return hit instanceof Promise ? null : hit;
 }
+

@@ -4,6 +4,7 @@
 import worldRaw from '../../../crates/cg-core/src/wid/map_world.json?raw';
 import { interpolateText } from '../engine/evaluate';
 import type { Data } from '../engine/types';
+import type { AdvanceMode } from './centre';
 
 export type Ll = [number, number];
 /** A zone (region, departement or country): id, French and English names, code (ISO alpha-2, INSEE), label point, box [w, s, e, n], outline (mirrors Zone). */
@@ -150,6 +151,16 @@ export interface Config {
   dragPans?: boolean;
   /** Places renamed (labels, zones). */
   names?: { from?: string; to?: string }[];
+  /** The key views are chained from the take: every `autoSecs` seconds, on Continue, or on a trigger (`autoOn`). */
+  autoViews?: boolean;
+  autoSecs?: number;
+  autoOn?: AdvanceMode;
+  autoTrigger?: string;
+  /** Zone put forward from the take (its id, '' = none). */
+  hlZone?: string;
+  /** The Operator's layer pads / marker pads are exposed (the Designer's choice). */
+  opLayers?: boolean;
+  opMarkers?: boolean;
 }
 /** « Aller à… »: the place shown instead of a key view. */
 export interface Goto {
@@ -168,6 +179,15 @@ export interface State {
   routesOn?: Record<string, boolean>;
   routes?: Record<string, number>;
   highlight?: string;
+  /** The operator acted (else the Designer's chained views and highlight apply from the take). */
+  ctl?: boolean;
+  /** Views chained: the next every `interval` s from `autoAt` (`on` timed), or on Continue / on the trigger (`interval` 0). */
+  auto?: boolean;
+  interval?: number;
+  autoAt?: number;
+  on?: AdvanceMode;
+  trigger?: string;
+  pausedAt?: number;
 }
 
 export const STYLES = {
@@ -267,6 +287,13 @@ export function cfg(c: Config) {
     attribution: { pos: 'br' as Corner, style: 'dark' as const, show: true, ...c.attribution },
     dragPans: c.dragPans ?? false,
     names: (c.names ?? []).map((r) => ({ from: '', to: '', ...r })),
+    autoViews: c.autoViews ?? false,
+    autoSecs: c.autoSecs ?? 6,
+    autoOn: c.autoOn ?? 'timed',
+    autoTrigger: c.autoTrigger ?? '',
+    hlZone: c.hlZone ?? '',
+    opLayers: c.opLayers ?? false,
+    opMarkers: c.opMarkers ?? false,
   };
 }
 
@@ -369,10 +396,86 @@ export function interpolate(k: K, a: View, b: View, t: number, boxW: number): Vi
   return { lat, lon: normLon(lon), zoom: clamp(zoom, 1.5, 18), rot: a.rot + dr * e, tilt: a.tilt + (b.tilt - a.tilt) * e };
 }
 
+/** The view the state goes to (or shows): the place gone to, the key view, else the template's (mirrors target). */
+function target(k: K, s: State): View {
+  const kv = s.cur != null ? k.views[s.cur] : undefined;
+  return clampView(s.goto ? { lat: s.goto.lat, lon: s.goto.lon, zoom: s.goto.zoom, rot: 0, tilt: 0 } : kv ? (kv as View) : k.view);
+}
+
+// ------------------------------------------------------------ chained views --
+
+/** The key view shown as the start: the one equal to the template's view, if any (mirrors start_index). */
+export function startIndex(k: K): number | undefined {
+  const v = clampView(k.view);
+  const i = k.views.findIndex((x) => Math.abs(x.lat - v.lat) < 1e-3 && Math.abs(x.lon - v.lon) < 1e-3 && Math.abs(x.zoom - v.zoom) < 1e-2);
+  return i < 0 ? undefined : i;
+}
+
+/** The state on air: the operator's once he acted, else the Designer's chained views (from the take) and zone put forward (mirrors live). */
+export function live(k: K, s: State, now: number, ageSecs: number): State {
+  if (s.ctl) return s;
+  const o = { ...s };
+  if (!o.highlight) {
+    const z = zoneOf(k.zones.level, k.hlZone.trim());
+    if (z) o.highlight = z.id;
+  }
+  if (k.autoViews && !o.auto && k.views.length > 0) {
+    o.on = k.autoOn;
+    o.trigger = k.autoTrigger.trim();
+    if (k.autoOn === 'timed') {
+      if (k.autoSecs > 0) Object.assign(o, { auto: true, interval: clamp(k.autoSecs, 0.5, 3600), autoAt: Math.max(1, now - Math.trunc(Math.max(0, ageSecs) * 1000)) });
+    } else Object.assign(o, { auto: true, interval: 0 });
+  }
+  return o;
+}
+
+const baseIndex = (k: K, s: State) => s.cur ?? startIndex(k);
+const indexAfter = (base: number | undefined, kk: number, n: number): number | undefined => (kk === 0 ? base : base != null ? (base + kk) % n : (kk - 1) % n);
+
+/** The key view shown at `now` (undefined = the template's view or a place gone to) and how many timed advances brought it (mirrors shown_view). */
+export function shownView(k: K, s: State, now: number): [number | undefined, number] {
+  const n = k.views.length;
+  if (!n || !s.auto || !(s.interval ?? 0) || !(s.autoAt ?? 0)) return [s.cur ?? undefined, 0];
+  const t = s.pausedAt ? s.pausedAt : now;
+  const step = Math.max(1, Math.trunc(s.interval! * 1000));
+  const kk = Math.floor(Math.max(0, t - s.autoAt!) / step);
+  if (!kk) return [s.cur ?? undefined, 0];
+  return [indexAfter(baseIndex(k, s), kk, n), kk];
+}
+
+/** The state as drawn at `now`: the take's chain and highlight applied, the timed views gone to so far (mirrors shown). */
+export function shownState(k: K, s: State, now: number, ageSecs: number): State {
+  const o = live(k, s, now, ageSecs);
+  const [idx, kk] = shownView(k, o, now);
+  if (!kk) return o;
+  const n = k.views.length;
+  const step = Math.max(1, Math.trunc(o.interval! * 1000));
+  const prev = indexAfter(baseIndex(k, o), kk - 1, n);
+  const from = kk === 1 ? target(k, o) : prev != null && k.views[prev] ? clampView(k.views[prev]) : clampView(k.view);
+  const at = o.autoAt! + kk * step;
+  return { ...o, cur: idx, goto: null, at, from: k.transition.dur > 0 ? from : null, autoAt: at };
+}
+
+/** Seconds left before the next timed view (undefined = not running), mirrors next_in. */
+export function nextIn(s: State, now: number): number | undefined {
+  if (!s.auto || !(s.interval ?? 0) || !(s.autoAt ?? 0)) return undefined;
+  const t = s.pausedAt ? s.pausedAt : now;
+  const step = s.interval! * 1000;
+  const e = Math.max(0, t - s.autoAt!) % step;
+  return (step - e) / 1000;
+}
+
+/** The views wait for Continue (F2): chained on it, not on the last view (mirrors waits_continue). */
+export function waitsContinue(k: K, s: State, now: number): boolean {
+  const n = k.views.length;
+  if (!s.auto || s.on !== 'continue' || !n) return false;
+  const [i] = shownView(k, s, now);
+  return i == null || i + 1 < n;
+}
+
 /** The view at `now` and the transition's progress (null = still), mirrors view_at. */
 export function viewAt(k: K, s: State, now: number, boxW: number): [View, number | null] {
-  const kv = s.cur != null ? k.views[s.cur] : undefined;
-  const to = clampView(s.goto ? { lat: s.goto.lat, lon: s.goto.lon, zoom: s.goto.zoom, rot: 0, tilt: 0 } : kv ? (kv as View) : k.view);
+  const to = target(k, s);
   if (!s.from) return [to, null];
   const dur = k.transition.dur * 1000;
   if (!(dur > 0)) return [to, null];

@@ -17280,3 +17280,355 @@ button.ux1-pill.lost:hover {
 .opx-head .opx-btn.violet {
   flex: none;
 }
+
+/* ---- The control centre of a widget (web/src/widgets/centre.tsx): three lines, in the
+   Designer's panel (.cc.designer: transport squares) and in the Operator (.cc.operator:
+   the main action labelled as the bottom bar, the others squares as the left panel). ---- */
+.cc {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.cc.operator {
+  --cc-bg: var(--op-2);
+  background: var(--op-2);
+  border-radius: 8px;
+}
+.cc-l {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  min-width: 0;
+}
+.cc.operator .cc-l {
+  padding: 9px 10px;
+}
+.cc-l + .cc-l {
+  border-top: 1px solid var(--line);
+}
+.cc-l1 .cc-name {
+  font-weight: 600;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.cc-k {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cc-num {
+  font: 700 26px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.cc-num small {
+  color: var(--text-3);
+  font-size: 16px;
+}
+.cc-sub {
+  color: var(--text-3);
+  font-size: 12px;
+  margin-left: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.cc-stw {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: none;
+}
+.cc-dots {
+  display: flex;
+  gap: 5px;
+  margin-left: 8px;
+}
+.cc-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+.cc-dots i.on {
+  background: var(--accent);
+}
+/* Keys in the centre's buttons and chips, in the button's own colour. */
+.cc .kc {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font: 700 11px/1 var(--ui, inherit);
+  letter-spacing: 0;
+  text-transform: none;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, currentColor 20%, transparent);
+}
+/* What it waits for: a chip. */
+.cc-st {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--panel-3);
+  color: var(--text-2);
+  font: 600 12px/1 var(--ui, inherit);
+  white-space: nowrap;
+}
+.cc.operator .cc-st {
+  background: var(--op-3);
+}
+.cc-st .kc {
+  min-width: 18px;
+  height: 16px;
+  font-size: 10px;
+}
+/* The countdown ring: --p is the share left. */
+.cc-cd {
+  --p: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 11px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: conic-gradient(var(--warn) calc(var(--p) * 1turn), var(--line-2) 0);
+  position: relative;
+  flex: none;
+}
+.cc-cd::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--cc-bg, var(--panel-2));
+}
+.cc-cd > span {
+  position: relative;
+}
+/* Line 2. */
+.cc-l2 {
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+.cc-gap {
+  flex: 1;
+}
+.cc-sq {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-3);
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+.cc-sq.txt {
+  width: auto;
+  padding: 0 9px;
+  font: 700 12px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.cc-sq:hover:not(:disabled) {
+  background: var(--line-2);
+}
+.cc-sq:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cc-sq.main {
+  width: 40px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.cc-sq.main:hover:not(:disabled) {
+  background: var(--accent-2);
+}
+.cc-sq.red {
+  color: var(--live);
+  border-color: rgba(255, 59, 92, 0.5);
+}
+.cc-sq.violet {
+  color: var(--accent);
+}
+.cc.operator .cc-sq {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 5px;
+  background: var(--op-4);
+  color: #fff;
+}
+.cc.operator .cc-sq.txt {
+  width: auto;
+}
+.cc.operator .cc-sq:hover:not(:disabled) {
+  filter: brightness(1.15);
+  background: var(--op-4);
+}
+.cc.operator .cc-sq.red {
+  background: transparent;
+  color: var(--live);
+  box-shadow: inset 0 0 0 1.5px var(--live);
+}
+.cc.operator .cc-sq.violet {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+/* The Operator's main action: as the bottom bar's buttons. */
+.cc-ob {
+  height: 34px;
+  border: none;
+  border-radius: 5px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 700 12px/1 var(--ui, inherit);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--accent);
+  color: var(--on-accent);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+.cc-ob:hover:not(:disabled) {
+  background: var(--accent-2);
+}
+.cc-ob:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cc-ob .kc {
+  height: 19px;
+}
+.cc-fld {
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 9px;
+  text-align: center;
+  flex: none;
+}
+.cc.operator .cc-fld {
+  height: 34px;
+  border-radius: 5px;
+}
+/* Extra rows under line 2 (the scoreboard's teams). */
+.cc-rows {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+.cc-team {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cc-team .cc-tn {
+  width: 48px;
+  font: 700 12px var(--mono);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Line 3: the kit's rows. */
+.cc-l3 {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.cc-l3 .wk-row {
+  grid-template-columns: 22px 118px minmax(0, 1fr) 22px;
+}
+.cc-l3 .wk-row.full {
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+}
+.cc-l3 .wk-row.op {
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+.cc-l3 .wk-row.op.full {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cc-l3 .wk-row > .wk-gut:first-child {
+  display: none;
+}
+/* Nothing exposed in the Operator: no empty band. */
+.cc-l3:empty {
+  display: none;
+}
+/* A row whose control needs the whole width (a three-way choice): the label above it, the radio beside both. */
+.cc-l3 .wk-row.stack:not(.op) {
+  grid-template-columns: minmax(0, 1fr) 22px;
+  grid-template-rows: auto auto;
+  row-gap: 4px;
+}
+.cc-l3 .wk-row.stack:not(.op) > .prop-label,
+.cc-l3 .wk-row.stack:not(.op) > .wk-ctl {
+  grid-column: 1;
+}
+.cc-l3 .wk-row.stack:not(.op) > .pp-op,
+.cc-l3 .wk-row.stack:not(.op) > .wk-gut:last-child {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.cc-l3 .wk-row.stack.op {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cc-l3 .wk-row:not(.op) {
+  grid-template-columns: 128px minmax(0, 1fr) 22px;
+}
+.cc-l3 .wk-row.full:not(.op) {
+  grid-template-columns: minmax(0, 1fr) 22px;
+}
+/* The Designer's panel: the centre under the layer's name. */
+.pp-try .cc {
+  margin: 0;
+}
+/* The Operator's On air card and preview bar hold one centre per widget. */
+.opx-widget.cc-host {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+.opx-widget.cc-host.sel .cc {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+/* The Operator's preview bar: one centre per widget, stacked. */
+.opx-wbar:has(> .cc-host) {
+  flex-direction: column;
+  align-items: stretch;
+}
+.opx-pvctl.cc-host {
+  display: block;
+}

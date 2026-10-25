@@ -4088,6 +4088,8 @@ mod conv {
             visible: true,
             locked: false,
             manual_start: false,
+            start_on: None,
+            start_trigger: String::new(),
             scale_lock: false,
             lock_ratio: false,
             drop_shadow: false,

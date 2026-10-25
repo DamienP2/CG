@@ -25,9 +25,10 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { t, tc, tn } from '../i18n';
 import { useDisplayPref } from '../displayPrefs';
+import { START_MODES, startMode } from '../widgets/centre';
 import { datasetUse, useDatasetRows } from '../operator/DataSets';
 
 interface PropSpec {
@@ -869,11 +870,28 @@ function LayerGeneral({ layer }: { layer: Layer }) {
       )}
       {layer.type === 'image' && (wiredKeys(layer.src).length ? <WiredValue value={interpolateText(layer.src, data)} /> : <AssetPicker value={layer.src} onChange={(v) => edit((l) => void (l.type === 'image' && (l.src = v)))} />)}
       <WidgetSettings layer={layer} set={set} data={data} />
-      {isTimed(layer) && (
-        <div className="row" title={t('Manual: the operator starts it with ▶ (or the API action widget)')}>
-          <span className="prop-label">{t('Launch')}</span>
-          <Segmented value={layer.manualStart ? 'manual' : 'in'} onChange={(v) => edit((l) => void (l.manualStart = v === 'manual' || undefined))} options={[{ value: 'in', label: t('At the In') }, { value: 'manual', label: t('Manual') }]} />
-        </div>
+      {isTimed(layer) && !widgetOf(layer)?.Operator && (
+        <>
+          <div className="row" title={t('How it starts on air: at the In, on Continue (F2), or on a trigger (also the API action widget)')}>
+            <span className="prop-label">{tc('cc', 'Start')}</span>
+            <Segmented
+              value={startMode(layer)}
+              onChange={(v) =>
+                edit((l) => {
+                  l.manualStart = v !== 'in' ? true : undefined;
+                  l.startOn = v === 'trigger' ? 'trigger' : undefined;
+                })
+              }
+              options={START_MODES().map(([value, label]) => ({ value, label }))}
+            />
+          </div>
+          {startMode(layer) === 'trigger' && (
+            <div className="row">
+              <span className="prop-label">{tc('cc', 'Trigger name')}</span>
+              <TextInput value={layer.startTrigger ?? ''} commitOnBlur onChange={(v) => edit((l) => void (l.startTrigger = v.trim() || undefined))} />
+            </div>
+          )}
+        </>
       )}
       {layer.type === 'group' && layer.lottie !== undefined && <LottieSource layer={layer} />}
       {layer.type !== 'text' && layer.type !== 'image' && layer.type !== 'group' && !isTimed(layer) && <p className="hint">{t(LABELS[layer.type])}</p>}
@@ -943,12 +961,14 @@ function SpecInspector({ layer }: { layer: Layer }) {
   );
 }
 
-/** The Operator's controls of a widget, to try in the Designer: under its name, always shown. */
+/** The control centre of a widget (web/src/widgets/centre.tsx), to try in the Designer: under its name, always shown. */
 function OperatorPreview({ layer }: { layer: Layer }) {
-  const { template, previewData } = useDesigner(useShallow((s) => ({ template: s.template, previewData: s.previewData })));
+  const { template, previewData, update } = useDesigner(useShallow((s) => ({ template: s.template, previewData: s.previewData, update: s.update })));
   const data = useBoundData(template, previewData);
   const state = useDesigner((s) => s.widgetState[layer.id]);
   const actWidget = useDesigner((s) => s.actWidget);
+  // Its settings (line 3) edit the layer, as the inspector's rows do.
+  const set = (path: string, v: unknown, coalesce?: boolean) => update((t) => setPath(findLayer(t, layer.id)!, path, v), coalesce ? `${path}-${layer.id}` : undefined);
   if (!template) return null;
   const def = widgetOf(layer);
   const Op = def?.Operator && (def.controls ? def.controls(layer as never, data) : true) ? def.Operator : undefined;
@@ -967,9 +987,11 @@ function OperatorPreview({ layer }: { layer: Layer }) {
         <RowStep key={ds.key} ds={ds} />
       ))}
       {Op && (
-        <div className="wk-op">
-          <Op layer={shown as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '', held }} />
-        </div>
+        <CentreModeContext.Provider value="designer">
+          <Bound obj={layer} set={set} data={data}>
+            <Op layer={shown as never} state={state} data={data} act={act} time={{ nowMs: Date.now(), ageSecs: 0, defaultTz: '', held }} />
+          </Bound>
+        </CentreModeContext.Provider>
       )}
     </div>
   );

@@ -197,6 +197,72 @@ impl PlayoutItem {
         }
     }
 
+    /// Continue (F2) on the graphic: the widgets waiting for it go on (a timed
+    /// layer waiting for its start, a widget's next page…). True when one did.
+    fn continue_widgets(&mut self, t: &Template, fps: f64) -> bool {
+        let mut done = false;
+        let data = self.data.clone();
+        for l in &t.layers {
+            let ctx = crate::wid::ActCtx {
+                now_ms: now_ms(),
+                age_secs: self.layer_age(l) / fps.max(1.0),
+                data: &data,
+            };
+            if is_timed(&l.kind)
+                && l.manual_start
+                && l.start_on.as_deref() != Some("trigger")
+                && !self.clocks.contains_key(&l.id)
+            {
+                self.control(l, WidgetControl::Start);
+                done = true;
+            } else if crate::wid::widget_id(&l.kind).is_some() {
+                let mut st = self
+                    .widgets
+                    .get(&l.id)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                if crate::wid::on_continue(l, &mut st, &ctx) {
+                    self.widgets.insert(l.id.clone(), st);
+                    done = true;
+                }
+            }
+        }
+        done
+    }
+
+    /// The trigger `name` fired: the widgets waiting for it go on.
+    fn trigger_widgets(&mut self, t: &Template, name: &str, fps: f64) -> bool {
+        let mut done = false;
+        let data = self.data.clone();
+        for l in &t.layers {
+            let ctx = crate::wid::ActCtx {
+                now_ms: now_ms(),
+                age_secs: self.layer_age(l) / fps.max(1.0),
+                data: &data,
+            };
+            if is_timed(&l.kind)
+                && l.manual_start
+                && l.start_on.as_deref() == Some("trigger")
+                && crate::wid::same_trigger(&l.start_trigger, name)
+                && !self.clocks.contains_key(&l.id)
+            {
+                self.control(l, WidgetControl::Start);
+                done = true;
+            } else if crate::wid::widget_id(&l.kind).is_some() {
+                let mut st = self
+                    .widgets
+                    .get(&l.id)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                if crate::wid::on_trigger(l, &mut st, name, &ctx) {
+                    self.widgets.insert(l.id.clone(), st);
+                    done = true;
+                }
+            }
+        }
+        done
+    }
+
     fn control(&mut self, layer: &Layer, control: WidgetControl) {
         let age = self.age;
         let c = self
@@ -570,7 +636,11 @@ impl ChannelState {
                 let t = project
                     .template(&item.template_id)
                     .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
-                resume(t, item);
+                // A widget waiting for Continue (its next page, its start) takes it first;
+                // the timeline's pause plays on once none does.
+                if !item.continue_widgets(t, project.frame_rate.as_f64()) {
+                    resume(t, item);
+                }
             }
             Command::Trigger { name } => {
                 // Values set by hand until this trigger let go.
@@ -581,12 +651,14 @@ impl ChannelState {
                     });
                 }
                 for item in self.layers.values_mut() {
-                    if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
-                        continue;
-                    }
                     let Some(t) = project.template(&item.template_id) else {
                         continue;
                     };
+                    // Widgets waiting for this trigger (a page, a start) go on.
+                    item.trigger_widgets(t, &name, project.frame_rate.as_f64());
+                    if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                        continue;
+                    }
                     let waits = t.pause_at(item.frame).is_some_and(|m| {
                         matches!(&m.resume, Resume::Trigger { name: n } if n.trim().eq_ignore_ascii_case(name.trim()))
                     });
@@ -774,9 +846,10 @@ impl ChannelState {
                     })
                     .ok_or_else(|| PlayoutError::UnknownWidget(target.clone()))?;
                 let fps = project.frame_rate.as_f64().max(1.0);
+                // The layer's own time on air (still while it waits for its start, or paused).
                 let ctx = crate::wid::ActCtx {
                     now_ms: now_ms(),
-                    age_secs: item.age / fps,
+                    age_secs: item.layer_age(l) / fps,
                     data: &item.data,
                 };
                 let mut st = item
@@ -1860,6 +1933,79 @@ mod tests {
         .unwrap();
         ch.tick(4.0);
         assert_eq!(item(&ch), 4.0);
+    }
+
+    #[test]
+    fn continue_serves_the_widgets_before_the_pause() {
+        // A table chained on Continue (3 pages) with the template's pause markers.
+        let mut p = project();
+        let mut c = crate::wid::table::tests::sample(10);
+        c.auto_pages = true;
+        c.auto_on = crate::wid::table::AutoOn::Continue;
+        let table = crate::wid::table::tests::layer(c);
+        p.templates[0].layers.push(table.clone());
+        let mut ch = ChannelState::default();
+        ch.apply(&p, Command::take("z", "t")).unwrap();
+        let key = *ch.layers.keys().next().unwrap();
+        let cont = Command::Continue {
+            zone: Some("z".into()),
+            layer: None,
+        };
+        // Held on the first pause (frame 20); the table on page 1.
+        ch.tick(30.0);
+        let page = |ch: &ChannelState| {
+            let st: crate::wid::table::State = serde_json::from_value(
+                ch.layers[&key]
+                    .widgets
+                    .get(&table.id)
+                    .cloned()
+                    .unwrap_or_default(),
+            )
+            .unwrap_or_default();
+            crate::wid::table::current_page(&st, 3, 0).0
+        };
+        assert_eq!(ch.layers[&key].frame, 20.0);
+        assert_eq!(page(&ch), 0);
+        // F2, F2: the pages turn, the timeline stays on its pause.
+        ch.apply(&p, cont.clone()).unwrap();
+        assert_eq!(page(&ch), 1);
+        assert_eq!(ch.layers[&key].frame, 20.0);
+        ch.apply(&p, cont.clone()).unwrap();
+        assert_eq!(page(&ch), 2);
+        ch.tick(5.0);
+        assert_eq!(ch.layers[&key].frame, 20.0);
+        // The last page: F2 is the timeline's.
+        ch.apply(&p, cont).unwrap();
+        ch.tick(5.0);
+        assert!(ch.layers[&key].frame > 20.0);
+        assert_eq!(page(&ch), 2);
+
+        // A ticker waiting for a trigger starts on it, not on Continue.
+        let mut p = crate::sample::demo_project();
+        let t = p.templates.iter_mut().find(|t| t.id == "ticker").unwrap();
+        let crawl = t.layers.iter_mut().find(|l| is_timed(&l.kind)).unwrap();
+        crawl.manual_start = true;
+        crawl.start_on = Some("trigger".into());
+        crawl.start_trigger = "go".into();
+        let crawl = crawl.clone();
+        let mut ch = ChannelState::default();
+        ch.apply(&p, Command::take("ticker", "ticker")).unwrap();
+        let key = *ch.layers.keys().next().unwrap();
+        ch.tick(10.0);
+        ch.apply(
+            &p,
+            Command::Continue {
+                zone: Some("ticker".into()),
+                layer: None,
+            },
+        )
+        .unwrap();
+        ch.tick(5.0);
+        assert_eq!(ch.layers[&key].layer_age(&crawl), 0.0);
+        ch.apply(&p, Command::Trigger { name: "GO".into() })
+            .unwrap();
+        ch.tick(4.0);
+        assert_eq!(ch.layers[&key].layer_age(&crawl), 4.0);
     }
 
     #[test]
