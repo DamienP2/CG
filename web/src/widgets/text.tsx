@@ -16,6 +16,7 @@ import { scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, wiredKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { t, tc } from '../i18n';
+import { ON_AIR, SocialSource } from './socialSource';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -358,6 +359,7 @@ function Inspector({ layer, template, edit }: { layer: TextLayer; data: Data; te
   const scroll = !!layer.scroll && layer.scroll !== 'none';
   return (
     <>
+      <SocialSource label={t('Text')} picks={[ON_AIR.name('text'), ON_AIR.text('text'), ON_AIR.city('text'), ON_AIR.platformName('text'), ON_AIR.time('text'), ON_AIR.count('text'), ON_AIR.tag('text'), ON_AIR.tagCount('text'), ON_AIR.tagPerMin('text')]} />
       <Section id="text-content" title={t('Content')}>
         <Content path="text" rich value="" multiline lorem expose placeholder={t('Text')} />
         {typed && <Num label={t('Max characters')} path="maxChars" value={k.maxChars} min={0} max={9999} expose={false} />}

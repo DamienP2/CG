@@ -7,6 +7,7 @@ import type { Data } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
 import { t, tc, tl, tn } from '../i18n';
+import { ON_AIR, SocialSource } from './socialSource';
 import { GroupRow } from '../designer/Inspector';
 import { ColorPick, Content, defineWidget, GridEditor, Num, RangeNum, Row, Section, Seg, Select, Text, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
 import { ADVANCE_MODES, Centre, Countdown, Dots, GAP, WaitsContinue, WaitsTrigger, type AdvanceMode, type Line2Item } from './centre';
@@ -345,6 +346,7 @@ export default defineWidget({
     const lang = useApp((s) => s.project?.language) || 'fr';
     return (
       <>
+        <SocialSource label={t('Data')} picks={[ON_AIR.tagSeries('csv')]} after={(x) => void ((x as unknown as { source?: string }).source = 'csv')} />
         <Section id="chart-data" title={t('Data')}>
           <Seg
             label={t('Source')}

@@ -17599,3 +17599,107 @@ button.ux1-pill.lost:hover {
 .opx-pvctl.cc-host {
   display: block;
 }
+
+/* Project › Social › Connections */
+.soc-conns {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+}
+.soc-conns-list {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+.soc-conns-side {
+  min-height: 0;
+  overflow: auto;
+}
+.soc-conns-side .source-editor {
+  grid-template-columns: minmax(300px, 400px) minmax(0, 1fr);
+}
+.soc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  align-content: start;
+}
+.soc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--panel-2);
+  cursor: pointer;
+  outline: none;
+}
+.soc-card:hover,
+.soc-card:focus-visible {
+  background: var(--panel-3);
+}
+.soc-card.on {
+  border-color: var(--accent);
+}
+.soc-card.sel {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.soc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.soc-card-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.soc-card-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mod-follow.big {
+  justify-content: center;
+}
+.mod-follow.big .mod-menu {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.btn.big {
+  height: 34px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+.mod-waiting-conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.mod-air .mod-template-pick {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.soc-wired {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}

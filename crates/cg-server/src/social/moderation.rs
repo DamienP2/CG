@@ -1169,6 +1169,12 @@ async fn get_desk(
     UrlPath(id): UrlPath<String>,
 ) -> ApiResult<Json<View>> {
     visible_project(&s, &me, &id).await?;
+    // The project's source exists from the first look at its Social page:
+    // the Designer has it to wire before any connection is followed.
+    if s.data.get(&source_id(&id)).is_none() {
+        ensure_source(&s, &id);
+        record(&s, &id);
+    }
     Ok(Json(s.moderation.view(&id)))
 }
 

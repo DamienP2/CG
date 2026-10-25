@@ -87,7 +87,7 @@ export function useSocialSources() {
 const DAY = 86_400_000;
 
 /** What the list says of a connection, and the colour of its dot. */
-function state(s: SocialInfo): { text: string; dot: string; raw?: string } {
+export function connectionState(s: SocialInfo): { text: string; dot: string; raw?: string } {
   if (!s.enabled) return { text: t('Not enabled'), dot: 'idle' };
   if (s.error) return { text: friendlyError(s.error), dot: 'err', raw: s.error };
   if (s.expiresAt && s.expiresAt - Date.now() < 7 * DAY) {
@@ -108,7 +108,7 @@ export function SocialSection({ selected, onSelect }: { selected: string | null;
     <>
       <div className="soc-sep">{t('Social networks')}</div>
       {list.map((s) => {
-        const st = state(s);
+        const st = connectionState(s);
         return (
           <button key={s.id} className={`data-item ${selected === s.id ? 'selected' : ''}`} onClick={() => onSelect(s.id)}>
             <PlatformBadge platform={s.platform} />
@@ -428,7 +428,7 @@ function spark(list: SocialMessage[]) {
 }
 
 /** The last messages of a connection, newest first. */
-function Feed({ info }: { info: SocialInfo }) {
+export function Feed({ info }: { info: SocialInfo }) {
   const [list, setList] = useState<SocialMessage[]>([]);
   useEffect(() => {
     let live = true;

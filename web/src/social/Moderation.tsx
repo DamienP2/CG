@@ -6,6 +6,7 @@ import { LiveTime } from '../engine/LiveTime';
 import { Scene, Viewport } from '../engine/Scene';
 import type { Project, Template } from '../engine/types';
 import { useBoundData } from '../data/dataStore';
+import { connectionState, useSocialSources, type SocialInfo } from '../data/SocialSources';
 import { lang, locale, t, tc } from '../i18n';
 import { Dropdown } from '../ui/Dropdown';
 import { Segmented } from '../ui/fields';
@@ -89,7 +90,7 @@ function useLeft(at: number | null) {
   return at === null ? null : Math.max(0, Math.ceil((at - now - offset) / 1000));
 }
 
-export function Moderation({ projectId, desk }: { projectId: string; desk: Desk }) {
+export function Moderation({ projectId, desk, onConnections }: { projectId: string; desk: Desk; onConnections: () => void }) {
   const project = useApp((s) => (s.project?.id === projectId ? s.project : null));
   const [sel, setSel] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -169,7 +170,7 @@ export function Moderation({ projectId, desk }: { projectId: string; desk: Desk 
           </button>
         </header>
         <div className="mod-list">
-          {!incoming.length && <NoMessage icon={<Inbox size={22} />} />}
+          {!incoming.length && (desk.sources.length ? <Waiting desk={desk} /> : <NoConnection onConnections={onConnections} />)}
           {incoming.map((c) => (
             <IncomingCard key={c.message.id} card={c} selected={sel === c.message.id} onSelect={() => setSel(c.message.id)} projectId={projectId} onEdit={() => {
               setSel(c.message.id);
@@ -310,6 +311,39 @@ function Approved({ projectId, desk, sel, onSelect }: { projectId: string; desk:
   );
 }
 
+/** Nothing followed: the way to the connections. */
+function NoConnection({ onConnections }: { onConnections: () => void }) {
+  return (
+    <div className="empty big ux3-no-msg">
+      <Inbox size={22} />
+      <button className="btn primary big" onClick={onConnections}>
+        {t('Follow a connection')}
+      </button>
+    </div>
+  );
+}
+
+/** Connections followed, no message yet: their state. */
+function Waiting({ desk }: { desk: Desk }) {
+  const list = useSocialSources();
+  const mine = desk.sources.map((id) => list.find((s) => s.id === id)).filter((s): s is SocialInfo => !!s);
+  return (
+    <div className="empty big ux3-no-msg">
+      <Inbox size={22} />
+      {mine.map((s) => {
+        const st = connectionState(s);
+        return (
+          <span key={s.id} className="mod-waiting-conn" title={st.raw ?? st.text}>
+            <i className={`status-dot ${st.dot}`} />
+            <PlatformBadge platform={s.platform} size={15} />
+            {s.name} · {st.text}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /** An empty column. */
 function NoMessage({ icon }: { icon: React.ReactNode }) {
   return (
@@ -376,7 +410,7 @@ function AirHead({ projectId, desk, project }: { projectId: string; desk: Desk; 
       <b>{t('On air')}</b>
       <span className="spacer" />
       {channels.length > 1 && <Dropdown value={d.channelId} options={channels.map((c) => ({ value: c.id, label: c.name }))} placeholder={t('Channel')} onChange={(v) => save(projectId, 'display', { ...d, channelId: v })} />}
-      <Dropdown className="mod-template" value={d.templateId} options={(project?.templates ?? []).map((tp) => ({ value: tp.id, label: tp.name }))} placeholder={t('Template')} onChange={(v) => save(projectId, 'display', { ...d, templateId: v })} />
+      <Dropdown className={`mod-template ${d.templateId ? '' : 'mod-template-pick'}`} value={d.templateId} options={(project?.templates ?? []).map((tp) => ({ value: tp.id, label: tp.name }))} placeholder={d.templateId ? t('Template') : t('Pick the message template')} onChange={(v) => save(projectId, 'display', { ...d, templateId: v })} />
     </header>
   );
 }

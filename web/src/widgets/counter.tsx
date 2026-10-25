@@ -18,6 +18,7 @@ import { fontCss, measure } from './text';
 import { useLiveTime } from './table-text';
 import { confirmDialog } from '../ui/dialogs';
 import { t, tc } from '../i18n';
+import { ON_AIR, SocialSource } from './socialSource';
 
 export interface Config {
   min?: number | null;
@@ -691,6 +692,7 @@ function Inspector({ layer, edit }: { layer: CLayer; edit: (fn: (l: CLayer) => v
   const affixed = !!(layer.prefix || layer.suffix);
   return (
     <>
+      <SocialSource label={t('Value')} picks={[ON_AIR.count('to'), ON_AIR.tagCount('to'), ON_AIR.tagPerMin('to')]} />
       <Section id="ct-value" title={t('Value')}>
         <Content label={t('Value')} path="to" value="" placeholder={t('Number or {{key}}')} />
         <Text label={t('Prefix')} path="prefix" value="" />

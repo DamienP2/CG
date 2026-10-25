@@ -1,26 +1,27 @@
-import { Plus, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 import { t } from '../i18n';
 import { promptDialog } from '../ui/dialogs';
 import { PlatformBadge } from './PlatformBadge';
+import { Connections } from './Connections';
 import { Hashtags } from './Hashtags';
 import { Moderation } from './Moderation';
 import { RulesPage } from './Rules';
 import { save, useDesk, useSocial, type Desk } from './socialStore';
 
 /*
- * Project › Social: what the project does with the messages of the shared
- * connections it follows. Moderation (incoming, approved, on air), its
+ * Project › Social: the shared connections the project follows, what it
+ * does with their messages (moderation: incoming, approved, on air), its
  * rules, and the hashtags it counts.
  */
 
-type Sub = 'moderation' | 'rules' | 'hashtags';
+type Sub = 'connections' | 'moderation' | 'rules' | 'hashtags';
 const LAST_SUB = 'strata.socialTab';
 
 function recall(): Sub {
   try {
     const v = localStorage.getItem(LAST_SUB);
-    if (v === 'rules' || v === 'hashtags') return v;
+    if (v === 'rules' || v === 'hashtags' || v === 'connections') return v;
   } catch {
     /* private mode */
   }
@@ -29,7 +30,9 @@ function recall(): Sub {
 
 export function Social({ projectId }: { projectId: string }) {
   const desk = useDesk(projectId);
-  const [sub, setSub] = useState<Sub>(recall);
+  const [chosen, setSub] = useState<Sub | null>(null);
+  // Nothing followed yet: the connections first.
+  const sub: Sub = chosen ?? (desk && !desk.sources.length ? 'connections' : recall());
   const pick = (s: Sub) => {
     setSub(s);
     try {
@@ -48,6 +51,9 @@ export function Social({ projectId }: { projectId: string }) {
     <div className="mod-page">
       <div className="mod-subtabs">
         <div className="tabs">
+          <button className={sub === 'connections' ? 'on' : ''} onClick={() => pick('connections')}>
+            {t('Connections')}
+          </button>
           <button className={sub === 'moderation' ? 'on' : ''} onClick={() => pick('moderation')}>
             {t('Moderation')}
           </button>
@@ -59,7 +65,7 @@ export function Social({ projectId }: { projectId: string }) {
           </button>
         </div>
         <span className="spacer" />
-        {desk && sub === 'moderation' && <Followed projectId={projectId} desk={desk} />}
+        {desk && sub === 'moderation' && <Followed desk={desk} onConnections={() => pick('connections')} />}
         {desk && sub === 'hashtags' && (
           <button className="btn" onClick={addTag}>
             <Plus size={14} /> {t('Hashtag')}
@@ -68,8 +74,10 @@ export function Social({ projectId }: { projectId: string }) {
       </div>
       {!desk ? (
         <div className="loading">{t('Loading…')}</div>
+      ) : sub === 'connections' ? (
+        <Connections projectId={projectId} desk={desk} />
       ) : sub === 'moderation' ? (
-        <Moderation projectId={projectId} desk={desk} />
+        <Moderation projectId={projectId} desk={desk} onConnections={() => pick('connections')} />
       ) : sub === 'rules' ? (
         <RulesPage projectId={projectId} desk={desk} />
       ) : (
@@ -79,56 +87,23 @@ export function Social({ projectId }: { projectId: string }) {
   );
 }
 
-/** The shared connections the project follows, and the others to add. */
-function Followed({ projectId, desk }: { projectId: string; desk: Desk }) {
+/** The connections the project follows (chips), and the way to the Connections tab. */
+function Followed({ desk, onConnections }: { desk: Desk; onConnections: () => void }) {
   const connections = useSocial((s) => s.connections);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    addEventListener('mousedown', close);
-    return () => removeEventListener('mousedown', close);
-  }, [open]);
-  const follow = (ids: string[]) => void save(projectId, 'follow', { sources: ids });
-  const others = connections.filter((c) => !desk.sources.includes(c.id));
   return (
-    <div className="mod-follow" ref={ref}>
+    <div className="mod-follow">
       {desk.sources.map((id) => {
         const c = connections.find((x) => x.id === id);
         return (
           <span key={id} className={`mod-conn ${c && !c.connected ? 'off' : ''}`} title={c && !c.connected ? t('Not connected') : undefined}>
             {c && <PlatformBadge platform={c.platform} size={15} />}
             {c?.name ?? id}
-            <button
-              className="mod-conn-x"
-              title={t('Stop following')}
-              onClick={() => follow(desk.sources.filter((x) => x !== id))}
-            >
-              <X size={11} />
-            </button>
           </span>
         );
       })}
-      <button className="mod-conn add" onClick={() => setOpen(!open)}>
-        <Plus size={12} /> {t('Shared source')}
+      <button className="mod-conn add" onClick={onConnections}>
+        <Plus size={12} /> {t('Connection')}
       </button>
-      {open && (
-        <div className="mod-menu">
-          {others.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => {
-                setOpen(false);
-                follow([...desk.sources, c.id]);
-              }}
-            >
-              <PlatformBadge platform={c.platform} size={16} /> {c.name}
-            </button>
-          ))}
-          {!others.length && <div className="mod-menu-empty">{t('No other shared connection')}</div>}
-        </div>
-      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Content, defineWidget, Row, Section, Seg } from './kit';
 import { Pt } from './scoreboard-paint';
 import { avatar, badge, FamilyPick } from './socialwall';
 import { t } from '../i18n';
+import { ON_AIR, SocialSource } from './socialSource';
 
 export interface Config {
   show?: 'platform' | 'avatar';
@@ -58,6 +59,11 @@ export default defineWidget({
   Inspector: ({ layer, set }) => {
     const c = cfg(layer as unknown as Config);
     return (
+      <>
+        <SocialSource
+          label={c.show === 'platform' ? t('Platform') : t('Avatar')}
+          picks={c.show === 'platform' ? [ON_AIR.platform('platform')] : [{ id: 'avatar', label: t('On air · avatar'), fields: [{ path: 'avatar', from: 'onAir.avatar', kind: 'image', label: t('Avatar') }, { path: 'author', from: 'onAir.name', kind: 'text', label: t('Name') }] }]}
+        />
       <Section id="sb-content" title={t('Content')}>
         <Seg
           label={t('Show')}
@@ -91,6 +97,7 @@ export default defineWidget({
           <FamilyPick value={c.font} onChange={(f) => set('font', f)} />
         </Row>
       </Section>
+      </>
     );
   },
 });
