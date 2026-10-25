@@ -14223,36 +14223,6 @@ a.lib-nav-item {
   vertical-align: -1px;
 }
 /* The action just done, to undo it. */
-.opl-toast {
-  position: absolute;
-  left: 50%;
-  bottom: 22px;
-  transform: translateX(-50%);
-  z-index: 90;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100% - 32px);
-  padding: 8px 8px 8px 14px;
-  border-radius: 10px;
-  background: var(--panel-3);
-  border: 1px solid var(--line-2);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-  font-size: 13px;
-  white-space: nowrap;
-  animation: opl-in 0.18s ease-out;
-}
-@keyframes opl-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 8px);
-  }
-}
-.opl-toast-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 .opl-act {
   flex: none;
   font: 700 10.5px var(--mono);
@@ -16944,9 +16914,6 @@ button.ux1-pill.lost:hover {
   bottom: calc(100% + 10px);
   left: 0;
   right: auto;
-}
-.ux1-transport ~ .opl-toast {
-  bottom: 80px;
 }
 /* The shortcuts layer (« ? ») */
 .ux1-sc.modal {

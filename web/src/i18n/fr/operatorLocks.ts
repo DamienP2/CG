@@ -17,7 +17,6 @@ export const operatorLocks: Record<string, string> = {
   'undo|Trigger': 'Déclencheur',
   'Nothing to undo': 'Rien à annuler',
   'Undone: {name}': 'Annulé : {name}',
-  'Another action came after it': 'Une autre action a suivi',
   'Last actions on air': 'Dernières actions à l’antenne',
   'Undo back to here': 'Annuler jusqu’ici',
   'Undo {n} action': 'Annuler {n} action',

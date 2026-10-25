@@ -123,12 +123,12 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
       {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">{t('Opening…')}</div> : <Home route={route} />}
       <DialogHost />
       <ShortcutsOverlay />
-      <Toasts quiet={route.page === 'project' && route.sub === 'designer'} />
+      <Toasts quiet={route.page === 'project' && (route.sub === 'designer' || route.sub === 'operator')} />
     </div>
   );
 }
 
-/** `quiet`: errors only (the Designer shows what an action did on the stage). */
+/** `quiet`: errors only (the Designer and the Operator show what an action did on the stage). */
 function Toasts({ quiet }: { quiet: boolean }) {
   const toasts = useApp((s) => s.toasts);
   return (

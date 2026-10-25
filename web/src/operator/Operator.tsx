@@ -32,7 +32,7 @@ import { Splitter, useLayout } from '../ui/Splitter';
 import { t, tc, tn } from '../i18n';
 import { LockedBy, useZoneLocks, ZoneBar } from './ZoneBar';
 import { OperatorTop } from './Presence';
-import { noteAction, requestUndo, UndoHistory, UndoToast } from './UndoToast';
+import { requestUndo, UndoHistory, UndoShortcut } from './UndoToast';
 import { KeyCap, openShortcuts } from './ShortcutsOverlay';
 import { ScheduleCell, ScheduleTop, toggleScheduleList } from './Schedule';
 import { actionLabel, useShortcuts } from './shortcuts';
@@ -241,13 +241,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Editing the rundown needs the rights; going on air also needs an output.
   const canEdit = can.operate(auth?.user);
   const operate = canEdit && !!channelId;
-  // Each action of mine can be undone (its toast).
   const command: typeof send = (cmd) => {
     if (!operate) return;
-    const go = () => {
-      send(cmd, channelId!);
-      noteAction();
-    };
+    const go = () => send(cmd, channelId!);
     // A new name on its way: saved first, so the action (and the as-run) has it.
     if (pending.current?.name !== undefined) void flush().then(go);
     else go();
@@ -829,7 +825,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         ?
       </button>
     </footer>
-    <UndoToast channelId={channelId} operate={operate} />
+    <UndoShortcut channelId={channelId} operate={operate} />
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { History, Undo2, X } from 'lucide-react';
-import { api, clientNow, useApp } from '../store';
+import { api, useApp } from '../store';
 import { locale, t, tc, tn } from '../i18n';
 import { Avatar } from './Presence';
 
 /*
- * Undo on air: after each action of mine, a toast to undo it (⌘Z / Ctrl+Z);
- * in the top bar, the last actions of the channel, to undo back to one.
+ * Undo on air: ⌘Z / Ctrl+Z undoes my last action; in the top bar, the last
+ * actions of the channel, to undo back to one.
  */
 
 export interface UndoStep {
@@ -22,13 +22,8 @@ export interface UndoStep {
 const url = (channelId: string) => `/api/channels/${encodeURIComponent(channelId)}/undo`;
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const SHORTCUT = isMac ? '⌘Z' : 'Ctrl+Z';
-/** How long the toast stays (ms). */
-const TOAST_MS = 7000;
-
-/** An action of mine was just sent (the toast looks for it in the channel's undo list). */
 const actions = new EventTarget();
-export const noteAction = () => actions.dispatchEvent(new Event('action'));
-/** Undo asked (the Operator's shortcut): the toast undoes and tells. */
+/** Undo asked (the Operator's shortcut). */
 export const requestUndo = () => actions.dispatchEvent(new Event('undo'));
 
 /** The action's broadcast name (TAKE, OUT…). */
@@ -79,73 +74,14 @@ async function undoLast(channelId: string): Promise<boolean> {
 
 /** What the step was about: the graphic, or how many graphics Clear all took out. */
 const stepName = (s: UndoStep) => (s.action === 'clear' ? (s.count ? tn(s.count, '{n} graphic', '{n} graphics') : '') : s.label || s.action);
-/** The step in a sentence (« Undone: … »). */
-const stepText = (s: UndoStep) => (s.action === 'clear' ? [tc('undo', 'Clear all'), stepName(s)].filter(Boolean).join(' · ') : stepName(s));
-const sameStep = (a: UndoStep | undefined, b: UndoStep | undefined) => !!a && !!b && a.at === b.at && a.action === b.action && a.label === b.label && a.actor.id === b.actor.id;
 
-/** The toast after an action of mine, and ⌘Z / Ctrl+Z. */
-export function UndoToast({ channelId, operate }: { channelId: string | null; operate: boolean }) {
-  const me = useApp((s) => s.auth?.user?.id);
-  const live = useApp((s) => (channelId ? s.live[channelId] : undefined));
-  const offset = useApp((s) => s.serverOffset);
-  const [step, setStep] = useState<UndoStep | null>(null);
-  const [now, setNow] = useState(() => clientNow());
-  // When I last acted (client ms), and the last step shown.
-  const expect = useRef(0);
-  const shown = useRef(0);
-  const hide = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const look = async () => {
-    if (!channelId || clientNow() - expect.current > 5000) return;
-    const list = await api<UndoStep[]>('GET', url(channelId)).catch(() => []);
-    const top = list[0];
-    if (!top || top.actor.kind !== 'user' || top.actor.id !== me || top.at <= shown.current) return;
-    shown.current = top.at;
-    setStep(top);
-    clearTimeout(hide.current);
-    hide.current = setTimeout(() => setStep(null), TOAST_MS);
-  };
-  const lookRef = useRef(look);
-  lookRef.current = look;
-
-  useEffect(() => {
-    const on = () => {
-      expect.current = clientNow();
-      // The new channel state usually comes first; this catches the rest.
-      setTimeout(() => void lookRef.current(), 600);
-    };
-    actions.addEventListener('action', on);
-    return () => (actions.removeEventListener('action', on), clearTimeout(hide.current));
-  }, []);
-  useEffect(() => {
-    if (live && clientNow() - expect.current < 3000) void look();
-  }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!step) return;
-    setNow(clientNow());
-    const id = setInterval(() => setNow(clientNow()), 1000);
-    return () => clearInterval(id);
-  }, [step]);
-
+/** ⌘Z / Ctrl+Z undoes the last action on the channel (the top bar keeps the history). */
+export function UndoShortcut({ channelId, operate }: { channelId: string | null; operate: boolean }) {
   const undo = async () => {
     if (!channelId || !operate) return;
     const list = await api<UndoStep[]>('GET', url(channelId)).catch(() => [] as UndoStep[]);
     if (!list.length) return useApp.getState().toast(t('Nothing to undo'), 'error');
-    if (await undoLast(channelId)) {
-      if (sameStep(list[0], step ?? undefined)) setStep(null);
-      useApp.getState().toast(t('Undone: {name}', { name: stepText(list[0]) }), 'info');
-    }
-  };
-  // The toast's button undoes its own action, only while it is the last one.
-  const undoThis = async () => {
-    if (!channelId || !step) return;
-    const list = await api<UndoStep[]>('GET', url(channelId)).catch(() => [] as UndoStep[]);
-    if (!sameStep(list[0], step)) {
-      setStep(null);
-      return useApp.getState().toast(t('Another action came after it'), 'error');
-    }
-    await undo();
+    await undoLast(channelId);
   };
   const undoRef = useRef(undo);
   undoRef.current = undo;
@@ -155,22 +91,7 @@ export function UndoToast({ channelId, operate }: { channelId: string | null; op
     actions.addEventListener('undo', onUndo);
     return () => actions.removeEventListener('undo', onUndo);
   }, []);
-
-  if (!step || !channelId) return null;
-  const secs = Math.max(0, Math.round((now + offset - step.at) / 1000));
-  return (
-    <div className="opl-toast" role="status">
-      <ActionBadge action={step.action} />
-      <span className="opl-toast-name">{stepName(step)}</span>
-      <span className="muted">· {secs < 60 ? t('{n}s ago', { n: secs }) : t('{n} min ago', { n: Math.floor(secs / 60) })}</span>
-      <button className="opl-undo" disabled={!operate} onClick={() => void undoThis()}>
-        <Undo2 size={13} /> {t('Undo')} <kbd>{SHORTCUT}</kbd>
-      </button>
-      <button className="opl-toast-x" title={t('Close')} onClick={() => setStep(null)}>
-        <X size={13} />
-      </button>
-    </div>
-  );
+  return null;
 }
 
 /** The last actions of the channel (top bar): a click undoes back to one. */

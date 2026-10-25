@@ -85,8 +85,8 @@ function NewProject({ from, folder, onClose }: { from?: ProjectSummary; folder?:
         const f = useApp.getState().folders;
         await useApp.getState().saveFolders({ ...f, assign: { ...f.assign, [p.id]: folder } });
       }
-      // A new project opens in this tab (a copy stays in the list).
-      if (!from) navigate(projectPath(p.id));
+      // A new project opens in its own tab (a copy stays in the list).
+      if (!from) openInTab(projectPath(p.id));
     } catch (err) {
       toast((err as Error).message, 'error');
     } finally {
@@ -159,11 +159,9 @@ function Thumb({ src, style }: { src: string; style?: React.CSSProperties }) {
   );
 }
 
-/** A plain click opens a link in this tab; Ctrl/Cmd-click, Shift-click or the middle button, in another one. */
-function openHere(e: React.MouseEvent<HTMLAnchorElement>) {
-  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-  e.preventDefault();
-  navigate(e.currentTarget.getAttribute('href') ?? '/projects');
+/** A project opens in its own tab: the list stays open in this one. */
+function openInTab(path: string) {
+  if (!window.open(path, '_blank')) navigate(path);
 }
 
 /** A card's "…" menu: opens upward when there is no room below. */
@@ -667,7 +665,7 @@ export function Projects() {
               const isOn = selected.has(p.id);
               const link = (sub: ProjectPage, icon: React.ReactNode, label: string, show = true) =>
                 show && (
-                  <a className="project-link" href={projectPath(p.id, sub)} onClick={openHere}>
+                  <a className="project-link" href={projectPath(p.id, sub)} target="_blank" rel="noopener">
                     {icon}
                     <span>{label}</span>
                   </a>
@@ -675,7 +673,7 @@ export function Projects() {
               /** A page of the project, in the "…" menu. */
               const page = (sub: ProjectPage, icon: React.ReactNode, label: string, show = true) =>
                 show && (
-                  <a href={projectPath(p.id, sub)} onClick={(e) => (openHere(e), setMenu(null))}>
+                  <a href={projectPath(p.id, sub)} target="_blank" rel="noopener" onClick={() => setMenu(null)}>
                     {icon} {label}
                   </a>
                 );
@@ -694,11 +692,13 @@ export function Projects() {
                   <a
                     className="project-cover"
                     href={projectPath(p.id, design ? 'designer' : 'operator')}
+                    target="_blank"
+                    rel="noopener"
                     draggable={false}
                     style={{ aspectRatio: String(Math.max(16 / 9, ratio)) }}
                     onClick={(e) => {
                       // While picking, a click on a project picks it.
-                      if (!selecting) return openHere(e);
+                      if (!selecting) return;
                       e.preventDefault();
                       toggle(p.id, e.shiftKey);
                     }}
