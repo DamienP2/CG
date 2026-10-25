@@ -13,21 +13,28 @@ const OUT: OutputFormat = OutputFormat {
     height: 360,
 };
 
+/// The assets folder, written once: the tests run together, and a renderer
+/// reading the picture while another test writes it again would get a
+/// broken file.
 fn assets() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("cg-render-caches-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    // A small picture shown large (scaled once, then kept).
-    let mut img = image::RgbaImage::new(16, 10);
-    for (x, y, p) in img.enumerate_pixels_mut() {
-        *p = image::Rgba([
-            (x * 15) as u8,
-            (y * 25) as u8,
-            200,
-            if x == 0 { 120 } else { 255 },
-        ]);
-    }
-    img.save(dir.join("small.png")).unwrap();
-    dir
+    static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("cg-render-caches-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // A small picture shown large (scaled once, then kept).
+        let mut img = image::RgbaImage::new(16, 10);
+        for (x, y, p) in img.enumerate_pixels_mut() {
+            *p = image::Rgba([
+                (x * 15) as u8,
+                (y * 25) as u8,
+                200,
+                if x == 0 { 120 } else { 255 },
+            ]);
+        }
+        img.save(dir.join("small.png")).unwrap();
+        dir
+    })
+    .clone()
 }
 
 fn take(st: &mut ChannelState, p: &Project, template: &str, layer: u32) {
