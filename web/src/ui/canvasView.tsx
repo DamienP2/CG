@@ -1,6 +1,7 @@
 import { LayoutGrid, Maximize, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
+import { displayPref, setDisplayPref } from '../displayPrefs';
 
 /*
  * Pan and zoom of the node canvases (Data, Logic, Outputs): the viewport
@@ -25,13 +26,10 @@ const MIN = 0.2;
 const MAX = 2.5;
 const clamp = (z: number) => Math.min(MAX, Math.max(MIN, z));
 
+/** Kept for the user. */
 function loadView(key: string): View | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(`pulse.view.${key}`) ?? 'null');
-    return v && typeof v.zoom === 'number' ? v : null;
-  } catch {
-    return null;
-  }
+  const v = displayPref<View | null>(`view.${key}`, null);
+  return v && typeof v.zoom === 'number' ? v : null;
 }
 
 /** True for a mouse wheel notch (zoom), false for a trackpad scroll (pan). */
@@ -63,11 +61,7 @@ export function useCanvasView(key: string, nodeSelector = '.logic-node', opts: C
     (v: View) => {
       viewRef.current = v;
       setViewState(v);
-      try {
-        localStorage.setItem(`pulse.view.${key}`, JSON.stringify(v));
-      } catch {
-        /* private mode */
-      }
+      setDisplayPref(`view.${key}`, v);
     },
     [key],
   );

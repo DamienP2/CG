@@ -13,6 +13,7 @@ import { StatusPill } from './ui/StatusPill';
 import { UserMenu } from './ui/UserMenu';
 import { NavGroup, type NavEntry } from './ui/NavMenu';
 import { ShortcutsOverlay } from './operator/ShortcutsOverlay';
+import { loadDisplayPrefs, useDisplayPrefs } from './displayPrefs';
 
 // The heavy pages load when opened: the project list and the outputs do not carry the Designer.
 const Designer = lazy(() => import('./designer/Designer').then((m) => ({ default: m.Designer })));
@@ -91,6 +92,11 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   useEffect(() => {
     if (user) connect();
   }, [user, connect]);
+  // The user's display choices before the pages are drawn.
+  const prefsOf = useDisplayPrefs((s) => s.user);
+  useEffect(() => {
+    if (user) void loadDisplayPrefs(user.id);
+  }, [user]);
 
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
@@ -110,22 +116,24 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
 
   if (!auth) return <div className="loading">{t('Connecting…')}</div>;
   if (!user) return <Login key={lang} />;
+  if (prefsOf !== user.id) return <div className="loading">{t('Connecting…')}</div>;
 
   return (
     <div className="app" key={lang}>
       {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">{t('Opening…')}</div> : <Home route={route} />}
       <DialogHost />
       <ShortcutsOverlay />
-      <Toasts />
+      <Toasts quiet={route.page === 'project' && route.sub === 'designer'} />
     </div>
   );
 }
 
-function Toasts() {
+/** `quiet`: errors only (the Designer shows what an action did on the stage). */
+function Toasts({ quiet }: { quiet: boolean }) {
   const toasts = useApp((s) => s.toasts);
   return (
     <div className="toasts">
-      {toasts.map((t) => (
+      {toasts.filter((x) => !quiet || x.kind === 'error').map((t) => (
         <div key={t.id} className={`toast ${t.kind}`}>
           {t.message}
         </div>

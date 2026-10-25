@@ -1,7 +1,9 @@
 //! What each user sets for themselves, kept in `<data_dir>/prefs/<user>.json`:
-//! their keyboard shortcuts in the Operator.
+//! their keyboard shortcuts in the Operator and what the pages show (panel
+//! sizes, the Designer's display choices…), the same on every browser.
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use axum::extract::State;
 use axum::Json;
@@ -59,6 +61,12 @@ fn write(
     std::fs::rename(tmp, path)
 }
 
+/// One read-modify-write of a preferences file at a time.
+static WRITING: Mutex<()> = Mutex::new(());
+
+/// Display choices of a user, all pages together (bytes of JSON).
+const DISPLAY_MAX: usize = 256 * 1024;
+
 fn check(b: &[Binding]) -> Result<(), String> {
     if b.len() > 500 {
         return Err("too many shortcuts".into());
@@ -97,6 +105,7 @@ pub async fn put_shortcuts(
     if let Some(b) = &input.bindings {
         check(b).map_err(bad)?;
     }
+    let _w = WRITING.lock().unwrap_or_else(|e| e.into_inner());
     let mut prefs = read(&s.data_dir, &me.id);
     prefs.insert(
         "shortcuts".into(),
@@ -104,6 +113,53 @@ pub async fn put_shortcuts(
     );
     write(&s.data_dir, &me.id, &prefs).map_err(internal)?;
     Ok(Json(input))
+}
+
+type Values = serde_json::Map<String, serde_json::Value>;
+
+/// The display choices with `patch` applied (`null` removes a choice).
+fn patched(mut display: Values, patch: Values) -> Result<Values, String> {
+    for (k, v) in patch {
+        if k.is_empty() || k.len() > 200 {
+            return Err("a display choice needs a name (200 characters at most)".into());
+        }
+        if v.is_null() {
+            display.remove(&k);
+        } else {
+            display.insert(k, v);
+        }
+    }
+    let size = serde_json::to_vec(&display).map_or(usize::MAX, |b| b.len());
+    if size > DISPLAY_MAX {
+        return Err("too many display choices".into());
+    }
+    Ok(display)
+}
+
+fn display_of(prefs: &Values) -> Values {
+    prefs
+        .get("display")
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+/// `GET /api/me/display`: the user's display choices, by name.
+pub async fn get_display(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> Json<Values> {
+    Json(display_of(&read(&s.data_dir, &me.id)))
+}
+
+/// `PATCH /api/me/display` `{name: value}`: sets these choices (`null` removes one).
+pub async fn patch_display(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(patch): Json<Values>,
+) -> ApiResult<Json<Values>> {
+    let _w = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let mut prefs = read(&s.data_dir, &me.id);
+    let display = patched(display_of(&prefs), patch).map_err(bad)?;
+    prefs.insert("display".into(), serde_json::Value::Object(display.clone()));
+    write(&s.data_dir, &me.id, &prefs).map_err(internal)?;
+    Ok(Json(display))
 }
 
 #[cfg(test)]
@@ -133,5 +189,23 @@ mod tests {
         }])
         .is_err());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn display_choices_are_patched() {
+        let v = |j: serde_json::Value| j.as_object().unwrap().clone();
+        let d = patched(
+            Values::new(),
+            v(serde_json::json!({"a": 1, "b": {"x": true}})),
+        )
+        .unwrap();
+        let d = patched(d, v(serde_json::json!({"a": null, "c": "black"}))).unwrap();
+        assert_eq!(
+            serde_json::Value::Object(d.clone()),
+            serde_json::json!({"b": {"x": true}, "c": "black"})
+        );
+        assert!(patched(d.clone(), v(serde_json::json!({"": 1}))).is_err());
+        let big = "x".repeat(DISPLAY_MAX);
+        assert!(patched(d, v(serde_json::json!({ "big": big }))).is_err());
     }
 }

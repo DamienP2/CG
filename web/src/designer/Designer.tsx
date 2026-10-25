@@ -27,6 +27,7 @@ import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
 import { projectPath, setLeaveGuard } from '../router';
 import { t, tn } from '../i18n';
+import { useDisplayPref } from '../displayPrefs';
 
 function usePlayback(fps: number) {
   const playing = useDesigner((s) => s.playing);
@@ -360,11 +361,11 @@ export const Designer = memo(function Designer() {
   // The top bar's slot for undo, redo and the history.
   const [topSlot, setTopSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setTopSlot(document.getElementById('topbar-slot')), []);
-  const [showZones, setShowZones] = useState(true);
+  const [showZones, setShowZones] = useDisplayPref('designer.zones', true);
   const [logicOpen, setLogicOpen] = useState(false);
   const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
   // Panel sizes, adjustable with the splitters.
-  const [layout, setLayout] = useLayout('pulse.designerLayout', {
+  const [layout, setLayout] = useLayout('designer.layout', {
     left: 320,
     right: 380,
     timeline: 300,
@@ -373,13 +374,13 @@ export const Designer = memo(function Designer() {
     rightFull: 0,
     // The timeline's layer column when it no longer lines up with the left panel.
     layers: MIN_LEFT,
-  });
+  }, true);
   // Room for the timeline property values (two 5-digit fields).
   const left = Math.max(MIN_LEFT, layout.left);
   const leftFull = !!layout.leftFull;
   const rightFull = !!layout.rightFull;
   const layersW = leftFull ? Math.max(MIN_LEFT, layout.layers) : left;
-  const [background, setBackground] = useState<StageBackground>('checker');
+  const [background, setBackground] = useDisplayPref<StageBackground>('designer.background', 'checker');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
   useShortcuts();

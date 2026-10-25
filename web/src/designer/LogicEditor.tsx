@@ -12,6 +12,7 @@ import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
 import { t } from '../i18n';
+import { displayPref, setDisplayPref } from '../displayPrefs';
 
 /*
  * Relations editor (MXMZ-style logic): sources → operations → targets,
@@ -217,23 +218,13 @@ export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'conditi
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const { template, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
   const cv = useCanvasView(`logic.${template?.id ?? ''}`, '.logic-node', { onArrange: () => arrange() });
-  // Node widths, per browser.
-  const sizesKey = `pulse.logicSizes.${template?.id ?? ''}`;
-  const [sizes, setSizesState] = useState<Record<string, number>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(sizesKey) ?? '{}');
-    } catch {
-      return {};
-    }
-  });
+  // Node widths, kept for the user.
+  const sizesKey = `logic.sizes.${template?.id ?? ''}`;
+  const [sizes, setSizesState] = useState<Record<string, number>>(() => displayPref(sizesKey, {}));
   const setSize = (id: string, w: number) =>
     setSizesState((cur) => {
       const next = { ...cur, [id]: w };
-      try {
-        localStorage.setItem(sizesKey, JSON.stringify(next));
-      } catch {
-        /* private mode */
-      }
+      setDisplayPref(sizesKey, next);
       return next;
     });
   const widthOf = (n: LogicNode) => sizes[n.id] ?? NODE_W;

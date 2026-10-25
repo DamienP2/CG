@@ -157,6 +157,13 @@ function pauseOf(p: PlayoutItem, project: Project): Marker | undefined {
   return t?.markers.find((m) => m.kind === 'pause' && Math.abs(m.frame - p.frame) < 0.5);
 }
 
+/** Continue would move it on: held on a pause, playing towards one, or paused while going out (as the server's `resume`, crates/cg-core/src/playout.rs). */
+function canContinue(p: PlayoutItem, t: Template | undefined): boolean {
+  if (!t || p.phase === 'out') return false;
+  if (p.phase === 'outHold') return true;
+  return Math.max(p.target, p.frame) < holdFrame(t) - 1e-6;
+}
+
 /** What a graphic on air does by itself, the soonest: a timed pause plays on, it goes out (IN/OUT marker after a delay), or auto next takes the next graphic. `at`: client time (ms); `secs`: the whole delay. As the server, the time counts from the stop it holds at. */
 interface AutoStep {
   kind: 'resume' | 'out' | 'next';
@@ -1560,7 +1567,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
         </span>
         <span className="spacer" />
         <DataWarning template={tpl} />
-        {tpl && (
+        {canContinue(item, tpl) && (
           <button className={`opx-btn small ${waiting ? 'amber' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={t('F2 / Space')}>
             <ChevronsRight size={13} /> Continue {count('resume')}
           </button>
@@ -1600,9 +1607,11 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
     <div className="opx-controls">
       {!bare && (
         <div className="opx-actions sticky">
-          <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title={t('F2 / Space')}>
-            <ChevronsRight size={14} /> Continue
-          </button>
+          {canContinue(item, tpl) && (
+            <button className={`opx-btn ${waiting ? 'amber' : ''}`} onClick={() => command({ action: 'continue', ...target })} title={t('F2 / Space')}>
+              <ChevronsRight size={14} /> Continue
+            </button>
+          )}
           <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
             <CircleStop size={14} /> Out
           </button>

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { displayPref, setDisplayPref } from '../displayPrefs';
 
-/** Panel sizes of a page, remembered in this browser. */
-export function useLayout<T extends Record<string, number>>(key: string, defaults: T): [T, (k: keyof T, v: number) => void] {
+/** Panel sizes of a page, remembered in this browser (`user`: for the user, on every browser). */
+export function useLayout<T extends Record<string, number>>(key: string, defaults: T, user = false): [T, (k: keyof T, v: number) => void] {
   const [sizes, setSizes] = useState<T>(() => {
+    if (user) return { ...defaults, ...displayPref<Partial<T>>(key, {}) };
     try {
       return { ...defaults, ...JSON.parse(localStorage.getItem(key) ?? '{}') };
     } catch {
@@ -11,12 +13,13 @@ export function useLayout<T extends Record<string, number>>(key: string, default
     }
   });
   useEffect(() => {
+    if (user) return setDisplayPref(key, sizes);
     try {
       localStorage.setItem(key, JSON.stringify(sizes));
     } catch {
       /* private mode */
     }
-  }, [key, sizes]);
+  }, [key, sizes, user]);
   return [sizes, (k, v) => setSizes((s) => ({ ...s, [k]: v }))];
 }
 

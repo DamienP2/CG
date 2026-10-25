@@ -5,6 +5,7 @@ import { newId } from '../engine/evaluate';
 import type { Area, Guides, Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { t } from '../i18n';
+import { displayPref, setDisplayPref, useDisplayPrefs } from '../displayPrefs';
 
 /*
  * Designer aids: rulers, guides (dragged out of the rulers, back onto them
@@ -16,7 +17,7 @@ import { t } from '../i18n';
 
 export const DEFAULT_GUIDES: Guides = { vertical: [], horizontal: [], actionSafe: 0.05, titleSafe: 0.1, exclusions: [] };
 
-const VIEW_KEY = 'pulse.guidesView';
+const VIEW_KEY = 'designer.view';
 type View = {
   safe: boolean;
   guides: boolean;
@@ -25,7 +26,7 @@ type View = {
   editSafe?: boolean;
   /** The area selected while editing ("action", "title" or an exclusion id). */
   area?: string | null;
-  /** What the stage shows: the picture (program), the fill over black, or the key (alpha, white on black); not kept. */
+  /** What the stage shows: the picture (program), the fill over black, or the key (alpha, white on black). */
   stageView?: StageView;
 };
 
@@ -41,26 +42,18 @@ export function stageViewStyle(view: StageView | undefined, background: string):
   if (!view || view === 'program') return { background };
   return { background: 'black', filter: view === 'key' ? 'brightness(0) invert(1)' : undefined };
 }
-function loadView(): View {
-  try {
-    return { safe: true, guides: true, snap: true, ...JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') };
-  } catch {
-    return { safe: true, guides: true, snap: true };
-  }
-}
+const loadView = (): View => ({ safe: true, guides: true, snap: true, stageView: 'program', ...displayPref<Partial<View>>(VIEW_KEY, {}), editSafe: false });
 export const useGuidesView = create<View & { set: (v: Partial<View>) => void }>((set, get) => ({
   ...loadView(),
   set(v) {
     set(v);
-    const { safe, guides, snap } = get();
     if (v.editSafe && !get().safe) set({ safe: true });
-    try {
-      localStorage.setItem(VIEW_KEY, JSON.stringify({ safe, guides, snap }));
-    } catch {
-      /* private mode */
-    }
+    const { safe, guides, snap, stageView } = get();
+    setDisplayPref(VIEW_KEY, { safe, guides, snap, stageView });
   },
 }));
+// Another user logs in: their choices.
+useDisplayPrefs.subscribe((s, before) => s.user !== before.user && useGuidesView.setState(loadView()));
 
 /** Guides being edited, shared by the stage and the menu until saved. */
 const useDraft = create<{ id: string | null; g: Guides | null }>(() => ({ id: null, g: null }));

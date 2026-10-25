@@ -27,6 +27,7 @@ import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
 import { Bound, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { t, tc, tn } from '../i18n';
+import { useDisplayPref } from '../displayPrefs';
 import { datasetUse, useDatasetRows } from '../operator/DataSets';
 
 interface PropSpec {
@@ -109,24 +110,10 @@ export function Section({ title, children, actions }: { title: string; children:
   );
 }
 
-/** Collapsible group of the properties panel (state kept per browser). */
+/** Collapsible group of the properties panel (kept for the user). */
 function Group({ id, title, level = 1, children, actions }: { id: string; title: string; level?: 1 | 2; children: React.ReactNode; actions?: React.ReactNode }) {
-  const key = `pulse.insp2.${id}`;
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(key) === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggle = () => {
-    setOpen(!open);
-    try {
-      localStorage.setItem(key, open ? '0' : '1');
-    } catch {
-      /* private mode */
-    }
-  };
+  const [open, setOpen] = useDisplayPref(`designer.group.${id}`, false);
+  const toggle = () => setOpen(!open);
   return (
     <section className={`pp-group l${level} ${open ? 'open' : ''}`}>
       <header>

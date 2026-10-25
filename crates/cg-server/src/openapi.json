@@ -4596,6 +4596,59 @@
     }
    }
   },
+  "/api/me/display": {
+   "get": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "My display choices",
+    "description": "Panel sizes and what the pages show, by name. **Rights:** any signed-in user.",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "Users & API keys"
+    ],
+    "summary": "Change my display choices",
+    "description": "Sets the named choices; `null` removes one. 256 KB at most in all.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "additionalProperties": true
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/social/sources": {
    "get": {
     "tags": [

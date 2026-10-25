@@ -37,6 +37,10 @@ pub fn router() -> Router<Shared> {
             "/api/me/shortcuts",
             get(crate::prefs::get_shortcuts).put(crate::prefs::put_shortcuts),
         )
+        .route(
+            "/api/me/display",
+            get(crate::prefs::get_display).patch(crate::prefs::patch_display),
+        )
         .route("/api/web/proxy", get(crate::webproxy::proxy))
         .route("/api/inputs", get(crate::inputs::list))
         .route("/api/inputs/ndi-sources", get(crate::inputs::ndi_sources))
