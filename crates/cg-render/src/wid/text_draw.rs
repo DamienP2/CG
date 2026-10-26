@@ -330,7 +330,89 @@ fn blur_pixmap(pm: &mut Pixmap, sigma: f32) {
     }
 }
 
+/// `a / d` rounded down, for the sums of a box (`a` ≤ 255 × `d`, `d` <
+/// 4096): by a multiplication, exact in that range.
+#[derive(Clone, Copy)]
+struct Div {
+    m: u64,
+}
+
+impl Div {
+    fn new(d: u32) -> Div {
+        Div {
+            m: (1u64 << 32).div_ceil(d as u64),
+        }
+    }
+    #[inline(always)]
+    fn of(self, a: u32) -> u8 {
+        (((a as u64 * self.m) >> 32) as u32).min(255) as u8
+    }
+}
+
+/// One box pass of radius `r` along the rows (`horizontal`) or the columns
+/// of a premultiplied `w` × `h` picture; outside is transparent. Columns
+/// are summed a whole row at a time (memory read in order).
 fn box_pass(src: &[u8], dst: &mut [u8], w: usize, h: usize, r: usize, horizontal: bool) {
+    let d = (2 * r + 1) as u32;
+    if d >= 4096 {
+        return box_pass_slow(src, dst, w, h, r, horizontal);
+    }
+    let div = Div::new(d);
+    if horizontal {
+        for (s, o) in src.chunks_exact(w * 4).zip(dst.chunks_exact_mut(w * 4)) {
+            let s = s.as_chunks::<4>().0;
+            let o = o.as_chunks_mut::<4>().0;
+            let mut acc = [0u32; 4];
+            for p in &s[..=r.min(w - 1)] {
+                for c in 0..4 {
+                    acc[c] += p[c] as u32;
+                }
+            }
+            for i in 0..w {
+                o[i] = acc.map(|a| div.of(a));
+                if i + r + 1 < w {
+                    let q = s[i + r + 1];
+                    for c in 0..4 {
+                        acc[c] += q[c] as u32;
+                    }
+                }
+                if i >= r {
+                    let q = s[i - r];
+                    for c in 0..4 {
+                        acc[c] -= q[c] as u32;
+                    }
+                }
+            }
+        }
+        return;
+    }
+    let row = w * 4;
+    let mut acc = vec![0u32; row];
+    let add = |acc: &mut [u32], y: usize| {
+        for (a, v) in acc.iter_mut().zip(&src[y * row..(y + 1) * row]) {
+            *a += *v as u32;
+        }
+    };
+    for y in 0..=r.min(h - 1) {
+        add(&mut acc, y);
+    }
+    for y in 0..h {
+        for (o, a) in dst[y * row..(y + 1) * row].iter_mut().zip(&acc) {
+            *o = div.of(*a);
+        }
+        if y + r + 1 < h {
+            add(&mut acc, y + r + 1);
+        }
+        if y >= r {
+            for (a, v) in acc.iter_mut().zip(&src[(y - r) * row..(y - r + 1) * row]) {
+                *a -= *v as u32;
+            }
+        }
+    }
+}
+
+/// The same, one pixel at a time (boxes too wide for `Div`; the reference).
+fn box_pass_slow(src: &[u8], dst: &mut [u8], w: usize, h: usize, r: usize, horizontal: bool) {
     let (outer, inner) = if horizontal { (h, w) } else { (w, h) };
     let idx = |o: usize, i: usize| {
         if horizontal {
@@ -380,4 +462,36 @@ pub(crate) fn main_font(d: &mut Draw, family: &str, weight: u16) -> Option<ab_gl
 /// A chain for `text` (and "…", "-", the cursor's characters).
 pub(crate) fn chain(d: &mut Draw, main: ab_glyph::FontArc, text: &str) -> Chain {
     Chain::new(&mut d.rd.fonts, main, &format!("{text}…-"))
+}
+
+#[cfg(test)]
+mod blur_tests {
+    use super::*;
+
+    /// Row by row, the passes give what one pixel at a time does, bit for bit.
+    #[test]
+    fn the_fast_box_passes_are_the_reference_ones() {
+        let (w, h) = (37, 23);
+        let mut seed = 7u32;
+        let src: Vec<u8> = (0..w * h * 4)
+            .map(|_| {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                (seed >> 24) as u8
+            })
+            .collect();
+        for r in [1, 2, 5, 11, 30] {
+            for horizontal in [true, false] {
+                let (mut a, mut b) = (vec![0u8; src.len()], vec![0u8; src.len()]);
+                box_pass(&src, &mut a, w, h, r, horizontal);
+                box_pass_slow(&src, &mut b, w, h, r, horizontal);
+                assert_eq!(a, b, "r {r}, horizontal {horizontal}");
+            }
+        }
+        for d in 1..4096u32 {
+            let div = Div::new(d);
+            for a in [0, 1, d - 1, d, d + 1, 255 * d - 1, 255 * d, 128 * d + d / 2] {
+                assert_eq!(div.of(a) as u32, (a / d).min(255), "{a} / {d}");
+            }
+        }
+    }
 }
