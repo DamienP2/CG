@@ -179,8 +179,10 @@ impl Key {
 }
 
 /// True when a pixel of the outer ring of `pm` is not transparent: the
-/// drawing reached the edge, so it may go on beyond it.
-pub(crate) fn touches_edge(pm: &Pixmap) -> bool {
+/// drawing reached the edge, so it may go on beyond it. `sides`: which of
+/// left, top, right, bottom to look at (a side cut by the frame does not
+/// matter).
+pub(crate) fn touches_edge(pm: &Pixmap, sides: [bool; 4]) -> bool {
     let (w, h) = (pm.width() as usize, pm.height() as usize);
     if w < 3 || h < 3 {
         return true;
@@ -193,10 +195,12 @@ pub(crate) fn touches_edge(pm: &Pixmap) -> bool {
             .iter()
             .any(|p| p[3] != 0)
     };
-    if row_has(0) || row_has(h - 1) {
+    if (sides[1] && row_has(0)) || (sides[3] && row_has(h - 1)) {
         return true;
     }
-    (1..h - 1).any(|y| d[(y * w) * 4 + 3] != 0 || d[(y * w + w - 1) * 4 + 3] != 0)
+    (1..h - 1).any(|y| {
+        (sides[0] && d[(y * w) * 4 + 3] != 0) || (sides[2] && d[(y * w + w - 1) * 4 + 3] != 0)
+    })
 }
 
 #[cfg(test)]
@@ -222,12 +226,14 @@ mod tests {
     #[test]
     fn the_edge_ring_is_checked() {
         let mut pm = Pixmap::new(5, 5).unwrap();
-        assert!(!touches_edge(&pm));
+        let all = [true; 4];
+        assert!(!touches_edge(&pm, all));
         pm.pixels_mut()[2 * 5 + 2] =
             tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 0, 255).unwrap();
-        assert!(!touches_edge(&pm));
+        assert!(!touches_edge(&pm, all));
         pm.pixels_mut()[4 * 5 + 2] =
             tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 0, 255).unwrap();
-        assert!(touches_edge(&pm));
+        assert!(touches_edge(&pm, all));
+        assert!(!touches_edge(&pm, [true, true, true, false]));
     }
 }

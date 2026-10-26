@@ -661,6 +661,9 @@ pub(crate) fn paint(
     // The second step: what is over the base map.
     p.skip = false;
     p.d.rd.sub_step(p.d.pm);
+    if p.d.rd.base_only() {
+        return Vec::new();
+    }
 
     // Markers, then label candidates (markers first).
     let mut cands: Vec<Cand> = Vec::new();

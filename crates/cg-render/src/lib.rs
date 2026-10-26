@@ -172,6 +172,8 @@ pub struct Renderer {
     root_scale: f32,
     /// Drawing a sprite (no sprite inside one, pictures at their best).
     in_sprite: bool,
+    /// Sprites off: every layer drawn straight (to compare, to measure).
+    sprites_on: bool,
 }
 
 /// Where a frame being drawn is, in its steps (see `cache`).
@@ -200,6 +202,8 @@ struct Steps {
     split: bool,
     /// Inside a cross-fade (the graphic drawn twice: no sprites).
     fading: bool,
+    /// Drawing the sprite of a layer drawn in two steps: its first only.
+    base_only: bool,
 }
 
 /// Values of the layers changed by a template's logic graph, by layer id.
@@ -338,6 +342,7 @@ impl Renderer {
             sprites: Default::default(),
             root_scale: 1.0,
             in_sprite: false,
+            sprites_on: true,
         }
     }
 
@@ -345,6 +350,17 @@ impl Renderer {
     /// whole, from scratch (to compare, and to measure).
     pub fn set_cache(&mut self, on: bool) {
         self.caching = on;
+    }
+
+    /// Sprites (layers kept drawn, `sprite`) on or off: off, every layer
+    /// is drawn straight each frame (to compare, and to measure).
+    pub fn set_sprites(&mut self, on: bool) {
+        self.sprites_on = on;
+    }
+
+    /// Sprites made and laid again so far (measures).
+    pub fn sprite_counts(&self) -> (u64, u64) {
+        (self.sprites.made, self.sprites.found)
     }
 
     /// Where the Video widget finds the pictures of the live inputs.
@@ -1095,12 +1111,14 @@ impl Renderer {
                     .is_some_and(|o| o.span == 2);
             // Its picture does not change with time: laid from its sprite
             // (drawn once), when nothing of it changed.
-            let sprite = (!own_drawn
+            // (its own motion, that of its second step when drawn in two)
+            let sprite = (self.sprites_on
+                && !own_drawn
                 && !self.in_sprite
                 && !self.steps.fading
                 && self.steps.clocked == 0)
                 .then(|| self.step_motion(pm, ctx, &r, tf, opacity, shadowed && is_group, split))
-                .filter(|m| *m != cache::Motion::Moving);
+                .filter(|(m, _)| *m != cache::Motion::Moving);
             let own_mask = own_rect.map(|rect| build_mask(pm, mask, rect, tf));
             let m = own_mask.as_ref().or(mask);
 
@@ -1111,8 +1129,8 @@ impl Renderer {
                 let cut = if crop.is_some() { m } else { mask };
                 self.steps.whole += 1;
                 let shadow = clip_children.then_some((w, h));
-                let laid = sprite.is_some_and(|m| {
-                    self.lay_sprite(pm, ctx, &r, tf, opacity, cut, m, Some(shadow))
+                let laid = sprite.is_some_and(|(m, _)| {
+                    self.lay_sprite(pm, ctx, &r, tf, opacity, cut, m, Some(shadow), false)
                 });
                 if !laid {
                     self.draw_shadowed(pm, ctx, &r, tf, opacity, cut, shadow, true);
@@ -1120,7 +1138,15 @@ impl Renderer {
                 self.steps.whole -= 1;
                 continue;
             }
-            if sprite.is_some_and(|mo| self.lay_sprite(pm, ctx, &r, tf, opacity, m, mo, None)) {
+            // Whole from its sprite; or, drawn in two with a second step that
+            // moves (a map's pulsing markers), the first from its sprite and
+            // the second over it.
+            let whole = sprite.filter(|(_, m2)| m2.is_none_or(|m| m != cache::Motion::Moving));
+            let base = sprite.filter(|(_, m2)| m2.is_some() && whole.is_none());
+            if whole.is_some_and(|(m1, m2)| {
+                let mo = m2.map_or(m1, |m| m1.and(m));
+                self.lay_sprite(pm, ctx, &r, tf, opacity, m, mo, None, false)
+            }) {
                 if split {
                     // Both steps of the widget are laid: the second counted too.
                     self.steps.at += 1;
@@ -1131,7 +1157,10 @@ impl Renderer {
                     }
                 }
             } else if !own_drawn || split {
-                self.steps.under = own_drawn;
+                let under = base.is_some_and(|(m1, _)| {
+                    self.lay_sprite(pm, ctx, &r, tf, opacity, m, m1, None, true)
+                });
+                self.steps.under = own_drawn || under;
                 self.steps.split = split;
                 self.draw_layer(pm, ctx, &r, tf, opacity, m);
                 self.steps.under = false;
@@ -1226,32 +1255,35 @@ impl Renderer {
         opacity: f32,
         subtree: bool,
         split: bool,
-    ) -> cache::Motion {
+    ) -> (cache::Motion, Option<cache::Motion>) {
         use cache::Motion;
         if self.steps.whole == 0 && !self.steps.ops.is_empty() {
             let at = self.steps.at.wrapping_sub(1);
-            if let Some(op) = self.steps.ops.get(at) {
-                let mut m = op.motion;
-                if split {
-                    m = m.and(
+            return match self.steps.ops.get(at) {
+                Some(op) => (
+                    op.motion,
+                    split.then(|| {
                         self.steps
                             .ops
                             .get(at + 1)
-                            .map_or(Motion::Moving, |o| o.motion),
-                    );
-                }
-                return m;
-            }
-            return Motion::Moving;
+                            .map_or(Motion::Moving, |o| o.motion)
+                    }),
+                ),
+                None => (Motion::Moving, None),
+            };
         }
         let outer = self.steps.plan.replace(Vec::new());
         let (own, then) = self.layer_motion(pm, ctx, r, tf, opacity);
-        let own = then.map_or(own, |t| own.and(t));
         if subtree {
             self.draw_children(pm, ctx, Some(&r.layer.id), tf, 1.0, None);
         }
         let inner = std::mem::replace(&mut self.steps.plan, outer).unwrap_or_default();
-        inner.iter().fold(own, |m, o| m.and(o.motion))
+        (inner.iter().fold(own, |m, o| m.and(o.motion)), then)
+    }
+
+    /// Drawing a layer in two steps for its sprite: its first step only.
+    pub(crate) fn base_only(&self) -> bool {
+        self.steps.base_only
     }
 
     /// What the step of `r` is drawn from, hashed (`sprite`): the graphic's
@@ -1405,6 +1437,7 @@ impl Renderer {
         mask: Option<&Mask>,
         motion: cache::Motion,
         shadow: Option<Option<(f32, f32)>>,
+        base_only: bool,
     ) -> bool {
         let moving = geometry_moving(ctx.template, r.layer, ctx.frame);
         // The sprite's space: device pixels less the whole-pixel part of the
@@ -1428,18 +1461,23 @@ impl Renderer {
                 return;
             };
             let c = tf.pre_concat(back);
-            let whole = c.is_translate()
-                && (c.tx - c.tx.round()).abs() < 1e-3
-                && (c.ty - c.ty.round()).abs() < 1e-3;
-            if whole {
-                scaled::composite(
-                    pm,
-                    spm,
-                    c.tx.round() as i32,
-                    c.ty.round() as i32,
-                    opacity,
-                    mask,
-                );
+            if c.is_translate() {
+                let (ix, iy) = (c.tx.round(), c.ty.round());
+                if (c.tx - ix).abs() < 1e-3 && (c.ty - iy).abs() < 1e-3 {
+                    scaled::composite(pm, spm, ix as i32, iy as i32, opacity, mask);
+                } else {
+                    let (fx, fy) = (c.tx.floor(), c.ty.floor());
+                    scaled::composite_bilinear(
+                        pm,
+                        spm,
+                        fx as i32,
+                        fy as i32,
+                        c.tx - fx,
+                        c.ty - fy,
+                        opacity,
+                        mask,
+                    );
+                }
             } else {
                 let paint = PixmapPaint {
                     opacity,
@@ -1449,13 +1487,6 @@ impl Renderer {
                 pm.draw_pixmap(0, 0, spm.as_ref(), &paint, c, mask);
             }
         };
-        if let Some((spm, x, y)) = self.sprites.get(ctx.item_index, &r.layer.id, key) {
-            let Some(spm) = spm else {
-                return false;
-            };
-            lay(pm, &spm, x, y);
-            return true;
-        }
         // The box the drawing is expected in, in sprite space, with a margin
         // for strokes and shadows (anything beyond: drawn straight).
         let scale = {
@@ -1476,23 +1507,69 @@ impl Renderer {
             return false;
         };
         let pad = pad * scale;
-        let (x0, y0) = (
+        let (mut x0, mut y0) = (
             (b.left() - pad).floor() as i32,
             (b.top() - pad).floor() as i32,
         );
-        let (x1, y1) = (
+        let (mut x1, mut y1) = (
             (b.right() + pad).ceil() as i32,
             (b.bottom() + pad).ceil() as i32,
         );
-        let (sw, sh) = ((x1 - x0).max(1) as u64, (y1 - y0).max(1) as u64);
-        if sw > 8192 || sh > 8192 || sw * sh > 2 * pm.width() as u64 * pm.height() as u64 {
+        let (fw, fh) = (pm.width() as i64, pm.height() as i64);
+        let too_big = |x0: i32, y0: i32, x1: i32, y1: i32| {
+            let (sw, sh) = ((x1 - x0).max(1) as i64, (y1 - y0).max(1) as i64);
+            sw > 8192 || sh > 8192 || sw * sh > 2 * fw * fh
+        };
+        // A big layer at rest (a vignette larger than the frame): only what
+        // the frame shows of it, which is where it stands.
+        let mut sides = [true; 4];
+        let mut key = key;
+        if too_big(x0, y0, x1, y1) && !moving {
+            let (ox, oy) = (tf.tx.floor() as i32, tf.ty.floor() as i32);
+            let (vx0, vy0) = (-ox - 2, -oy - 2);
+            let (vx1, vy1) = (vx0 + fw as i32 + 4, vy0 + fh as i32 + 4);
+            if x0 < vx0 {
+                x0 = vx0;
+                sides[0] = false;
+            }
+            if y0 < vy0 {
+                y0 = vy0;
+                sides[1] = false;
+            }
+            if x1 > vx1 {
+                x1 = vx1;
+                sides[2] = false;
+            }
+            if y1 > vy1 {
+                y1 = vy1;
+                sides[3] = false;
+            }
+            let mut k = sprite::Key::new();
+            k.add(&key).add(&ox).add(&oy).add(&fw).add(&fh);
+            key = k.finish();
+        }
+        if base_only {
+            let mut k = sprite::Key::new();
+            k.add(&key).add(&true);
+            key = k.finish();
+        }
+        if let Some((spm, x, y)) = self.sprites.get(ctx.item_index, &r.layer.id, key) {
+            let Some(spm) = spm else {
+                return false;
+            };
+            lay(pm, &spm, x, y);
+            return true;
+        }
+        if too_big(x0, y0, x1, y1) || x1 <= x0 || y1 <= y0 {
             return false;
         }
+        let (sw, sh) = ((x1 - x0) as u64, (y1 - y0) as u64);
         let mut spm = pool::pixmap(sw as u32, sh as u32);
         let s_in = s.post_translate(-x0 as f32, -y0 as f32);
         let pending = self.pending;
         self.in_sprite = true;
         self.steps.whole += 1;
+        self.steps.base_only = base_only;
         let (under, split) = (
             std::mem::take(&mut self.steps.under),
             std::mem::take(&mut self.steps.split),
@@ -1504,8 +1581,9 @@ impl Renderer {
         self.steps.under = under;
         self.steps.split = split;
         self.steps.whole -= 1;
+        self.steps.base_only = false;
         self.in_sprite = false;
-        if sprite::touches_edge(&spm) {
+        if sprite::touches_edge(&spm, sides) {
             // Drawn beyond the margin: straight, and remembered so.
             if self.caching && self.pending == pending {
                 self.sprites
@@ -2684,6 +2762,65 @@ fn rounded_rect(w: f32, h: f32, radius: f32) -> Option<tiny_skia::Path> {
 
 #[cfg(test)]
 mod tests {
+    /// Layers at rest laid from their sprites are the layers drawn straight
+    /// (to the rounding of laying premultiplied pixels twice), fractions of
+    /// positions included; moving, they are laid bilinear, close to it.
+    #[test]
+    fn sprites_draw_what_straight_drawing_does() {
+        use super::*;
+        let project = cg_core::sample::demo_project();
+        let t: Template = serde_json::from_value(serde_json::json!({
+            "id": "sp", "name": "S", "duration": 100.0, "markers": [], "fields": [], "zone": "",
+            "layers": [
+                {"id": "a", "name": "Card", "type": "rect", "dropShadow": true,
+                 "props": {"x": 100.5, "y": 80.25, "width": 500.0, "height": 240.0, "fill": [0.9, 0.3, 0.2, 1.0], "cornerRadius": 18.0, "shadowBlur": 24.0, "shadowX": 0.0, "shadowY": 10.0, "shadowColor": [0.0, 0.0, 0.0, 0.6]}},
+                {"id": "b", "name": "Disc", "type": "ellipse",
+                 "props": {"x": 700.0, "y": 60.0, "width": 300.0, "height": 300.0, "fill": [0.2, 0.5, 0.9, 1.0]},
+                 "tracks": {"x": [{"frame": 0.0, "value": 700.0, "easing": {"type": "linear"}}, {"frame": 50.0, "value": 900.0, "easing": {"type": "linear"}}]}},
+                {"id": "c", "name": "Text", "type": "text", "text": "Bonjour le monde", "fontFamily": "Inter", "fontWeight": 700,
+                 "props": {"x": 120.75, "y": 400.0, "width": 800.0, "height": 120.0, "fontSize": 72.0, "fill": [1.0, 1.0, 1.0, 1.0]}},
+                {"id": "g", "name": "Group", "type": "group", "dropShadow": true,
+                 "props": {"x": 300.0, "y": 560.0, "width": 400.0, "height": 160.0, "shadowBlur": 12.0, "shadowY": 6.0, "shadowColor": [0.0, 0.0, 0.0, 0.5]}},
+                {"id": "h", "name": "In group", "type": "rect", "parent": "g",
+                 "props": {"x": 20.0, "y": 20.0, "width": 360.0, "height": 120.0, "fill": [0.3, 0.8, 0.4, 1.0]}}
+            ]
+        }))
+        .unwrap();
+        let dir = std::env::temp_dir().join("cg-render-test-assets");
+        let mut with = Renderer::new(&dir);
+        let mut without = Renderer::new(&dir);
+        without.set_sprites(false);
+        let data = Data::default();
+        let diff = |frame: f64, with: &mut Renderer, without: &mut Renderer| {
+            let a = with.render_template(&project, &t, "main", frame, &data);
+            let b = without.render_template(&project, &t, "main", frame, &data);
+            let (mut max, mut n) = (0u8, 0usize);
+            for (x, y) in a.data.iter().zip(&b.data) {
+                let d = x.abs_diff(*y);
+                max = max.max(d);
+                n += usize::from(d > 1);
+            }
+            (max, n)
+        };
+        // At rest (frame 60: the disc stopped), twice (the second from the
+        // sprites kept). A few edge pixels differ by one coverage step (the
+        // path's coordinates rounded in another place).
+        for _ in 0..2 {
+            let (max, n) = diff(60.0, &mut with, &mut without);
+            assert!(
+                max <= 24 && n <= 64,
+                "at rest, sprites differ by {max} on {n} bytes"
+            );
+        }
+        assert!(with.sprites.found > 0, "sprites laid again");
+        // Moving (the disc slides): laid bilinear, close to the straight drawing.
+        let (max, n) = diff(25.0, &mut with, &mut without);
+        assert!(
+            n < 20_000,
+            "moving, {n} bytes differ by more than 1 (max {max})"
+        );
+    }
+
     #[test]
     fn a_web_picture_is_read_from_its_cache() {
         let dir = std::env::temp_dir().join(format!("cg-web-{}", std::process::id()));

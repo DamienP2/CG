@@ -82,6 +82,9 @@ fn main() {
             let mut renderers: Vec<Renderer> = (0..nr)
                 .map(|_| Renderer::new(std::env::temp_dir().join("bench-assets")))
                 .collect();
+            if std::env::var_os("NOSPRITES").is_some() {
+                renderers.iter_mut().for_each(|r| r.set_sprites(false));
+            }
             let mut times = Vec::with_capacity(frames);
             let (mut same, mut prev): (usize, Option<Arc<cg_render::Frame>>) = (0, None);
             for i in 0..frames {
@@ -115,8 +118,12 @@ fn main() {
             } else {
                 format!("{name} ({} on air)", set.len())
             };
+            let (made, found) = renderers.iter().fold((0, 0), |(a, b), r| {
+                let (m, f) = r.sprite_counts();
+                (a + m, b + f)
+            });
             println!(
-                "{label}: avg {avg:.1} ms  p50 {p50:.1}  p90 {p90:.1}  max {max:.1}  same {same}/{frames}  ({:.0}% of {:.1} ms)",
+                "{label}: avg {avg:.1} ms  p50 {p50:.1}  p90 {p90:.1}  max {max:.1}  same {same}/{frames}  sprites {made} made {found} laid  ({:.0}% of {:.1} ms)",
                 avg / (1000.0 / fps) * 100.0,
                 1000.0 / fps
             );
