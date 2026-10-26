@@ -521,6 +521,7 @@ class Input final : public IDeckLinkInputCallback {
     int width = 0, height = 0;
     uint64_t seq = 0;
     int signal = -1; // -1 unknown, 0 no input source, 1 locked
+    uint32_t mode = 0; // the BMDDisplayMode captured (the detected one once the signal is known)
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID *ppv) override {
         if (!ppv) {
@@ -552,6 +553,10 @@ class Input final : public IDeckLinkInputCallback {
         }
         // Follow the incoming signal; frames stay 8-bit 4:2:2 (the card
         // converts an RGB signal).
+        {
+            std::lock_guard<std::mutex> lk(m);
+            this->mode = (uint32_t)mode->GetDisplayMode();
+        }
         in->PauseStreams();
         in->EnableVideoInput(mode->GetDisplayMode(), bmdFormat8BitYUV,
                              detection ? bmdVideoInputEnableFormatDetection : bmdVideoInputFlagDefault);
@@ -1040,6 +1045,12 @@ void *dl_input_open(int index, uint32_t mode, char *err, int errlen) {
         set_err(err, errlen, "cannot start the capture");
         goto fail;
     }
+    {
+        std::lock_guard<std::mutex> lk(in->m);
+        if (!in->mode) {
+            in->mode = (uint32_t)m;
+        }
+    }
     return in;
 fail:
     in->close();
@@ -1064,6 +1075,13 @@ int64_t dl_input_take(void *h, uint8_t *out, int64_t cap, int *width, int *heigh
     *height = in->height;
     *seq = in->seq;
     return 1;
+}
+
+// The BMDDisplayMode captured: the detected one once the card saw the signal.
+uint32_t dl_input_mode(void *h) {
+    Input *in = (Input *)h;
+    std::lock_guard<std::mutex> lk(in->m);
+    return in->mode;
 }
 
 // 1 signal present, 0 no input source, -1 unknown (nothing received yet).

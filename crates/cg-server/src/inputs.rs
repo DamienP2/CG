@@ -559,7 +559,7 @@ pub async fn list(
 /// `GET /api/inputs/ndi-sources`: the NDI sources seen on the network.
 pub async fn ndi_sources(CurrentUser(me): CurrentUser) -> ApiResult<Json<Vec<String>>> {
     require(me.is_admin())?;
-    tokio::task::spawn_blocking(|| cg_output::ndi::sources(1500))
+    tokio::task::spawn_blocking(|| cg_output::ndi::sources(6000))
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .map(Json)
@@ -868,10 +868,13 @@ fn run_ndi(l: &Live) {
             }
         };
         l.say(format!("Connecting to {source}…"));
-        let mut first = true;
+        let mut shown = None;
         while !l.stopped() {
-            let mut pic = None;
-            match rx.capture(500, |f| pic = premultiplied(&f)) {
+            let (mut pic, mut format) = (None, ((0, 0), false));
+            match rx.capture(500, |f| {
+                pic = premultiplied(&f);
+                format = (f.rate, f.interlaced);
+            }) {
                 Ok(_) => {}
                 Err(e) => {
                     l.say(format!("{e} — trying again"));
@@ -879,9 +882,16 @@ fn run_ndi(l: &Live) {
                 }
             }
             if let Some(pm) = pic {
-                if first {
-                    first = false;
-                    l.say(format!("Receiving {}×{}", pm.width(), pm.height()));
+                let ((n, d), fields) = format;
+                let fps = if d > 0 { n as f64 / d as f64 } else { 0.0 };
+                let now = (pm.width(), pm.height(), (n, d), fields);
+                if shown != Some(now) {
+                    shown = Some(now);
+                    *l.rate.lock().unwrap_or_else(|p| p.into_inner()) = (fps > 0.0).then_some(fps);
+                    l.say(match format_name(pm.height(), fps, fields) {
+                        Some(name) => format!("Receiving {}×{} ({name})", pm.width(), pm.height()),
+                        None => format!("Receiving {}×{}", pm.width(), pm.height()),
+                    });
                 }
                 l.put(pm);
             }
@@ -893,43 +903,110 @@ fn run_ndi(l: &Live) {
     }
 }
 
-/// An SDI input of a DeckLink card (opened in the input's size and rate;
-/// the card follows the incoming format when it can tell).
+/// "1080i50", "720p59.94": a picture of `height` lines at `fps` frames a
+/// second (two fields each when `fields`).
+fn format_name(height: u32, fps: f64, fields: bool) -> Option<String> {
+    if fps <= 0.0 {
+        return None;
+    }
+    let rate = if fields { fps * 2.0 } else { fps };
+    let rate = if (rate - rate.round()).abs() < 0.005 {
+        format!("{}", rate.round())
+    } else {
+        format!("{:.2}", rate)
+    };
+    Some(format!("{height}{}{rate}", if fields { 'i' } else { 'p' }))
+}
+
+/// The formats an SDI input opens in, in turn, until a signal comes: a
+/// card that detects the incoming format follows it from the first one;
+/// one that cannot is tried in each until the picture comes in.
+const SDI_FORMATS: &[(u32, u32, (u32, u32), bool)] = &[
+    (1920, 1080, (25, 1), true),
+    (1920, 1080, (50, 1), false),
+    (1920, 1080, (25, 1), false),
+    (1280, 720, (50, 1), false),
+    (1920, 1080, (30000, 1001), true),
+    (1920, 1080, (60000, 1001), false),
+    (1920, 1080, (30000, 1001), false),
+    (1280, 720, (60000, 1001), false),
+    (3840, 2160, (50, 1), false),
+    (3840, 2160, (25, 1), false),
+    (3840, 2160, (60000, 1001), false),
+    (1920, 1080, (24000, 1001), false),
+    (1920, 1080, (24, 1), false),
+    (720, 576, (25, 1), true),
+    (720, 486, (30000, 1001), true),
+];
+
+/// An SDI input of a DeckLink card, in the format of the signal: detected
+/// by the card when it can, else found by trying the usual ones. An
+/// interlaced signal gives a picture per field (1080i50: 50 a second).
 fn run_sdi(l: &Live) {
     let c = &l.config;
+    let mut attempt = 0usize;
+    let mut failures = 0usize;
     while !l.stopped() {
-        let mut card =
-            match cg_output::sdi::DeckLinkInput::open(c.device, c.width, c.height, (c.fps, 1)) {
-                Ok(card) => card,
-                Err(e) => {
+        let (w, h, rate, interlaced) = SDI_FORMATS[attempt % SDI_FORMATS.len()];
+        let mut card = match cg_output::sdi::DeckLinkInput::open(c.device, w, h, rate, interlaced) {
+            Ok(card) => card,
+            Err(e) => {
+                // A format the card does not take: the next one; none at all: wait.
+                attempt += 1;
+                failures += 1;
+                if failures >= SDI_FORMATS.len() {
+                    failures = 0;
                     l.say(e);
                     if !l.pause(Duration::from_secs(5)) {
                         return;
                     }
-                    continue;
                 }
-            };
-        l.say(format!("Waiting for a signal ({})…", card.mode_name()));
+                continue;
+            }
+        };
+        failures = 0;
+        l.say(format!("Waiting for a signal ({})…", card.mode().name));
+        let opened = Instant::now();
         let (mut seq, mut shown) = (0u64, None);
-        let poll = Duration::from_secs_f64(0.25 / c.fps.max(1) as f64);
         while !l.stopped() {
             match card.take(&mut seq) {
                 Some((w, h, rgba)) => {
-                    if shown != Some((w, h)) {
-                        shown = Some((w, h));
-                        l.say(format!("Receiving {w}×{h} ({})", card.mode_name()));
+                    let mode = card.mode();
+                    let fps = mode.fps();
+                    let fields = mode.interlaced();
+                    *l.rate.lock().unwrap_or_else(|p| p.into_inner()) =
+                        (fps > 0.0).then_some(if fields { fps * 2.0 } else { fps });
+                    if shown != Some((w, h, mode.id)) {
+                        shown = Some((w, h, mode.id));
+                        l.say(format!("Receiving {w}×{h} ({})", mode.name));
                     }
-                    if let Some(pm) = IntSize::from_wh(w, h).and_then(|s| Pixmap::from_vec(rgba, s))
-                    {
+                    let Some(size) = IntSize::from_wh(w, h) else {
+                        continue;
+                    };
+                    if fields {
+                        let lower = mode.field == cg_output::decklink::FIELD_LOWER;
+                        for f in cg_output::sdi::DeckLinkInput::fields(&rgba, w, h, lower) {
+                            if let Some(pm) = Pixmap::from_vec(f, size) {
+                                l.put(pm);
+                            }
+                        }
+                    } else if let Some(pm) = Pixmap::from_vec(rgba, size) {
                         l.put(pm);
                     }
                 }
                 None => {
-                    if card.signal() == Some(false) && shown.is_some() {
-                        shown = None;
-                        l.say("No signal");
+                    if card.signal() == Some(false) {
+                        if shown.is_some() {
+                            shown = None;
+                            l.say("No signal");
+                        }
+                        // Nothing in this format on a card that cannot tell: the next one.
+                        if !card.detects() && opened.elapsed() > Duration::from_millis(1500) {
+                            attempt += 1;
+                            break;
+                        }
                     }
-                    std::thread::sleep(poll);
+                    std::thread::sleep(Duration::from_millis(4));
                 }
             }
         }
@@ -1119,6 +1196,16 @@ mod tests {
     }
 
     #[test]
+    fn formats_are_named_like_broadcast_ones() {
+        assert_eq!(format_name(1080, 25.0, true).as_deref(), Some("1080i50"));
+        assert_eq!(
+            format_name(720, 60000.0 / 1001.0, false).as_deref(),
+            Some("720p59.94")
+        );
+        assert_eq!(format_name(1080, 0.0, false), None);
+    }
+
+    #[test]
     fn ndi_pictures_are_premultiplied() {
         // One row of 2 pixels, padded to 12 bytes.
         let data = [200, 100, 0, 128, 10, 20, 30, 255, 0, 0, 0, 0];
@@ -1128,6 +1215,8 @@ mod tests {
             stride: 12,
             alpha: true,
             data: &data,
+            rate: (25, 1),
+            interlaced: false,
         };
         let pm = premultiplied(&f).unwrap();
         assert_eq!(pm.data(), &[100, 50, 0, 128, 10, 20, 30, 255]);

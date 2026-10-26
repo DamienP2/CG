@@ -344,6 +344,7 @@ export const operator: Record<string, string> = {
   'The camera\'s stream, e.g. rtsp://camera/stream.': 'Le flux de la caméra, par ex. rtsp://camera/stream.',
   'Anything ffmpeg reads: an address (http, rtp, srt…) or a file on the server.': 'Tout ce que lit ffmpeg : une adresse (http, rtp, srt…) ou un fichier sur le serveur.',
   'Receiving {size}': 'Réception {size}',
+  'Waiting for a signal ({format})…': 'En attente du signal ({format})…',
   'Connecting to {source}…': 'Connexion à {source}…',
   'Stopped: {reason} — trying again': 'Arrêté : {reason} — nouvel essai',
   'Waiting for the sender…': 'En attente de l’émetteur…',

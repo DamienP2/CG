@@ -413,7 +413,6 @@ struct RecvLib {
     find_create: unsafe extern "C" fn(*const FindCreate) -> Instance,
     find_wait: unsafe extern "C" fn(Instance, u32) -> bool,
     find_sources: unsafe extern "C" fn(Instance, *mut u32) -> *const Source,
-    find_destroy: unsafe extern "C" fn(Instance),
     recv_create: unsafe extern "C" fn(*const RecvCreateV3) -> Instance,
     recv_capture:
         unsafe extern "C" fn(Instance, *mut VideoFrameV2, *mut c_void, *mut c_void, u32) -> i32,
@@ -434,7 +433,6 @@ fn recv_lib() -> Result<&'static RecvLib, String> {
             find_create: *l.get(b"NDIlib_find_create_v2\0").map_err(why)?,
             find_wait: *l.get(b"NDIlib_find_wait_for_sources\0").map_err(why)?,
             find_sources: *l.get(b"NDIlib_find_get_current_sources\0").map_err(why)?,
-            find_destroy: *l.get(b"NDIlib_find_destroy\0").map_err(why)?,
             recv_create: *l.get(b"NDIlib_recv_create_v3\0").map_err(why)?,
             recv_capture: *l.get(b"NDIlib_recv_capture_v2\0").map_err(why)?,
             recv_free_video: *l.get(b"NDIlib_recv_free_video_v2\0").map_err(why)?,
@@ -445,24 +443,57 @@ fn recv_lib() -> Result<&'static RecvLib, String> {
     .map_err(|e| e.clone())
 }
 
-/// The NDI sources seen on the network within `wait_ms`.
+/// The finder of the server, kept for the life of the process: NDI
+/// announces sources over several seconds (mDNS, Discovery Server), so a
+/// finder made for each search sees only the first ones.
+struct Finder(Instance);
+// Used under the mutex only.
+unsafe impl Send for Finder {}
+static FINDER: std::sync::Mutex<Option<Finder>> = std::sync::Mutex::new(None);
+
+/// The NDI sources seen on the network. The first search waits (at most
+/// `wait_ms`) until the list stops changing for a second; later ones read
+/// the list the finder keeps up to date, after a short look for news.
 pub fn sources(wait_ms: u32) -> Result<Vec<String>, String> {
     let r = recv_lib()?;
-    let create = FindCreate {
-        show_local_sources: true,
-        p_groups: std::ptr::null(),
-        p_extra_ips: std::ptr::null(),
-    };
-    // SAFETY: plain C calls on an instance created and destroyed here.
-    unsafe {
-        let find = (r.find_create)(&create);
+    let mut finder = FINDER.lock().unwrap_or_else(|e| e.into_inner());
+    let fresh = finder.is_none();
+    if fresh {
+        let create = FindCreate {
+            show_local_sources: true,
+            p_groups: std::ptr::null(),
+            p_extra_ips: std::ptr::null(),
+        };
+        // SAFETY: plain C call; the instance lives as long as the process.
+        let find = unsafe { (r.find_create)(&create) };
         if find.is_null() {
             return Err("NDI cannot look for sources".into());
         }
-        (r.find_wait)(find, wait_ms);
-        let mut n = 0u32;
+        *finder = Some(Finder(find));
+    }
+    let find = finder.as_ref().expect("finder").0;
+    let start = std::time::Instant::now();
+    let budget =
+        std::time::Duration::from_millis(if fresh { wait_ms.max(1000) } else { 1500 } as u64);
+    // The first sources, then until nothing new for a second.
+    let mut quiet = if fresh { wait_ms.max(1000) } else { 400 };
+    loop {
+        let left = budget.saturating_sub(start.elapsed()).as_millis() as u32;
+        if left == 0 {
+            break;
+        }
+        // SAFETY: the finder is alive (never destroyed).
+        let changed = unsafe { (r.find_wait)(find, quiet.min(left)) };
+        if !changed {
+            break;
+        }
+        quiet = 1000;
+    }
+    let mut n = 0u32;
+    // SAFETY: the list stays valid until the next call on this finder (under the lock).
+    let mut out = Vec::new();
+    unsafe {
         let list = (r.find_sources)(find, &mut n);
-        let mut out = Vec::new();
         for i in 0..n as usize {
             let s = &*list.add(i);
             if !s.p_ndi_name.is_null() {
@@ -473,10 +504,10 @@ pub fn sources(wait_ms: u32) -> Result<Vec<String>, String> {
                 );
             }
         }
-        (r.find_destroy)(find);
-        out.sort();
-        Ok(out)
     }
+    out.sort();
+    out.dedup();
+    Ok(out)
 }
 
 /// A picture received over NDI: straight-alpha RGBA rows of `stride` bytes.
@@ -486,6 +517,10 @@ pub struct Received<'a> {
     pub stride: usize,
     pub alpha: bool,
     pub data: &'a [u8],
+    /// Pictures per second as sent (frames, not fields); (0, 0) unknown.
+    pub rate: (u32, u32),
+    /// The sender's picture is made of two fields.
+    pub interlaced: bool,
 }
 
 /// Receives the video of one NDI source.
@@ -565,6 +600,8 @@ impl NdiReceiver {
                     stride,
                     alpha: v.four_cc == FOURCC_RGBA,
                     data,
+                    rate: (v.frame_rate_n.max(0) as u32, v.frame_rate_d.max(0) as u32),
+                    interlaced: v.frame_format_type != PROGRESSIVE,
                 });
             }
             (self.lib.recv_free_video)(self.instance, &v);

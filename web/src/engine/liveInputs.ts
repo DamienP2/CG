@@ -22,8 +22,10 @@ export interface InputInfo {
 
 /** Server messages, in the interface language. */
 export function inputMessage(m: string): string {
-  let x = /^Receiving (\d+)×(\d+)$/.exec(m);
-  if (x) return t('Receiving {size}', { size: `${x[1]}×${x[2]}` });
+  let x = /^Receiving (\d+)×(\d+)(?: \((.+)\))?$/.exec(m);
+  if (x) return t('Receiving {size}', { size: `${x[1]}×${x[2]}${x[3] ? ` · ${x[3]}` : ''}` });
+  x = /^Waiting for a signal \((.+)\)…$/.exec(m);
+  if (x) return t('Waiting for a signal ({format})…', { format: x[1] });
   x = /^Connecting to (.+)…$/.exec(m);
   if (x) return t('Connecting to {source}…', { source: x[1] });
   x = /^Stopped: (.*) — trying again$/.exec(m);
@@ -37,6 +39,8 @@ export function inputMessage(m: string): string {
       return t('Connecting…');
     case 'Not started (save the settings)':
       return t('Not applied yet');
+    case 'No signal':
+      return t('No signal');
     case 'no NDI source chosen':
       return t('No NDI source chosen');
     default:

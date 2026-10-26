@@ -400,9 +400,16 @@ pub struct DeckLinkInput {
 
 impl DeckLinkInput {
     /// Opens the device's input in the mode matching width × height at
-    /// `rate`; the card then follows the incoming format if it can.
-    pub fn open(device: u32, width: u32, height: u32, rate: (u32, u32)) -> Result<Self, String> {
-        let card = InputHandle::open(device, width, height, rate)?;
+    /// `rate` (frames; an interlaced mode when `interlaced`); the card then
+    /// follows the incoming format if it can.
+    pub fn open(
+        device: u32,
+        width: u32,
+        height: u32,
+        rate: (u32, u32),
+        interlaced: bool,
+    ) -> Result<Self, String> {
+        let card = InputHandle::open(device, width, height, rate, interlaced)?;
         tracing::info!(device, mode = card.mode.name, "DeckLink input started");
         Ok(Self {
             card,
@@ -424,15 +431,68 @@ impl DeckLinkInput {
         self.card.signal()
     }
 
-    /// The display mode opened (e.g. "1080i50").
-    pub fn mode_name(&self) -> &str {
-        &self.card.mode.name
+    /// The display mode captured: the one the card detected in the
+    /// signal, else the one it was opened in.
+    pub fn mode(&self) -> crate::decklink::DisplayMode {
+        self.card.current_mode()
+    }
+
+    /// The card follows the incoming format by itself.
+    pub fn detects(&self) -> bool {
+        self.card.detects
+    }
+
+    /// The two fields of an interlaced picture (RGBA), each made a whole
+    /// picture (a missing line is the mean of the lines around it), in the
+    /// order they were shot: a 1080i50 signal gives 50 pictures a second.
+    pub fn fields(rgba: &[u8], width: u32, height: u32, lower_first: bool) -> [Vec<u8>; 2] {
+        let (w, h) = (width as usize * 4, height as usize);
+        if h < 2 || rgba.len() < w * h {
+            return [rgba.to_vec(), rgba.to_vec()];
+        }
+        let field = |parity: usize| {
+            let mut out = vec![0u8; w * h];
+            for (y, row) in out.chunks_exact_mut(w).enumerate() {
+                if y % 2 == parity {
+                    row.copy_from_slice(&rgba[y * w..(y + 1) * w]);
+                    continue;
+                }
+                let up = if y > 0 { y - 1 } else { y + 1 };
+                let down = if y + 1 < h { y + 1 } else { y - 1 };
+                let (a, b) = (&rgba[up * w..(up + 1) * w], &rgba[down * w..(down + 1) * w]);
+                for ((o, a), b) in row.iter_mut().zip(a).zip(b) {
+                    *o = (*a as u16 + *b as u16).div_ceil(2) as u8;
+                }
+            }
+            out
+        };
+        if lower_first {
+            [field(1), field(0)]
+        } else {
+            [field(0), field(1)]
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interlaced_picture_splits_into_its_fields() {
+        // Rows 0 and 2 (upper field) = 10, rows 1 and 3 = 30.
+        let mut rgba = Vec::new();
+        for v in [10u8, 30, 10, 30] {
+            rgba.extend([v; 4]);
+        }
+        let [a, b] = DeckLinkInput::fields(&rgba, 1, 4, false);
+        let rows = |p: &[u8]| p.chunks(4).map(|x| x[0]).collect::<Vec<_>>();
+        // Upper first: its own lines, the others between them.
+        assert_eq!(rows(&a), [10, 10, 10, 10]);
+        assert_eq!(rows(&b), [30, 30, 30, 30]);
+        let [a, _] = DeckLinkInput::fields(&rgba, 1, 4, true);
+        assert_eq!(rows(&a), [30, 30, 30, 30]);
+    }
 
     #[test]
     fn fields_are_woven_in_time_order() {
@@ -505,7 +565,7 @@ mod tests {
                 DeckLinkOutput::open(c, 1920, 1080, (25, 1), false),
                 Err(OutputError::Unsupported(_))
             ));
-            assert!(DeckLinkInput::open(0, 1920, 1080, (25, 1)).is_err());
+            assert!(DeckLinkInput::open(0, 1920, 1080, (25, 1), false).is_err());
         }
     }
 }

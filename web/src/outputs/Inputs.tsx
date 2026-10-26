@@ -112,7 +112,7 @@ function addressHint(c: InputConfig): string {
 
 
 /** Waiting is not failing. */
-const WAITING = /^(Starting…|Waiting for the sender…|Connecting…|Connecting to .*…|Not started.*|Off)$/;
+const WAITING = /^(Starting…|Waiting for the sender…|Connecting…|Connecting to .*…|Not started.*|Waiting for a signal .*…|Off)$/;
 
 type Tone = 'ok' | 'warn' | 'idle';
 

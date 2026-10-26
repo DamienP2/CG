@@ -241,6 +241,7 @@ mod ffi {
             seq: *mut u64,
         ) -> i64;
         pub fn dl_input_signal(h: *mut c_void) -> c_int;
+        pub fn dl_input_mode(h: *mut c_void) -> u32;
         pub fn dl_input_close(h: *mut c_void);
     }
 
@@ -607,7 +608,13 @@ impl Drop for OutputHandle {
 pub struct InputHandle {
     #[cfg(decklink_shim)]
     raw: *mut std::ffi::c_void,
+    /// The mode it was opened in.
     pub mode: DisplayMode,
+    /// The device's input modes (to name the one the card detects).
+    #[cfg_attr(not(decklink_shim), allow(dead_code))]
+    modes: Vec<DisplayMode>,
+    /// The card follows the incoming format by itself.
+    pub detects: bool,
 }
 
 // SAFETY: the shim guards the captured frame with a mutex.
@@ -615,18 +622,33 @@ unsafe impl Send for InputHandle {}
 unsafe impl Sync for InputHandle {}
 
 impl InputHandle {
-    pub fn open(device: u32, width: u32, height: u32, rate: (u32, u32)) -> Result<Self, String> {
+    /// Opens the input in the mode matching width × height at `rate`
+    /// (frames; only interlaced modes when `interlaced`).
+    pub fn open(
+        device: u32,
+        width: u32,
+        height: u32,
+        rate: (u32, u32),
+        interlaced: bool,
+    ) -> Result<Self, String> {
         #[cfg(decklink_shim)]
         {
             let idx = index(device)?;
+            let all = modes(device, true)?;
+            let detects = capabilities(device).is_some_and(|c| c.format_detection);
             let mut last = String::new();
-            for mode in pick(device, true, width, height, rate, false)? {
+            for mode in pick(device, true, width, height, rate, interlaced)? {
                 let mut err = [0 as std::ffi::c_char; 256];
                 // SAFETY: plain call; `err` sized as passed.
                 let raw =
                     unsafe { ffi::dl_input_open(idx, mode.id, err.as_mut_ptr(), err.len() as _) };
                 if !raw.is_null() {
-                    return Ok(Self { raw, mode });
+                    return Ok(Self {
+                        raw,
+                        mode,
+                        modes: all,
+                        detects,
+                    });
                 }
                 last = format!("{} ({})", ffi::text(&err), mode.name);
             }
@@ -634,9 +656,23 @@ impl InputHandle {
         }
         #[cfg(not(decklink_shim))]
         {
-            let _ = (device, width, height, rate);
+            let _ = (device, width, height, rate, interlaced);
             Err(NOT_BUILT.into())
         }
+    }
+
+    /// The mode captured now: the one the card detected in the signal,
+    /// else the one it was opened in.
+    pub fn current_mode(&self) -> DisplayMode {
+        #[cfg(decklink_shim)]
+        {
+            // SAFETY: open handle.
+            let id = unsafe { ffi::dl_input_mode(self.raw) };
+            if let Some(m) = self.modes.iter().find(|m| m.id == id) {
+                return m.clone();
+            }
+        }
+        self.mode.clone()
     }
 
     /// The newest frame (UYVY, rows packed) into `buf` when newer than
@@ -779,7 +815,7 @@ mod tests {
             );
             assert_eq!(device_infos(), Err(NOT_BUILT.to_string()));
             assert_eq!(runtime_version(), None);
-            assert!(InputHandle::open(0, 1920, 1080, (25, 1)).is_err());
+            assert!(InputHandle::open(0, 1920, 1080, (25, 1), false).is_err());
             assert_eq!(capabilities(0), None);
         }
     }
