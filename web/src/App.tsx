@@ -1,4 +1,4 @@
-import { Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { ArrowRightToLine, Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -101,7 +101,7 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   // Pre-0.10 links (/designer/…, /operator/…) and pages a role cannot see.
   useEffect(() => {
     if (!user) return;
-    if ((route.page === 'users' || route.page === 'outputs' || route.page === 'hardware' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
+    if ((route.page === 'users' || route.page === 'outputs' || route.page === 'inputs' || route.page === 'hardware' || route.page === 'performance' || route.page === 'mos') && !can.admin(user)) return navigate('/projects', true);
     if (route.page === 'legacyDesigner') {
       const id = route.projectId ?? recall(LAST_PROJECT) ?? projects[0]?.id;
       if (id) navigate(projectPath(id, 'designer'), true);
@@ -143,7 +143,7 @@ function Toasts({ quiet }: { quiet: boolean }) {
 }
 
 /** Projects, users and server settings. A project opens in its own browser tab. */
-function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'hardware' | 'performance' | 'asrun' | 'mos' | 'users' | 'api' | 'settings' }> }) {
+function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 'data' | 'outputs' | 'inputs' | 'hardware' | 'performance' | 'asrun' | 'mos' | 'users' | 'api' | 'settings' }> }) {
   const user = useApp((s) => s.auth?.user);
   useEffect(() => {
     document.title = 'Strata Graphics';
@@ -155,9 +155,9 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
   );
   const entry = (id: Route['page'], path: string, icon: React.ReactNode, label: string): NavEntry => ({ id, path, icon, label });
   const admin = can.admin(user);
-  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams')), entry('hardware', '/hardware', <CircuitBoard size={14} />, t('Hardware')), entry('mos', '/mos', <Newspaper size={14} />, 'MOS')] : [];
+  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Output streams')), entry('inputs', '/inputs', <ArrowRightToLine size={14} />, t('Video inputs')), entry('mos', '/mos', <Newspaper size={14} />, 'MOS')] : [];
   const system = [
-    ...(admin ? [entry('performance', '/performance', <Gauge size={14} />, t('Performance'))] : []),
+    ...(admin ? [entry('hardware', '/hardware', <CircuitBoard size={14} />, t('Hardware')), entry('performance', '/performance', <Gauge size={14} />, t('Performance'))] : []),
     entry('asrun', '/asrun', <ClipboardList size={14} />, tc('tab', 'As-run')),
     ...(admin ? [entry('users', '/users', <UsersIcon size={14} />, t('Users'))] : []),
     entry('api', '/api-docs', <Braces size={14} />, 'API'),
@@ -183,7 +183,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
           {route.page === 'projects' && <Projects />}
           {route.page === 'media' && <MediaLibrary />}
           {route.page === 'data' && <DataPage />}
-          {route.page === 'outputs' && <Outputs />}
+          {(route.page === 'outputs' || route.page === 'inputs') && <Outputs mode={route.page} />}
           {route.page === 'hardware' && <Hardware />}
           {route.page === 'performance' && <Performance />}
           {route.page === 'asrun' && <AsRun />}

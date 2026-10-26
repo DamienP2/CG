@@ -510,7 +510,10 @@ export interface ChannelInfo {
   width: number;
   height: number;
   frameRate: FrameRate;
+  /** Two fields a frame (the rate counts fields). */
+  interlaced?: boolean;
   projectId: string | null;
+  /** What the channel goes out to: "SDI · name", "NDI · name"… */
   outputs: string[];
   renditions: { id: string; name: string; width: number; height: number; slate?: string; slateStyle?: string }[];
   /** Still picture the outputs show while no project is loaded ("" = none). */

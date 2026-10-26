@@ -9,6 +9,7 @@ import { joinAddr, splitAddr, type ChannelConfig, type DetectedCard, type Hardwa
 import { navigate } from '../router';
 import { api, can, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
+import { Dropdown, type DropOption } from '../ui/Dropdown';
 import { ENCODINGS, bracketOf, speedLabel, deviceOf, dropUsers, hardwareOf, roleOf, syncUsers, usersOf, type Bracket, type Role } from './model';
 import './hardware.css';
 
@@ -181,7 +182,7 @@ async function confirmUsers(cfg: ServerConfig, ids: string[], what: string): Pro
   if (!users.length) return true;
   return confirmDialog({
     title: t('Remove “{name}”?', { name: what }),
-    message: `${tn(users.length, 'Used by {n} destination or input in Video streams, removed too:', 'Used by {n} destinations or inputs in Video streams, removed too:')} ${users.join(', ')}`,
+    message: `${tn(users.length, 'Used by {n} destination or input, removed too:', 'Used by {n} destinations or inputs, removed too:')} ${users.join(', ')}`,
     confirm: t('Remove'),
     danger: true,
   });
@@ -265,6 +266,49 @@ function SdiView({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det: Ha
   );
 }
 
+/** The card's name, typed in place; what was named after it (its outputs and inputs) follows. */
+function CardName({ card, editHw }: { card: SdiCard; editHw: EditHw }) {
+  const [text, setText] = useState(card.name);
+  useEffect(() => setText(card.name), [card.name]);
+  const commit = () => {
+    const name = text.trim() || card.modelName || card.name;
+    setText(name);
+    if (name === card.name) return;
+    const was = `${card.name} · `;
+    const rename = (x: { name: string }) => void (x.name.startsWith(was) && (x.name = `${name} · ${x.name.slice(was.length)}`));
+    editHw((h, all) => {
+      const ids = new Set([...h.sdi.outputs.filter((o) => o.card === card.id).map((o) => o.id), ...h.sdi.inputs.filter((i) => i.card === card.id).map((i) => i.id)]);
+      h.sdi.cards.find((x) => x.id === card.id)!.name = name;
+      h.sdi.outputs.filter((o) => o.card === card.id).forEach(rename);
+      h.sdi.inputs.filter((i) => i.card === card.id).forEach(rename);
+      (all.inputs ?? []).filter((i) => i.kind === 'sdi' && ids.has(i.hardware ?? '')).forEach(rename);
+    });
+  };
+  return (
+    <input
+      className="fio-name"
+      value={text}
+      size={Math.max(8, text.length + 1)}
+      aria-label={t('Card name')}
+      spellCheck={false}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          setText(card.name);
+          requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
+        }
+      }}
+    />
+  );
+}
+
+/** A connector's colour, as on the bracket (two colours: a keyer pair; none: free). */
+function Swatch({ c, c2 }: { c?: string; c2?: string }) {
+  return <span className={`fio-sw ${c ? '' : 'free'}`} style={c ? { background: c2 ? `linear-gradient(135deg, ${c} 50%, ${c2} 50%)` : c } : undefined} />;
+}
+
 /** What a connector can be set to (its select): free, an input, an output, or the first connector of a keyer pair. */
 type Choice = '' | 'in' | 'out' | 'fk' | 'ik';
 
@@ -281,7 +325,7 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
   const removeCard = async () => {
     const defs = [...hw.sdi.outputs.filter((o) => o.card === card.id), ...hw.sdi.inputs.filter((i) => i.card === card.id)];
     const users = defs.flatMap((d) => usersOf(cfg, d.id));
-    if (!(await confirmDialog({ title: t('Remove the card “{name}”?', { name: card.name }), message: users.length ? `${tn(users.length, 'Used by {n} destination or input in Video streams, removed too:', 'Used by {n} destinations or inputs in Video streams, removed too:')} ${users.join(', ')}` : undefined, confirm: t('Remove'), danger: true }))) return;
+    if (!(await confirmDialog({ title: t('Remove the card “{name}”?', { name: card.name }), message: users.length ? `${tn(users.length, 'Used by {n} destination or input, removed too:', 'Used by {n} destinations or inputs, removed too:')} ${users.join(', ')}` : undefined, confirm: t('Remove'), danger: true }))) return;
     editHw((h, all) => {
       for (const d of defs) dropUsers(all, d.id);
       h.sdi.outputs = h.sdi.outputs.filter((o) => o.card !== card.id);
@@ -391,8 +435,8 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
   return (
     <section className="fio-card">
       <header>
-        <h3>{card.modelName || card.name}</h3>
-        <span className="muted small">{[found ? placeOf(found) : null, found ? t('adopted') : t('not detected')].filter(Boolean).join(' · ')}</span>
+        <CardName card={card} editHw={editHw} />
+        <span className="muted small">{[card.modelName && card.modelName !== card.name ? card.modelName : null, found ? placeOf(found) : null, found ? t('adopted') : t('not detected')].filter(Boolean).join(' · ')}</span>
         {pill}
         <div className="spacer" />
         <div className="fio-legend">
@@ -415,35 +459,36 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
             const pair = pairOf(k);
             // The second connector of a keyer: set by the first one.
             const locked = (r.role === 'key' || r.role === 'kout') && r.output;
-            const opt = (c: Choice, label: string) => {
-              const no = why(k, c);
-              return (
-                <option key={c} value={c} disabled={!!no}>
-                  {no ? `${label} (${no})` : label}
-                </option>
-              );
-            };
             const keyers = pair && pair[0] === k && (bracket.externalKey || bracket.internalKey);
+            const opt = (c: Choice, label: string, sub: string, icon: React.ReactNode, detail?: string, group?: string): DropOption<Choice> => {
+              const no = why(k, c);
+              return { value: c, label, sub: no || sub, icon, detail, group, disabled: !!no };
+            };
+            const options: DropOption<Choice>[] = [
+              { value: '', label: t('Free'), icon: <Swatch /> },
+              opt('in', t('Input'), t('Video source'), <Swatch c={RING.input} />),
+              opt('out', t('Output'), t('Program only'), <Swatch c={RING.output} />),
+              ...((keyers || value === 'fk' || value === 'ik') && pair
+                ? [
+                    ...(bracket.externalKey || value === 'fk' ? [opt('fk', 'Fill + Key', t('Key on SDI {n}', { n: pair[1] + 1 }), <Swatch c={RING.output} c2={RING.key} />, `Key → SDI ${pair[1] + 1}`, t('With SDI {n}', { n: pair[1] + 1 }))] : []),
+                    ...(bracket.internalKey || value === 'ik' ? [opt('ik', t('Internal keyer'), t('Input SDI {a} → output SDI {b}', { a: k + 1, b: pair[1] + 1 }), <Swatch c={RING.input} c2={RING.output} />, `→ SDI ${pair[1] + 1}`, t('With SDI {n}', { n: pair[1] + 1 }))] : []),
+                  ]
+                : []),
+            ];
+            // A keyer the card no longer offers (an unknown card) still shows what it is.
+            if (!options.some((o) => o.value === value)) options.push({ value, label: value === 'fk' ? 'Fill + Key' : t('Internal keyer'), icon: <Swatch c={RING.output} c2={value === 'fk' ? RING.key : RING.input} /> });
             return (
               <div key={k} className={`fio-port ${sel === k ? 'sel' : ''}`} onClick={() => setSel(k)}>
                 <b>SDI {k + 1}</b>
                 <span className={`fio-tag ${TAG_CLASS[r.role]}`}>{TAG[r.role]}</span>
                 {locked ? (
-                  <select value="" aria-label={`SDI ${k + 1}`} disabled>
-                    <option value="">{r.role === 'key' ? t('Key of SDI {n}', { n: r.output!.fill + 1 }) : t('Keyer output of SDI {n}', { n: r.output!.fill + 1 })}</option>
-                  </select>
+                  <span className="fio-locked" aria-label={`SDI ${k + 1}`}>
+                    <Swatch c={RING[r.role]} />
+                    <span>{r.role === 'key' ? 'Key' : t('Keyer output')}</span>
+                    <span className="fio-locked-of">{t('of SDI {n}', { n: r.output!.fill + 1 })}</span>
+                  </span>
                 ) : (
-                  <select value={value} aria-label={`SDI ${k + 1}`} className={value ? '' : 'none'} onChange={(e) => void assign(k, e.target.value as Choice)}>
-                    <option value="">— {t('Free')}</option>
-                    {opt('in', t('Input'))}
-                    {opt('out', t('Output'))}
-                    {keyers && (
-                      <optgroup label={t('In pair with SDI {n}', { n: pair[1] + 1 })}>
-                        {bracket.externalKey && opt('fk', t('Fill + Key (key on SDI {n})', { n: pair[1] + 1 }))}
-                        {bracket.internalKey && opt('ik', t('Internal keyer (input SDI {a} → output SDI {b})', { a: k + 1, b: pair[1] + 1 }))}
-                      </optgroup>
-                    )}
-                  </select>
+                  <Dropdown value={value} options={options} title={`SDI ${k + 1}`} className={`fio-role ${value ? '' : 'none'}`} onChange={(v) => void assign(k, v)} />
                 )}
                 <span className="fio-sig">{signal(k)}</span>
               </div>
@@ -454,10 +499,16 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
               <b>REF</b>
               <span className="fio-tag ref">{REF_KIND(found?.referenceKind)}</span>
               <span className="fio-ref">
-                <select value={genlock ? 'genlock' : 'free'} aria-label="REF" onChange={(e) => setRef(e.target.value === 'genlock')}>
-                  <option value="genlock">{tn(card.genlockOffset ?? 0, 'Genlock · {n} line', 'Genlock · {n} lines')}</option>
-                  <option value="free">{t('Internal clock')}</option>
-                </select>
+                <Dropdown
+                  value={genlock ? 'genlock' : 'free'}
+                  title="REF"
+                  className="fio-role"
+                  options={[
+                    { value: 'genlock', label: 'Genlock', icon: <Swatch c={RING.ref} />, detail: tn(card.genlockOffset ?? 0, '{n} line', '{n} lines'), sub: t('Follows the reference signal') },
+                    { value: 'free', label: t('Internal clock'), icon: <Swatch />, sub: t('Free running') },
+                  ]}
+                  onChange={(v) => setRef(v === 'genlock')}
+                />
                 {genlock && <input type="number" min={-1125} max={1125} value={card.genlockOffset ?? 0} aria-label={t('Genlock offset')} onChange={(e) => setRef(true, +e.target.value)} />}
               </span>
               <span className="fio-sig">{found?.referenceLocked == null ? <span className="muted">—</span> : found.referenceLocked ? <Sig dot="ok" text={t('locked')} /> : <Sig dot="warn" text={t('absent')} />}</span>
@@ -688,16 +739,18 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
               </dd>
               <dt>{t('Card')}</dt>
               <dd>
-                <select value={net.ptp} aria-label={t('Card')} onChange={(e) => editHw((h) => void (h.network!.ptp = e.target.value))}>
-                  <option value="">{t('Not set')}</option>
-                  {net.ptp && !nics.some((n) => n.name === net.ptp) && <option value={net.ptp}>{t('{name} (not found)', { name: net.ptp })}</option>}
-                  {nics.map((n) => (
-                    <option key={n.name} value={n.name}>
-                      {n.name}
-                      {n.name === net.mediaRed ? ` (${t('red')})` : n.name === net.mediaBlue ? ` (${t('blue')})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <Dropdown
+                  value={net.ptp}
+                  title={t('Card')}
+                  className="fio-pick"
+                  placeholder={t('Not set')}
+                  options={[
+                    { value: '', label: t('Not set') },
+                    ...(net.ptp && !nics.some((n) => n.name === net.ptp) ? [{ value: net.ptp, label: net.ptp, note: t('not found') }] : []),
+                    ...nics.map((n) => ({ value: n.name, label: n.name, note: n.name === net.mediaRed ? t('red') : n.name === net.mediaBlue ? t('blue') : undefined })),
+                  ]}
+                  onChange={(v) => editHw((h) => void (h.network!.ptp = v))}
+                />
               </dd>
               <dt>TAI − UTC</dt>
               <dd>
@@ -815,25 +868,16 @@ function FlowEditor({ f, hw, det, cfg, editHw, onGone }: { f: St2110Flow; hw: Ha
       <div className="hw-flow-grid">
         <label className="set-field wide">
           <span className="set-label">{t('Encoding')}</span>
-          <select value={f.encoding} onChange={(e) => editFlow((x) => void ((x.encoding = e.target.value as St2110Flow['encoding']), x.encoding === 'fillKey' && !x.key && (x.key = joinAddr(fip.replace(/\d+$/, (v) => String(+v + 1)), fport))))}>
-            {ENCODINGS.map((x) => (
-              <option key={x.value} value={x.value}>
-                {t(x.label)}
-              </option>
-            ))}
-          </select>
+          <Dropdown
+            value={f.encoding}
+            className="fio-pick"
+            options={ENCODINGS.map((x) => ({ value: x.value, label: t(x.label) }))}
+            onChange={(v) => editFlow((x) => void ((x.encoding = v), x.encoding === 'fillKey' && !x.key && (x.key = joinAddr(fip.replace(/\d+$/, (n) => String(+n + 1)), fport))))}
+          />
         </label>
         <label className="set-field wide">
           <span className="set-label">{t('Network interface')}</span>
-          <select value={f.interface ?? ''} onChange={(e) => editFlow((x) => void (x.interface = e.target.value || null))}>
-            <option value="">{roleDefault(hw.network!.mediaRed, ifaces)}</option>
-            {f.interface && !ifaces.some((i) => i.ip === f.interface) && <option value={f.interface}>{f.interface}</option>}
-            {ifaces.map((i) => (
-              <option key={i.ip} value={i.ip}>
-                {i.name} — {i.ip}
-              </option>
-            ))}
-          </select>
+          <Dropdown value={f.interface ?? ''} className="fio-pick" options={ifaceOptions(f.interface, roleDefault(hw.network!.mediaRed, ifaces), ifaces)} onChange={(v) => editFlow((x) => void (x.interface = v || null))} />
         </label>
         <label className="set-field">
           <span className="set-label">{two ? t('Fill — multicast') : t('Stream — multicast')}</span>
@@ -894,6 +938,15 @@ function roleDefault(role: string, ifaces: HardwareInfo['interfaces']): string {
   return t('Network role: {iface}', { iface: ip ? `${role} — ${ip}` : role });
 }
 
+/** A flow's network interface: the role's default first, then each address (one no longer there kept). */
+function ifaceOptions(cur: string | null | undefined, fallback: string, ifaces: HardwareInfo['interfaces']): DropOption<string>[] {
+  return [
+    { value: '', label: fallback },
+    ...(cur && !ifaces.some((i) => i.ip === cur) ? [{ value: cur, label: cur, note: t('not found') }] : []),
+    ...ifaces.map((i) => ({ value: i.ip, label: i.name, note: i.ip })),
+  ];
+}
+
 function BlueLeg({ f, two, ifaces, blueRole, editFlow }: { f: St2110Flow; two: boolean; ifaces: HardwareInfo['interfaces']; blueRole: string; editFlow: (fn: (f: St2110Flow) => void) => void }) {
   const [bip, bport] = splitAddr(f.blue);
   const [bkip, bkport] = splitAddr(f.blueKey);
@@ -901,15 +954,7 @@ function BlueLeg({ f, two, ifaces, blueRole, editFlow }: { f: St2110Flow; two: b
     <div className="hw-blue">
       <label className="set-field wide">
         <span className="set-label">{t('Blue interface')}</span>
-        <select value={f.blueInterface ?? ''} onChange={(e) => editFlow((x) => void (x.blueInterface = e.target.value || null))}>
-          <option value="">{roleDefault(blueRole, ifaces)}</option>
-          {f.blueInterface && !ifaces.some((i) => i.ip === f.blueInterface) && <option value={f.blueInterface}>{f.blueInterface}</option>}
-          {ifaces.map((i) => (
-            <option key={i.ip} value={i.ip}>
-              {i.name} — {i.ip}
-            </option>
-          ))}
-        </select>
+        <Dropdown value={f.blueInterface ?? ''} className="fio-pick" options={ifaceOptions(f.blueInterface, roleDefault(blueRole, ifaces), ifaces)} onChange={(v) => editFlow((x) => void (x.blueInterface = v || null))} />
       </label>
       <label className="set-field">
         <span className="set-label">{two ? t('Blue fill — multicast') : t('Blue stream — multicast')}</span>

@@ -18,6 +18,14 @@ export interface DropOption<V extends string> {
   note?: string;
   /** Style of the label (a font shown in itself). */
   style?: React.CSSProperties;
+  /** Second line under the label (what the choice does, or why it cannot be taken). */
+  sub?: string;
+  /** A mark before the label (a colour swatch, a dot), in the list and on the button. */
+  icon?: React.ReactNode;
+  /** Muted text after the label on the button only (the connector it goes with…). */
+  detail?: string;
+  /** Shown, not taken (its `sub` says why). */
+  disabled?: boolean;
 }
 
 export function Dropdown<V extends string>({ value, options, onChange, title, placeholder = '—', className = '' }: { value: V; options: readonly DropOption<V>[]; onChange: (v: V) => void; title?: string; placeholder?: string; className?: string }) {
@@ -27,6 +35,13 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
   const btn = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const current = options.find((o) => o.value === value);
+  // Options with a mark or a second line: the check goes to the end of the row.
+  const rich = options.some((o) => o.icon || o.sub);
+  /** The next option that can be taken from `i` going `step`, or `i`. */
+  const next = (i: number, step: number) => {
+    for (let j = i + step; j >= 0 && j < options.length; j += step) if (!options[j].disabled) return j;
+    return i;
+  };
 
   useLayoutEffect(() => {
     if (!open || !btn.current) return;
@@ -63,6 +78,14 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
     if (open) list.current?.querySelector('.dd-opt.hover')?.scrollIntoView({ block: 'nearest' });
   }, [open, hover]);
 
+  // A list wider than the room right of its button opens leftwards, inside the window.
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (!open || !at || !el) return;
+    const over = el.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) el.style.left = `${Math.max(8, at.left - over)}px`;
+  }, [open, at]);
+
   const pick = (v: V, keyboard = false) => {
     setOpen(false);
     if (v !== value) onChange(v);
@@ -81,9 +104,9 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
       setOpen(false);
       btn.current?.focus();
     }
-    else if (e.key === 'ArrowDown') setHover((h) => Math.min(options.length - 1, h + 1));
-    else if (e.key === 'ArrowUp') setHover((h) => Math.max(0, h - 1));
-    else if (e.key === 'Enter' && options[hover]) pick(options[hover].value, true);
+    else if (e.key === 'ArrowDown') setHover((h) => next(h, 1));
+    else if (e.key === 'ArrowUp') setHover((h) => next(h, -1));
+    else if (e.key === 'Enter' && options[hover] && !options[hover].disabled) pick(options[hover].value, true);
     else return;
     e.preventDefault();
   };
@@ -100,7 +123,11 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onKey}
       >
-        <span className="dd-label" style={current?.style}>{current?.label ?? (value || placeholder)}</span>
+        {current?.icon && <span className="dd-icon">{current.icon}</span>}
+        <span className="dd-label" style={current?.style}>
+          {current?.label ?? (value || placeholder)}
+          {current?.detail && <span className="dd-detail">{current.detail}</span>}
+        </span>
         <ChevronDown size={12} />
       </button>
       {open &&
@@ -108,8 +135,8 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
         createPortal(
           <div
             ref={list}
-            className={`dd-list ${at.up ? 'up' : ''}`}
-            style={{ left: at.left, top: at.up ? undefined : at.top + 4, bottom: at.up ? window.innerHeight - at.top + 4 : undefined, minWidth: Math.max(160, at.width) }}
+            className={`dd-list ${at.up ? 'up' : ''} ${rich ? 'rich' : ''}`}
+            style={{ left: at.left, top: at.up ? undefined : at.top + 4, bottom: at.up ? window.innerHeight - at.top + 4 : undefined, minWidth: Math.max(rich ? 260 : 160, at.width) }}
             role="listbox"
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -119,10 +146,26 @@ export function Dropdown<V extends string>({ value, options, onChange, title, pl
               return (
                 <div key={o.value}>
                   {head && <div className="dd-group">{head}</div>}
-                  <div role="option" aria-selected={o.value === value} className={`dd-opt ${o.value === value ? 'on' : ''} ${i === hover ? 'hover' : ''}`} onPointerEnter={() => setHover(i)} onClick={() => pick(o.value)}>
-                    <span className="dd-check">{o.value === value && <Check size={12} />}</span>
-                    <span className="dd-text" style={o.style}>{o.label}</span>
+                  <div
+                    role="option"
+                    aria-selected={o.value === value}
+                    aria-disabled={o.disabled || undefined}
+                    className={`dd-opt ${o.value === value ? 'on' : ''} ${i === hover && !o.disabled ? 'hover' : ''} ${o.disabled ? 'off' : ''}`}
+                    onPointerEnter={() => !o.disabled && setHover(i)}
+                    onClick={() => !o.disabled && pick(o.value)}
+                  >
+                    {!rich && <span className="dd-check">{o.value === value && <Check size={12} />}</span>}
+                    {rich && <span className="dd-icon">{o.icon}</span>}
+                    {rich ? (
+                      <span className="dd-text">
+                        <span className="dd-main" style={o.style}>{o.label}</span>
+                        {o.sub && <span className="dd-sub">{o.sub}</span>}
+                      </span>
+                    ) : (
+                      <span className="dd-text" style={o.style}>{o.label}</span>
+                    )}
                     {o.note && <span className="dd-note">{o.note}</span>}
+                    {rich && <span className="dd-check">{o.value === value && <Check size={13} />}</span>}
                   </div>
                 </div>
               );

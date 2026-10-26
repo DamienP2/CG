@@ -972,7 +972,7 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
         value={input ? 'input' : 'file'}
         onChange={(v) => {
           if (v === 'file') return ed((x) => void (x.input = undefined));
-          if (!inputs.length) return toast(t('No live input yet: add one in Video streams (main page).'), 'error');
+          if (!inputs.length) return toast(t('No live input yet: add one in Broadcast › Video inputs.'), 'error');
           ed((x) => void (x.input = inputs[0].id));
         }}
         options={[
@@ -998,7 +998,7 @@ function VideoSource({ k, ed }: { k: ReturnType<typeof cfg>; ed: (fn: (l: ImgLay
               <i /> {info ? inputMessage(info.message) : t('This input does not exist any more')}
             </em>
           </div>
-          <Note>{t('Live inputs are set in Video streams (main page). The engine draws their latest picture on every output.')}</Note>
+          <Note>{t('Live inputs are set in Broadcast › Video inputs. The engine draws their latest picture on every output.')}</Note>
         </>
       ) : (
         <>

@@ -146,7 +146,8 @@ export const operator: Record<string, string> = {
   'Load “{name}” on it instead?': 'Y charger « {name} » à la place ?',
   'Load here': 'Charger ici',
   'Output': 'Sortie',
-  'No output (preview only)': 'Aucune sortie (aperçu seul)',
+  'Preview only': 'Aperçu seul',
+  'No destination': 'Aucune destination',
   'Used by another project': 'Utilisés par un autre projet',
   '{channel} — used by “{project}”': '{channel} — utilisé par « {project} »',
   // Data sets

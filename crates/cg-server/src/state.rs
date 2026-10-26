@@ -180,7 +180,10 @@ pub struct ChannelInfo {
     pub width: u32,
     pub height: u32,
     pub frame_rate: cg_core::FrameRate,
+    /// Two fields a frame (the rate counts fields).
+    pub interlaced: bool,
     pub project_id: Option<String>,
+    /// What the channel goes out to: "SDI · name", "NDI · name"…
     pub outputs: Vec<String>,
     /// Extra pictures of the channel (9:16…), each with its HTML5 page
     /// /output/<channel>/<rendition>.
@@ -286,8 +289,28 @@ impl ChannelRt {
             .flat_map(|(_, _, _, o)| {
                 o.st2110
                     .iter()
+                    .filter(|o| o.enabled)
                     .map(|o| format!("ST 2110 · {}", o.name))
-                    .chain(o.sdi.iter().map(|o| format!("SDI · {}", o.name)))
+                    .chain(
+                        o.sdi
+                            .iter()
+                            .filter(|o| o.enabled)
+                            .map(|o| format!("SDI · {}", o.name)),
+                    )
+                    .chain(
+                        o.ndi
+                            .iter()
+                            .filter(|o| o.enabled)
+                            .map(|o| format!("NDI · {}", o.name)),
+                    )
+                    .chain(o.streams.iter().filter(|o| o.enabled).map(|o| {
+                        format!(
+                            "{} · {}",
+                            format!("{:?}", o.protocol).to_uppercase(),
+                            o.name
+                        )
+                    }))
+                    .chain(o.html5.iter().map(|o| format!("HTML5 · {}", o.name)))
             })
             .collect();
         ChannelInfo {
@@ -296,6 +319,7 @@ impl ChannelRt {
             width: c.width,
             height: c.height,
             frame_rate: c.frame_rate,
+            interlaced: c.interlaced,
             project_id: self.project_id.read().await.clone(),
             outputs,
             renditions: c

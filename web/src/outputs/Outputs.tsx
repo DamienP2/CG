@@ -1,4 +1,4 @@
-import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
+import { ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
@@ -198,15 +198,7 @@ const unique = (base: string, taken: Set<string>) => {
 /** Node positions, per browser (moving a node does not restart the outputs). */
 const LAYOUT_KEY = 'pulse.outputsLayout';
 type Layout = Record<string, Record<string, { x: number; y: number }>>;
-type Mode = 'outputs' | 'inputs';
-const MODE_KEY = 'pulse.videoStreams.mode';
-const readMode = (): Mode => {
-  try {
-    return localStorage.getItem(MODE_KEY) === 'inputs' ? 'inputs' : 'outputs';
-  } catch {
-    return 'outputs';
-  }
-};
+export type Mode = 'outputs' | 'inputs';
 
 /** The config without its inputs (what restarts the outputs). */
 const withoutInputs = (c: ServerConfig) => JSON.stringify({ ...c, inputs: undefined });
@@ -219,7 +211,7 @@ const readLayout = (): Layout => {
   }
 };
 
-export function Outputs() {
+export function Outputs({ mode }: { mode: Mode }) {
   const { toast, projects, channels: live, live: liveState, loadOnChannel, auth } = useApp();
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [cfg, setCfg] = useState<ServerConfig | null>(null);
@@ -235,16 +227,7 @@ export function Outputs() {
   const [addMenu, setAddMenu] = useState<{ picture: string; x: number; y: number } | null>(null);
   const [moreFormats, setMoreFormats] = useState(false);
   const [slatePick, setSlatePick] = useState<string | null>(null);
-  const [mode, setModeState] = useState<Mode>(readMode);
   const metrics = useMetrics();
-  const setMode = (m: Mode) => {
-    setModeState(m);
-    try {
-      localStorage.setItem(MODE_KEY, m);
-    } catch {
-      /* private mode */
-    }
-  };
   const planeRef = useRef<HTMLDivElement>(null);
   // The menu of other formats closes on a click elsewhere (or Esc).
   useEffect(() => {
@@ -746,25 +729,11 @@ export function Outputs() {
   const destCount = (c: ChannelConfig) => pictures(c).reduce((n, p) => n + dests(p).length, 0);
   const warns = (c: ChannelConfig) => Object.values(status[c.id] ?? {}).some((s) => !s.ok);
 
-  const inputCount = (cfg.inputs ?? []).length;
   // The inspector's notes, gathered while it renders (shown as one "i").
   const notes: string[] = [];
   const note = (text: string) => void notes.push(text);
   return (
     <div className="vs-page">
-      <div className="vs-modes">
-        <div className="vs-mode-switch" role="tablist" aria-label={t('Video streams')}>
-          <button role="tab" aria-selected={mode === 'outputs'} className={mode === 'outputs' ? 'on' : ''} onClick={() => setMode('outputs')}>
-            <ArrowRightFromLine size={15} /> {t('Outputs')}
-            <span className="count">{cfg.channels.reduce((n, c) => n + destCount(c), 0)}</span>
-          </button>
-          <button role="tab" aria-selected={mode === 'inputs'} className={mode === 'inputs' ? 'on' : ''} onClick={() => setMode('inputs')}>
-            <ArrowRightToLine size={15} /> {t('Inputs')}
-            <span className="count">{inputCount}</span>
-          </button>
-        </div>
-        {mode === 'outputs' ? <InfoTip text={t('What the channels send: web pages, SDI, ST 2110, NDI and streams.')} /> : <InfoTip text={t('Live video coming into the server, for the Video widget of the graphics.')} />}
-      </div>
       {mode === 'inputs' ? (
         <InputsMode cfg={cfg} saved={info.config} edit={edit} />
       ) : (
@@ -1118,7 +1087,7 @@ export function Outputs() {
                               <option value="">{t('Not connected')}</option>
                             </select>
                           </Field>
-                          <button type="button" className="btn small oc-hw-edit" onClick={() => setMode('inputs')}>
+                          <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/inputs')}>
                             <Pencil size={13} /> {t('Edit in Inputs')}
                           </button>
                           {note(t('The graphics of the channel are keyed over this video by the server: every destination gets the full picture.'))}

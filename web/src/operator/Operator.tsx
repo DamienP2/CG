@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, interpolateText, newId, parseHex, toHex } from '../engine/evaluate';
-import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone } from '../engine/types';
+import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone, type ChannelInfo } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { CentreModeContext } from '../widgets/kit';
@@ -28,6 +28,7 @@ import { navigate, projectPath } from '../router';
 import { areaClip, zoneArea } from '../engine/zones';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { TableRowsField } from './TableRowsField';
+import { Dropdown, type DropOption } from '../ui/Dropdown';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { t, tc, tn } from '../i18n';
 import { LockedBy, useZoneLocks, ZoneBar } from './ZoneBar';
@@ -1681,39 +1682,22 @@ const OutputSelect = memo(function OutputSelect({ channelId }: { channelId: stri
     }
     navigate(projectPath(project.id, 'operator', c.id));
   };
-  const own = channels.filter((c) => c.projectId === project?.id);
-  const free = channels.filter((c) => !c.projectId);
-  const other = channels.filter((c) => c.projectId && c.projectId !== project?.id);
-  return (
-    <select className="opx-output" value={channelId ?? ''} onChange={(e) => void pick(e.target.value)} title={t('Output')}>
-      <option value="">{t('No output (preview only)')}</option>
-      {own.length > 0 && (
-        <optgroup label={t('This project')}>
-          {own.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {free.length > 0 && (
-        <optgroup label={tc('channels', 'Free')}>
-          {free.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {other.length > 0 && (
-        <optgroup label={t('Used by another project')}>
-          {other.map((c) => (
-            <option key={c.id} value={c.id}>
-              {t('{channel} — used by “{project}”', { channel: c.name, project: projectName(c.projectId) })}
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </select>
-  );
+  // Graphics on air per output, as one string: the list is drawn again only when a count changes.
+  const onAir = useApp((s) => channels.map((c) => Object.keys(s.live[c.id]?.state.layers ?? {}).length).join(','))
+    .split(',')
+    .map(Number);
+  const airOf = (c: ChannelInfo) => onAir[channels.indexOf(c)] || 0;
+  const dot = (c?: ChannelInfo) => <span className={`opx-dot ${!c ? 'none' : airOf(c) ? 'live' : ''}`} />;
+  const format = (c: ChannelInfo) => `${c.height}${c.interlaced ? 'i' : 'p'}${+(c.frameRate.num / Math.max(1, c.frameRate.den)).toFixed(2)}`;
+  const kinds = (c: ChannelInfo) => [...new Set(c.outputs.map((o) => o.split(' · ')[0]))].join(' · ') || t('No destination');
+  const item = (c: ChannelInfo, group: string, sub: string): DropOption<string> => ({ value: c.id, label: c.name, sub, icon: dot(c), note: format(c), detail: format(c), group });
+  const options: DropOption<string>[] = [
+    { value: '', label: t('No output'), sub: t('Preview only'), icon: dot() },
+    ...channels.filter((c) => c.projectId === project?.id).map((c) => item(c, t('This project'), kinds(c))),
+    ...channels.filter((c) => !c.projectId).map((c) => item(c, tc('channels', 'Free'), kinds(c))),
+    ...channels
+      .filter((c) => c.projectId && c.projectId !== project?.id)
+      .map((c) => item(c, t('Used by another project'), [`« ${projectName(c.projectId)} »`, ...(airOf(c) ? [tn(airOf(c), '{n} on air', '{n} on air')] : [])].join(' · '))),
+  ];
+  return <Dropdown value={channelId ?? ''} options={options} title={t('Output')} className="opx-output" onChange={(v) => void pick(v)} />;
 });

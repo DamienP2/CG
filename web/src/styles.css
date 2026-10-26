@@ -6457,15 +6457,34 @@ a.btn {
   color: var(--live);
   background: rgba(255, 59, 92, 0.14);
 }
-.opx-output {
-  height: 28px;
-  max-width: 230px;
-  border: none;
-  border-radius: 5px;
+.dd-btn.opx-output {
+  width: auto;
+  height: 30px;
+  max-width: 300px;
+  gap: 9px;
+  padding: 0 10px;
+  border-color: var(--op-4);
+  border-radius: 7px;
   background: var(--op-3);
-  color: var(--text);
-  padding: 0 8px;
-  font-size: 12.5px;
+  font-size: 13px;
+}
+.dd-btn.opx-output .dd-label {
+  font-weight: 650;
+}
+.opx-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-3);
+}
+.opx-dot.live {
+  border: none;
+  background: var(--live);
+  box-shadow: 0 0 0 3px var(--live-soft);
+}
+.opx-dot.none {
+  border-style: dashed;
 }
 .opx-pics {
   display: flex;
@@ -10830,6 +10849,79 @@ body.cv-moving * {
 .dd-empty {
   padding: 8px 10px;
   color: var(--text-3);
+}
+.dd-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 12px;
+}
+.dd-detail {
+  margin-left: 8px;
+  font: 11px var(--mono);
+  color: var(--text-3);
+}
+/* Options with a mark and a second line. */
+.dd-list.rich {
+  max-width: 400px;
+  padding: 5px;
+}
+.dd-list.rich .dd-group {
+  margin-top: 4px;
+  padding: 9px 9px 4px;
+  border-top: 1px solid var(--line);
+}
+.dd-list.rich > div:first-child .dd-group {
+  margin-top: 0;
+  border-top: none;
+}
+.dd-list.rich .dd-opt {
+  gap: 9px;
+  height: auto;
+  min-height: 30px;
+  padding: 6px 9px;
+  white-space: normal;
+}
+.dd-list.rich .dd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.dd-main {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+.dd-list.rich .dd-note {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel-3);
+  color: var(--text-2);
+}
+.dd-opt.off {
+  cursor: default;
+}
+.dd-opt.off .dd-main {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.dd-opt.off .dd-sub {
+  color: rgba(245, 165, 36, 0.8);
+}
+.dd-opt.off .dd-icon {
+  opacity: 0.35;
+}
+.dd-opt .dd-check:last-child {
+  color: var(--accent-2);
 }
 @media (prefers-reduced-motion: reduce) {
   .dd-list {
