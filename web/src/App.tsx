@@ -155,7 +155,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
   );
   const entry = (id: Route['page'], path: string, icon: React.ReactNode, label: string): NavEntry => ({ id, path, icon, label });
   const admin = can.admin(user);
-  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams')), entry('hardware', '/hardware', <CircuitBoard size={14} />, t('I/O')), entry('mos', '/mos', <Newspaper size={14} />, 'MOS')] : [];
+  const broadcast = admin ? [entry('outputs', '/outputs', <MonitorPlay size={14} />, t('Video streams')), entry('hardware', '/hardware', <CircuitBoard size={14} />, t('Hardware')), entry('mos', '/mos', <Newspaper size={14} />, 'MOS')] : [];
   const system = [
     ...(admin ? [entry('performance', '/performance', <Gauge size={14} />, t('Performance'))] : []),
     entry('asrun', '/asrun', <ClipboardList size={14} />, tc('tab', 'As-run')),

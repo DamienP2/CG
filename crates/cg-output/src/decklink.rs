@@ -17,6 +17,8 @@ pub const NO_RUNTIME: &str = "Blackmagic Desktop Video is not installed (no Deck
 /// `BMDFieldDominance` values.
 pub const FIELD_PROGRESSIVE: u32 = u32::from_be_bytes(*b"prog");
 pub const FIELD_PSF: u32 = u32::from_be_bytes(*b"psf ");
+/// Interlaced, the lower field first in time (525i NTSC).
+pub const FIELD_LOWER: u32 = u32::from_be_bytes(*b"lowr");
 
 /// A display mode of a device (`IDeckLinkDisplayMode`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +36,11 @@ pub struct DisplayMode {
 }
 
 impl DisplayMode {
+    /// Two fields per frame, a field time apart.
+    pub fn interlaced(&self) -> bool {
+        self.field != FIELD_PROGRESSIVE && self.field != FIELD_PSF
+    }
+
     pub fn fps(&self) -> f64 {
         if self.duration <= 0 {
             0.0
@@ -53,16 +60,20 @@ impl DisplayMode {
 }
 
 /// The modes matching a channel format, best first: progressive, then
-/// progressive segmented frame, then interlaced (same frame rate).
+/// progressive segmented frame, then interlaced (same frame rate); only the
+/// interlaced ones when `interlaced` (`rate` then counts whole frames: 25
+/// for 1080i50).
 pub fn candidates(
     modes: &[DisplayMode],
     width: u32,
     height: u32,
     rate: (u32, u32),
+    interlaced: bool,
 ) -> Vec<&DisplayMode> {
     let mut m: Vec<&DisplayMode> = modes
         .iter()
         .filter(|m| m.matches(width, height, rate))
+        .filter(|m| !interlaced || m.interlaced())
         .collect();
     m.sort_by_key(|m| match m.field {
         FIELD_PROGRESSIVE => 0,
@@ -445,17 +456,19 @@ fn pick(
     width: u32,
     height: u32,
     rate: (u32, u32),
+    interlaced: bool,
 ) -> Result<Vec<DisplayMode>, String> {
     let all = modes(device, input)?;
-    let c: Vec<DisplayMode> = candidates(&all, width, height, rate)
+    let c: Vec<DisplayMode> = candidates(&all, width, height, rate, interlaced)
         .into_iter()
         .cloned()
         .collect();
     if c.is_empty() {
         return Err(format!(
-            "the DeckLink device has no {} mode for {}",
+            "the DeckLink device has no {} mode for {}{}",
             if input { "input" } else { "output" },
-            format_name(width, height, rate)
+            format_name(width, height, rate),
+            if interlaced { " interlaced" } else { "" }
         ));
     }
     Ok(c)
@@ -487,12 +500,13 @@ impl OutputHandle {
         rate: (u32, u32),
         keyer: Keyer,
         ref_offset: Option<i32>,
+        interlaced: bool,
     ) -> Result<Self, String> {
         #[cfg(decklink_shim)]
         {
             let idx = index(device)?;
             let mut last = String::new();
-            for mode in pick(device, false, width, height, rate)? {
+            for mode in pick(device, false, width, height, rate, interlaced)? {
                 let mut err = [0 as std::ffi::c_char; 256];
                 // SAFETY: plain call; `err` sized as passed.
                 let raw = unsafe {
@@ -522,7 +536,9 @@ impl OutputHandle {
         }
         #[cfg(not(decklink_shim))]
         {
-            let _ = (device, width, height, rate, keyer, ref_offset, pick);
+            let _ = (
+                device, width, height, rate, keyer, ref_offset, interlaced, pick,
+            );
             Err(NOT_BUILT.into())
         }
     }
@@ -604,7 +620,7 @@ impl InputHandle {
         {
             let idx = index(device)?;
             let mut last = String::new();
-            for mode in pick(device, true, width, height, rate)? {
+            for mode in pick(device, true, width, height, rate, false)? {
                 let mut err = [0 as std::ffi::c_char; 256];
                 // SAFETY: plain call; `err` sized as passed.
                 let raw =
@@ -723,7 +739,7 @@ mod tests {
             mode(7, 1920, 1080, 1000, 25000, FIELD_PSF), // 1080PsF25
         ];
         let ids = |w, h, r| {
-            candidates(&modes, w, h, r)
+            candidates(&modes, w, h, r, false)
                 .iter()
                 .map(|m| m.id)
                 .collect::<Vec<_>>()
@@ -737,6 +753,13 @@ mod tests {
         assert!(ids(3840, 2160, (50, 1)).is_empty());
         assert!(ids(1920, 1080, (0, 1)).is_empty());
         assert_eq!(format_name(1920, 1080, (30000, 1001)), "1920x1080 @ 29.97");
+        // 1080i50: 25 whole frames, interlaced only.
+        let interlaced: Vec<u32> = candidates(&modes, 1920, 1080, (25, 1), true)
+            .iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(interlaced, vec![1]);
+        assert!(candidates(&modes, 1920, 1080, (50, 1), true).is_empty());
     }
 
     #[test]
@@ -751,7 +774,9 @@ mod tests {
             Err(e) => assert!(e == NOT_BUILT || e == NO_RUNTIME, "{e}"),
         }
         if !BUILT {
-            assert!(OutputHandle::open(0, 1920, 1080, (25, 1), Keyer::External, None).is_err());
+            assert!(
+                OutputHandle::open(0, 1920, 1080, (25, 1), Keyer::External, None, false).is_err()
+            );
             assert_eq!(device_infos(), Err(NOT_BUILT.to_string()));
             assert_eq!(runtime_version(), None);
             assert!(InputHandle::open(0, 1920, 1080, (25, 1)).is_err());

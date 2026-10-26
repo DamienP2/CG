@@ -1,5 +1,5 @@
 // Pages outside the Operator and the Designer: projects, data, video
-// streams, I/O, performance, as-run, settings; server errors made readable.
+// streams, Hardware, performance, as-run, settings; server errors made readable.
 export const ux3: Record<string, string> = {
   // Server errors (ui/serverError.ts)
   'connection refused': 'connexion refusée',

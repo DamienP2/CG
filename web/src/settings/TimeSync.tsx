@@ -8,7 +8,7 @@ import '../hardware/hardware.css';
 /*
  * Settings › Time and sync: the state of the clocks (NTP, PTP) and what
  * the channel clocks follow. PTP itself (domain, card) is set in
- * Flux I/O › ST 2110, the SDI reference in Flux I/O › SDI.
+ * Hardware › ST 2110, the SDI reference in Hardware › SDI.
  */
 export function TimeSync({ cfg, edit, det, onRefresh }: { cfg: ServerConfig; edit: (fn: (c: ServerConfig) => void) => void; det: HardwareInfo | null; onRefresh: () => void }) {
   const sync = { ...emptySync(), ...hardwareOf(structuredClone(cfg)).sync };

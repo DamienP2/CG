@@ -149,6 +149,8 @@ export interface ChannelConfig {
   width: number;
   height: number;
   frameRate: FrameRate;
+  /** Interlaced SDI (1080i50): the frame rate counts fields; the SDI outputs weave two images into a frame. */
+  interlaced?: boolean;
   projectId?: string | null;
   outputs: OutputsConfig;
   renditions?: Rendition[];
@@ -379,8 +381,10 @@ export interface OutputState {
   detail?: string;
 }
 
-export const VIDEO_FORMATS: { label: string; width: number; height: number; rate: FrameRate }[] = [
+export const VIDEO_FORMATS: { label: string; width: number; height: number; rate: FrameRate; interlaced?: boolean }[] = [
   { label: '1080p 50', width: 1920, height: 1080, rate: { num: 50, den: 1 } },
+  { label: '1080i 50', width: 1920, height: 1080, rate: { num: 50, den: 1 }, interlaced: true },
+  { label: '1080i 59.94', width: 1920, height: 1080, rate: { num: 60000, den: 1001 }, interlaced: true },
   { label: '1080p 25', width: 1920, height: 1080, rate: { num: 25, den: 1 } },
   { label: '1080p 59.94', width: 1920, height: 1080, rate: { num: 60000, den: 1001 } },
   { label: '1080p 29.97', width: 1920, height: 1080, rate: { num: 30000, den: 1001 } },
@@ -390,6 +394,10 @@ export const VIDEO_FORMATS: { label: string; width: number; height: number; rate
   { label: '2160p 50 (UHD)', width: 3840, height: 2160, rate: { num: 50, den: 1 } },
   { label: '2160p 59.94 (UHD)', width: 3840, height: 2160, rate: { num: 60000, den: 1001 } },
 ];
+
+/** The entry of VIDEO_FORMATS a channel uses (-1: none). */
+export const videoFormatIndex = (ch: { width: number; height: number; frameRate: FrameRate; interlaced?: boolean }) =>
+  VIDEO_FORMATS.findIndex((f) => f.width === ch.width && f.height === ch.height && f.rate.num * ch.frameRate.den === ch.frameRate.num * f.rate.den && !!f.interlaced === !!ch.interlaced);
 
 export const splitAddr = (a?: string | null): [string, string] => {
   if (!a) return ['', ''];

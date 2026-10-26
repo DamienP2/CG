@@ -97,7 +97,8 @@ struct Slot {
 
 #[derive(Default)]
 struct SlotState {
-    frame: Option<Arc<Frame>>,
+    /// The newest frame, with the time it shows.
+    frame: Option<(Arc<Frame>, SystemTime)>,
     /// Set by the output on drop, or by the thread when it stops.
     closed: bool,
 }
@@ -116,30 +117,69 @@ pub struct DeckLinkOutput {
 }
 
 /// The card's frame clock (shares the output; the card is closed once the
-/// output and every clock are gone).
-struct CardClock(Arc<OutputHandle>);
+/// output and every clock are gone). Interlaced, it ticks per field: at the
+/// card's frame boundary, then half a frame later (the channel renders one
+/// image a field).
+struct CardClock {
+    card: Arc<OutputHandle>,
+    /// Half a card frame (interlaced), None: progressive.
+    field: Option<Duration>,
+    /// The second field of the frame begun at this instant is still to come.
+    second: Mutex<Option<Instant>>,
+}
 
 impl FrameClock for CardClock {
     fn wait(&self, timeout: Duration) -> bool {
-        self.0.wait(timeout)
+        if let Some(field) = self.field {
+            if let Some(at) = lock(&self.second).take() {
+                let due = at + field;
+                let now = Instant::now();
+                if due > now {
+                    std::thread::sleep(due - now);
+                }
+                return true;
+            }
+            let ticked = self.card.wait(timeout);
+            if ticked {
+                *lock(&self.second) = Some(Instant::now());
+            }
+            return ticked;
+        }
+        self.card.wait(timeout)
     }
     fn locked(&self) -> Option<bool> {
-        self.0.reference_locked()
+        self.card.reference_locked()
     }
 }
 
 impl DeckLinkOutput {
     /// Opens the device's output in the mode matching the channel format
     /// (width × height at `rate` frames per second, as num/den).
+    /// `interlaced`: `rate` counts fields (50 for 1080i50); the card plays
+    /// half as many frames, each woven from two images in a row.
     pub fn open(
         config: SdiConfig,
         width: u32,
         height: u32,
         rate: (u32, u32),
+        interlaced: bool,
     ) -> Result<Self, OutputError> {
         let offset = config.genlock.then_some(config.genlock_offset);
-        let handle = OutputHandle::open(config.device, width, height, rate, config.keyer(), offset)
-            .map_err(OutputError::Unsupported)?;
+        let card_rate = if interlaced {
+            (rate.0, rate.1.saturating_mul(2))
+        } else {
+            rate
+        };
+        let handle = OutputHandle::open(
+            config.device,
+            width,
+            height,
+            card_rate,
+            config.keyer(),
+            offset,
+            interlaced,
+        )
+        .map_err(OutputError::Unsupported)?;
         let handle = Arc::new(handle);
         tracing::info!(
             name = config.name,
@@ -151,7 +191,18 @@ impl DeckLinkOutput {
         );
         // Offered always: a channel with the DeckLink reference follows it
         // (locked to the house reference when one comes into the card).
-        let clock = Some(Arc::new(CardClock(handle.clone())) as Arc<dyn FrameClock>);
+        let field = interlaced
+            .then(|| Duration::from_secs_f64(card_rate.1 as f64 / card_rate.0.max(1) as f64 / 2.0));
+        let clock = Some(Arc::new(CardClock {
+            card: handle.clone(),
+            field,
+            second: Mutex::new(None),
+        }) as Arc<dyn FrameClock>);
+        // Interlaced: which field comes first in time.
+        let weave = field.map(|f| Weave {
+            field: f,
+            lower_first: handle.mode.field == crate::decklink::FIELD_LOWER,
+        });
         let slot = Arc::new(Slot::default());
         let busy_us = Arc::new(AtomicU64::new(0));
         let thread = {
@@ -159,7 +210,7 @@ impl DeckLinkOutput {
             let opaque = config.fill_only;
             std::thread::Builder::new()
                 .name(format!("sdi-{}", config.name))
-                .spawn(move || send(name, handle, slot, busy, opaque))
+                .spawn(move || send(name, handle, slot, busy, opaque, weave))
                 .map_err(OutputError::Io)?
         };
         Ok(Self {
@@ -191,15 +242,39 @@ fn swizzle_into(rgba: &[u8], out: &mut [u8], opaque: bool) {
     }
 }
 
+/// Interlaced output: the field time, and the field order.
+#[derive(Clone, Copy)]
+struct Weave {
+    field: Duration,
+    lower_first: bool,
+}
+
+/// Two images a field apart woven into one frame (BGRA): the rows of the
+/// field shown first from `first`, the others from `second`.
+fn weave_into(first: &Frame, second: &Frame, lower_first: bool, opaque: bool, out: &mut Vec<u8>) {
+    out.resize(first.data.len(), 0);
+    let w = first.width as usize * 4;
+    for (y, row) in out.chunks_exact_mut(w).enumerate() {
+        // Row 0 belongs to the upper field.
+        let upper = y % 2 == 0;
+        let from = if upper != lower_first { first } else { second };
+        swizzle_into(&from.data[y * w..(y + 1) * w], row, opaque);
+    }
+}
+
 fn send(
     name: String,
     card: Arc<OutputHandle>,
     slot: Arc<Slot>,
     busy: Arc<AtomicU64>,
     opaque: bool,
+    weave: Option<Weave>,
 ) {
     let mut bgra = Vec::new();
     let mut last: Option<Arc<Frame>> = None;
+    // Interlaced: the image of the first field, waiting for the second.
+    let mut pending: Option<(Arc<Frame>, SystemTime)> = None;
+    let mut woven: Option<(Arc<Frame>, Arc<Frame>)> = None;
     let (mut failed, mut warned_at) = (0u32, None::<Instant>);
     loop {
         let frame = {
@@ -214,7 +289,7 @@ fn send(
                 s = slot.ready.wait(s).unwrap_or_else(|p| p.into_inner());
             }
         };
-        let Some(frame) = frame else { break };
+        let Some((frame, at)) = frame else { break };
         let start = Instant::now();
         if frame.width != card.width || frame.height != card.height {
             if warned_at.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
@@ -229,9 +304,28 @@ fn send(
             }
             continue;
         }
-        // The same picture as the last one (nothing moved): converted already.
-        // Else only the rows that changed since the last one.
-        if !last.as_ref().is_some_and(|l| Arc::ptr_eq(l, &frame)) {
+        if let Some(wv) = weave {
+            // The next field after the image waiting: one frame of both.
+            let follows = pending.as_ref().is_some_and(|(_, t)| {
+                at.duration_since(*t)
+                    .is_ok_and(|d| d > wv.field / 2 && d < wv.field * 3 / 2)
+            });
+            if !follows {
+                pending = Some((frame, at));
+                continue;
+            }
+            let (first, _) = pending.take().expect("pending field");
+            // The same two pictures as the frame before (nothing moved): woven already.
+            let same = woven
+                .as_ref()
+                .is_some_and(|(a, b)| Arc::ptr_eq(a, &first) && Arc::ptr_eq(b, &frame));
+            if !same {
+                weave_into(&first, &frame, wv.lower_first, opaque, &mut bgra);
+                woven = Some((first, frame.clone()));
+            }
+        } else if !last.as_ref().is_some_and(|l| Arc::ptr_eq(l, &frame)) {
+            // The same picture as the last one (nothing moved): converted already.
+            // Else only the rows that changed since the last one.
             match crate::changed_rows(&frame, last.as_deref()) {
                 Some(rows) if bgra.len() == frame.data.len() => {
                     let w = frame.width as usize * 4;
@@ -264,12 +358,12 @@ impl OutputSink for DeckLinkOutput {
         &self.config.name
     }
 
-    fn push(&mut self, frame: &Arc<Frame>, _at: SystemTime) -> Result<(), OutputError> {
+    fn push(&mut self, frame: &Arc<Frame>, at: SystemTime) -> Result<(), OutputError> {
         let mut s = lock(&self.slot.state);
         if s.closed {
             return Err(OutputError::Closed);
         }
-        let replaced = s.frame.replace(frame.clone()).is_some();
+        let replaced = s.frame.replace((frame.clone(), at)).is_some();
         drop(s);
         self.slot.ready.notify_one();
         if replaced {
@@ -341,6 +435,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fields_are_woven_in_time_order() {
+        let img = |v: u8| {
+            let mut f = Frame::blank(1, 4);
+            f.data.copy_from_slice(&[v; 16]);
+            f
+        };
+        let (a, b) = (img(10), img(20));
+        let mut out = Vec::new();
+        // Upper field first (1080i50): rows 0 and 2 from the earlier image.
+        weave_into(&a, &b, false, false, &mut out);
+        let rows: Vec<u8> = out.chunks(4).map(|p| p[0]).collect();
+        assert_eq!(rows, [10, 20, 10, 20]);
+        // Lower field first (525i): rows 1 and 3 from the earlier image.
+        weave_into(&a, &b, true, false, &mut out);
+        let rows: Vec<u8> = out.chunks(4).map(|p| p[0]).collect();
+        assert_eq!(rows, [20, 10, 20, 10]);
+    }
+
+    #[test]
     fn bgra_swizzle() {
         let mut out = Vec::new();
         swizzle(&[1, 2, 3, 4, 5, 6, 7, 0], &mut out, false);
@@ -389,7 +502,7 @@ mod tests {
         };
         if devices().map(|d| d.is_empty()).unwrap_or(true) {
             assert!(matches!(
-                DeckLinkOutput::open(c, 1920, 1080, (25, 1)),
+                DeckLinkOutput::open(c, 1920, 1080, (25, 1), false),
                 Err(OutputError::Unsupported(_))
             ));
             assert!(DeckLinkInput::open(0, 1920, 1080, (25, 1)).is_err());

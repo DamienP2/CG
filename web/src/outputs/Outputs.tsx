@@ -1,7 +1,7 @@
 import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
-import { VIDEO_FORMATS, slateStyleOf, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
+import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
 import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, usedHardware } from '../hardware/model';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
@@ -144,7 +144,7 @@ const outputsOf = (c: ChannelConfig, picture: string): OutputsConfig => {
 };
 
 /** "50p", "59.94p". */
-const rateLabel = (ch: ChannelConfig) => `${+(ch.frameRate.num / ch.frameRate.den).toFixed(2)}p`;
+const rateLabel = (ch: ChannelConfig) => `${+(ch.frameRate.num / ch.frameRate.den).toFixed(2)}${ch.interlaced ? 'i' : 'p'}`;
 /** Node title of a format: "Main format · 1920×1080 50p", "9:16 · 1080×1920". */
 const formatTitle = (p: Picture, ch: ChannelConfig) => `${p.name} · ${p.width}×${p.height}${p.id === 'main' ? ` ${rateLabel(ch)}` : ''}`;
 const isOn = (d: Dest) => (d.value as { enabled?: boolean }).enabled !== false;
@@ -168,8 +168,8 @@ const listOf = (o: OutputsConfig, kind: DestKind) => {
 };
 
 const formatLabel = (ch: ChannelConfig) => {
-  const f = VIDEO_FORMATS.find((x) => x.width === ch.width && x.height === ch.height && x.rate.num * ch.frameRate.den === ch.frameRate.num * x.rate.den);
-  return f?.label ?? `${ch.width}×${ch.height} ${+(ch.frameRate.num / ch.frameRate.den).toFixed(2)}p`;
+  const f = VIDEO_FORMATS[videoFormatIndex(ch)];
+  return f?.label ?? `${ch.width}×${ch.height} ${+(ch.frameRate.num / ch.frameRate.den).toFixed(2)}${ch.interlaced ? 'i' : 'p'}`;
 };
 
 const outputUrl = (channel: string, picture: string, bg: string) => `${location.origin}/output/${encodeURIComponent(channel)}${picture === 'main' ? '' : `/${encodeURIComponent(picture)}`}${bg ? `?bg=${encodeURIComponent(bg)}` : ''}`;
@@ -424,19 +424,18 @@ export function Outputs() {
   // ---- actions ----
   const selDest = allDests.find((d) => d.value.id === sel);
   const selPic = sel.startsWith('pic:') ? pics.find((p) => `pic:${p.id}` === sel) : undefined;
-  const targetPicture = selPic?.id ?? (selDest?.picture || 'main');
   const takenIds = () => new Set(allDests.map((d) => d.value.id));
   // SDI and ST 2110 destinations send to what Hardware declares.
   const freeSdi = hw.sdi.outputs.filter((o) => !usedHw.has(o.id));
   const outFlows = hw.st2110.flows.filter((f) => f.direction === 'output');
   const freeFlows = outFlows.filter((f) => !usedHw.has(f.id));
   const hwMissing = (k: DestKind) => (k === 'sdi' ? !hw.sdi.outputs.length : k === 'st2110' ? !outFlows.length : false);
-  const hwHint = (k: DestKind) => (k === 'sdi' ? t('Define SDI outputs in I/O') : t('Define ST 2110 output flows in I/O'));
+  const hwHint = (k: DestKind) => (k === 'sdi' ? t('Define SDI outputs in Hardware') : t('Define ST 2110 output flows in Hardware'));
 
-  const addDest = (kind: DestKind, picture = targetPicture, at?: { x: number; y: number }) => {
+  const addDest = (kind: DestKind, picture: string, at?: { x: number; y: number }) => {
     if (needsHardware(kind)) {
       if (hwMissing(kind)) return toast(hwHint(kind), 'info');
-      if (!(kind === 'sdi' ? freeSdi : freeFlows).length) return toast(kind === 'sdi' ? t('Every SDI output of I/O is already used') : t('Every ST 2110 output flow of I/O is already used'), 'info');
+      if (!(kind === 'sdi' ? freeSdi : freeFlows).length) return toast(kind === 'sdi' ? t('Every SDI output of Hardware is already used') : t('Every ST 2110 output flow of Hardware is already used'), 'info');
     }
     const taken = takenIds();
     let k = 1;
@@ -445,7 +444,8 @@ export function Outputs() {
     const n = allDests.filter((d) => d.kind === kind).length + 1;
     editCh((c, all) => {
       const p = pictures(c).find((x) => x.id === picture) ?? pictures(c)[0];
-      const picOutputs = outputsOf(c, p.id);
+      // "": not wired to any format (the user draws the wire).
+      const picOutputs = outputsOf(c, picture ? p.id : '');
       if (kind === 'st2110') {
         const f = freeFlows[0];
         const o: St2110Output = { id, name: f.name, hardware: f.id, encoding: f.encoding, fill: f.fill, key: null, interface: null, ttl: 32, payloadType: 96 };
@@ -787,7 +787,7 @@ export function Outputs() {
                       const Icon = KIND[k].icon;
                       const missing = hwMissing(k);
                       return (
-                        <button key={k} className={`oc-tool ${missing ? 'unavailable' : ''}`} aria-disabled={missing} onClick={() => addDest(k)} title={missing ? hwHint(k) : t('Add a {kind} destination to “{picture}”', { kind: t(KIND[k].label), picture: pics.find((p) => p.id === targetPicture)?.name ?? '' })}>
+                        <button key={k} className={`oc-tool ${missing ? 'unavailable' : ''}`} aria-disabled={missing} onClick={() => addDest(k, '')} title={missing ? hwHint(k) : t('Add a {kind} destination', { kind: t(KIND[k].label) })}>
                           <Icon size={15} color={KIND[k].color} /> {t(KIND[k].label)}
                         </button>
                       );
@@ -971,7 +971,7 @@ export function Outputs() {
                       </Field>
                       <Field label={t('Video format')} hint={t('Every format and destination of the channel runs at this rate.')}>
                         <select
-                          value={VIDEO_FORMATS.findIndex((f) => f.width === ch.width && f.height === ch.height && f.rate.num * ch.frameRate.den === ch.frameRate.num * f.rate.den)}
+                          value={videoFormatIndex(ch)}
                           onChange={(e) =>
                             editCh((c) => {
                               const f = VIDEO_FORMATS[+e.target.value];
@@ -979,6 +979,8 @@ export function Outputs() {
                               c.width = f.width;
                               c.height = f.height;
                               c.frameRate = f.rate;
+                              if (f.interlaced) c.interlaced = true;
+                              else delete c.interlaced;
                             })
                           }
                         >
@@ -1182,7 +1184,7 @@ export function Outputs() {
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<SdiOutput>((d) => void (d.name = e.target.value))} />
                           </Field>
-                          <Field label={t('SDI output')} hint={t('The fill (+ key) connectors declared in I/O.')}>
+                          <Field label={t('SDI output')} hint={t('The fill (+ key) connectors declared in Hardware.')}>
                             <select
                               value={o.hardware ?? ''}
                               onChange={(e) =>
@@ -1219,7 +1221,7 @@ export function Outputs() {
                             </dl>
                           )}
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware')}>
-                            <Cpu size={13} /> {t('Edit in I/O')}
+                            <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
                           {note(t('Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.'))}
                         </>
@@ -1238,7 +1240,7 @@ export function Outputs() {
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<St2110Output>((d) => void (d.name = e.target.value))} />
                           </Field>
-                          <Field label={t('ST 2110 flow')} hint={t('The multicast addresses are set in I/O.')}>
+                          <Field label={t('ST 2110 flow')} hint={t('The multicast addresses are set in Hardware.')}>
                             <select
                               value={o.hardware ?? ''}
                               onChange={(e) =>
@@ -1283,7 +1285,7 @@ export function Outputs() {
                             </dl>
                           )}
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/hardware#st2110')}>
-                            <Cpu size={13} /> {t('Edit in I/O')}
+                            <Cpu size={13} /> {t('Edit in Hardware')}
                           </button>
                           <div className="set-field">
                             <span className="set-label">SDP</span>

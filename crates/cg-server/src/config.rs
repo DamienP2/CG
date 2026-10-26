@@ -130,6 +130,10 @@ pub struct ChannelConfig {
     pub width: u32,
     pub height: u32,
     pub frame_rate: FrameRate,
+    /// Interlaced SDI (1080i50): `frame_rate` counts fields, one image is
+    /// rendered a field, and the SDI outputs weave two in a row into a frame.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub interlaced: bool,
     /// Show project currently loaded on the channel.
     #[serde(default)]
     pub project_id: Option<String>,
@@ -213,6 +217,7 @@ impl ChannelConfig {
             width: 1920,
             height: 1080,
             frame_rate: FrameRate::new(50, 1),
+            interlaced: false,
             project_id: None,
             outputs: OutputsConfig::default(),
             renditions: Vec::new(),

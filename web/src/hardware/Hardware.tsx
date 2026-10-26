@@ -13,7 +13,7 @@ import { ENCODINGS, bracketOf, speedLabel, deviceOf, dropUsers, hardwareOf, role
 import './hardware.css';
 
 /*
- * Flux I/O (admins): the DeckLink cards of the server, detected by the
+ * Hardware (admins): the DeckLink cards of the server, detected by the
  * driver and adopted in one click, with what each SDI connector does; the
  * ST 2110 flows and PTP. Video streams destinations and inputs name the
  * SDI outputs, inputs and flows set up here.
@@ -38,7 +38,7 @@ const nextId = (kind: string, taken: Iterable<string>) => {
 const shortId = (id?: string | null) => (!id ? '' : id.length > 8 ? `${id.slice(0, 4)}…${id.slice(-3)}` : id);
 
 /** "1080p50". */
-const formatOf = (height: number, rate: { num: number; den: number }) => `${height}p${+(rate.num / Math.max(1, rate.den)).toFixed(2)}`;
+const formatOf = (height: number, rate: { num: number; den: number }, interlaced?: boolean) => `${height}${interlaced ? 'i' : 'p'}${+(rate.num / Math.max(1, rate.den)).toFixed(2)}`;
 
 const BUS: Record<string, string> = { pcie: 'PCIe', usb: 'USB', thunderbolt: 'Thunderbolt' };
 
@@ -126,7 +126,7 @@ export function Hardware() {
   const ptpDot = !ptp?.running ? 'off' : ptp.locked ? 'ok' : 'warn';
   const nav = (
     <>
-      <NavSection>{t('I/O')}</NavSection>
+      <NavSection>{t('Hardware')}</NavSection>
       <NavItem on={section === 'sdi'} icon={<Tv size={15} />} label="SDI · DeckLink" count={tn(hw.sdi.cards.length, '{n} card', '{n} cards')} onClick={() => go('sdi')} />
       <NavItem on={section === 'st2110'} icon={<Network size={15} />} label="SMPTE ST 2110" count={tn(hw.st2110.flows.length, '{n} flow', '{n} flows')} onClick={() => go('st2110')} />
       <NavSection>{t('Sync')}</NavSection>
@@ -407,7 +407,7 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
       const u = userOf(cfg, r.output.id);
       const st = u && status.outputs[u.ch.id]?.[u.dest.id];
       if (!u || !st) return <span className="muted">—</span>;
-      return st.ok ? <Sig dot="ok" text={formatOf(u.height, u.ch.frameRate)} /> : <Sig dot="err" text={st.message} />;
+      return st.ok ? <Sig dot="ok" text={formatOf(u.height, u.ch.frameRate, u.ch.interlaced)} /> : <Sig dot="err" text={st.message} />;
     }
     if (r.role === 'input' && r.input) {
       const i = (cfg.inputs ?? []).find((x) => x.kind === 'sdi' && x.hardware === r.input!.id);
@@ -803,7 +803,7 @@ function St2110View({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det:
                   </td>
                   <td className="mono">{red ?? '—'}</td>
                   <td className="mono">{blue ?? '—'}</td>
-                  <td>{u ? formatOf(u.height, u.ch.frameRate) : <span className="muted">—</span>}</td>
+                  <td>{u ? formatOf(u.height, u.ch.frameRate, u.ch.interlaced) : <span className="muted">—</span>}</td>
                   <td>{input ? <Sig dot="warn" text={t('not received')} /> : !st ? <span className="muted">—</span> : st.ok ? <Sig dot="ok" text={t('sent')} /> : <Sig dot="err" text={st.message} />}</td>
                   <td>
                     {u && !input ? (

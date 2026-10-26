@@ -1,4 +1,4 @@
-//! DeckLink cards as the machine has them (Flux I/O › SDI): the devices
+//! DeckLink cards as the machine has them (Hardware › SDI): the devices
 //! Desktop Video lists, grouped into physical cards, with the layout of
 //! their bracket (the per-model table below) and the Desktop Video device
 //! behind each SDI connector.

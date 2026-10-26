@@ -94,6 +94,7 @@ fn open_outputs(
             size.0,
             size.1,
             (cfg.frame_rate.num, cfg.frame_rate.den),
+            cfg.interlaced,
         )
         .map(|s| Box::new(s) as Box<dyn OutputSink>);
         opened(&o.id, &o.name, "sdi", r);
