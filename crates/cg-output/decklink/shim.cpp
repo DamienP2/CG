@@ -517,6 +517,7 @@ class Input final : public IDeckLinkInputCallback {
     bool detection = false;
 
     std::mutex m;
+    std::condition_variable arrived; // a frame (or the loss of the signal) came
     std::vector<uint8_t> frame; // newest UYVY frame, rows packed
     int width = 0, height = 0;
     uint64_t seq = 0;
@@ -572,8 +573,11 @@ class Input final : public IDeckLinkInputCallback {
             return S_OK;
         }
         if (f->GetFlags() & bmdFrameHasNoInputSource) {
-            std::lock_guard<std::mutex> lk(m);
-            signal = 0;
+            {
+                std::lock_guard<std::mutex> lk(m);
+                signal = 0;
+            }
+            arrived.notify_all();
             return S_OK;
         }
         if (f->GetPixelFormat() != bmdFormat8BitYUV) {
@@ -587,17 +591,20 @@ class Input final : public IDeckLinkInputCallback {
         if (w <= 0 || h <= 0 || row < w * 2) {
             return S_OK;
         }
-        std::lock_guard<std::mutex> lk(m);
-        size_t line = (size_t)w * 2;
-        frame.resize(line * (size_t)h);
-        const uint8_t *src = (const uint8_t *)bytes;
-        for (long y = 0; y < h; y++) {
-            std::memcpy(&frame[(size_t)y * line], src + (size_t)y * (size_t)row, line);
+        {
+            std::lock_guard<std::mutex> lk(m);
+            size_t line = (size_t)w * 2;
+            frame.resize(line * (size_t)h);
+            const uint8_t *src = (const uint8_t *)bytes;
+            for (long y = 0; y < h; y++) {
+                std::memcpy(&frame[(size_t)y * line], src + (size_t)y * (size_t)row, line);
+            }
+            width = (int)w;
+            height = (int)h;
+            seq++;
+            signal = 1;
         }
-        width = (int)w;
-        height = (int)h;
-        seq++;
-        signal = 1;
+        arrived.notify_all();
         return S_OK;
     }
 
@@ -1075,6 +1082,16 @@ int64_t dl_input_take(void *h, uint8_t *out, int64_t cap, int *width, int *heigh
     *height = in->height;
     *seq = in->seq;
     return 1;
+}
+
+// Waits up to timeout_ms for a frame newer than seq (or the signal lost):
+// 1 something came, 0 timed out.
+int dl_input_wait(void *h, uint64_t seq, int timeout_ms) {
+    Input *in = (Input *)h;
+    std::unique_lock<std::mutex> lk(in->m);
+    return in->arrived.wait_for(lk, std::chrono::milliseconds(timeout_ms), [&] { return in->seq != seq || in->signal == 0; })
+               ? 1
+               : 0;
 }
 
 // The BMDDisplayMode captured: the detected one once the card saw the signal.

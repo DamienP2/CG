@@ -208,9 +208,13 @@ pub struct InputStatus {
     pub height: u32,
     /// Pictures received since the input started.
     pub frames: u64,
-    /// Frames a second of the source (streams: as detected).
+    /// Pictures a second of the source (streams: as detected; an
+    /// interlaced source counts its fields).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fps: Option<f64>,
+    /// The source is interlaced (its fields come as pictures of their own).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub interlaced: bool,
 }
 
 /// Pictures waiting for their time, and the one on show.
@@ -237,8 +241,9 @@ struct Live {
     stop: AtomicBool,
     /// The ffmpeg decoding it (killed to stop a blocked read).
     child: Mutex<Option<Child>>,
-    /// Frames a second of the source, once known.
+    /// Pictures a second of the source, once known (fields when interlaced).
     rate: Mutex<Option<f64>>,
+    interlaced: AtomicBool,
 }
 
 impl Live {
@@ -258,13 +263,23 @@ impl Live {
         *self.picture.write().unwrap_or_else(|p| p.into_inner()) = Some(pm.clone());
         self.received.fetch_add(1, Ordering::Relaxed);
         *self.last_at.lock().unwrap_or_else(|p| p.into_inner()) = Some(now);
-        let (period, frames) = (self.period(), self.config.buffer.min(10));
+        // SDI comes off a clocked card, evenly: shown at once, no smoothing.
+        let sdi = self.config.kind == InputKind::Sdi;
+        let (period, frames) = (
+            self.period(),
+            if sdi { 0 } else { self.config.buffer.min(10) },
+        );
         let delay = period * frames;
         let mut p = self.paced.lock().unwrap_or_else(|p| p.into_inner());
         // Time goes on even when nothing draws this input.
         self.advance(&mut p, now);
         let mut due = now + delay;
-        if frames > 0 {
+        if sdi {
+            // The second field of a frame, handed over with the first: a field later.
+            if let Some(d) = p.last_due.filter(|d| *d + period / 2 > now) {
+                due = d + period;
+            }
+        } else if frames > 0 {
             // At least a frame after the previous one: bursts spread out.
             if let Some(next) = p.last_due.map(|d| d + period) {
                 due = due.max(next);
@@ -389,6 +404,7 @@ impl Inputs {
                 stop: AtomicBool::new(false),
                 child: Mutex::new(None),
                 rate: Mutex::new(None),
+                interlaced: AtomicBool::new(false),
             });
             let l = live.clone();
             let spawned = std::thread::Builder::new()
@@ -424,6 +440,7 @@ impl Inputs {
                     height: pic.as_ref().map_or(0, |p| p.height()),
                     frames: l.received.load(Ordering::Relaxed),
                     fps: *l.rate.lock().unwrap_or_else(|p| p.into_inner()),
+                    interlaced: l.interlaced.load(Ordering::Relaxed),
                 }
             })
             .collect()
@@ -887,13 +904,32 @@ fn run_ndi(l: &Live) {
                 let now = (pm.width(), pm.height(), (n, d), fields);
                 if shown != Some(now) {
                     shown = Some(now);
-                    *l.rate.lock().unwrap_or_else(|p| p.into_inner()) = (fps > 0.0).then_some(fps);
+                    // An interlaced source counts its fields (shown one by one).
+                    *l.rate.lock().unwrap_or_else(|p| p.into_inner()) =
+                        (fps > 0.0).then_some(if fields { fps * 2.0 } else { fps });
+                    l.interlaced.store(fields, Ordering::Relaxed);
                     l.say(match format_name(pm.height(), fps, fields) {
                         Some(name) => format!("Receiving {}×{} ({name})", pm.width(), pm.height()),
                         None => format!("Receiving {}×{}", pm.width(), pm.height()),
                     });
                 }
-                l.put(pm);
+                if fields {
+                    let Some(size) = IntSize::from_wh(pm.width(), pm.height()) else {
+                        continue;
+                    };
+                    for f in cg_output::sdi::DeckLinkInput::fields(
+                        pm.data(),
+                        pm.width(),
+                        pm.height(),
+                        false,
+                    ) {
+                        if let Some(pm) = Pixmap::from_vec(f, size) {
+                            l.put(pm);
+                        }
+                    }
+                } else {
+                    l.put(pm);
+                }
             }
         }
         drop(rx);
@@ -974,6 +1010,7 @@ fn run_sdi(l: &Live) {
                     let mode = card.mode();
                     let fps = mode.fps();
                     let fields = mode.interlaced();
+                    l.interlaced.store(fields, Ordering::Relaxed);
                     *l.rate.lock().unwrap_or_else(|p| p.into_inner()) =
                         (fps > 0.0).then_some(if fields { fps * 2.0 } else { fps });
                     if shown != Some((w, h, mode.id)) {
@@ -1006,7 +1043,8 @@ fn run_sdi(l: &Live) {
                             break;
                         }
                     }
-                    std::thread::sleep(Duration::from_millis(4));
+                    // Woken as soon as the card has the next frame.
+                    card.wait(seq, 40);
                 }
             }
         }
@@ -1072,6 +1110,7 @@ mod tests {
             stop: AtomicBool::new(false),
             child: Mutex::new(None),
             rate: Mutex::new(None),
+            interlaced: AtomicBool::new(false),
         }
     }
 

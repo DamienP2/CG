@@ -151,8 +151,12 @@ export interface ChannelConfig {
   frameRate: FrameRate;
   /** Interlaced SDI (1080i50): the frame rate counts fields; the SDI outputs weave two images into a frame. */
   interlaced?: boolean;
-  /** The live input under the graphics (a source wired to the program). */
+  /** The live input under the graphics (the source wired after the program). */
   background?: string | null;
+  /** Pictures ("main", rendition ids) wired straight to the program: graphics only. */
+  graphicsOnly?: string[];
+  /** The source format chosen to be converted live ("1080p 25"). */
+  sourceConvert?: string;
   /** The live inputs placed as sources in the canvas. */
   sources?: string[];
   projectId?: string | null;

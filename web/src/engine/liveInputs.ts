@@ -18,6 +18,9 @@ export interface InputInfo {
   message: string;
   width: number;
   height: number;
+  /** Pictures a second (fields when interlaced). */
+  fps?: number;
+  interlaced?: boolean;
 }
 
 /** Server messages, in the interface language. */

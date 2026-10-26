@@ -242,6 +242,7 @@ mod ffi {
         ) -> i64;
         pub fn dl_input_signal(h: *mut c_void) -> c_int;
         pub fn dl_input_mode(h: *mut c_void) -> u32;
+        pub fn dl_input_wait(h: *mut c_void, seq: u64, timeout_ms: c_int) -> c_int;
         pub fn dl_input_close(h: *mut c_void);
     }
 
@@ -717,6 +718,24 @@ impl InputHandle {
         {
             let _ = (buf, seq);
             None
+        }
+    }
+
+    /// Waits up to `timeout_ms` for a frame newer than `seq` (or the loss
+    /// of the signal): true when something came.
+    pub fn wait(&self, seq: u64, timeout_ms: u32) -> bool {
+        #[cfg(decklink_shim)]
+        {
+            // SAFETY: open handle.
+            unsafe {
+                ffi::dl_input_wait(self.raw, seq, timeout_ms.min(10_000) as std::ffi::c_int) == 1
+            }
+        }
+        #[cfg(not(decklink_shim))]
+        {
+            let _ = seq;
+            std::thread::sleep(std::time::Duration::from_millis(timeout_ms.into()));
+            false
         }
     }
 

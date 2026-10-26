@@ -158,6 +158,13 @@ pub fn uyvy_to_rgba709(uyvy: &[u8], width: usize, height: usize, out: &mut Vec<u
             .for_each(|p| p[..3].fill(0));
         return;
     }
+    rows_to_rgba709(uyvy, width, out);
+}
+
+/// Whole UYVY rows of `width` pixels into the matching RGBA rows of `out`
+/// (alpha left as it is).
+fn rows_to_rgba709(uyvy: &[u8], width: usize, out: &mut [u8]) {
+    let line = width * 2;
     const HALF: i32 = 1 << 15;
     let px = |y: u8, cb: i32, cr: i32, dst: &mut [u8]| {
         let yy = (y as i32 - 16) * Y8 + HALF;
@@ -174,6 +181,30 @@ pub fn uyvy_to_rgba709(uyvy: &[u8], width: usize, height: usize, out: &mut Vec<u
             }
         }
     }
+}
+
+/// [`uyvy_to_rgba709`] split over a few threads (a 1080 picture in a couple
+/// of milliseconds instead of a dozen): the live input is under the
+/// graphics sooner.
+pub fn uyvy_to_rgba709_par(uyvy: &[u8], width: usize, height: usize, out: &mut Vec<u8>) {
+    let line = width * 2;
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .clamp(1, 4);
+    if threads == 1 || width == 0 || height < 64 || uyvy.len() < line * height {
+        return uyvy_to_rgba709(uyvy, width, height, out);
+    }
+    out.clear();
+    out.resize(width * height * 4, 255);
+    let rows = height.div_ceil(threads);
+    std::thread::scope(|s| {
+        for (src, dst) in uyvy[..line * height]
+            .chunks(rows * line)
+            .zip(out.chunks_mut(rows * width * 4))
+        {
+            s.spawn(move || rows_to_rgba709(src, width, dst));
+        }
+    });
 }
 
 #[cfg(test)]
@@ -269,5 +300,15 @@ mod tests {
         // Short input: opaque black of the right size, no panic.
         uyvy_to_rgba709(&[0; 3], 2, 2, &mut out);
         assert_eq!(out, [0, 0, 0, 255].repeat(4));
+    }
+
+    #[test]
+    fn split_conversion_matches_the_plain_one() {
+        let (w, h) = (96, 130);
+        let uyvy: Vec<u8> = (0..w * h * 2).map(|i| (i * 37 % 251) as u8).collect();
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        uyvy_to_rgba709(&uyvy, w, h, &mut a);
+        uyvy_to_rgba709_par(&uyvy, w, h, &mut b);
+        assert_eq!(a, b);
     }
 }

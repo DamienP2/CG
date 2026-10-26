@@ -158,10 +158,19 @@ pub struct ChannelConfig {
     /// What the channel clock follows (none: the Hardware page default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock: Option<crate::hardware::ClockReference>,
-    /// The live input under the graphics (a source wired to the program in
-    /// Video streams): every picture is the graphics keyed over it.
+    /// The live input under the graphics (the source wired after the
+    /// program in Output streams): the pictures fed through it are the
+    /// graphics keyed over it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
+    /// Pictures ("main", rendition ids) wired straight to the program:
+    /// graphics only, no source under them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub graphics_only: Vec<String>,
+    /// The source format the user chose to convert live ("1080p25"): the
+    /// source node stays quiet while the source keeps that format.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_convert: String,
     /// The live inputs placed as sources in the Video streams canvas.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<String>,
@@ -226,6 +235,8 @@ impl ChannelConfig {
             frame_rate: FrameRate::new(50, 1),
             interlaced: false,
             background: None,
+            graphics_only: Vec::new(),
+            source_convert: String::new(),
             sources: Vec::new(),
             project_id: None,
             outputs: OutputsConfig::default(),

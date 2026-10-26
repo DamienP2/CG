@@ -314,18 +314,8 @@ pub fn over_live(frame: &Frame, live: &Pixmap) -> Frame {
     if (live.width(), live.height()) == (w, h) {
         pm.data_mut().copy_from_slice(live.data());
     } else {
-        pm.fill(tiny_skia::Color::BLACK);
-        let k = (w as f32 / live.width().max(1) as f32).min(h as f32 / live.height().max(1) as f32);
-        let tf = Transform::from_translate(
-            (w as f32 - live.width() as f32 * k) / 2.0,
-            (h as f32 - live.height() as f32 * k) / 2.0,
-        )
-        .pre_scale(k, k);
-        let paint = PixmapPaint {
-            quality: tiny_skia::FilterQuality::Bilinear,
-            ..PixmapPaint::default()
-        };
-        pm.draw_pixmap(0, 0, live.as_ref(), &paint, tf, None);
+        pm.data_mut()
+            .copy_from_slice(fit_picture(live, w, h).data());
     }
     scaled::composite_bytes(&mut pm, &frame.data, w, h, 0, 0, 1.0, None);
     Frame {
@@ -334,6 +324,97 @@ pub fn over_live(frame: &Frame, live: &Pixmap) -> Frame {
         data: pm.take(),
         captured_at: frame.captured_at,
     }
+}
+
+/// `live` fitted into a `w` × `h` picture: scaled (bilinear) to fit,
+/// centred on black. Rows are shared out over a few threads: a 720p
+/// picture into 1080 takes a few milliseconds.
+pub fn fit_picture(live: &Pixmap, w: u32, h: u32) -> Pixmap {
+    let mut out = Pixmap::new(w.max(1), h.max(1)).expect("picture size");
+    out.fill(tiny_skia::Color::BLACK);
+    let (lw, lh) = (live.width() as usize, live.height() as usize);
+    let k = (w as f64 / lw.max(1) as f64).min(h as f64 / lh.max(1) as f64);
+    let (dw, dh) = (
+        ((lw as f64 * k).round() as usize).min(w as usize),
+        ((lh as f64 * k).round() as usize).min(h as usize),
+    );
+    if lw == 0 || lh == 0 || dw == 0 || dh == 0 {
+        return out;
+    }
+    if (dw, dh) == (lw, lh) && (dw, dh) == (w as usize, h as usize) {
+        out.data_mut().copy_from_slice(live.data());
+        return out;
+    }
+    let (ox, oy) = ((w as usize - dw) / 2, (h as usize - dh) / 2);
+    // Where each output column / row samples the source: the two pixels
+    // around its centre and the weight of the second (in 1/256).
+    let taps = |n_out: usize, n_in: usize| -> Vec<(usize, usize, u32)> {
+        (0..n_out)
+            .map(|i| {
+                let x = ((i as f64 + 0.5) * n_in as f64 / n_out as f64 - 0.5).max(0.0);
+                let a = (x as usize).min(n_in - 1);
+                let b = (a + 1).min(n_in - 1);
+                (a, b, ((x - a as f64) * 256.0) as u32)
+            })
+            .collect()
+    };
+    let (cols, rows) = (taps(dw, lw), taps(dh, lh));
+    let src = live.data();
+    let stride = w as usize * 4;
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .clamp(1, 4);
+    let band = dh.div_ceil(threads);
+    let body = &mut out.data_mut()[oy * stride..(oy + dh) * stride];
+    std::thread::scope(|s| {
+        for (t, part) in body.chunks_mut(band * stride).enumerate() {
+            let (cols, rows) = (&cols, &rows);
+            s.spawn(move || {
+                // Source rows scaled across, kept while the next output row needs them.
+                // (16-bit arithmetic all through: what SSE2 multiplies fast.)
+                let mut cache: [(usize, Vec<u8>); 2] =
+                    [(usize::MAX, vec![0; dw * 4]), (usize::MAX, vec![0; dw * 4])];
+                let across = |y: usize, row: &mut Vec<u8>| {
+                    let line = src[y * lw * 4..(y + 1) * lw * 4].as_chunks::<4>().0;
+                    for (o, &(a, b, f)) in row.as_chunks_mut::<4>().0.iter_mut().zip(cols) {
+                        let (pa, pb, f) = (line[a], line[b], f as u16);
+                        for c in 0..4 {
+                            o[c] = ((pa[c] as u16 * (256 - f) + pb[c] as u16 * f + 128) >> 8) as u8;
+                        }
+                    }
+                };
+                for (j, out_row) in part.chunks_mut(stride).enumerate() {
+                    let (a, b, f) = rows[t * band + j];
+                    // On one source row (the last one): that row alone.
+                    let f = if a == b { 0 } else { f };
+                    for (slot, y) in [(0, a), (1, b)]
+                        .into_iter()
+                        .take(if f == 0 { 1 } else { 2 })
+                    {
+                        if cache[slot].0 != y {
+                            if let Some(other) = cache.iter().position(|(r, _)| *r == y) {
+                                cache.swap(slot, other);
+                            } else {
+                                across(y, &mut cache[slot].1);
+                                cache[slot].0 = y;
+                            }
+                        }
+                    }
+                    let (ra, rb, f) = (&cache[0].1, &cache[1].1, f as u16);
+                    let g = 256 - f;
+                    let dst = &mut out_row[ox * 4..(ox + dw) * 4];
+                    if f == 0 {
+                        dst.copy_from_slice(ra);
+                        continue;
+                    }
+                    for ((d, &a), &b) in dst.iter_mut().zip(ra).zip(rb) {
+                        *d = ((a as u16 * g + b as u16 * f + 128) >> 8) as u8;
+                    }
+                }
+            });
+        }
+    });
+    out
 }
 
 /// Output raster of a channel. Projects designed for another size are
@@ -2854,6 +2935,32 @@ mod tests {
 
     /// Over a live picture: the graphics where they draw, the picture
     /// (scaled to fit, on black) elsewhere; opaque.
+    #[test]
+    fn a_source_of_another_size_is_fitted_on_black() {
+        // 4:3 into 16:9: bars left and right, the colour kept inside.
+        let mut live = Pixmap::new(160, 120).unwrap();
+        live.fill(tiny_skia::Color::from_rgba8(200, 100, 50, 255));
+        let out = fit_picture(&live, 320, 180);
+        let px = |x: usize, y: usize| &out.data()[(y * 320 + x) * 4..(y * 320 + x) * 4 + 4];
+        assert_eq!(px(5, 90), &[0, 0, 0, 255]);
+        assert_eq!(px(314, 90), &[0, 0, 0, 255]);
+        for (x, y) in [(40, 0), (160, 90), (279, 179)] {
+            assert_eq!(px(x, y), &[200, 100, 50, 255], "at {x},{y}");
+        }
+        // A ramp stays a ramp (no step where the bands meet).
+        let mut ramp = Pixmap::new(64, 64).unwrap();
+        for (i, p) in ramp.data_mut().as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let v = (i / 64 * 4) as u8;
+            p.copy_from_slice(&[v, v, v, 255]);
+        }
+        let up = fit_picture(&ramp, 96, 96);
+        let col: Vec<u8> = (0..96).map(|y| up.data()[(y * 96 + 10) * 4]).collect();
+        assert!(
+            col.windows(2).all(|w| w[1] >= w[0] && w[1] - w[0] <= 4),
+            "{col:?}"
+        );
+    }
+
     #[test]
     fn graphics_are_keyed_over_the_live_picture() {
         use super::*;

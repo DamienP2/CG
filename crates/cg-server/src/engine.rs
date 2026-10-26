@@ -283,6 +283,8 @@ struct Picture {
     last: Option<(u64, Arc<Frame>)>,
     stats: Arc<PictureStats>,
     outputs: Vec<OutputThread>,
+    /// The live source under the graphics (it then holds the outputs).
+    mixer: Option<Mixer>,
     renders: Vec<std::thread::JoinHandle<()>>,
     /// The frame clock of its first output that has one (a DeckLink card).
     card: Option<Arc<dyn FrameClock>>,
@@ -315,6 +317,9 @@ impl Picture {
             }
         }
         if let Some((_, frame)) = &self.last {
+            if let Some(m) = &self.mixer {
+                m.send(frame.clone(), at);
+            }
             for o in &self.outputs {
                 o.send(frame.clone(), at);
             }
@@ -331,9 +336,94 @@ impl Picture {
         for r in self.renders {
             let _ = r.join();
         }
+        if let Some(m) = self.mixer {
+            m.close();
+        }
         for o in self.outputs {
             o.close();
         }
+    }
+}
+
+/// Keys a picture's graphics over the newest picture of a live source as
+/// each frame goes out, on a thread of its own (the clock never waits): the
+/// video is not delayed by the frames rendered ahead, only by the keying.
+struct Mixer {
+    frames: mpsc::SyncSender<(Arc<Frame>, SystemTime)>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+impl Mixer {
+    fn start(
+        name: String,
+        source: String,
+        inputs: Arc<crate::inputs::Inputs>,
+        outputs: Vec<OutputThread>,
+    ) -> Self {
+        let (frames, rx) = mpsc::sync_channel::<(Arc<Frame>, SystemTime)>(2);
+        let thread = std::thread::Builder::new()
+            .name(name)
+            .spawn(move || {
+                crate::rt::prioritize(crate::rt::Work::Render);
+                use cg_render::LiveInputs;
+                // The last keyed frame, with the graphics and video it came from.
+                let mut last: Option<(Arc<Frame>, Arc<tiny_skia::Pixmap>, Arc<Frame>)> = None;
+                // A source of another size, fitted to the picture (once per source picture).
+                let mut fitted: Option<(Arc<tiny_skia::Pixmap>, Arc<tiny_skia::Pixmap>)> = None;
+                while let Ok((frame, at)) = rx.recv() {
+                    let video = inputs.picture(&source).map(|live| {
+                        if (live.width(), live.height()) == (frame.width, frame.height) {
+                            return live;
+                        }
+                        match &fitted {
+                            Some((from, f)) if Arc::ptr_eq(from, &live) => f.clone(),
+                            _ => {
+                                let f = Arc::new(cg_render::fit_picture(
+                                    &live,
+                                    frame.width,
+                                    frame.height,
+                                ));
+                                fitted = Some((live, f.clone()));
+                                f
+                            }
+                        }
+                    });
+                    let out = match video {
+                        Some(live) => match &last {
+                            Some((g, v, keyed))
+                                if Arc::ptr_eq(g, &frame) && Arc::ptr_eq(v, &live) =>
+                            {
+                                keyed.clone()
+                            }
+                            _ => {
+                                let keyed = Arc::new(cg_render::over_live(&frame, &live));
+                                last = Some((frame, live, keyed.clone()));
+                                keyed
+                            }
+                        },
+                        None => frame,
+                    };
+                    for o in &outputs {
+                        o.send(out.clone(), at);
+                    }
+                }
+                for o in outputs {
+                    o.close();
+                }
+            })
+            .expect("spawn mixer thread");
+        Self { frames, thread }
+    }
+
+    /// Hands over a frame to go out (dropped when the keying is behind:
+    /// the outputs then repeat the last one).
+    fn send(&self, frame: Arc<Frame>, at: SystemTime) {
+        let _ = self.frames.try_send((frame, at));
+    }
+
+    fn close(self) {
+        drop(self.frames);
+        let _ = self.thread.join();
     }
 }
 
@@ -351,7 +441,6 @@ fn render_loop(
     done: Done,
     stats: Arc<PictureStats>,
     cache: Arc<FrameCache>,
-    background: Option<String>,
 ) {
     crate::rt::prioritize(crate::rt::Work::Render);
     // Nothing loaded: the slate (or nothing), drawn once, the same frame every time.
@@ -372,14 +461,6 @@ fn render_loop(
                     })
                 })
                 .clone(),
-        };
-        // A live source under the graphics.
-        let frame = match background
-            .as_deref()
-            .and_then(|id| renderer.live_picture(id))
-        {
-            Some(live) => Arc::new(cg_render::over_live(&frame, &live)),
-            None => frame,
         };
         stats.rendered(t.elapsed());
         let mut d = lock(&done);
@@ -441,16 +522,27 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
                         let live = state.inputs.clone();
                         let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
                         let cache = cache.clone();
-                        let background = cfg.background.clone();
                         move || {
                             let mut r = Renderer::new(assets);
                             r.set_live(live);
-                            render_loop(r, out, tz, slate, rx, done, stats, cache, background)
+                            render_loop(r, out, tz, slate, rx, done, stats, cache)
                         }
                     })
                     .expect("spawn render thread")
             })
             .collect();
+        // A picture fed through the channel's source gets the live video
+        // under its graphics as each frame goes out.
+        let (outputs, mixer) = match cfg.background.clone() {
+            Some(source) if !cfg.graphics_only.iter().any(|p| p == id) => {
+                let name = format!("cg-mix-{}-{id}", cfg.id);
+                (
+                    Vec::new(),
+                    Some(Mixer::start(name, source, state.inputs.clone(), outputs)),
+                )
+            }
+            _ => (outputs, None),
+        };
         pictures.push(Picture {
             jobs,
             done,
@@ -458,6 +550,7 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
             last: None,
             stats,
             outputs,
+            mixer,
             renders,
             card,
         });
@@ -1110,6 +1203,7 @@ mod tests {
             last: None,
             stats,
             outputs: vec![out],
+            mixer: None,
             renders: Vec::new(),
             card: None,
         };

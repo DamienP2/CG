@@ -422,13 +422,19 @@ impl DeckLinkInput {
     pub fn take(&mut self, seq: &mut u64) -> Option<(u32, u32, Vec<u8>)> {
         let (w, h) = self.card.take(&mut self.uyvy, seq)?;
         let mut rgba = Vec::new();
-        crate::colorspace::uyvy_to_rgba709(&self.uyvy, w as usize, h as usize, &mut rgba);
+        crate::colorspace::uyvy_to_rgba709_par(&self.uyvy, w as usize, h as usize, &mut rgba);
         Some((w, h, rgba))
     }
 
     /// A signal is coming in (None: nothing received yet).
     pub fn signal(&self) -> Option<bool> {
         self.card.signal()
+    }
+
+    /// Waits up to `timeout_ms` for a frame newer than `seq` (woken as soon
+    /// as the card hands one over).
+    pub fn wait(&self, seq: u64, timeout_ms: u32) -> bool {
+        self.card.wait(seq, timeout_ms)
     }
 
     /// The display mode captured: the one the card detected in the

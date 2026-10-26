@@ -1,4 +1,4 @@
-import { ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
+import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
@@ -12,6 +12,7 @@ import { t, tc, tn } from '../i18n';
 import { friendlyError } from '../ui/serverError';
 import { InfoTip } from '../ui/InfoTip';
 import { InputsMode } from './Inputs';
+import { useInputs } from '../engine/liveInputs';
 import { OnSwitch } from './OnSwitch';
 import { useMetrics, type OutputMetrics } from '../engine/metrics';
 import { corePct, fps as fpsText, fpsTone, num, outputTone, pct, pictureTone } from '../perf/format';
@@ -178,6 +179,9 @@ const formatLabel = (ch: ChannelConfig) => {
   return f?.label ?? `${ch.width}×${ch.height} ${+(ch.frameRate.num / ch.frameRate.den).toFixed(2)}${ch.interlaced ? 'i' : 'p'}`;
 };
 
+/** "1080i 50", "720p 59.94": a source's format, named like the video formats. */
+const sourceFormatName = (f: { h: number; fps: number; interlaced: boolean }) => `${f.h}${f.interlaced ? 'i' : 'p'} ${+f.fps.toFixed(2)}`;
+
 const outputUrl = (channel: string, picture: string, bg: string) => `${location.origin}/output/${encodeURIComponent(channel)}${picture === 'main' ? '' : `/${encodeURIComponent(picture)}`}${bg ? `?bg=${encodeURIComponent(bg)}` : ''}`;
 
 const slug = (s: string) =>
@@ -228,6 +232,7 @@ export function Outputs({ mode }: { mode: Mode }) {
   const [moreFormats, setMoreFormats] = useState(false);
   const [slatePick, setSlatePick] = useState<string | null>(null);
   const metrics = useMetrics();
+  const inputLive = useInputs();
   const planeRef = useRef<HTMLDivElement>(null);
   // The menu of other formats closes on a click elsewhere (or Esc).
   useEffect(() => {
@@ -329,11 +334,12 @@ export function Outputs({ mode }: { mode: Mode }) {
   const allDests = [...pics.flatMap(dests), ...(ch ? dests(unwiredOf(ch)) : [])];
   const hw = hardwareOf(cfg);
   const usedHw = usedHardware(cfg);
-  // Live inputs placed as sources (a column before the program).
+  // Live inputs placed as sources (a column between the program and the formats).
   const inputs = cfg.inputs ?? [];
   const srcIds = ch ? (ch.sources ?? []).filter((id) => inputs.some((i) => i.id === id)) : [];
   const inputOf = (id: string) => inputs.find((i) => i.id === id);
   const shift = srcIds.length ? NODE_W + 80 : 0;
+  const graphicsOnly = (pic: string) => (ch?.graphicsOnly ?? []).includes(pic);
   const pos: Record<string, { x: number; y: number }> = {};
   allDests.forEach((d, i) => (pos[d.value.id] = { x: COL.dest + shift, y: 50 + i * 128 }));
   pics.forEach((p, i) => {
@@ -341,10 +347,12 @@ export function Outputs({ mode }: { mode: Mode }) {
     pos[`pic:${p.id}`] = { x: COL.picture + shift, y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 50 + i * 170 };
   });
   const picYs = pics.map((p) => pos[`pic:${p.id}`].y);
-  pos.program = { x: COL.program + shift, y: picYs.length ? (Math.min(...picYs) + Math.max(...picYs)) / 2 : 50 };
-  srcIds.forEach((id, i) => (pos[`src:${id}`] = { x: COL.program, y: 50 + i * 128 }));
+  pos.program = { x: COL.program, y: picYs.length ? (Math.min(...picYs) + Math.max(...picYs)) / 2 : 50 };
+  srcIds.forEach((id, i) => (pos[`src:${id}`] = { x: COL.program + shift, y: 50 + i * 128 }));
   const own = (ch && layout[ch.id]) ?? {};
-  for (const k of Object.keys(pos)) if (own[k]) pos[k] = own[k];
+  // Places saved when the sources stood before the program are not kept.
+  const stale = srcIds.some((id) => own[`src:${id}`] && own.program && own[`src:${id}`].x < own.program.x);
+  for (const k of Object.keys(pos)) if (own[k] && !(stale && (k === 'program' || k.startsWith('src:')))) pos[k] = own[k];
 
   const savedDest = (id: string) => !!saved && pictures(saved).some((p) => dests(p).some((d) => d.value.id === id));
   const destStatus = (d: Dest): { tone: 'ok' | 'warn' | 'idle'; text: string; raw?: string } => {
@@ -372,9 +380,57 @@ export function Outputs({ mode }: { mode: Mode }) {
     return o && { text: `${fpsText(o.fps)} fps`, tone: outputTone(o, chMetrics.rate), title: o.dropped ? t('{n} frames dropped in the last 10 s', { n: o.dropped }) : t('Frames sent per second') };
   };
 
-  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; raw?: string; badge?: string; chip?: { text: string; tone: string; title: string }; on?: boolean; loose?: boolean; label?: string; color?: string; icon?: typeof Play };
+  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; raw?: string; badge?: string; chip?: { text: string; tone: string; title: string }; on?: boolean; loose?: boolean; label?: string; color?: string; icon?: typeof Play; extra?: React.ReactNode };
   const famLook = (f: SrcFamily) => (f === 'stream' ? KIND.stream : KIND[f]);
   const bgInput = ch?.background && srcIds.includes(ch.background) ? inputOf(ch.background) : undefined;
+  /** What a source sends and how it sits with the program's format. */
+  const srcCheck = (id: string) => {
+    const i = inputLive.find((x) => x.id === id);
+    const f = i && i.live && i.height && i.fps ? { w: i.width, h: i.height, fps: i.fps, interlaced: !!i.interlaced } : null;
+    if (!ch || !f) return { state: 'none' as const, f: null, name: '' };
+    const name = sourceFormatName(f);
+    const chFps = ch.frameRate.num / Math.max(1, ch.frameRate.den);
+    const same = f.w === ch.width && f.h === ch.height && Math.abs(f.fps - chFps) < 0.05 && f.interlaced === !!ch.interlaced;
+    return { state: same ? ('same' as const) : ch.sourceConvert === name ? ('convert' as const) : ('differs' as const), f, name };
+  };
+  /** The video format matching a source's (to switch the program to it), if any. */
+  const formatOfSource = (f: { w: number; h: number; fps: number; interlaced: boolean }) => VIDEO_FORMATS.find((v) => v.width === f.w && v.height === f.h && !!v.interlaced === f.interlaced && Math.abs(v.rate.num / v.rate.den - f.fps) < 0.05);
+  const convertSource = (name: string) => editCh((c) => void (c.sourceConvert = name));
+  const programToSource = (f: { w: number; h: number; fps: number; interlaced: boolean }) => {
+    const v = formatOfSource(f);
+    if (!v) return;
+    editCh((c) => {
+      Object.assign(c, { width: v.width, height: v.height, frameRate: { ...v.rate } });
+      if (v.interlaced) c.interlaced = true;
+      else delete c.interlaced;
+      delete c.sourceConvert;
+    });
+  };
+  /** The three ways out of a source whose format differs from the program's. */
+  const sourceChoices = (id: string, c: ReturnType<typeof srcCheck>, big = false) => {
+    if (c.state !== 'differs' || !c.f) return null;
+    const f = c.f;
+    const v = formatOfSource(f);
+    return (
+      <div className={`oc-src-choices ${big ? 'big' : ''}`} onPointerDown={(e) => e.stopPropagation()}>
+        <button type="button" className="on" onClick={() => convertSource(c.name)}>
+          <RefreshCw size={13} /> {t('Convert live')}
+        </button>
+        <button type="button" disabled={!v} title={v ? undefined : t('No channel format matches this source')} onClick={() => programToSource(f)}>
+          <Play size={13} /> {t('Program in {format}', { format: v?.label ?? c.name })}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setSel(`src:${id}`);
+            setPanel(true);
+          }}
+        >
+          <ArrowLeftRight size={13} /> {t('Change the source')}
+        </button>
+      </div>
+    );
+  };
   const nodes: GNode[] = ch
     ? [
         {
@@ -389,7 +445,16 @@ export function Outputs({ mode }: { mode: Mode }) {
           const i = inputOf(id)!;
           const f = famLook(familyOf(i.kind));
           const wired = ch.background === id;
-          const m = metrics?.inputs.find((x) => x.id === id);
+          const c = srcCheck(id);
+          const st: [GNode['tone'], string] = !wired
+            ? ['idle', t('Not connected: drag a wire from the program')]
+            : c.state === 'none'
+              ? ['idle', t('No signal')]
+              : c.state === 'same'
+                ? ['ok', t('Under the graphics')]
+                : c.state === 'convert'
+                  ? ['ok', t('Live conversion')]
+                  : ['warn', t('Different format')];
           return {
             id: `src:${id}`,
             kind: 'source',
@@ -397,10 +462,11 @@ export function Outputs({ mode }: { mode: Mode }) {
             color: f.color,
             icon: f.icon,
             title: i.name,
-            sub: i.enabled === false ? tc('output', 'Off') : m ? `${fpsText(m.fps)} fps` : '',
-            tone: wired ? 'ok' : 'idle',
-            status: wired ? t('Under the graphics') : t('Not connected: drag a wire to the program'),
+            sub: i.enabled === false ? tc('output', 'Off') : c.f ? (c.state === 'differs' ? `${c.name} ≠ ${formatLabel(ch)}` : c.name) : '',
+            tone: st[0],
+            status: st[1],
             loose: !wired,
+            extra: wired ? sourceChoices(id, c) : null,
           };
         }),
         ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${slateName(p) ? `\n${t('Without project: {name}', { name: slateName(p) })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
@@ -411,10 +477,10 @@ export function Outputs({ mode }: { mode: Mode }) {
       ]
     : [];
   // Format → destination wires can be removed (the destination stays, unwired).
-  const edges: { from: string; to: string; color: string; dest?: string; src?: boolean }[] = ch
+  const edges: { from: string; to: string; color: string; dest?: string; src?: boolean; via?: string }[] = ch
     ? [
-        ...(bgInput ? [{ from: `src:${bgInput.id}`, to: 'program', color: famLook(familyOf(bgInput.kind)).color, src: true }] : []),
-        ...pics.map((p) => ({ from: 'program', to: `pic:${p.id}`, color: KIND.picture.color })),
+        ...(bgInput ? [{ from: 'program', to: `src:${bgInput.id}`, color: famLook(familyOf(bgInput.kind)).color, src: true }] : []),
+        ...pics.map((p) => (bgInput && !graphicsOnly(p.id) ? { from: `src:${bgInput.id}`, to: `pic:${p.id}`, color: famLook(familyOf(bgInput.kind)).color, via: p.id } : { from: 'program', to: `pic:${p.id}`, color: KIND.picture.color })),
         ...allDests.filter((d) => d.picture).map((d) => ({ from: `pic:${d.picture}`, to: d.value.id, color: KIND[d.kind].color, dest: d.value.id })),
       ]
     : [];
@@ -423,7 +489,7 @@ export function Outputs({ mode }: { mode: Mode }) {
     if (!ch) return;
     const size = measureNodes(cv.ref.current, 'data-node');
     const at = autoLayout(
-      nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n.id), h: 110 }), side: n.kind === 'source' || (n.kind === 'program' && !srcIds.length) ? ('start' as const) : n.kind === 'picture' || n.kind === 'program' ? undefined : ('end' as const) })),
+      nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n.id), h: 110 }), side: n.kind === 'program' ? ('start' as const) : n.kind === 'picture' || n.kind === 'source' ? undefined : ('end' as const) })),
       edges,
       { origin: { x: COL.program, y: 40 }, anchorY: 27 },
     );
@@ -705,9 +771,21 @@ export function Outputs({ mode }: { mode: Mode }) {
       window.removeEventListener('pointerup', up);
       setWire(null);
       const target = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-node]')?.dataset.node;
-      // From a source: onto the program, it goes under the graphics.
+      // From the program: onto a source, its video goes under the graphics;
+      // onto a format, that format gets the graphics only.
+      if (from === 'program') {
+        if (target?.startsWith('src:')) editCh((c) => void (c.background = target.slice(4)));
+        else if (target?.startsWith('pic:')) editCh((c) => void (c.background && (c.graphicsOnly = [...new Set([...(c.graphicsOnly ?? []), target.slice(4)])])));
+        return;
+      }
+      // From a source: onto a format, it gets the graphics over this video.
       if (from.startsWith('src:')) {
-        if (target === 'program') editCh((c) => void (c.background = from.slice(4)));
+        if (target?.startsWith('pic:'))
+          editCh((c) => {
+            c.background = from.slice(4);
+            c.graphicsOnly = (c.graphicsOnly ?? []).filter((x) => x !== target.slice(4));
+            if (!c.graphicsOnly.length) delete c.graphicsOnly;
+          });
         return;
       }
       const targetPic = target?.startsWith('pic:') ? target.slice(4) : undefined;
@@ -868,7 +946,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                       </span>
                     )}
                     <span className="oc-col" style={{ left: colX('program') }}>
-                      {srcIds.length ? t('Program') : t('Source')}
+                      {t('Program')}
                     </span>
                     <span className="oc-col" style={{ left: colX('picture') }}>
                       {t('Formats')}
@@ -905,6 +983,26 @@ export function Outputs({ mode }: { mode: Mode }) {
                               </path>
                             </g>
                           );
+                        if (e.via) {
+                          const via = e.via;
+                          return (
+                            <g key={`${e.from}-${e.to}`} className="oc-wire-g">
+                              <path d={d} stroke={e.color} />
+                              <path
+                                d={d}
+                                className="oc-wire-hit"
+                                onPointerDown={(ev) => {
+                                  ev.stopPropagation();
+                                  if (ev.button !== 0) return;
+                                  editCh((c) => void (c.graphicsOnly = [...new Set([...(c.graphicsOnly ?? []), via])]));
+                                  setSel(`pic:${via}`);
+                                }}
+                              >
+                                <title>{t('Click to feed this format the graphics only')}</title>
+                              </path>
+                            </g>
+                          );
+                        }
                         if (!e.dest) return <path key={`${e.from}-${e.to}`} d={d} stroke={e.color} />;
                         const dest = e.dest;
                         return (
@@ -936,7 +1034,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                           return <path className="oc-wire-live" d={`M${x1},${y1} C${x1 + c},${y1} ${wire.x - c},${wire.y} ${wire.x},${wire.y}`} stroke={KIND.picture.color} />;
                         })()}
                       {wire &&
-                        wire.from.startsWith('src:') &&
+                        (wire.from === 'program' || wire.from.startsWith('src:')) &&
                         pos[wire.from] &&
                         (() => {
                           const a = pos[wire.from];
@@ -976,6 +1074,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                             {n.on !== undefined && <OnSwitch on={n.on} mini onChange={(v) => setOn(n.id, v)} />}
                           </div>
                           <div className="oc-node-sub">{n.sub}</div>
+                          {n.extra}
                           <div className="oc-node-status">
                             <span className={`oc-dot ${n.tone}`} />
                             <span className="oc-status-text" title={n.raw ?? n.status}>
@@ -991,9 +1090,9 @@ export function Outputs({ mode }: { mode: Mode }) {
                           {n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' && (
                             <span className="oc-port in grab" title={t('Drag to a format to feed this output from it')} onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
                           )}
-                          {n.kind === 'program' && <span className="oc-port out" />}
-                          {n.kind === 'program' && srcIds.length > 0 && <span className="oc-port in" />}
-                          {n.kind === 'source' && <span className="oc-port out grab" title={t('Drag to the program to put this video under the graphics')} onPointerDown={(e) => startWire(e, n.id)} />}
+                          {n.kind === 'program' && (srcIds.length > 0 ? <span className="oc-port out grab" title={t('Drag to a source to put its video under the graphics, or to a format for the graphics only')} onPointerDown={(e) => startWire(e, 'program')} /> : <span className="oc-port out" />)}
+                          {n.kind === 'source' && <span className="oc-port in" />}
+                          {n.kind === 'source' && <span className="oc-port out grab" title={t('Drag to a format to send it the graphics over this video')} onPointerDown={(e) => startWire(e, n.id)} />}
                           {n.kind === 'picture' && <span className="oc-port out grab" title={t('Drag to an output to feed it, or into the empty canvas to add one')} onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
                           <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setWidth(n.id, w))} />
                         </div>
@@ -1087,10 +1186,41 @@ export function Outputs({ mode }: { mode: Mode }) {
                               <option value="">{t('Not connected')}</option>
                             </select>
                           </Field>
+                          {(() => {
+                            const c = srcCheck(selSrc.id);
+                            if (!c.f) return null;
+                            const f = c.f;
+                            const chFps = ch.frameRate.num / Math.max(1, ch.frameRate.den);
+                            const rate = (fps: number, fields: boolean) => (fields ? tn(Math.round(fps * 100) / 100, '{n} field/s', '{n} fields/s') : tn(Math.round(fps * 100) / 100, '{n} frame/s', '{n} frames/s'));
+                            const rows: [string, string, string, boolean][] = [
+                              [t('Size'), `${f.w}×${f.h}`, `${ch.width}×${ch.height}`, f.w === ch.width && f.h === ch.height],
+                              [t('Rate'), rate(f.fps, f.interlaced), rate(chFps, !!ch.interlaced), Math.abs(f.fps - chFps) < 0.05],
+                              [t('Scan'), f.interlaced ? t('interlaced') : t('progressive'), ch.interlaced ? t('interlaced') : t('progressive'), f.interlaced === !!ch.interlaced],
+                            ];
+                            return (
+                              <div className="oc-src-check">
+                                {rows.map(([k, a, b, same]) => (
+                                  <div key={k} className={same ? '' : 'bad'}>
+                                    <span>{k}</span>
+                                    <span>{same ? a : `${a} ≠ ${b}`}</span>
+                                  </div>
+                                ))}
+                                <div>
+                                  <span>{t('Processing')}</span>
+                                  <span>{c.state === 'same' ? t('Direct') : c.state === 'convert' ? t('Live conversion') : t('To choose')}</span>
+                                </div>
+                                <div>
+                                  <span>{t('Added delay')}</span>
+                                  <span>{selSrc.kind === 'sdi' ? tn(0, '{n} frame', '{n} frames') : tn(selSrc.buffer ?? 2, '{n} frame', '{n} frames')}</span>
+                                </div>
+                                {wired && sourceChoices(selSrc.id, c, true)}
+                              </div>
+                            );
+                          })()}
                           <button type="button" className="btn small oc-hw-edit" onClick={() => navigate('/inputs')}>
                             <Pencil size={13} /> {t('Edit in Inputs')}
                           </button>
-                          {note(t('The graphics of the channel are keyed over this video by the server: every destination gets the full picture.'))}
+                          {note(t('The server keys the graphics over this video for the formats wired after the source; a format wired straight to the program gets the graphics only.'))}
                         </>
                       );
                     })()}
