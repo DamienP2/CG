@@ -14,6 +14,7 @@ mod scaled;
 pub mod sequence;
 mod shadow;
 pub mod slate;
+mod sprite;
 mod strip;
 mod text;
 mod wid;
@@ -165,6 +166,12 @@ pub struct Renderer {
     /// A frame-sized picture for the graphics drawn over what moves
     /// (`cache::top_item`), kept cleared between frames.
     over: Option<Pixmap>,
+    /// Layers kept drawn (`sprite`).
+    sprites: sprite::Sprites,
+    /// Scale of the output over the project (sprites of moving layers).
+    root_scale: f32,
+    /// Drawing a sprite (no sprite inside one, pictures at their best).
+    in_sprite: bool,
 }
 
 /// Where a frame being drawn is, in its steps (see `cache`).
@@ -191,6 +198,8 @@ struct Steps {
     under: bool,
     /// Drawing a layer in two steps: its second one not begun yet.
     split: bool,
+    /// Inside a cross-fade (the graphic drawn twice: no sprites).
+    fading: bool,
 }
 
 /// Values of the layers changed by a template's logic graph, by layer id.
@@ -204,6 +213,19 @@ struct OnAir<'p> {
     /// Laid out for the format, with the operator's settings.
     set: std::cell::OnceCell<std::borrow::Cow<'p, Template>>,
     logic: std::cell::OnceCell<Logic>,
+    /// What the graphic's state is drawn from (`sprite`), hashed.
+    key: std::cell::OnceCell<u64>,
+}
+
+/// A graphic on air, hashed (its template, data, widget states and clocks:
+/// its timeline frame and age aside, which the layers' values and motion
+/// keys carry).
+fn item_key(item: &cg_core::PlayoutItem) -> u64 {
+    let mut k = sprite::Key::new();
+    k.add(&item.template_id).add(&item.data);
+    k.add(&serde_json::to_string(&item.widgets).unwrap_or_default());
+    k.add(&serde_json::to_string(&item.clocks).unwrap_or_default());
+    k.finish()
 }
 
 /// `t` laid out for `format`, with the settings in `data`.
@@ -234,6 +256,10 @@ struct Ctx<'a> {
     fps: f64,
     /// The project's language (texts without their own).
     lang: &'a str,
+    /// The graphic on air: its index among those on air and its state
+    /// hashed (`item_key`), for the sprites.
+    item_index: usize,
+    item_key: u64,
 }
 
 impl<'a> Ctx<'a> {
@@ -248,6 +274,8 @@ impl<'a> Ctx<'a> {
             item: self.item,
             fps: self.fps,
             lang: self.lang,
+            item_index: self.item_index,
+            item_key: self.item_key,
         }
     }
 
@@ -307,6 +335,9 @@ impl Renderer {
             over: None,
             masks: Default::default(),
             strips: Default::default(),
+            sprites: Default::default(),
+            root_scale: 1.0,
+            in_sprite: false,
         }
     }
 
@@ -418,6 +449,7 @@ impl Renderer {
 
     /// Forgets cached images (call after an asset upload).
     pub fn invalidate_assets(&mut self) {
+        self.sprites.clear();
         self.images.clear();
         self.scaled.clear();
         self.assets_generation += 1;
@@ -512,6 +544,7 @@ impl Renderer {
         self.refresh_fonts();
         self.scaled.frame();
         self.strips.frame();
+        self.sprites.frame();
         self.pending = false;
         self.steps = Steps::default();
         // The picture drawn on: blank, or the one kept of the first steps.
@@ -526,6 +559,7 @@ impl Renderer {
             (out.height as f32 - dh as f32 * scale) / 2.0,
         )
         .pre_scale(scale, scale);
+        self.root_scale = scale;
         let fps = project.frame_rate.as_f64().max(1.0);
         let now = shown_ms.round() as i64;
         let portrait = dh > dw;
@@ -541,6 +575,7 @@ impl Renderer {
                     template: t,
                     set: Default::default(),
                     logic: Default::default(),
+                    key: Default::default(),
                 })
             })
             .collect();
@@ -571,6 +606,8 @@ impl Renderer {
                     item: Some(a.item),
                     fps,
                     lang: &project.language,
+                    item_index: $i,
+                    item_key: *a.key.get_or_init(|| item_key(a.item)),
                 }
             }};
         }
@@ -713,6 +750,7 @@ impl Renderer {
                 Some((k, old_data)) => {
                     self.enter_step(pm);
                     self.steps.whole += 1;
+                    self.steps.fading = true;
                     let (w, h) = (pm.width(), pm.height());
                     let mut new = Pixmap::new(w, h).expect("valid size");
                     self.draw_children(&mut new, ctx, None, root, 1.0, zone_mask.as_ref());
@@ -758,6 +796,7 @@ impl Renderer {
                         None,
                     );
                     self.steps.whole -= 1;
+                    self.steps.fading = false;
                 }
             }
         }
@@ -823,6 +862,7 @@ impl Renderer {
     ) -> Frame {
         self.refresh_fonts();
         self.scaled.frame();
+        self.sprites.frame();
         let (dw, dh) = project
             .formats
             .iter()
@@ -840,6 +880,7 @@ impl Renderer {
             (dw, dh)
         };
         let root = Transform::from_scale(width as f32 / dw as f32, height as f32 / dh as f32);
+        self.root_scale = width as f32 / dw as f32;
         let template = template.in_format(format);
         let template = &*template.with_settings(data);
         let mut pm = Pixmap::new(width, height).expect("valid size");
@@ -859,6 +900,12 @@ impl Renderer {
             item: None,
             fps: project.frame_rate.as_f64().max(1.0),
             lang: &project.language,
+            item_index: 0,
+            item_key: {
+                let mut k = sprite::Key::new();
+                k.add(&template.id).add(data);
+                k.finish()
+            },
         };
         // As on air: only what is inside the template's zone.
         let zone_mask = project
@@ -963,7 +1010,6 @@ impl Renderer {
             _ => ctx,
         };
         // Its own clock moves (the operator's age): planned as moving.
-        let clocked = clocked && planning;
         if clocked {
             self.steps.clocked += 1;
         }
@@ -1039,6 +1085,22 @@ impl Renderer {
                 Enter::Children => true,
                 Enter::Draw => false,
             };
+            // A layer drawn in two steps (planned so): its second one may be to draw.
+            let split = !is_group
+                && self.steps.whole == 0
+                && self
+                    .steps
+                    .ops
+                    .get(self.steps.at.wrapping_sub(1))
+                    .is_some_and(|o| o.span == 2);
+            // Its picture does not change with time: laid from its sprite
+            // (drawn once), when nothing of it changed.
+            let sprite = (!own_drawn
+                && !self.in_sprite
+                && !self.steps.fading
+                && self.steps.clocked == 0)
+                .then(|| self.step_motion(pm, ctx, &r, tf, opacity, shadowed && is_group, split))
+                .filter(|m| *m != cache::Motion::Moving);
             let own_mask = own_rect.map(|rect| build_mask(pm, mask, rect, tf));
             let m = own_mask.as_ref().or(mask);
 
@@ -1048,27 +1110,27 @@ impl Renderer {
                 // A group's own clip cuts its children, not its shadow (CSS overflow vs filter).
                 let cut = if crop.is_some() { m } else { mask };
                 self.steps.whole += 1;
-                self.draw_shadowed(
-                    pm,
-                    ctx,
-                    &r,
-                    tf,
-                    opacity,
-                    cut,
-                    clip_children.then_some((w, h)),
-                );
+                let shadow = clip_children.then_some((w, h));
+                let laid = sprite.is_some_and(|m| {
+                    self.lay_sprite(pm, ctx, &r, tf, opacity, cut, m, Some(shadow))
+                });
+                if !laid {
+                    self.draw_shadowed(pm, ctx, &r, tf, opacity, cut, shadow, true);
+                }
                 self.steps.whole -= 1;
                 continue;
             }
-            // A layer drawn in two steps (planned so): its second one may be to draw.
-            let split = !is_group
-                && self.steps.whole == 0
-                && self
-                    .steps
-                    .ops
-                    .get(self.steps.at.wrapping_sub(1))
-                    .is_some_and(|o| o.span == 2);
-            if !own_drawn || split {
+            if sprite.is_some_and(|mo| self.lay_sprite(pm, ctx, &r, tf, opacity, m, mo, None)) {
+                if split {
+                    // Both steps of the widget are laid: the second counted too.
+                    self.steps.at += 1;
+                    if let Some((k, slot)) = &mut self.steps.keep {
+                        if *k < self.steps.at && slot.is_none() {
+                            self.steps.keep = None;
+                        }
+                    }
+                }
+            } else if !own_drawn || split {
                 self.steps.under = own_drawn;
                 self.steps.split = split;
                 self.draw_layer(pm, ctx, &r, tf, opacity, m);
@@ -1152,6 +1214,313 @@ impl Renderer {
         (m, None)
     }
 
+    /// Drawing: how the step of `r` (its own picture; with its children when
+    /// `subtree`; both steps of a widget drawn in two when `split`) depends on
+    /// time: from the plan when the frame has one, else asked now.
+    fn step_motion(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        tf: Transform,
+        opacity: f32,
+        subtree: bool,
+        split: bool,
+    ) -> cache::Motion {
+        use cache::Motion;
+        if self.steps.whole == 0 && !self.steps.ops.is_empty() {
+            let at = self.steps.at.wrapping_sub(1);
+            if let Some(op) = self.steps.ops.get(at) {
+                let mut m = op.motion;
+                if split {
+                    m = m.and(
+                        self.steps
+                            .ops
+                            .get(at + 1)
+                            .map_or(Motion::Moving, |o| o.motion),
+                    );
+                }
+                return m;
+            }
+            return Motion::Moving;
+        }
+        let outer = self.steps.plan.replace(Vec::new());
+        let (own, then) = self.layer_motion(pm, ctx, r, tf, opacity);
+        let own = then.map_or(own, |t| own.and(t));
+        if subtree {
+            self.draw_children(pm, ctx, Some(&r.layer.id), tf, 1.0, None);
+        }
+        let inner = std::mem::replace(&mut self.steps.plan, outer).unwrap_or_default();
+        inner.iter().fold(own, |m, o| m.and(o.motion))
+    }
+
+    /// What the step of `r` is drawn from, hashed (`sprite`): the graphic's
+    /// state, the layer's values but its placement, its text, the fonts and
+    /// pictures, the sprite's transform; with its children when `subtree`.
+    /// With it, the box the drawing is expected in, in layer space.
+    fn sprite_key(
+        &mut self,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        s: Transform,
+        moving: bool,
+        motion: cache::Motion,
+        subtree: bool,
+    ) -> (u64, Rect) {
+        const PLACE: [Prop; 8] = [
+            Prop::X,
+            Prop::Y,
+            Prop::AnchorX,
+            Prop::AnchorY,
+            Prop::Rotation,
+            Prop::ScaleX,
+            Prop::ScaleY,
+            Prop::Opacity,
+        ];
+        fn value(k: &mut sprite::Key, v: &Value) {
+            match v {
+                Value::Number(n) => {
+                    k.f64(*n);
+                }
+                Value::Color(c) => {
+                    for x in c.0 {
+                        k.f32(x);
+                    }
+                }
+            }
+        }
+        fn frame_sensitive(kind: &LayerKind) -> bool {
+            matches!(
+                kind,
+                LayerKind::Pen { .. }
+                    | LayerKind::Typewriter { .. }
+                    | LayerKind::Credits { .. }
+                    | LayerKind::Roll { .. }
+                    | LayerKind::Ticker { .. }
+                    | LayerKind::Rotator { .. }
+                    | LayerKind::Slideshow { .. }
+                    | LayerKind::Group {
+                        lottie: Some(_),
+                        ..
+                    }
+            )
+        }
+        let mut k = sprite::Key::new();
+        k.add(&ctx.item_key)
+            .add(&ctx.template.id)
+            .add(&ctx.template.revision)
+            .add(&self.sprites.def(r.layer));
+        for (p, v) in &r.values {
+            if !PLACE.contains(p) {
+                k.add(p);
+                value(&mut k, v);
+            }
+        }
+        k.add(&r.text).add(&r.image_src);
+        match motion {
+            cache::Motion::Still => k.add(&0u8),
+            cache::Motion::Key(x) => k.add(&x),
+            cache::Motion::Moving => k.add(&1u8),
+        };
+        k.f32(s.sx)
+            .f32(s.kx)
+            .f32(s.ky)
+            .f32(s.sy)
+            .f32(s.tx)
+            .f32(s.ty);
+        k.add(&moving)
+            .add(&self.font_generation)
+            .add(&self.assets_generation)
+            .add(ctx.lang)
+            .add(ctx.time.default_tz);
+        if frame_sensitive(&r.layer.kind) {
+            k.f64(ctx.frame);
+        }
+        let (w, h) = (r.num(Prop::Width) as f32, r.num(Prop::Height) as f32);
+        let mut bounds = Rect::from_xywh(0.0, 0.0, w.max(1.0), h.max(1.0))
+            .unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0).expect("a rect"));
+        if subtree {
+            // The children: everything of them (their placement moves inside).
+            let hold = ctx.template.hold_frame();
+            let mut stack = vec![(r.layer.id.as_str(), Transform::identity())];
+            while let Some((parent, ptf)) = stack.pop() {
+                for l in ctx
+                    .template
+                    .layers
+                    .iter()
+                    .filter(|l| l.parent.as_deref() == Some(parent))
+                {
+                    k.add(&self.sprites.def(l));
+                    if !l.visible {
+                        continue;
+                    }
+                    let mut c = resolve_layer(l, ctx.frame, ctx.data, hold);
+                    if let Some(runs) = cg_core::rich::layer_runs(ctx.template, l, ctx.data) {
+                        c.text = Some(runs.into_iter().map(|r| r.text).collect());
+                    }
+                    if let Some(v) = ctx.logic.get(&l.id) {
+                        c.values = v.clone();
+                    }
+                    for (p, v) in &c.values {
+                        k.add(p);
+                        value(&mut k, v);
+                    }
+                    k.add(&c.text).add(&c.image_src);
+                    if frame_sensitive(&l.kind) {
+                        k.f64(ctx.frame);
+                    }
+                    let (cw, ch) = (c.num(Prop::Width) as f32, c.num(Prop::Height) as f32);
+                    let ctf = ptf.pre_concat(local_transform(&c, cw, ch));
+                    if let Some(b) = Rect::from_xywh(0.0, 0.0, cw.max(1.0), ch.max(1.0))
+                        .and_then(|b| PathBuilder::from_rect(b).transform(ctf))
+                        .map(|p| p.bounds())
+                    {
+                        bounds = Rect::from_ltrb(
+                            bounds.left().min(b.left()),
+                            bounds.top().min(b.top()),
+                            bounds.right().max(b.right()),
+                            bounds.bottom().max(b.bottom()),
+                        )
+                        .unwrap_or(bounds);
+                    }
+                    stack.push((l.id.as_str(), ctf));
+                }
+            }
+        }
+        (k.finish(), bounds)
+    }
+
+    /// Lays the step of `r` from its sprite, made now when none fits (the
+    /// layer alone, or with its children under their drop shadow when
+    /// `shadow` is given). False when the layer is drawn straight instead
+    /// (it draws out of the sprite's margin, or is too big).
+    #[allow(clippy::too_many_arguments)]
+    fn lay_sprite(
+        &mut self,
+        pm: &mut Pixmap,
+        ctx: &Ctx,
+        r: &ResolvedLayer,
+        tf: Transform,
+        opacity: f32,
+        mask: Option<&Mask>,
+        motion: cache::Motion,
+        shadow: Option<Option<(f32, f32)>>,
+    ) -> bool {
+        let moving = geometry_moving(ctx.template, r.layer, ctx.frame);
+        // The sprite's space: device pixels less the whole-pixel part of the
+        // position; while the geometry moves, the output scale only (one
+        // sprite for the whole move, laid through the transform).
+        let s = if moving {
+            let (sx, sy) = tf.get_scale();
+            Transform::from_scale(sx.max(1e-3), sy.max(1e-3))
+        } else {
+            Transform {
+                tx: tf.tx - tf.tx.floor(),
+                ty: tf.ty - tf.ty.floor(),
+                ..tf
+            }
+        };
+        let (key, bounds) = self.sprite_key(ctx, r, s, moving, motion, shadow.is_some());
+        let lay = |pm: &mut Pixmap, spm: &Pixmap, x: i32, y: i32| {
+            // Sprite pixels → device: through the layer's transform, from the sprite's.
+            let from = s.post_translate(-x as f32, -y as f32);
+            let Some(back) = from.invert() else {
+                return;
+            };
+            let c = tf.pre_concat(back);
+            let whole = c.is_translate()
+                && (c.tx - c.tx.round()).abs() < 1e-3
+                && (c.ty - c.ty.round()).abs() < 1e-3;
+            if whole {
+                scaled::composite(
+                    pm,
+                    spm,
+                    c.tx.round() as i32,
+                    c.ty.round() as i32,
+                    opacity,
+                    mask,
+                );
+            } else {
+                let paint = PixmapPaint {
+                    opacity,
+                    quality: tiny_skia::FilterQuality::Bilinear,
+                    ..PixmapPaint::default()
+                };
+                pm.draw_pixmap(0, 0, spm.as_ref(), &paint, c, mask);
+            }
+        };
+        if let Some((spm, x, y)) = self.sprites.get(ctx.item_index, &r.layer.id, key) {
+            let Some(spm) = spm else {
+                return false;
+            };
+            lay(pm, &spm, x, y);
+            return true;
+        }
+        // The box the drawing is expected in, in sprite space, with a margin
+        // for strokes and shadows (anything beyond: drawn straight).
+        let scale = {
+            let (sx, sy) = s.get_scale();
+            sx.abs().max(sy.abs()).max(1e-3)
+        };
+        let mut pad = 8.0 + r.num(Prop::StrokeWidth).abs() as f32;
+        if r.layer.drop_shadow || matches!(r.layer.kind, LayerKind::Text { .. }) {
+            pad += r.num(Prop::ShadowX).abs() as f32
+                + r.num(Prop::ShadowY).abs() as f32
+                + r.num(Prop::ShadowBlur).abs() as f32 * 1.5
+                + 2.0;
+        }
+        let Some(b) = PathBuilder::from_rect(bounds)
+            .transform(s)
+            .map(|p| p.bounds())
+        else {
+            return false;
+        };
+        let pad = pad * scale;
+        let (x0, y0) = (
+            (b.left() - pad).floor() as i32,
+            (b.top() - pad).floor() as i32,
+        );
+        let (x1, y1) = (
+            (b.right() + pad).ceil() as i32,
+            (b.bottom() + pad).ceil() as i32,
+        );
+        let (sw, sh) = ((x1 - x0).max(1) as u64, (y1 - y0).max(1) as u64);
+        if sw > 8192 || sh > 8192 || sw * sh > 2 * pm.width() as u64 * pm.height() as u64 {
+            return false;
+        }
+        let mut spm = pool::pixmap(sw as u32, sh as u32);
+        let s_in = s.post_translate(-x0 as f32, -y0 as f32);
+        let pending = self.pending;
+        self.in_sprite = true;
+        self.steps.whole += 1;
+        let (under, split) = (
+            std::mem::take(&mut self.steps.under),
+            std::mem::take(&mut self.steps.split),
+        );
+        match shadow {
+            Some(clip) => self.draw_shadowed(&mut spm, ctx, r, s_in, 1.0, None, clip, false),
+            None => self.draw_layer(&mut spm, ctx, r, s_in, 1.0, None),
+        }
+        self.steps.under = under;
+        self.steps.split = split;
+        self.steps.whole -= 1;
+        self.in_sprite = false;
+        if sprite::touches_edge(&spm) {
+            // Drawn beyond the margin: straight, and remembered so.
+            if self.caching && self.pending == pending {
+                self.sprites
+                    .put(ctx.item_index, &r.layer.id, key, None, x0, y0);
+            }
+            return false;
+        }
+        lay(pm, &spm, x0, y0);
+        if self.caching && self.pending == pending {
+            self.sprites
+                .put(ctx.item_index, &r.layer.id, key, Some(spm), x0, y0);
+        }
+        true
+    }
+
     /// Drawing: the second step of a layer drawn in two (the map's markers
     /// over its base map), begun. Called by the widget between the two.
     pub(crate) fn sub_step(&mut self, pm: &Pixmap) {
@@ -1179,10 +1548,11 @@ impl Renderer {
         opacity: f32,
         mask: Option<&Mask>,
         clip: Option<(f32, f32)>,
+        scratch: bool,
     ) {
         // A frame-sized picture, cleared (kept between shadows: no 8 MB
         // allocation each time).
-        let mut content = match self.scratch.take() {
+        let mut content = match self.scratch.take().filter(|_| scratch) {
             Some(mut c) if (c.width(), c.height()) == (pm.width(), pm.height()) => {
                 c.fill(tiny_skia::Color::TRANSPARENT);
                 c
@@ -1204,7 +1574,7 @@ impl Renderer {
         let scale = (tf.sx * tf.sy - tf.kx * tf.ky).abs().sqrt();
         let sigma = r.num(Prop::ShadowBlur).max(0.0) as f32 * scale / 2.0;
         let composed = shadow::compose(&content, r.color(Prop::ShadowColor), dx, dy, sigma);
-        if self.caching {
+        if self.caching && scratch {
             self.scratch = Some(content);
         }
         let Some((out, x, y)) = composed else {
@@ -1235,6 +1605,7 @@ impl Renderer {
             .item
             .and_then(|i| i.widgets.get(&r.layer.id))
             .unwrap_or(&null);
+        let moving = !self.in_sprite && geometry_moving(ctx.template, r.layer, ctx.frame);
         let mut d = wid::Draw {
             rd: self,
             pm,
@@ -1253,7 +1624,7 @@ impl Renderer {
             state,
             lang: ctx.lang,
             runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
-            moving: geometry_moving(ctx.template, r.layer, ctx.frame),
+            moving,
             follow: match &r.layer.kind {
                 LayerKind::Progress { x: c, .. } => {
                     let none = Default::default();
