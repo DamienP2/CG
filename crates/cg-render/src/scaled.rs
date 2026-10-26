@@ -659,8 +659,32 @@ pub(crate) fn composite(
     opacity: f32,
     mask: Option<&Mask>,
 ) {
+    composite_bytes(
+        pm,
+        src.data(),
+        src.width(),
+        src.height(),
+        x0,
+        y0,
+        opacity,
+        mask,
+    );
+}
+
+/// [`composite`] of a `sw` × `sh` premultiplied RGBA buffer.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn composite_bytes(
+    pm: &mut Pixmap,
+    sdata: &[u8],
+    sw: u32,
+    sh: u32,
+    x0: i32,
+    y0: i32,
+    opacity: f32,
+    mask: Option<&Mask>,
+) {
     let (fw, fh) = (pm.width() as i32, pm.height() as i32);
-    let (sw, sh) = (src.width() as i32, src.height() as i32);
+    let (sw, sh) = (sw as i32, sh as i32);
     let (lx, ly) = (x0.max(0), y0.max(0));
     let (rx, ry) = ((x0 + sw).min(fw), (y0 + sh).min(fh));
     if rx <= lx || ry <= ly {
@@ -672,7 +696,6 @@ pub(crate) fn composite(
     }
     let mask = mask.filter(|m| (m.width(), m.height()) == (pm.width(), pm.height()));
     let n = (rx - lx) as usize;
-    let sdata = src.data();
     let mdata = mask.map(|m| m.data());
     let dst = pm.data_mut();
     for y in ly..ry {

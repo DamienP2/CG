@@ -591,7 +591,8 @@ impl HardwareConfig {
                 return Err("every SDI output needs a name".into());
             }
             take(&o.name, &o.card, o.fill)?;
-            if let Some(k) = o.key.filter(|_| o.mode == SdiMode::ExternalKey) {
+            // A keyer (external or internal) takes the second connector of its pair.
+            if let Some(k) = o.key.filter(|_| o.mode != SdiMode::FillOnly) {
                 take(&o.name, &o.card, k)?;
             }
         }
@@ -961,6 +962,9 @@ mod tests {
             persistent_id: None,
             profile: None,
             profiles: vec![],
+            connector_profiles: vec![],
+            internal_keyer: true,
+            external_keyer: true,
         }];
         assert!(hw.link_detected(&detected));
         let c = &hw.sdi.cards[0];

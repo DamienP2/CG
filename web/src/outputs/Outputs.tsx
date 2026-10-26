@@ -1,8 +1,8 @@
 import { ArrowRightFromLine, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, Save, Trash2, Tv, Globe } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
-import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
-import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, usedHardware } from '../hardware/model';
+import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
+import { CLOCKS, ENCODINGS, clockLabel, fillSdi, fillSt2110, hardwareOf, modeLabel, sdiOutputLabel, sdiPorts, usedHardware } from '../hardware/model';
 import { AssetLibrary } from '../designer/AssetPicker';
 import { navigate } from '../router';
 import { ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -26,13 +26,14 @@ import '../perf/perf.css';
  * desk…). The INPUTS mode of the page lists the live video inputs (Inputs.tsx).
  */
 
-type Kind = 'program' | 'picture' | 'html5' | 'sdi' | 'st2110' | 'ndi' | 'stream';
-type DestKind = Exclude<Kind, 'program' | 'picture'>;
+type Kind = 'program' | 'picture' | 'source' | 'html5' | 'sdi' | 'st2110' | 'ndi' | 'stream';
+type DestKind = Exclude<Kind, 'program' | 'picture' | 'source'>;
 
 /** Labels translated where shown. */
 const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = {
   program: { label: 'Program', color: '#bfcaff', icon: Play },
   picture: { label: 'Format', color: '#38bdf8', icon: Frame },
+  source: { label: 'Source', color: '#94a3b8', icon: ArrowRightToLine },
   html5: { label: 'HTML5', color: '#22c55e', icon: Globe },
   sdi: { label: 'SDI', color: '#f5a524', icon: Tv },
   st2110: { label: 'ST 2110', color: '#e879f9', icon: Network },
@@ -41,6 +42,11 @@ const KIND: Record<Kind, { label: string; color: string; icon: typeof Play }> = 
 };
 
 const DEST_KINDS: DestKind[] = ['html5', 'ndi', 'stream', 'sdi', 'st2110'];
+
+/** Live inputs placed as sources, by family (a stream is SRT, UDP, RTMP, HLS, RTSP or a URL). */
+type SrcFamily = 'sdi' | 'ndi' | 'st2110' | 'stream';
+const SRC_FAMILIES: SrcFamily[] = ['sdi', 'ndi', 'st2110', 'stream'];
+const familyOf = (k: InputKind): SrcFamily => (k === 'sdi' || k === 'ndi' || k === 'st2110' ? k : 'stream');
 /** Destinations that send to something Hardware declares. */
 const needsHardware = (k: DestKind) => k === 'sdi' || k === 'st2110';
 
@@ -340,14 +346,20 @@ export function Outputs() {
   const allDests = [...pics.flatMap(dests), ...(ch ? dests(unwiredOf(ch)) : [])];
   const hw = hardwareOf(cfg);
   const usedHw = usedHardware(cfg);
+  // Live inputs placed as sources (a column before the program).
+  const inputs = cfg.inputs ?? [];
+  const srcIds = ch ? (ch.sources ?? []).filter((id) => inputs.some((i) => i.id === id)) : [];
+  const inputOf = (id: string) => inputs.find((i) => i.id === id);
+  const shift = srcIds.length ? NODE_W + 80 : 0;
   const pos: Record<string, { x: number; y: number }> = {};
-  allDests.forEach((d, i) => (pos[d.value.id] = { x: COL.dest, y: 50 + i * 128 }));
+  allDests.forEach((d, i) => (pos[d.value.id] = { x: COL.dest + shift, y: 50 + i * 128 }));
   pics.forEach((p, i) => {
     const ys = allDests.filter((d) => d.picture === p.id).map((d) => pos[d.value.id].y);
-    pos[`pic:${p.id}`] = { x: COL.picture, y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 50 + i * 170 };
+    pos[`pic:${p.id}`] = { x: COL.picture + shift, y: ys.length ? (Math.min(...ys) + Math.max(...ys)) / 2 : 50 + i * 170 };
   });
   const picYs = pics.map((p) => pos[`pic:${p.id}`].y);
-  pos.program = { x: COL.program, y: picYs.length ? (Math.min(...picYs) + Math.max(...picYs)) / 2 : 50 };
+  pos.program = { x: COL.program + shift, y: picYs.length ? (Math.min(...picYs) + Math.max(...picYs)) / 2 : 50 };
+  srcIds.forEach((id, i) => (pos[`src:${id}`] = { x: COL.program, y: 50 + i * 128 }));
   const own = (ch && layout[ch.id]) ?? {};
   for (const k of Object.keys(pos)) if (own[k]) pos[k] = own[k];
 
@@ -377,17 +389,37 @@ export function Outputs() {
     return o && { text: `${fpsText(o.fps)} fps`, tone: outputTone(o, chMetrics.rate), title: o.dropped ? t('{n} frames dropped in the last 10 s', { n: o.dropped }) : t('Frames sent per second') };
   };
 
-  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; raw?: string; badge?: string; chip?: { text: string; tone: string; title: string }; on?: boolean; loose?: boolean };
+  type GNode = { id: string; kind: Kind; title: string; sub: string; tone: 'ok' | 'warn' | 'idle'; status: string; raw?: string; badge?: string; chip?: { text: string; tone: string; title: string }; on?: boolean; loose?: boolean; label?: string; color?: string; icon?: typeof Play };
+  const famLook = (f: SrcFamily) => (f === 'stream' ? KIND.stream : KIND[f]);
+  const bgInput = ch?.background && srcIds.includes(ch.background) ? inputOf(ch.background) : undefined;
   const nodes: GNode[] = ch
     ? [
         {
           id: 'program',
           kind: 'program',
           title: ch.name,
-          sub: `${formatLabel(ch)}\n${projectName(liveCh?.projectId) ? t('plays “{name}”', { name: projectName(liveCh?.projectId)! }) : t('no project loaded')}`,
+          sub: `${formatLabel(ch)}\n${projectName(liveCh?.projectId) ? t('plays “{name}”', { name: projectName(liveCh?.projectId)! }) : t('no project loaded')}${bgInput ? `\n${t('over {name}', { name: bgInput.name })}` : ''}`,
           tone: liveCh ? 'ok' : 'idle',
           status: liveCh ? t('Running') : t('Not applied yet'),
         },
+        ...srcIds.map((id): GNode => {
+          const i = inputOf(id)!;
+          const f = famLook(familyOf(i.kind));
+          const wired = ch.background === id;
+          const m = metrics?.inputs.find((x) => x.id === id);
+          return {
+            id: `src:${id}`,
+            kind: 'source',
+            label: `${t('Source')} · ${t(f.label)}`,
+            color: f.color,
+            icon: f.icon,
+            title: i.name,
+            sub: i.enabled === false ? tc('output', 'Off') : m ? `${fpsText(m.fps)} fps` : '',
+            tone: wired ? 'ok' : 'idle',
+            status: wired ? t('Under the graphics') : t('Not connected: drag a wire to the program'),
+            loose: !wired,
+          };
+        }),
         ...pics.map((p) => ({ id: `pic:${p.id}`, kind: 'picture' as const, title: formatTitle(p, ch), sub: `${ratioOf(p.width, p.height)}${slateName(p) ? `\n${t('Without project: {name}', { name: slateName(p) })}` : ''}`, tone: 'ok' as const, status: tn(dests(p).length, '{n} destination', '{n} destinations'), chip: rateChip(`pic:${p.id}`) })),
         ...allDests.map((d) => {
           const st = destStatus(d);
@@ -396,8 +428,9 @@ export function Outputs() {
       ]
     : [];
   // Format → destination wires can be removed (the destination stays, unwired).
-  const edges: { from: string; to: string; color: string; dest?: string }[] = ch
+  const edges: { from: string; to: string; color: string; dest?: string; src?: boolean }[] = ch
     ? [
+        ...(bgInput ? [{ from: `src:${bgInput.id}`, to: 'program', color: famLook(familyOf(bgInput.kind)).color, src: true }] : []),
         ...pics.map((p) => ({ from: 'program', to: `pic:${p.id}`, color: KIND.picture.color })),
         ...allDests.filter((d) => d.picture).map((d) => ({ from: `pic:${d.picture}`, to: d.value.id, color: KIND[d.kind].color, dest: d.value.id })),
       ]
@@ -407,16 +440,16 @@ export function Outputs() {
     if (!ch) return;
     const size = measureNodes(cv.ref.current, 'data-node');
     const at = autoLayout(
-      nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n.id), h: 110 }), side: n.kind === 'program' ? ('start' as const) : n.kind === 'picture' ? undefined : ('end' as const) })),
+      nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n.id), h: 110 }), side: n.kind === 'source' || (n.kind === 'program' && !srcIds.length) ? ('start' as const) : n.kind === 'picture' || n.kind === 'program' ? undefined : ('end' as const) })),
       edges,
       { origin: { x: COL.program, y: 40 }, anchorY: 27 },
     );
     setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), ...at } }));
   };
   /** Column titles follow the nodes of the column. */
-  const colX = (k: 'program' | 'picture' | 'dest') => {
-    const xs = nodes.filter((n) => (k === 'dest' ? n.kind !== 'program' && n.kind !== 'picture' : n.kind === k)).map((n) => pos[n.id].x);
-    return xs.length ? Math.min(...xs) : COL[k];
+  const colX = (k: 'source' | 'program' | 'picture' | 'dest') => {
+    const xs = nodes.filter((n) => (k === 'dest' ? n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' : n.kind === k)).map((n) => pos[n.id].x);
+    return xs.length ? Math.min(...xs) : k === 'source' ? COL.program : COL[k] + shift;
   };
   const width = Math.max(980, ...Object.values(pos).map((p) => p.x + NODE_W + 60));
   const height = Math.max(560, ...Object.values(pos).map((p) => p.y + 160));
@@ -483,7 +516,49 @@ export function Outputs() {
     setMoreFormats(false);
   };
 
+  /** Places a live input as a source (the first of that family not placed yet; a new NDI or stream input when there is none). */
+  const addSource = (fam: SrcFamily) => {
+    const placed = new Set(ch.sources ?? []);
+    const existing = inputs.find((i) => familyOf(i.kind) === fam && !placed.has(i.id));
+    if (existing) {
+      editCh((c) => void (c.sources = [...(c.sources ?? []), existing.id]));
+      setSel(`src:${existing.id}`);
+      return;
+    }
+    if (fam === 'sdi' || fam === 'st2110') {
+      if (inputs.some((i) => familyOf(i.kind) === fam)) return toast(t('Every input of this kind is already a source of this channel'), 'info');
+      return toast(fam === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware'), 'info');
+    }
+    const ids = new Set(inputs.map((i) => i.id));
+    let n = 1;
+    while (ids.has(`input-${n}`)) n++;
+    const id = `input-${n}`;
+    let port = 10000;
+    const used = new Set(inputs.map((i) => i.port).filter(Boolean));
+    while (used.has(port)) port++;
+    const input: InputConfig =
+      fam === 'ndi'
+        ? { id, name: t('Input {n}', { n }), kind: 'ndi', url: '', listen: false, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false }
+        : { id, name: t('Input {n}', { n }), kind: 'srt', url: '', port, latency: 120, listen: true, ndiSource: '', device: 0, width: 1920, height: 1080, fps: 25, buffer: 2, hwDecode: false };
+    edit((c) => {
+      (c.inputs ??= []).push(input);
+      const cc = c.channels[chIndex];
+      cc.sources = [...(cc.sources ?? []), id];
+    });
+    setSel(`src:${id}`);
+  };
+  const selSrc = sel.startsWith('src:') ? inputOf(sel.slice(4)) : undefined;
+
   const removeSelected = async () => {
+    if (selSrc) {
+      editCh((c) => {
+        c.sources = (c.sources ?? []).filter((x) => x !== selSrc.id);
+        if (!c.sources.length) delete c.sources;
+        if (c.background === selSrc.id) delete c.background;
+      });
+      setSel('program');
+      return;
+    }
     if (selDest) {
       editCh((c) => {
         const list = listOf(outputsOf(c, selDest.picture), selDest.kind) as { id: string }[];
@@ -647,6 +722,11 @@ export function Outputs() {
       window.removeEventListener('pointerup', up);
       setWire(null);
       const target = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-node]')?.dataset.node;
+      // From a source: onto the program, it goes under the graphics.
+      if (from.startsWith('src:')) {
+        if (target === 'program') editCh((c) => void (c.background = from.slice(4)));
+        return;
+      }
       const targetPic = target?.startsWith('pic:') ? target.slice(4) : undefined;
       if (moving) {
         if (targetPic) moveDest(moving, targetPic);
@@ -781,6 +861,20 @@ export function Outputs() {
                     </span>
                   </div>
                   <span className="oc-tool-sep" aria-hidden="true" />
+                  <div className="oc-tool-group" role="group" aria-label={t('Sources')}>
+                    <span className="oc-tool-label">{t('Sources')}</span>
+                    {SRC_FAMILIES.map((f) => {
+                      const look = famLook(f);
+                      const Icon = look.icon;
+                      const missing = (f === 'sdi' || f === 'st2110') && !inputs.some((i) => familyOf(i.kind) === f);
+                      return (
+                        <button key={f} className={`oc-tool ${missing ? 'unavailable' : ''}`} aria-disabled={missing} onClick={() => addSource(f)} title={missing ? (f === 'sdi' ? t('Define SDI inputs in Hardware') : t('Define ST 2110 input flows in Hardware')) : t('Add a {kind} source', { kind: t(look.label) })}>
+                          <Icon size={15} color={look.color} /> {t(look.label)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="oc-tool-sep" aria-hidden="true" />
                   <div className="oc-tool-group" role="group" aria-label={t('Destinations')}>
                     <span className="oc-tool-label">{t('Destinations')}</span>
                     {DEST_KINDS.map((k) => {
@@ -799,8 +893,13 @@ export function Outputs() {
               <div className="oc-body">
                 <div {...cv.viewport} className={`oc-canvas ${cv.viewport.className}`} onPointerDown={(e) => (setAddMenu(null), cv.viewport.onPointerDown(e))}>
                   <div ref={planeRef} data-canvas-void className={`oc-plane ${wire ? (wire.moving ? 'wiring-in' : 'wiring-out') : ''}`} style={{ width, height, ...cv.spaceStyle }} onPointerDown={() => setAddMenu(null)}>
+                    {srcIds.length > 0 && (
+                      <span className="oc-col" style={{ left: colX('source') }}>
+                        {t('Sources')}
+                      </span>
+                    )}
                     <span className="oc-col" style={{ left: colX('program') }}>
-                      {t('Source')}
+                      {srcIds.length ? t('Program') : t('Source')}
                     </span>
                     <span className="oc-col" style={{ left: colX('picture') }}>
                       {t('Formats')}
@@ -819,6 +918,24 @@ export function Outputs() {
                         const y2 = b.y + 27;
                         const c = Math.max(40, (x2 - x1) / 2);
                         const d = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`;
+                        if (e.src)
+                          return (
+                            <g key={`${e.from}-${e.to}`} className="oc-wire-g">
+                              <path d={d} stroke={e.color} />
+                              <path
+                                d={d}
+                                className="oc-wire-hit"
+                                onPointerDown={(ev) => {
+                                  ev.stopPropagation();
+                                  if (ev.button !== 0) return;
+                                  editCh((c) => void delete c.background);
+                                  setSel(e.from);
+                                }}
+                              >
+                                <title>{t('Click to remove (the source stays, not connected)')}</title>
+                              </path>
+                            </g>
+                          );
                         if (!e.dest) return <path key={`${e.from}-${e.to}`} d={d} stroke={e.color} />;
                         const dest = e.dest;
                         return (
@@ -850,6 +967,16 @@ export function Outputs() {
                           return <path className="oc-wire-live" d={`M${x1},${y1} C${x1 + c},${y1} ${wire.x - c},${wire.y} ${wire.x},${wire.y}`} stroke={KIND.picture.color} />;
                         })()}
                       {wire &&
+                        wire.from.startsWith('src:') &&
+                        pos[wire.from] &&
+                        (() => {
+                          const a = pos[wire.from];
+                          const x1 = a.x + widthOf(wire.from);
+                          const y1 = a.y + 27;
+                          const c = Math.max(40, Math.abs(wire.x - x1) / 2);
+                          return <path className="oc-wire-live" d={`M${x1},${y1} C${x1 + c},${y1} ${wire.x - c},${wire.y} ${wire.x},${wire.y}`} stroke={KIND.source.color} />;
+                        })()}
+                      {wire &&
                         !wire.from &&
                         wire.moving &&
                         pos[wire.moving] &&
@@ -862,8 +989,8 @@ export function Outputs() {
                         })()}
                     </svg>
                     {nodes.map((n) => {
-                      const k = KIND[n.kind];
-                      const Icon = k.icon;
+                      const k = { ...KIND[n.kind], ...(n.color ? { color: n.color } : {}) };
+                      const Icon = n.icon ?? k.icon;
                       return (
                         <div key={n.id} data-node={n.id} className={`oc-node ${n.kind} ${n.id === selNode?.id ? 'sel' : ''} ${n.on === false ? 'off' : ''} ${n.loose ? 'loose' : ''}`} style={{ left: pos[n.id].x, top: pos[n.id].y, width: widthOf(n.id), ['--k' as string]: k.color }} onPointerDown={(e) => grab(e, n.id)} onDoubleClick={() => setPanel(true)}>
                           <div className="oc-node-head">
@@ -872,7 +999,7 @@ export function Outputs() {
                             </span>
                             <span className="grow">
                               <small>
-                                {t(k.label)}
+                                {n.label ?? t(k.label)}
                                 {n.badge && <span className="vs-badge">{n.badge}</span>}
                               </small>
                               <strong title={n.title}>{n.title}</strong>
@@ -892,10 +1019,12 @@ export function Outputs() {
                             )}
                           </div>
                           {n.kind === 'picture' && <span className="oc-port in" />}
-                          {n.kind !== 'program' && n.kind !== 'picture' && (
+                          {n.kind !== 'program' && n.kind !== 'picture' && n.kind !== 'source' && (
                             <span className="oc-port in grab" title={t('Drag to a format to feed this output from it')} onPointerDown={(e) => startWire(e, allDests.find((d) => d.value.id === n.id)!.picture, n.id)} />
                           )}
                           {n.kind === 'program' && <span className="oc-port out" />}
+                          {n.kind === 'program' && srcIds.length > 0 && <span className="oc-port in" />}
+                          {n.kind === 'source' && <span className="oc-port out grab" title={t('Drag to the program to put this video under the graphics')} onPointerDown={(e) => startWire(e, n.id)} />}
                           {n.kind === 'picture' && <span className="oc-port out grab" title={t('Drag to an output to feed it, or into the empty canvas to add one')} onPointerDown={(e) => startWire(e, n.id.slice(4))} />}
                           <ResizeCorner onPointerDown={(e) => cv.resize(e, (w) => setWidth(n.id, w))} />
                         </div>
@@ -932,10 +1061,10 @@ export function Outputs() {
 
                 <aside className="oc-inspector">
                   {selNode && (
-                    <div className="oc-ins-head" style={{ ['--k' as string]: KIND[selNode.kind].color }}>
+                    <div className="oc-ins-head" style={{ ['--k' as string]: selNode.color ?? KIND[selNode.kind].color }}>
                       <span className="oc-swatch" />
                       <div className="grow">
-                        <small>{t(KIND[selNode.kind].label)}</small>
+                        <small>{selNode.label ?? t(KIND[selNode.kind].label)}</small>
                         <strong>
                           {selNode.title}
                           {/* The notes of the panel (filled while it renders, below). */}
@@ -943,7 +1072,7 @@ export function Outputs() {
                         </strong>
                       </div>
                       {selDest && selDest.kind !== 'html5' && <OnSwitch on={isOn(selDest)} onChange={(v) => setOn(selDest.value.id, v)} label={isOn(selDest) ? tc('output', 'On') : tc('output', 'Off')} />}
-                      {(selDest || (selPic && selPic.id !== 'main')) && (
+                      {(selDest || selSrc || (selPic && selPic.id !== 'main')) && (
                         <button className="icon-btn ghost" title={t('Remove')} onClick={removeSelected}>
                           <Trash2 size={15} />
                         </button>
@@ -954,6 +1083,48 @@ export function Outputs() {
                     </div>
                   )}
                   {selDest && !selDest.picture && note(t('Not connected: this destination is kept but not started. Drag a wire from a format to its input to send it again.'))}
+
+                  {selNode?.kind === 'source' &&
+                    selSrc &&
+                    (() => {
+                      const fam = familyOf(selSrc.kind);
+                      const placed = new Set(ch.sources ?? []);
+                      const choices = inputs.filter((i) => familyOf(i.kind) === fam && (i.id === selSrc.id || !placed.has(i.id)));
+                      const wired = ch.background === selSrc.id;
+                      return (
+                        <>
+                          <Field label={t('Input')}>
+                            <select
+                              value={selSrc.id}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                editCh((c) => {
+                                  c.sources = (c.sources ?? []).map((x) => (x === selSrc.id ? next : x));
+                                  if (c.background === selSrc.id) c.background = next;
+                                });
+                                setSel(`src:${next}`);
+                              }}
+                            >
+                              {choices.map((i) => (
+                                <option key={i.id} value={i.id}>
+                                  {i.name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label={t('Program')}>
+                            <select value={wired ? 'under' : ''} onChange={(e) => editCh((c) => void (e.target.value ? (c.background = selSrc.id) : delete c.background))}>
+                              <option value="under">{t('Under the graphics')}</option>
+                              <option value="">{t('Not connected')}</option>
+                            </select>
+                          </Field>
+                          <button type="button" className="btn small oc-hw-edit" onClick={() => setMode('inputs')}>
+                            <Pencil size={13} /> {t('Edit in Inputs')}
+                          </button>
+                          {note(t('The graphics of the channel are keyed over this video by the server: every destination gets the full picture.'))}
+                        </>
+                      );
+                    })()}
 
                   {selNode?.kind === 'program' && (
                     <>
@@ -1178,44 +1349,67 @@ export function Outputs() {
                     (() => {
                       const o = selDest.value as SdiOutput;
                       const def = hw.sdi.outputs.find((d) => d.id === o.hardware);
-                      const card = def && hw.sdi.cards.find((c) => c.id === def.card);
                       return (
                         <>
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<SdiOutput>((d) => void (d.name = e.target.value))} />
                           </Field>
-                          <Field label={t('SDI output')} hint={t('The fill (+ key) connectors declared in Hardware.')}>
-                            <select
-                              value={o.hardware ?? ''}
-                              onChange={(e) =>
-                                editDest<SdiOutput>((d) => {
-                                  const prev = hw.sdi.outputs.find((x) => x.id === d.hardware);
-                                  const next = hw.sdi.outputs.find((x) => x.id === e.target.value);
-                                  if (prev && d.name === prev.name && next) d.name = next.name;
-                                  d.hardware = e.target.value;
-                                  fillSdi(d, hw);
-                                })
-                              }
-                            >
-                              {!def && <option value="">{t('— choose —')}</option>}
-                              {hw.sdi.outputs.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.name} — {sdiOutputLabel(hw, d)}
-                                  {d.id !== o.hardware && usedHw.has(d.id) ? ` (${t('in use')})` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
+                          {(() => {
+                            // A card, then one of its outputs still free (a keyer pair is one output).
+                            const pick = (d: SdiOutput, next: (typeof hw.sdi.outputs)[number]) => {
+                              const prev = hw.sdi.outputs.find((x) => x.id === d.hardware);
+                              if (!prev || d.name === prev.name) d.name = next.name;
+                              d.hardware = next.id;
+                              fillSdi(d, hw);
+                            };
+                            const free = (cardId: string) => hw.sdi.outputs.filter((d) => d.card === cardId && (d.id === o.hardware || !usedHw.has(d.id)));
+                            const cardId = def?.card ?? '';
+                            return (
+                              <>
+                                <Field label={t('Card')}>
+                                  <select
+                                    value={cardId}
+                                    onChange={(e) => {
+                                      const next = free(e.target.value)[0];
+                                      if (next) editDest<SdiOutput>((d) => pick(d, next));
+                                    }}
+                                  >
+                                    {!def && <option value="">{t('— choose —')}</option>}
+                                    {hw.sdi.cards.map((c) => {
+                                      const n = free(c.id).length;
+                                      return (
+                                        <option key={c.id} value={c.id} disabled={!n && c.id !== cardId}>
+                                          {c.name}
+                                          {!n && c.id !== cardId ? ` (${t('no free output')})` : ''}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                </Field>
+                                <Field label={t('Output')} hint={t('The outputs set on the card in Hardware.')}>
+                                  <select
+                                    value={o.hardware ?? ''}
+                                    disabled={!cardId}
+                                    onChange={(e) => {
+                                      const next = hw.sdi.outputs.find((x) => x.id === e.target.value);
+                                      if (next) editDest<SdiOutput>((d) => pick(d, next));
+                                    }}
+                                  >
+                                    {!def && <option value="">{t('— choose —')}</option>}
+                                    {free(cardId).map((d) => (
+                                      <option key={d.id} value={d.id}>
+                                        {sdiPorts(d)} · {modeLabel(d.mode)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                              </>
+                            );
+                          })()}
                           {def && (
                             <dl className="oc-hw-sum">
-                              <dt>{t('Card')}</dt>
-                              <dd>
-                                {card?.name ?? '?'} · {t('device {n}', { n: o.device })}
-                              </dd>
-                              <dt>{t('Signal')}</dt>
-                              <dd>
-                                {modeLabel(def.mode)} · {sdiOutputLabel(hw, def).split(' · ').pop()}
-                              </dd>
+                              <dt>Desktop Video</dt>
+                              <dd>{t('device {n}', { n: o.device })}</dd>
                               <dt>Genlock</dt>
                               <dd>{def.genlock ? t('Yes') : t('No')}</dd>
                             </dl>

@@ -351,6 +351,7 @@ fn render_loop(
     done: Done,
     stats: Arc<PictureStats>,
     cache: Arc<FrameCache>,
+    background: Option<String>,
 ) {
     crate::rt::prioritize(crate::rt::Work::Render);
     // Nothing loaded: the slate (or nothing), drawn once, the same frame every time.
@@ -371,6 +372,14 @@ fn render_loop(
                     })
                 })
                 .clone(),
+        };
+        // A live source under the graphics.
+        let frame = match background
+            .as_deref()
+            .and_then(|id| renderer.live_picture(id))
+        {
+            Some(live) => Arc::new(cg_render::over_live(&frame, &live)),
+            None => frame,
         };
         stats.rendered(t.elapsed());
         let mut d = lock(&done);
@@ -432,10 +441,11 @@ fn start_pictures(state: &Shared, cfg: &ChannelConfig) -> Vec<Picture> {
                         let live = state.inputs.clone();
                         let (rx, done, stats) = (rx.clone(), done.clone(), stats.clone());
                         let cache = cache.clone();
+                        let background = cfg.background.clone();
                         move || {
                             let mut r = Renderer::new(assets);
                             r.set_live(live);
-                            render_loop(r, out, tz, slate, rx, done, stats, cache)
+                            render_loop(r, out, tz, slate, rx, done, stats, cache, background)
                         }
                     })
                     .expect("spawn render thread")

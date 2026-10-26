@@ -305,6 +305,37 @@ enum Enter {
     Draw,
 }
 
+/// The graphics of `frame` keyed over a live picture (the channel's
+/// source): the picture scaled to fit the frame, centred on black, the
+/// graphics laid over it. The frame is opaque.
+pub fn over_live(frame: &Frame, live: &Pixmap) -> Frame {
+    let (w, h) = (frame.width, frame.height);
+    let mut pm = pool::pixmap(w, h);
+    if (live.width(), live.height()) == (w, h) {
+        pm.data_mut().copy_from_slice(live.data());
+    } else {
+        pm.fill(tiny_skia::Color::BLACK);
+        let k = (w as f32 / live.width().max(1) as f32).min(h as f32 / live.height().max(1) as f32);
+        let tf = Transform::from_translate(
+            (w as f32 - live.width() as f32 * k) / 2.0,
+            (h as f32 - live.height() as f32 * k) / 2.0,
+        )
+        .pre_scale(k, k);
+        let paint = PixmapPaint {
+            quality: tiny_skia::FilterQuality::Bilinear,
+            ..PixmapPaint::default()
+        };
+        pm.draw_pixmap(0, 0, live.as_ref(), &paint, tf, None);
+    }
+    scaled::composite_bytes(&mut pm, &frame.data, w, h, 0, 0, 1.0, None);
+    Frame {
+        width: w,
+        height: h,
+        data: pm.take(),
+        captured_at: frame.captured_at,
+    }
+}
+
 /// Output raster of a channel. Projects designed for another size are
 /// scaled to fit (letterboxed) and their timelines are re-timed.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2819,6 +2850,25 @@ mod tests {
             n < 20_000,
             "moving, {n} bytes differ by more than 1 (max {max})"
         );
+    }
+
+    /// Over a live picture: the graphics where they draw, the picture
+    /// (scaled to fit, on black) elsewhere; opaque.
+    #[test]
+    fn graphics_are_keyed_over_the_live_picture() {
+        use super::*;
+        let mut g = Frame::blank(4, 2);
+        // A half-transparent red pixel at (0, 0) (premultiplied).
+        g.data[..4].copy_from_slice(&[128, 0, 0, 128]);
+        let mut live = Pixmap::new(2, 1).unwrap();
+        live.fill(tiny_skia::Color::from_rgba8(0, 0, 200, 255));
+        let f = over_live(&g, &live);
+        let px = |x: usize, y: usize| &f.data[(y * 4 + x) * 4..(y * 4 + x) * 4 + 4];
+        assert!(f.data.chunks(4).all(|p| p[3] == 255));
+        // Red over blue at (0, 0), blue elsewhere (2×1 scaled to 4×2).
+        assert_eq!(px(0, 0)[0], 128);
+        assert!(px(0, 0)[2] > 90 && px(0, 0)[2] < 110);
+        assert_eq!(px(3, 1), &[0, 0, 200, 255]);
     }
 
     #[test]

@@ -151,6 +151,10 @@ export interface ChannelConfig {
   frameRate: FrameRate;
   /** Interlaced SDI (1080i50): the frame rate counts fields; the SDI outputs weave two images into a frame. */
   interlaced?: boolean;
+  /** The live input under the graphics (a source wired to the program). */
+  background?: string | null;
+  /** The live inputs placed as sources in the canvas. */
+  sources?: string[];
   projectId?: string | null;
   outputs: OutputsConfig;
   renditions?: Rendition[];
@@ -333,6 +337,18 @@ export interface DetectedCard {
   persistentId?: string | null;
   profile?: string | null;
   profiles: string[];
+  /** The driver says the card has an internal / external keyer. */
+  internalKeyer?: boolean;
+  externalKeyer?: boolean;
+}
+
+/** What a card can key: on pairs of connectors (numbers as printed, the first one first). */
+export interface Keying {
+  internal: boolean;
+  external: boolean;
+  pairs: [number, number][];
+  /** One Desktop Video profile for the whole card (8K Pro). */
+  cardProfile: boolean;
 }
 
 /** The bracket of a model: connector numbers top to bottom (empty: numeric order). */
@@ -344,7 +360,7 @@ export interface DeckLinkModel {
   order: number[];
   reference?: boolean | null;
   ports: PortCap[];
-  modes: { id: string; profile?: string | null; roles: ('fill' | 'key' | 'input')[] }[];
+  keying: Keying;
 }
 
 /** A network interface and its link. */

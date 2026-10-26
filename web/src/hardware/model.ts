@@ -31,14 +31,19 @@ export const portsOf = (c: SdiCard): PortCap[] => {
 /** The Desktop Video device of a connector: as detected, else one per connector (but on single-device cards). */
 export const deviceOf = (c: SdiCard, connector: number) => c.devices?.[connector] ?? (modelOf(c.model).oneDevice ? c.device : c.device + connector);
 
-/** How a card looks from the back of the machine. */
+/** How a card looks from the back of the machine, and what it can key. */
 export interface Bracket {
   jack: 'din' | 'bnc';
   /** Connector numbers (1 = SDI 1) from the top of the bracket down; the REF comes after. */
   order: number[];
   reference: boolean;
   ports: PortCap[];
-  modes: DeckLinkModel['modes'];
+  internalKey: boolean;
+  externalKey: boolean;
+  /** Keyer pairs, connectors from 0 (the first one first). */
+  pairs: [number, number][];
+  /** One Desktop Video profile for the whole card (8K Pro): a keyed pair puts every pair in full duplex. */
+  cardProfile: boolean;
 }
 
 /** The table entry of a card's model (crates/cg-server/src/decklink.rs): by name, else by the hand-declared model. */
@@ -52,33 +57,37 @@ export function bracketOf(c: SdiCard, models: DeckLinkModel[], det?: DetectedCar
   const n = c.connectors.length;
   const m = modelEntry(c, models);
   const numeric = Array.from({ length: n }, (_, i) => i + 1);
+  // Not in the table: keyer pairs 1+2, 3+4… when the driver says the card keys.
+  const keys = { internal: !!det?.internalKeyer, external: !!det?.externalKeyer };
+  const pairs: [number, number][] = m ? m.keying.pairs.map(([a, b]) => [a - 1, b - 1]) : keys.internal || keys.external ? Array.from({ length: Math.floor(n / 2) }, (_, i) => [2 * i, 2 * i + 1]) : [];
   return {
     jack: m?.jack ?? (n > 4 ? 'din' : 'bnc'),
     order: m && m.order.length === n ? m.order : numeric,
     reference: m?.reference ?? det?.hasReference ?? false,
     ports: m && m.ports.length === n ? m.ports : det && det.ports.length === n ? det.ports : portsOf(c),
-    modes: m?.modes ?? [],
+    internalKey: m ? m.keying.internal : keys.internal,
+    externalKey: m ? m.keying.external : keys.external,
+    pairs,
+    cardProfile: !!m?.keying.cardProfile,
   };
 }
 
-export type Role = 'unused' | 'fill' | 'key' | 'input';
+/**
+ * What a connector does: an output (fill only), the fill or the key of a
+ * Fill + Key pair, an input, or the input / output of an internal keyer.
+ */
+export type Role = 'unused' | 'output' | 'fill' | 'key' | 'input' | 'kin' | 'kout';
 
 /** What a connector does, and for which output or input. */
 export function roleOf(hw: HardwareConfig, card: string, connector: number): { role: Role; output?: SdiOutputDef; input?: HardwareConfig['sdi']['inputs'][number] } {
   for (const o of hw.sdi.outputs) {
     if (o.card !== card) continue;
-    if (o.fill === connector) return { role: 'fill', output: o };
-    if (o.mode === 'externalKey' && o.key === connector) return { role: 'key', output: o };
+    if (o.fill === connector) return { role: o.mode === 'fillOnly' ? 'output' : o.mode === 'internalKey' ? 'kin' : 'fill', output: o };
+    if (o.mode !== 'fillOnly' && o.key === connector) return { role: o.mode === 'internalKey' ? 'kout' : 'key', output: o };
   }
   const input = hw.sdi.inputs.find((i) => i.card === card && i.connector === connector);
   return input ? { role: 'input', input } : { role: 'unused' };
 }
-
-export const MODES: { value: SdiMode; label: string }[] = [
-  { value: 'externalKey', label: 'Fill + Key (external keyer, 2 SDI)' },
-  { value: 'internalKey', label: "Internal keyer (over the card's SDI input)" },
-  { value: 'fillOnly', label: 'Fill only' },
-];
 
 export const ENCODINGS: { value: St2110Flow['encoding']; label: string }[] = [
   { value: 'fillKey', label: 'Fill + Key · 2 streams (YCbCr 4:2:2 10-bit + KEY)' },
@@ -104,14 +113,16 @@ export const CLOCKS: ClockReference[] = ['free', 'ptp', 'decklink'];
 
 export const clockLabel = (r: ClockReference) => (r === 'ptp' ? 'PTP' : r === 'decklink' ? 'DeckLink (genlock)' : t('Free'));
 
+/** "SDI 1 + 2" (a keyer's pair) or "SDI 4". */
+export const sdiPorts = (d: SdiOutputDef) => (d.mode !== 'fillOnly' && d.key != null ? `SDI ${d.fill + 1} + ${d.key + 1}` : `SDI ${d.fill + 1}`);
+
 /** "Duo 2 · SDI 1 + 2". */
 export function sdiOutputLabel(hw: HardwareConfig, d: SdiOutputDef): string {
   const card = hw.sdi.cards.find((c) => c.id === d.card);
-  const ports = d.mode === 'externalKey' && d.key != null ? `SDI ${d.fill + 1} + ${d.key + 1}` : `SDI ${d.fill + 1}`;
-  return `${card?.name ?? '?'} · ${ports}`;
+  return `${card?.name ?? '?'} · ${sdiPorts(d)}`;
 }
 
-export const modeLabel = (m: SdiMode) => (m === 'fillOnly' ? t('Fill only') : m === 'internalKey' ? t('Internal keyer') : 'Fill + Key');
+export const modeLabel = (m: SdiMode) => (m === 'fillOnly' ? t('Output') : m === 'internalKey' ? t('Internal keyer') : 'Fill + Key');
 
 /** An SDI destination takes its settings from its Hardware output. */
 export function fillSdi(o: SdiOutput, hw: HardwareConfig) {

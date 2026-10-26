@@ -5,7 +5,7 @@ import { friendlyError } from '../ui/serverError';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
 import { SaveBar } from '../settings/ui';
 import { useServerConfig } from '../settings/serverConfig';
-import { joinAddr, splitAddr, type ChannelConfig, type DetectedCard, type HardwareConfig, type HardwareInfo, type InputConfig, type InputInfo, type Nic, type OutputState, type OutputsConfig, type SdiCard, type SdiOutputDef, type ServerConfig, type St2110Flow } from '../outputs/types';
+import { joinAddr, splitAddr, type ChannelConfig, type DetectedCard, type HardwareConfig, type HardwareInfo, type InputConfig, type InputInfo, type Nic, type OutputState, type OutputsConfig, type SdiCard, type ServerConfig, type St2110Flow } from '../outputs/types';
 import { navigate } from '../router';
 import { api, can, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
@@ -23,7 +23,7 @@ type Section = 'sdi' | 'st2110';
 const sectionOf = (hash: string): Section => (hash === '#st2110' ? 'st2110' : 'sdi');
 
 /** The colour of each connector role on the drawing (none: free). */
-const RING: Record<Role | 'ref', string> = { fill: '#8fa3ff', key: '#a78bfa', input: '#22c55e', ref: '#f5c542', unused: '' };
+const RING: Record<Role | 'ref', string> = { output: '#8fa3ff', fill: '#8fa3ff', key: '#a78bfa', input: '#22c55e', kin: '#22c55e', kout: '#a78bfa', ref: '#f5c542', unused: '' };
 
 type Statuses = { outputs: Record<string, Record<string, OutputState>>; inputs: InputInfo[] };
 
@@ -57,9 +57,6 @@ function userOf(cfg: ServerConfig, id: string) {
     }
   return undefined;
 }
-
-/** Every destination id of a channel (they are unique across its pictures). */
-const destIds = (ch: ChannelConfig) => picturesOf(ch).flatMap((p) => Object.values(p.outputs).flatMap((list) => (Array.isArray(list) ? list.map((d: { id: string }) => d.id) : [])));
 
 const channelLabel = (cfg: ServerConfig, ch: ChannelConfig) => {
   const loc = (cfg.locations ?? []).length > 1 ? cfg.locations?.find((l) => l.id === ch.location) : undefined;
@@ -204,10 +201,7 @@ function SdiView({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det: Ha
     editHw((h) => {
       const id = nextId('card', h.sdi.cards.map((c) => c.id));
       const same = h.sdi.cards.filter((c) => c.modelName === d.modelName).length;
-      const modes = models.find((m) => m.name.toLowerCase() === d.modelName.toLowerCase())?.modes ?? [];
-      // The mode the card is already in (its active profile).
-      const mode = modes.find((m) => m.profile && m.profile === d.profile)?.id;
-      h.sdi.cards.push({ id, name: same ? `${d.modelName} (${same + 1})` : d.modelName, model: d.legacyModel, device: d.devices[0] ?? 0, connectors: Array.from({ length: d.connectors }, () => ({ name: '' })), modelName: d.modelName, persistentId: d.id, devices: d.devices, ...(mode ? { mode } : {}), genlock: false, genlockOffset: 0 });
+      h.sdi.cards.push({ id, name: same ? `${d.modelName} (${same + 1})` : d.modelName, model: d.legacyModel, device: d.devices[0] ?? 0, connectors: Array.from({ length: d.connectors }, () => ({ name: '' })), modelName: d.modelName, persistentId: d.id, devices: d.devices, genlock: false, genlockOffset: 0 });
       h.sdi.ignored = (h.sdi.ignored ?? []).filter((x) => x !== d.id);
       if (!h.sdi.ignored.length) delete h.sdi.ignored;
     });
@@ -271,15 +265,18 @@ function SdiView({ hw, det, cfg, editHw, status }: { hw: HardwareConfig; det: Ha
   );
 }
 
+/** What a connector can be set to (its select): free, an input, an output, or the first connector of a keyer pair. */
+type Choice = '' | 'in' | 'out' | 'fk' | 'ik';
+
 /** An adopted card: the bracket on the left, what each connector does on the right. */
 function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { card: SdiCard; hw: HardwareConfig; cfg: ServerConfig; det: HardwareInfo | null; found?: DetectedCard; bracket: Bracket; editHw: EditHw; status: Statuses }) {
   const [sel, setSel] = useState<number | null>(null);
   const n = card.connectors.length;
-  const mode = bracket.modes.find((m) => m.id === card.mode);
-  const roles = new Set<string>(mode?.roles ?? ['fill', 'key', 'input']);
   // The rows in Desktop Video order (1, 5, 2, 6… on a Quad 2), the REF last.
   const rows = Array.from({ length: n }, (_, i) => i).sort((a, b) => deviceOf(card, a) - deviceOf(card, b) || a - b);
   const genlock = !!card.genlock || hw.sdi.outputs.some((o) => o.card === card.id && o.genlock);
+  const pairOf = (k: number) => bracket.pairs.find(([a, b]) => a === k || b === k);
+  const portOf = (k: number) => bracket.ports[k] ?? 'both';
 
   const removeCard = async () => {
     const defs = [...hw.sdi.outputs.filter((o) => o.card === card.id), ...hw.sdi.inputs.filter((i) => i.card === card.id)];
@@ -293,26 +290,6 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
     });
   };
 
-  /** Switches the card to a mode: connectors doing what it does not allow are freed. */
-  const setMode = async (id: string) => {
-    const allowed = new Set(bracket.modes.find((m) => m.id === id)?.roles ?? []);
-    const outs = hw.sdi.outputs.filter((o) => o.card === card.id && !allowed.has('fill'));
-    const keys = hw.sdi.outputs.filter((o) => o.card === card.id && o.key != null && !allowed.has('key'));
-    const ins = hw.sdi.inputs.filter((i) => i.card === card.id && !allowed.has('input'));
-    if (!(await confirmUsers(cfg, [...outs, ...ins].map((d) => d.id), card.name))) return;
-    editHw((h, all) => {
-      for (const d of [...outs, ...ins]) dropUsers(all, d.id);
-      h.sdi.outputs = h.sdi.outputs.filter((o) => !outs.some((x) => x.id === o.id));
-      h.sdi.inputs = h.sdi.inputs.filter((i) => !ins.some((x) => x.id === i.id));
-      for (const o of h.sdi.outputs)
-        if (keys.some((k) => k.id === o.id)) {
-          o.key = null;
-          if (o.mode === 'externalKey') o.mode = 'fillOnly';
-        }
-      h.sdi.cards.find((x) => x.id === card.id)!.mode = id;
-    });
-  };
-
   const setRef = (on: boolean, offset = card.genlockOffset ?? 0) =>
     editHw((h) => {
       const c = h.sdi.cards.find((x) => x.id === card.id)!;
@@ -321,81 +298,69 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
       for (const o of h.sdi.outputs) if (o.card === card.id) o.genlock = on;
     });
 
-  /** What a connector does, as the value of its select. */
-  const valueOf = (k: number): string => {
-    const r = roleOf(hw, card.id, k);
-    if (r.role === 'fill' && r.output) {
-      const u = userOf(cfg, r.output.id);
-      return u ? `fill:${u.ch.id}` : `def:${r.output.id}`;
+  /** The value of a connector's select ('' for the second connector of a keyer: it is locked). */
+  const valueOf = (k: number): Choice => {
+    const r = roleOf(hw, card.id, k).role;
+    return r === 'input' ? 'in' : r === 'output' ? 'out' : r === 'fill' ? 'fk' : r === 'kin' ? 'ik' : '';
+  };
+  /** A keyed pair other than `pair`: the card (8K Pro: one profile) is then in full duplex. */
+  const fullElsewhere = (pair?: [number, number]) => bracket.cardProfile && hw.sdi.outputs.some((o) => o.card === card.id && o.mode !== 'fillOnly' && (!pair || (o.fill !== pair[0] && o.fill !== pair[1])));
+  /** Why a connector cannot take a choice ('' when it can). */
+  const why = (k: number, c: Choice): string => {
+    const port = portOf(k);
+    const pair = pairOf(k);
+    if (c === 'in' && port === 'out') return t('output only');
+    if (c === 'out' && port === 'in') return t('input only');
+    if (c === 'fk' || c === 'ik') {
+      if (!pair || pair[0] !== k) return t('no keyer on this connector');
+      if (c === 'fk' && !bracket.externalKey) return t('no external keyer');
+      if (c === 'ik' && !bracket.internalKey) return t('no internal keyer');
+      if (c === 'fk' && (port === 'in' || portOf(pair[1]) === 'in')) return t('needs two outputs');
+      if (c === 'ik' && (port === 'out' || portOf(pair[1]) === 'in')) return t('needs an input and an output');
+      // The card's profile puts every pair in full duplex: no two outputs or two inputs on a pair.
+      if (bracket.cardProfile) {
+        const clash = bracket.pairs.some(([a, b]) => (a !== pair[0] && valueOf(a) === 'out') || (b !== pair[1] && roleOf(hw, card.id, b).role === 'input'));
+        if (clash) return t('the other pair is not in full duplex');
+      }
+      return '';
     }
-    if (r.role === 'key' && r.output) return `key:${r.output.id}`;
-    if (r.role === 'input' && r.input) {
-      const i = (cfg.inputs ?? []).find((x) => x.kind === 'sdi' && x.hardware === r.input!.id);
-      return i ? `in:${i.id}` : `indef:${r.input.id}`;
+    // A keyed pair elsewhere on an 8K Pro: each pair is one input then one output.
+    if (pair && fullElsewhere(pair)) {
+      if (c === 'out' && pair[0] === k) return t('full duplex: input on SDI {a}, output on SDI {b}', { a: pair[0] + 1, b: pair[1] + 1 });
+      if (c === 'in' && pair[1] === k) return t('full duplex: input on SDI {a}, output on SDI {b}', { a: pair[0] + 1, b: pair[1] + 1 });
     }
     return '';
   };
-  const defLabel = (d: SdiOutputDef) => {
-    const u = userOf(cfg, d.id);
-    return u ? channelLabel(cfg, u.ch) : d.name;
-  };
 
-  /** Gives a connector something to do (or frees it). */
-  const assign = async (k: number, value: string) => {
-    const cur = roleOf(hw, card.id, k);
+  /** Gives a connector something to do (or frees it); a keyer takes the second connector of its pair. */
+  const assign = async (k: number, value: Choice) => {
     if (value === valueOf(k)) return;
-    const [kind, target] = [value.split(':')[0], value.slice(value.indexOf(':') + 1)];
-    // What goes: an output whose fill moves elsewhere keeps its def only when it goes to another channel.
-    const dropOut = cur.role === 'fill' && cur.output && kind !== 'fill' ? cur.output : undefined;
-    const dropIn = cur.role === 'input' && cur.input ? cur.input : undefined;
-    if (!(await confirmUsers(cfg, [dropOut?.id, dropIn?.id].filter((x): x is string => !!x), `SDI ${k + 1}`))) return;
+    const pair = pairOf(k);
+    const keyer = value === 'fk' || value === 'ik';
+    // What the connector (and, for a keyer, its partner) did goes.
+    const touched = new Set<number>([k, ...(keyer && pair ? [pair[1]] : [])]);
+    const cur = roleOf(hw, card.id, k);
+    if (cur.output && (cur.role === 'fill' || cur.role === 'kin' || cur.role === 'key' || cur.role === 'kout')) {
+      touched.add(cur.output.fill);
+      if (cur.output.key != null) touched.add(cur.output.key);
+    }
+    const outs = hw.sdi.outputs.filter((o) => o.card === card.id && (touched.has(o.fill) || (o.mode !== 'fillOnly' && o.key != null && touched.has(o.key))));
+    const ins = hw.sdi.inputs.filter((i) => i.card === card.id && touched.has(i.connector));
+    if (!(await confirmUsers(cfg, [...outs, ...ins].map((d) => d.id), `SDI ${k + 1}`))) return;
     editHw((h, all) => {
-      if (dropOut) {
-        dropUsers(all, dropOut.id);
-        h.sdi.outputs = h.sdi.outputs.filter((o) => o.id !== dropOut.id);
-      }
-      if (cur.role === 'key' && cur.output) {
-        const o = h.sdi.outputs.find((x) => x.id === cur.output!.id);
-        if (o) {
-          o.key = null;
-          o.mode = 'fillOnly';
-        }
-      }
-      if (dropIn) {
-        dropUsers(all, dropIn.id);
-        h.sdi.inputs = h.sdi.inputs.filter((i) => i.id !== dropIn.id);
-      }
-      if (kind === 'fill') {
-        const ch = all.channels.find((x) => x.id === target);
-        if (!ch) return;
-        // Named after the connector: unique among the outputs of a channel.
+      for (const d of [...outs, ...ins]) dropUsers(all, d.id);
+      h.sdi.outputs = h.sdi.outputs.filter((o) => !outs.some((x) => x.id === o.id));
+      h.sdi.inputs = h.sdi.inputs.filter((i) => !ins.some((x) => x.id === i.id));
+      if (value === 'out' || keyer) {
+        const key = keyer && pair ? pair[1] : null;
+        const id = nextId('sdi-out', h.sdi.outputs.map((o) => o.id));
+        h.sdi.outputs.push({ id, name: `${card.name} · SDI ${k + 1}${key != null ? ` + ${key + 1}` : ''}`, card: card.id, fill: k, key, mode: value === 'fk' ? 'externalKey' : value === 'ik' ? 'internalKey' : 'fillOnly', genlock });
+      } else if (value === 'in') {
+        // Its input in Video streams › Inputs, made with it.
         const name = `${card.name} · SDI ${k + 1}`;
-        let def = h.sdi.outputs.find((o) => o.card === card.id && o.fill === k);
-        if (def) dropUsers(all, def.id);
-        else {
-          def = { id: nextId('sdi-out', h.sdi.outputs.map((o) => o.id)), name, card: card.id, fill: k, key: null, mode: 'fillOnly', genlock };
-          h.sdi.outputs.push(def);
-        }
-        const id = nextId('sdi', destIds(ch));
-        (ch.outputs.sdi ??= []).push({ id, name: def.name || name, hardware: def.id, device: 0, externalKey: true, fillOnly: false, genlock: false });
-      } else if (kind === 'key') {
-        const o = h.sdi.outputs.find((x) => x.id === target);
-        if (!o) return;
-        o.key = k;
-        o.mode = 'externalKey';
-      } else if (kind === 'in') {
-        const i = target === 'new' ? undefined : (all.inputs ?? []).find((x) => x.id === target);
-        const def = i && h.sdi.inputs.find((d) => d.id === i.hardware);
-        if (def) {
-          def.card = card.id;
-          def.connector = k;
-        } else {
-          const name = i?.name ?? `${t('SDI input')} ${(all.inputs ?? []).filter((x) => x.kind === 'sdi').length + 1}`;
-          const id = nextId('sdi-in', h.sdi.inputs.map((d) => d.id));
-          h.sdi.inputs.push({ id, name, card: card.id, connector: k });
-          if (i) i.hardware = id;
-          else (all.inputs ??= []).push(newSdiInput(nextId('input', (all.inputs ?? []).map((x) => x.id)), name, id));
-        }
+        const id = nextId('sdi-in', h.sdi.inputs.map((d) => d.id));
+        h.sdi.inputs.push({ id, name, card: card.id, connector: k });
+        (all.inputs ??= []).push(newSdiInput(nextId('input', (all.inputs ?? []).map((x) => x.id)), name, id));
       }
     });
     setSel(k);
@@ -403,11 +368,12 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
 
   const signal = (k: number) => {
     const r = roleOf(hw, card.id, k);
-    if ((r.role === 'fill' || r.role === 'key') && r.output) {
+    if (r.output) {
       const u = userOf(cfg, r.output.id);
       const st = u && status.outputs[u.ch.id]?.[u.dest.id];
-      if (!u || !st) return <span className="muted">—</span>;
-      return st.ok ? <Sig dot="ok" text={formatOf(u.height, u.ch.frameRate, u.ch.interlaced)} /> : <Sig dot="err" text={st.message} />;
+      if (!u) return <span className="muted">{t('free')}</span>;
+      if (!st) return <span className="muted">{channelLabel(cfg, u.ch)}</span>;
+      return st.ok ? <Sig dot="ok" text={`${channelLabel(cfg, u.ch)} · ${formatOf(u.height, u.ch.frameRate, u.ch.interlaced)}`} /> : <Sig dot="err" text={st.message} />;
     }
     if (r.role === 'input' && r.input) {
       const i = (cfg.inputs ?? []).find((x) => x.kind === 'sdi' && x.hardware === r.input!.id);
@@ -418,6 +384,8 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
     return <span className="muted">—</span>;
   };
 
+  const TAG: Record<Role, string> = { unused: t('Free'), output: t('Output'), fill: 'Fill', key: 'Key', input: t('Input'), kin: t('Keyer input'), kout: t('Keyer output') };
+  const TAG_CLASS: Record<Role, string> = { unused: 'unused', output: 'fill', fill: 'fill', key: 'key', input: 'input', kin: 'input', kout: 'key' };
   const pill = !bracket.reference || !found || found.referenceLocked == null ? null : found.referenceLocked ? <span className="fio-pill ok">{`${t('REF locked')}${found.referenceFormat ? ` · ${found.referenceFormat}` : ''}`}</span> : <span className={`fio-pill ${genlock ? 'err' : 'warn'}`}>{genlock ? t('REF absent') : `${t('REF absent')} · ${t('internal clock')}`}</span>;
 
   return (
@@ -427,23 +395,13 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
         <span className="muted small">{[found ? placeOf(found) : null, found ? t('adopted') : t('not detected')].filter(Boolean).join(' · ')}</span>
         {pill}
         <div className="spacer" />
-        {bracket.modes.length > 0 ? (
-          <div className="seg">
-            {bracket.modes.map((m) => (
-              <button key={m.id} type="button" className={card.mode === m.id ? 'on' : ''} onClick={() => void setMode(m.id)}>
-                {m.id === 'fillKey' ? 'Fill + Key' : m.id === 'outputs' ? tn(n, '{n} output', '{n} outputs') : m.id === 'inputs' ? tn(n, '{n} input', '{n} inputs') : m.id}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="fio-legend">
-            <span style={{ ['--c' as string]: RING.fill }}>Fill</span>
-            <span style={{ ['--c' as string]: RING.key }}>Key</span>
-            <span style={{ ['--c' as string]: RING.input }}>{t('Input')}</span>
-            {bracket.reference && <span style={{ ['--c' as string]: RING.ref }}>REF</span>}
-            <span style={{ ['--c' as string]: 'var(--line-2)' }}>{t('Free')}</span>
-          </div>
-        )}
+        <div className="fio-legend">
+          <span style={{ ['--c' as string]: RING.output }}>{t('Output')}</span>
+          {(bracket.externalKey || bracket.internalKey) && <span style={{ ['--c' as string]: RING.key }}>Key</span>}
+          <span style={{ ['--c' as string]: RING.input }}>{t('Input')}</span>
+          {bracket.reference && <span style={{ ['--c' as string]: RING.ref }}>REF</span>}
+          <span style={{ ['--c' as string]: 'var(--line-2)' }}>{t('Free')}</span>
+        </div>
         <button className="icon-btn ghost" title={t('Remove the card')} onClick={() => void removeCard()}>
           <Trash2 size={15} />
         </button>
@@ -453,49 +411,40 @@ function CardPanel({ card, hw, cfg, det, found, bracket, editHw, status }: { car
         <div className="fio-ports">
           {rows.map((k) => {
             const r = roleOf(hw, card.id, k);
-            const port = bracket.ports[k] ?? 'both';
-            const canOut = port !== 'in';
-            const canIn = port !== 'out';
             const value = valueOf(k);
-            const keyDefs = hw.sdi.outputs.filter((o) => o.card === card.id && o.fill !== k && o.mode !== 'internalKey' && (o.key == null || o.mode !== 'externalKey' || o.key === k));
-            const sdiInputs = (cfg.inputs ?? []).filter((i) => i.kind === 'sdi');
+            const pair = pairOf(k);
+            // The second connector of a keyer: set by the first one.
+            const locked = (r.role === 'key' || r.role === 'kout') && r.output;
+            const opt = (c: Choice, label: string) => {
+              const no = why(k, c);
+              return (
+                <option key={c} value={c} disabled={!!no}>
+                  {no ? `${label} (${no})` : label}
+                </option>
+              );
+            };
+            const keyers = pair && pair[0] === k && (bracket.externalKey || bracket.internalKey);
             return (
               <div key={k} className={`fio-port ${sel === k ? 'sel' : ''}`} onClick={() => setSel(k)}>
                 <b>SDI {k + 1}</b>
-                <span className={`fio-tag ${r.role}`}>{r.role === 'fill' ? 'Fill' : r.role === 'key' ? 'Key' : r.role === 'input' ? t('Input') : t('Free')}</span>
-                <select value={value} aria-label={`SDI ${k + 1}`} className={value ? '' : 'none'} onChange={(e) => void assign(k, e.target.value)}>
-                  <option value="">—</option>
-                  {canOut && roles.has('fill') && (
-                    <optgroup label={t('Output · Fill')}>
-                      {cfg.channels.map((ch) => (
-                        <option key={ch.id} value={`fill:${ch.id}`}>
-                          {channelLabel(cfg, ch)}
-                        </option>
-                      ))}
-                      {value.startsWith('def:') && <option value={value}>{r.output?.name}</option>}
-                    </optgroup>
-                  )}
-                  {canOut && roles.has('key') && keyDefs.length > 0 && (
-                    <optgroup label={t('Output · Key')}>
-                      {keyDefs.map((d) => (
-                        <option key={d.id} value={`key:${d.id}`}>
-                          {defLabel(d)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {canIn && roles.has('input') && (
-                    <optgroup label={t('Input')}>
-                      {sdiInputs.map((i) => (
-                        <option key={i.id} value={`in:${i.id}`}>
-                          {i.name}
-                        </option>
-                      ))}
-                      {value.startsWith('indef:') && <option value={value}>{r.input?.name}</option>}
-                      <option value="in:new">{t('New input')}</option>
-                    </optgroup>
-                  )}
-                </select>
+                <span className={`fio-tag ${TAG_CLASS[r.role]}`}>{TAG[r.role]}</span>
+                {locked ? (
+                  <select value="" aria-label={`SDI ${k + 1}`} disabled>
+                    <option value="">{r.role === 'key' ? t('Key of SDI {n}', { n: r.output!.fill + 1 }) : t('Keyer output of SDI {n}', { n: r.output!.fill + 1 })}</option>
+                  </select>
+                ) : (
+                  <select value={value} aria-label={`SDI ${k + 1}`} className={value ? '' : 'none'} onChange={(e) => void assign(k, e.target.value as Choice)}>
+                    <option value="">— {t('Free')}</option>
+                    {opt('in', t('Input'))}
+                    {opt('out', t('Output'))}
+                    {keyers && (
+                      <optgroup label={t('In pair with SDI {n}', { n: pair[1] + 1 })}>
+                        {bracket.externalKey && opt('fk', t('Fill + Key (key on SDI {n})', { n: pair[1] + 1 }))}
+                        {bracket.internalKey && opt('ik', t('Internal keyer (input SDI {a} → output SDI {b})', { a: k + 1, b: pair[1] + 1 }))}
+                      </optgroup>
+                    )}
+                  </select>
+                )}
                 <span className="fio-sig">{signal(k)}</span>
               </div>
             );

@@ -29,17 +29,28 @@ pub enum Port {
     Both,
 }
 
-/// A way to use a card (its Desktop Video profile, and the roles its
-/// connectors may take in it).
+/// What a card can key (DeckLink SDK, `IDeckLinkKeyer`): a keyer works on
+/// a pair of connectors in full duplex: the external keyer sends the fill
+/// on the first and the key on the second; the internal keyer keys over
+/// the video coming into the first and sends the result on the second.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Mode {
-    pub id: &'static str,
-    /// The `BMDProfileID` (fourcc) to activate; None: leave it.
-    pub profile: Option<&'static str>,
-    /// "fill", "key", "input".
-    pub roles: &'static [&'static str],
+pub struct Keying {
+    pub internal: bool,
+    pub external: bool,
+    /// The connector pairs (numbers as printed, the first one first).
+    pub pairs: &'static [[u32; 2]],
+    /// One Desktop Video profile for the whole card (8K Pro); else each
+    /// pair has its own (Duo 2, Quad 2: half or full duplex per pair).
+    pub card_profile: bool,
 }
+
+const NO_KEYING: Keying = Keying {
+    internal: false,
+    external: false,
+    pairs: &[],
+    card_profile: false,
+};
 
 /// A DeckLink model, seen from the back of the machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -60,10 +71,8 @@ pub struct Model {
     pub reference: Option<bool>,
     /// What each connector can do; empty: inputs and outputs.
     pub ports: &'static [Port],
-    pub modes: &'static [Mode],
+    pub keying: Keying,
 }
-
-const ANY: &[&str] = &["fill", "key", "input"];
 
 /// The models whose bracket is known. To add one or fix an order, edit
 /// its entry (connector numbers as printed on the bracket, top to bottom).
@@ -77,7 +86,13 @@ pub const MODELS: &[Model] = &[
         order: &[8, 4, 7, 3, 6, 2, 5, 1],
         reference: Some(true),
         ports: &[],
-        modes: &[],
+        // Keying on each pair, HD at most.
+        keying: Keying {
+            internal: true,
+            external: true,
+            pairs: &[[1, 2], [3, 4], [5, 6], [7, 8]],
+            card_profile: false,
+        },
     },
     // Five chrome BNC (4 × 12G-SDI + REF), from the same photo. Most likely
     // the 8K Pro (forums report its 1-3-2-4 order) but not confirmed: fix
@@ -90,25 +105,14 @@ pub const MODELS: &[Model] = &[
         order: &[4, 2, 3, 1],
         reference: Some(true),
         ports: &[],
-        // Four sub-devices, half duplex: each connector is its own device,
-        // an input or an output.
-        modes: &[
-            Mode {
-                id: "fillKey",
-                profile: Some("4dhd"),
-                roles: ANY,
-            },
-            Mode {
-                id: "outputs",
-                profile: Some("4dhd"),
-                roles: &["fill"],
-            },
-            Mode {
-                id: "inputs",
-                profile: Some("4dhd"),
-                roles: &["input"],
-            },
-        ],
+        // Four sub-devices in half duplex (each connector an input or an
+        // output), or two in full duplex (a pair each: keying).
+        keying: Keying {
+            internal: true,
+            external: true,
+            pairs: &[[1, 2], [3, 4]],
+            card_profile: true,
+        },
     },
     // The following brackets are not documented in the SDK: connectors in
     // numeric order, the REF only when the driver reports one.
@@ -120,7 +124,12 @@ pub const MODELS: &[Model] = &[
         order: &[],
         reference: None,
         ports: &[],
-        modes: &[],
+        keying: Keying {
+            internal: true,
+            external: true,
+            pairs: &[[1, 2], [3, 4]],
+            card_profile: false,
+        },
     },
     Model {
         name: "DeckLink SDI 4K",
@@ -130,7 +139,13 @@ pub const MODELS: &[Model] = &[
         order: &[],
         reference: None,
         ports: &[Port::In, Port::Out],
-        modes: &[],
+        // Over its input, out of its output.
+        keying: Keying {
+            internal: true,
+            external: false,
+            pairs: &[[1, 2]],
+            card_profile: false,
+        },
     },
     Model {
         name: "DeckLink Mini Monitor",
@@ -140,7 +155,7 @@ pub const MODELS: &[Model] = &[
         order: &[],
         reference: None,
         ports: &[Port::Out],
-        modes: &[],
+        keying: NO_KEYING,
     },
     Model {
         name: "DeckLink Mini Monitor 4K",
@@ -150,7 +165,7 @@ pub const MODELS: &[Model] = &[
         order: &[],
         reference: None,
         ports: &[Port::Out],
-        modes: &[],
+        keying: NO_KEYING,
     },
     Model {
         name: "DeckLink Mini Recorder",
@@ -160,7 +175,7 @@ pub const MODELS: &[Model] = &[
         order: &[],
         reference: None,
         ports: &[Port::In],
-        modes: &[],
+        keying: NO_KEYING,
     },
     Model {
         name: "DeckLink Mini Recorder 4K",
@@ -170,7 +185,7 @@ pub const MODELS: &[Model] = &[
         order: &[],
         reference: None,
         ports: &[Port::In],
-        modes: &[],
+        keying: NO_KEYING,
     },
 ];
 
@@ -211,6 +226,12 @@ pub struct DetectedCard {
     /// The active profile and those it can switch to (fourcc).
     pub profile: Option<String>,
     pub profiles: Vec<String>,
+    /// The active profile of the device of each connector.
+    #[serde(skip)]
+    pub connector_profiles: Vec<Option<String>>,
+    /// The driver says the card has an internal / external keyer.
+    pub internal_keyer: bool,
+    pub external_keyer: bool,
 }
 
 fn fourcc(v: u32) -> String {
@@ -331,9 +352,18 @@ fn card(id: String, devs: &[&DeviceInfo]) -> DetectedCard {
     }
     // Connectors no device drives in the active profile (a full-duplex
     // pair): the card's first device.
-    let devices = slots
+    let devices: Vec<u32> = slots
         .into_iter()
         .map(|s| s.unwrap_or(first.index))
+        .collect();
+    let connector_profiles = devices
+        .iter()
+        .map(|i| {
+            devs.iter()
+                .find(|d| d.index == *i)
+                .and_then(|d| d.profile)
+                .map(fourcc)
+        })
         .collect();
     let ports = (0..connectors as usize)
         .map(|i| match m.and_then(|m| m.ports.get(i)) {
@@ -376,6 +406,9 @@ fn card(id: String, devs: &[&DeviceInfo]) -> DetectedCard {
         persistent_id: first.persistent_id.map(hex),
         profile: first.profile.map(fourcc),
         profiles: first.profiles.iter().map(|p| fourcc(*p)).collect(),
+        connector_profiles,
+        internal_keyer: devs.iter().any(|d| d.caps.internal_keyer),
+        external_keyer: devs.iter().any(|d| d.caps.external_keyer),
     }
 }
 
@@ -420,7 +453,7 @@ fn fake_devices(models: &[String]) -> Vec<DeviceInfo> {
                 &[1, 5, 2, 6, 3, 7, 4, 8],
                 0x7B10_A04E,
                 Some((true, b"pal ")),
-                &[],
+                &["1dfd", "2dhd"],
             ),
             "8kpro" => (
                 "DeckLink 8K Pro",
@@ -428,7 +461,7 @@ fn fake_devices(models: &[String]) -> Vec<DeviceInfo> {
                 &[1, 3, 2, 4],
                 0x6A3F_291C,
                 Some((false, b"\0\0\0\0")),
-                &["1dfd", "2dfd", "2dhd", "4dhd"],
+                &["1dfd", "1dhd", "2dfd", "4dhd"],
             ),
             "duo2" => (
                 "DeckLink Duo 2",
@@ -436,7 +469,7 @@ fn fake_devices(models: &[String]) -> Vec<DeviceInfo> {
                 &[1, 2, 3, 4],
                 0x3C21_0B7A,
                 None,
-                &["2dfd", "4dhd"],
+                &["1dfd", "2dhd"],
             ),
             "minimonitor" => (
                 "DeckLink Mini Monitor 4K",
@@ -502,31 +535,97 @@ pub fn detect() -> (Vec<DetectedCard>, Option<String>, bool) {
     (group(&devices), version, false)
 }
 
-/// Switches the adopted cards to the profile of their mode (a card in use
-/// by another application refuses: it is said, the engine goes on). True
-/// when a profile changed (the devices are listed again then).
+/// The connector pairs of a card (0-based): from the model table, else
+/// 1+2, 3+4… when the driver says the card keys.
+pub fn pairs_of(d: &DetectedCard) -> Vec<(u32, u32)> {
+    match model(&d.model_name) {
+        Some(m) => m
+            .keying
+            .pairs
+            .iter()
+            .map(|p| (p[0] - 1, p[1] - 1))
+            .collect(),
+        None if d.internal_keyer || d.external_keyer => {
+            (0..d.connectors / 2).map(|i| (2 * i, 2 * i + 1)).collect()
+        }
+        None => Vec::new(),
+    }
+}
+
+/// The Desktop Video profiles the roles of an adopted card need: (device,
+/// profile) to activate. A keyer (internal or external) needs its pair in
+/// full duplex: one sub-device for both connectors (`1dfd` on a Duo 2 or a
+/// Quad 2, whose pairs each have a profile; `2dfd` for the whole 8K Pro);
+/// else half duplex, each connector its own device (`2dhd` / `4dhd`).
+pub fn wanted_profiles(
+    hw: &crate::hardware::HardwareConfig,
+    card: &crate::hardware::SdiCard,
+    d: &DetectedCard,
+) -> Vec<(u32, &'static str)> {
+    use crate::hardware::SdiMode;
+    let keyed: Vec<u32> = hw
+        .sdi
+        .outputs
+        .iter()
+        .filter(|o| o.card == card.id && o.mode != SdiMode::FillOnly)
+        .map(|o| o.fill)
+        .collect();
+    let pairs = pairs_of(d);
+    let has = |p: &str| d.profiles.iter().any(|x| x == p);
+    let card_profile = model(&d.model_name).is_some_and(|m| m.keying.card_profile);
+    let mut out = Vec::new();
+    if card_profile {
+        let full = pairs.iter().any(|(a, _)| keyed.contains(a));
+        let wanted = if full {
+            ["2dfd", "1dfd"].into_iter().find(|p| has(p))
+        } else {
+            ["4dhd", "2dhd"].into_iter().find(|p| has(p))
+        };
+        if let (Some(p), Some(dev)) = (wanted, d.devices.first()) {
+            if d.profile.as_deref() != Some(p) {
+                out.push((*dev, p));
+            }
+        }
+        return out;
+    }
+    for (a, _) in pairs {
+        let full = keyed.contains(&a);
+        let wanted = if full {
+            ["1dfd", "2dfd"].into_iter().find(|p| has(p))
+        } else {
+            ["2dhd", "4dhd"].into_iter().find(|p| has(p))
+        };
+        let (Some(p), Some(dev)) = (wanted, d.devices.get(a as usize)) else {
+            continue;
+        };
+        let now = d.connector_profiles.get(a as usize).cloned().flatten();
+        if now.as_deref() != Some(p) {
+            out.push((*dev, p));
+        }
+    }
+    out
+}
+
+/// Switches the adopted cards to the profiles their connectors' roles need
+/// (a card in use by another application refuses: it is said, the engine
+/// goes on). True when a profile changed (the devices are listed again then).
 pub fn apply_profiles(hw: &crate::hardware::HardwareConfig, cards: &[DetectedCard]) -> bool {
     let mut changed = false;
     for c in &hw.sdi.cards {
         let Some(d) = cards.iter().find(|d| d.id == c.persistent_id) else {
             continue;
         };
-        let wanted = model(&d.model_name)
-            .and_then(|m| m.modes.iter().find(|x| x.id == c.mode))
-            .and_then(|x| x.profile);
-        let Some(wanted) = wanted else { continue };
-        if d.profile.as_deref() == Some(wanted) || !d.profiles.iter().any(|p| p == wanted) {
-            continue;
-        }
-        let (Some(profile), Some(device)) = (from_fourcc(wanted), d.devices.first()) else {
-            continue;
-        };
-        match cg_output::decklink::set_profile(*device, profile) {
-            Ok(()) => {
-                tracing::info!("{}: profile {wanted} activated", c.name);
-                changed = true;
+        for (device, wanted) in wanted_profiles(hw, c, d) {
+            let Some(profile) = from_fourcc(wanted) else {
+                continue;
+            };
+            match cg_output::decklink::set_profile(device, profile) {
+                Ok(()) => {
+                    tracing::info!("{}: profile {wanted} activated", c.name);
+                    changed = true;
+                }
+                Err(e) => tracing::warn!("{}: cannot activate profile {wanted}: {e}", c.name),
             }
-            Err(e) => tracing::warn!("{}: cannot activate profile {wanted}: {e}", c.name),
         }
     }
     changed
@@ -554,6 +653,42 @@ mod tests {
         assert_eq!(p.reference_locked, Some(false));
         assert_eq!(p.profile.as_deref(), Some("4dhd"));
         assert_ne!(p.id, q.id);
+    }
+
+    /// A keyer puts its pair in full duplex: on a Duo 2 that pair alone
+    /// (its own profile), on an 8K Pro the whole card.
+    #[test]
+    fn keyers_ask_for_full_duplex() {
+        let cards = group(&fake_devices(&["duo2".into(), "8kpro".into()]));
+        let (duo, pro) = (&cards[0], &cards[1]);
+        assert_eq!(pairs_of(duo), vec![(0, 1), (2, 3)]);
+        let hw = |card: &str, mode: &str| -> crate::hardware::HardwareConfig {
+            serde_json::from_value(serde_json::json!({
+                "sdi": {
+                    "cards": [{ "id": "c", "name": "C", "model": card, "device": 0,
+                                "connectors": [{}, {}, {}, {}] }],
+                    "outputs": [{ "id": "o", "name": "CG", "card": "c", "fill": 0, "key": 1,
+                                  "mode": mode }]
+                }
+            }))
+            .unwrap()
+        };
+        let duo_hw = hw("duo2", "externalKey");
+        let card = &duo_hw.sdi.cards[0];
+        // Fake cards start half duplex: SDI 1 + 2 goes full, SDI 3 + 4 stays.
+        assert_eq!(
+            wanted_profiles(&duo_hw, card, duo),
+            vec![(duo.devices[0], "1dfd")]
+        );
+        let plain = hw("duo2", "fillOnly");
+        assert!(wanted_profiles(&plain, &plain.sdi.cards[0], duo).is_empty());
+        let pro_hw = hw("8kPro", "internalKey");
+        assert_eq!(
+            wanted_profiles(&pro_hw, &pro_hw.sdi.cards[0], pro),
+            vec![(pro.devices[0], "2dfd")]
+        );
+        let plain = hw("8kPro", "fillOnly");
+        assert!(wanted_profiles(&plain, &plain.sdi.cards[0], pro).is_empty());
     }
 
     #[test]

@@ -283,7 +283,7 @@ export const operator: Record<string, string> = {
   'Fill + Key (external keyer, 2 SDI)': 'Fill + Key (incrustateur externe, 2 SDI)',
   'Internal keyer (over the card\'s SDI input)': 'Incrustateur interne (sur l’entrée SDI de la carte)',
   'Fill only': 'Fill seul',
-  'Internal keyer': 'Incrustateur interne',
+  'Internal keyer': 'Keyer interne',
   'Genlock to the card\'s reference input': 'Genlock sur l’entrée de référence de la carte',
   'Needs Blackmagic Desktop Video on this server. The status shows whether the card answered.': 'Nécessite Blackmagic Desktop Video sur ce serveur. L’état indique si la carte a répondu.',
   'Encoding': 'Encodage',
