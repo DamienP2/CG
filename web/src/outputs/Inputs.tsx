@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { api } from '../store';
 import { t, tc, tn } from '../i18n';
 import { InfoTip } from '../ui/InfoTip';
-import { errorProps } from '../ui/serverError';
 import { inputMessage as messageText, useLiveFrame } from '../engine/liveInputs';
 import type { InputConfig, InputInfo, InputKind, ServerConfig } from './types';
 import { useMetrics, type InputMetrics } from '../engine/metrics';
@@ -12,6 +11,7 @@ import '../perf/perf.css';
 import { deviceOf, hardwareOf } from '../hardware/model';
 import { navigate } from '../router';
 import { OnSwitch } from './OnSwitch';
+import { NdiPicker } from './NdiPicker';
 
 /*
  * The INPUTS mode of the Video streams page: live video coming into the
@@ -120,7 +120,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
   const inputs = cfg.inputs ?? [];
   const [sel, setSel] = useState<string | null>(null);
   const [status, setStatus] = useState<InputInfo[]>([]);
-  const [ndi, setNdi] = useState<{ busy: boolean; sources: string[]; error?: string }>({ busy: false, sources: [] });
   const metrics = useMetrics();
   const rates = (id: string) => metrics?.inputs.find((x) => x.id === id);
 
@@ -203,16 +202,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
         if (k === 'sdi' && d && card) i.device = deviceOf(card, d.connector);
       } else delete i.hardware;
     });
-
-  const findNdi = async () => {
-    setNdi((s) => ({ ...s, busy: true, error: undefined }));
-    try {
-      const sources = await api<string[]>('GET', '/api/inputs/ndi-sources');
-      setNdi({ busy: false, sources, error: sources.length ? undefined : t('No NDI source found on the network.') });
-    } catch (e) {
-      setNdi({ busy: false, sources: [], error: (e as Error).message });
-    }
-  };
 
   const liveCount = inputs.filter((i) => stateOf(i).live).length;
 
@@ -314,8 +303,6 @@ export function InputsMode({ cfg, saved, edit }: { cfg: ServerConfig; saved: Ser
                 hwChoices={hwChoices}
                 setKind={setKind}
                 remove={remove}
-                ndi={ndi}
-                findNdi={findNdi}
               />
             ) : (
               <p className="oc-hint">{t('Add an input to set it up here.')}</p>
@@ -336,8 +323,6 @@ function Inspector({
   hwChoices,
   setKind,
   remove,
-  ndi,
-  findNdi,
 }: {
   input: InputConfig;
   state: { tone: Tone; text: string; live: boolean; info?: InputInfo };
@@ -347,10 +332,9 @@ function Inspector({
   hwChoices: (k: InputKind) => { id: string; name: string }[];
   setKind: (k: InputKind) => void;
   remove: () => void;
-  ndi: { busy: boolean; sources: string[]; error?: string };
-  findNdi: () => void;
 }) {
   const listId = `vs-ndi-${i.id}`;
+  const [picking, setPicking] = useState(false);
   const choices = hwChoices(i.kind);
   const port = portOf(i);
   return (
@@ -476,31 +460,21 @@ function Inspector({
             {t('NDI source')}
           </label>
           <div className="vs-row">
-            <input id={`${listId}-in`} list={listId} value={i.ndiSource} placeholder={t('HOST (name)')} spellCheck={false} onChange={(e) => editInput((x) => void (x.ndiSource = e.target.value))} />
-            <button className="btn small" disabled={ndi.busy} onClick={findNdi}>
-              <Search size={13} /> {ndi.busy ? t('Searching…') : t('Find sources')}
+            <input id={`${listId}-in`} value={i.ndiSource} placeholder={t('HOST (name)')} spellCheck={false} onChange={(e) => editInput((x) => void (x.ndiSource = e.target.value))} />
+            <button className="btn small" onClick={() => setPicking(true)}>
+              <Search size={13} /> {t('Browse…')}
             </button>
           </div>
-          <datalist id={listId}>
-            {ndi.sources.map((s) => (
-              <option key={s} value={s} />
-            ))}
-          </datalist>
-          {ndi.sources.length > 0 && (
-            <div className="vs-sources">
-              {ndi.sources.map((s) => (
-                <button key={s} type="button" className={s === i.ndiSource ? 'on' : ''} onClick={() => editInput((x) => void (x.ndiSource = s))}>
-                  {s}
-                </button>
-              ))}
-            </div>
+          {picking && (
+            <NdiPicker
+              current={i.ndiSource}
+              onClose={() => setPicking(false)}
+              onChoose={(s) => {
+                editInput((x) => void (x.ndiSource = s));
+                setPicking(false);
+              }}
+            />
           )}
-          {ndi.error && (
-            <span className="set-hint vs-error" title={errorProps(ndi.error).title}>
-              {errorProps(ndi.error).text}
-            </span>
-          )}
-          <span className="set-hint">{t('As receivers list it: “HOST (name)”. Pick a source found on the network, or type its name.')}</span>
         </div>
       )}
 

@@ -2949,7 +2949,13 @@ mod tests {
         }
         // A ramp stays a ramp (no step where the bands meet).
         let mut ramp = Pixmap::new(64, 64).unwrap();
-        for (i, p) in ramp.data_mut().as_chunks_mut::<4>().0.iter_mut().enumerate() {
+        for (i, p) in ramp
+            .data_mut()
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .enumerate()
+        {
             let v = (i / 64 * 4) as u8;
             p.copy_from_slice(&[v, v, v, 255]);
         }

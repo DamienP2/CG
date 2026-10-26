@@ -259,39 +259,6 @@
   align-items: center;
   gap: 6px;
 }
-.vs-sources {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 180px;
-  overflow: auto;
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-}
-.vs-sources button {
-  border: none;
-  background: none;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  padding: 5px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.vs-sources button:hover {
-  background: var(--panel-2);
-  color: var(--text);
-}
-.vs-sources button.on {
-  background: var(--accent-soft);
-  color: var(--text);
-}
 .vs-error {
   color: var(--warn);
 }
@@ -583,4 +550,194 @@
 }
 .oc-src-check > div.bad > span:last-child {
   color: #fcd38d;
+}
+
+/* NDI source picker: a picture of each source, grouped by machine. */
+.modal.ndi-pick {
+  width: min(980px, 100%);
+  height: min(720px, calc(100vh - 32px));
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.ndi-pick > header,
+.ndi-pick > footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+}
+.ndi-pick > header {
+  border-bottom: 1px solid var(--line);
+}
+.ndi-pick > footer {
+  border-top: 1px solid var(--line);
+}
+.ndi-pick h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.ndi-pick .grow {
+  flex: 1;
+}
+.ndi-count {
+  font: 11px var(--mono);
+  color: var(--text-3);
+  background: var(--panel-3);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.ndi-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  min-width: min(240px, 100%);
+  padding: 0 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+.ndi-filter input {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  outline: none;
+}
+.ndi-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ndi-empty {
+  margin: 40px 0;
+  text-align: center;
+  color: var(--text-3);
+}
+.ndi-host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.ndi-host::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.ndi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.ndi-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ndi-card:hover {
+  border-color: var(--text-3);
+}
+.ndi-card.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.ndi-shot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  background: #000;
+}
+.ndi-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.ndi-shot.none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: repeating-linear-gradient(135deg, #151826 0 10px, #191c2b 10px 20px);
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ndi-wait {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--line-2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ndi-spin 0.8s linear infinite;
+}
+@keyframes ndi-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ndi-fmt {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  font: 10.5px var(--mono);
+  color: #e6e8f2;
+}
+.ndi-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.ndi-meta b {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ndi-meta span {
+  font: 11px var(--mono);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ndi-sel {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.ndi-sel b {
+  color: var(--text);
 }

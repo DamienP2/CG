@@ -654,6 +654,95 @@ pub async fn snapshot(
     r
 }
 
+#[derive(Deserialize)]
+pub struct NdiPreviewQuery {
+    source: String,
+    #[serde(default)]
+    w: Option<u32>,
+}
+
+/// One picture of an NDI source and its format.
+struct NdiShot {
+    jpeg: Vec<u8>,
+    width: u32,
+    height: u32,
+    fps: f64,
+    interlaced: bool,
+}
+
+/// Connects to an NDI source just long enough for one picture (4 s at most).
+fn ndi_shot(source: &str, width: u32) -> Result<Option<NdiShot>, String> {
+    let mut rx = cg_output::ndi::NdiReceiver::open(source)?;
+    let until = Instant::now() + Duration::from_secs(4);
+    while Instant::now() < until {
+        let mut got = None;
+        rx.capture(500, |f| {
+            let fps = if f.rate.1 > 0 {
+                f.rate.0 as f64 / f.rate.1 as f64
+            } else {
+                0.0
+            };
+            got = premultiplied(&f).map(|pm| (pm, fps, f.interlaced));
+        })?;
+        if let Some((pm, fps, interlaced)) = got {
+            let (w, h) = (pm.width(), pm.height());
+            return Ok(cg_render::jpeg(&pm, width, 75).map(|jpeg| NdiShot {
+                jpeg,
+                width: w,
+                height: h,
+                fps,
+                interlaced,
+            }));
+        }
+    }
+    Ok(None)
+}
+
+/// `GET /api/inputs/ndi-preview?source=HOST%20(name)`: a picture of an NDI
+/// source (JPEG), its size and rate in `x-width`, `x-height`, `x-fps`,
+/// `x-interlaced`; 204 when nothing came.
+pub async fn ndi_preview(
+    CurrentUser(me): CurrentUser,
+    Query(q): Query<NdiPreviewQuery>,
+) -> Response {
+    if !me.is_admin() {
+        return (StatusCode::FORBIDDEN, "admin only").into_response();
+    }
+    let width = q.w.unwrap_or(400).clamp(64, 960);
+    let shot = tokio::task::spawn_blocking(move || ndi_shot(&q.source, width)).await;
+    match shot {
+        Ok(Ok(Some(s))) => {
+            let mut r = (
+                [
+                    (header::CONTENT_TYPE, "image/jpeg"),
+                    (header::CACHE_CONTROL, "no-store"),
+                ],
+                s.jpeg,
+            )
+                .into_response();
+            let h = r.headers_mut();
+            for (k, v) in [
+                ("x-width", s.width.to_string()),
+                ("x-height", s.height.to_string()),
+                ("x-fps", format!("{:.3}", s.fps)),
+                ("x-interlaced", s.interlaced.to_string()),
+            ] {
+                if let Ok(v) = v.parse() {
+                    h.insert(k, v);
+                }
+            }
+            r
+        }
+        Ok(Ok(None)) => (
+            StatusCode::NO_CONTENT,
+            [(header::CACHE_CONTROL, "no-store")],
+        )
+            .into_response(),
+        Ok(Err(e)) => (StatusCode::SERVICE_UNAVAILABLE, e).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
 /// `GET /api/inputs/<id>/live.mjpeg`: the input as Motion JPEG, for the
 /// previews and the HTML5 outputs (public like them when they are).
 pub async fn mjpeg(
