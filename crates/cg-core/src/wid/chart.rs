@@ -1670,6 +1670,7 @@ mod tests {
             now_ms: 1_000_000,
             age_secs: 5.0,
             data: &data,
+            fps: 50.0,
         };
         act(
             &l,
@@ -1693,6 +1694,7 @@ mod tests {
             now_ms: 1_001_000,
             age_secs: 6.0,
             data: &data,
+            fps: 50.0,
         };
         act(&l2, &mut st, "reload", &serde_json::Value::Null, &ctx).unwrap();
         assert_eq!(st.prev[0].vals[0], Some(28.0));
@@ -1715,6 +1717,7 @@ mod tests {
             now_ms: 5000,
             age_secs: 1.0,
             data: &data,
+            fps: 50.0,
         };
         act(&l, &mut st, "next", &serde_json::Value::Null, &ctx).unwrap();
         assert_eq!(st.step, 2);
@@ -1773,6 +1776,7 @@ mod chained_steps {
             now_ms: 100_000,
             age_secs: 12.0,
             data: &d,
+            fps: 50.0,
         };
         // Timed from the take (on air 12 s ago, 5 s per step): the third of the three series
         // shows, the highlight is the template's.
@@ -1834,6 +1838,7 @@ mod chained_steps {
             now_ms: 104_500,
             age_secs: 16.5,
             data: &d,
+            fps: 50.0,
         };
         act(&l, &mut st, "pause", &serde_json::Value::Null, &cx2).unwrap();
         assert_eq!(shown_step(&st, 3, 130_000), 2);

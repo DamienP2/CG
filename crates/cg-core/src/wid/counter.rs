@@ -842,6 +842,7 @@ mod tests {
             now_ms: now,
             age_secs: 10.0,
             data: &data,
+            fps: 50.0,
         };
         let mut st = State::default();
         act(&l, &mut st, "inc", &json!({}), &ctx(0)).unwrap();
@@ -875,6 +876,7 @@ mod tests {
             now_ms: 0,
             age_secs: 10.0,
             data: &data,
+            fps: 50.0,
         };
         let mut st = State::default();
         act(&l, &mut st, "inc", &json!({"by": 3}), &ctx).unwrap();

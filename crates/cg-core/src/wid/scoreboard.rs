@@ -1935,6 +1935,7 @@ mod tests {
             &ActCtx {
                 now_ms: now,
                 age_secs: 0.0,
+                fps: 50.0,
                 data: &d,
             },
         )
@@ -2120,6 +2121,7 @@ mod tests {
         let ctx = ActCtx {
             now_ms: 1000,
             age_secs: 0.0,
+            fps: 50.0,
             data: &d,
         };
         act(&l, &mut st, "sub", &json!({"team":0}), &ctx).unwrap();

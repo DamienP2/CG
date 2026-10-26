@@ -12,7 +12,7 @@ import type { Data, Layer, Template, TextOverflow } from '../engine/types';
 import { useFonts } from '../engine/fonts';
 import { useApp } from '../store';
 import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
-import { scrollPositions } from '../engine/widgets';
+import { frameSpeed, scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, wiredKeys, type LayerOf, type Warning, withDefaults } from './kit';
 import { t, tc } from '../i18n';
@@ -188,7 +188,7 @@ const fitBadge = (l: TextLayer, f: FitLines) => (f.overflows ? (l.overflow === '
 
 // --------------------------------------------------------------- render --
 
-function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0 }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string; ageSecs?: number }) {
+function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string; ageSecs?: number; fps?: number }) {
   const k = cfg(layer);
   const rich = useContext(RichKeys);
   const text = shownText(layer, data, rich);
@@ -219,7 +219,7 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0 }: { layer: 
   const deco = layer.decoration === 'underline' ? 'underline' : layer.decoration === 'lineThrough' ? 'line-through' : undefined;
   const bands: CSSProperties[] = [];
   // Where the text is drawn: once, or each copy of a scroll on its way.
-  const travelled = (layer.speed ?? 120) * Math.max(0, ageSecs);
+  const travelled = frameSpeed(layer.speed ?? 120, fps) * Math.max(0, ageSecs);
   const scroll = layer.scroll && layer.scroll !== 'none' ? layer.scroll : null;
   const placements: [number, number][] =
     scroll === 'horizontal'
@@ -618,7 +618,7 @@ export default defineWidget({
   // A scrolling text moves with its time on air.
   live: (l) => !!l.scroll && l.scroll !== 'none',
   ageOnly: true,
-  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} ageSecs={time.ageSecs} />,
+  Render: ({ layer, r, w, h, data, designer, time }) => <Render layer={layer} r={r} w={w} h={h} data={data} designer={designer} lang={time.lang} ageSecs={time.ageSecs} fps={time.fps} />,
   Inspector: ({ layer, data, template, edit }) => <Inspector layer={layer} data={data} template={template} edit={edit} />,
   warnings: (layer, { data }) => {
     const out: Warning[] = [];

@@ -6,7 +6,7 @@ import { memo, useMemo, useState } from 'react';
 import { ArrowLeftRight, Pause, Play, RefreshCw, SkipBack, SkipForward } from 'lucide-react';
 import { cssColor, col, interpolateText, num } from '../engine/evaluate';
 import type { Data, FontStyle, PlayoutItem } from '../engine/types';
-import { layerAgeFrames } from '../engine/widgets';
+import { frameSpeed, layerAgeFrames } from '../engine/widgets';
 import { GroupRow, ColorGroupRow, AssetPicker } from '../designer/Inspector';
 import { FontPick } from '../ui/FontPick';
 import { useFonts } from '../engine/fonts';
@@ -176,8 +176,8 @@ export function expand(items: Item[], data: Data): Item[] {
 export const SPEED: [number, number] = [10, 800];
 const speedOf = (l: TL, st: State) => clamp(st.speed ?? l.speed ?? 120, SPEED[0], SPEED[1]);
 export const periodOf = (l: TL, k: K, st: State, h: number) => (k.mode === 'flip' ? Math.max(0.5, k.itemDur) : Math.max(0, k.itemDur) + h / Math.max(5, speedOf(l, st)));
-export function clockOf(l: TL, k: K, st: State, now: number, age: number) {
-  const rate = k.mode === 'crawl' ? speedOf(l, st) : 1;
+export function clockOf(l: TL, k: K, st: State, now: number, age: number, fps?: number) {
+  const rate = k.mode === 'crawl' ? frameSpeed(speedOf(l, st), fps) : 1;
   if (!st.started) return rate * Math.max(0, age);
   return (st.base ?? 0) + (st.running ? (rate * Math.max(0, now - (st.anchor ?? 0))) / 1000 : 0);
 }
@@ -413,20 +413,20 @@ function sceneBase(l: TL, k: K, st: State, data: Data, lk: Look, w: number, h: n
 }
 
 /** The picture at `now`: where the tape is. */
-function sceneAt(b: ReturnType<typeof sceneBase>, l: TL, k: K, st: State, now: number, age: number) {
-  const e = clockOf(l, k, st, now, age);
+function sceneAt(b: ReturnType<typeof sceneBase>, l: TL, k: K, st: State, now: number, age: number, fps?: number) {
+  const e = clockOf(l, k, st, now, age, fps);
   const pos = b.crawl ? e : Math.floor(e / b.P);
   const ended = b.end !== undefined && pos >= b.end;
   return { ...b, e, pos, ended, pass: passAt(b.placed, pos) };
 }
 
 /** Everything the picture and the Operator need at `now`. */
-function scene(l: TL, k: K, st: State, data: Data, lk: Look, w: number, h: number, now: number, age: number) {
-  return sceneAt(sceneBase(l, k, st, data, lk, w, h), l, k, st, now, age);
+function scene(l: TL, k: K, st: State, data: Data, lk: Look, w: number, h: number, now: number, age: number, fps?: number) {
+  return sceneAt(sceneBase(l, k, st, data, lk, w, h), l, k, st, now, age, fps);
 }
 
 // ------------------------------------------------------------- render --
-function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<string, unknown>; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
+function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<string, unknown>; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number; fps?: number }; state: unknown }) {
   // Redrawn on each frame: what does not depend on the time is kept (measured again when a font loads).
   const fonts = useFonts((s) => s.ready);
   const k = useMemo(() => cfg(l), [l]);
@@ -434,7 +434,7 @@ function TickerRender({ l, r, w, h, data, time, state }: { l: TL; r: Record<stri
   const look = lookOf(l, r);
   const lk = useMemo(() => look, [look.ai, look.family, look.weight, look.size, look.ls, look.upper, look.color]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useMemo(() => sceneBase(l, k, st, data, lk, w, h), [l, k, st, data, lk, w, h, fonts]); // eslint-disable-line react-hooks/exhaustive-deps
-  const sc = sceneAt(base, l, k, st, time.nowMs, time.ageSecs);
+  const sc = sceneAt(base, l, k, st, time.nowMs, time.ageSecs, time.fps);
   const { ms, zx, zw, e, crawl, gap, placed, P } = sc;
   const ts = Math.round(lk.size * 0.95);
   // The title does not move: the same element from one frame to the next (not drawn again).
@@ -623,7 +623,7 @@ function TickerBar(p: OpP) {
   });
   const modeName = k.mode === 'crawl' ? t('Crawl') : k.mode === 'roll' ? t('Roll') : t('Flip');
   const sub = sc.ended ? tc('cc', 'end of the list') : modeName;
-  const readout = k.mode !== 'crawl' && sc.idx >= 0 ? { k: t('Item'), v: sc.idx + 1, of: sc.count, sub } : { v: `${Math.round(speedOf(l, st))} px/s`, sub };
+  const readout = k.mode !== 'crawl' && sc.idx >= 0 ? { k: t('Item'), v: sc.idx + 1, of: sc.count, sub } : { v: `${Math.round(frameSpeed(speedOf(l, st), time.fps))} px/s`, sub };
   const status = waiting && item ? startChip(l) : undefined;
   const actions: Line2Item[] = [
     running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause') } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play },

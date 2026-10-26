@@ -1663,6 +1663,7 @@ pub(crate) mod tests {
             now_ms: now,
             age_secs: 0.0,
             data,
+            fps: 50.0,
         }
     }
 
@@ -1773,6 +1774,7 @@ pub(crate) mod tests {
             now_ms: 100_000,
             age_secs: 13.0,
             data: &d,
+            fps: 50.0,
         };
         act(&l, &mut st, "next", &serde_json::Value::Null, &cx).unwrap();
         assert!(st.ctl && st.auto);
@@ -1938,6 +1940,7 @@ mod chained_pages {
             now_ms: 100_000,
             age_secs: 13.0,
             data: &d,
+            fps: 50.0,
         };
         // From the take: chained on Continue, no timing.
         let st = live(&c, &State::default(), 100_000, 13.0);

@@ -2017,6 +2017,7 @@ mod tests {
             now_ms: now,
             age_secs: 0.0,
             data,
+            fps: 50.0,
         }
     }
 
@@ -2298,6 +2299,7 @@ mod chained_views {
             now_ms: 100_000,
             age_secs: 12.0,
             data: &d,
+            fps: 50.0,
         };
         // Timed from the take (on air 12 s ago, 5 s per view): two advances from France → Stadium.
         let st = live(&c, &State::default(), 100_000, 12.0);
@@ -2355,6 +2357,7 @@ mod chained_views {
             now_ms: 104_500,
             age_secs: 16.5,
             data: &d,
+            fps: 50.0,
         };
         act(&l, &mut st, "pause", &serde_json::Value::Null, &cx2).unwrap();
         assert_eq!(shown_view(&c, &st, 130_000), (Some(1), 0));

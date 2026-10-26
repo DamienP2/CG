@@ -507,6 +507,7 @@ mod tests {
             now_ms,
             age_secs: 0.0,
             data: &data,
+            fps: 50.0,
         };
         let mut st = State::default();
         assert_eq!(seq(c, &st, false, 5000, 9.0).idx, 0);
@@ -536,6 +537,7 @@ mod tests {
             now_ms,
             age_secs,
             data: &data,
+            fps: 50.0,
         };
         let mut st = State::default();
         // Plays with the time on air: 0.25 s in, frame 2, running, 0.25 s left.
@@ -567,6 +569,7 @@ mod tests {
             now_ms,
             age_secs: 9.0,
             data: &data,
+            fps: 50.0,
         };
         let mut st = State::default();
         // Waits on its first frame whatever the time on air.

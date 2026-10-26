@@ -20,6 +20,9 @@ pub struct TimeCtx<'a> {
     pub age_secs: f64,
     /// Zone used when a widget does not set one ("" = system zone).
     pub default_tz: &'a str,
+    /// Frames per second of the channel (a crawl moves a whole number of
+    /// pixels per frame; 0: unknown).
+    pub fps: f64,
 }
 
 fn zone(name: &str, fallback: &str) -> TimeZone {
@@ -199,6 +202,16 @@ pub fn clock_text(
 /// Start positions (along the scroll axis) of the copies of a scrolling
 /// strip of length `cycle` in a box of length `len`, `travelled` pixels
 /// after it started entering from the far edge.
+/// A crawl's speed on air: the nearest whole number of pixels per frame (at
+/// least one), so every frame moves the text by the same whole step and its
+/// glyphs are drawn the same each time — no shimmer, no uneven steps.
+pub fn frame_speed(px_s: f64, fps: f64) -> f64 {
+    if fps.is_nan() || fps < 1.0 || !px_s.is_finite() {
+        return px_s;
+    }
+    (px_s / fps).round().max(1.0) * fps
+}
+
 pub fn scroll_positions(len: f64, cycle: f64, travelled: f64, looping: bool) -> Vec<f64> {
     if cycle <= 0.0 || len <= 0.0 {
         return Vec::new();
@@ -397,6 +410,19 @@ pub fn clock_hands(timezone: &str, ctx: &TimeCtx) -> (f64, f64, f64) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_crawl_moves_whole_pixels_per_frame() {
+        use super::frame_speed;
+        // 110 px/s at 50 fps = 2.2 px per frame: 2 px per frame, 100 px/s.
+        assert_eq!(frame_speed(110.0, 50.0), 100.0);
+        assert_eq!(frame_speed(130.0, 50.0), 150.0);
+        // At least one pixel a frame; 25 fps: steps of 25 px/s.
+        assert_eq!(frame_speed(10.0, 50.0), 50.0);
+        assert_eq!(frame_speed(110.0, 25.0), 100.0);
+        // No frame rate known: the speed as set.
+        assert_eq!(frame_speed(110.0, 0.0), 110.0);
+    }
+
     use super::*;
 
     fn ctx(now_ms: i64, age: f64) -> TimeCtx<'static> {
@@ -404,6 +430,7 @@ mod tests {
             now_ms,
             age_secs: age,
             default_tz: "UTC",
+            fps: 50.0,
         }
     }
 

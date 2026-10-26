@@ -203,7 +203,7 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
     const lay = held ? { ...layer, manualStart: true } : layer;
     const act = async (op: string, args?: unknown) => {
       try {
-        const state = await api('POST', '/api/widgets/act', { layer: lay, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: at ?? ageSecs() });
+        const state = await api('POST', '/api/widgets/act', { layer: lay, state: run.widgets[layer.id] ?? null, op, args: args ?? null, data, ageSecs: at ?? ageSecs(), fps });
         if (live.current) setRun((r) => ({ ...r, widgets: { ...r.widgets, [layer.id]: state } }));
       } catch (e) {
         toast((e as Error).message, 'error');

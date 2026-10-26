@@ -278,6 +278,12 @@ export function clockText(mode: ClockMode, format: string, timezone: string, tar
 
 const remEuclid = (a: number, b: number) => ((a % b) + b) % b;
 
+/** A crawl's speed on air: the nearest whole number of pixels per frame (at least one), so every frame moves the text by the same whole step (mirrors frame_speed). */
+export function frameSpeed(pxs: number, fps?: number): number {
+  if (!fps || fps < 1 || !Number.isFinite(pxs)) return pxs;
+  return Math.max(1, Math.round(pxs / fps)) * fps;
+}
+
 export function scrollPositions(len: number, cycle: number, travelled: number, looping: boolean): number[] {
   if (cycle <= 0 || len <= 0) return [];
   const first = len - travelled;

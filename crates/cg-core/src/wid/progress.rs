@@ -605,6 +605,7 @@ mod tests {
         let ctx = ActCtx {
             now_ms: 1000,
             age_secs: 10.0,
+            fps: 50.0,
             data: &d,
         };
         let mut st = State::default();
@@ -649,6 +650,7 @@ mod tests {
         let ctx = ActCtx {
             now_ms: 10_000,
             age_secs: 10.0,
+            fps: 50.0,
             data: &d,
         };
         let mut st = State::default();
@@ -661,6 +663,7 @@ mod tests {
         let ctx = ActCtx {
             now_ms: 20_000,
             age_secs: 20.0,
+            fps: 50.0,
             data: &d,
         };
         act(&l, &mut st, "data", &serde_json::Value::Null, &ctx).unwrap();

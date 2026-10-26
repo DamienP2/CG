@@ -749,6 +749,7 @@ mod tests {
         let ctx = ActCtx {
             now_ms: 10_000,
             age_secs: 5.0,
+            fps: 50.0,
             data: &new,
         };
         assert!(on_data(&layer, &mut st, &old, &ctx));

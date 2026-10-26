@@ -893,6 +893,7 @@ mod tests {
             now_ms: 0,
             age_secs: 0.0,
             data: &d,
+            fps: 50.0,
         };
         act(
             &l,

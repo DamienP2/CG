@@ -206,6 +206,7 @@ impl PlayoutItem {
             let ctx = crate::wid::ActCtx {
                 now_ms: now_ms(),
                 age_secs: self.layer_age(l) / fps.max(1.0),
+                fps: fps.max(1.0),
                 data: &data,
             };
             if is_timed(&l.kind)
@@ -238,6 +239,7 @@ impl PlayoutItem {
             let ctx = crate::wid::ActCtx {
                 now_ms: now_ms(),
                 age_secs: self.layer_age(l) / fps.max(1.0),
+                fps: fps.max(1.0),
                 data: &data,
             };
             if is_timed(&l.kind)
@@ -549,6 +551,7 @@ fn widgets_react(project: &Project, item: &mut PlayoutItem, old: &crate::anim::D
     let ctx = crate::wid::ActCtx {
         now_ms: now_ms(),
         age_secs: item.age / fps,
+        fps,
         data: &item.data,
     };
     for l in &t.layers {
@@ -850,6 +853,7 @@ impl ChannelState {
                 let ctx = crate::wid::ActCtx {
                     now_ms: now_ms(),
                     age_secs: item.layer_age(l) / fps,
+                    fps,
                     data: &item.data,
                 };
                 let mut st = item

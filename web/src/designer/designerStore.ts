@@ -193,7 +193,7 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
     const layer = s.template && findLayer(s.template, id);
     if (!layer) return;
     try {
-      const state = await api('POST', '/api/widgets/act', { layer, state: s.widgetState[id] ?? null, op, args: args ?? null, data: s.previewData, ageSecs: s.frame / 50 });
+      const state = await api('POST', '/api/widgets/act', { layer, state: s.widgetState[id] ?? null, op, args: args ?? null, data: s.previewData, ageSecs: s.frame / 50, fps: 50 });
       set({ widgetState: { ...get().widgetState, [id]: state } });
     } catch (e) {
       useApp.getState().toast(String((e as Error).message ?? e), 'error');

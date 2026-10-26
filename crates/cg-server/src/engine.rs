@@ -567,6 +567,15 @@ fn clock(
             Pace::Grid(Grid::new(rate, state.config.hardware.sync.tai_offset))
         }
         (ClockReference::Decklink, Some(clock)) => Pace::card(clock, period),
+        // An SDI output is on the card's clock: the channel follows it, so
+        // the card never has to repeat or drop a frame to stay in step.
+        (ClockReference::Free, Some(clock)) => {
+            tracing::info!(
+                channel = ch.config.name,
+                "the channel runs on its DeckLink output's clock"
+            );
+            Pace::card(clock, period)
+        }
         (ClockReference::Decklink, None) => {
             tracing::warn!(
                 channel = ch.config.name,
@@ -576,7 +585,12 @@ fn clock(
         }
         (ClockReference::Free, _) => Pace::free(period),
     };
-    stats.set_reference(reference, &ch.config.name);
+    let followed = if matches!(pace, Pace::Card { .. }) {
+        ClockReference::Decklink
+    } else {
+        reference
+    };
+    stats.set_reference(followed, &ch.config.name);
     let mut n: u64 = 0;
     let mut saved_at = Instant::now();
     while !stop.load(Ordering::Relaxed) {
@@ -638,6 +652,9 @@ enum Pace {
         start: Instant,
         wall: SystemTime,
         last: Instant,
+        /// Ticks so far: frame times fall one period apart on the card's
+        /// grid, whatever the jitter of its callbacks.
+        n: u64,
     },
 }
 
@@ -659,6 +676,7 @@ impl Pace {
             start: now,
             wall: SystemTime::now(),
             last: now,
+            n: 0,
         }
     }
 
@@ -671,6 +689,7 @@ impl Pace {
                 start,
                 wall,
                 last,
+                n,
             } => {
                 let due = *last + *period;
                 if !clock.wait(*period * 2) {
@@ -687,8 +706,18 @@ impl Pace {
                 } else {
                     0
                 };
+                *n += 1 + skipped;
+                // Frame times one period apart on the card's grid (a callback
+                // that comes a little early or late does not move what the
+                // frame shows); the grid is set again on the system clock
+                // when the two drift a frame apart.
+                let grid = Duration::from_secs_f64(*n as f64 * period.as_secs_f64());
+                let real = now - *start;
+                if real.abs_diff(grid) > *period {
+                    *start = now - grid;
+                }
                 Tick {
-                    at: *wall + (now - *start),
+                    at: *wall + grid,
                     late,
                     skipped,
                 }

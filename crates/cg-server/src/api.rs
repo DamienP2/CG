@@ -2867,6 +2867,9 @@ struct ActQuery {
     data: cg_core::Data,
     #[serde(default)]
     age_secs: f64,
+    /// Frames per second of the channel (50 when not given).
+    #[serde(default)]
+    fps: f64,
 }
 
 async fn widget_act(
@@ -2876,6 +2879,7 @@ async fn widget_act(
     let ctx = cg_core::wid::ActCtx {
         now_ms: cg_core::playout::now_ms(),
         age_secs: q.age_secs,
+        fps: if q.fps >= 1.0 { q.fps } else { 50.0 },
         data: &q.data,
     };
     let mut st = q.state;

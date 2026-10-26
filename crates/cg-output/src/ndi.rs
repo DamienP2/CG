@@ -326,7 +326,7 @@ impl OutputSink for NdiSender {
         &self.config.name
     }
 
-    fn push(&mut self, frame: &Arc<Frame>, _at: std::time::SystemTime) -> Result<(), OutputError> {
+    fn push(&mut self, frame: &Arc<Frame>, at: std::time::SystemTime) -> Result<(), OutputError> {
         // The same picture again (nothing moved): converted already; else
         // only the rows that changed since the last one.
         if !self.last.as_ref().is_some_and(|l| Arc::ptr_eq(l, frame)) {
@@ -360,7 +360,11 @@ impl OutputSink for NdiSender {
             p_data: buf.as_ptr(),
             line_stride_in_bytes: frame.width as i32 * 4,
             p_metadata: std::ptr::null(),
-            timestamp: 0,
+            // When the channel shows the frame (100 ns since the Unix epoch):
+            // receivers pace on it, evenly, not on when the send happened.
+            timestamp: at
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| (d.as_nanos() / 100) as i64),
         };
         // SAFETY: synchronous send: NDI has finished with the buffer on return.
         unsafe { (self.lib.send)(self.instance, &video) };

@@ -443,10 +443,11 @@ pub fn period(t: &Ticker, st: &State, h: f32) -> f64 {
     }
 }
 
-/// The clock: px travelled (crawl) or seconds (flip / roll).
-pub fn clock(t: &Ticker, st: &State, now_ms: i64, age_secs: f64) -> f64 {
+/// The clock: px travelled (crawl) or seconds (flip / roll). A crawl moves a
+/// whole number of pixels per frame at `fps` ([`crate::widgets::frame_speed`]).
+pub fn clock(t: &Ticker, st: &State, now_ms: i64, age_secs: f64, fps: f64) -> f64 {
     let rate = if t.c.mode == Mode::Crawl {
-        speed(t, st)
+        crate::widgets::frame_speed(speed(t, st), fps)
     } else {
         1.0
     };
@@ -774,7 +775,7 @@ fn materialize(t: &Ticker, layer: &Layer, st: &mut State, ctx: &ActCtx) {
     if st.started {
         return;
     }
-    st.base = clock(t, st, ctx.now_ms, ctx.age_secs);
+    st.base = clock(t, st, ctx.now_ms, ctx.age_secs, ctx.fps);
     st.anchor = ctx.now_ms;
     st.started = true;
     // A manual start not started yet (no time on air) waits for its Play.
@@ -784,8 +785,8 @@ fn materialize(t: &Ticker, layer: &Layer, st: &mut State, ctx: &ActCtx) {
 }
 
 /// Position where an edit made now applies (crawl: px; flip / roll: next slot).
-fn edit_at(t: &Ticker, st: &State, now: i64, h: f32) -> f64 {
-    let c = clock(t, st, now, 0.0);
+fn edit_at(t: &Ticker, st: &State, now: i64, h: f32, fps: f64) -> f64 {
+    let c = clock(t, st, now, 0.0, fps);
     if t.c.mode == Mode::Crawl {
         c
     } else {
@@ -840,7 +841,7 @@ pub fn act(
         "pause" => {
             materialize(&t, layer, st, ctx);
             if st.running {
-                st.base = clock(&t, st, now, 0.0);
+                st.base = clock(&t, st, now, 0.0, ctx.fps);
                 st.anchor = now;
                 st.running = false;
             }
@@ -866,7 +867,7 @@ pub fn act(
             };
             let v = v.clamp(SPEED_MIN, SPEED_MAX);
             let p0 = period(&t, st, h);
-            let c = clock(&t, st, now, 0.0);
+            let c = clock(&t, st, now, 0.0, ctx.fps);
             st.base = c;
             st.anchor = now;
             st.speed = Some(v);
@@ -884,7 +885,7 @@ pub fn act(
             }
             materialize(&t, layer, st, ctx);
             let p = period(&t, st, h);
-            let c = clock(&t, st, now, 0.0);
+            let c = clock(&t, st, now, 0.0, ctx.fps);
             let k = (c / p).floor();
             let w = c - k * p;
             st.base = if t.c.mode == Mode::Roll && w < t.c.item_dur {
@@ -904,7 +905,7 @@ pub fn act(
         st.runs = runs(&t, st);
     }
     let mut q = queue(&t, st);
-    let at = edit_at(&t, st, now, h);
+    let at = edit_at(&t, st, now, h, ctx.fps);
     match op {
         "add" => {
             let it = item_arg(args, None);
@@ -1016,6 +1017,7 @@ mod tests {
         ActCtx {
             now_ms: now,
             age_secs: 0.0,
+            fps: 50.0,
             data: d,
         }
     }
@@ -1038,11 +1040,12 @@ mod tests {
         let cx = ActCtx {
             now_ms: 10_000,
             age_secs: 3.0,
+            fps: 50.0,
             data: &d,
         };
         act(&l, &mut st, "pause", &serde_json::Value::Null, &cx).unwrap();
         assert!(st.started && !st.running);
-        assert!((clock(&t, &st, 20_000, 0.0) - 300.0).abs() < 1e-9);
+        assert!((clock(&t, &st, 20_000, 0.0, 50.0) - 300.0).abs() < 1e-9);
         // Not started yet (no time on air): a pause leaves it at its start, waiting.
         let mut st = State::default();
         act(
@@ -1169,7 +1172,7 @@ mod tests {
         )
         .unwrap();
         let t = of(&l).unwrap();
-        assert_eq!(clock(&t, &st, 9000, 0.0), 200.0);
+        assert_eq!(clock(&t, &st, 9000, 0.0, 50.0), 200.0);
         act(
             &l,
             &mut st,
@@ -1186,7 +1189,7 @@ mod tests {
             &ctx(&d, 9000),
         )
         .unwrap();
-        assert_eq!(clock(&t, &st, 10_000, 0.0), 400.0);
+        assert_eq!(clock(&t, &st, 10_000, 0.0, 50.0), 400.0);
     }
 
     #[test]

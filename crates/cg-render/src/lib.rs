@@ -565,6 +565,7 @@ impl Renderer {
                         now_ms: now,
                         age_secs: a.item.age / fps,
                         default_tz,
+                        fps,
                     },
                     logic,
                     item: Some(a.item),
@@ -846,6 +847,7 @@ impl Renderer {
             now_ms: now_ms(),
             age_secs: frame / project.frame_rate.as_f64().max(1.0),
             default_tz: "",
+            fps: project.frame_rate.as_f64().max(1.0),
         };
         let logic = self.logic_values(template, frame, data);
         let ctx = Ctx {
@@ -1480,6 +1482,7 @@ impl Renderer {
                 else {
                     return;
                 };
+                let speed = widgets::frame_speed(*speed, time.fps);
                 for x in scroll_positions(w as f64, cycle as f64, speed * time.age_secs, true) {
                     let place = (TextAlign::Left, font.vertical_align);
                     self.draw_text(
@@ -1514,11 +1517,15 @@ impl Renderer {
                 else {
                     return;
                 };
-                let tops: Vec<f32> =
-                    scroll_positions(h as f64, cycle as f64, speed * time.age_secs, *looping)
-                        .into_iter()
-                        .map(|y| y as f32)
-                        .collect();
+                let tops: Vec<f32> = scroll_positions(
+                    h as f64,
+                    cycle as f64,
+                    widgets::frame_speed(*speed, time.fps) * time.age_secs,
+                    *looping,
+                )
+                .into_iter()
+                .map(|y| y as f32)
+                .collect();
                 // The block drawn once in a strip, the part in the box laid each frame.
                 let key = {
                     use std::hash::{Hash, Hasher};

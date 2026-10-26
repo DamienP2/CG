@@ -1250,6 +1250,7 @@ mod tests {
             now_ms: now,
             age_secs: 0.0,
             data: d,
+            fps: 50.0,
         }
     }
     fn text(l: &Layer, st: &State, now: i64, age_ms: i64) -> String {

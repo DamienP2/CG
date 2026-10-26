@@ -724,6 +724,7 @@ mod tests {
             now_ms: now,
             age_secs: 0.0,
             data: &data,
+            fps: 50.0,
         };
         let mut st = State::default();
         act(&l, &mut st, "start", &json!({}), &ctx(1000)).unwrap();
@@ -759,6 +760,7 @@ mod tests {
             now_ms: now,
             age_secs: age,
             data: &data,
+            fps: 50.0,
         };
         // From the take, the texts wait for Continue: not while typing.
         let mut st = State::default();

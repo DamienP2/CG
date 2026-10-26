@@ -410,7 +410,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
     let zm = zone_mask(d, (zx, 0.0, zw, h), c.fade.then_some((crawl, fw)));
     let zm = zm.as_deref();
     let now = d.time.now_ms;
-    let e = clock(&t, st, now, d.time.age_secs);
+    let e = clock(&t, st, now, d.time.age_secs, d.time.fps);
     if empty {
         if !c.empty_text.is_empty() {
             let col = with_alpha(cx.lk.color, 0.6);

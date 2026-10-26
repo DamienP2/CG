@@ -40,6 +40,9 @@ pub struct ActCtx<'a> {
     pub now_ms: i64,
     /// Seconds the graphic has been on air.
     pub age_secs: f64,
+    /// Frames per second of the channel (a crawl moves a whole number of
+    /// pixels per frame).
+    pub fps: f64,
     /// Values of the graphic.
     pub data: &'a Data,
 }

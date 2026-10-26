@@ -1027,6 +1027,7 @@ mod tests {
         ActCtx {
             now_ms: now,
             age_secs: 0.0,
+            fps: 50.0,
             data: d,
         }
     }
