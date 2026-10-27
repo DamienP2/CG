@@ -1,4 +1,4 @@
-import { ArrowRightToLine, Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, Tv, Users as UsersIcon } from 'lucide-react';
+import { ArrowRightToLine, Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, Images, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, Users as UsersIcon } from 'lucide-react';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -197,16 +197,6 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
   );
 }
 
-/** « 2 on air »: what the operated channel shows (only this follows its live state). */
-function AirIndicator({ channelId, name }: { channelId: string; name: string }) {
-  const onAir = useApp((s) => Object.keys(s.live[channelId]?.state.layers ?? {}).length);
-  return (
-    <span className={`air-indicator ${onAir ? 'live' : ''}`} title={name}>
-      <Tv size={13} /> {onAir ? t('{n} on air', { n: onAir }) : t('Off air')}
-    </span>
-  );
-}
-
 /** The pages of one project: designer, operator, data and project settings. */
 function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> }) {
   // Not `live`: the shell is not drawn again on each frame of the channels.
@@ -290,7 +280,6 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
         <div className="spacer" />
         {/* Filled by the page (the Designer's undo, redo and history). */}
         <div id="topbar-slot" className="topbar-slot" />
-        {sub === 'operator' && operated && operated.projectId === projectId && <AirIndicator channelId={operated.id} name={operated.name} />}
         {/* The project's own tab: the Performance page opens in another one. */}
         <StatusPill newTab />
         <UserMenu />

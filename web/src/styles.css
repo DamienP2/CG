@@ -17798,3 +17798,339 @@ button.ux1-pill.lost:hover {
 .mod-edit .mod-chip {
   align-self: flex-start;
 }
+
+/* ---- Operator, layout G (Oct. 2026) ---- */
+.opx-vsep {
+  background: var(--line);
+}
+/* Playlists: tabs over the rundown. */
+.opx-pltabs {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--op-4);
+}
+.opx-pltabs .opx-pl {
+  position: relative;
+  height: 34px;
+  gap: 7px;
+  padding: 0 10px 0 12px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 7px 7px 0 0;
+  max-width: 220px;
+}
+.opx-pltabs .opx-pl.on {
+  background: var(--op-2);
+  border-color: var(--op-4);
+  color: var(--text);
+  font-weight: 700;
+}
+.opx-pltabs .opx-pl .opx-name-cell {
+  flex: 0 1 auto;
+}
+.opx-pl-n {
+  font: 11px var(--mono);
+  font-weight: 400;
+  color: var(--text-3);
+}
+.opx-pltabs .opx-pl .opx-x {
+  width: 22px;
+  height: 22px;
+}
+.opx-pltabs > .opx-add {
+  margin: 0 0 5px auto;
+}
+/* Monitors: the preview and the on-air picture, the same size, plain. */
+.opx-mon-head {
+  gap: 8px;
+}
+.opx-mon-head .opx-title {
+  flex: none;
+}
+.opx-mon-head .opx-pics {
+  margin-left: auto;
+  padding: 0;
+}
+.opx-col > .opx-pane > .opx-monitor,
+.opx-col > .opx-pane > .opx-programs {
+  padding-bottom: 10px;
+}
+.opx-programs .opx-monitor {
+  padding-bottom: 0;
+}
+/* The fixed header of the graphic: its name, the layers-together toggle. */
+.opx-together {
+  flex: none;
+}
+/* The graphic's values, as tiles. */
+.opx-tiles {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  align-content: start;
+  gap: 8px;
+}
+.opx-vt {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 9px 10px 10px;
+  border: 1px solid var(--op-3);
+  border-radius: 9px;
+  background: var(--op-1);
+}
+.opx-vt.wide {
+  grid-column: 1 / -1;
+}
+.opx-vt.chg {
+  border-color: rgba(143, 163, 255, 0.45);
+}
+.opx-vt-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+.opx-vt-l {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.opx-vt-src {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 55%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: var(--fs-11);
+  font-weight: 600;
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.12);
+}
+.opx-vt-src.hand {
+  color: #fcd38d;
+  background: rgba(245, 165, 36, 0.14);
+}
+.opx-vt-h .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+.opx-vt-count {
+  align-self: flex-end;
+  font: 11px var(--mono);
+  color: var(--text-3);
+}
+.opx-vt-group {
+  grid-column: 1 / -1;
+  padding: 6px 2px 0;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.opx-vt .opx-bound {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--op-2);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opx-vt > input,
+.opx-vt > textarea,
+.opx-vt > select,
+.opx-vt > .pp-field {
+  width: 100%;
+  box-sizing: border-box;
+}
+.opx-tiles > .opx-data {
+  grid-column: 1 / -1;
+  border: 1px solid var(--op-3);
+  border-radius: 9px;
+  background: var(--op-1);
+}
+/* On air: the graphic's controls as tiles (state and actions, nothing to type). */
+.opx-aircard .opx-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.opx-aircard .opx-controls > .opx-widget {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  background: none;
+}
+.opx-aircard .opx-controls > .opx-trig,
+.opx-aircard .opx-controls > .opx-widget > .cc.air {
+  min-width: 0;
+  min-height: 96px;
+  padding: 10px;
+  border: 1px solid var(--op-3);
+  border-radius: 9px;
+  background: var(--op-2);
+}
+.opx-aircard .opx-controls > :not(.opx-widget):not(.opx-trig) {
+  grid-column: 1 / -1;
+}
+.cc.air {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cc.air .cc-l {
+  flex-wrap: wrap;
+  padding: 0;
+  border-top: none;
+}
+.cc.air .cc-l + .cc-l {
+  margin-top: 0;
+}
+.cc.air .cc-l1 {
+  row-gap: 2px;
+}
+.cc.air .cc-l1 .cc-name {
+  flex-basis: 100%;
+}
+.cc.air .cc-l2 {
+  gap: 6px;
+}
+.cc.air .cc-ob {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  justify-content: center;
+}
+.cc.air .cc-sq {
+  width: 38px;
+  height: 38px;
+}
+.cc.air .cc-sq.txt {
+  width: auto;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+.opx-trig {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.opx-aircard .opx-controls > .opx-trig {
+  border-color: rgba(245, 165, 36, 0.35);
+  background: rgba(245, 165, 36, 0.08);
+}
+.opx-aircard .opx-controls > .opx-trig.waits {
+  border-color: var(--warn);
+  background: rgba(245, 165, 36, 0.2);
+}
+.opx-trig-k {
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fcd38d;
+}
+.opx-trig-n {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+}
+/* The project's top bar, on the Operator: the monitors shown, the output, its web page. */
+.opx-top {
+  --op-1: #151722;
+  --op-2: #1c1f2c;
+  --op-3: #252938;
+  --op-4: #2f3446;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.opx-top .opx-screens {
+  background: var(--op-1);
+  border: 1px solid var(--op-4);
+}
+.opx-top .opx-screens button {
+  flex: none;
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+a.opx-html5 {
+  height: 30px;
+  text-decoration: none;
+}
+/* The bottom bar: Fade / Cut and Update, after Out. */
+.opx-tsep {
+  width: 1px;
+  height: 28px;
+  margin: 0 4px;
+  background: var(--op-4);
+}
+.ux1-transport .opx-upd-mode {
+  flex: none;
+  height: 44px;
+  box-sizing: border-box;
+  align-items: center;
+}
+.ux1-transport .opx-upd-mode button {
+  height: 36px;
+  padding: 0 12px;
+}
+.opx-upd-n {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: rgba(11, 18, 54, 0.85);
+  color: var(--accent-2);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* The Operator's top bar holds the monitors, the output and its page: the project tabs keep their label on the open one only. */
+@media (max-width: 1800px) {
+  .topbar:has(.opx-top) .project-tabs button:not(.on) .tab-label {
+    display: none;
+  }
+}
+.opx-aircard .opx-controls:empty {
+  display: none;
+}

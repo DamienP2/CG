@@ -1,10 +1,10 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, interpolateText, newId, parseHex, toHex } from '../engine/evaluate';
 import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone, type ChannelInfo } from '../engine/types';
@@ -17,10 +17,10 @@ import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { KeyScope, Row } from '../widgets/kit';
+import { KeyScope } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, type PreviewRun, type WidgetPart } from './WidgetTabs';
-import { FedText, LayerProperties, OpSection, type ExposedLayer, type FieldIO } from './Exposed';
+import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
 import { maxChars, shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { DataWarning } from './DataWarning';
@@ -276,6 +276,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [adding, setAdding] = useState(false);
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
+  // The monitors shown: the preview, the on-air picture or both (never none).
+  const [screens, setScreens] = useScreens();
   // The widget of a graphic on air whose keys are on (`zone:layer`, a click on its row), and the ⋯ unfolded.
   const [airWidget, setAirWidget] = useState<string | null>(null);
   const [airMore, setAirMore] = useState<Record<string, boolean>>({});
@@ -484,14 +486,17 @@ export function Operator({ channelId }: { channelId: string | null }) {
   return (
     <div className="opl-page">
     <OperatorTop channelId={channelId} operate={operate} />
+    <TopControls channelId={channelId} channelInfo={channelInfo} screens={screens} onScreens={setScreens} />
     <ScheduleTop channelId={channelId} project={project} />
     {channelId && <ZoneBar project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
-    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
+    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px minmax(0, 1fr)` }}>
       {/* Left: playlists and graphics. */}
       <div className="opx-col">
-        <section className="opx-pane" style={{ height: layout.lists, flex: 'none' }}>
-          <header className="opx-head">
-            <span className="opx-title">{t('Playlists')}</span>
+        <section className="opx-pane grow">
+          <div className="opx-pltabs" role="tablist" aria-label={t('Playlists')}>
+            {playlists.map((p) => (
+              <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
+            ))}
             {canEdit && (
               <button
                 className="opx-add"
@@ -507,17 +512,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <Plus size={15} />
               </button>
             )}
-          </header>
-          <div className="opx-scroll">
-            {playlists.map((p) => (
-              <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
-            ))}
           </div>
-        </section>
-        <Splitter axis="y" className="opx-gap" value={layout.lists} min={90} max={500} reset={200} onChange={(v) => setLayout('lists', v)} />
-        <section className="opx-pane grow">
           <header className="opx-head">
-            <span className="opx-title">{t('Rundown · {name}', { name: playlists.find((p) => p.id === activeList)?.name ?? '' })}</span>
+            <span className="opx-title">{t('Rundown')}</span>
             {activePl && canEdit && (
               <>
                 <button className={`opx-btn small ${activePl.autoNext ? 'violet' : ''}`} title={t('Auto next: each graphic takes the next one after its time (set on each graphic)')} onClick={() => setPlaylist({ autoNext: !activePl.autoNext || undefined })}>
@@ -620,21 +617,28 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
       <Splitter axis="x" className="opx-gap" value={layout.left} min={260} max={560} reset={340} onChange={(v) => setLayout('left', v)} />
 
-      {/* Center: preview, then variables and data. */}
+      {/* Center: preview, then the graphic's values as tiles. */}
       <div className="opx-col">
-        <section className="opx-pane" style={{ height: layout.preview, flex: 'none' }}>
-          <div className="opx-monitor">
-            <Screen width={previewFormat.width} height={previewFormat.height}>
-              {template && (
-                <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
-                  <PreviewScene template={template} format={previewFormat.id} data={previewData} fps={fps} run={pv} lang={lang} />
-                </div>
-              )}
-            </Screen>
-          </div>
-          <div className="opx-strip">{itemZone ? t('Preview · {zone}', { zone: itemZone.name }) : t('Preview')}</div>
-        </section>
-        <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
+        {screens !== 'air' && (
+          <>
+            <section className="opx-pane" style={{ height: layout.preview, flex: 'none' }}>
+              <header className="opx-head opx-mon-head">
+                <span className="opx-title">{t('Preview')}</span>
+                {itemZone && <span className="muted small">{itemZone.name}</span>}
+              </header>
+              <div className="opx-monitor">
+                <Screen width={previewFormat.width} height={previewFormat.height}>
+                  {template && (
+                    <div style={{ position: 'absolute', inset: 0, ...areaClip(itemZone && zoneArea(itemZone, previewFormat.id, previewFormat.height > previewFormat.width)) }}>
+                      <PreviewScene template={template} format={previewFormat.id} data={previewData} fps={fps} run={pv} lang={lang} />
+                    </div>
+                  )}
+                </Screen>
+              </div>
+            </section>
+            <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
+          </>
+        )}
         <section className="opx-pane grow">
           {item && template ? (
             <>
@@ -643,41 +647,33 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title={t('Name in the playlist')} />
                 <span className="muted small opx-head-sub" title={t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}>{t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}</span>
                 <span className="spacer" />
-                {onAirNow && (
-                  <>
-                    <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!operateItem} />
-                    <button className="opx-btn violet" disabled={!operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
-                      <RefreshCw size={13} /> Update{updates ? ` · ${updates}` : ''}
-                    </button>
-                  </>
+                {parts.widgets.length > 1 && (
+                  <button className={`opx-btn small opx-together ${together ? 'violet' : ''}`} aria-pressed={together} title={together ? t('One tab per layer') : t('All the layers together')} onClick={toggleMerged}>
+                    <Layers size={13} /> {t('Layers together')}
+                  </button>
                 )}
               </header>
-              {(parts.widgets.length > 1 || (parts.widgets.length > 0 && parts.shared.length > 0)) && (
+              {!together && (parts.widgets.length > 1 || (parts.widgets.length > 0 && parts.shared.length > 0)) && (
                 <div className="opx-head opx-tabs opx-wtabs">
-                  {!together &&
-                    parts.widgets.map((p, i) => {
-                      const Icon = widgetOf(p.layer)?.icon;
-                      const ws = pv.widgets[p.layer.id] as { running?: boolean } | undefined;
-                      return (
-                        <button key={p.layer.id} className={`opx-wtab ${!sharedSel && p === part ? 'on' : ''}`} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
-                          {Icon && <Icon size={13} />}
-                          <span>{tabName(parts.widgets, i)}</span>
-                          {ws?.running && <i className="opx-run" title={t('Animation running')} />}
-                          {partChanged(p) && <i className="opx-chg" />}
-                        </button>
-                      );
-                    })}
-                  {!together && parts.shared.length > 0 && (
+                  {parts.widgets.map((p, i) => {
+                    const Icon = widgetOf(p.layer)?.icon;
+                    const ws = pv.widgets[p.layer.id] as { running?: boolean } | undefined;
+                    return (
+                      <button key={p.layer.id} className={`opx-wtab ${!sharedSel && p === part ? 'on' : ''}`} onClick={() => setTabOf({ ...tabOf, [item.id]: p.layer.id })}>
+                        {Icon && <Icon size={13} />}
+                        <span>{tabName(parts.widgets, i)}</span>
+                        {ws?.running && <i className="opx-run" title={t('Animation running')} />}
+                        {partChanged(p) && <i className="opx-chg" />}
+                      </button>
+                    );
+                  })}
+                  {parts.shared.length > 0 && (
                     <button className={`opx-wtab ${sharedSel ? 'on' : ''}`} onClick={() => setTabOf({ ...tabOf, [item.id]: SHARED_TAB })}>
                       <Type size={13} />
                       <span>{t('Texts')}</span>
                       {parts.shared.some((f) => changed.has(f.key)) && <i className="opx-chg" />}
                     </button>
                   )}
-                  <span className="spacer" />
-                  <button className={`opx-wmerge ${together ? 'on' : ''}`} title={together ? t('One tab per layer') : t('All the layers together')} onClick={toggleMerged}>
-                    <Layers size={14} />
-                  </button>
                 </div>
               )}
               {shownParts.some((p) => p.controls) && (
@@ -689,44 +685,23 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     ))}
                 </div>
               )}
-              <div className="opx-edit" style={{ gridTemplateColumns: hasData && hasContent ? `${Number.isFinite(layout.fields) ? layout.fields : 50}% 1px minmax(0, 1fr)` : 'minmax(0, 1fr)' }}>
-                {hasContent && (
-                <div className="opx-fields-col">
-                  <div className="opx-fields">
-                    <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />
-                  </div>
-                </div>
-                )}
-                {hasData && part && (
-                  <>
-                    {hasContent && (
-                    <div
-                      className="opx-vgap"
-                      title={t('Drag to resize · double-click: half and half')}
-                      onDoubleClick={() => setLayout('fields', 50)}
-                      onPointerDown={(e) => {
-                        const box = e.currentTarget.parentElement!.getBoundingClientRect();
-                        const move = (ev: PointerEvent) => box.width > 0 && setLayout('fields', Math.round(Math.max(25, Math.min(75, ((ev.clientX - box.left) / box.width) * 100))));
-                        const up = () => (window.removeEventListener('pointermove', move), window.removeEventListener('pointerup', up));
-                        window.addEventListener('pointermove', move);
-                        window.addEventListener('pointerup', up);
-                      }}
-                    />
-                    )}
-                    <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })}>
-                      {datasets.map((ds) =>
-                        datasetUse(template, ds).source ? (
-                          <DataSetSource key={ds.key} ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
-                        ) : (
-                          <div key={ds.key} className="opx-ds-stack">
-                            <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
-                            <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
-                          </div>
-                        ),
-                      )}
-                    </DataBlock>
-                  </>
-                )}
+              <div className="opx-tiles">
+                {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
+                {hasData &&
+                  part !== undefined &&
+                  datasets.map((ds) =>
+                    datasetUse(template, ds).source ? (
+                      <div key={ds.key} className="opx-vt wide">
+                        <DataSetSource ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
+                      </div>
+                    ) : (
+                      <div key={ds.key} className="opx-vt wide opx-ds-stack">
+                        <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
+                        <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                      </div>
+                    ),
+                  )}
+                {bound.length > 0 && <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />}
               </div>
             </>
           ) : (
@@ -735,49 +710,47 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
       </div>
 
-      <Splitter axis="x" className="opx-gap" sign={-1} value={layout.right} min={320} max={760} reset={480} onChange={(v) => setLayout('right', v)} />
+      <div className="opx-vsep" />
 
-      {/* Right: on air, then the internal controls of the graphics on air. */}
+      {/* Right: on air (the same size as the preview), then the controls of the graphics on air. */}
       <div className="opx-col">
-        <section className="opx-pane" style={{ height: layout.air, flex: 'none' }}>
-          <header className="opx-head">
-            <span className={`opx-title ${busy.length ? 'live' : ''}`}>● {t('On air')}</span>
-            <OutputSelect channelId={channelId} />
-          </header>
-          <div className="opx-pics">
-            {pictures.map((p) => {
-              const ok = designed(p.width, p.height);
-              const on = ok && (shown.includes(p.id) || (!visible.length && p === pictures[0]));
-              return (
-                <button key={p.id} className={on ? 'on' : ''} disabled={!ok} title={ok ? `${p.width}×${p.height}` : t('{size}: not designed in this project (add the format in the Designer)', { size: `${p.width}×${p.height}` })} onClick={() => setShown(on ? shown.filter((x) => x !== p.id) : [...shown, p.id])}>
-                  {p.name}
-                </button>
-              );
-            })}
-            <div className="spacer" />
-            {channelInfo && (
-              <a className="opx-link" href={`/output/${encodeURIComponent(channelInfo.id)}`} target="_blank" rel="noreferrer">
-                HTML5 ↗
-              </a>
-            )}
-          </div>
-          <div className="opx-programs">
-            {channelId ? (
-              programs.map((p) => (
-                <div key={p.id} className="opx-monitor" style={{ flex: `${p.width / p.height} 1 0` }}>
-                  <Screen width={p.width} height={p.height}>
-                    {/* A monitor: 30 frames a second are enough (the HTML5 output runs at the display rate). */}
-                    <Program project={project} live={liveState} width={p.width} height={p.height} maxFps={MONITOR_FPS} />
-                  </Screen>
-                </div>
-              ))
-            ) : (
-              <p className="opx-hint pad">{t('No output: choose one above to take graphics on air. You can still prepare the playlists.')}</p>
-            )}
-          </div>
-          <div className={`opx-strip ${busy.length ? 'live' : ''}`}>{!channelId ? t('No output') : busy.length ? t('Live · {n} on screen', { n: busy.length }) : t('Off air')}</div>
-        </section>
-        <Splitter axis="y" className="opx-gap" value={layout.air} min={160} max={800} reset={330} onChange={(v) => setLayout('air', v)} />
+        {screens !== 'preview' && (
+          <>
+            <section className="opx-pane" style={{ height: layout.preview, flex: 'none' }}>
+              <header className="opx-head opx-mon-head">
+                <span className={`opx-title ${busy.length ? 'live' : ''}`}>● {t('On air')}</span>
+                {pictures.length > 1 && (
+                  <div className="opx-pics">
+                    {pictures.map((p) => {
+                      const ok = designed(p.width, p.height);
+                      const on = ok && (shown.includes(p.id) || (!visible.length && p === pictures[0]));
+                      return (
+                        <button key={p.id} className={on ? 'on' : ''} disabled={!ok} title={ok ? `${p.width}×${p.height}` : t('{size}: not designed in this project (add the format in the Designer)', { size: `${p.width}×${p.height}` })} onClick={() => setShown(on ? shown.filter((x) => x !== p.id) : [...shown, p.id])}>
+                          {p.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </header>
+              <div className="opx-programs">
+                {channelId ? (
+                  programs.map((p) => (
+                    <div key={p.id} className="opx-monitor" style={{ flex: `${p.width / p.height} 1 0` }}>
+                      <Screen width={p.width} height={p.height}>
+                        {/* A monitor: 30 frames a second are enough (the HTML5 output runs at the display rate). */}
+                        <Program project={project} live={liveState} width={p.width} height={p.height} maxFps={MONITOR_FPS} />
+                      </Screen>
+                    </div>
+                  ))
+                ) : (
+                  <p className="opx-hint pad">{t('No output: choose one above to take graphics on air. You can still prepare the playlists.')}</p>
+                )}
+              </div>
+            </section>
+            <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
+          </>
+        )}
         <section className="opx-pane grow">
           {busy.length ? (
             <div className="opx-airlist">
@@ -813,6 +786,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
       </button>
       <button className="opx-btn" disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => outZone(selZone)} title={actionLabel('out')}>
         <CircleStop size={16} /> Out <KeyCap action="out" />
+      </button>
+      <span className="opx-tsep" />
+      <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!onAirNow || !operateItem} />
+      <button className={`opx-btn ${updates && onAirNow ? 'violet' : ''}`} disabled={!onAirNow || !operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
+        <RefreshCw size={16} /> Update{updates && onAirNow ? <span className="opx-upd-n">{updates}</span> : null}
       </button>
       <span className="spacer" />
       {channelId && <UndoHistory channelId={channelId} operate={operate} />}
@@ -902,10 +880,10 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
   const count = project.rundown.filter((r) => r.playlist === id).length;
   const save = (lists: Project['playlists']) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
   return (
-    <div className={`opx-pl ${active ? 'on' : ''}`} onClick={() => onSelect(id)}>
+    <div className={`opx-pl ${active ? 'on' : ''}`} role="tab" aria-selected={active} tabIndex={0} title={tn(count, '{n} item', '{n} items')} onClick={() => onSelect(id)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect(id))}>
       <span className="opx-name-cell">{p.name}</span>
-      <span className="muted small">{tn(count, '{n} item', '{n} items')}</span>
-      {editable && (
+      <span className="opx-pl-n">{count}</span>
+      {editable && active && (
         <span className="opx-more" onClick={(e) => e.stopPropagation()}>
           <button className="opx-x" onClick={() => setMenu(!menu)} title={t('More')}>
             <MoreHorizontal size={14} />
@@ -991,58 +969,66 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
     ) : (
       label
     );
+  // A text with a style toolbar, several lines or a table takes the whole row of tiles.
+  const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || f.kind === 'table';
+  const groups = fieldGroups(fields);
+  // The Texts fed by a data set come with the plain values.
+  if (fed.length && !groups.some((g) => !g.title)) groups.unshift({ title: '', fields: [] });
   return (
     <>
-      {(fields.length > 0 || fed.length > 0) && (
-        <OpSection title={t('Content')}>
-          {(() => {
-            // The Text fed by a data set with the plain values, before the values grouped by layer.
-            const groups = fieldGroups(fields);
-            if (fed.length && !groups.some((g) => !g.title)) groups.unshift({ title: '', fields: [] });
-            return groups.map((g) => (
-              <div key={g.title} className="opx-group">
-                {g.title && <div className="opx-sub">{g.title}</div>}
-                {g.fields.map(({ f, label }) => (
-                  <div key={f.key}>
-                    <Row label={f.kind === 'table' ? undefined : dot(changed.has(f.key), label)} tail={fromData(f) && f.kind !== 'table' ? handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '') : undefined}>
-                      {live(f) ? (
-                        <span className="opx-bound" title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
-                          {boundDraft[f.key] ?? draft[f.key] ?? '…'}
-                        </span>
-                      ) : (
-                        <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} maxLength={maxChars(template, f.key) || undefined} onChange={(v) => onDraft({ [f.key]: v })} />
-                      )}
-                    </Row>
-                    {/* A Text's « Max characters »: what is typed, out of the most. */}
-                    {!live(f) && maxChars(template, f.key) > 0 && (
-                      <p className="hint" style={{ textAlign: 'right', padding: '0 10px 6px' }}>
-                        {plain(draft[f.key] ?? '').length} / {maxChars(template, f.key)}
-                      </p>
-                    )}
-                  </div>
-                ))}
-                {!g.title &&
-                  fed.map(({ layer, title, cols, at }) => {
-                    const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
-                    return cols.some(byHand) ? (
-                      <div key={layer.id}>
-                        {cols.map((k, i) => (
-                          <Row key={k} label={dot(changed.has(k), cols.length > 1 ? `${layer.name} · ${k.slice(at)}` : layer.name)} tail={i === 0 ? toggle : undefined}>
-                            <TextInput value={draft[k] ?? ''} onChange={(v) => onDraft({ [k]: v })} />
-                          </Row>
-                        ))}
-                      </div>
-                    ) : (
-                      <FedText key={layer.id} label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : layer.type === 'typewriter' ? interpolateText(layer.text, previewData) : ''} title={title} tail={toggle} />
-                    );
-                  })}
+      {groups.map((g) => (
+        <Fragment key={g.title}>
+          {g.title && <div className="opx-vt-group">{g.title}</div>}
+          {g.fields.map(({ f, label }) => (
+            <div key={f.key} className={`opx-vt ${wide(f) ? 'wide' : ''} ${changed.has(f.key) ? 'chg' : ''}`}>
+              <div className="opx-vt-h">
+                {changed.has(f.key) && <i className="opx-chg" />}
+                <span className="opx-vt-l">{label}</span>
+                {fromData(f) && (
+                  <span className={`opx-vt-src ${byHand(f.key) ? 'hand' : ''}`} title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
+                    {byHand(f.key) ? <PenLine size={11} /> : <Database size={11} />} {byHand(f.key) ? t('Typed by hand') : sourceName(f.binding!.source)}
+                  </span>
+                )}
+                {fromData(f) && f.kind !== 'table' && handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
               </div>
-            ));
-          })()}
-        </OpSection>
-      )}
+              {live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} maxLength={maxChars(template, f.key) || undefined} onChange={(v) => onDraft({ [f.key]: v })} />}
+              {/* A Text's « Max characters »: what is typed, out of the most. */}
+              {!live(f) && maxChars(template, f.key) > 0 && (
+                <span className="opx-vt-count">
+                  {plain(draft[f.key] ?? '').length} / {maxChars(template, f.key)}
+                </span>
+              )}
+            </div>
+          ))}
+          {!g.title &&
+            fed.map(({ layer, title, cols, at }) => {
+              const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
+              return cols.some(byHand) ? (
+                cols.map((k, i) => (
+                  <div key={k} className={`opx-vt ${changed.has(k) ? 'chg' : ''}`}>
+                    <div className="opx-vt-h">
+                      {changed.has(k) && <i className="opx-chg" />}
+                      <span className="opx-vt-l">{cols.length > 1 ? `${layer.name} · ${k.slice(at)}` : layer.name}</span>
+                      <span className="opx-vt-src hand">
+                        <PenLine size={11} /> {t('Typed by hand')}
+                      </span>
+                      {i === 0 && toggle}
+                    </div>
+                    <TextInput value={draft[k] ?? ''} onChange={(v) => onDraft({ [k]: v })} />
+                  </div>
+                ))
+              ) : (
+                <div key={layer.id} className="opx-vt wide">
+                  <FedText label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : layer.type === 'typewriter' ? interpolateText(layer.text, previewData) : ''} title={title} tail={toggle} />
+                </div>
+              );
+            })}
+        </Fragment>
+      ))}
       {exposed.map((e) => (
-        <LayerProperties key={e.layer.id} entry={e} io={io} bare />
+        <div key={e.layer.id} className="opx-vt wide">
+          <LayerProperties entry={e} io={io} bare />
+        </div>
       ))}
     </>
   );
@@ -1401,7 +1387,7 @@ function SpecControls({ layer, item, act, setData, fps, lang, selected, onSelect
   return (
     <KeyScope.Provider value={selected}>
       <div className={`opx-widget cc-host ${selected ? 'sel' : ''}`} onClick={onSelect}>
-        <CentreModeContext.Provider value="operator">
+        <CentreModeContext.Provider value="air">
           <OperatorBound layer={layer} data={item.data} setData={setData}>
             <Op layer={layer as never} state={state} data={item.data} act={act} item={item} time={time} lang={lang} setData={setData} />
           </OperatorBound>
@@ -1619,7 +1605,7 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
           const toggle = () => command({ action: 'widget', target: l.id, control: 'toggle', ...target });
           return (
             <div key={l.id} className="opx-widget cc-host">
-              <CentreModeContext.Provider value="operator">
+              <CentreModeContext.Provider value="air">
                 <Centre
                   name={l.name}
                   status={<StartStatus layer={l} item={item} />}
@@ -1632,17 +1618,68 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
             </div>
           );
         })}
-      {triggers.length > 0 && (
-        <div className="opx-triggers">
-          <span className="opx-label">{t('Triggers')}</span>
-          {triggers.map((n) => (
-            <button key={n} className={`opx-btn small ${waiting?.resume?.type === 'trigger' && waiting.resume.name === n ? 'amber' : ''}`} onClick={() => command({ action: 'trigger', name: n })} title={t('Every graphic waiting for this trigger plays on')}>
-              <Zap size={12} /> {n}
-            </button>
-          ))}
-        </div>
-      )}
+      {triggers.map((n) => (
+        <button key={n} className={`opx-trig ${waiting?.resume?.type === 'trigger' && waiting.resume.name === n ? 'waits' : ''}`} onClick={() => command({ action: 'trigger', name: n })} title={t('Every graphic waiting for this trigger plays on')}>
+          <span className="opx-trig-k">{t('Trigger')}</span>
+          <span className="opx-trig-n">
+            <Zap size={14} /> {n}
+          </span>
+        </button>
+      ))}
     </div>
+  );
+}
+
+type Screens = 'both' | 'preview' | 'air';
+
+/** Which monitors show: the preview, the on-air picture or both (kept per browser). */
+function useScreens(): [Screens, (v: Screens) => void] {
+  const [v, setV] = useState<Screens>(() => {
+    try {
+      const s = localStorage.getItem('strata.opScreens');
+      return s === 'preview' || s === 'air' ? s : 'both';
+    } catch {
+      return 'both';
+    }
+  });
+  const set = (x: Screens) => {
+    setV(x);
+    try {
+      localStorage.setItem('strata.opScreens', x);
+    } catch {
+      /* private mode */
+    }
+  };
+  return [v, set];
+}
+
+/** In the project's top bar: the monitors shown, the output and its web page. */
+function TopControls({ channelId, channelInfo, screens, onScreens }: { channelId: string | null; channelInfo?: ChannelInfo; screens: Screens; onScreens: (v: Screens) => void }) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSlot(document.getElementById('topbar-slot')), []);
+  if (!slot) return null;
+  const opts: [Screens, string, typeof Eye][] = [
+    ['preview', t('Preview'), Eye],
+    ['air', t('On air'), Radio],
+    ['both', t('Both'), Columns2],
+  ];
+  return createPortal(
+    <div className="opx-top">
+      <div className="opx-seg opx-screens" role="group" aria-label={t('Monitors')}>
+        {opts.map(([v, l, Icon]) => (
+          <button key={v} className={screens === v ? 'on' : ''} aria-pressed={screens === v} aria-label={l} title={l} onClick={() => onScreens(v)}>
+            <Icon size={14} />
+          </button>
+        ))}
+      </div>
+      <OutputSelect channelId={channelId} />
+      {channelInfo && (
+        <a className="opx-btn small opx-html5" href={`/output/${encodeURIComponent(channelInfo.id)}`} target="_blank" rel="noreferrer">
+          HTML5 ↗
+        </a>
+      )}
+    </div>,
+    slot,
   );
 }
 

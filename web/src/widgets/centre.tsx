@@ -64,7 +64,7 @@ function ActionButton({ a }: { a: Action }) {
   };
   const title = a.title ?? (a.key ? `${a.label} · ${a.key}` : a.label);
   const Icon = a.icon;
-  if (mode === 'operator' && a.main)
+  if (mode !== 'designer' && a.main)
     return (
       <button className={`cc-ob ${a.tone ?? ''}`} disabled={a.disabled} title={title} onClick={press}>
         {a.text ? <span className="cc-txt">{a.text}</span> : <Icon size={14} />}
@@ -180,12 +180,13 @@ export interface Readout {
  */
 export function Centre({ name, readout, status, actions, rows, children }: { name?: string; readout?: Readout; status?: ReactNode; actions?: Line2Item[]; rows?: ReactNode; children?: ReactNode }) {
   const mode = useCentreMode();
-  const list = (actions ?? []).filter(Boolean) as Exclude<Line2Item, false | null | undefined>[];
+  // A tile on air: the actions only (a value is typed in the preview, then Update).
+  const list = (actions ?? []).filter((a) => a && !(mode === 'air' && a !== GAP && 'field' in a)) as Exclude<Line2Item, false | null | undefined>[];
   return (
     <div className={`cc ${mode}`}>
-      {(readout || status || (mode === 'operator' && name)) && (
+      {(readout || status || (mode !== 'designer' && name)) && (
         <div className="cc-l cc-l1">
-          {mode === 'operator' && name && <span className="cc-name">{name}</span>}
+          {mode !== 'designer' && name && <span className="cc-name">{name}</span>}
           {readout?.k && <span className="cc-k">{readout.k}</span>}
           {readout && (
             <span className="cc-num">
@@ -204,7 +205,7 @@ export function Centre({ name, readout, status, actions, rows, children }: { nam
         </div>
       )}
       {rows && <div className="cc-l cc-rows">{rows}</div>}
-      {children && <div className="cc-l cc-l3">{children}</div>}
+      {children && mode !== 'air' && <div className="cc-l cc-l3">{children}</div>}
     </div>
   );
 }

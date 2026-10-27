@@ -240,8 +240,12 @@ export function Section({ id, title, children, actions, level = 1, closed }: { i
 /** Settings a row exposes to the Operator: a path in the layer, several, or none. */
 export type Expose = string | readonly string[] | false | undefined;
 
-/** Where a widget's control centre is drawn (web/src/widgets/centre.tsx): the Designer's panel or the Operator. */
-export type CentreMode = 'designer' | 'operator';
+/**
+ * Where a widget's control centre is drawn (web/src/widgets/centre.tsx): the Designer's panel, the
+ * Operator (the preview's bar), or a tile of a graphic on air (its state and actions only: no field,
+ * no setting).
+ */
+export type CentreMode = 'designer' | 'operator' | 'air';
 export const CentreModeContext = createContext<CentreMode>('designer');
 export const useCentreMode = () => useContext(CentreModeContext);
 /** The Operator's filter of a centre's settings: a row with `expose` paths shows only when every path is exposed. */
