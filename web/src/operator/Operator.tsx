@@ -115,13 +115,13 @@ function updateData(t: Template, draft: Record<string, string>, read: ReadMode):
   return { ...out, ...sourcePatch(t) };
 }
 
-/** Fields grouped by layer ("Name · Vertical": group Name, label Vertical). */
-function fieldGroups(fields: Field[]): { title: string; fields: { f: Field; label: string }[] }[] {
+/** Fields grouped by layer ("Name · Vertical": group Name, label Vertical); a layer's only value named after the layer. */
+function fieldGroups(fields: Field[], names: Map<string, string>): { title: string; fields: { f: Field; label: string }[] }[] {
   const out: { title: string; fields: { f: Field; label: string }[] }[] = [];
   for (const f of fields) {
     const at = f.label.indexOf(' · ');
     const title = at > 0 ? f.label.slice(0, at) : '';
-    const label = at > 0 ? f.label.slice(at + 3) : f.label;
+    const label = names.get(f.key) || (at > 0 ? f.label.slice(at + 3) : f.label);
     let g = out.find((x) => x.title === title);
     if (!g) out.push((g = { title, fields: [] }));
     g.fields.push({ f, label });
@@ -687,7 +687,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 </div>
               )}
               <div className="opx-tiles">
-                {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
+                {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} names={new Map(shownParts.flatMap((p) => (p.fields.length === 1 ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
                 {hasData &&
                   part !== undefined &&
                   datasets.map((ds) =>
@@ -926,7 +926,7 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
  * fed by a data set show), then the properties exposed in the Designer, layer
  * by layer, with the Designer's controls and sections.
  */
-function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; exposed: ExposedLayer[]; fedLayers: Layer[]; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
+function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; /** A widget's only value: its layer's name, not the label set at import (often the text itself). */ names: Map<string, string>; exposed: ExposedLayer[]; fedLayers: Layer[]; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
   // Typed by hand over the data, until the operator goes back to it.
   const byHand = (k: string) => !!draft[manualKey(k)]?.trim();
   const fromData = (f: Field) => !!f.binding?.source && readMode !== 'manual';
@@ -976,7 +976,7 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
   const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || f.kind === 'table';
   // Bento: a number, a colour or a switch takes one cell, a text, an image or a read value two.
   const size = (f: Field) => (wide(f) ? 'wide' : live(f) || f.kind === 'text' || f.kind === 'image' ? 'w2' : '');
-  const groups = fieldGroups(fields);
+  const groups = fieldGroups(fields, names);
   // The Texts fed by a data set come with the plain values.
   if (fed.length && !groups.some((g) => !g.title)) groups.unshift({ title: '', fields: [] });
   return (
@@ -1031,7 +1031,10 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
         </Fragment>
       ))}
       {exposed.map((e) => (
-        <div key={e.layer.id} className="opx-vt wide">
+        <div key={e.layer.id} className={`opx-vt wide ${[...e.at.values()].some((f) => changed.has(f.key)) ? 'chg' : ''}`}>
+          <div className="opx-vt-h">
+            <span className="opx-vt-l">{e.layer.name}</span>
+          </div>
           <LayerProperties entry={e} io={io} bare />
         </div>
       ))}
