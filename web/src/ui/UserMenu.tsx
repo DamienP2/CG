@@ -1,8 +1,9 @@
-import { ChevronDown, Keyboard, Languages, LogOut } from 'lucide-react';
+import { ChevronDown, Keyboard, Languages, LogOut, SunMoon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { LANGS, setLang, t, tc, useLang, type Lang } from '../i18n';
 import { openShortcuts } from '../operator/ShortcutsOverlay';
 import { api, useApp } from '../store';
+import { setTheme, useTheme, type ThemePref } from '../theme';
 
 /** FR | EN: kept for the user on the server. */
 function LangSwitch() {
@@ -26,9 +27,37 @@ function LangSwitch() {
   );
 }
 
+const THEME_LABELS: { id: ThemePref; label: string }[] = [
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+  { id: 'system', label: 'System' },
+];
+
+/** Dark | Light | System: kept for the user on the server. */
+function ThemeSwitch() {
+  const theme = useTheme((s) => s.theme);
+  const pick = (th: ThemePref) => {
+    if (th === theme) return;
+    setTheme(th);
+    const { auth, toast } = useApp.getState();
+    if (!auth?.user) return;
+    useApp.setState({ auth: { ...auth, user: { ...auth.user, theme: th } } });
+    api('PUT', '/api/me/theme', { theme: th }).catch((e) => toast((e as Error).message, 'error'));
+  };
+  return (
+    <div className="lang-switch theme-switch" role="group" aria-label={t('Theme')}>
+      {THEME_LABELS.map((o) => (
+        <button key={o.id} className={theme === o.id ? 'on' : ''} aria-pressed={theme === o.id} onClick={() => pick(o.id)}>
+          {tc('theme', o.label)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The account in a top bar: the avatar (with the name when `named`), and its
- * menu — language, keyboard shortcuts, sign out.
+ * menu — language, theme, keyboard shortcuts, sign out.
  */
 export function UserMenu({ named }: { named?: boolean }) {
   const user = useApp((s) => s.auth?.user);
@@ -97,6 +126,10 @@ export function UserMenu({ named }: { named?: boolean }) {
           <div className="ux1-mrow">
             <Languages size={14} /> {t('Language')}
             <LangSwitch />
+          </div>
+          <div className="ux1-mrow">
+            <SunMoon size={14} /> {t('Theme')}
+            <ThemeSwitch />
           </div>
           <button
             className="ux1-mi"

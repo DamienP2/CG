@@ -14,4 +14,8 @@ export const ux1: Record<string, string> = {
   '{n} graphics': '{n} graphiques',
   'The server does not answer': 'Le serveur ne répond pas',
   'the server does not answer': 'le serveur ne répond pas',
+  'Theme': 'Thème',
+  'theme|Dark': 'Sombre',
+  'theme|Light': 'Clair',
+  'theme|System': 'Système',
 };

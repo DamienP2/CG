@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 pub const COOKIE: &str = "cg_session";
 /// Languages of the interface.
 pub const LANGS: [&str; 2] = ["en", "fr"];
+/// Colour themes of the interface ("system" follows the computer's).
+pub const THEMES: [&str; 3] = ["dark", "light", "system"];
 const SESSION_TTL: Duration = Duration::from_secs(14 * 24 * 3600);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +56,9 @@ pub struct User {
     /// Language of the interface ("en", "fr"); empty = the browser's.
     #[serde(default)]
     pub lang: String,
+    /// Colour theme of the interface ("dark", "light", "system"); empty = dark.
+    #[serde(default)]
+    pub theme: String,
     password_hash: String,
 }
 
@@ -69,6 +74,7 @@ pub struct PublicUser {
     pub channels: Option<Vec<String>>,
     pub disabled: bool,
     pub lang: String,
+    pub theme: String,
 }
 
 impl From<&User> for PublicUser {
@@ -82,6 +88,7 @@ impl From<&User> for PublicUser {
             channels: u.channels.clone(),
             disabled: u.disabled,
             lang: u.lang.clone(),
+            theme: u.theme.clone(),
         }
     }
 }
@@ -423,6 +430,7 @@ impl Auth {
             channels: input.channels,
             disabled: input.disabled,
             lang: String::new(),
+            theme: String::new(),
             password_hash: hash_password(&input.password).map_err(|e| e.to_string())?,
         };
         list.push(user.clone());
@@ -474,6 +482,19 @@ impl Auth {
         let mut list = self.users();
         let u = list.iter_mut().find(|u| u.id == id).ok_or("no such user")?;
         u.lang = lang.to_string();
+        let updated = u.clone();
+        self.save(list).map_err(|e| e.to_string())?;
+        Ok(updated)
+    }
+
+    /// The colour theme a user chose for the interface.
+    pub fn set_theme(&self, id: &str, theme: &str) -> Result<User, String> {
+        if !THEMES.contains(&theme) {
+            return Err(format!("unknown theme `{theme}`"));
+        }
+        let mut list = self.users();
+        let u = list.iter_mut().find(|u| u.id == id).ok_or("no such user")?;
+        u.theme = theme.to_string();
         let updated = u.clone();
         self.save(list).map_err(|e| e.to_string())?;
         Ok(updated)
@@ -875,11 +896,16 @@ mod tests {
         assert_eq!(admin.lang, "");
         assert_eq!(auth.set_lang(&admin.id, "fr").unwrap().lang, "fr");
         assert!(auth.set_lang(&admin.id, "de").is_err());
+        // …and the colour theme of it.
+        assert_eq!(admin.theme, "");
+        assert_eq!(auth.set_theme(&admin.id, "light").unwrap().theme, "light");
+        assert!(auth.set_theme(&admin.id, "pink").is_err());
 
         // The last admin cannot be removed; data survives a reload.
         assert!(auth.delete(&admin.id).is_err());
         assert_eq!(Auth::load(&dir).users().len(), 1);
         assert_eq!(Auth::load(&dir).users()[0].lang, "fr");
+        assert_eq!(Auth::load(&dir).users()[0].theme, "light");
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

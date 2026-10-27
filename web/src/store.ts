@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { lang, pickedByHand, setLang, t } from './i18n';
+import { setTheme } from './theme';
 import { create } from 'zustand';
 import { useData } from './data/dataStore';
 import { designTemplates } from './engine/drafts';
@@ -244,6 +245,8 @@ export const useApp = create<AppStore>((set, get) => {
         const auth = await api<AuthState>('GET', '/api/auth/state');
         // The user's language before anything is drawn.
         setLang(auth.user?.lang);
+        // …and their colour theme (the browser's copy only paints the first frame).
+        if (auth.user) setTheme(auth.user.theme || 'dark');
         set({ auth });
       } catch (e) {
         get().toast(t('Cannot reach the server: {error}', { error: errText(e) }), 'error');
@@ -258,6 +261,7 @@ export const useApp = create<AppStore>((set, get) => {
         r.user.lang = lang();
         void api('PUT', '/api/me/lang', { lang: r.user.lang }).catch(() => {});
       } else setLang(r.user.lang);
+      setTheme(r.user.theme || 'dark');
       set({ auth: { ...get().auth!, user: r.user } });
       socket?.close();
     },
