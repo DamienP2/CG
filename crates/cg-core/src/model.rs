@@ -1947,6 +1947,10 @@ pub struct Project {
     /// Designer aids: guides, safe areas, areas to keep clear.
     #[serde(default, skip_serializing_if = "Guides::is_default")]
     pub guides: Guides,
+    /// The Designer's order of the templates (ids); the operator keeps its own.
+    /// Templates missing from it follow, in their order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub design_order: Vec<String>,
     /// Language of the texts (hyphenation rules, French spaces): "fr", "en"…
     #[serde(default = "default_language")]
     pub language: String,

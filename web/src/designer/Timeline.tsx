@@ -8,6 +8,7 @@ import {
   Code,
   Copy,
   Diamond,
+  DiamondMinus,
   Eye,
   EyeOff,
   Flag,
@@ -37,6 +38,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { childrenMap } from '../engine/Scene';
 import { newId, num, propValue } from '../engine/evaluate';
 import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template } from '../engine/types';
@@ -47,7 +49,7 @@ import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKey
 import { PROP_LABELS } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
-import { copyAnimation, pasteAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
+import { clearKeyframes, clearSelectedKeys, copyAnimation, pasteAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { t, tc, tn } from '../i18n';
 
@@ -449,6 +451,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
               <ClipboardPaste size={12} />
             </button>
           )}
+          {animated.length > 0 && (
+            <button className="tl-anim tl-erase" title={t('Erase the keyframes of the layer')} onClick={(e) => (e.stopPropagation(), clearKeyframes([layer.id], undefined, t('Erase the keyframes of “{name}”?', { name: layer.name })))}>
+              <DiamondMinus size={12} />
+            </button>
+          )}
           <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
             <Copy size={12} />
           </button>
@@ -527,6 +534,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           {animClip && rowMapping(animClip, g.props).length > 0 && (
             <button className="tl-off tl-anim" title={t('Paste the animation of {what}', { what: animClip.label })} onClick={() => pasteAnimationOnRow(layer.id, g.props)}>
               <ClipboardPaste size={11} />
+            </button>
+          )}
+          {isAnim && (
+            <button className="tl-off tl-anim tl-erase" title={t('Erase the keyframes of {prop}', { prop: t(g.label) })} onClick={() => clearKeyframes([layer.id], g.props, t('Erase the keyframes of {prop} (“{name}”)?', { prop: t(g.label), name: layer.name }))}>
+              <DiamondMinus size={11} />
             </button>
           )}
           <button
@@ -626,6 +638,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <Repeat size={13} /> {t('Loop')}
         </button>
         <div className="spacer" />
+        <KeysMenu />
         <button className="btn small mk-pause" title={t('Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)')} onClick={addPause}>
           <Flag size={13} /> {t('Pause')}
         </button>
@@ -1044,3 +1057,46 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
   );
 }
 
+
+/** The timeline's « Keyframes » menu: erase the selected ones, those of the selected layers, or all. */
+function KeysMenu() {
+  const [open, setOpen] = useState(false);
+  const { template, selected, selectedKeys, readOnly } = useDesigner(useShallow((s) => ({ template: s.template, selected: s.selected, selectedKeys: s.selectedKeys, readOnly: s.readOnly })));
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), setOpen(false));
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', esc, true);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', esc, true);
+    };
+  }, [open]);
+  if (!template) return null;
+  const keyed = (ids: string[]) => ids.some((id) => PROPS.some((p) => findLayer(template, id)?.tracks[p]?.length));
+  const all = template.layers.map((l) => l.id);
+  const run = (fn: () => void) => () => (setOpen(false), fn());
+  return (
+    <div className="menu-wrap tl-keys" onPointerDown={(e) => e.stopPropagation()}>
+      <button className={`btn small ${open ? 'on' : ''}`} disabled={readOnly || !keyed(all)} onClick={() => setOpen(!open)}>
+        <Diamond size={13} /> {t('Keyframes')} <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="menu project-menu tl-keys-menu" role="menu">
+          <button disabled={!selectedKeys.length} onClick={run(() => clearSelectedKeys(true))}>
+            <DiamondMinus size={13} /> {t('Erase the selected keyframes')}
+            <kbd>{t('Del')}</kbd>
+          </button>
+          <button disabled={!keyed(selected)} onClick={run(() => clearKeyframes(selected, undefined, selected.length > 1 ? t('Erase the keyframes of {n} layers?', { n: selected.length }) : t('Erase the keyframes of “{name}”?', { name: findLayer(template, selected[0])?.name ?? '' })))}>
+            <DiamondMinus size={13} /> {t('Erase the keyframes of the selected layers')}
+          </button>
+          <div className="menu-sep" />
+          <button className="danger" onClick={run(() => clearKeyframes(all, undefined, t('Erase every keyframe of the template?')))}>
+            <Trash2 size={13} /> {t('Erase every keyframe of the template')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

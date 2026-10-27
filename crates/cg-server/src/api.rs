@@ -80,6 +80,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/playlists", put(put_playlists))
         .route("/api/projects/{id}/formats", put(put_formats))
         .route("/api/projects/{id}/guides", put(put_guides))
+        .route("/api/projects/{id}/design-order", put(put_design_order))
         .route("/api/projects/{id}/publish", post(publish_project))
         .route(
             "/api/projects/{id}/versions",
@@ -595,6 +596,7 @@ async fn create_project(
         }
         None => Project {
             guides: Default::default(),
+            design_order: Vec::new(),
             language: "fr".into(),
             id: String::new(),
             name: String::new(),
@@ -894,6 +896,7 @@ async fn import_create(
     ))?;
     let mut p = Project {
         guides: Default::default(),
+        design_order: Vec::new(),
         language: "fr".into(),
         id: cg_core::new_id(),
         name: c.name.trim().to_string(),
@@ -1544,6 +1547,26 @@ async fn put_guides(
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     p.guides = g;
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The Designer's order of the templates.
+async fn put_design_order(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(order): Json<Vec<String>>,
+) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let known = |t: &String| p.templates.iter().chain(&p.drafts).any(|x| &x.id == t);
+    let mut seen = std::collections::HashSet::new();
+    p.design_order = order
+        .into_iter()
+        .filter(|t| known(t) && seen.insert(t.clone()))
+        .collect();
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }

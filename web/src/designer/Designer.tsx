@@ -3,14 +3,14 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
-import { importAfterEffects, thumbnailUrl, useApp } from '../store';
+import { api, importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
 import { LockOverlay, TopPublish, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
-import { copyLayers, cutLayers, pasteClipboard } from './clipboard';
+import { clearSelectedKeys, copyLayers, cutLayers, pasteClipboard } from './clipboard';
 import { ZonesDialog } from './ZonesDialog';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
@@ -169,22 +169,8 @@ function useShortcuts() {
         if (target.closest('button')) (target as HTMLElement).blur();
         if (!e.repeat) st.setPlaying(!st.playing);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (st.selectedKeys.length) {
-          st.update((d) => {
-            for (const k of st.selectedKeys) {
-              const l = findLayer(d, k.layerId);
-              const tr = l?.tracks[k.prop];
-              if (!l || !tr) continue;
-              const remaining = tr.filter((x) => x.frame !== k.frame);
-              if (remaining.length) l.tracks[k.prop] = remaining;
-              else {
-                l.props[k.prop] = tr[0].value;
-                delete l.tracks[k.prop];
-              }
-            }
-          });
-          st.selectKeys([]);
-        } else if (st.selected.length) {
+        if (st.selectedKeys.length) void clearSelectedKeys(false);
+        else if (st.selected.length) {
           st.update((d) => {
             const ids = new Set(st.selected.flatMap((id) => [id, ...descendants(d, id)]));
             d.layers = d.layers.filter((l) => !ids.has(l.id));
@@ -233,6 +219,19 @@ function TemplateList({ project }: { project: Project }) {
   const toast = useApp((s) => s.toast);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  // Dragging a template to another place in the list: the one moved, and where it goes.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);
+  const reorder = (id: string, to: { id: string; after: boolean }) => {
+    const ids = designTemplates(project).map((x) => x.id);
+    if (id === to.id) return;
+    const rest = ids.filter((x) => x !== id);
+    rest.splice(rest.indexOf(to.id) + (to.after ? 1 : 0), 0, id);
+    if (rest.join() === ids.join()) return;
+    // At once here; the server sends the project back.
+    useApp.setState((s) => (s.project?.id === project.id ? { project: { ...s.project, designOrder: rest } } : {}));
+    api('PUT', `/api/projects/${encodeURIComponent(project.id)}/design-order`, rest).catch((e) => toast((e as Error).message, 'error'));
+  };
   const create = async (base?: Template) => {
     const tpl = base ? { ...structuredClone(base), id: newId(), name: t('{name} copy', { name: base.name }) } : newTemplate(t('Template {n}', { n: designTemplates(project).length + 1 }), (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den);
     // Open it at once; the save follows.
@@ -278,7 +277,31 @@ function TemplateList({ project }: { project: Project }) {
         const { published, draft } = publishState(project, tpl.id);
         const unpublished = draft || !published;
         return (
-          <div key={tpl.id} className={`template-item ${template?.id === tpl.id ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), template?.id !== tpl.id && load(tpl))}>
+          <div
+            key={tpl.id}
+            className={`template-item ${template?.id === tpl.id ? 'selected' : ''} ${dragging === tpl.id ? 'dragging' : ''} ${dropAt?.id === tpl.id && dragging !== tpl.id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
+            draggable={renaming !== tpl.id}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/template', tpl.id);
+              setDragging(tpl.id);
+            }}
+            onDragOver={(e) => {
+              if (!dragging) return;
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const after = e.clientY > r.top + r.height / 2;
+              if (dropAt?.id !== tpl.id || dropAt.after !== after) setDropAt({ id: tpl.id, after });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragging && dropAt) reorder(dragging, dropAt);
+              setDragging(null);
+              setDropAt(null);
+            }}
+            onDragEnd={() => (setDragging(null), setDropAt(null))}
+            onClick={(e) => (e.stopPropagation(), template?.id !== tpl.id && load(tpl))}
+          >
             <img src={thumbnailUrl(project.id, tpl, format, true)} alt="" loading="lazy" />
             <span className="tpl-text">
               {renaming === tpl.id && template?.id === tpl.id ? (

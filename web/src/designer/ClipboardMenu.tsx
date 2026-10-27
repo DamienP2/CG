@@ -1,12 +1,12 @@
 // Right-click menu of the timeline's layer and property rows, and of the
 // layers on the stage: copy / paste layers and animations (clipboard.ts),
 // the layer's animation, its order and delete.
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Prop } from '../engine/types';
 import { t } from '../i18n';
-import { animatedProps, copyAnimation, copyLayers, cutLayers, pasteAnimation, pasteAnimationOnRow, pasteLayers, rowMapping, useClipboard } from './clipboard';
+import { animatedProps, clearKeyframes, copyAnimation, copyLayers, cutLayers, pasteAnimation, pasteAnimationOnRow, pasteLayers, rowMapping, useClipboard } from './clipboard';
 import { descendants, duplicateLayers, findLayer, useDesigner } from './designerStore';
 import { moveLayer } from './LayersPanel';
 
@@ -69,7 +69,7 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
   const fits = !!anim && (!at.row || rowMapping(anim, at.row.props).length > 0);
   const ro = st.readOnly;
   return createPortal(
-    <div ref={ref} className="menu project-menu clip-menu" style={{ position: 'fixed', left: Math.min(at.x, window.innerWidth - 250), top: Math.max(8, Math.min(at.y, window.innerHeight - (at.row ? 110 : 400))), right: 'auto' }} onContextMenu={(e) => e.preventDefault()}>
+    <div ref={ref} className="menu project-menu clip-menu" style={{ position: 'fixed', left: Math.min(at.x, window.innerWidth - 250), top: Math.max(8, Math.min(at.y, window.innerHeight - (at.row ? 150 : 440))), right: 'auto' }} onContextMenu={(e) => e.preventDefault()}>
       {!at.row && (
         <>
           <button onClick={run(() => copyLayers(targets))}>
@@ -97,6 +97,16 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
       <button disabled={ro || !fits} title={anim && !fits ? t('This animation does not fit this property') : undefined} onClick={run(() => (at.row ? pasteAnimationOnRow(layer.id, at.row.props) : pasteAnimation(targets)))}>
         <ClipboardPaste size={13} /> {t('Paste the animation')}
         {anim && <em>{anim.label}</em>}
+      </button>
+      <button
+        disabled={ro || (at.row ? !rowAnimated : !targets.some((id) => st.template && animatedProps(findLayer(st.template, id)!).length))}
+        onClick={run(() =>
+          at.row
+            ? clearKeyframes([layer.id], at.row.props, t('Erase the keyframes of {prop} (“{name}”)?', { prop: t(at.row.label), name: layer.name }))
+            : clearKeyframes(targets, undefined, targets.length > 1 ? t('Erase the keyframes of {n} layers?', { n: targets.length }) : t('Erase the keyframes of “{name}”?', { name: layer.name })),
+        )}
+      >
+        <DiamondMinus size={13} /> {at.row ? t('Erase the keyframes of {prop}', { prop: t(at.row.label) }) : targets.length > 1 ? t('Erase the keyframes of the layers') : t('Erase the keyframes of the layer')}
       </button>
       {!at.row && (
         <>

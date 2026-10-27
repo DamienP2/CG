@@ -673,6 +673,30 @@ code {
 .template-item.selected {
   background: var(--accent-soft);
 }
+/* Dragged to another place in the list: a line where it goes. */
+.template-item {
+  position: relative;
+}
+.template-item.dragging {
+  opacity: 0.4;
+}
+.template-item.drop-before::before,
+.template-item.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.template-item.drop-before::before {
+  top: -2px;
+}
+.template-item.drop-after::after {
+  bottom: -2px;
+}
 .item-actions {
   display: flex;
   opacity: 0;
@@ -18374,4 +18398,18 @@ a.opx-html5 {
 .ux1-transport .opx-upd.ready .opx-upd-mode button.on {
   background: rgba(255, 255, 255, 0.24);
   color: #fff;
+}
+
+/* The timeline's Keyframes menu (erase). */
+.tl-keys-menu {
+  min-width: 290px;
+  white-space: nowrap;
+}
+.tl-keys-menu kbd {
+  margin-left: auto;
+  font: 11px var(--mono);
+  color: var(--text-3);
+}
+.tl-erase:hover {
+  color: #ff8aa0;
 }

@@ -404,6 +404,8 @@ export interface Project {
   starter?: string;
   /** Designer aids (mirror of model::Guides). */
   guides?: Guides;
+  /** The Designer's order of the templates (ids); the others follow. */
+  designOrder?: string[];
 }
 
 /** Guides, safe areas and areas to keep clear; fractions of the picture (0..1). */

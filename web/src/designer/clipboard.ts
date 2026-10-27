@@ -12,6 +12,7 @@ import { widgetOf } from '../widgets';
 import { t, tn } from '../i18n';
 import { PROP_LABELS } from './Inspector';
 import { descendants, findLayer, useDesigner } from './designerStore';
+import { confirmDialog } from '../ui/dialogs';
 
 /** Copied layers, with their children, as saved (all formats). */
 export interface LayersClip {
@@ -327,4 +328,54 @@ export function pasteClipboard() {
     if (!c.layers) return toast(t('Select the layers to paste the animation on'), 'error');
   }
   if (c.layers) pasteLayers();
+}
+
+/**
+ * Erases the keyframes of layers (all their properties, or some), once confirmed. A property
+ * left without keyframes keeps its value at the playhead (and stays on the timeline).
+ */
+export async function clearKeyframes(layerIds: string[], props: Prop[] | undefined, title: string) {
+  const st = useDesigner.getState();
+  const tpl = st.template;
+  if (!tpl) return;
+  const list: readonly Prop[] = props ?? PROPS;
+  let n = 0;
+  for (const id of layerIds) for (const p of list) n += findLayer(tpl, id)?.tracks[p]?.length ?? 0;
+  if (!n || !(await confirmDialog({ title, message: tn(n, '{n} keyframe is erased.', '{n} keyframes are erased.'), confirm: t('Erase keyframes'), danger: true }))) return;
+  const frame = useDesigner.getState().frame;
+  st.update((d) => {
+    for (const id of layerIds) {
+      const l = findLayer(d, id);
+      if (!l) continue;
+      for (const p of list)
+        if (l.tracks[p]?.length) {
+          l.props[p] = propValue(l, p, frame);
+          delete l.tracks[p];
+        }
+    }
+  });
+  st.selectKeys(useDesigner.getState().selectedKeys.filter((k) => !layerIds.includes(k.layerId) || !list.includes(k.prop)));
+}
+
+/** Erases the selected keyframes (Del, or once confirmed from the menu). */
+export async function clearSelectedKeys(ask: boolean) {
+  const st = useDesigner.getState();
+  const keys = st.selectedKeys;
+  if (!keys.length) return;
+  if (ask && !(await confirmDialog({ title: tn(keys.length, 'Erase the selected keyframe?', 'Erase the {n} selected keyframes?'), confirm: t('Erase keyframes'), danger: true }))) return;
+  const frame = st.frame;
+  st.update((d) => {
+    for (const k of keys) {
+      const l = findLayer(d, k.layerId);
+      const tr = l?.tracks[k.prop];
+      if (!l || !tr) continue;
+      const remaining = tr.filter((x) => x.frame !== k.frame);
+      if (remaining.length) l.tracks[k.prop] = remaining;
+      else {
+        l.props[k.prop] = propValue(l, k.prop, frame);
+        delete l.tracks[k.prop];
+      }
+    }
+  });
+  st.selectKeys([]);
 }

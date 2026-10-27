@@ -1079,6 +1079,7 @@ fn demo_project_layers() -> Project {
     data.insert("title".to_string(), "Physicist & chemist".to_string());
     Project {
         guides: Default::default(),
+        design_order: Vec::new(),
         language: "fr".into(),
         id: "demo".into(),
         name: "Demo show".into(),
