@@ -134,7 +134,13 @@ export function capLabel(part: string): string {
 }
 
 /** The bindings in force: the user's, else the Broadcast profile. */
-export const effective = (b: Binding[] | null): Binding[] => b ?? BROADCAST;
+export const effective = (b: Binding[] | null): Binding[] => {
+  if (!b) return BROADCAST;
+  // Update was on F5 (which also reloads the page): saved before it moved to F4, it follows.
+  const upd = b.find((x) => x.action === 'update');
+  if (upd?.keys.length !== 1 || upd.keys[0] !== 'F5' || b.some((x) => x.keys.includes('F4'))) return b;
+  return b.map((x) => (x === upd ? { ...x, keys: ['F4'] } : x));
+};
 
 /** The actions a key runs. */
 export const actionsOf = (bindings: Binding[], key: string) => bindings.filter((b) => b.keys.includes(key)).map((b) => b.action);
@@ -221,12 +227,14 @@ function run(h: ShortcutHandlers, action: string) {
   }
 }
 
-/** Typing in a field, or a dialog open: the keys are not the Operator's. */
-function typing(e: KeyboardEvent): boolean {
+/** Typing in a field: its keys are not the Operator's (but F1…F12 are). */
+function inField(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null;
-  if (el?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || el?.isContentEditable) return true;
-  return !!document.querySelector('.modal-back, .sch-pop');
+  return !!(el?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])') || el?.isContentEditable);
 }
+/** A dialog open: no key is the Operator's. */
+const inDialog = () => !!document.querySelector('.modal-back, .sch-pop');
+const FUNCTION_KEY = /^F\d{1,2}$/;
 
 /** The user's keyboard shortcuts in the Operator. */
 export function useShortcuts(handlers: ShortcutHandlers) {
@@ -237,11 +245,15 @@ export function useShortcuts(handlers: ShortcutHandlers) {
     if (!loaded) void useShortcutPrefs.getState().load();
   }, [loaded]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    // Typing in a field, F1…F12 are taken before the field (some fields keep their keys to themselves);
+    // every other key once nothing else took it.
+    const onKey = (capture: boolean) => (e: KeyboardEvent) => {
       // A key the selected widget on air took (its own shortcuts) is not the Operator's.
-      if (e.defaultPrevented || typing(e)) return;
+      if (e.defaultPrevented || inDialog()) return;
       const key = keyOf(e);
       if (!key) return;
+      const field = inField(e);
+      if (capture !== (field && FUNCTION_KEY.test(key))) return;
       const bindings = effective(useShortcutPrefs.getState().bindings);
       const action = actionsOf(bindings, key)[0];
       if (!action) return;
@@ -250,9 +262,17 @@ export function useShortcuts(handlers: ShortcutHandlers) {
       if (e.repeat && action !== 'prev' && action !== 'nextItem') return;
       // A focused button (a widget's, a row's) would also "click" on Space / Enter.
       if (key === 'Space' || key === 'Enter') (e.target as HTMLElement).closest?.('button')?.blur();
+      // F4 right after typing a value: the field hands its value over first (some do on leaving).
+      if (field) (e.target as HTMLElement).blur?.();
       run(ref.current, action);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const inFields = onKey(true);
+    const elsewhere = onKey(false);
+    window.addEventListener('keydown', inFields, true);
+    window.addEventListener('keydown', elsewhere);
+    return () => {
+      window.removeEventListener('keydown', inFields, true);
+      window.removeEventListener('keydown', elsewhere);
+    };
   }, []);
 }

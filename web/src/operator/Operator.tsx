@@ -430,7 +430,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     outSelected: () => item && outZone(zoneOf(item)),
     clear: () => command({ action: 'clear' }),
     undo: requestUndo,
-    update: () => item && template && onAirByItem.get(item.id) && command({ action: 'update', zone: zoneOf(item)?.id, data: updateData(template, draftRef.current, readMode), fade: updateFade }),
+    update: () => item && template && onAirByItem.get(item.id) && operate && !lockOf(item) && command({ action: 'update', zone: zoneOf(item)?.id, data: updateData(template, draftRef.current, readMode), fade: updateFade }),
     select: (d) => {
       const i = items.findIndex((r) => r.id === cued) + d;
       if (i >= 0 && i < items.length) setCued(items[i].id);
