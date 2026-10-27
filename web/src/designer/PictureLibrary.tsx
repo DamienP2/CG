@@ -28,6 +28,25 @@ interface Item {
 /** The picture of an item, as the server reads it. */
 const svgUrl = (set: string, name: string, color: string) => `/api/iconlib/svg?set=${encodeURIComponent(set)}&name=${encodeURIComponent(name)}${color ? `&color=${encodeURIComponent(color)}` : ''}`;
 
+/** A picture of the library: asked again once when it fails (a busy catalogue), then left out of the grid. */
+function LibImg({ src, eager }: { src: string; eager?: boolean }) {
+  const [tries, setTries] = useState(0);
+  if (tries > 1) return null;
+  return (
+    <img
+      key={tries}
+      src={tries ? `${src}&retry=1` : src}
+      alt=""
+      loading={eager ? undefined : 'lazy'}
+      onError={(e) => {
+        if (tries === 0) setTimeout(() => setTries(1), 800);
+        else setTries(2);
+        if (tries) (e.currentTarget.closest('.pl-cell') as HTMLElement | null)?.style.setProperty('display', 'none');
+      }}
+    />
+  );
+}
+
 export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: string) => void }) {
   const projectId = useApp((s) => s.projectId);
   const toast = useApp((s) => s.toast);
@@ -112,8 +131,8 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
         ) : (
           <div className={`pl-grid ${kind === 'illustrations' ? 'big' : ''}`}>
             {items.map((it) => (
-              <button key={it.name} className={`pl-cell ${sel?.name === it.name ? 'on' : ''}`} title={it.title} onClick={() => setSel(it)} onDoubleClick={() => (setSel(it), void use(it))}>
-                <img src={svgUrl(set, it.name, shownColor)} alt="" loading="lazy" />
+              <button key={`${set}:${it.name}:${shownColor}`} className={`pl-cell ${sel?.name === it.name ? 'on' : ''}`} title={it.title} onClick={() => setSel(it)} onDoubleClick={() => (setSel(it), void use(it))}>
+                <LibImg src={svgUrl(set, it.name, shownColor)} />
               </button>
             ))}
             {state === 'loading' && <div className="pl-wait">{t('Loading…')}</div>}
@@ -127,7 +146,7 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
         )}
       </div>
       <div className="pl-side">
-        <div className="pl-prev">{sel && <img src={svgUrl(set, sel.name, shownColor)} alt="" />}</div>
+        <div className="pl-prev">{sel && <LibImg key={sel.name} src={svgUrl(set, sel.name, shownColor)} eager />}</div>
         {sel && <b className="pl-name">{sel.title}</b>}
         {coloured && (
           <div className="pl-row">

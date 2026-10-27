@@ -56,8 +56,26 @@ fn agent() -> ureq::Agent {
         .into()
 }
 
+/// One agent for all: its connections are kept and used again.
+fn shared() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(agent)
+}
+
+/// A text read from the catalogue, asked again once when it fails on the
+/// way (a dropped connection, a busy server).
 fn get_text(url: &str) -> Result<String, String> {
-    let mut res = agent().get(url).call().map_err(|e| e.to_string())?;
+    get_once(url).or_else(|e| {
+        if e.starts_with("404") {
+            return Err(e);
+        }
+        std::thread::sleep(Duration::from_millis(400));
+        get_once(url)
+    })
+}
+
+fn get_once(url: &str) -> Result<String, String> {
+    let mut res = shared().get(url).call().map_err(|e| e.to_string())?;
     if !res.status().is_success() {
         return Err(format!("{}", res.status()));
     }
@@ -69,7 +87,7 @@ fn get_text(url: &str) -> Result<String, String> {
 }
 
 fn post_json(url: &str, body: &Json_) -> Result<String, String> {
-    let mut res = agent()
+    let mut res = shared()
         .post(url)
         .header("content-type", "application/json")
         .send(body.to_string())
@@ -286,17 +304,27 @@ fn url_encode(s: &str) -> String {
 }
 
 async fn search(
+    State(s): State<Shared>,
     CurrentUser(_): CurrentUser,
     Query(q): Query<SearchQuery>,
 ) -> ApiResult<Json<Found>> {
     if q.set != "undraw" && !valid_name(&q.set) {
         return Err(bad("unknown set"));
     }
+    let dir = cache_dir(&s);
     let found = tokio::task::spawn_blocking(move || {
         if q.set == "undraw" {
-            undraw_page(&q.q, q.page)
+            let found = undraw_page(&q.q, q.page)?;
+            listed()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .extend(found.items.iter().map(|i| i.name.clone()));
+            Ok(found)
         } else {
-            iconify_page(&q.set, &q.q, q.page)
+            let found = iconify_page(&q.set, &q.q, q.page)?;
+            // The page's pictures read at once (not one by one when shown).
+            prefetch(&dir, &q.set, &found.items);
+            Ok::<_, String>(found)
         }
     })
     .await
@@ -320,46 +348,143 @@ fn cache_dir(s: &Shared) -> PathBuf {
     s.data_dir.join("cache").join("iconlib")
 }
 
-/// The SVG of a picture of the library, read once then kept.
-fn read_svg(dir: &std::path::Path, q: &SvgQuery) -> Result<String, String> {
+/// The illustrations' addresses unDraw gave (the only ones read).
+fn listed() -> &'static Mutex<std::collections::HashSet<String>> {
+    static LISTED: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+    LISTED.get_or_init(Default::default)
+}
+
+/// Where a picture is kept (by set and name; the colour is put on it when read).
+fn cache_file(dir: &std::path::Path, set: &str, name: &str) -> PathBuf {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (&q.set, &q.name, &q.color).hash(&mut h);
-    let file = dir.join(format!("{:016x}.svg", h.finish()));
-    if let Ok(s) = std::fs::read_to_string(&file) {
-        return Ok(s);
-    }
-    let color = valid_color(&q.color).then_some(q.color.as_str());
-    let svg = if q.set == "undraw" {
-        // Only unDraw's own addresses.
-        let base = undraw();
-        let host_ok = q.name.starts_with("https://cdn.undraw.co/")
-            || q.name.starts_with("https://undraw.co/")
-            || q.name.starts_with(&format!("{base}/"));
-        if !host_ok {
-            return Err("not an unDraw picture".into());
-        }
-        let svg = get_text(&q.name)?;
-        match color {
-            Some(c) => svg
-                .replace(UNDRAW_COLOR, c)
-                .replace(&UNDRAW_COLOR.to_uppercase(), c),
-            None => svg,
-        }
-    } else {
-        if !valid_name(&q.set) || !valid_name(&q.name) {
-            return Err("unknown picture".into());
-        }
-        let c = color
-            .map(|c| format!("?color={}", url_encode(c)))
-            .unwrap_or_default();
-        get_text(&format!("{}/{}/{}.svg{c}", iconify(), q.set, q.name))?
-    };
-    if !svg.contains("<svg") {
-        return Err("not a picture".into());
-    }
+    (set, name).hash(&mut h);
+    dir.join(format!("{:016x}.svg", h.finish()))
+}
+
+fn keep(dir: &std::path::Path, set: &str, name: &str, svg: &str) {
     let _ = std::fs::create_dir_all(dir);
-    let _ = std::fs::write(&file, &svg);
-    Ok(svg)
+    let _ = std::fs::write(cache_file(dir, set, name), svg);
+}
+
+/// The icons of a page of an Iconify set, read in one go (`/{set}.json`)
+/// and kept, those not kept yet.
+fn prefetch(dir: &std::path::Path, set: &str, items: &[Item]) {
+    let wanted: Vec<&str> = items
+        .iter()
+        .map(|i| i.name.as_str())
+        .filter(|n| valid_name(n) && !cache_file(dir, set, n).exists())
+        .collect();
+    for names in wanted.chunks(48) {
+        let Ok(body) = get_text(&format!(
+            "{}/{set}.json?icons={}",
+            iconify(),
+            names.join(",")
+        )) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<Json_>(&body) else {
+            continue;
+        };
+        for n in names {
+            if let Some(svg) = icon_svg(&v, n) {
+                keep(dir, set, n, &svg);
+            }
+        }
+    }
+}
+
+/// The SVG of an icon of an Iconify JSON answer (its aliases followed);
+/// none when it is turned or flipped (read on its own then).
+fn icon_svg(v: &Json_, name: &str) -> Option<String> {
+    let num = |o: &Json_, k: &str| o.get(k).and_then(|x| x.as_f64());
+    let mut name = name.to_string();
+    let mut sized: Option<&Json_> = None;
+    for _ in 0..4 {
+        if let Some(icon) = v.get("icons").and_then(|i| i.get(&name)) {
+            if ["rotate", "hFlip", "vFlip"]
+                .iter()
+                .any(|k| icon.get(*k).is_some())
+            {
+                return None;
+            }
+            let at = sized.unwrap_or(icon);
+            let w = num(at, "width")
+                .or_else(|| num(icon, "width"))
+                .or_else(|| num(v, "width"))
+                .unwrap_or(16.0);
+            let h = num(at, "height")
+                .or_else(|| num(icon, "height"))
+                .or_else(|| num(v, "height"))
+                .unwrap_or(16.0);
+            let l = num(at, "left")
+                .or_else(|| num(icon, "left"))
+                .or_else(|| num(v, "left"))
+                .unwrap_or(0.0);
+            let t = num(at, "top")
+                .or_else(|| num(icon, "top"))
+                .or_else(|| num(v, "top"))
+                .unwrap_or(0.0);
+            let body = icon.get("body")?.as_str()?;
+            return Some(format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{w}" height="{h}" viewBox="{l} {t} {w} {h}">{body}</svg>"#
+            ));
+        }
+        let alias = v.get("aliases").and_then(|a| a.get(&name))?;
+        if ["rotate", "hFlip", "vFlip"]
+            .iter()
+            .any(|k| alias.get(*k).is_some())
+        {
+            return None;
+        }
+        if alias.get("width").is_some() || alias.get("height").is_some() {
+            sized.get_or_insert(alias);
+        }
+        name = alias.get("parent")?.as_str()?.to_string();
+    }
+    None
+}
+
+/// The SVG of a picture of the library, read once then kept; in the colour
+/// asked (monochrome icons, unDraw's illustrations).
+fn read_svg(dir: &std::path::Path, q: &SvgQuery) -> Result<String, String> {
+    let color = valid_color(&q.color).then_some(q.color.as_str());
+    let svg = match std::fs::read_to_string(cache_file(dir, &q.set, &q.name)) {
+        Ok(s) => s,
+        Err(_) => {
+            let svg = if q.set == "undraw" {
+                // Only unDraw's own addresses.
+                let base = undraw();
+                let host_ok = q.name.starts_with("https://cdn.undraw.co/")
+                    || q.name.starts_with("https://undraw.co/")
+                    || q.name.starts_with(&format!("{base}/"))
+                    || listed()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .contains(&q.name);
+                if !host_ok {
+                    return Err("not an unDraw picture".into());
+                }
+                get_text(&q.name)?
+            } else {
+                if !valid_name(&q.set) || !valid_name(&q.name) {
+                    return Err("unknown picture".into());
+                }
+                get_text(&format!("{}/{}/{}.svg", iconify(), q.set, q.name))?
+            };
+            if !svg.contains("<svg") {
+                return Err("not a picture".into());
+            }
+            keep(dir, &q.set, &q.name, &svg);
+            svg
+        }
+    };
+    Ok(match color {
+        Some(c) if q.set == "undraw" => svg
+            .replace(UNDRAW_COLOR, c)
+            .replace(&UNDRAW_COLOR.to_uppercase(), c),
+        Some(c) => svg.replace("currentColor", c),
+        None => svg,
+    })
 }
 
 async fn svg(
@@ -509,6 +634,24 @@ fn sized(svg: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_of_icons_is_read_in_one_go() {
+        let v: Json_ = serde_json::json!({
+            "prefix": "x", "width": 24, "height": 24,
+            "icons": { "sun": { "body": "<circle r='4'/>" }, "wide": { "body": "<path/>", "width": 32 } },
+            "aliases": { "day": { "parent": "sun" }, "night": { "parent": "sun", "hFlip": true } }
+        });
+        let sun = icon_svg(&v, "sun").unwrap();
+        assert!(sun.contains(r#"viewBox="0 0 24 24""#) && sun.contains("<circle r='4'/>"));
+        assert!(icon_svg(&v, "wide")
+            .unwrap()
+            .contains(r#"viewBox="0 0 32 24""#));
+        assert_eq!(icon_svg(&v, "day"), Some(sun));
+        // Turned or flipped: read on its own.
+        assert!(icon_svg(&v, "night").is_none());
+        assert!(icon_svg(&v, "none").is_none());
+    }
 
     #[test]
     fn illustrations_are_found_whatever_the_answer() {
