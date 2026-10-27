@@ -17997,7 +17997,7 @@ button.ux1-pill.lost:hover {
   border-radius: 9px;
   background: var(--op-2);
 }
-.opx-aircard .opx-controls > :not(.opx-widget):not(.opx-trig) {
+.opx-aircard .opx-controls > :not(.opx-widget):not(.opx-trig):not(.opx-tile) {
   grid-column: 1 / -1;
 }
 .cc.air {
@@ -18145,4 +18145,233 @@ a.opx-html5 {
 .opx-tiles input:focus-visible,
 .opx-tiles textarea:focus-visible {
   outline: none;
+}
+
+/* Operator, layout H. */
+/* The preview's transport, over its picture. */
+.opx-pane > .opx-monitor {
+  position: relative;
+}
+.opx-pvover {
+  position: absolute;
+  left: 18px;
+  bottom: 8px;
+  max-width: calc(100% - 36px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  z-index: 2;
+}
+.opx-pvover .opx-pvctl {
+  padding: 0;
+  background: none;
+  border: none;
+}
+.opx-pvover .cc.air {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 5px;
+  border-radius: 8px;
+  background: rgba(10, 12, 18, 0.78);
+  backdrop-filter: blur(6px);
+}
+.opx-pvover .cc.air .cc-l1 .cc-name {
+  display: none;
+}
+.opx-pvover .cc.air .cc-l1:empty {
+  display: none;
+}
+.opx-pvover .cc.air .cc-l {
+  flex-wrap: nowrap;
+}
+.opx-pvover .cc.air .cc-ob,
+.opx-pvover .cc.air .cc-sq {
+  height: 30px;
+}
+.opx-pvover .cc.air .cc-sq {
+  width: 30px;
+}
+.opx-pvover .cc.air .cc-ob {
+  flex: none;
+  padding: 0 12px;
+}
+/* The layers of the graphic: pills, under its header. */
+.opx-wtabs {
+  gap: 6px;
+  padding: 8px 12px 0;
+  border-bottom: none;
+}
+.opx-wtabs button.opx-wtab {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--op-3);
+  border-radius: 99px;
+  background: var(--op-1);
+  font-size: 11px;
+}
+.opx-wtabs button.opx-wtab.on {
+  border-color: var(--op-4);
+  background: var(--op-3);
+  color: var(--text);
+}
+/* Value tiles, bento: a number, a colour or a switch takes one cell, a text two, a long text the row. */
+.opx-tiles {
+  container-type: inline-size;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-auto-flow: row dense;
+}
+.opx-vt.w2 {
+  grid-column: span 2;
+}
+@container (max-width: 320px) {
+  .opx-vt.w2 {
+    grid-column: 1 / -1;
+  }
+}
+/* On air, bento: Continue and Out are tiles; a widget takes two cells, three with many buttons. */
+.opx-aircard .opx-controls {
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  grid-auto-rows: minmax(84px, auto);
+  grid-auto-flow: row dense;
+}
+.opx-aircard .opx-controls > .opx-widget {
+  grid-column: span 2;
+}
+.opx-aircard .opx-controls > .opx-widget:has(.cc-l2 > :nth-child(5)) {
+  grid-column: span 3;
+}
+.opx-aircard .opx-controls > .opx-widget > .cc.air,
+.opx-aircard .opx-controls > .opx-trig {
+  min-height: 0;
+}
+.opx-aircard .opx-controls > .opx-tile {
+  grid-column: span 1;
+}
+.opx-aircard .opx-controls > .opx-tile.cont {
+  grid-column: span 2;
+}
+.opx-trig-n {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opx-tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--op-3);
+  border-radius: 9px;
+  background: var(--op-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.opx-tile:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.opx-tile:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.opx-tile .opx-count {
+  align-self: flex-end;
+  margin-top: -26px;
+}
+.opx-tile.cont {
+  grid-column: span 2;
+  border-color: rgba(245, 165, 36, 0.35);
+  background: rgba(245, 165, 36, 0.1);
+  color: #fcd38d;
+}
+.opx-tile.cont.waits {
+  border-color: var(--warn);
+  background: var(--warn);
+  color: #241500;
+}
+.opx-tile.out {
+  border-color: transparent;
+  background: var(--live-btn);
+  color: #fff;
+}
+/* Update, with how it changes the values (Fade / Cut) inside the same box. */
+.opx-upd {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--op-4);
+  border-radius: 6px;
+  background: var(--op-4);
+  overflow: hidden;
+}
+.opx-upd.ready {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.opx-upd-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.opx-upd.ready .opx-upd-go {
+  color: var(--on-accent);
+}
+.opx-upd-go:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.opx-upd-go:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+.ux1-transport .opx-upd .opx-upd-mode {
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  height: auto;
+  padding: 3px;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.28);
+}
+.ux1-transport .opx-upd .opx-upd-mode button {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding: 0 9px;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.ux1-transport .opx-upd .opx-upd-mode button.on {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text);
+}
+.opx-upd.ready .opx-upd-mode button {
+  color: rgba(255, 255, 255, 0.7);
+}
+.ux1-transport .opx-upd.ready .opx-upd-mode button.on {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
 }

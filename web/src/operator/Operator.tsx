@@ -249,7 +249,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     if (pending.current?.name !== undefined) void flush().then(go);
     else go();
   };
-  const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 480, preview: 400, air: 330, lists: 200, fields: 50 });
+  const [layout, setLayout] = useLayout('pulse.operatorLayout', { left: 340, right: 620, preview: 400, air: 330, lists: 200, fields: 50 });
   const [cued, setCued] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [updateFade, setUpdateFade] = useUpdateFade();
@@ -489,7 +489,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     <TopControls channelId={channelId} channelInfo={channelInfo} screens={screens} onScreens={setScreens} />
     <ScheduleTop channelId={channelId} project={project} />
     {channelId && <ZoneBar project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
-    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px minmax(0, 1fr)` }}>
+    <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
       {/* Left: playlists and graphics. */}
       <div className="opx-col">
         <section className="opx-pane grow">
@@ -634,6 +634,16 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     </div>
                   )}
                 </Screen>
+                {/* The preview's own transport, over its picture (nothing goes on air). */}
+                {item && shownParts.some((p) => p.controls) && (
+                  <div className="opx-pvover">
+                    {shownParts
+                      .filter((p) => p.controls)
+                      .map((p) => (
+                        <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
+                      ))}
+                  </div>
+                )}
               </div>
             </section>
             <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
@@ -676,15 +686,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   )}
                 </div>
               )}
-              {shownParts.some((p) => p.controls) && (
-                <div className="opx-wbar">
-                  {shownParts
-                    .filter((p) => p.controls)
-                    .map((p) => (
-                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} />
-                    ))}
-                </div>
-              )}
               <div className="opx-tiles">
                 {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
                 {hasData &&
@@ -710,7 +711,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
       </div>
 
-      <div className="opx-vsep" />
+      <Splitter axis="x" className="opx-gap" sign={-1} value={layout.right} min={320} max={1100} reset={620} onChange={(v) => setLayout('right', v)} />
 
       {/* Right: on air (the same size as the preview), then the controls of the graphics on air. */}
       <div className="opx-col">
@@ -788,10 +789,12 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <CircleStop size={16} /> Out <KeyCap action="out" />
       </button>
       <span className="opx-tsep" />
-      <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={!onAirNow || !operateItem} />
-      <button className={`opx-btn ${updates && onAirNow ? 'violet' : ''}`} disabled={!onAirNow || !operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
-        <RefreshCw size={16} /> Update{updates && onAirNow ? <span className="opx-upd-n">{updates}</span> : null}
-      </button>
+      <div className={`opx-upd ${updates && onAirNow && operateItem ? 'ready' : ''}`}>
+        <button className="opx-upd-go" disabled={!onAirNow || !operateItem || !updates} title={t(updateFade ? 'Send these values to the graphic on air (cross-fade)' : 'Send these values to the graphic on air (cut)')} onClick={() => command({ action: 'update', zone: itemZone?.id, data: sent, fade: updateFade })}>
+          <RefreshCw size={16} /> Update{updates && onAirNow ? <span className="opx-upd-n">{updates}</span> : null} <KeyCap action="update" />
+        </button>
+        <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={false} />
+      </div>
       <span className="spacer" />
       {channelId && <UndoHistory channelId={channelId} operate={operate} />}
       <button className="opx-btn" disabled={!operate} onClick={requestUndo} title={actionLabel('undo')}>
@@ -971,6 +974,8 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
     );
   // A text with a style toolbar, several lines or a table takes the whole row of tiles.
   const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || f.kind === 'table';
+  // Bento: a number, a colour or a switch takes one cell, a text, an image or a read value two.
+  const size = (f: Field) => (wide(f) ? 'wide' : live(f) || f.kind === 'text' || f.kind === 'image' ? 'w2' : '');
   const groups = fieldGroups(fields);
   // The Texts fed by a data set come with the plain values.
   if (fed.length && !groups.some((g) => !g.title)) groups.unshift({ title: '', fields: [] });
@@ -980,7 +985,7 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
         <Fragment key={g.title}>
           {g.title && <div className="opx-vt-group">{g.title}</div>}
           {g.fields.map(({ f, label }) => (
-            <div key={f.key} className={`opx-vt ${wide(f) ? 'wide' : ''} ${changed.has(f.key) ? 'chg' : ''}`}>
+            <div key={f.key} className={`opx-vt ${size(f)} ${changed.has(f.key) ? 'chg' : ''}`}>
               <div className="opx-vt-h">
                 {changed.has(f.key) && <i className="opx-chg" />}
                 <span className="opx-vt-l">{label}</span>
@@ -1005,7 +1010,7 @@ function ValuesPane({ template, fields, exposed, fedLayers, changed, draft, boun
               const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
               return cols.some(byHand) ? (
                 cols.map((k, i) => (
-                  <div key={k} className={`opx-vt ${changed.has(k) ? 'chg' : ''}`}>
+                  <div key={k} className={`opx-vt w2 ${changed.has(k) ? 'chg' : ''}`}>
                     <div className="opx-vt-h">
                       {changed.has(k) && <i className="opx-chg" />}
                       <span className="opx-vt-l">{cols.length > 1 ? `${layer.name} · ${k.slice(at)}` : layer.name}</span>
@@ -1526,27 +1531,44 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
         </span>
         <span className="spacer" />
         <DataWarning template={tpl} />
-        {canContinue(item, tpl) && (
-          <button className={`opx-btn small ${waiting ? 'amber' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={t('F2 / Space')}>
-            <ChevronsRight size={13} /> Continue {count('resume')}
-          </button>
-        )}
-        <button className="opx-btn small red" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: zone.id })} title="F3">
-          <CircleStop size={13} /> Out {count('out')}
-        </button>
       </header>
-      <AirControls project={project} zone={zone} item={item} command={command} nextRowOf={nextRowOf} widget={widget} bare />
+      <AirControls
+        project={project}
+        zone={zone}
+        item={item}
+        command={command}
+        nextRowOf={nextRowOf}
+        widget={widget}
+        bare
+        lead={
+          <>
+            {canContinue(item, tpl) && (
+              <button className={`opx-tile cont ${waiting ? 'waits' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })}>
+                <ChevronsRight size={18} />
+                <span>Continue</span>
+                {count('resume')}
+              </button>
+            )}
+            <button className="opx-tile out" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: zone.id })}>
+              <CircleStop size={18} />
+              <span>Out</span>
+              {count('out')}
+            </button>
+          </>
+        }
+      />
     </div>
   );
 }
 
-function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets; bare?: boolean }) {
+function AirControls({ project, zone, item, command, nextRowOf, widget, bare, lead }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets; bare?: boolean; /** Tiles before the controls: Continue, Out. */ lead?: React.ReactNode }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const target = { zone: zone.id };
   // Deleted (or unpublished) while on air: it can still be taken out.
   if (!tpl)
     return (
       <div className="opx-controls">
+        {lead}
         {!bare && (
           <div className="opx-actions sticky">
             <button className="opx-btn" onClick={() => command({ action: 'takeOut', ...target })} title="F3">
@@ -1566,6 +1588,7 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare }: 
   const waiting = pauseOf(item, project);
   return (
     <div className="opx-controls">
+      {lead}
       {!bare && (
         <div className="opx-actions sticky">
           {canContinue(item, tpl) && (

@@ -4,7 +4,7 @@ import { defaultData } from '../engine/evaluate';
 import { isTimed } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { Pause, Play, RotateCcw } from 'lucide-react';
-import { CentreModeContext, KeyScope } from '../widgets/kit';
+import { CentreModeContext, KeyScope, type CentreMode } from '../widgets/kit';
 import { Centre, OperatorBound } from '../widgets/centre';
 import { oneKey, rowKey, usedDatasets, type DataSet, type Field, type Layer, type LayerClock, type PlayoutItem, type Template } from '../engine/types';
 import { datasetUse, readsAllRows } from './DataSets';
@@ -179,7 +179,7 @@ export function controlClock(run: PreviewRun, l: Layer, control: 'toggle' | 'res
  * The control centre of one widget, driving the preview only (and, for its exposed settings,
  * the take's draft values through `onData`).
  */
-export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSecs, lang, onData }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; holdSecs: number; lang?: string; onData?: (patch: Record<string, string>) => void }) {
+export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSecs, lang, onData, mode = 'operator' }: { layer: Layer; run: PreviewRun; setRun: (f: (r: PreviewRun) => PreviewRun) => void; data: Record<string, string>; fps: number; ageSecs: () => number; holdSecs: number; lang?: string; onData?: (patch: Record<string, string>) => void; /** `air`: its state and actions only (over the preview). */ mode?: CentreMode }) {
   const def = widgetOf(layer);
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
@@ -215,7 +215,7 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
     return (
       <KeyScope.Provider value={false}>
         <div className="opx-pvctl cc-host">
-          <CentreModeContext.Provider value="operator">
+          <CentreModeContext.Provider value={mode}>
             <OperatorBound layer={layer} data={data} setData={onData}>
               <Op layer={lay as never} state={state} data={data} act={act} time={time} lang={lang} setData={onData} />
             </OperatorBound>
@@ -231,7 +231,7 @@ export function PreviewControls({ layer, run, setRun, data, fps, ageSecs, holdSe
   const toggle = () => setRun((r) => controlClock(r, layer, 'toggle', age));
   return (
     <div className="opx-pvctl cc-host">
-      <CentreModeContext.Provider value="operator">
+      <CentreModeContext.Provider value={mode}>
         <Centre
           name={layer.name}
           actions={[

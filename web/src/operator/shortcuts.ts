@@ -57,7 +57,7 @@ export const BROADCAST: Binding[] = [
   { action: 'outSelected', keys: [] },
   { action: 'clear', keys: ['F12'] },
   { action: 'undo', keys: ['Ctrl+Z', 'Meta+Z'] },
-  { action: 'update', keys: ['F5'] },
+  { action: 'update', keys: ['F4'] },
   { action: 'prev', keys: ['ArrowUp'] },
   { action: 'nextItem', keys: ['ArrowDown'] },
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({ action: `take:${n}`, keys: [String(n)] })),
