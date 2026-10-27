@@ -844,8 +844,8 @@ export const widgets: Record<string, string> = {
   Icons: 'Icônes',
   Flags: 'Drapeaux',
   Illustrations: 'Illustrations',
-  'The picture library cannot be reached: {error}': 'La bibliothèque d’images est injoignable : {error}',
-  'The picture library cannot be reached: the server needs the Internet to browse it.': 'La bibliothèque d’images est injoignable : le serveur a besoin d’Internet pour la parcourir.',
+  'The picture could not be copied: {error}': 'L’image n’a pas pu être copiée : {error}',
+  'This library is not available.': 'Cette bibliothèque n’est pas disponible.',
   'Copying…': 'Copie…',
   Use: 'Utiliser',
 };

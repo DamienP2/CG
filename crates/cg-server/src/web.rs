@@ -15,6 +15,20 @@ const NOT_BUILT: &str = "<!doctype html><meta charset=utf-8><title>Strata</title
 <h2>Web app not built</h2><p>Run <code>cd web &amp;&amp; npm install &amp;&amp; npm run build</code> \
 then rebuild the server, or start it with <code>--web-dir web/dist</code>.</p>";
 
+/// A file shipped in the web app (`iconlib/…`), from the folder given by
+/// `--web-dir` when there is one, else from the binary.
+pub fn bundled(path: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
+    if let Some(dir) = WEB_DIR.get() {
+        if let Ok(b) = std::fs::read(dir.join(path)) {
+            return Some(std::borrow::Cow::Owned(b));
+        }
+    }
+    WebApp::get(path).map(|f| f.data)
+}
+
+/// The folder of `--web-dir`.
+pub static WEB_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
 /// Gzipped copies of the text files of the web app (made by build.rs).
 const GZIPPED: &[(&str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/web_gz.rs"));
 

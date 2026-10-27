@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { WifiOff } from 'lucide-react';
+import { ImageOff } from 'lucide-react';
 import { api, useApp, type MediaFile } from '../store';
 import { t } from '../i18n';
 
 /*
  * The picture library of the « Choose a picture » window: icons, emojis and
- * flags of the Iconify catalogue, unDraw's illustrations, read by the server
- * (cg-server iconlib.rs). The one used is copied into the project's media.
+ * flags of the Iconify catalogue, free illustrations, shipped with the app
+ * and read by the server (cg-server iconlib.rs) with no Internet. The one
+ * used is copied into the project's media.
  */
 
 type Kind = 'icons' | 'emoji' | 'flags' | 'illustrations';
@@ -14,11 +15,11 @@ const KINDS: { id: Kind; label: string; sets: [string, string][] }[] = [
   { id: 'icons', label: 'Icons', sets: [['lucide', 'Lucide'], ['material-symbols', 'Material'], ['ph', 'Phosphor'], ['tabler', 'Tabler']] },
   { id: 'emoji', label: 'Emojis', sets: [['noto', 'Noto'], ['twemoji', 'Twemoji'], ['fluent-emoji-flat', 'Fluent']] },
   { id: 'flags', label: 'Flags', sets: [['flag', 'Rectangles'], ['circle-flags', 'Circles']] },
-  { id: 'illustrations', label: 'Illustrations', sets: [['undraw', 'unDraw']] },
+  { id: 'illustrations', label: 'Illustrations', sets: [['open-doodles', 'Open Doodles'], ['flowbite', 'Flowbite']] },
 ];
 const COLORS = ['#ffffff', '#8fa3ff', '#ff3b5c', '#f5c542', '#22c55e', '#38bdf8', '#111111'];
-/** unDraw's own colour. */
-const UNDRAW = '#6c63ff';
+/** The illustrations' own colour (replaced by the one chosen). */
+const ACCENT: Record<string, string> = { 'open-doodles': '#ff5678', flowbite: '#2563eb' };
 
 interface Item {
   name: string;
@@ -88,7 +89,7 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
     setSet(KINDS.find((x) => x.id === k)!.sets[0][0]);
     setPage(0);
     setSel(null);
-    setColor(k === 'illustrations' ? UNDRAW : '#ffffff');
+    setColor(k === 'illustrations' ? ACCENT[KINDS.find((x) => x.id === k)!.sets[0][0]] : '#ffffff');
   };
   const use = async (it = sel) => {
     if (!it || !projectId) return;
@@ -97,7 +98,7 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
       const m = await api<MediaFile>('POST', `/api/projects/${projectId}/iconlib`, { set, name: it.name, color: shownColor, title: it.title });
       onChoose(m.src);
     } catch (e) {
-      toast(t('The picture library cannot be reached: {error}', { error: (e as Error).message }), 'error');
+      toast(t('The picture could not be copied: {error}', { error: (e as Error).message }), 'error');
     }
     setBusy(false);
   };
@@ -116,7 +117,7 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
           {kindDef.sets.length > 1 && (
             <div className="pl-sets">
               {kindDef.sets.map(([id, label]) => (
-                <button key={id} className={id === set ? 'on' : ''} onClick={() => (setSet(id), setPage(0), setSel(null))}>
+                <button key={id} className={id === set ? 'on' : ''} onClick={() => (setSet(id), setPage(0), setSel(null), ACCENT[id] && setColor(ACCENT[id]))}>
                   {label}
                 </button>
               ))}
@@ -125,8 +126,8 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
         </div>
         {state === 'offline' ? (
           <div className="lib-empty pl-off">
-            <WifiOff size={22} />
-            {t('The picture library cannot be reached: the server needs the Internet to browse it.')}
+            <ImageOff size={22} />
+            {t('This library is not available.')}
           </div>
         ) : (
           <div className={`pl-grid ${kind === 'illustrations' ? 'big' : ''}`}>
@@ -152,7 +153,7 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
           <div className="pl-row">
             <span>{t('Colour')}</span>
             <div className="pl-sw">
-              {(kind === 'illustrations' ? [UNDRAW, ...COLORS] : COLORS).map((c) => (
+              {(kind === 'illustrations' ? [ACCENT[set], ...COLORS] : COLORS).map((c) => (
                 <button key={c} className={c === color ? 'on' : ''} style={{ background: c }} onClick={() => setColor(c)} />
               ))}
               <input type="color" value={color} title={t('Another colour')} onChange={(e) => setColor(e.target.value)} />

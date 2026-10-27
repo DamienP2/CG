@@ -44,7 +44,7 @@ export const isNewer = (a: string, b: string) => {
   return false;
 };
 
-const ago = (ms: number) => {
+export const ago = (ms: number) => {
   const s = Math.round((Date.now() - ms) / 1000);
   return s < 60 ? t('just now') : s < 3600 ? t('{n} min ago', { n: Math.round(s / 60) }) : s < 86400 ? t('{n} h ago', { n: Math.round(s / 3600) }) : new Date(ms).toLocaleDateString(locale());
 };

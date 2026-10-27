@@ -1,15 +1,18 @@
-//! The picture library: icons, emojis and flags of the Iconify catalogue,
-//! illustrations of unDraw, browsed online by the server (the clients need
-//! no Internet) and copied into a project's media when one is used, so that
-//! the antenna never needs the Internet.
+//! The picture library: icons, emojis and flags of the Iconify catalogue and
+//! free illustrations (Open Doodles, Flowbite), shipped with the app
+//! (web/scripts/iconlib.mjs packs them into web/dist/iconlib) and read here,
+//! with no Internet. A picture used is copied into the project's media.
 //!
-//! `STRATA_ICONIFY_URL` and `STRATA_UNDRAW_URL` change where they are read.
+//! Updates: once a week the server asks npm whether a newer version of each
+//! Iconify set exists; System › Updates installs one when asked, into
+//! `<data>/iconlib`, which then wins over the copy shipped.
+//! `STRATA_NPM_REGISTRY` changes where npm is read.
 
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::collections::{BTreeMap, HashMap};
+use std::io::Read;
+use std::path::{Path as FsPath, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
 use axum::http::header;
@@ -25,108 +28,350 @@ use crate::state::Shared;
 
 /// Pictures per page.
 const PAGE: usize = 96;
-/// The colour of unDraw's illustrations, replaced by the one chosen.
-const UNDRAW_COLOR: &str = "#6c63ff";
+/// Sets kept read in memory (the largest weigh tens of MB).
+const KEPT: usize = 4;
+/// Days between two looks for updates.
+const CHECK_DAYS: i64 = 7;
 
 pub fn router() -> Router<Shared> {
     Router::new()
         .route("/api/iconlib/search", get(search))
         .route("/api/iconlib/svg", get(svg))
+        .route("/api/iconlib/libraries", get(libraries))
+        .route("/api/iconlib/libraries/check", post(check_now))
+        .route("/api/iconlib/libraries/{id}/update", post(update_one))
         .route("/api/projects/{id}/iconlib", post(use_picture))
 }
 
-fn iconify() -> String {
-    std::env::var("STRATA_ICONIFY_URL").unwrap_or_else(|_| "https://api.iconify.design".into())
-}
-fn undraw() -> String {
-    std::env::var("STRATA_UNDRAW_URL").unwrap_or_else(|_| "https://undraw.co".into())
-}
-
-fn agent() -> ureq::Agent {
-    let tls = ureq::tls::TlsConfig::builder()
-        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-        .build();
-    ureq::Agent::config_builder()
-        .tls_config(tls)
-        .timeout_global(Some(Duration::from_secs(12)))
-        .max_redirects(5)
-        .http_status_as_error(false)
-        .user_agent(concat!("strata-graphics/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .into()
+fn registry() -> String {
+    std::env::var("STRATA_NPM_REGISTRY")
+        .unwrap_or_else(|_| "https://registry.npmjs.org".into())
+        .trim_end_matches('/')
+        .to_string()
 }
 
-/// One agent for all: its connections are kept and used again.
-fn shared() -> &'static ureq::Agent {
-    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(agent)
+// ---- What is shipped, what was installed
+
+/// A set as System › Updates and the picture window know it (manifest.json).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetInfo {
+    pub id: String,
+    /// `icons`, `emoji`, `flags` or `illustrations`.
+    pub kind: String,
+    pub title: String,
+    pub version: String,
+    /// Its npm package, when it can be updated.
+    #[serde(default)]
+    pub package: Option<String>,
+    #[serde(default)]
+    pub license: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub total: usize,
+    /// The colour of an illustration replaced by the one chosen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
 }
 
-/// A text read from the catalogue, asked again once when it fails on the
-/// way (a dropped connection, a busy server).
-fn get_text(url: &str) -> Result<String, String> {
-    get_once(url).or_else(|e| {
-        if e.starts_with("404") {
-            return Err(e);
+#[derive(Deserialize)]
+struct Manifest {
+    sets: Vec<SetInfo>,
+}
+
+/// The sets shipped with the app.
+fn shipped() -> Vec<SetInfo> {
+    crate::web::bundled("iconlib/manifest.json")
+        .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
+        .map(|m| m.sets)
+        .unwrap_or_default()
+}
+
+/// What the updates did: installed versions, the latest seen, when.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdState {
+    #[serde(default)]
+    installed: BTreeMap<String, String>,
+    #[serde(default)]
+    latest: BTreeMap<String, String>,
+    #[serde(default)]
+    last_check: Option<i64>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+fn lib_dir(data: &FsPath) -> PathBuf {
+    data.join("iconlib")
+}
+
+fn read_state(data: &FsPath) -> UpdState {
+    std::fs::read(lib_dir(data).join("state.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn write_state(data: &FsPath, st: &UpdState) {
+    let dir = lib_dir(data);
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(b) = serde_json::to_vec_pretty(st) {
+        let tmp = dir.join("state.json.tmp");
+        if std::fs::write(&tmp, b).is_ok() {
+            let _ = std::fs::rename(tmp, dir.join("state.json"));
         }
-        std::thread::sleep(Duration::from_millis(400));
-        get_once(url)
-    })
-}
-
-fn get_once(url: &str) -> Result<String, String> {
-    let mut res = shared().get(url).call().map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("{}", res.status()));
     }
-    res.body_mut()
-        .with_config()
-        .limit(20 * 1024 * 1024)
-        .read_to_string()
-        .map_err(|e| e.to_string())
 }
 
-fn post_json(url: &str, body: &Json_) -> Result<String, String> {
-    let mut res = shared()
-        .post(url)
-        .header("content-type", "application/json")
-        .send(body.to_string())
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("{}", res.status()));
+/// `a` is a newer version than `b` (dotted numbers).
+fn newer(a: &str, b: &str) -> bool {
+    let key = |v: &str| -> Vec<u64> {
+        v.split(['.', '-', '+'])
+            .map(|p| p.parse().unwrap_or(0))
+            .collect()
+    };
+    key(a) > key(b)
+}
+
+/// The version of a set in use: the one installed by an update when newer
+/// than the one shipped.
+fn in_use(info: &SetInfo, st: &UpdState) -> (String, bool) {
+    match st.installed.get(&info.id) {
+        Some(v) if newer(v, &info.version) => (v.clone(), true),
+        _ => (info.version.clone(), false),
     }
-    res.body_mut()
-        .with_config()
-        .limit(20 * 1024 * 1024)
-        .read_to_string()
-        .map_err(|e| e.to_string())
 }
 
-/// Answers kept a while (lists, searches): the catalogue moves little.
-fn cached(key: &str, read: impl FnOnce() -> Result<String, String>) -> Result<String, String> {
-    static CACHE: OnceLock<Mutex<HashMap<String, (Instant, String)>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(Default::default);
-    if let Some((at, v)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(key) {
-        if at.elapsed() < Duration::from_secs(3600) {
-            return Ok(v.clone());
+// ---- A set read
+
+/// An icon of a set (Iconify JSON), or an alias of one.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Icon {
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    parent: Option<String>,
+    #[serde(default)]
+    width: Option<f64>,
+    #[serde(default)]
+    height: Option<f64>,
+    #[serde(default)]
+    left: Option<f64>,
+    #[serde(default)]
+    top: Option<f64>,
+    #[serde(default)]
+    rotate: Option<u8>,
+    #[serde(default)]
+    h_flip: Option<bool>,
+    #[serde(default)]
+    v_flip: Option<bool>,
+    #[serde(default)]
+    hidden: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Packed {
+    #[serde(default)]
+    icons: HashMap<String, Icon>,
+    #[serde(default)]
+    aliases: HashMap<String, Icon>,
+    #[serde(default)]
+    categories: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    width: Option<f64>,
+    #[serde(default)]
+    height: Option<f64>,
+    #[serde(default)]
+    left: Option<f64>,
+    #[serde(default)]
+    top: Option<f64>,
+}
+
+/// A set ready to search and draw.
+struct Set {
+    packed: Packed,
+    /// The names shown, in order (by category, then the others).
+    names: Vec<String>,
+    /// Each name's category, lower case.
+    category: HashMap<String, String>,
+}
+
+impl Set {
+    fn from_json(bytes: &[u8]) -> Result<Set, String> {
+        let packed: Packed = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+        if packed.icons.is_empty() {
+            return Err("no icon".into());
+        }
+        let shown = |n: &String| packed.icons.get(n).is_some_and(|i| i.hidden != Some(true));
+        let mut names = Vec::new();
+        let mut category = HashMap::new();
+        let mut seen = std::collections::HashSet::new();
+        for (cat, list) in &packed.categories {
+            for n in list.iter().filter(|n| shown(n)) {
+                if seen.insert(n.clone()) {
+                    names.push(n.clone());
+                    category.insert(n.clone(), cat.to_lowercase());
+                }
+            }
+        }
+        let mut rest: Vec<String> = packed
+            .icons
+            .keys()
+            .filter(|n| shown(n) && !seen.contains(*n))
+            .cloned()
+            .collect();
+        rest.sort();
+        names.extend(rest);
+        Ok(Set {
+            packed,
+            names,
+            category,
+        })
+    }
+
+    /// The names matching `q` (words, any order), best first.
+    fn search(&self, q: &str) -> Vec<&String> {
+        let words: Vec<String> = q
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_string)
+            .collect();
+        if words.is_empty() {
+            return self.names.iter().collect();
+        }
+        let joined = words.join("-");
+        let mut hits: Vec<(u8, &String)> = self
+            .names
+            .iter()
+            .filter_map(|n| {
+                let cat = self.category.get(n).map(String::as_str).unwrap_or("");
+                if !words
+                    .iter()
+                    .all(|w| n.contains(w.as_str()) || cat.contains(w.as_str()))
+                {
+                    return None;
+                }
+                let rank = if *n == joined {
+                    0
+                } else if n.split('-').any(|p| p == words[0]) {
+                    1
+                } else if words.iter().all(|w| n.contains(w.as_str())) {
+                    2
+                } else {
+                    3
+                };
+                Some((rank, n))
+            })
+            .collect();
+        hits.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.len().cmp(&b.1.len())));
+        hits.into_iter().map(|(_, n)| n).collect()
+    }
+
+    /// The SVG of an icon (its aliases followed, turned and flipped as said).
+    fn svg(&self, name: &str) -> Option<String> {
+        let p = &self.packed;
+        let (mut rotate, mut h_flip, mut v_flip) = (0u8, false, false);
+        let mut sized: Option<&Icon> = None;
+        let mut name = name.to_string();
+        for _ in 0..8 {
+            let (icon, alias) = match p.icons.get(&name) {
+                Some(i) => (i, false),
+                None => (p.aliases.get(&name)?, true),
+            };
+            rotate = (rotate + icon.rotate.unwrap_or(0)) % 4;
+            h_flip ^= icon.h_flip.unwrap_or(false);
+            v_flip ^= icon.v_flip.unwrap_or(false);
+            if alias {
+                if icon.width.is_some() || icon.height.is_some() {
+                    sized.get_or_insert(icon);
+                }
+                name = icon.parent.clone()?;
+                continue;
+            }
+            let at = sized.unwrap_or(icon);
+            let w = at.width.or(icon.width).or(p.width).unwrap_or(16.0);
+            let h = at.height.or(icon.height).or(p.height).unwrap_or(16.0);
+            let l = at.left.or(icon.left).or(p.left).unwrap_or(0.0);
+            let t = at.top.or(icon.top).or(p.top).unwrap_or(0.0);
+            let mut body = icon.body.clone()?;
+            let (cx, cy) = (l + w / 2.0, t + h / 2.0);
+            if rotate != 0 || h_flip || v_flip {
+                let sx = if h_flip { -1 } else { 1 };
+                let sy = if v_flip { -1 } else { 1 };
+                body = format!(
+                    r#"<g transform="translate({cx} {cy}) rotate({}) scale({sx} {sy}) translate({} {})">{body}</g>"#,
+                    rotate as u32 * 90,
+                    -cx,
+                    -cy
+                );
+            }
+            // A quarter turn: the box turns too.
+            let (vw, vh) = if rotate % 2 == 1 { (h, w) } else { (w, h) };
+            return Some(format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{vw}" height="{vh}" viewBox="{} {} {vw} {vh}">{body}</svg>"#,
+                cx - vw / 2.0,
+                cy - vh / 2.0
+            ));
+        }
+        None
+    }
+}
+
+/// The bytes of a set: installed by an update when newer, else shipped.
+fn set_bytes(data: &FsPath, info: &SetInfo, st: &UpdState) -> Option<Vec<u8>> {
+    let gz = match in_use(info, st) {
+        (_, true) => std::fs::read(lib_dir(data).join(format!("{}.json.gz", info.id))).ok(),
+        _ => None,
+    }
+    .or_else(|| {
+        crate::web::bundled(&format!("iconlib/{}.json.gz", info.id)).map(|b| b.into_owned())
+    })?;
+    let mut out = Vec::new();
+    flate2::read::GzDecoder::new(&gz[..])
+        .read_to_end(&mut out)
+        .ok()?;
+    Some(out)
+}
+
+type Cache = Mutex<Vec<(String, String, Arc<Set>)>>;
+
+fn cache() -> &'static Cache {
+    static CACHE: OnceLock<Cache> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// A set, read once (the last [`KEPT`] used are kept).
+fn open_set(data: &FsPath, id: &str) -> Result<(SetInfo, Arc<Set>), String> {
+    let info = shipped()
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| "unknown set".to_string())?;
+    let st = read_state(data);
+    let (version, _) = in_use(&info, &st);
+    {
+        let mut c = cache().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(i) = c.iter().position(|(i, v, _)| i == id && *v == version) {
+            let hit = c.remove(i);
+            let set = hit.2.clone();
+            c.push(hit);
+            return Ok((info, set));
         }
     }
-    let v = read()?;
-    let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
-    if c.len() > 500 {
-        c.clear();
+    let bytes = set_bytes(data, &info, &st).ok_or_else(|| "the set is missing".to_string())?;
+    let set = Arc::new(Set::from_json(&bytes)?);
+    let mut c = cache().lock().unwrap_or_else(|e| e.into_inner());
+    c.retain(|(i, _, _)| i != id);
+    c.push((id.to_string(), version, set.clone()));
+    while c.len() > KEPT {
+        c.remove(0);
     }
-    c.insert(key.to_string(), (Instant::now(), v.clone()));
-    Ok(v)
+    Ok((info, set))
 }
 
-/// A set name or an icon name of the catalogue (letters, digits, - _).
-fn valid_name(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 80
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
+// ---- Browsing
 
 /// `#rrggbb` (or `#rgb`), else none.
 fn valid_color(c: &str) -> bool {
@@ -136,7 +381,6 @@ fn valid_color(c: &str) -> bool {
 
 #[derive(Deserialize)]
 struct SearchQuery {
-    /// An Iconify set (`lucide`, `noto`, `flag`…) or `undraw`.
     set: String,
     #[serde(default)]
     q: String,
@@ -148,7 +392,6 @@ struct SearchQuery {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Item {
-    /// The icon's name in its set, or the illustration's address.
     name: String,
     title: String,
 }
@@ -160,177 +403,32 @@ struct Found {
     more: bool,
 }
 
-/// Names of a set: every icon of it (`/collection`).
-fn collection(set: &str) -> Result<Vec<String>, String> {
-    let body = cached(&format!("col:{set}"), || {
-        get_text(&format!("{}/collection?prefix={set}", iconify()))
-    })?;
-    let v: Json_ = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let mut names: Vec<String> = Vec::new();
-    let mut add = |a: &Json_| {
-        for n in a
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|x| x.as_str())
-        {
-            names.push(n.to_string());
-        }
-    };
-    if let Some(u) = v.get("uncategorized") {
-        add(u);
-    }
-    if let Some(cats) = v.get("categories").and_then(|c| c.as_object()) {
-        for a in cats.values() {
-            add(a);
-        }
-    }
-    let mut seen = std::collections::HashSet::new();
-    names.retain(|n| seen.insert(n.clone()));
-    Ok(names)
-}
-
-fn iconify_page(set: &str, q: &str, page: usize) -> Result<Found, String> {
-    if q.trim().is_empty() {
-        let names = collection(set)?;
-        let from = page * PAGE;
-        let items = names
-            .iter()
-            .skip(from)
-            .take(PAGE)
-            .map(|n| Item {
-                name: n.clone(),
-                title: n.replace('-', " "),
-            })
-            .collect();
-        return Ok(Found {
-            items,
-            more: names.len() > from + PAGE,
-        });
-    }
-    let q: String = url_encode(q.trim());
-    let body = cached(&format!("s:{set}:{q}:{page}"), || {
-        get_text(&format!(
-            "{}/search?query={q}&prefix={set}&limit={}&start={}",
-            iconify(),
-            PAGE,
-            page * PAGE
-        ))
-    })?;
-    let v: Json_ = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let items: Vec<Item> = v
-        .get("icons")
-        .and_then(|a| a.as_array())
-        .into_iter()
-        .flatten()
-        .filter_map(|x| x.as_str())
-        .filter_map(|id| id.split_once(':'))
-        .filter(|(p, _)| *p == set)
-        .map(|(_, n)| Item {
-            name: n.to_string(),
-            title: n.replace('-', " "),
-        })
-        .collect();
-    let total = v.get("total").and_then(|t| t.as_u64()).unwrap_or(0) as usize;
-    Ok(Found {
-        more: total > (page + 1) * PAGE,
-        items,
-    })
-}
-
-/// The illustrations of an unDraw answer, whatever its shape: every object
-/// with an `.svg` address and a title.
-fn svg_objects(v: &Json_, out: &mut Vec<Item>) {
-    match v {
-        Json_::Array(a) => a.iter().for_each(|x| svg_objects(x, out)),
-        Json_::Object(o) => {
-            let url = o.values().filter_map(|x| x.as_str()).find(|s| {
-                (s.starts_with("https://") || s.starts_with("http://"))
-                    && s.split('?').next().is_some_and(|p| p.ends_with(".svg"))
-            });
-            match url {
-                Some(u) => out.push(Item {
-                    name: u.to_string(),
-                    title: ["title", "name", "slug"]
-                        .iter()
-                        .find_map(|k| o.get(*k).and_then(|x| x.as_str()))
-                        .unwrap_or("")
-                        .to_string(),
-                }),
-                None => o.values().for_each(|x| svg_objects(x, out)),
-            }
-        }
-        _ => {}
-    }
-}
-
-fn undraw_page(q: &str, page: usize) -> Result<Found, String> {
-    let body = if q.trim().is_empty() {
-        cached(&format!("u:{page}"), || {
-            get_text(&format!("{}/api/illustrations?page={}", undraw(), page + 1))
-        })?
-    } else {
-        cached(&format!("us:{q}"), || {
-            post_json(
-                &format!("{}/api/search", undraw()),
-                &serde_json::json!({ "query": q.trim() }),
-            )
-        })?
-    };
-    let v: Json_ = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let mut items = Vec::new();
-    svg_objects(&v, &mut items);
-    let more = q.trim().is_empty()
-        && v.get("hasMore")
-            .and_then(|m| m.as_bool())
-            .unwrap_or(!items.is_empty());
-    Ok(Found { items, more })
-}
-
-/// Offline, or the catalogue does not answer: said as such (503).
-fn offline(e: String) -> (axum::http::StatusCode, String) {
-    (axum::http::StatusCode::SERVICE_UNAVAILABLE, e)
-}
-
-fn url_encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
-
 async fn search(
     State(s): State<Shared>,
     CurrentUser(_): CurrentUser,
     Query(q): Query<SearchQuery>,
 ) -> ApiResult<Json<Found>> {
-    if q.set != "undraw" && !valid_name(&q.set) {
-        return Err(bad("unknown set"));
-    }
-    let dir = cache_dir(&s);
-    let found = tokio::task::spawn_blocking(move || {
-        if q.set == "undraw" {
-            let found = undraw_page(&q.q, q.page)?;
-            listed()
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .extend(found.items.iter().map(|i| i.name.clone()));
-            Ok(found)
-        } else {
-            let found = iconify_page(&q.set, &q.q, q.page)?;
-            // The page's pictures read at once (not one by one when shown).
-            prefetch(&dir, &q.set, &found.items);
-            Ok::<_, String>(found)
-        }
+    let data = s.data_dir.clone();
+    let found = tokio::task::spawn_blocking(move || -> Result<Found, String> {
+        let (_, set) = open_set(&data, &q.set)?;
+        let hits = set.search(&q.q);
+        let from = q.page * PAGE;
+        Ok(Found {
+            more: hits.len() > from + PAGE,
+            items: hits
+                .into_iter()
+                .skip(from)
+                .take(PAGE)
+                .map(|n| Item {
+                    name: n.clone(),
+                    title: n.replace('-', " "),
+                })
+                .collect(),
+        })
     })
     .await
     .map_err(internal)?
-    // Offline, or the catalogue does not answer: said as such (503).
-    .map_err(|e| offline(format!("the picture library cannot be reached: {e}")))?;
+    .map_err(bad)?;
     Ok(Json(found))
 }
 
@@ -338,152 +436,25 @@ async fn search(
 struct SvgQuery {
     set: String,
     name: String,
-    /// `#rrggbb`: monochrome icons drawn in it, illustrations' colour.
+    /// `#rrggbb`: monochrome icons drawn in it, illustrations' accent.
     #[serde(default)]
     color: String,
 }
 
-/// Where the pictures read are kept (by set, name and colour).
-fn cache_dir(s: &Shared) -> PathBuf {
-    s.data_dir.join("cache").join("iconlib")
-}
-
-/// The illustrations' addresses unDraw gave (the only ones read).
-fn listed() -> &'static Mutex<std::collections::HashSet<String>> {
-    static LISTED: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
-    LISTED.get_or_init(Default::default)
-}
-
-/// Where a picture is kept (by set and name; the colour is put on it when read).
-fn cache_file(dir: &std::path::Path, set: &str, name: &str) -> PathBuf {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    (set, name).hash(&mut h);
-    dir.join(format!("{:016x}.svg", h.finish()))
-}
-
-fn keep(dir: &std::path::Path, set: &str, name: &str, svg: &str) {
-    let _ = std::fs::create_dir_all(dir);
-    let _ = std::fs::write(cache_file(dir, set, name), svg);
-}
-
-/// The icons of a page of an Iconify set, read in one go (`/{set}.json`)
-/// and kept, those not kept yet.
-fn prefetch(dir: &std::path::Path, set: &str, items: &[Item]) {
-    let wanted: Vec<&str> = items
-        .iter()
-        .map(|i| i.name.as_str())
-        .filter(|n| valid_name(n) && !cache_file(dir, set, n).exists())
-        .collect();
-    for names in wanted.chunks(48) {
-        let Ok(body) = get_text(&format!(
-            "{}/{set}.json?icons={}",
-            iconify(),
-            names.join(",")
-        )) else {
-            continue;
-        };
-        let Ok(v) = serde_json::from_str::<Json_>(&body) else {
-            continue;
-        };
-        for n in names {
-            if let Some(svg) = icon_svg(&v, n) {
-                keep(dir, set, n, &svg);
-            }
-        }
+/// The SVG of a picture, in the colour asked.
+fn read_svg(data: &FsPath, q: &SvgQuery) -> Result<String, String> {
+    let (info, set) = open_set(data, &q.set)?;
+    let svg = set
+        .svg(&q.name)
+        .ok_or_else(|| "unknown picture".to_string())?;
+    if !valid_color(&q.color) {
+        return Ok(svg);
     }
-}
-
-/// The SVG of an icon of an Iconify JSON answer (its aliases followed);
-/// none when it is turned or flipped (read on its own then).
-fn icon_svg(v: &Json_, name: &str) -> Option<String> {
-    let num = |o: &Json_, k: &str| o.get(k).and_then(|x| x.as_f64());
-    let mut name = name.to_string();
-    let mut sized: Option<&Json_> = None;
-    for _ in 0..4 {
-        if let Some(icon) = v.get("icons").and_then(|i| i.get(&name)) {
-            if ["rotate", "hFlip", "vFlip"]
-                .iter()
-                .any(|k| icon.get(*k).is_some())
-            {
-                return None;
-            }
-            let at = sized.unwrap_or(icon);
-            let w = num(at, "width")
-                .or_else(|| num(icon, "width"))
-                .or_else(|| num(v, "width"))
-                .unwrap_or(16.0);
-            let h = num(at, "height")
-                .or_else(|| num(icon, "height"))
-                .or_else(|| num(v, "height"))
-                .unwrap_or(16.0);
-            let l = num(at, "left")
-                .or_else(|| num(icon, "left"))
-                .or_else(|| num(v, "left"))
-                .unwrap_or(0.0);
-            let t = num(at, "top")
-                .or_else(|| num(icon, "top"))
-                .or_else(|| num(v, "top"))
-                .unwrap_or(0.0);
-            let body = icon.get("body")?.as_str()?;
-            return Some(format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{w}" height="{h}" viewBox="{l} {t} {w} {h}">{body}</svg>"#
-            ));
-        }
-        let alias = v.get("aliases").and_then(|a| a.get(&name))?;
-        if ["rotate", "hFlip", "vFlip"]
-            .iter()
-            .any(|k| alias.get(*k).is_some())
-        {
-            return None;
-        }
-        if alias.get("width").is_some() || alias.get("height").is_some() {
-            sized.get_or_insert(alias);
-        }
-        name = alias.get("parent")?.as_str()?.to_string();
-    }
-    None
-}
-
-/// The SVG of a picture of the library, read once then kept; in the colour
-/// asked (monochrome icons, unDraw's illustrations).
-fn read_svg(dir: &std::path::Path, q: &SvgQuery) -> Result<String, String> {
-    let color = valid_color(&q.color).then_some(q.color.as_str());
-    let svg = match std::fs::read_to_string(cache_file(dir, &q.set, &q.name)) {
-        Ok(s) => s,
-        Err(_) => {
-            let svg = if q.set == "undraw" {
-                // Only unDraw's own addresses.
-                let base = undraw();
-                let host_ok = q.name.starts_with("https://cdn.undraw.co/")
-                    || q.name.starts_with("https://undraw.co/")
-                    || q.name.starts_with(&format!("{base}/"))
-                    || listed()
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .contains(&q.name);
-                if !host_ok {
-                    return Err("not an unDraw picture".into());
-                }
-                get_text(&q.name)?
-            } else {
-                if !valid_name(&q.set) || !valid_name(&q.name) {
-                    return Err("unknown picture".into());
-                }
-                get_text(&format!("{}/{}/{}.svg", iconify(), q.set, q.name))?
-            };
-            if !svg.contains("<svg") {
-                return Err("not a picture".into());
-            }
-            keep(dir, &q.set, &q.name, &svg);
-            svg
-        }
-    };
-    Ok(match color {
-        Some(c) if q.set == "undraw" => svg
-            .replace(UNDRAW_COLOR, c)
-            .replace(&UNDRAW_COLOR.to_uppercase(), c),
-        Some(c) => svg.replace("currentColor", c),
-        None => svg,
+    Ok(match &info.accent {
+        Some(a) => svg
+            .replace(a.as_str(), &q.color)
+            .replace(&a.to_uppercase(), &q.color),
+        None => svg.replace("currentColor", &q.color),
     })
 }
 
@@ -492,11 +463,11 @@ async fn svg(
     CurrentUser(_): CurrentUser,
     Query(q): Query<SvgQuery>,
 ) -> ApiResult<Response> {
-    let dir = cache_dir(&s);
-    let svg = tokio::task::spawn_blocking(move || read_svg(&dir, &q))
+    let data = s.data_dir.clone();
+    let svg = tokio::task::spawn_blocking(move || read_svg(&data, &q))
         .await
         .map_err(internal)?
-        .map_err(offline)?;
+        .map_err(bad)?;
     Ok((
         [
             (header::CONTENT_TYPE, "image/svg+xml"),
@@ -559,17 +530,13 @@ async fn use_picture(
         name: b.name.clone(),
         color: b.color.clone(),
     };
-    let dir = cache_dir(&s);
-    let svg = tokio::task::spawn_blocking(move || read_svg(&dir, &q))
+    let data = s.data_dir.clone();
+    let svg = tokio::task::spawn_blocking(move || read_svg(&data, &q))
         .await
         .map_err(internal)?
-        .map_err(offline)?;
+        .map_err(bad)?;
     let title = if b.title.trim().is_empty() {
-        if b.set == "undraw" {
-            "illustration".to_string()
-        } else {
-            b.name.clone()
-        }
+        b.name.clone()
     } else {
         b.title.clone()
     };
@@ -582,6 +549,258 @@ async fn use_picture(
     crate::media::put_bytes(&s, &id, &format!("{stem}.svg"), sized(&svg).into_bytes())
         .await
         .map(Json)
+}
+
+// ---- Updates (System › Updates)
+
+/// A set as System › Updates shows it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Library {
+    #[serde(flatten)]
+    info: SetInfo,
+    /// The version in use (the one shipped, or installed by an update).
+    in_use: String,
+    /// A newer version on npm, to install.
+    update: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Libraries {
+    libraries: Vec<Library>,
+    last_check: Option<i64>,
+    error: Option<String>,
+}
+
+fn list(data: &FsPath) -> Libraries {
+    let st = read_state(data);
+    Libraries {
+        libraries: shipped()
+            .into_iter()
+            .map(|info| {
+                let (in_use, _) = in_use(&info, &st);
+                let update = st
+                    .latest
+                    .get(&info.id)
+                    .filter(|v| info.package.is_some() && newer(v, &in_use))
+                    .cloned();
+                Library {
+                    info,
+                    in_use,
+                    update,
+                }
+            })
+            .collect(),
+        last_check: st.last_check,
+        error: st.error,
+    }
+}
+
+fn agent() -> ureq::Agent {
+    let tls = ureq::tls::TlsConfig::builder()
+        .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+        .build();
+    ureq::Agent::config_builder()
+        .tls_config(tls)
+        .timeout_global(Some(Duration::from_secs(120)))
+        .max_redirects(5)
+        .http_status_as_error(false)
+        .user_agent(concat!("strata-graphics/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .into()
+}
+
+fn get_bytes(url: &str, limit: u64) -> Result<Vec<u8>, String> {
+    let mut res = agent().get(url).call().map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("{url}: {}", res.status()));
+    }
+    res.body_mut()
+        .with_config()
+        .limit(limit)
+        .read_to_vec()
+        .map_err(|e| e.to_string())
+}
+
+/// npm's latest version of a package, and where its archive is.
+fn latest(package: &str) -> Result<(String, String, Option<String>), String> {
+    let body = get_bytes(&format!("{}/{package}/latest", registry()), 1 << 20)?;
+    let v: Json_ = serde_json::from_slice(&body).map_err(|e| e.to_string())?;
+    let version = v["version"].as_str().ok_or("no version")?.to_string();
+    let tarball = v["dist"]["tarball"]
+        .as_str()
+        .ok_or("no archive")?
+        .to_string();
+    let integrity = v["dist"]["integrity"].as_str().map(str::to_string);
+    Ok((version, tarball, integrity))
+}
+
+/// Asks npm for the latest version of every set that can be updated.
+fn check(data: &FsPath) -> UpdState {
+    let mut st = read_state(data);
+    let mut errors = Vec::new();
+    for info in shipped() {
+        let Some(pkg) = &info.package else { continue };
+        match latest(pkg) {
+            Ok((v, _, _)) => {
+                st.latest.insert(info.id.clone(), v);
+            }
+            Err(e) => errors.push(format!("{}: {e}", info.title)),
+        }
+    }
+    st.last_check = Some(crate::state::now_ms());
+    st.error = (!errors.is_empty()).then(|| errors.join(" · "));
+    write_state(data, &st);
+    st
+}
+
+/// The files of an npm archive (`package/<name>`) among `wanted`.
+fn untar(tgz: &[u8], wanted: &[&str]) -> Result<HashMap<String, Vec<u8>>, String> {
+    let mut out = HashMap::new();
+    let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(tgz));
+    for e in ar.entries().map_err(|e| e.to_string())? {
+        let mut e = e.map_err(|e| e.to_string())?;
+        let path = e
+            .path()
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string();
+        let name = path
+            .split_once('/')
+            .map_or(path.as_str(), |(_, n)| n)
+            .to_string();
+        if wanted.contains(&name.as_str()) {
+            let mut b = Vec::new();
+            e.read_to_end(&mut b).map_err(|e| e.to_string())?;
+            out.insert(name, b);
+        }
+    }
+    Ok(out)
+}
+
+/// An Iconify package's archive packed as the app ships it (iconlib.mjs).
+fn pack(tgz: &[u8]) -> Result<Vec<u8>, String> {
+    let files = untar(tgz, &["icons.json", "info.json", "metadata.json"])?;
+    let icons: Json_ = serde_json::from_slice(files.get("icons.json").ok_or("no icons.json")?)
+        .map_err(|e| e.to_string())?;
+    let read = |n: &str| -> Json_ {
+        files
+            .get(n)
+            .and_then(|b| serde_json::from_slice(b).ok())
+            .unwrap_or(Json_::Null)
+    };
+    let mut keep = serde_json::json!({
+        "prefix": icons["prefix"],
+        "info": read("info.json"),
+        "icons": icons["icons"],
+        "aliases": icons.get("aliases").cloned().unwrap_or_else(|| serde_json::json!({})),
+        "categories": read("metadata.json").get("categories").cloned().unwrap_or_else(|| serde_json::json!({})),
+    });
+    for k in ["width", "height", "left", "top"] {
+        if let Some(v) = icons.get(k) {
+            keep[k] = v.clone();
+        }
+    }
+    let json = serde_json::to_vec(&keep).map_err(|e| e.to_string())?;
+    // It must read as a set before it replaces one.
+    Set::from_json(&json)?;
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    std::io::Write::write_all(&mut gz, &json).map_err(|e| e.to_string())?;
+    gz.finish().map_err(|e| e.to_string())
+}
+
+/// The archive is the one npm says (its SHA-512).
+fn verify(tgz: &[u8], integrity: Option<&str>) -> Result<(), String> {
+    use base64::Engine;
+    use sha2::Digest;
+    let Some(want) = integrity.and_then(|i| i.strip_prefix("sha512-")) else {
+        return Ok(());
+    };
+    let got = base64::engine::general_purpose::STANDARD.encode(sha2::Sha512::digest(tgz));
+    if got == want {
+        Ok(())
+    } else {
+        Err("the archive is not the one npm announced".into())
+    }
+}
+
+/// Installs the latest version of a set into `<data>/iconlib`.
+fn install(data: &FsPath, id: &str) -> Result<String, String> {
+    let info = shipped()
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or("unknown set")?;
+    let pkg = info
+        .package
+        .clone()
+        .ok_or("this set is updated with the app")?;
+    let (version, tarball, integrity) = latest(&pkg)?;
+    // Only npm's own archives.
+    if !tarball.starts_with(&format!("{}/", registry())) {
+        return Err("unexpected archive address".into());
+    }
+    let tgz = get_bytes(&tarball, 200 << 20)?;
+    verify(&tgz, integrity.as_deref())?;
+    let gz = pack(&tgz)?;
+    let dir = lib_dir(data);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("{id}.json.gz.tmp"));
+    std::fs::write(&tmp, gz).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, dir.join(format!("{id}.json.gz"))).map_err(|e| e.to_string())?;
+    let mut st = read_state(data);
+    st.installed.insert(id.to_string(), version.clone());
+    st.latest.insert(id.to_string(), version.clone());
+    write_state(data, &st);
+    tracing::info!(set = id, version = %version, "picture library updated");
+    Ok(version)
+}
+
+async fn libraries(State(s): State<Shared>, CurrentUser(_): CurrentUser) -> Json<Libraries> {
+    Json(list(&s.data_dir))
+}
+
+async fn check_now(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<Libraries>> {
+    require(me.role == Role::Admin)?;
+    let data = s.data_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        check(&data);
+        list(&data)
+    })
+    .await
+    .map(Json)
+    .map_err(internal)
+}
+
+async fn update_one(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Libraries>> {
+    require(me.role == Role::Admin)?;
+    let data = s.data_dir.clone();
+    tokio::task::spawn_blocking(move || install(&data, &id).map(|_| list(&data)))
+        .await
+        .map_err(internal)?
+        .map(Json)
+        .map_err(|e| bad(format!("the update failed: {e}")))
+}
+
+/// Looks for updates once a week (one small request per set).
+pub async fn run(s: Shared) {
+    loop {
+        let data = s.data_dir.clone();
+        let due = read_state(&data)
+            .last_check
+            .is_none_or(|t| crate::state::now_ms() - t > CHECK_DAYS * 86_400_000);
+        if due {
+            let _ = tokio::task::spawn_blocking(move || check(&data)).await;
+        }
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    }
 }
 
 /// The SVG at a size the renderer draws sharply (its longest side 512 px,
@@ -635,40 +854,79 @@ fn sized(svg: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_page_of_icons_is_read_in_one_go() {
-        let v: Json_ = serde_json::json!({
+    fn set() -> Set {
+        let v = serde_json::json!({
             "prefix": "x", "width": 24, "height": 24,
-            "icons": { "sun": { "body": "<circle r='4'/>" }, "wide": { "body": "<path/>", "width": 32 } },
-            "aliases": { "day": { "parent": "sun" }, "night": { "parent": "sun", "hFlip": true } }
+            "icons": {
+                "sun": { "body": "<circle r='4'/>" },
+                "wide": { "body": "<path/>", "width": 32 },
+                "sun-cloud": { "body": "<g/>" },
+                "secret": { "body": "<g/>", "hidden": true }
+            },
+            "aliases": { "day": { "parent": "sun" }, "night": { "parent": "sun", "hFlip": true, "rotate": 1 } },
+            "categories": { "Weather": ["sun-cloud", "sun"] }
         });
-        let sun = icon_svg(&v, "sun").unwrap();
-        assert!(sun.contains(r#"viewBox="0 0 24 24""#) && sun.contains("<circle r='4'/>"));
-        assert!(icon_svg(&v, "wide")
-            .unwrap()
-            .contains(r#"viewBox="0 0 32 24""#));
-        assert_eq!(icon_svg(&v, "day"), Some(sun));
-        // Turned or flipped: read on its own.
-        assert!(icon_svg(&v, "night").is_none());
-        assert!(icon_svg(&v, "none").is_none());
+        Set::from_json(&serde_json::to_vec(&v).unwrap()).unwrap()
     }
 
     #[test]
-    fn illustrations_are_found_whatever_the_answer() {
-        let v: Json_ = serde_json::json!({
-            "illos": [
-                { "_id": "1", "title": "Weather", "image": "https://cdn.undraw.co/illustrations/weather.svg" },
-                { "_id": "2", "title": "No picture" }
-            ],
-            "hasMore": true
-        });
-        let mut items = Vec::new();
-        svg_objects(&v, &mut items);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title, "Weather");
+    fn a_set_is_searched_and_drawn_here() {
+        let s = set();
+        // By category first, hidden ones left out.
+        assert_eq!(s.names, ["sun-cloud", "sun", "wide"]);
+        assert_eq!(s.search("sun"), ["sun", "sun-cloud"]);
+        assert_eq!(s.search("cloud sun"), ["sun-cloud"]);
+        assert_eq!(s.search("weather").len(), 2);
+        assert!(s.search("moon").is_empty());
+        let sun = s.svg("sun").unwrap();
+        assert!(sun.contains(r#"viewBox="0 0 24 24""#) && sun.contains("<circle r='4'/>"));
+        assert!(s.svg("wide").unwrap().contains(r#"viewBox="0 0 32 24""#));
+        assert_eq!(s.svg("day"), Some(sun));
+        let night = s.svg("night").unwrap();
+        assert!(night.contains("rotate(90) scale(-1 1)"), "{night}");
+        assert!(s.svg("none").is_none());
+    }
+
+    #[test]
+    fn an_update_is_packed_from_npm_s_archive() {
+        let mut tgz = Vec::new();
+        {
+            let gz = flate2::write::GzEncoder::new(&mut tgz, flate2::Compression::fast());
+            let mut b = tar::Builder::new(gz);
+            let mut add = |name: &str, body: &str| {
+                let mut h = tar::Header::new_gnu();
+                h.set_size(body.len() as u64);
+                h.set_mode(0o644);
+                h.set_cksum();
+                b.append_data(&mut h, format!("package/{name}"), body.as_bytes())
+                    .unwrap();
+            };
+            add(
+                "icons.json",
+                r#"{"prefix":"x","icons":{"a":{"body":"<g/>"}},"width":20,"height":20}"#,
+            );
+            add("metadata.json", r#"{"categories":{"Letters":["a"]}}"#);
+            add("package.json", r#"{"version":"9.9.9"}"#);
+            b.into_inner().unwrap().finish().unwrap();
+        }
+        let gz = pack(&tgz).unwrap();
+        let mut json = Vec::new();
+        flate2::read::GzDecoder::new(&gz[..])
+            .read_to_end(&mut json)
+            .unwrap();
+        let s = Set::from_json(&json).unwrap();
+        assert_eq!(s.search("letters"), ["a"]);
+        assert!(s.svg("a").unwrap().contains(r#"viewBox="0 0 20 20""#));
+        // Not an icon set: refused.
+        assert!(pack(b"nope").is_err());
+        assert!(newer("1.2.10", "1.2.9") && !newer("1.2.9", "1.2.9"));
+        assert!(verify(b"x", Some("sha512-nope")).is_err() && verify(b"x", None).is_ok());
+    }
+
+    #[test]
+    fn names_and_sizes() {
         assert_eq!(file_stem("Météo · soleil!"), "meteo-soleil");
         assert!(valid_color("#22c55e") && !valid_color("red"));
-        assert_eq!(url_encode("a b/é"), "a%20b%2F%C3%A9");
         assert_eq!(
             sized(r#"<svg xmlns="x" width="1em" height="1em" viewBox="0 0 24 12"><g/></svg>"#),
             r#"<svg xmlns="x" viewBox="0 0 24 12" width="512" height="256"><g/></svg>"#

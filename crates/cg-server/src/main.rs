@@ -567,6 +567,8 @@ pub async fn serve(
             // OSC and TCP control (Bitfocus Buttons…), when enabled.
             tokio::spawn(apiv1::serve(shared.clone())),
             tokio::spawn(schedule::run(shared.clone())),
+            // The picture library's updates, looked for once a week.
+            tokio::spawn(iconlib::run(shared.clone())),
             tokio::spawn(engine::give_back_memory()),
         ];
 
@@ -578,6 +580,7 @@ pub async fn serve(
             .nest_service("/hls", ServeDir::new(data_dir.join("hls")));
         let app = match &args.web_dir {
             Some(dir) => {
+                let _ = web::WEB_DIR.set(dir.clone());
                 let index = dir.join("index.html");
                 app.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)))
             }

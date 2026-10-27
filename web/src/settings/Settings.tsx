@@ -9,6 +9,7 @@ import { useServerConfig } from './serverConfig';
 import { Networks } from './Networks';
 import { TimeSync } from './TimeSync';
 import { Updates } from './Updates';
+import { LibraryUpdates } from './LibraryUpdates';
 import { ShortcutsPage } from './Shortcuts';
 
 const TIMEZONES: string[] = (() => {
@@ -135,7 +136,12 @@ function ServerSettings() {
 
       {section === 'sync' && <TimeSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />}
 
-      {section === 'updates' && <Updates Card={Card} />}
+      {section === 'updates' && (
+        <>
+          <Updates Card={Card} />
+          <LibraryUpdates Card={Card} />
+        </>
+      )}
 
       {section === 'system' && (
         <Card icon={<Cpu size={16} />} title={t('System')}>
