@@ -119,6 +119,17 @@
   box-sizing: border-box;
 }
 
+input,
+textarea,
+[contenteditable]:not([contenteditable='false']),
+pre,
+code,
+.log-box,
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 html,
 body,
 #root {
@@ -127,6 +138,9 @@ body,
 }
 
 body {
+  /* An application, not a document: dragging the mouse never selects the page's text (fields, logs and code do). */
+  user-select: none;
+  -webkit-user-select: none;
   background: var(--bg);
   color: var(--text);
   font:

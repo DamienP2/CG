@@ -292,9 +292,12 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
             <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
-              <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
-                <Scene template={template} frame={frame} data={data} interactive />
-              </div>
+              {/* While the zones are edited: the zones alone, no graphic. */}
+              {!zonesEdit && (
+                <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
+                  <Scene template={template} frame={frame} data={data} interactive />
+                </div>
+              )}
             </LiveTime>
           </Viewport>
           {/* What is outside the picture still shows, greyed (it is cut on air). */}
@@ -306,10 +309,10 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           </div>
           <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
           {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
-          {view.frames && ghosts.map((b) => (
+          {view.frames && !zonesEdit && ghosts.map((b) => (
             <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
           ))}
-          {boxes.map((b) => (
+          {!zonesEdit && boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
               {selected.length === 1 && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
               {selected.length === 1 && <WidgetOverlay layerId={b.id} box={b} frame={frame} />}
@@ -397,7 +400,7 @@ function Overview({
           }}
         >
           <Viewport width={size.width} height={size.height} scale={scale} style={{ filter }}>
-            {templates.map((tpl) => {
+            {(zonesEdit ? [] : templates).map((tpl) => {
               const z = zones.get(tpl.zone);
               return (
                 <div key={tpl.id} className="overview-tpl" data-template-id={tpl.id} title={t('{name} — click to open', { name: tpl.name })} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, portrait)) }}>
