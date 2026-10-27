@@ -53,11 +53,11 @@ export const ValueMotionContext = createContext<ValueMotion>(null);
 /** Whether a layer (as JSON) shows the data value `key`: in a text ({{key}}) or bound to it (mirror of playout::layer_shows). */
 export const layerShows = (json: string, key: string) => json.includes(`{{${key}}}`) || json.includes(`"${key}"`);
 
-/** Whether a layer shows data from a source or a data set (its values can change on air). */
-export function fedByData(t: Template, l: Layer): boolean {
-  const json = JSON.stringify(l);
-  return t.fields.some((f) => f.binding && layerShows(json, f.key)) || (t.datasets ?? []).some((d) => json.includes(`{{${d.key}_`) || json.includes(`"${d.key}_`));
-}
+/** A layer as JSON, to look for the data keys it shows: without its own settings by key (mirror of playout::layer_json). */
+export const layerJson = (l: Layer) => JSON.stringify(l.liveChanges ? { ...l, liveChanges: undefined } : l);
+
+/** Whether a data key comes from a source or a data set (its value can change on air). */
+export const fedKey = (t: Template, key: string) => t.fields.some((f) => f.key === key && f.binding) || (t.datasets ?? []).some((d) => key.startsWith(`${d.key}_`));
 
 /** The layers (not groups) showing the sliding or turning values: how and how far. */
 export function movingLayers(t: Template, moves: ValueMove[]): Map<string, [ValueChange, number]> {
@@ -66,7 +66,7 @@ export function movingLayers(t: Template, moves: ValueMove[]): Map<string, [Valu
   if (!turning.length) return out;
   for (const l of t.layers as Layer[]) {
     if (l.type === 'group') continue;
-    const json = JSON.stringify(l);
+    const json = layerJson(l);
     const m = turning.find((c) => (c.layer ? c.layer === l.id : layerShows(json, c.key)));
     if (m) out.set(l.id, [m.kind, eased(m)]);
   }

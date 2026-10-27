@@ -192,15 +192,26 @@ pub fn shown_data(item: &PlayoutItem) -> std::borrow::Cow<'_, crate::anim::Data>
     std::borrow::Cow::Owned(d)
 }
 
-/// Whether a layer (as JSON) shows the data value `key`: in a text
-/// (`{{key}}`) or bound to it.
+/// A layer as JSON, to look for the data keys it shows ([`layer_shows`]):
+/// without its own settings by key.
+pub fn layer_json(l: &crate::model::Layer) -> String {
+    if l.live_changes.is_empty() {
+        return serde_json::to_string(l).unwrap_or_default();
+    }
+    let mut l = l.clone();
+    l.live_changes.clear();
+    serde_json::to_string(&l).unwrap_or_default()
+}
+
+/// Whether a layer (as JSON, [`layer_json`]) shows the data value `key`: in
+/// a text (`{{key}}`) or bound to it.
 pub fn layer_shows(json: &str, key: &str) -> bool {
     json.contains(&format!("{{{{{key}}}}}")) || json.contains(&format!("\"{key}\""))
 }
 
 /// The values a data source (or a data set following it) just changed on a
 /// graphic on air, shown as the layers showing them say
-/// ([`crate::model::Layer::live_change`]): a cross-fade, a slide, a flip, a
+/// ([`crate::model::Layer::live_changes`]): a cross-fade, a slide, a flip, a
 /// count, out and in again, at once otherwise. `old` is the data before.
 pub fn live_changes(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data) {
     if matches!(item.phase, Phase::Out | Phase::OutHold) || item.next.is_some() {
@@ -236,12 +247,12 @@ pub fn live_changes(project: &Project, item: &mut PlayoutItem, old: &crate::anim
         if matches!(l.kind, crate::model::LayerKind::Group { .. }) {
             continue;
         }
-        let json = serde_json::to_string(l).unwrap_or_default();
+        let json = layer_json(l);
         for (key, was, now) in &changed {
             if !layer_shows(&json, key) {
                 continue;
             }
-            let Some(lc) = l.live_change.or_else(|| on_binding(key)) else {
+            let Some(lc) = l.live_changes.get(key).copied().or_else(|| on_binding(key)) else {
                 continue;
             };
             let length = (lc.secs.unwrap_or(0.6).clamp(0.05, 10.0) * fps)
@@ -2100,10 +2111,13 @@ mod tests {
         if let crate::model::LayerKind::Text { text, .. } = &mut t.layers[0].kind {
             *text = "{{scores_team}}".into();
         }
-        t.layers[0].live_change = Some(LiveChange {
-            kind: ValueChange::Slide,
-            secs: None,
-        });
+        t.layers[0].live_changes.insert(
+            "scores_team".into(),
+            LiveChange {
+                kind: ValueChange::Slide,
+                secs: None,
+            },
+        );
         let mut other = t.layers[0].clone();
         other.id = "l2".into();
         if let crate::model::LayerKind::Text { text, .. } = &mut other.kind {
@@ -2130,7 +2144,7 @@ mod tests {
             ("l", ValueChange::Slide, "Nice")
         );
         // Set to cut (none): at once.
-        p.templates[0].layers[0].live_change = None;
+        p.templates[0].layers[0].live_changes.clear();
         let item = ch.layers.get_mut(&0).unwrap();
         item.changes.clear();
         let old = item.data.clone();

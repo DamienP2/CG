@@ -1,13 +1,13 @@
 import { widgetOf } from '../widgets';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Repeat, Rows3, Timer, ToggleLeft, Trash2, Type, Variable, Wand2, X, Zap, Blend, ChevronsUp, FlipVertical2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { api, useApp } from '../store';
-import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
+import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type LiveChange, type Logic, type LogicNode, type Prop, type Template, type ValueChange } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate, projectPath } from '../router';
 import { autoLayout, measureNodes, type LayoutEdge } from '../ui/autoLayout';
@@ -20,10 +20,12 @@ import { BuildCard, TableNodeInfo } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
+import { Segmented } from '../ui/fields';
+import { fedKey } from '../engine/valueMotion';
 import { getPath, setPath } from '../widgets/kit';
 import { isColorValue, settingLabel, settingPorts } from '../engine/settingPorts';
 import { fieldUsed, forgetKeys, formatSetting, settingKind } from '../engine/settings';
-import { t, tn } from '../i18n';
+import { lang, t, tc, tn } from '../i18n';
 
 /*
  * Data canvas. The data goes through as tables:
@@ -340,6 +342,69 @@ function migrate(t: Template): DataFlow {
   return flow;
 }
 
+/** How a new value shows on air (Layer.liveChanges). */
+const VALUE_CHANGES: { value: ValueChange; label: string; Icon: typeof Zap }[] = [
+  { value: 'cut', label: 'Cut', Icon: Zap },
+  { value: 'fade', label: 'Fade', Icon: Blend },
+  { value: 'slide', label: 'Slide', Icon: ChevronsUp },
+  { value: 'flip', label: 'Flip', Icon: FlipVertical2 },
+  { value: 'count', label: 'Count up', Icon: Hash },
+  { value: 'outIn', label: 'Out, then in again', Icon: Repeat },
+];
+
+/** At a layer's port fed by a source or a data set: how a new value of the keys wired there shows on air; its choices in a pop-up. */
+function LiveChip({ template, layer, keys }: { template: Template; layer: Layer; keys: string[] }) {
+  const update = useDesigner((s) => s.update);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    window.addEventListener('pointerdown', close, true);
+    return () => window.removeEventListener('pointerdown', close, true);
+  }, [open]);
+  // Set on the variable before it was the layers'.
+  const onVariable = (k: string): LiveChange | undefined => {
+    const b = template.fields.find((f) => f.key === k)?.binding;
+    return b?.change ? { kind: b.change, secs: b.changeSecs } : undefined;
+  };
+  const cur = layer.liveChanges?.[keys[0]] ?? onVariable(keys[0]);
+  const kind = cur?.kind ?? 'cut';
+  const set = (v: LiveChange, coalesce?: string) =>
+    update((t) => {
+      const l = findLayer(t, layer.id)!;
+      const all = (l.liveChanges ??= {});
+      for (const k of keys) {
+        if (v.kind !== 'cut' || onVariable(k)) all[k] = v;
+        else delete all[k];
+      }
+      if (!Object.keys(all).length) delete l.liveChanges;
+    }, coalesce);
+  const opt = VALUE_CHANGES.find((o) => o.value === kind)!;
+  const secs = cur?.secs ?? 0.6;
+  return (
+    <span className="dc-live" ref={box} onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => open && e.stopPropagation()}>
+      <button className={`dc-live-chip ${kind !== 'cut' ? 'on' : ''} ${open ? 'open' : ''}`} title={t('When the value changes on air')} onClick={() => setOpen(!open)}>
+        <opt.Icon size={10} />
+        {tc('value change', opt.label)}
+      </button>
+      {open && (
+        <div className="dc-live-pop">
+          <span className="dc-live-t">{t('When the value changes on air')}</span>
+          <Segmented value={kind} options={VALUE_CHANGES.map((o) => ({ value: o.value, label: <o.Icon size={14} />, title: tc('value change', o.label) }))} onChange={(k) => set({ kind: k, secs: cur?.secs })} />
+          {kind !== 'cut' && (
+            <div className="dc-live-secs" title={t('Duration')}>
+              <Timer size={12} />
+              <input type="range" min={0.1} max={3} step={0.1} value={secs} onChange={(e) => set({ kind, secs: +e.target.value }, `live-${layer.id}-${keys[0]}`)} />
+              <span className="fit-val">{secs.toFixed(1).replace('.', lang() === 'fr' ? ',' : '.')} s</span>
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
 /** The fields' bindings from the graph. */
 function compile(t: Template, flow: DataFlow) {
   for (const f of t.fields) {
@@ -512,6 +577,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   }, [template, frame, values]);
 
   // ---- What the canvas shows and where.
+  /** The keys from a source or a data set wired at a port of `l` (its new values can move on air). */
+  const liveKeys = (l: Layer, port: string): string[] => {
+    const keys = contentOf(l).includes(port) ? [...contentValue(l, port).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]) : port.startsWith('s:') ? [l.settingBindings?.[port.slice(2)] ?? ''] : [l.bindings[port as Prop] ?? ''];
+    return [...new Set(keys.filter((k) => k && fedKey(template, k)))];
+  };
   const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))), ...settingPortsOf(l)]);
   /** Properties with a port: the usual ones, and any other one set from the data (anchor, crop… exposed in the Inspector). */
   const propPortsOf = (l: Layer) => [...portsOf(l), ...(Object.entries(l.bindings) as [Prop, string][]).filter(([p, k]) => k && !portsOf(l).includes(p)).map(([p]) => p)];
@@ -1219,6 +1289,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                             <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={takesTable(l, port) ? t("Drop a data set's All rows here (or a variable)") : t('Drop a variable here')} />
                             {port === 'src' ? <ImageIcon size={11} /> : takesTable(l, port) ? <Rows3 size={11} /> : <Type size={11} />} {CONTENT_LABEL[port] ? t(CONTENT_LABEL[port]) : port}
                             {isWired && <span className="dc-from">{t('from data')}</span>}
+                            {isWired && liveKeys(l, port).length > 0 && <LiveChip template={template} layer={l} keys={liveKeys(l, port)} />}
                             {op && (
                               <span className="dc-from" style={{ marginRight: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t('Key: {key}', { key: op.key })}>
                                 {op.label}
@@ -1267,6 +1338,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                           <span className="dc-port-value live" title={op ? t('Value until the operator types another one') : t('Value it gets from the data')}>
                             {isColorValue(sv) ? <span className="dc-swatch" style={{ background: String(sv) }} /> : String(sv ?? '').slice(0, 14)}
                           </span>
+                          {!op && liveKeys(l, port).length > 0 && <LiveChip template={template} layer={l} keys={liveKeys(l, port)} />}
                           {opMark || (
                             <button className="dc-unset" title={t('Stop setting it from the data')} onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
                               ×
@@ -1283,6 +1355,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                         <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={op ? t('Value until the operator types another one') : wired.has(port) ? t('Value it gets from the data') : t('Value in Properties')}>
                           {v === undefined ? '' : isColor(port) ? <span className="dc-swatch" style={{ background: toHex(col(v), true) }} /> : +num(v).toFixed(2)}
                         </span>
+                        {!op && wired.has(port) && liveKeys(l, port).length > 0 && <LiveChip template={template} layer={l} keys={liveKeys(l, port)} />}
                         {opMark}
                       </div>
                     );

@@ -3789,7 +3789,7 @@ fn layer(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
         bindings: BTreeMap::new(),
         setting_bindings: BTreeMap::new(),
         overrides: BTreeMap::new(),
-        live_change: None,
+        live_changes: BTreeMap::new(),
     }
 }
 

@@ -964,7 +964,7 @@ impl Renderer {
                     if matches!(l.kind, LayerKind::Group { .. }) {
                         continue;
                     }
-                    let json = serde_json::to_string(l).unwrap_or_default();
+                    let json = cg_core::playout::layer_json(l);
                     if let Some(c) = turning.iter().find(|c| {
                         if c.layer.is_empty() {
                             cg_core::playout::layer_shows(&json, &c.key)

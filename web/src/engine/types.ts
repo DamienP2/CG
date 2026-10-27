@@ -103,8 +103,8 @@ export type Layer = LayerKind & {
   lockRatio?: boolean;
   /** Drop shadow under the layer and its children (props shadowColor / shadowX / shadowY / shadowBlur); not for Texts (their own). */
   dropShadow?: boolean;
-  /** How a new value of the data it shows (a source, a data set) shows on air; none = at once. */
-  liveChange?: { kind: ValueChange; secs?: number };
+  /** How a new value of the data it shows (a source, a data set) shows on air, by data key (set at its port in the Data canvas); none = at once. */
+  liveChanges?: Record<string, LiveChange>;
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -185,6 +185,12 @@ export interface FieldBinding {
 
 /** How a value its data source changed shows on air (mirror of model::ValueChange). */
 export type ValueChange = 'cut' | 'fade' | 'slide' | 'flip' | 'count' | 'outIn';
+/** How a layer shows a new value of its data on air (mirror of model::LiveChange). */
+export interface LiveChange {
+  kind: ValueChange;
+  /** Its length (0.6 s when unset). */
+  secs?: number;
+}
 /** A value moving on air in the layers showing it (mirror of playout::Change). */
 export interface ValueMove {
   key: string;

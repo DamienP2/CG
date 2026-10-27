@@ -833,7 +833,6 @@ export const widgets: Record<string, string> = {
   'Height of the line': 'Hauteur de la ligne',
   // A bound variable: how a new value of its source shows on air.
   'When the value changes on air': 'Quand la valeur change à l’antenne',
-  'New value': 'Nouvelle valeur',
   'value change|Cut': 'Cut',
   'Cross-fade': 'Fondu enchaîné',
   'Count up': 'Compteur',

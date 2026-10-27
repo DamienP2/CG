@@ -204,15 +204,9 @@ export function withDefaults<D extends object, C extends object>(d: D, c: C): Om
 /** Which section of a widget's inspector opens by default: the first one (its content); the others start closed. */
 export const FirstSection = createContext<((id: string) => boolean) | null>(null);
 
-/** Rows the Inspector adds at the end of the « Content » section (how new data shows on air); `claimed` set by the section showing them. */
-export const ContentExtra = createContext<{ node: ReactNode; claimed: { current: boolean } } | null>(null);
-
 export function Section({ id, title, children, actions, level = 1, closed }: { id: string; title: string; children: ReactNode; actions?: ReactNode; level?: 1 | 2; closed?: boolean }) {
   const key = `pulse.insp2.${id}`;
   const first = useContext(FirstSection);
-  const extra = useContext(ContentExtra);
-  const withExtra = !!extra?.node && title === t('Content');
-  if (withExtra) extra.claimed.current = true;
   const [open, setOpen] = useState(() => {
     const byDefault = !closed && (first ? first(id) : true);
     try {
@@ -239,12 +233,7 @@ export function Section({ id, title, children, actions, level = 1, closed }: { i
         </button>
         {actions}
       </header>
-      {open && (
-        <div className="pp-body wk-body">
-          {children}
-          {withExtra && extra.node}
-        </div>
-      )}
+      {open && <div className="pp-body wk-body">{children}</div>}
     </section>
   );
 }

@@ -811,9 +811,9 @@ pub struct Layer {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub overrides: BTreeMap<String, LayerOverride>,
     /// How a new value of the data it shows (a source, a data set) shows on
-    /// air; none = at once.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub live_change: Option<LiveChange>,
+    /// air, by data key (set at its port in the Data canvas); none = at once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub live_changes: BTreeMap<String, LiveChange>,
 }
 
 /// How a layer shows a new value of its data on air.
