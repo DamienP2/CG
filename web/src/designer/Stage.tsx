@@ -222,10 +222,22 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     e.stopPropagation();
   };
 
+  // The layer under the pointer: the one drawn there, else one whose box is there but which its group's
+  // mask cuts (not drawn outside it, so not under the pointer for the page).
+  const layerAt = (e: { target: EventTarget; clientX: number; clientY: number }) => {
+    const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]');
+    if (hit) return hit.dataset.layerId;
+    const els = [...(sceneRef.current?.querySelectorAll<HTMLElement>('[data-layer-id]') ?? [])];
+    for (let i = els.length - 1; i >= 0; i--) {
+      const r = els[i].getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) return els[i].dataset.layerId;
+    }
+    return undefined;
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     const st = useDesigner.getState();
-    const hit = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]');
-    const id = hit?.dataset.layerId;
+    const id = layerAt(e);
     if (!id) {
       st.select([]);
       return;
@@ -237,6 +249,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
       return;
     }
     if (l?.locked) return;
+    // Pressed beside the picture: no text of the page gets selected while dragging.
+    e.preventDefault();
     let sel = st.selected;
     if (e.shiftKey) sel = sel.includes(id) ? sel.filter((s) => s !== id) : [...sel, id];
     else if (!sel.includes(id)) sel = [id];
@@ -246,7 +260,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
 
   // A double-click on a Table opens its editor.
   const onDoubleClick = (e: React.MouseEvent) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]')?.dataset.layerId;
+    const id = layerAt(e);
     const st = useDesigner.getState();
     const l = id && st.template ? findLayer(st.template, id) : undefined;
     if (l?.type === 'table' && !l.locked) useTableEditor.getState().open(l.id);
@@ -257,7 +271,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={shown.background} bgInput={bgInput} filter={shown.filter} showZones={showZones} wrapRef={wrapRef} ticking={running ? 'all' : false} fps={fps} />;
 
   return (
-    <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
+    // Around the picture too: a layer dragged out of it is still picked there (or nothing: deselects).
+    <div className="stage-wrap" ref={wrapRef} onPointerDown={onPointerDown}>
       <div className={`stage-frame bg-${shown.background}`} onPointerDown={(e) => e.stopPropagation()}>
         {shown.background === 'video' && <StageVideo input={bgInput} />}
         <div
@@ -265,7 +280,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           onPointerDown={onPointerDown}
           onDoubleClick={onDoubleClick}
           onContextMenu={(e) => {
-            const id = (e.target as HTMLElement).closest<HTMLElement>('[data-layer-id]')?.dataset.layerId;
+            const id = layerAt(e);
             if (!id) return;
             e.preventDefault();
             const st = useDesigner.getState();
