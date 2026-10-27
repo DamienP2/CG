@@ -25,8 +25,7 @@ import { formatById } from '../engine/formats';
 import { zoneArea } from '../engine/zones';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
-import { projectPath, setLeaveGuard } from '../router';
-import { t, tn } from '../i18n';
+import { t } from '../i18n';
 import { useDisplayPref } from '../displayPrefs';
 
 function usePlayback(fps: number) {
@@ -70,26 +69,6 @@ function usePlayback(fps: number) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, fps]);
-}
-
-/** Asks before leaving the designer while changes are not in the Operator yet. */
-function useLeaveUnpublished(project: Project | null) {
-  const changed = project?.drafts?.length ?? 0;
-  const id = project?.id;
-  useEffect(() => {
-    if (!changed || !id) return;
-    const here = projectPath(id, 'designer');
-    return setLeaveGuard(
-      (path) => !path.startsWith(here),
-      () =>
-        confirmDialog({
-          title: t('Leave without publishing?'),
-          message: tn(changed, '{n} template has changes the Operator does not have yet. They stay saved here as drafts; Publish, at the top, puts them on air.', '{n} templates have changes the Operator does not have yet. They stay saved here as drafts; Publish, at the top, puts them on air.'),
-          confirm: t('Leave'),
-          cancel: t('Stay'),
-        }),
-    );
-  }, [changed, id]);
 }
 
 /** The project the Designer's open template belongs to (the store outlives the Designer). */
@@ -412,7 +391,6 @@ export const Designer = memo(function Designer() {
   usePlayback(fps);
   useShortcuts();
   const { state: saveState, flush: flushSaves } = useAutosave();
-  useLeaveUnpublished(project);
   const lock = useEditLock(project, template?.id);
 
   // Opening another project: the edits of the one before are saved (in it), then it starts afresh —
