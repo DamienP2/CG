@@ -12,6 +12,7 @@ mod engine;
 mod examples;
 mod firewall;
 mod hardware;
+mod health;
 mod iconlib;
 mod import;
 mod inputs;
@@ -395,6 +396,8 @@ pub async fn serve(
     let data_dir = args.data_dir.clone().unwrap_or_else(paths::user_data_dir);
     std::fs::create_dir_all(data_dir.join("assets"))?;
     tracing::info!(version = env!("CARGO_PKG_VERSION"), data_dir = %data_dir.display(), "starting Strata");
+    // The journal on disk, crash reports, the last run's unexpected stop.
+    health::start(&data_dir);
 
     let (stop_tx, stop_rx) = watch::channel(false);
     tokio::spawn(async move {
@@ -641,5 +644,6 @@ pub async fn serve(
     // Their ffmpeg stops with them (the load sampler still holds them).
     inputs.stop();
     tracing::info!("stopped");
+    health::stopped();
     Ok(())
 }

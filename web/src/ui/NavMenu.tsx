@@ -14,7 +14,7 @@ export interface NavEntry {
  * System ▾). It shows as open (`on`) when one of its pages is. Keyboard:
  * ↓ / Enter opens, ↑ ↓ Home End move, Esc closes.
  */
-export function NavGroup({ icon, label, entries, current }: { icon: React.ReactNode; label: string; entries: NavEntry[]; current: string }) {
+export function NavGroup({ icon, label, entries, current, dot }: { icon: React.ReactNode; label: string; entries: NavEntry[]; current: string; /** Something to look at in its pages (System: a crash, errors). */ dot?: boolean }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -59,7 +59,9 @@ export function NavGroup({ icon, label, entries, current }: { icon: React.ReactN
           if (e.key === 'ArrowUp') (e.preventDefault(), show(-1));
         }}
       >
-        {icon} <span className="tab-label">{label}</span> <ChevronDown size={13} className="ux1-chev" />
+        {icon} <span className="tab-label">{label}</span>
+        {dot && <i className="nav-dot" />}
+        <ChevronDown size={13} className="ux1-chev" />
       </button>
       {open && (
         <div ref={list} className="menu ux1-navmenu" role="menu" aria-label={label} onKeyDown={onKey}>

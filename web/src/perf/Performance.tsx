@@ -1,4 +1,4 @@
-import { Activity, CircleCheck, CircleX, Cpu, Film, Gauge, Image as ImageIcon, Info, Lightbulb, MemoryStick, Network, Radio, RadioTower, ScrollText, TriangleAlert, Tv, Video } from 'lucide-react';
+import { Activity, CircleCheck, CircleX, Cpu, Film, Gauge, Image as ImageIcon, Info, Lightbulb, MemoryStick, Network, Radio, RadioTower, TriangleAlert, Tv, Video } from 'lucide-react';
 import { useState } from 'react';
 import { loadTone, useMetrics, type CapacityItem, type ChannelMetrics, type InputMetrics, type Metrics, type PictureMetrics, type Warning } from '../engine/metrics';
 import { t, tc, tn } from '../i18n';
@@ -8,17 +8,16 @@ import { useApp } from '../store';
 import { Logo } from '../ui/Logo';
 import { Bar, Dot } from './bits';
 import { bytes, channelTone, corePct, cores, coresLabel, fps, fpsTone, inputTone, machinePct, memTone, num, outputTone, pct, pictureTone, type Tone } from './format';
-import { Logs } from './Logs';
 // The badges of the Video streams page (its stylesheet may not be loaded yet).
 import '../outputs/streams.css';
 
 /*
  * The Performance page (admins): what the machine, each channel's pictures
  * and outputs and the live inputs use; how many more outputs and inputs the
- * server can take; and the server's log, live.
+ * server can take (the server's log is in System › Health).
  */
 
-type Section = 'overview' | 'capacity' | 'logs';
+type Section = 'overview' | 'capacity';
 
 /** Colours of the Video streams page. */
 const KIND: Record<string, { label: string; badge: string; color: string; icon: typeof Tv }> = {
@@ -44,7 +43,6 @@ export function Performance() {
       <NavSection>{t('Performance')}</NavSection>
       {item('overview', <Gauge size={15} />, tc('perf', 'Overview'), { status: m ? (warns ? 'warn' : 'ok') : undefined, count: warns || undefined })}
       {item('capacity', <Lightbulb size={15} />, t('Capacity'))}
-      {item('logs', <ScrollText size={15} />, t('Logs'))}
       {m && (
         <div className="lib-nav-foot">
           <Dot tone={loadTone(m.machine.cpu)} /> {m.machine.hostname}
@@ -60,7 +58,7 @@ export function Performance() {
     <SidePage nav={nav} className="perf-page">
       {/* The CPU shows once, in the tiles below. */}
       <PageHead title={t('Performance')} sub={m ? `${m.machine.hostname} · ${m.machine.cpuName} · ${tn(m.machine.cores, '{n} core', '{n} cores')}` : t('Measuring…')} />
-      {section === 'logs' ? <Logs /> : !m ? <div className="loading">{t('Measuring…')}</div> : section === 'overview' ? <Overview m={m} /> : <CapacityView m={m} />}
+      {!m ? <div className="loading">{t('Measuring…')}</div> : section === 'overview' ? <Overview m={m} /> : <CapacityView m={m} />}
     </SidePage>
   );
 }

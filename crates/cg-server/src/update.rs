@@ -974,6 +974,8 @@ pub fn restart_soon() {
 }
 
 fn restart_now() -> ! {
+    // Not a crash.
+    crate::health::stopped();
     if !SUPERVISED.load(Ordering::Relaxed) {
         // Foreground server: start the new binary with the same arguments;
         // it waits for this process to release the port.

@@ -84,6 +84,8 @@ impl<S: Subscriber> Layer<S> for Ring {
             message: f.message,
             fields: f.rest,
         };
+        // Kept on disk too (System › Health).
+        crate::health::record(&e);
         let mut ring = RING.lock().unwrap_or_else(|p| p.into_inner());
         if ring.len() == KEEP {
             ring.pop_front();
