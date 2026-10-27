@@ -217,6 +217,49 @@
     }
    }
   },
+  "/api/me/theme": {
+   "put": {
+    "tags": [
+     "Authentication"
+    ],
+    "summary": "Set my interface theme",
+    "description": "Every user keeps the colour theme of their interface (\"dark\", \"light\" or \"system\", which follows the computer).",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "theme"
+        ],
+        "properties": {
+         "theme": {
+          "type": "string",
+          "enum": [
+           "dark",
+           "light",
+           "system"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "The user",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/User"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/auth/setup": {
    "post": {
     "tags": [
@@ -5314,6 +5357,10 @@
      "lang": {
       "type": "string",
       "description": "Language of the interface (\"en\", \"fr\"); empty = the browser's."
+     },
+     "theme": {
+      "type": "string",
+      "description": "Colour theme of the interface (\"dark\", \"light\", \"system\"); empty = dark."
      }
     }
    },

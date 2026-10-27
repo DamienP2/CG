@@ -538,6 +538,8 @@ export interface User {
   disabled: boolean;
   /** Language of the interface ("en", "fr"); empty = the browser's. */
   lang?: string;
+  /** Colour theme of the interface ("dark", "light", "system"); empty = dark. */
+  theme?: string;
 }
 
 /** Layer types whose text is styled with a FontStyle. */

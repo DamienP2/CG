@@ -33,6 +33,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/me/lang", put(put_my_lang))
+        .route("/api/me/theme", put(put_my_theme))
         .route(
             "/api/me/shortcuts",
             get(crate::prefs::get_shortcuts).put(crate::prefs::put_shortcuts),
@@ -366,6 +367,21 @@ async fn put_my_lang(
     Json(input): Json<LangInput>,
 ) -> ApiResult<Json<PublicUser>> {
     let u = s.auth.set_lang(&me.id, &input.lang).map_err(bad)?;
+    Ok(Json((&u).into()))
+}
+
+#[derive(Deserialize)]
+struct ThemeInput {
+    theme: String,
+}
+
+/// Any user keeps their own colour theme of the interface.
+async fn put_my_theme(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Json(input): Json<ThemeInput>,
+) -> ApiResult<Json<PublicUser>> {
+    let u = s.auth.set_theme(&me.id, &input.theme).map_err(bad)?;
     Ok(Json((&u).into()))
 }
 
