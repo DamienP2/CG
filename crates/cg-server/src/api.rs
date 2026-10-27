@@ -25,6 +25,7 @@ use crate::state::{now_ms, ChannelInfo, ClientMessage, Event, Shared};
 pub fn router() -> Router<Shared> {
     Router::new()
         .merge(crate::media::router())
+        .merge(crate::iconlib::router())
         .merge(crate::apiv1::router())
         .merge(crate::social::api::router())
         .merge(crate::social::moderation::router())

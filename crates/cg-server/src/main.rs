@@ -12,6 +12,7 @@ mod engine;
 mod examples;
 mod firewall;
 mod hardware;
+mod iconlib;
 mod import;
 mod inputs;
 mod library;

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link2, Search, Sparkles, Upload, X } from 'lucide-react';
 import { api, mediaUrl, uploadAsset, useApp, type MediaFile } from '../store';
+import { PictureLibrary } from './PictureLibrary';
 import { t } from '../i18n';
 
 const fileName = (src: string) => decodeURIComponent(src.split('?')[0].split('/').pop() || src);
@@ -45,7 +46,7 @@ export function AssetPicker({ value, onChange, placeholder = t('Choose a picture
   );
 }
 
-type Tab = 'project' | 'shared';
+type Tab = 'project' | 'shared' | 'library';
 
 /** What a library lists: pictures, videos (and animated GIFs), or Lottie files. */
 export type LibraryKind = 'image' | 'video' | 'lottie';
@@ -64,7 +65,7 @@ const KIND: Record<LibraryKind, { keep: (m: MediaFile) => boolean; accept: strin
 export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }: { title: string; value: string; onClose: () => void; onChoose: (src: string) => void; kind?: LibraryKind }) {
   const projectId = useApp((s) => s.projectId);
   const toast = useApp((s) => s.toast);
-  const [lists, setLists] = useState<Record<Tab, MediaFile[]>>({ project: [], shared: [] });
+  const [lists, setLists] = useState<Record<Tab, MediaFile[]>>({ project: [], shared: [], library: [] });
   const [tab, setTab] = useState<Tab>(projectId ? 'project' : 'shared');
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(value);
@@ -143,6 +144,12 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
               {t('Shared')}
               <b>{lists.shared.length}</b>
             </button>
+            {/* Icons, emojis, flags, illustrations: copied into the project when used. */}
+            {kind === 'image' && projectId && (
+              <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
+                {t('Library')}
+              </button>
+            )}
           </div>
           <span className="grow" />
           <label className="lib-search">
@@ -187,6 +194,11 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
             <X size={14} />
           </button>
         </div>
+        {tab === 'library' ? (
+          <div className="lib-b">
+            <PictureLibrary q={q} onChoose={onChoose} />
+          </div>
+        ) : (
         <div
           className={`lib-b ${drag ? 'dragging' : ''}`}
           onDragOver={(e) => {
@@ -263,6 +275,8 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
           )}
           <div className="lib-drop">{kind !== 'image' ? (projectId ? t('Drop files here: they go to the project') : t('Drop files here: they go to the shared library')) : projectId ? t('Drop pictures here: they go to the project') : t('Drop pictures here: they go to the shared library')}</div>
         </div>
+        )}
+        {tab !== 'library' && (
         <div className="lib-f">
           <span className="lib-sel">{selected ? `${selected.name}${sizes.current.get(selected.src) ? ` · ${sizes.current.get(selected.src)}` : ''}` : kind === 'image' ? t('Double-click a picture to choose it') : t('Double-click a file to choose it')}</span>
           <button className="btn ghost" onClick={onClose}>
@@ -272,6 +286,7 @@ export function AssetLibrary({ title, value, onClose, onChoose, kind = 'image' }
             {t('Choose')}
           </button>
         </div>
+        )}
       </div>
     </div>,
     document.body,

@@ -1,0 +1,149 @@
+import { useEffect, useState } from 'react';
+import { WifiOff } from 'lucide-react';
+import { api, useApp, type MediaFile } from '../store';
+import { t } from '../i18n';
+
+/*
+ * The picture library of the « Choose a picture » window: icons, emojis and
+ * flags of the Iconify catalogue, unDraw's illustrations, read by the server
+ * (cg-server iconlib.rs). The one used is copied into the project's media.
+ */
+
+type Kind = 'icons' | 'emoji' | 'flags' | 'illustrations';
+const KINDS: { id: Kind; label: string; sets: [string, string][] }[] = [
+  { id: 'icons', label: 'Icons', sets: [['lucide', 'Lucide'], ['material-symbols', 'Material'], ['ph', 'Phosphor'], ['tabler', 'Tabler']] },
+  { id: 'emoji', label: 'Emojis', sets: [['noto', 'Noto'], ['twemoji', 'Twemoji'], ['fluent-emoji-flat', 'Fluent']] },
+  { id: 'flags', label: 'Flags', sets: [['flag', 'Rectangles'], ['circle-flags', 'Circles']] },
+  { id: 'illustrations', label: 'Illustrations', sets: [['undraw', 'unDraw']] },
+];
+const COLORS = ['#ffffff', '#8fa3ff', '#ff3b5c', '#f5c542', '#22c55e', '#38bdf8', '#111111'];
+/** unDraw's own colour. */
+const UNDRAW = '#6c63ff';
+
+interface Item {
+  name: string;
+  title: string;
+}
+
+/** The picture of an item, as the server reads it. */
+const svgUrl = (set: string, name: string, color: string) => `/api/iconlib/svg?set=${encodeURIComponent(set)}&name=${encodeURIComponent(name)}${color ? `&color=${encodeURIComponent(color)}` : ''}`;
+
+export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: string) => void }) {
+  const projectId = useApp((s) => s.projectId);
+  const toast = useApp((s) => s.toast);
+  const [kind, setKind] = useState<Kind>('icons');
+  const [set, setSet] = useState('lucide');
+  const [items, setItems] = useState<Item[]>([]);
+  const [page, setPage] = useState(0);
+  const [more, setMore] = useState(false);
+  const [state, setState] = useState<'loading' | 'ok' | 'offline'>('loading');
+  const [sel, setSel] = useState<Item | null>(null);
+  const [color, setColor] = useState('#ffffff');
+  const [query, setQuery] = useState(q);
+  const [busy, setBusy] = useState(false);
+  // Typing settles before the catalogue is asked.
+  useEffect(() => {
+    const h = setTimeout(() => (setQuery(q), setPage(0)), 300);
+    return () => clearTimeout(h);
+  }, [q]);
+  useEffect(() => {
+    let live = true;
+    setState('loading');
+    api<{ items: Item[]; more: boolean }>('GET', `/api/iconlib/search?set=${encodeURIComponent(set)}&q=${encodeURIComponent(query)}&page=${page}`)
+      .then((r) => {
+        if (!live) return;
+        setItems((x) => (page ? [...x, ...r.items] : r.items));
+        setMore(r.more);
+        setState('ok');
+      })
+      .catch(() => live && setState('offline'));
+    return () => {
+      live = false;
+    };
+  }, [set, query, page]);
+
+  const coloured = kind === 'icons' || kind === 'illustrations';
+  const shownColor = coloured ? color : '';
+  const pickKind = (k: Kind) => {
+    setKind(k);
+    setSet(KINDS.find((x) => x.id === k)!.sets[0][0]);
+    setPage(0);
+    setSel(null);
+    setColor(k === 'illustrations' ? UNDRAW : '#ffffff');
+  };
+  const use = async (it = sel) => {
+    if (!it || !projectId) return;
+    setBusy(true);
+    try {
+      const m = await api<MediaFile>('POST', `/api/projects/${projectId}/iconlib`, { set, name: it.name, color: shownColor, title: it.title });
+      onChoose(m.src);
+    } catch (e) {
+      toast(t('The picture library cannot be reached: {error}', { error: (e as Error).message }), 'error');
+    }
+    setBusy(false);
+  };
+  const kindDef = KINDS.find((x) => x.id === kind)!;
+  return (
+    <div className="pl">
+      <div className="pl-main">
+        <div className="pl-bar">
+          <div className="pl-kinds">
+            {KINDS.map((k) => (
+              <button key={k.id} className={k.id === kind ? 'on' : ''} onClick={() => pickKind(k.id)}>
+                {t(k.label)}
+              </button>
+            ))}
+          </div>
+          {kindDef.sets.length > 1 && (
+            <div className="pl-sets">
+              {kindDef.sets.map(([id, label]) => (
+                <button key={id} className={id === set ? 'on' : ''} onClick={() => (setSet(id), setPage(0), setSel(null))}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {state === 'offline' ? (
+          <div className="lib-empty pl-off">
+            <WifiOff size={22} />
+            {t('The picture library cannot be reached: the server needs the Internet to browse it.')}
+          </div>
+        ) : (
+          <div className={`pl-grid ${kind === 'illustrations' ? 'big' : ''}`}>
+            {items.map((it) => (
+              <button key={it.name} className={`pl-cell ${sel?.name === it.name ? 'on' : ''}`} title={it.title} onClick={() => setSel(it)} onDoubleClick={() => (setSel(it), void use(it))}>
+                <img src={svgUrl(set, it.name, shownColor)} alt="" loading="lazy" />
+              </button>
+            ))}
+            {state === 'loading' && <div className="pl-wait">{t('Loading…')}</div>}
+            {state === 'ok' && !items.length && <div className="lib-empty">{t('No picture matches.')}</div>}
+            {state === 'ok' && more && (
+              <button className="btn ghost pl-more" onClick={() => setPage((p) => p + 1)}>
+                {t('More')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="pl-side">
+        <div className="pl-prev">{sel && <img src={svgUrl(set, sel.name, shownColor)} alt="" />}</div>
+        {sel && <b className="pl-name">{sel.title}</b>}
+        {coloured && (
+          <div className="pl-row">
+            <span>{t('Colour')}</span>
+            <div className="pl-sw">
+              {(kind === 'illustrations' ? [UNDRAW, ...COLORS] : COLORS).map((c) => (
+                <button key={c} className={c === color ? 'on' : ''} style={{ background: c }} onClick={() => setColor(c)} />
+              ))}
+              <input type="color" value={color} title={t('Another colour')} onChange={(e) => setColor(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <button className="btn violet" disabled={!sel || busy || !projectId} onClick={() => void use()}>
+          {busy ? t('Copying…') : t('Use')}
+        </button>
+      </div>
+    </div>
+  );
+}

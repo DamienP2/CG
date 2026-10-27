@@ -183,6 +183,47 @@ async fn store(
         .ok_or_else(|| internal("upload lost"))
 }
 
+/// A file written into a project's media (a picture of the library): its
+/// entry, under `name`, or `name-2`… when another file has that name.
+pub async fn put_bytes(
+    s: &Shared,
+    project: &str,
+    name: &str,
+    bytes: Vec<u8>,
+) -> ApiResult<MediaFile> {
+    let dir = project_dir(s, project);
+    tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
+    let (stem, ext) = name.rsplit_once('.').unwrap_or((name, ""));
+    let mut name = name.to_string();
+    for i in 2.. {
+        match tokio::fs::read(dir.join(&name)).await {
+            // The same picture already there: used again.
+            Ok(old) if old == bytes => break,
+            Ok(_) => name = format!("{stem}-{i}.{ext}"),
+            Err(_) => {
+                tokio::fs::write(dir.join(&name), &bytes)
+                    .await
+                    .map_err(internal)?;
+                break;
+            }
+        }
+    }
+    if !valid_asset_name(&name) {
+        return Err(bad("invalid file name"));
+    }
+    s.renderer
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .invalidate_assets();
+    s.thumbs.clear();
+    s.changed(format!("media:{project}"));
+    list_dir(&dir, &project_prefix(project))
+        .await?
+        .into_iter()
+        .find(|m| m.name == name)
+        .ok_or_else(|| internal("file lost"))
+}
+
 /// The name without `.ai` of an Illustrator file.
 fn illustrator_stem(name: &str) -> Option<&str> {
     let (stem, ext) = name.rsplit_once('.')?;

@@ -838,4 +838,12 @@ export const widgets: Record<string, string> = {
   'Out, then in again': 'Sortie › Entrée',
   'Drag to move the picture in the crop · double-click to centre it': 'Glisser pour déplacer l’image dans le recadrage · double-clic pour la centrer',
   'Centre the picture': 'Centrer l’image',
+  // The picture library (Choose a picture › Library).
+  Icons: 'Icônes',
+  Flags: 'Drapeaux',
+  Illustrations: 'Illustrations',
+  'The picture library cannot be reached: {error}': 'La bibliothèque d’images est injoignable : {error}',
+  'The picture library cannot be reached: the server needs the Internet to browse it.': 'La bibliothèque d’images est injoignable : le serveur a besoin d’Internet pour la parcourir.',
+  'Copying…': 'Copie…',
+  Use: 'Utiliser',
 };
