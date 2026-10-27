@@ -68,6 +68,7 @@ pub fn router() -> Router<Shared> {
         )
         .route("/api/import/{token}/files/{name}", get(import_file))
         .route("/api/import/{token}/create", post(import_create))
+        .route("/api/import/{token}/into/{id}", post(import_into))
         .route(
             "/api/projects/{id}",
             get(get_project)
@@ -963,6 +964,79 @@ async fn import_create(
     let p = s.save_project(p).await.map_err(internal)?;
     tracing::info!(user = me.username, project = p.name, "project imported");
     Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
+#[derive(Deserialize)]
+struct ImportInto {
+    /// The templates kept, laid out for the project's format.
+    templates: Vec<Template>,
+}
+
+/// Adds the templates of an analysed file to a project, as drafts (the
+/// designer publishes them), with the pictures they use.
+async fn import_into(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path((token, id)): Path<(String, String)>,
+    Json(c): Json<ImportInto>,
+) -> ApiResult<Json<Vec<String>>> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    if c.templates.is_empty() {
+        return Err(bad("nothing to import"));
+    }
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    let files = crate::import::take_staged(&token, &me.username).ok_or((
+        StatusCode::GONE,
+        "this import has expired: open the file again".to_string(),
+    ))?;
+    let stage = crate::import::stage_prefix(&token);
+    let json = serde_json::to_string(&c.templates).map_err(internal)?;
+    let dir = crate::media::project_dir(&s, &p.id);
+    let mut wrote = false;
+    for (name, bytes) in &files {
+        if json.contains(&format!("{stage}{name}")) {
+            tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
+            tokio::fs::write(dir.join(name), bytes)
+                .await
+                .map_err(internal)?;
+            wrote = true;
+        }
+    }
+    if wrote {
+        s.renderer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .invalidate_assets();
+        s.thumbs.clear();
+        s.changed(format!("media:{}", p.id));
+    }
+    let templates: Vec<Template> =
+        serde_json::from_str(&json.replace(&stage, &crate::media::project_prefix(&p.id)))
+            .map_err(internal)?;
+    // In the full-screen zone when there is one, else the first.
+    let zone = p
+        .zones
+        .iter()
+        .find(|z| z.id == "full-screen")
+        .or_else(|| p.zones.first())
+        .map(|z| z.id.clone())
+        .unwrap_or_default();
+    let mut ids = Vec::new();
+    for mut t in templates {
+        t.id = cg_core::new_id();
+        t.zone = zone.clone();
+        ids.push(t.id.clone());
+        p.drafts.push(t);
+    }
+    s.save_project(p).await.map_err(internal)?;
+    tracing::info!(
+        user = me.username,
+        project = id,
+        n = ids.len(),
+        "templates imported"
+    );
+    Ok(Json(ids))
 }
 
 async fn export_project(

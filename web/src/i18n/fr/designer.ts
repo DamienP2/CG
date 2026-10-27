@@ -461,4 +461,10 @@ export const designer: Record<string, string> = {
   // Zones edited on the stage
   'Remove the zone': 'Supprimer la zone',
   'From one graphic to the next': 'Passage d’un graphique à l’autre',
+  // Templates imported into the project (Photoshop, SVG, Motion Graphics, After Effects)
+  'Import templates: Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)': 'Importer des modèles : Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)',
+  'Import the template': 'Importer le modèle',
+  'Import the {n} templates': 'Importer les {n} modèles',
+  '{n} template imported': '{n} modèle importé',
+  '{n} templates imported': '{n} modèles importés',
 };

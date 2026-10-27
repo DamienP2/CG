@@ -25,7 +25,8 @@ import { formatById } from '../engine/formats';
 import { zoneArea } from '../engine/zones';
 import { designTemplates, publishState } from '../engine/drafts';
 import { confirmDialog } from '../ui/dialogs';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
+import { ImportModal } from '../pages/ImportModal';
 import { useDisplayPref } from '../displayPrefs';
 
 function usePlayback(fps: number) {
@@ -198,6 +199,13 @@ function TemplateList({ project }: { project: Project }) {
   const toast = useApp((s) => s.toast);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  // A file in the import window, then the first template it added (opened once the project has it).
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [toOpen, setToOpen] = useState<string | null>(null);
+  useEffect(() => {
+    const tpl = toOpen && designTemplates(project).find((x) => x.id === toOpen);
+    if (tpl) (load(tpl), setToOpen(null));
+  }, [project, toOpen]);
   // Dragging a template to another place in the list: the one moved, and where it goes.
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);
@@ -223,7 +231,7 @@ function TemplateList({ project }: { project: Project }) {
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
-          <button className="icon-btn ghost" title={t('Import an After Effects composition (Bodymovin / LottieFiles .json, .zip, .lottie)')} onClick={() => fileRef.current?.click()} disabled={importing}>
+          <button className="icon-btn ghost" title={t('Import templates: Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')} onClick={() => fileRef.current?.click()} disabled={importing}>
             <FileUp size={14} />
           </button>
           <button className="icon-btn ghost" title={t('New template')} onClick={() => create()}>
@@ -233,12 +241,14 @@ function TemplateList({ project }: { project: Project }) {
         <input
           ref={fileRef}
           type="file"
-          accept=".json,.zip,.lottie,.mogrt"
+          accept=".psd,.psb,.svg,.mogrt,.aep,.json,.zip,.lottie"
           hidden
           onChange={async (e) => {
             const f = e.target.files?.[0];
             e.target.value = '';
             if (!f) return;
+            // Photoshop, SVG, Motion Graphics, After Effects projects: the import window (what to keep, how).
+            if (/\.(psd|psb|svg|mogrt|aep)$/i.test(f.name)) return setImportFile(f);
             setImporting(true);
             try {
               const { template: imp, warnings } = await importAfterEffects(project.id, f);
@@ -251,6 +261,18 @@ function TemplateList({ project }: { project: Project }) {
             }
           }}
         />
+        {importFile && (
+          <ImportModal
+            file={importFile}
+            into={project}
+            onClose={() => setImportFile(null)}
+            onImported={(ids) => {
+              setImportFile(null);
+              setToOpen(ids[0] ?? null);
+              toast(tn(ids.length, '{n} template imported', '{n} templates imported'), 'info');
+            }}
+          />
+        )}
       </header>
       {designTemplates(project).map((tpl) => {
         const { published, draft } = publishState(project, tpl.id);

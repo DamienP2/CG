@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { defaultData, holdFrame, newId } from '../engine/evaluate';
 import { LiveTime } from '../engine/LiveTime';
 import { Scene, Viewport } from '../engine/Scene';
-import type { Easing, FieldKind, Keyframe, Layer, Prop, ProjectSummary, Template, Value } from '../engine/types';
+import type { Easing, FieldKind, Keyframe, Layer, Project, Prop, ProjectSummary, Template, Value } from '../engine/types';
 import { api, useApp } from '../store';
 import { t, tn } from '../i18n';
 import { widgetOf } from '../widgets';
@@ -252,7 +252,7 @@ const RATES: [number, number][] = [
 const rateName = ([n, d]: [number, number]) => (d === 1 ? `${n}` : (n / d).toFixed(2).replace('.', ','));
 
 /** Import of an After Effects, MOGRT, Photoshop or SVG file: what each layer becomes, the animations, what is left out; then a new project. */
-export function ImportModal({ file: first, onClose, onCreated, onProject }: { file?: File; onClose: () => void; onCreated: (p: ProjectSummary) => void; /** A Strata project (.strata.json). */ onProject: (f: File) => void }) {
+export function ImportModal({ file: first, onClose, onCreated, onProject, into, onImported }: { file?: File; onClose: () => void; onCreated?: (p: ProjectSummary) => void; /** A Strata project (.strata.json). */ onProject?: (f: File) => void; /** Templates added to this project (from the Designer), laid out for its format. */ into?: Project; onImported?: (ids: string[]) => void }) {
   const toast = useApp((s) => s.toast);
   const [file, setFile] = useState<File | undefined>(first);
   const [busy, setBusy] = useState(false);
@@ -287,9 +287,9 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
         setName(res.name);
         // The document's size and rate when they are a broadcast format, else HD.
         const fmt = FORMATS.find(([w, h]) => w === res.width && h === res.height);
-        setSize(fmt ?? (res.format === 'svg' || res.width < 1280 ? [1920, 1080] : [res.width, res.height]));
+        setSize(into ? [into.width, into.height] : (fmt ?? (res.format === 'svg' || res.width < 1280 ? [1920, 1080] : [res.width, res.height])));
         const r = RATES.find(([n, d]) => Math.abs(n / d - res.fps) < 0.01);
-        setRate(r ?? [25, 1]);
+        setRate(into ? [into.frameRate.num, into.frameRate.den] : (r ?? [25, 1]));
         setO((x) => ({ ...x, on: Object.fromEntries(res.comps.map((c) => [c.id, Object.fromEntries(c.layers.map((l) => [l.layer, !l.hidden]))])) }));
       })
       .catch((e) => !gone && setError((e as Error).message))
@@ -325,8 +325,14 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
     setBusy(true);
     try {
       const templates = chosen.map((c) => build(a, c, o, { width: size[0], height: size[1] }, fps));
+      if (into) {
+        // One composition (an SVG, a Photoshop file without artboards): the template takes the file's name.
+        if (a.comps.length === 1 && file) templates[0].name = file.name.replace(/\.[^.]+$/, '');
+        onImported?.(await api<string[]>('POST', `/api/import/${a.token}/into/${encodeURIComponent(into.id)}`, { templates }));
+        return;
+      }
       const p = await api<ProjectSummary>('POST', `/api/import/${a.token}/create`, { name: name.trim() || a.name, width: size[0], height: size[1], frameRate: { num: rate[0], den: rate[1] }, templates });
-      onCreated(p);
+      onCreated?.(p);
     } catch (e) {
       toast(t('Import failed: {error}', { error: (e as Error).message }), 'error');
       setBusy(false);
@@ -336,7 +342,7 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
   const setOn = (layer: string, v: boolean) => comp && setO({ ...o, on: { ...o.on, [comp.id]: { ...o.on[comp.id], [layer]: v } } });
   const pick = (f?: File) => {
     if (!f) return;
-    if (f.name.toLowerCase().endsWith('.json')) return onProject(f);
+    if (f.name.toLowerCase().endsWith('.json')) return into ? undefined : onProject?.(f);
     setFile(f);
   };
 
@@ -400,7 +406,7 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
                 {error && <span className="imp-error">{error}</span>}
               </div>
             )}
-            <input ref={input} type="file" accept={IMPORT_ACCEPT} hidden onChange={(e) => pick(e.target.files?.[0])} />
+            <input ref={input} type="file" accept={into ? IMPORT_ACCEPT.replace(',.json', '') : IMPORT_ACCEPT} hidden onChange={(e) => pick(e.target.files?.[0])} />
           </div>
         ) : (
           <>
@@ -427,6 +433,8 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
                     </div>
                   </>
                 ) : null}
+                {!into && (
+                  <>
                 <div className="imp-sec">{t('Project')}</div>
                 <label className="imp-field">
                   <span>{t('Name')}</span>
@@ -451,6 +459,8 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
                     </select>
                   </div>
                 </label>
+                  </>
+                )}
                 {a.format === 'psd' && (
                   <div className="imp-field">
                     <span>{t('Groups')}</span>
@@ -600,7 +610,7 @@ export function ImportModal({ file: first, onClose, onCreated, onProject }: { fi
                 {t('Cancel')}
               </button>
               <button className="btn primary" disabled={busy || !chosen.length} onClick={create}>
-                {chosen.length > 1 ? t('Create the project · {n} templates', { n: chosen.length }) : t('Create the project')}
+                {into ? tn(chosen.length, 'Import the template', 'Import the {n} templates') : chosen.length > 1 ? t('Create the project · {n} templates', { n: chosen.length }) : t('Create the project')}
               </button>
             </footer>
           </>
