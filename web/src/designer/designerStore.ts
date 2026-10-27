@@ -211,6 +211,21 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   },
 }));
 
+// The values shown follow the variables: one exposed since, or a new default, shows its default.
+useDesigner.subscribe((s, prev) => {
+  if (!s.base || s.base === prev.base) return;
+  const defaults = defaultData(s.base);
+  const was = prev.base ? defaultData(prev.base) : {};
+  const next = { ...s.previewData };
+  let changed = false;
+  for (const [k, v] of Object.entries(defaults))
+    if (!(k in next) || (k in was && next[k] === was[k] && v !== was[k])) {
+      next[k] = v;
+      changed = true;
+    }
+  if (changed) useDesigner.setState({ previewData: next });
+});
+
 // ---------------------------------------------------------------------------
 // Template mutations (applied on a draft inside `update`).
 
