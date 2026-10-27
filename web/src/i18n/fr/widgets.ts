@@ -821,4 +821,14 @@ export const widgets: Record<string, string> = {
   'Choose a video…': 'Choisir une vidéo…',
   'the video is played as pictures (alpha kept), at most a minute': 'la vidéo est jouée en images (alpha conservé), une minute au plus',
   'Choose a video': 'Choisir une vidéo',
+  // Text: variables and pictures in its content.
+  'Make the selection a variable the Operator fills in': 'Rend la sélection variable : l’Opérateur la remplit',
+  'Insert a picture in the text': 'Insère une image dans le texte',
+  'Expose the whole text': 'Exposer tout le texte',
+  'Variable {n}': 'Variable {n}',
+  'Back to text': 'Revenir au texte',
+  Default: 'Par défaut',
+  'Picture {n}': 'Image {n}',
+  'Height of the capitals': 'Hauteur des capitales',
+  'Height of the line': 'Hauteur de la ligne',
 };

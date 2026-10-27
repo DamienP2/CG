@@ -712,6 +712,29 @@ impl FontStore {
 pub struct Chain {
     pub fonts: Vec<FontArc>,
     map: HashMap<char, usize>,
+    /// The pictures of the text (`<img>`), by rank: drawn instead of the
+    /// characters standing for them (`cg_core::rich::IMG_BASE` + rank).
+    pub inline: Vec<InlinePic>,
+}
+
+/// A picture in a line of text.
+#[derive(Clone)]
+pub struct InlinePic {
+    pub pixmap: Option<std::sync::Arc<tiny_skia::Pixmap>>,
+    pub height: cg_core::rich::ImgHeight,
+    pub line_height: f32,
+}
+
+impl InlinePic {
+    /// Its height and width at `size` (square while missing).
+    pub fn size_at(&self, size: f32) -> (f32, f32) {
+        let h = self.height.px(size, self.line_height);
+        let aspect = self
+            .pixmap
+            .as_ref()
+            .map_or(1.0, |p| p.width() as f32 / p.height().max(1) as f32);
+        (h, h * aspect)
+    }
 }
 
 impl Chain {
@@ -720,6 +743,7 @@ impl Chain {
         let mut ch = Chain {
             fonts: vec![main],
             map: HashMap::new(),
+            inline: Vec::new(),
         };
         ch.add(store, text);
         ch
@@ -727,7 +751,12 @@ impl Chain {
     /// Adds the fallbacks of `text`.
     pub fn add(&mut self, store: &mut FontStore, text: &str) {
         for c in text.chars() {
-            if c.is_whitespace() || c.is_control() || invisible(c) || self.map.contains_key(&c) {
+            if c.is_whitespace()
+                || c.is_control()
+                || invisible(c)
+                || self.map.contains_key(&c)
+                || cg_core::rich::image_index(c).is_some()
+            {
                 continue;
             }
             let main = &self.fonts[0];
@@ -752,6 +781,10 @@ impl Chain {
     }
     pub fn pick(&self, c: char) -> usize {
         self.map.get(&c).copied().unwrap_or(0)
+    }
+    /// The picture `c` stands for.
+    pub fn inline_of(&self, c: char) -> Option<&InlinePic> {
+        self.inline.get(cg_core::rich::image_index(c)?)
     }
 }
 
@@ -786,13 +819,29 @@ pub fn glyph_run(
         if invisible(c) {
             continue;
         }
+        if let Some(pic) = chain.inline_of(c) {
+            if let Some(prev) = out.last() {
+                x = prev.x + prev.adv + letter_spacing;
+                if prev.ch == ' ' || prev.ch == '\u{a0}' {
+                    x += space_extra;
+                }
+            }
+            out.push(PGlyph {
+                font: 0,
+                id: ab_glyph::GlyphId(0),
+                x,
+                adv: pic.size_at(size).1,
+                ch: c,
+            });
+            continue;
+        }
         let fi = chain.pick(c);
         let font = &chain.fonts[fi];
         let sf = font.as_scaled(scale_of(font, size));
         let id = font.glyph_id(c);
         if let Some(prev) = out.last() {
             x = prev.x + prev.adv + letter_spacing;
-            if prev.font == fi {
+            if prev.font == fi && chain.inline_of(prev.ch).is_none() {
                 x += sf.kern(prev.id, id);
             }
             if prev.ch == ' ' || prev.ch == '\u{a0}' {
@@ -828,6 +877,10 @@ pub fn run_outline(
 ) -> Vec<PGlyph> {
     let mut pictures = Vec::new();
     for g in glyphs {
+        if chain.inline_of(g.ch).is_some() {
+            pictures.push(*g);
+            continue;
+        }
         let font = &chain.fonts[g.font];
         match outline(font, g.id) {
             Some(curves) => {

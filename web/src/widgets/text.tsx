@@ -4,7 +4,8 @@
 // (fitLines, mirror of text::fit_lines); language rules in crates/cg-core/src/wid/text.rs.
 import { FontPick } from '../ui/FontPick';
 import { useContext, type CSSProperties } from 'react';
-import { align, RichKeys, runs as richRuns, type Run } from '../engine/rich';
+import { align, imageIndex, imgHeightPx, imgMiddle, inlineImages, RichKeys, runs as richRuns, type InlineImage, type Run } from '../engine/rich';
+import { pictureSize, usePictures } from './image';
 import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Italic, Strikethrough, Type, Underline } from 'lucide-react';
 import { Segmented } from '../ui/fields';
 import { col, cssColor, interpolateText, num, propValue, transformText, type Resolved } from '../engine/evaluate';
@@ -14,7 +15,7 @@ import { useApp } from '../store';
 import { fitLines, graphemes, HYPHEN_LANGS, type FitLines } from '../engine/textFit';
 import { frameSpeed, scrollPositions } from '../engine/widgets';
 import { ColorGroupRow, GroupRow } from '../designer/Inspector';
-import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, wiredKeys, type LayerOf, type Warning, withDefaults } from './kit';
+import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
 import { t, tc } from '../i18n';
 import { ON_AIR, SocialSource } from './socialSource';
 
@@ -45,8 +46,6 @@ export interface Config {
   bandAccentColor?: string;
   justify?: boolean;
   dir?: 'ltr' | 'rtl';
-  /** Most characters the Operator can type in its field (0 = no limit). */
-  maxChars?: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -76,7 +75,6 @@ export const D: Required<Config> = {
   bandAccentColor: '#ff3b5c',
   justify: false,
   dir: 'ltr',
-  maxChars: 0,
 };
 const cfg = (c: Config): Required<Config> => withDefaults(D, c);
 
@@ -114,6 +112,25 @@ export function measure(font: string, ls: number, s: string): number {
   return w;
 }
 
+/** Height and width of a picture of the text at `size` (square until it is read, as the Rust renderer while missing). */
+function picSize(p: InlineImage, size: number, lh: number): [number, number] {
+  const h = imgHeightPx(p.height, size, lh);
+  const z = p.src ? pictureSize(p.src) : null;
+  return [h, z ? (h * z[0]) / Math.max(1, z[1]) : h];
+}
+/** Width of a line with its pictures (each as wide as its picture, letter spacing after it as after a glyph). */
+export function measureWith(font: string, ls: number, s: string, pics: InlineImage[], size: number, lh: number): number {
+  if (!pics.length) return measure(font, ls, s);
+  let w = 0;
+  let rest = '';
+  for (const c of s) {
+    const i = imageIndex(c);
+    if (i < 0) rest += c;
+    else w += (pics[i] ? picSize(pics[i], size, lh)[1] : 0) + ls;
+  }
+  return rest ? w + measure(font, ls, rest) : Math.max(0, w - ls);
+}
+
 const caseOf = (l: TextLayer) => (t: string) => (l.uppercase ? t.toUpperCase() : transformText(t, l.transform));
 /** Its styled parts as shown (<b>…), null when it has one style. */
 export const textRuns = (l: TextLayer, data: Data, rich: (key: string) => boolean = () => false) => richRuns(l.text, data, rich, caseOf(l));
@@ -135,6 +152,8 @@ export interface TextLayout {
   runs: Run[] | null;
   /** Weight the lines were measured with. */
   mw: number;
+  /** Its pictures (<img>), by rank. */
+  pics: InlineImage[];
 }
 
 /** The fit of the layer with these values (same as the Rust renderer). */
@@ -157,6 +176,8 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
   const w = num(r.width);
   const avail = k.band ? Math.max(20, w - 2 * pad) : w;
   const fam = l.fontFamily;
+  const pics = inlineImages(l.text, data, rich ?? (() => false));
+  const lh = l.lineHeight ?? 1.2;
   const fit: FitLines =
     scroll === 'horizontal'
       ? { lines: [{ text, end: true }], size: size0, squeeze: 1, clip: true, ratio: 1, overflows: false, stage: 'fit', forced: false, hyphenated: false }
@@ -177,10 +198,10 @@ export function layoutText(l: TextLayer, r: Resolved, data: Data, lang?: string,
       lang: k.lang || lang || useApp.getState().project?.language || 'fr',
       ellipsisEnd: k.fitEnd === 'ellipsis',
     },
-    (s, size) => measure(fontCss(fam, mw, size, k.italic), ls, s),
+    (s, size) => measureWith(fontCss(fam, mw, size, k.italic), ls, s, pics, size, lh),
   );
   if (scroll) fit.clip = true;
-  return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text, runs, mw };
+  return { fit, font: fontCss(fam, l.fontWeight, fit.size, k.italic), ls, pad, avail, text, runs, mw, pics };
 }
 
 /** The fit badge of the Designer (as the other texts have it). */
@@ -191,6 +212,7 @@ const fitBadge = (l: TextLayer, f: FitLines) => (f.overflows ? (l.overflow === '
 function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { layer: TextLayer; r: Resolved; w: number; h: number; data: Data; designer?: boolean; lang?: string; ageSecs?: number; fps?: number }) {
   const k = cfg(layer);
   const rich = useContext(RichKeys);
+  usePictures();
   const text = shownText(layer, data, rich);
   if (!text.trim())
     return designer ? (
@@ -223,14 +245,14 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
   const scroll = layer.scroll && layer.scroll !== 'none' ? layer.scroll : null;
   const placements: [number, number][] =
     scroll === 'horizontal'
-      ? scrollPositions(w, measure(fontCss(layer.fontFamily, L.mw, size, k.italic), ls, L.text) + ls, travelled, true).map((x) => [x, 0])
+      ? scrollPositions(w, measureWith(fontCss(layer.fontFamily, L.mw, size, k.italic), ls, L.text, L.pics, size, lh) + ls, travelled, true).map((x) => [x, 0])
       : scroll === 'vertical'
         ? scrollPositions(h, layer.looping ? lineH * n + h : lineH * n, travelled, !!layer.looping).map((y) => [0, y - top])
         : [[0, 0]];
   const lines = placements.flatMap(([ox, oy], pi) => fit.lines.map((l, i) => {
     const spaces = (l.text.match(/ /g) ?? []).length;
     const segs = parts?.[i];
-    const lw0 = segs ? segs.reduce((a, [t, ri]) => a + measure(L.runs![ri].style.bold ? boldFont : L.font, ls, t), 0) : measure(L.font, ls, l.text);
+    const lw0 = segs ? segs.reduce((a, [t, ri]) => a + measureWith(L.runs![ri].style.bold ? boldFont : L.font, ls, t, L.pics, size, lh), 0) : measureWith(L.font, ls, l.text, L.pics, size, lh);
     const justified = k.justify && !l.end && spaces > 0 && lw0 < bw;
     const lw = justified ? bw : lw0;
     const eff = k.justify && !justified ? (rtl ? 'right' : 'left') : layer.align;
@@ -285,6 +307,30 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
     }
     // Stroke as its own copy of the line: outside = twice as wide behind the fill, else centred on top (as before).
     const strokeSt: CSSProperties = { ...st, backgroundImage: undefined, color: 'transparent', textDecorationColor: stroke, WebkitTextStroke: `${k.strokeOutside ? sw * 2 : sw}px ${stroke}`, filter: undefined };
+    // The pictures of the text: as wide as they are, centred on the capitals' middle (only on the fill, not on the stroke copies).
+    const withPics = (t: string, colours: boolean) => {
+      if (!L.pics.length) return t;
+      const out: React.ReactNode[] = [];
+      let cur = '';
+      for (const c of t) {
+        const i = imageIndex(c);
+        if (i < 0) {
+          cur += c;
+          continue;
+        }
+        if (cur) out.push(cur);
+        cur = '';
+        const p = L.pics[i];
+        const [ph, pw] = p ? picSize(p, size, lh) : [0, 0];
+        out.push(
+          <span key={out.length} style={{ display: 'inline-block', position: 'relative', width: pw, height: 0, marginRight: ls, verticalAlign: 'baseline' }}>
+            {colours && p?.src && pictureSize(p.src) && <img src={p.src} alt="" draggable={false} style={{ position: 'absolute', left: 0, bottom: imgMiddle(size) - ph / 2, width: pw, height: ph, maxWidth: 'none' }} />}
+          </span>,
+        );
+      }
+      if (cur) out.push(cur);
+      return out;
+    };
     // Styled parts: one span each (colours only on the fill, not on the stroke copies).
     const body = (colours: boolean) =>
       segs
@@ -303,11 +349,11 @@ function Render({ layer, r, w, h, data, designer, lang, ageSecs = 0, fps }: { la
                   ...(colours && rs.color ? { color: hex(rs.color), WebkitTextFillColor: hex(rs.color), textDecorationColor: hex(rs.color) } : {}),
                 }}
               >
-                {t}
+                {withPics(t, colours)}
               </span>
             );
           })
-        : l.text || ' ';
+        : withPics(l.text, colours) || ' ';
     return (
       <div key={`${pi}-${i}`}>
         {sw > 0 && k.strokeOutside && <div style={{ ...strokeSt, WebkitTextStroke: `${sw * 2}px ${stroke}`, color: stroke, WebkitTextFillColor: stroke } as CSSProperties}>{body(false)}</div>}
@@ -339,30 +385,17 @@ const OVERFLOWS: [TextOverflow, string, string][] = [
   ['visible', 'Overflow', 'Drawn outside its box'],
 ];
 
-/** Most characters the Operator can type in a field: the smallest « Max characters » of the Texts showing it (0 = no limit). */
-export function maxChars(tpl: Template, key: string): number {
-  let out = 0;
-  for (const l of tpl.layers) {
-    if (l.type !== 'text' || !(l.maxChars! > 0) || !wiredKeys(l.text).includes(key)) continue;
-    out = out ? Math.min(out, l.maxChars!) : l.maxChars!;
-  }
-  return out;
-}
-
-function Inspector({ layer, template, edit }: { layer: TextLayer; data: Data; template: Template; edit: (fn: (l: TextLayer) => void, key?: string) => void }) {
+function Inspector({ layer, edit }: { layer: TextLayer; data: Data; template: Template; edit: (fn: (l: TextLayer) => void, key?: string) => void }) {
   const k = cfg(layer);
   const set = (key: string, v: unknown) => edit((l) => void ((l as unknown as Record<string, unknown>)[key] = v));
   const mode = layer.overflow ?? 'fit';
   const stroke = num(propValue(layer as Layer, 'strokeWidth', 0)) > 0;
-  // The Operator types in it (a field of its own, not read from data).
-  const typed = wiredKeys(layer.text).some((key) => template.fields.some((f) => f.key === key && !f.binding?.source));
   const scroll = !!layer.scroll && layer.scroll !== 'none';
   return (
     <>
       <SocialSource label={t('Text')} picks={[ON_AIR.name('text'), ON_AIR.text('text'), ON_AIR.city('text'), ON_AIR.platformName('text'), ON_AIR.time('text'), ON_AIR.count('text'), ON_AIR.tag('text'), ON_AIR.tagCount('text'), ON_AIR.tagPerMin('text')]} />
       <Section id="text-content" title={t('Content')}>
-        <Content path="text" rich value="" multiline lorem expose placeholder={t('Text')} />
-        {typed && <Num label={t('Max characters')} path="maxChars" value={k.maxChars} min={0} max={9999} expose={false} />}
+        <Content path="text" rich vars value="" multiline lorem expose placeholder={t('Text')} />
       </Section>
       <Section id="text-font" title={t('Typography')}>
         <FontRow layer={layer} set={set} />

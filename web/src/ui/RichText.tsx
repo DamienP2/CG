@@ -1,6 +1,6 @@
-import { Bold, Italic, RemoveFormatting, Strikethrough, Underline } from 'lucide-react';
+import { Bold, Braces, ImagePlus, Italic, RemoveFormatting, Strikethrough, Underline } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { parse, type Run, type RunStyle } from '../engine/rich';
+import { imageIndex, imageTags, parse, type Run, type RunStyle } from '../engine/rich';
 import { t } from '../i18n';
 
 /*
@@ -10,12 +10,52 @@ import { t } from '../i18n';
  */
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+const attr = (s: string) => esc(s).replace(/"/g, '&quot;');
 
-/** Tags → HTML for the editable box. */
-export function toHtml(markup: string): string {
+/** The variables ({{key}}) and pictures (<img>) of a text, shown as chips in the box. */
+export interface Tokens {
+  /** A chip's name: the variable's, or the picture's. */
+  label: (tok: string) => string;
+  /** The chip shown selected ('{{key}}' or 'img:n'). */
+  selected?: string | null;
+  onSelect?: (id: string | null) => void;
+  /** Makes the selected text (maybe empty) a variable: its {{key}}, null to give up. */
+  makeVariable?: (text: string) => string | null;
+  /** Chooses a picture: its tag (<img=…>), null to give up. */
+  pickImage?: () => Promise<string | null>;
+}
+
+/** The HTML of a chip. */
+const chip = (tok: string, id: string, label: string) =>
+  `<span class="rt-tok ${id.startsWith('img:') ? 'i' : 'v'}" contenteditable="false" data-tok="${attr(tok)}" data-id="${attr(id)}">${esc(label)}</span>`;
+
+/** Tags → HTML for the editable box (with `tokens`: variables and pictures as chips). */
+export function toHtml(markup: string, tokens?: Tokens): string {
+  const imgs = imageTags(markup);
+  const body = (text: string) => {
+    if (!tokens) return esc(text);
+    let h = '';
+    let cur = '';
+    const flush = () => {
+      if (!cur) return;
+      h += esc(cur).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => chip(`{{${k}}}`, `{{${k}}}`, tokens.label(`{{${k}}}`)));
+      cur = '';
+    };
+    for (const c of text) {
+      const n = imageIndex(c);
+      if (n < 0 || !imgs[n]) {
+        cur += c;
+        continue;
+      }
+      flush();
+      h += chip(`<img=${imgs[n].value}>`, `img:${n}`, tokens.label(`img:${n}`));
+    }
+    flush();
+    return h;
+  };
   return parse(markup)
     .map(({ text, style: s }) => {
-      let h = esc(text);
+      let h = body(text);
       if (s.color) h = `<font color="${s.color}">${h}</font>`;
       if (s.strike) h = `<s>${h}</s>`;
       if (s.underline) h = `<u>${h}</u>`;
@@ -47,6 +87,12 @@ export function fromHtml(root: HTMLElement): string {
       return;
     }
     if (!(n instanceof HTMLElement)) return;
+    // A chip: the variable or picture it stands for.
+    if (n.dataset.tok) {
+      push(n.dataset.tok, style);
+      first.v = false;
+      return;
+    }
     const tag = n.tagName;
     if (tag === 'BR') {
       push('\n', style);
@@ -88,18 +134,51 @@ export function fromHtml(root: HTMLElement): string {
 
 const SWATCHES = ['#ffffff', '#ff3b5c', '#facc15', '#22c55e', '#38bdf8', '#7c5cff', '#111111'];
 
-export function RichInput({ value, onChange, multiline, placeholder, maxLength }: { value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string; /** Most characters that can be typed. */ maxLength?: number }) {
+export function RichInput({ value, onChange, multiline, placeholder, maxLength, tokens }: { value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string; /** Most characters that can be typed. */ maxLength?: number; tokens?: Tokens }) {
   const box = useRef<HTMLDivElement>(null);
   const sent = useRef<string | null>(null);
   const [color, setColor] = useState('#ff3b5c');
   const [state, setState] = useState<Record<string, boolean>>({});
   // The value from outside (undo, another field…): the box shows it; its own edits are left as they are.
+  // The chips' names (a variable renamed): drawn again.
+  const names = tokens ? [...value.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => tokens.label(`{{${m[1]}}}`)).join('|') + imageTags(value).map((_, i) => tokens.label(`img:${i}`)).join('|') : '';
+  const shownNames = useRef(names);
   useLayoutEffect(() => {
-    if (box.current && value !== sent.current) {
-      box.current.innerHTML = toHtml(value);
+    if (box.current && (value !== sent.current || names !== shownNames.current)) {
+      box.current.innerHTML = toHtml(value, tokens);
       sent.current = value;
+      shownNames.current = names;
     }
-  }, [value]);
+  }, [value, names, tokens]);
+  // The selected chip.
+  useEffect(() => {
+    box.current?.querySelectorAll<HTMLElement>('.rt-tok').forEach((el) => el.classList.toggle('on', el.dataset.id === tokens?.selected));
+  });
+  // Where the caret was (a picture is chosen in a window: put back after).
+  const saved = useRef<Range | null>(null);
+  const insert = (html: string) => {
+    const el = box.current;
+    if (!el) return;
+    el.focus();
+    const sel = document.getSelection();
+    if (saved.current && sel) {
+      sel.removeAllRanges();
+      sel.addRange(saved.current);
+    }
+    if (!sel?.rangeCount || !el.contains(sel.anchorNode)) {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      r.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(r);
+    }
+    document.execCommand('insertHTML', false, html);
+    emit();
+  };
+  const selectionIn = () => {
+    const sel = document.getSelection();
+    return sel?.rangeCount && box.current?.contains(sel.anchorNode) ? sel : null;
+  };
   const emit = () => {
     if (!box.current) return;
     const v = fromHtml(box.current);
@@ -163,6 +242,45 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength }
         </label>
         <span className="rt-sep" />
         <B cmd="removeFormat" icon={<RemoveFormatting size={13} />} title={t('Back to the style of the whole text')} />
+        {tokens?.makeVariable && (
+          <button
+            type="button"
+            className="rt-new v"
+            title={t('Make the selection a variable the Operator fills in')}
+            onMouseDown={keep}
+            onClick={() => {
+              const sel = selectionIn();
+              const tok = tokens.makeVariable!(sel?.toString() ?? '');
+              if (!tok) return;
+              saved.current = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+              insert(chip(tok, tok, tokens.label(tok)));
+              tokens.onSelect?.(tok);
+            }}
+          >
+            <Braces size={13} /> {t('Variable')}
+          </button>
+        )}
+        {tokens?.pickImage && (
+          <button
+            type="button"
+            className="rt-new i"
+            title={t('Insert a picture in the text')}
+            onMouseDown={keep}
+            onClick={async () => {
+              const sel = selectionIn();
+              saved.current = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+              const tag = await tokens.pickImage!();
+              if (!tag) return;
+              insert(chip(tag, 'img:new', '▣'));
+              saved.current = null;
+              // Its rank: the chip gets its id when the box is drawn again.
+              const n = [...(box.current?.querySelectorAll<HTMLElement>('.rt-tok') ?? [])].filter((x) => x.dataset.tok?.startsWith('<img=')).findIndex((x) => x.dataset.id === 'img:new');
+              tokens.onSelect?.(`img:${Math.max(0, n)}`);
+            }}
+          >
+            <ImagePlus size={13} /> {t('Picture')}
+          </button>
+        )}
       </div>
       <div
         ref={box}
@@ -173,6 +291,11 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength }
         aria-multiline={multiline}
         data-placeholder={placeholder}
         onInput={emit}
+        onClick={(e) => {
+          if (!tokens?.onSelect) return;
+          const c = (e.target as HTMLElement).closest<HTMLElement>('.rt-tok');
+          tokens.onSelect(c?.dataset.id ?? null);
+        }}
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === 'Enter') {

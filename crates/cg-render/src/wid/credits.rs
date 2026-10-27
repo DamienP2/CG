@@ -457,6 +457,7 @@ fn roll_strip(
                 state,
                 lang,
                 runs: None,
+                inline: Vec::new(),
                 follow: None,
                 moving: false,
             };

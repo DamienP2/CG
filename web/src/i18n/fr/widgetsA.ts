@@ -7,7 +7,6 @@ export const widgetsA: Record<string, string> = {
   'ellipse|Quick': 'Raccourcis',
   // Text
   'text|Spacing': 'Interlettrage',
-  'Max characters': 'Caractères max',
   // Image, Video
   'Reload the picture': 'Recharger l’image',
   'Reload': 'Recharger',

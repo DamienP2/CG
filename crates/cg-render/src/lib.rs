@@ -1501,6 +1501,10 @@ impl Renderer {
             }
         }
         k.add(&r.text).add(&r.image_src);
+        // The pictures of a Text (their characters stay the same).
+        for i in cg_core::rich::layer_images(ctx.template, r.layer, ctx.data) {
+            k.add(&i.src);
+        }
         match motion {
             cache::Motion::Still => k.add(&0u8),
             cache::Motion::Key(x) => k.add(&x),
@@ -1550,6 +1554,9 @@ impl Renderer {
                         value(&mut k, v);
                     }
                     k.add(&c.text).add(&c.image_src);
+                    for i in cg_core::rich::layer_images(ctx.template, l, ctx.data) {
+                        k.add(&i.src);
+                    }
                     if frame_sensitive(&l.kind) {
                         k.f64(ctx.frame);
                     }
@@ -1854,6 +1861,7 @@ impl Renderer {
             state,
             lang: ctx.lang,
             runs: cg_core::rich::layer_runs(ctx.template, r.layer, ctx.data),
+            inline: cg_core::rich::layer_images(ctx.template, r.layer, ctx.data),
             moving,
             follow: match &r.layer.kind {
                 LayerKind::Progress { x: c, .. } => {

@@ -119,6 +119,17 @@ pub(crate) fn picture_at(
     sx: f32,
     tf: Transform,
 ) -> Option<(Arc<Pixmap>, Transform)> {
+    // A picture of the text: centred on the capitals' middle.
+    if let Some(pic) = chain.inline_of(g.ch) {
+        let pm = pic.pixmap.clone()?;
+        let (h, w) = pic.size_at(size);
+        let top = baseline - cg_core::rich::image_middle(size) - h / 2.0;
+        let at = tf.pre_translate(x, top).pre_scale(
+            w * sx / pm.width().max(1) as f32,
+            h / pm.height().max(1) as f32,
+        );
+        return Some((pm, at));
+    }
     let font = &chain.fonts[g.font];
     let scale = (tf.sx * tf.sx + tf.ky * tf.ky).sqrt().max(0.01);
     let want = (size * scale).round().clamp(8.0, 512.0) as u16;
@@ -461,7 +472,26 @@ pub(crate) fn main_font(d: &mut Draw, family: &str, weight: u16) -> Option<ab_gl
 
 /// A chain for `text` (and "…", "-", the cursor's characters).
 pub(crate) fn chain(d: &mut Draw, main: ab_glyph::FontArc, text: &str) -> Chain {
-    Chain::new(&mut d.rd.fonts, main, &format!("{text}…-"))
+    let mut c = Chain::new(&mut d.rd.fonts, main, &format!("{text}…-"));
+    // The pictures of a Text (`<img>`).
+    if !d.inline.is_empty() {
+        let lh = match &d.layer.kind {
+            cg_core::LayerKind::Text { line_height, .. } => line_height.unwrap_or(tx::LINE_HEIGHT),
+            _ => tx::LINE_HEIGHT,
+        };
+        let pics: Vec<_> = d.inline.clone();
+        c.inline = pics
+            .iter()
+            .map(|i| tx::InlinePic {
+                pixmap: (!i.src.is_empty())
+                    .then(|| d.rd.image(&i.src).map(|p| Arc::new(p.clone())))
+                    .flatten(),
+                height: i.height,
+                line_height: lh,
+            })
+            .collect();
+    }
+    c
 }
 
 #[cfg(test)]

@@ -88,8 +88,6 @@ pub struct Config {
     /// Lines (but the last of a paragraph) fill the width.
     pub justify: bool,
     pub dir: Direction,
-    /// Most characters the Operator can type in the fields it shows (0 = no limit).
-    pub max_chars: u32,
 }
 
 impl Default for Config {
@@ -118,7 +116,6 @@ impl Default for Config {
             band_accent_color: "#ff3b5c".into(),
             justify: false,
             dir: Direction::Ltr,
-            max_chars: 0,
         }
     }
 }

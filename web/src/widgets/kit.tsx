@@ -1,4 +1,5 @@
 import { RichInput } from '../ui/RichText';
+import { useTextTokens } from './textVars';
 import { plain as plainText } from '../engine/rich';
 // The widgets of the spec, one file each (web/src/widgets/<id>.tsx), with
 // their Rust twins in crates/cg-core/src/wid/<id>.rs (settings, operator
@@ -540,14 +541,19 @@ export function ExposeToggle({ on, onClick }: { on: boolean; onClick: () => void
   );
 }
 
-export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean; rich?: boolean }) {
-  const { raw, data, field, exposed, wired, shown: value, change, canExpose, toggleExpose } = useExposable(p.path, p.value, p.onChange, p.multiline ? 'multiline' : 'text', p.expose);
+export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean; rich?: boolean; /** Parts of it made variables, pictures in it (a Text). */ vars?: boolean }) {
+  const { raw, data, field, exposed, wired: anyKey, shown: value, change, canExpose, toggleExpose } = useExposable(p.path, p.value, p.onChange, p.multiline ? 'multiline' : 'text', p.expose);
+  const tpl = useDesigner((s) => s.template);
+  const { obj } = useContext(BindContext);
+  const vars = useTextTokens(p.vars && !exposed ? (obj as { id?: string }).id : undefined, raw, change);
+  // Its variables are typed by the Operator: edited here; read from data: shown, read only.
+  const wired = anyKey && (!p.vars || wiredKeys(raw).some((k) => !tpl?.fields.some((f) => f.key === k && !f.binding?.source)));
   if (wired) return <DataValue label={p.label} value={plainText(interpolateText(raw, data))} multiline={p.multiline} />;
   const inline = p.label === undefined;
   return (
     <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={toggleExpose} /> : undefined}>
       <div className="wk-content">
-        {p.rich && !exposed ? <RichInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
+        {p.rich && !exposed ? <RichInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} tokens={vars.tokens} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
         {(p.lorem || (canExpose && inline) || exposed) && (
           <div className="wk-content-tools">
             {p.lorem && (
@@ -557,7 +563,7 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
             )}
             {canExpose && inline ? (
               <button className={`wk-chip op ${exposed ? 'on' : ''}`} title={exposed ? t('Exposed to the Operator as “{name}” · click to stop', { name: field!.label }) : t('Expose to the Operator')} onClick={toggleExpose}>
-                <Radio size={12} /> {exposed ? t('Exposed to the Operator') : t('Expose to the Operator')}
+                <Radio size={12} /> {exposed ? t('Exposed to the Operator') : p.vars ? t('Expose the whole text') : t('Expose to the Operator')}
               </button>
             ) : (
               exposed && (
@@ -568,6 +574,7 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
             )}
           </div>
         )}
+        {vars.panel}
       </div>
     </Row>
   );

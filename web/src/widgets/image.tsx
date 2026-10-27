@@ -218,6 +218,14 @@ function status(src: string): { s: 'ok'; size: [number, number] } | { s: 'missin
   return { s: 'loading' };
 }
 
+/** Natural size of a picture, null until it is read (or when missing): loads it. */
+export function pictureSize(src: string): [number, number] | null {
+  const st = status(src);
+  return st.s === 'ok' ? st.size : null;
+}
+/** Draws again when a picture asked for is read. */
+export const usePictures = useStore;
+
 /** The source in effect: frame of the sequence or the picture. */
 function wantedSrc(l: ImgLayer, data: Data, idx = 0) {
   const k = cfg(l);

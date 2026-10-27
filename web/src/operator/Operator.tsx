@@ -21,7 +21,7 @@ import { KeyScope } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
-import { maxChars, shownText } from '../widgets/text';
+import { shownText } from '../widgets/text';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { DataWarning } from './DataWarning';
 import { navigate, projectPath } from '../router';
@@ -687,7 +687,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 </div>
               )}
               <div className="opx-tiles">
-                {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} names={new Map(shownParts.flatMap((p) => (p.fields.length === 1 ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
+                {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} names={new Map(shownParts.flatMap((p) => (p.fields.length === 1 && (p.layer.type !== 'text' || p.layer.text.trim() === `{{${p.fields[0].key}}}`) ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
                 {hasData &&
                   part !== undefined &&
                   datasets.map((ds) =>
@@ -996,13 +996,7 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
                 )}
                 {fromData(f) && f.kind !== 'table' && handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
               </div>
-              {live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} maxLength={maxChars(template, f.key) || undefined} onChange={(v) => onDraft({ [f.key]: v })} />}
-              {/* A Text's « Max characters »: what is typed, out of the most. */}
-              {!live(f) && maxChars(template, f.key) > 0 && (
-                <span className="opx-vt-count">
-                  {plain(draft[f.key] ?? '').length} / {maxChars(template, f.key)}
-                </span>
-              )}
+              {live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => onDraft({ [f.key]: v })} />}
             </div>
           ))}
           {!g.title &&

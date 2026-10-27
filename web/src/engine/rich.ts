@@ -3,6 +3,10 @@
 //
 //   <b>bold</b> <i>italic</i> <u>underlined</u> <s>struck</s> <c=#ff3b5c>red</c>
 //
+// A picture in the line: <img=media/flag.png|cap> (height of the capitals,
+// `size` the font size, `line` the line's; width in proportion), its source
+// maybe a {{key}}. In the shown text it is one character, IMG_BASE + its rank.
+//
 // Tags nest; anything else that looks like a tag stays text. A {{key}} takes
 // the style around it. Only what people type is styled: the Designer's text
 // and the values the operator types (`rich` keys); the values of the data
@@ -25,6 +29,32 @@ export interface Run {
 }
 
 type Tag = { open: boolean; t: string; v?: string; len: number };
+
+/** First character standing for a picture (the n-th is IMG_BASE + n), mirror of rich::IMG_BASE. */
+export const IMG_BASE = 0x10f000;
+/** The rank of the picture a character stands for, -1 for any other. */
+export const imageIndex = (c: string) => {
+  const v = c.codePointAt(0) ?? 0;
+  return v >= IMG_BASE && v < IMG_BASE + 0xffd ? v - IMG_BASE : -1;
+};
+export type ImgHeight = 'cap' | 'size' | 'line';
+/** A picture of the text: its source (data filled in) and its height. */
+export interface InlineImage {
+  src: string;
+  height: ImgHeight;
+}
+/** Height in px of a picture of the text (mirror of ImgHeight::px). */
+export const imgHeightPx = (h: ImgHeight, size: number, lineHeight: number) => (h === 'cap' ? size * 0.7 : h === 'line' ? size * lineHeight : size);
+/** Middle of a picture of the text above the baseline (the capitals' middle). */
+export const imgMiddle = (size: number) => size * 0.35;
+/** `src|cap` → its source and height. */
+export function imgValue(v: string): { src: string; height: ImgHeight } {
+  const at = v.lastIndexOf('|');
+  const h = at >= 0 ? v.slice(at + 1) : '';
+  return h === 'cap' || h === 'size' || h === 'line' ? { src: v.slice(0, at), height: h } : { src: v, height: 'size' };
+}
+/** The markup of a picture of the text. */
+export const imgTag = (src: string, height: ImgHeight) => `<img=${src}${height === 'size' ? '' : `|${height}`}>`;
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 function tagAt(s: string): Tag | null {
@@ -32,6 +62,7 @@ function tagAt(s: string): Tag | null {
   const end = s.indexOf('>');
   if (end < 0) return null;
   const inner = s.slice(1, end);
+  if (inner.startsWith('img=')) return inner.slice(4).trim() ? { open: true, t: 'img', v: inner.slice(4), len: end + 1 } : null;
   if (/^\/[biusc]$/.test(inner)) return { open: false, t: inner[1], len: end + 1 };
   if (inner.startsWith('c=') && HEX.test(inner.slice(2))) return { open: true, t: 'c', v: inner.slice(2), len: end + 1 };
   return null;
@@ -69,6 +100,7 @@ export function parse(markup: string): Run[] {
     cur = '';
   };
   let rest = markup;
+  let pictures = 0;
   for (let i = rest.indexOf('<'); i >= 0; i = rest.indexOf('<')) {
     cur += rest.slice(0, i);
     const at = rest.slice(i);
@@ -76,6 +108,12 @@ export function parse(markup: string): Run[] {
     if (!tag) {
       cur += '<';
       rest = at.slice(1);
+      continue;
+    }
+    if (tag.t === 'img') {
+      // One character as wide as the picture, in the style around it.
+      cur += String.fromCodePoint(IMG_BASE + pictures++);
+      rest = at.slice(tag.len);
       continue;
     }
     flush();
@@ -91,16 +129,40 @@ export function parse(markup: string): Run[] {
   return runs;
 }
 
-/** The text without its tags. */
-export const plain = (markup: string) =>
-  parse(markup)
-    .map((r) => r.text)
-    .join('');
+/** The text without its tags (nor its pictures). */
+export const plain = (markup: string) => [...parse(markup).map((r) => r.text).join('')].filter((c) => imageIndex(c) < 0).join('');
+
+/** `markup` with the values of the `rich` keys put in, as if typed in the text. */
+const expand = (markup: string, data: Data, rich: (key: string) => boolean) => markup.replace(/\{\{([^}]*)\}\}/g, (m, k: string) => (rich(k.trim()) && data[k.trim()] !== undefined ? data[k.trim()] : m));
+
+/** The picture tags of `markup` as written, in their order: where each is and its value (`src|height`). */
+export function imageTags(markup: string): { start: number; end: number; value: string }[] {
+  const out: { start: number; end: number; value: string }[] = [];
+  for (let i = markup.indexOf('<'); i >= 0; i = markup.indexOf('<', i + 1)) {
+    const tag = tagAt(markup.slice(i));
+    if (tag?.t === 'img') out.push({ start: i, end: i + tag.len, value: tag.v! });
+  }
+  return out;
+}
+
+/** The pictures of `markup` in their order (mirror of rich::inline_images). */
+export function inlineImages(markup: string, data: Data, rich: (key: string) => boolean): InlineImage[] {
+  if (!markup.includes('<img=') && !markup.includes('{{')) return [];
+  const s = expand(markup, data, rich);
+  const out: InlineImage[] = [];
+  for (let i = s.indexOf('<'); i >= 0; i = s.indexOf('<', i + 1)) {
+    const tag = tagAt(s.slice(i));
+    if (tag?.t !== 'img') continue;
+    const { src, height } = imgValue(tag.v!);
+    out.push({ src: interpolateText(src, data).trim(), height });
+  }
+  return out;
+}
 
 /** The parts as shown (mirror of rich::runs); null without style tags. */
 export function runs(markup: string, data: Data, rich: (key: string) => boolean, kase: (s: string) => string): Run[] | null {
   // The operator's styled values first, as if typed in the text.
-  const expanded = markup.replace(/\{\{([^}]*)\}\}/g, (m, k: string) => (rich(k.trim()) && data[k.trim()] !== undefined ? data[k.trim()] : m));
+  const expanded = expand(markup, data, rich);
   if (!hasMarkup(expanded)) return null;
   const out = parse(expanded).map((r) => ({ text: interpolateText(r.text, data), style: r.style }));
   const whole = out.map((r) => r.text).join('');
