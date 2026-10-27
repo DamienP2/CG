@@ -7,7 +7,7 @@
 // seconds (as older counters did); every later value rolls from the value
 // displayed. The operator's value holds until the source sends another one;
 // the freeze holds the display while the source keeps being read.
-import { type CSSProperties, type ReactNode } from 'react';
+import { useRef, type CSSProperties, type ReactNode } from 'react';
 import { Hash, Minus, Plus, RotateCcw } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer, PlayoutItem } from '../engine/types';
@@ -296,7 +296,6 @@ interface Mem {
   age: number;
   seen: number;
 }
-const MEMS = new Map<string, Mem>();
 
 /** The value displayed now and its last transition (mirrors display()). */
 export function display(p: Parts, st: State, data: Data, now: number, age: number, mem: Mem | null): [number, Anim | null, boolean] {
@@ -409,8 +408,9 @@ function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resol
   const p = partsOf(layer);
   const c = p.c;
   const now = time.nowMs;
-  let mem = MEMS.get(layer.id);
-  if (!mem) MEMS.set(layer.id, (mem = { target: null, anim: null, age: 0, seen: 0 }));
+  // Its own memory on each picture (the preview and the on-air monitor show the same layer with other values).
+  const memRef = useRef<Mem | null>(null);
+  const mem = (memRef.current ??= { target: null, anim: null, age: 0, seen: 0 });
   const [v, anim, isIntro] = display(p, st, data, now, time.ageSecs, mem);
   const cv: Curve = isIntro ? 'out' : c.easing;
   const fill = cssColor(col(r.fill));
