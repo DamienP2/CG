@@ -154,6 +154,16 @@ export function FormatBar({ project }: { project: Project }) {
   useEffect(() => {
     if (!formats.some((f) => f.id === format)) setFormat(MAIN_FORMAT);
   }, [formats.length, format]);
+  const removeFormat = async (f: Format) => {
+    const n = designTemplates(project).length;
+    if (!(await confirmDialog({ title: t('Remove the {format} format?', { format: f.name }), message: tn(n, 'The template loses its layout in this format.', 'The {n} templates lose their layout in this format.'), confirm: t('Remove'), danger: true }))) return;
+    await api(
+      'PUT',
+      `/api/projects/${encodeURIComponent(project.id)}/formats`,
+      (project.formats ?? []).filter((x) => x.id !== f.id),
+    ).catch((e) => toast((e as Error).message, 'error'));
+    if (format === f.id) setFormat(MAIN_FORMAT);
+  };
   const ratio = (f: Format) => {
     const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
     const d = g(f.width, f.height);
@@ -166,6 +176,19 @@ export function FormatBar({ project }: { project: Project }) {
         return (
           <button key={f.id} className={f.id === current.id ? 'on' : ''} onClick={() => setFormat(f.id)} title={`${f.width}×${f.height}`}>
             <Icon size={13} /> {f.id === MAIN_FORMAT ? t('Main {format}', { format: ratio(f) }) : f.name}
+            {f.id !== MAIN_FORMAT && !readOnly && (
+              <span
+                className="format-x"
+                role="button"
+                title={t('Remove the {format} format from the project', { format: f.name })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void removeFormat(f);
+                }}
+              >
+                <X size={11} />
+              </span>
+            )}
           </button>
         );
       })}
@@ -189,21 +212,6 @@ export function FormatBar({ project }: { project: Project }) {
             }}
           >
             <Wand2 size={13} /> {t('Re-adapt')}
-          </button>
-          <button
-            className="tool-link danger"
-            title={t('Remove the {format} format from the project', { format: current.name })}
-            onClick={async () => {
-              if (!(await confirmDialog({ title: t('Remove the {format} format?', { format: current.name }), message: t('Its layouts in every template of the project are deleted.'), confirm: t('Remove'), danger: true }))) return;
-              await api(
-                'PUT',
-                `/api/projects/${encodeURIComponent(project.id)}/formats`,
-                (project.formats ?? []).filter((f) => f.id !== current.id),
-              ).catch((e) => toast((e as Error).message, 'error'));
-              setFormat(MAIN_FORMAT);
-            }}
-          >
-            <X size={13} />
           </button>
         </>
       )}

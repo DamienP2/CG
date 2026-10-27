@@ -784,6 +784,20 @@ code {
 .stage-frame.bg-studio {
   background: radial-gradient(circle at 30% 30%, #4b5d7a, #1f2737 60%, #10141d);
 }
+/* A live video input behind the stage. */
+.stage-frame.bg-video {
+  position: relative;
+  background: #000;
+}
+.stage-frame > .stage-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
 .stage-info {
   position: absolute;
   bottom: 8px;
@@ -3522,6 +3536,27 @@ select.small {
 .format-bar > button:hover:not(.on) {
   background: var(--panel-3);
 }
+/* An added format: removed from its own tab. */
+.format-bar .format-x {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin: 0 -4px 0 2px;
+  border-radius: 4px;
+  color: var(--text-3);
+  opacity: 0;
+}
+.format-bar > button:hover .format-x {
+  opacity: 1;
+}
+.format-bar > button.on .format-x {
+  color: var(--on-accent);
+}
+.format-bar .format-x:hover {
+  background: var(--live-soft);
+  color: #ff8aa0;
+}
 .format-bar .tool-link.danger:hover {
   color: var(--live);
 }
@@ -4028,6 +4063,242 @@ body.resizing-y * {
   font-style: normal;
   font-weight: 500;
   font-family: var(--mono);
+}
+/* The zones edited on the stage: all of them, over the picture, moved and resized there. */
+.zone-edit {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  background: rgba(8, 9, 14, 0.35);
+}
+.ze-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--zc);
+  background: color-mix(in srgb, var(--zc) 12%, transparent);
+  cursor: move;
+}
+.ze-box.on {
+  z-index: 2;
+  background: color-mix(in srgb, var(--zc) 24%, transparent);
+  box-shadow: inset 0 0 0 1px #fff;
+}
+.ze-tab {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  transform: translateY(-100%);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 4px 4px 0 0;
+  background: var(--zc);
+  color: #0b0c12;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.ze-box.inside .ze-tab {
+  transform: none;
+  border-radius: 0 0 4px 0;
+}
+.ze-tab em {
+  font-style: normal;
+  font-weight: 600;
+  font-family: var(--mono);
+  opacity: 0.75;
+}
+.ze-box .zone-handle {
+  z-index: 3;
+}
+/* The right panel while the zones are edited. */
+.zp {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.zp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.zp-head em {
+  font-style: normal;
+  color: var(--text-3);
+}
+.zp-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.zp-zone {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.zp-zone.on {
+  border-color: var(--accent);
+}
+.zp-zone.dragging {
+  opacity: 0.4;
+}
+.zp-zone.drop-before::before,
+.zp-zone.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.zp-zone.drop-before::before {
+  top: -4px;
+}
+.zp-zone.drop-after::after {
+  bottom: -4px;
+}
+.zp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px 8px 5px;
+  cursor: pointer;
+}
+.zp-grip {
+  flex: none;
+  color: var(--text-3);
+  cursor: grab;
+}
+.zp-sw {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--zc);
+}
+.zp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.zp-l {
+  font: 11px var(--mono);
+  color: var(--text-3);
+}
+.zp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 10px 10px;
+}
+.zp-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.zp-body label > span:first-child {
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.zp-body input:not([type='color']) {
+  height: var(--h-control-dense);
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.zp-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.zp-colors button {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.zp-colors button.on {
+  border-color: var(--text);
+}
+.zp-colors input[type='color'] {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.zp-trans {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.zp-trans button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 4px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-11);
+  cursor: pointer;
+}
+.zp-trans button svg {
+  width: 44px;
+  height: 16px;
+  color: var(--text-3);
+}
+.zp-trans button.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.zp-trans button.on svg {
+  color: var(--accent);
+}
+.zp-del {
+  align-self: flex-start;
+  color: #ff8aa0;
+}
+.zp-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
 }
 .zone-handle {
   position: absolute;
@@ -17205,6 +17476,76 @@ button.ux1-pill.lost:hover {
   gap: 8px;
   padding: 4px 8px;
   min-height: 34px;
+}
+/* The stage background: its four choices on a line of their own. */
+.ux2-dline.ux2-dbg {
+  flex-wrap: wrap;
+}
+.ux2-dline.ux2-dbg .segmented {
+  flex-basis: 100%;
+}
+/* The live inputs offered as the stage background. */
+.ux2-dinputs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+.ux2-dinputs.empty {
+  padding: 2px 12px 8px;
+  color: var(--text-3);
+}
+.ux2-dinput {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ux2-dinput:hover {
+  background: var(--panel-3);
+}
+.ux2-dinput.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.ux2-dinput .th {
+  flex: none;
+  width: 48px;
+  height: 27px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #000;
+}
+.ux2-dinput .th img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ux2-dinput .tx {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ux2-dinput b {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ux2-dinput em {
+  font-style: normal;
+  font-size: var(--fs-11);
+  color: var(--text-3);
 }
 .ux2-dline > span:not(.bg-swatch):not(.ux2-layout) {
   flex: 1;

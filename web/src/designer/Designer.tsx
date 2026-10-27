@@ -11,7 +11,7 @@ import { LockOverlay, TopPublish, useEditLock } from './Collab';
 import { Stage } from './Stage';
 import { Timeline } from './Timeline';
 import { clearSelectedKeys, copyLayers, cutLayers, pasteClipboard } from './clipboard';
-import { ZonesDialog } from './ZonesDialog';
+import { useZoneEdit, ZonesPanel } from './ZoneEditor';
 import { LogicEditor } from './LogicEditor';
 import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { TableEditor } from '../widgets/table-editor';
@@ -380,7 +380,9 @@ export const Designer = memo(function Designer() {
   const { template, load, update, undo, redo, past, future, selected, select, format } = useDesigner(
     useShallow((s) => ({ template: s.template, load: s.load, update: s.update, undo: s.undo, redo: s.redo, past: s.past, future: s.future, selected: s.selected, select: s.select, format: s.format })),
   );
-  const [zonesOpen, setZonesOpen] = useState(false);
+  // The zones edited on the stage (the right panel shows them instead of the inspector).
+  const zonesEdit = useZoneEdit((s) => s.on);
+  useEffect(() => () => useZoneEdit.getState().stop(), []);
   // The top bar's slot for undo, redo and the history.
   const [topSlot, setTopSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setTopSlot(document.getElementById('topbar-slot')), []);
@@ -404,6 +406,8 @@ export const Designer = memo(function Designer() {
   const rightFull = !!layout.rightFull;
   const layersW = leftFull ? Math.max(MIN_LEFT, layout.layers) : left;
   const [background, setBackground] = useDisplayPref<StageBackground>('designer.background', 'checker');
+  // The live video input behind the stage (« video » background).
+  const [bgInput, setBgInput] = useDisplayPref<string>('designer.backgroundInput', '');
   const fps = project ? project.frameRate.num / project.frameRate.den : 50;
   usePlayback(fps);
   useShortcuts();
@@ -538,21 +542,23 @@ export const Designer = memo(function Designer() {
             project={project}
             showZones={showZones}
             onShowZones={setShowZones}
-            onManageZones={() => setZonesOpen(true)}
+            onManageZones={() => project && useZoneEdit.getState().start(project)}
             background={background}
             onBackground={setBackground}
+            bgInput={bgInput}
+            onBgInput={setBgInput}
             leftFull={leftFull}
             rightFull={rightFull}
             onLayout={(side, on) => setLayout(side, on ? 1 : 0)}
           />
         </div>
         <div className="stage-holder">
-          <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} />
+          <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} bgInput={bgInput} />
         </div>
       </main>
       <aside className="panel right">
         <Splitter axis="x" className="edge-left" sign={-1} value={layout.right} min={300} max={620} reset={380} onChange={(v) => setLayout('right', v)} />
-        <Inspector />
+        {zonesEdit && project ? <ZonesPanel project={project} /> : <Inspector />}
       </aside>
       <div className="timeline-wrap">
         <Splitter axis="y" className="edge-top" sign={-1} value={layout.timeline} min={140} max={800} reset={300} onChange={(v) => setLayout('timeline', v)} />
@@ -561,7 +567,6 @@ export const Designer = memo(function Designer() {
         <Timeline fps={fps} leftW={layersW} onAdd={add} />
       </div>
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
-      {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
       <DataCanvas />
       <TableEditor />

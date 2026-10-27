@@ -76,6 +76,26 @@ pub struct PlayoutItem {
     /// Auto next has taken the graphic after this one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub advanced: bool,
+    /// The graphic this one replaced in a « Fade » zone, fading out under it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaving: Option<Box<Leaving>>,
+}
+
+/// A graphic replaced in a « Fade » zone: drawn under the new one while it fades out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Leaving {
+    pub item: PlayoutItem,
+    /// Frames since the new graphic was taken.
+    pub frame: f64,
+    pub length: f64,
+}
+
+impl Leaving {
+    /// Opacity of the graphic going, 1 → 0.
+    pub fn opacity(&self) -> f32 {
+        (1.0 - self.frame / self.length.max(1.0)).clamp(0.0, 1.0) as f32
+    }
 }
 
 /// A cross-fade from the data the graphic had (drawn fading out above it).
@@ -184,6 +204,7 @@ impl PlayoutItem {
             fade: None,
             widgets: BTreeMap::new(),
             advanced: Default::default(),
+            leaving: None,
         }
     }
 
@@ -613,17 +634,29 @@ impl ChannelState {
                         }
                     }
                 }
-                let sequential = project
+                let transition = project
                     .zone_at(layer)
-                    .is_none_or(|z| z.transition == ZoneTransition::Sequential);
+                    .map_or(ZoneTransition::Sequential, |z| z.transition);
                 match self.layers.get_mut(&layer) {
                     // Zone busy: the graphic on air goes out first.
-                    Some(current) if sequential => {
+                    Some(current) if transition == ZoneTransition::Sequential => {
                         if begin_out(project, current) {
                             current.next = Some(take);
                         } else {
                             *current = PlayoutItem::start(take);
                         }
+                    }
+                    // Zone busy, « Fade »: the new graphic comes in over the one on air, which fades out.
+                    Some(current) if transition == ZoneTransition::Fade => {
+                        let mut old = std::mem::replace(current, PlayoutItem::start(take));
+                        old.next = None;
+                        old.leaving = None;
+                        let fps = project.frame_rate.as_f64().max(1.0);
+                        current.leaving = Some(Box::new(Leaving {
+                            item: old,
+                            frame: 0.0,
+                            length: (fps * 0.5).round(),
+                        }));
                     }
                     _ => {
                         self.layers.insert(layer, PlayoutItem::start(take));
@@ -886,6 +919,14 @@ impl ChannelState {
                 changed = true;
                 if f.frame >= f.length {
                     item.fade = None;
+                }
+            }
+            if let Some(l) = &mut item.leaving {
+                l.frame += frames;
+                l.item.age += frames;
+                changed = true;
+                if l.frame >= l.length {
+                    item.leaving = None;
                 }
             }
             if matches!(item.phase, Phase::Holding | Phase::OutHold) {
@@ -1179,9 +1220,11 @@ impl ChannelState {
     }
 
     pub fn is_animating(&self) -> bool {
-        self.layers
-            .values()
-            .any(|i| i.fade.is_some() || !matches!(i.phase, Phase::Holding | Phase::OutHold))
+        self.layers.values().any(|i| {
+            i.fade.is_some()
+                || i.leaving.is_some()
+                || !matches!(i.phase, Phase::Holding | Phase::OutHold)
+        })
     }
 }
 
@@ -1823,6 +1866,42 @@ mod tests {
         ch.apply(&p, take("c")).unwrap();
         assert_eq!(ch.layers[&1].rundown_id.as_deref(), Some("c"));
         assert_eq!(ch.layers[&1].frame, 0.0);
+    }
+
+    #[test]
+    fn fade_zone_crosses_the_two_graphics() {
+        let mut p = project();
+        p.zones[0].transition = ZoneTransition::Fade;
+        let mut ch = ChannelState::default();
+        let take = |rid: &str| Command::Take {
+            zone: None,
+            layer: None,
+            template_id: "t".into(),
+            data: None,
+            rundown_id: Some(rid.into()),
+        };
+        ch.apply(&p, take("a")).unwrap();
+        for _ in 0..30 {
+            ch.tick(1.0);
+        }
+        // The new graphic comes in at once; the one on air fades out under it.
+        ch.apply(&p, take("b")).unwrap();
+        let it = &ch.layers[&1];
+        assert_eq!((it.rundown_id.as_deref(), it.frame), (Some("b"), 0.0));
+        let going = it.leaving.as_ref().expect("fading out");
+        assert_eq!(going.item.rundown_id.as_deref(), Some("a"));
+        assert_eq!(going.opacity(), 1.0);
+        assert!(ch.is_animating());
+        let len = going.length as usize;
+        for _ in 0..len / 2 {
+            ch.tick(1.0);
+        }
+        let o = ch.layers[&1].leaving.as_ref().unwrap().opacity();
+        assert!(o > 0.4 && o < 0.6, "{o}");
+        for _ in 0..len {
+            ch.tick(1.0);
+        }
+        assert!(ch.layers[&1].leaving.is_none());
     }
 
     #[test]

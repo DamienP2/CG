@@ -451,4 +451,14 @@ export const designer: Record<string, string> = {
   'Erase the keyframes of {n} layers?': 'Effacer les images clés de {n} calques ?',
   'Erase the keyframes of {prop}': 'Effacer les images clés de {prop}',
   'Erase the keyframes of {prop} (“{name}”)?': 'Effacer les images clés de {prop} (« {name} ») ?',
+  // Formats: removing an added one
+  'The template loses its layout in this format.': 'Le modèle perd sa mise en page dans ce format.',
+  'The {n} templates lose their layout in this format.': 'Les {n} modèles perdent leur mise en page dans ce format.',
+  // Display menu: widget frames, a live input behind the stage
+  'Widget frames': 'Cadres des widgets',
+  video: 'vidéo',
+  'No video input': 'Aucune entrée vidéo',
+  // Zones edited on the stage
+  'Remove the zone': 'Supprimer la zone',
+  'From one graphic to the next': 'Passage d’un graphique à l’autre',
 };

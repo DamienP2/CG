@@ -5417,9 +5417,10 @@
       "type": "string",
       "enum": [
        "sequential",
-       "cut"
+       "cut",
+       "fade"
       ],
-      "description": "sequential: the graphic on air goes out before the new one comes in."
+      "description": "sequential: the graphic on air goes out before the new one comes in; cut: replaced at once; fade: the new one comes in while the one on air fades out."
      },
      "areas": {
       "type": "object",

@@ -17,5 +17,5 @@ pub use anim::{resolve_template, Data, ResolvedLayer};
 pub use easing::Easing;
 pub use model::*;
 pub use playout::{
-    ChannelState, Command, LayerClock, Phase, PlayoutError, PlayoutItem, WidgetControl,
+    ChannelState, Command, LayerClock, Leaving, Phase, PlayoutError, PlayoutItem, WidgetControl,
 };

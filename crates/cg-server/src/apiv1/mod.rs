@@ -1302,6 +1302,7 @@ mod tests {
                 fade: None,
                 widgets: Default::default(),
                 advanced: false,
+                leaving: None,
             },
         );
     }

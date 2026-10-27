@@ -336,7 +336,7 @@ export interface Logic {
   edges: LogicEdge[];
 }
 
-export type ZoneTransition = 'sequential' | 'cut';
+export type ZoneTransition = 'sequential' | 'cut' | 'fade';
 
 /** Screen area showing one template at a time; `layer` is the stacking order. */
 export interface Zone {
@@ -459,6 +459,8 @@ export interface PlayoutItem {
   widgets?: Record<string, unknown>;
   /** A cross-fade from the data it had (drawn fading out above it). */
   fade?: { data: Record<string, string>; frame: number; length: number } | null;
+  /** The graphic it replaced in a « Fade » zone, fading out under it. */
+  leaving?: { item: PlayoutItem; frame: number; length: number } | null;
 }
 
 /** Own time of a widget layer, in frames on air. */

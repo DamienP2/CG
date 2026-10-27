@@ -13,7 +13,7 @@ import { useBoundData } from '../data/dataStore';
 import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { ZonesDialog } from './ZonesDialog';
+import { useZoneEdit } from './ZoneEditor';
 import { loadFonts, useFonts } from '../engine/fonts';
 import { isOverridden, resetOverride } from '../engine/formats';
 import { findLayer, isAnimated, LABELS, setProp, toggleKeyAt, useDesigner } from './designerStore';
@@ -1336,7 +1336,6 @@ function TemplateInspector({ template }: { template: Template }) {
   const fps = useApp((s) => s.project?.frameRate);
   const project = useApp((s) => s.project);
   const zones = project?.zones ?? [];
-  const [zonesOpen, setZonesOpen] = useState(false);
   const rate = fps ? fps.num / fps.den : 50;
   const sorted = [...zones].sort((a, b) => b.layer - a.layer);
   return (
@@ -1360,7 +1359,7 @@ function TemplateInspector({ template }: { template: Template }) {
         <div className="tpl-field">
           <span className="tpl-label">
             {t('Zone')}
-            <button className="icon-btn ghost tpl-zones-edit" title={t('Edit the zones')} onClick={() => setZonesOpen(true)}>
+            <button className="icon-btn ghost tpl-zones-edit" title={t('Edit the zones')} onClick={() => project && useZoneEdit.getState().start(project, template.zone)}>
               <Settings2 size={13} />
             </button>
           </span>
@@ -1377,7 +1376,6 @@ function TemplateInspector({ template }: { template: Template }) {
           </div>
         </div>
       </div>
-      {zonesOpen && <ZonesDialog onClose={() => setZonesOpen(false)} />}
     </>
   );
 }

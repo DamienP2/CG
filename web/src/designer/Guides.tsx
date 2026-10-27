@@ -28,6 +28,8 @@ type View = {
   area?: string | null;
   /** What the stage shows: the picture (program), the fill over black, or the key (alpha, white on black). */
   stageView?: StageView;
+  /** The faint frame of each widget not selected. */
+  frames: boolean;
 };
 
 export type StageView = 'program' | 'fill' | 'key';
@@ -42,14 +44,14 @@ export function stageViewStyle(view: StageView | undefined, background: string):
   if (!view || view === 'program') return { background };
   return { background: 'black', filter: view === 'key' ? 'brightness(0) invert(1)' : undefined };
 }
-const loadView = (): View => ({ safe: true, guides: true, snap: true, stageView: 'program', ...displayPref<Partial<View>>(VIEW_KEY, {}), editSafe: false });
+const loadView = (): View => ({ safe: true, guides: true, snap: true, stageView: 'program', frames: true, ...displayPref<Partial<View>>(VIEW_KEY, {}), editSafe: false });
 export const useGuidesView = create<View & { set: (v: Partial<View>) => void }>((set, get) => ({
   ...loadView(),
   set(v) {
     set(v);
     if (v.editSafe && !get().safe) set({ safe: true });
-    const { safe, guides, snap, stageView } = get();
-    setDisplayPref(VIEW_KEY, { safe, guides, snap, stageView });
+    const { safe, guides, snap, stageView, frames } = get();
+    setDisplayPref(VIEW_KEY, { safe, guides, snap, stageView, frames });
   },
 }));
 // Another user logs in: their choices.

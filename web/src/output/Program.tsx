@@ -58,9 +58,20 @@ export const Program = memo(function Program({ project, live, width, height, max
         const age = (item.age ?? 0) / fps;
         const frame = frameOf(layer, item);
         const fade = item.fade ? Math.min(item.fade.length, item.fade.frame + since * fps) : null;
+        // The graphic replaced in a « Fade » zone, fading out under the new one.
+        const going = item.leaving;
+        const goingT = going && templates.get(going.item.templateId);
+        const goingAlpha = going ? 1 - Math.min(1, (going.frame + since * fps) / Math.max(1, going.length)) : 0;
         return (
           // Only what is inside the zone shows on air.
           <div key={layer} style={{ position: 'absolute', inset: 0, ...areaClip(zoneOf(Number(layer))) }}>
+            {going && goingT && goingAlpha > 0 && (
+              <div style={{ position: 'absolute', inset: 0, opacity: goingAlpha }}>
+                <LayerTime item={going.item} template={goingT} ageSecs={(going.item.age ?? 0) / fps} since={live?.at ?? now} now={now} maxFps={maxFps} fps={fps} lang={project.language}>
+                  <Scene template={goingT} frame={going.item.frame} data={going.item.data} />
+                </LayerTime>
+              </div>
+            )}
             <LayerTime item={item} template={t} ageSecs={age} since={live?.at ?? now} now={now} maxFps={maxFps} fps={fps} lang={project.language}>
               {/*
                * A row or an Update fading: the graphic with the new values fades in while the one with
@@ -106,4 +117,4 @@ function LayerTime({ item, template, ageSecs, since, now, maxFps, fps, lang, chi
 /** A timeline on its way to its target (not held at a stop). */
 const advancing = (item: PlayoutItem) => item.phase !== 'holding' && item.phase !== 'outHold' && item.frame < item.target;
 /** Something moves: the timeline, or a fade. */
-const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length);
+const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || (!!item.leaving && item.leaving.frame < item.leaving.length);

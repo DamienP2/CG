@@ -213,6 +213,8 @@ type Logic = HashMap<String, std::collections::BTreeMap<Prop, Value>>;
 struct OnAir<'p> {
     layer: u32,
     item: &'p cg_core::PlayoutItem,
+    /// Below 1: the graphic replaced in a « Fade » zone, fading out under the new one.
+    alpha: f32,
     template: &'p Template,
     /// Laid out for the format, with the operator's settings.
     set: std::cell::OnceCell<std::borrow::Cow<'p, Template>>,
@@ -693,13 +695,26 @@ impl Renderer {
         let portrait = dh > dw;
         // The graphics on air, lowest first, laid out for this format with
         // the settings the Operator was given (mask, font, logo…) when drawn.
+        // A graphic replaced in a « Fade » zone comes just under the new one.
         let on_air: Vec<OnAir> = state
             .layers
             .iter()
-            .filter_map(|(l, item)| {
+            .flat_map(|(l, item)| {
+                let going = item
+                    .leaving
+                    .as_deref()
+                    .map(|g| (&g.item, g.opacity()))
+                    .filter(|(_, a)| *a > 0.0);
+                going
+                    .into_iter()
+                    .chain([(item, 1.0)])
+                    .map(|(it, a)| (*l, it, a))
+            })
+            .filter_map(|(l, item, alpha)| {
                 project.template(&item.template_id).map(|t| OnAir {
-                    layer: *l,
+                    layer: l,
                     item,
+                    alpha,
                     template: t,
                     set: Default::default(),
                     logic: Default::default(),
@@ -707,6 +722,7 @@ impl Renderer {
                 })
             })
             .collect();
+        let leaving = on_air.iter().any(|a| a.alpha < 1.0);
         macro_rules! ctx {
             ($i:expr) => {{
                 let a = &on_air[$i];
@@ -749,14 +765,15 @@ impl Renderer {
         // graphics are over the last one that moves (drawn apart, cache::top_item;
         // drawn whole too, so that frames are the same either way).
         let mut planned = None;
-        let kept_cache = cache.filter(|_| self.caching);
+        // A graphic fading out: every frame drawn whole (the kept steps follow one graphic per layer).
+        let kept_cache = cache.filter(|_| self.caching && !leaving);
         let mut top = None;
         let mut top_kept = None;
         if kept_cache.is_none() && on_air.len() > 1 {
             self.steps.plan = Some(Vec::new());
             for (i, a) in on_air.iter().enumerate() {
                 self.steps.item = i;
-                if fading(a.item).is_some() {
+                if fading(a.item).is_some() || a.alpha < 1.0 {
                     self.plan_step(cache::Motion::Moving);
                 } else {
                     let ctx = ctx!(i);
@@ -869,6 +886,29 @@ impl Renderer {
                     )
                 })
                 .map(|r| build_mask(pm, None, r, root));
+            let alpha = on_air[i].alpha;
+            if alpha < 1.0 {
+                // The graphic going in a « Fade » zone: drawn whole, then laid at its opacity.
+                self.enter_step(pm);
+                self.steps.whole += 1;
+                self.steps.fading = true;
+                let mut going = Pixmap::new(pm.width(), pm.height()).expect("valid size");
+                self.draw_children(&mut going, ctx, None, root, 1.0, zone_mask.as_ref());
+                pm.draw_pixmap(
+                    0,
+                    0,
+                    going.as_ref(),
+                    &PixmapPaint {
+                        opacity: alpha,
+                        ..Default::default()
+                    },
+                    Transform::identity(),
+                    None,
+                );
+                self.steps.whole -= 1;
+                self.steps.fading = false;
+                continue;
+            }
             match fading(item) {
                 None => self.draw_children(pm, ctx, None, root, 1.0, zone_mask.as_ref()),
                 // A cross-fade (Update, data set row): the graphic with
@@ -3133,6 +3173,51 @@ mod tests {
             .max()
             .unwrap();
         assert!(worst <= 2, "off by {worst}");
+    }
+
+    #[test]
+    fn a_fade_zone_draws_the_graphic_going_under_the_new_one() {
+        let mut project = sample::demo_project();
+        let data =
+            |name: &str| std::collections::BTreeMap::from([("name".to_string(), name.to_string())]);
+        let take = |name: &str| Command::Take {
+            zone: Some("lower-third".into()),
+            layer: None,
+            template_id: "lower-third".into(),
+            data: Some(data(name)),
+            rundown_id: None,
+        };
+        let mut state = ChannelState::default();
+        state.apply(&project, take("Marie Curie")).unwrap();
+        for _ in 0..200 {
+            state.tick(1.0);
+        }
+        // The same take in a Cut zone: the new graphic alone.
+        let mut cut = state.clone();
+        for z in &mut project.zones {
+            z.transition = cg_core::ZoneTransition::Cut;
+        }
+        cut.apply(&project, take("Albert Einstein")).unwrap();
+        for z in &mut project.zones {
+            z.transition = cg_core::ZoneTransition::Fade;
+        }
+        state.apply(&project, take("Albert Einstein")).unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let alone = r.render_channel(&project, &cut, OUT, "UTC");
+        let both = r.render_channel(&project, &state, OUT, "UTC");
+        assert_ne!(alone.data, both.data, "the graphic going still shows");
+        // Faded out: only the new graphic.
+        let going = state
+            .layers
+            .values_mut()
+            .next()
+            .unwrap()
+            .leaving
+            .as_mut()
+            .unwrap();
+        going.frame = going.length;
+        let after = r.render_channel(&project, &state, OUT, "UTC");
+        assert_eq!(alone.data, after.data);
     }
 
     #[test]

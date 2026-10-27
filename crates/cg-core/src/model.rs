@@ -1804,6 +1804,8 @@ pub enum ZoneTransition {
     Sequential,
     /// The new graphic replaces the old one immediately.
     Cut,
+    /// The new graphic comes in while the one on air fades out.
+    Fade,
 }
 
 /// An area of the screen that shows one template at a time (lower third,

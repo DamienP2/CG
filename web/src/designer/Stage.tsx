@@ -11,11 +11,13 @@ import { areaClip, zoneArea } from '../engine/zones';
 import type { Layer, Project, Template } from '../engine/types';
 import { findLayer, runAge, setProp, useDesigner } from './designerStore';
 import { ZoneOverlay } from './ZoneOverlay';
+import { useZoneEdit, ZonesEditOverlay } from './ZoneEditor';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
 import { snapShift, snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
 import { t, tn } from '../i18n';
+import { useLiveFrame } from '../engine/liveInputs';
 
 interface Box {
   id: string;
@@ -32,7 +34,7 @@ type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
 /** The canvas, at the size of the format being edited. */
-export function Stage({ project: _project, size, showZones, background }: { project: Project; size: { width: number; height: number }; showZones: boolean; background: string }) {
+export function Stage({ project: _project, size, showZones, background, bgInput }: { project: Project; size: { width: number; height: number }; showZones: boolean; background: string; /** The live input shown behind (« video » background). */ bgInput: string }) {
   const project = { ..._project, width: size.width, height: size.height };
   const { template, frame, previewData, selected, format } = useDesigner(useShallow((s) => ({ template: s.template, frame: s.frame, previewData: s.previewData, selected: s.selected, format: s.format })));
   // Bound fields show their live value, like on air.
@@ -58,6 +60,7 @@ export function Stage({ project: _project, size, showZones, background }: { proj
   // Snapping targets, read by the drag handler.
   const [guides] = useProjectGuides(_project);
   const view = useGuidesView();
+  const zonesEdit = useZoneEdit((s) => s.on);
   const snapRef = useRef({ on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) });
   snapRef.current = { on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) };
 
@@ -251,11 +254,12 @@ export function Stage({ project: _project, size, showZones, background }: { proj
 
   // Program, fill or key, for the whole stage (canvas toolbar).
   const shown = stageViewStyle(view.stageView, background);
-  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={shown.background} filter={shown.filter} showZones={showZones} wrapRef={wrapRef} ticking={running ? 'all' : false} fps={fps} />;
+  if (!template) return <Overview project={_project} size={project} format={format} scale={scale} background={shown.background} bgInput={bgInput} filter={shown.filter} showZones={showZones} wrapRef={wrapRef} ticking={running ? 'all' : false} fps={fps} />;
 
   return (
     <div className="stage-wrap" ref={wrapRef} onPointerDown={() => useDesigner.getState().select([])}>
       <div className={`stage-frame bg-${shown.background}`} onPointerDown={(e) => e.stopPropagation()}>
+        {shown.background === 'video' && <StageVideo input={bgInput} />}
         <div
           ref={sceneRef}
           onPointerDown={onPointerDown}
@@ -286,8 +290,8 @@ export function Stage({ project: _project, size, showZones, background }: { proj
             <i style={{ left: project.width * scale, top: 0, width: 5000, height: project.height * scale }} />
           </div>
           <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
-          {showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
-          {ghosts.map((b) => (
+          {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
+          {view.frames && ghosts.map((b) => (
             <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
           ))}
           {boxes.map((b) => (
@@ -338,6 +342,7 @@ function Overview({
   format,
   scale,
   background,
+  bgInput,
   filter,
   showZones,
   wrapRef,
@@ -349,6 +354,7 @@ function Overview({
   format: string;
   scale: number;
   background: string;
+  bgInput: string;
   filter?: string;
   showZones: boolean;
   wrapRef: React.RefObject<HTMLDivElement | null>;
@@ -356,6 +362,7 @@ function Overview({
   fps: number;
 }) {
   const load = useDesigner((s) => s.load);
+  const zonesEdit = useZoneEdit((s) => s.on);
   const sceneRef = useRef<HTMLDivElement>(null);
   const portrait = size.height > size.width;
   const zones = new Map(project.zones.map((z) => [z.id, z]));
@@ -363,6 +370,7 @@ function Overview({
   return (
     <div className="stage-wrap" ref={wrapRef}>
       <div className={`stage-frame bg-${background}`}>
+        {background === 'video' && <StageVideo input={bgInput} />}
         <div
           ref={sceneRef}
           className="overview"
@@ -384,7 +392,7 @@ function Overview({
             })}
           </Viewport>
           <StageGuides project={project} width={size.width} height={size.height} scale={scale} frameRef={sceneRef} />
-          {showZones && <ZoneOverlay zones={project.zones ?? []} format={format} width={size.width} height={size.height} scale={scale} current="" />}
+          {zonesEdit ? <ZonesEditOverlay format={format} width={size.width} height={size.height} scale={scale} /> : showZones && <ZoneOverlay zones={project.zones ?? []} format={format} width={size.width} height={size.height} scale={scale} current="" />}
         </div>
       </div>
       <div className="stage-info">
@@ -409,4 +417,10 @@ function OverviewScene({ template, format, ticking, fps, lang }: { template: Tem
       <Scene template={shown} frame={hold} data={data} interactive />
     </LiveTime>
   );
+}
+
+/** A live video input behind the stage, filling it. */
+function StageVideo({ input }: { input: string }) {
+  const { url } = useLiveFrame(input, 'preview');
+  return url ? <img className="stage-video" src={url} alt="" draggable={false} /> : null;
 }
