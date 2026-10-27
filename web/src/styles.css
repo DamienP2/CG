@@ -10542,6 +10542,16 @@ body.cv-moving * {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The zone's colour before its name, on the same line. */
+.opx-gr-main > .muted.small .opx-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border: none;
+  border-radius: 50%;
+  vertical-align: 0;
+}
 .opx-fields .wk-ctl > * {
   flex: 1;
   min-width: 0;
@@ -14882,8 +14892,9 @@ a.lib-nav-item {
   background: var(--op-4, var(--panel-3));
   color: var(--warn);
 }
-.opx-gr:not(:hover) .sch-clock:not(.on) {
-  display: none;
+.sch-clock:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 .sch-badge.text.soon {
   background: rgba(245, 165, 36, 0.14);

@@ -234,16 +234,14 @@ export function ScheduleCell({ channelId, project, item, operate }: { channelId:
   const entries = useEntries(channelId);
   const [at, setAt] = useState<DOMRect | null>(null);
   const mine = useMemo(() => entries.filter((e) => e.item === item.id && e.projectId === project.id && e.enabled && !e.missed).sort((a, b) => a.next - b.next), [entries, item.id, project.id]);
-  if (!channelId) return null;
   return (
     <span className="sch-cell" onClick={(e) => e.stopPropagation()}>
       {mine[0] && <Badge entry={mine[0]} more={mine.length - 1} />}
-      {operate && (
-        <button className={`sch-clock ${at ? 'on' : ''}`} title={t('Schedule a take')} onClick={(e) => setAt(at ? null : e.currentTarget.getBoundingClientRect())}>
-          <Clock size={13} />
-        </button>
-      )}
-      {at && <ScheduleEditor channelId={channelId} item={item} at={at} onClose={() => setAt(null)} />}
+      {/* Always there; usable once the project plays on an output. */}
+      <button className={`sch-clock ${at ? 'on' : ''}`} disabled={!channelId || !operate} title={t('Schedule a take')} onClick={(e) => setAt(at ? null : e.currentTarget.getBoundingClientRect())}>
+        <Clock size={13} />
+      </button>
+      {at && channelId && <ScheduleEditor channelId={channelId} item={item} at={at} onClose={() => setAt(null)} />}
     </span>
   );
 }
