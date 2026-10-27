@@ -82,6 +82,13 @@ function frameRect(c: Config, w: number, h: number): [Rect, number] {
   return [[0, 0, w, h], 0];
 }
 
+/** The same crop with the picture centred in it (as much cut on each side). */
+const centred = (c: Crop): Crop => {
+  const h = +((c.l + c.r) / 2).toFixed(3);
+  const v = +((c.t + c.b) / 2).toFixed(3);
+  return { l: h, r: h, t: v, b: v };
+};
+
 /** Crop capped so 5 % of the picture is always left (mirrors crop). */
 function cropOf(c: Config): Crop {
   const k = cfg(c).crop;
@@ -600,7 +607,12 @@ export default defineWidget({
                       onChange={(v) => ed((x) => void (x.crop = { ...cropOf(x), [s]: v / 100 }), `crop-${layer.id}`)}
                     />
                   ))}
-                  <Btns list={[{ label: t('Reset crop'), cls: 'ghost', onClick: () => ed((x) => void delete x.crop) }]} />
+                  <Btns
+                    list={[
+                      { label: t('Centre the picture'), cls: 'ghost', onClick: () => ed((x) => void (x.crop = centred(cropOf(x)))) },
+                      { label: t('Reset crop'), cls: 'ghost', onClick: () => ed((x) => void delete x.crop) },
+                    ]}
+                  />
                 </>
               )}
             </>
@@ -687,8 +699,38 @@ export default defineWidget({
       const fx = (x: number) => (x - R[0]) / R[2];
       const fy = (y: number) => (y - R[1]) / R[3];
       const r3 = (v: number) => +v.toFixed(3);
+      // The kept part moved over the picture (its size kept): the picture recentred in it.
+      const move = (e: React.PointerEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const c0 = c;
+        const [x0, y0] = [e.clientX, e.clientY];
+        const shift = (ev: PointerEvent) => {
+          const dx = (ev.clientX - x0) / scale / R[2];
+          const dy = (ev.clientY - y0) / scale / R[3];
+          const l2 = r3(clamp(c0.l + dx, 0, c0.l + c0.r));
+          const t2 = r3(clamp(c0.t + dy, 0, c0.t + c0.b));
+          ed((q) => void (q.crop = { l: l2, r: r3(c0.r - (l2 - c0.l)), t: t2, b: r3(c0.b - (t2 - c0.t)) }), `crop-${layer.id}`);
+        };
+        const up = () => {
+          removeEventListener('pointermove', shift);
+          removeEventListener('pointerup', up);
+        };
+        addEventListener('pointermove', shift);
+        addEventListener('pointerup', up);
+      };
       return (
         <>
+          <div
+            className="img-crop-move"
+            title={t('Drag to move the picture in the crop · double-click to centre it')}
+            style={{ left: (R[0] + c.l * R[2]) * scale, top: (R[1] + c.t * R[3]) * scale, width: R[2] * (1 - c.l - c.r) * scale, height: R[3] * (1 - c.t - c.b) * scale }}
+            onPointerDown={move}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              ed((q) => void (q.crop = centred(cropOf(q))), `crop-${layer.id}`);
+            }}
+          />
           <Handle x={R[0] + c.l * R[2]} y={R[1] + c.t * R[3]} scale={scale} label={t('Crop: top left')} onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), l: r3(clamp(fx(x), 0, 0.95 - c.r)), t: r3(clamp(fy(y), 0, 0.95 - c.b)) }), `crop-${layer.id}`)} />
           <Handle x={R[0] + (1 - c.r) * R[2]} y={R[1] + (1 - c.b) * R[3]} scale={scale} label={t('Crop: bottom right')} onDrag={(x, y) => ed((q) => void (q.crop = { ...cropOf(q), r: r3(clamp(1 - fx(x), 0, 0.95 - c.l)), b: r3(clamp(1 - fy(y), 0, 0.95 - c.t)) }), `crop-${layer.id}`)} />
         </>

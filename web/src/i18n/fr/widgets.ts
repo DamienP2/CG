@@ -836,4 +836,6 @@ export const widgets: Record<string, string> = {
   'Cross-fade': 'Fondu enchaîné',
   'Count up': 'Compteur',
   'Out, then in again': 'Sortie › Entrée',
+  'Drag to move the picture in the crop · double-click to centre it': 'Glisser pour déplacer l’image dans le recadrage · double-clic pour la centrer',
+  'Centre the picture': 'Centrer l’image',
 };

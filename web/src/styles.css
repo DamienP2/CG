@@ -18912,3 +18912,10 @@ a.opx-html5 {
 .tl-erase:hover {
   color: #ff8aa0;
 }
+
+/* Image crop editing: the kept part, dragged to move the picture in it. */
+.img-crop-move {
+  position: absolute;
+  cursor: move;
+  pointer-events: auto;
+}
