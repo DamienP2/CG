@@ -18134,3 +18134,15 @@ a.opx-html5 {
 .opx-aircard .opx-controls:empty {
   display: none;
 }
+/* The value tiles: no accent frame on the field being typed in. */
+.opx-tiles .rt:focus-within,
+.opx-tiles input:focus,
+.opx-tiles select:focus,
+.opx-tiles textarea:focus {
+  border-color: var(--line-2);
+}
+.opx-tiles [contenteditable]:focus-visible,
+.opx-tiles input:focus-visible,
+.opx-tiles textarea:focus-visible {
+  outline: none;
+}
