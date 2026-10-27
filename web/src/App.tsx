@@ -123,7 +123,8 @@ function Studio({ route }: { route: Exclude<Route, { page: 'output' | 'mosPlugin
   return (
     <div className="app" key={lang}>
       {route.page === 'project' ? <ProjectShell route={route} /> : route.page === 'legacyDesigner' || route.page === 'legacyOperator' ? <div className="loading">{t('Opening…')}</div> : <Home route={route} />}
-      {can.admin(user) && <CrashBanner />}
+      {/* Not over a project's own bars (the Operator's on-air buttons). */}
+      {can.admin(user) && route.page !== 'project' && <CrashBanner />}
       <DialogHost />
       <ShortcutsOverlay />
       <Toasts quiet={route.page === 'project' && (route.sub === 'designer' || route.sub === 'operator')} />

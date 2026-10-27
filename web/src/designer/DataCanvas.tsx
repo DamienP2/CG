@@ -7,7 +7,7 @@ import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { api, useApp } from '../store';
-import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template, type ValueChange } from '../engine/types';
+import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { isTimed } from '../engine/widgets';
 import { navigate, projectPath } from '../router';
 import { autoLayout, measureNodes, type LayoutEdge } from '../ui/autoLayout';
@@ -20,7 +20,6 @@ import { BuildCard, TableNodeInfo } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
-import { NumberField } from '../ui/fields';
 import { getPath, setPath } from '../widgets/kit';
 import { isColorValue, settingLabel, settingPorts } from '../engine/settingPorts';
 import { fieldUsed, forgetKeys, formatSetting, settingKind } from '../engine/settings';
@@ -341,16 +340,6 @@ function migrate(t: Template): DataFlow {
   return flow;
 }
 
-/** How a new value of a source shows on air (FieldBinding.change). */
-const VALUE_CHANGES: { value: ValueChange; label: string }[] = [
-  { value: 'cut', label: 'Cut' },
-  { value: 'fade', label: 'Cross-fade' },
-  { value: 'slide', label: 'Slide' },
-  { value: 'flip', label: 'Flip' },
-  { value: 'count', label: 'Count up' },
-  { value: 'outIn', label: 'Out, then in again' },
-];
-
 /** The fields' bindings from the graph. */
 function compile(t: Template, flow: DataFlow) {
   for (const f of t.fields) {
@@ -360,7 +349,7 @@ function compile(t: Template, flow: DataFlow) {
       continue;
     }
     const c = chainOf(flow, from);
-    // How a new value shows on air: kept.
+    // How a new value shows on air (made before it was the layers'): kept.
     if (c) f.binding = { source: c.source.source, path: '', list: c.source.list, steps: c.steps, change: f.binding?.change, changeSecs: f.binding?.changeSecs };
     else delete f.binding;
   }
@@ -560,7 +549,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     return undefined;
   };
   const shownFields = template.fields.filter((f) => !exposed.has(f.key) && !folded.has(f.key));
-  const fieldHeight = (f: Field) => HEAD + (f.binding ? 124 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
+  const fieldHeight = (f: Field) => HEAD + (f.binding ? 90 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
   stack(
     COLS.field,
     shownFields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
@@ -1184,15 +1173,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                             {v === '' ? <em>{t('(empty)')}</em> : v}
                           </span>
                         )}
-                        {/* How a new value of the source shows on air. */}
-                        <div className="row dc-change" title={t('When the value changes on air')}>
-                          <Dropdown
-                            value={f.binding.change ?? 'cut'}
-                            options={VALUE_CHANGES.map((o) => ({ value: o.value, label: t(o.label) }))}
-                            onChange={(c) => editField(f.key, (x) => void (x.binding!.change = c === 'cut' ? undefined : c))}
-                          />
-                          {(f.binding.change ?? 'cut') !== 'cut' && <NumberField value={f.binding.changeSecs ?? 0.6} min={0.1} max={10} step={0.1} precision={1} suffix=" s" onChange={(v) => editField(f.key, (x) => void (x.binding!.changeSecs = v), `chg-${f.key}`)} />}
-                        </div>
                         {legacy && (
                           <span className="dc-meta" title={t('Made before the tables: unlink it and wire the data again to change it')}>
                             {t('Path {path}', { path: f.binding.path })}

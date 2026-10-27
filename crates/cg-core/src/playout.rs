@@ -119,6 +119,9 @@ pub struct Fade {
 pub struct Change {
     pub key: String,
     pub kind: ValueChange,
+    /// The layer moving (slide, flip); empty: every layer showing the value.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub layer: String,
     /// The value before.
     pub from: String,
     /// Frames since the change.
@@ -189,9 +192,16 @@ pub fn shown_data(item: &PlayoutItem) -> std::borrow::Cow<'_, crate::anim::Data>
     std::borrow::Cow::Owned(d)
 }
 
-/// The values a data source just changed on a graphic on air, shown as their
-/// bindings say: a cross-fade, a slide, a flip, a count, out and in again,
-/// at once otherwise. `old` is the data before.
+/// Whether a layer (as JSON) shows the data value `key`: in a text
+/// (`{{key}}`) or bound to it.
+pub fn layer_shows(json: &str, key: &str) -> bool {
+    json.contains(&format!("{{{{{key}}}}}")) || json.contains(&format!("\"{key}\""))
+}
+
+/// The values a data source (or a data set following it) just changed on a
+/// graphic on air, shown as the layers showing them say
+/// ([`crate::model::Layer::live_change`]): a cross-fade, a slide, a flip, a
+/// count, out and in again, at once otherwise. `old` is the data before.
 pub fn live_changes(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data) {
     if matches!(item.phase, Phase::Out | Phase::OutHold) || item.next.is_some() {
         return;
@@ -199,49 +209,87 @@ pub fn live_changes(project: &Project, item: &mut PlayoutItem, old: &crate::anim
     let Some(t) = project.template(&item.template_id) else {
         return;
     };
+    let changed: Vec<(String, String, String)> = item
+        .data
+        .iter()
+        .filter_map(|(k, now)| {
+            let was = old.get(k)?;
+            (was != now).then(|| (k.clone(), was.clone(), now.clone()))
+        })
+        .collect();
+    if changed.is_empty() {
+        return;
+    }
+    // Set on the variable, before it was the layers'.
+    let on_binding = |key: &str| {
+        let b = t.fields.iter().find(|f| f.key == key)?.binding.as_ref()?;
+        Some(crate::model::LiveChange {
+            kind: b.change?,
+            secs: b.change_secs,
+        })
+    };
     let fps = project.frame_rate.as_f64().max(1.0);
     let mut fade: Option<f64> = None;
     let mut out_in = false;
-    for f in &t.fields {
-        let Some(b) = &f.binding else {
-            continue;
-        };
-        let (Some(was), Some(now)) = (old.get(&f.key), item.data.get(&f.key)) else {
-            continue;
-        };
-        if was == now {
+    let mut counted: Vec<&str> = Vec::new();
+    for l in &t.layers {
+        if matches!(l.kind, crate::model::LayerKind::Group { .. }) {
             continue;
         }
-        let length = (b.change_secs.unwrap_or(0.6).clamp(0.05, 10.0) * fps)
-            .round()
-            .max(1.0);
-        let kind = b.change.unwrap_or_default();
-        match kind {
-            ValueChange::Cut => {}
-            ValueChange::OutIn => out_in = true,
-            ValueChange::Fade => fade = Some(fade.map_or(length, |l| l.max(length))),
-            // Not numbers: a cross-fade.
-            ValueChange::Count if number(was).is_none() || number(now).is_none() => {
-                fade = Some(fade.map_or(length, |l| l.max(length)))
+        let json = serde_json::to_string(l).unwrap_or_default();
+        for (key, was, now) in &changed {
+            if !layer_shows(&json, key) {
+                continue;
             }
-            _ => {
-                // From what shows now (a count on its way).
-                let from = item
-                    .changes
-                    .iter()
-                    .find(|c| {
-                        c.key == f.key && c.kind == ValueChange::Count && kind == ValueChange::Count
-                    })
-                    .and_then(|c| count_value(&c.from, was, c.eased()))
-                    .unwrap_or_else(|| was.clone());
-                item.changes.retain(|c| c.key != f.key);
-                item.changes.push(Change {
-                    key: f.key.clone(),
-                    kind,
-                    from,
-                    frame: 0.0,
-                    length,
-                });
+            let Some(lc) = l.live_change.or_else(|| on_binding(key)) else {
+                continue;
+            };
+            let length = (lc.secs.unwrap_or(0.6).clamp(0.05, 10.0) * fps)
+                .round()
+                .max(1.0);
+            match lc.kind {
+                ValueChange::Cut => {}
+                ValueChange::OutIn => out_in = true,
+                ValueChange::Fade => fade = Some(fade.map_or(length, |l| l.max(length))),
+                ValueChange::Count => {
+                    // Not numbers: a cross-fade.
+                    if number(was).is_none() || number(now).is_none() {
+                        fade = Some(fade.map_or(length, |l| l.max(length)));
+                        continue;
+                    }
+                    if counted.contains(&key.as_str()) {
+                        continue;
+                    }
+                    counted.push(key);
+                    // From what shows now (a count on its way).
+                    let from = item
+                        .changes
+                        .iter()
+                        .find(|c| &c.key == key && c.kind == ValueChange::Count)
+                        .and_then(|c| count_value(&c.from, was, c.eased()))
+                        .unwrap_or_else(|| was.clone());
+                    item.changes
+                        .retain(|c| !(&c.key == key && c.kind == ValueChange::Count));
+                    item.changes.push(Change {
+                        key: key.clone(),
+                        kind: ValueChange::Count,
+                        layer: String::new(),
+                        from,
+                        frame: 0.0,
+                        length,
+                    });
+                }
+                kind => {
+                    item.changes.retain(|c| !(&c.key == key && c.layer == l.id));
+                    item.changes.push(Change {
+                        key: key.clone(),
+                        kind,
+                        layer: l.id.clone(),
+                        from: was.clone(),
+                        frame: 0.0,
+                        length,
+                    });
+                }
             }
         }
     }
@@ -2013,6 +2061,9 @@ mod tests {
             max: None,
             options: Vec::new(),
         });
+        if let crate::model::LayerKind::Text { text, .. } = &mut p.templates[0].layers[0].kind {
+            *text = "{{temp}} °C".into();
+        }
         let mut ch = ChannelState::default();
         let take = Command::Take {
             zone: None,
@@ -2039,6 +2090,53 @@ mod tests {
         item.data.insert("temp".into(), "N/A".into());
         live_changes(&p, item, &old);
         assert!(item.changes.is_empty() && item.fade.is_some());
+    }
+
+    #[test]
+    fn a_data_set_value_moves_as_its_layer_says() {
+        use crate::model::{LiveChange, Template};
+        let mut p = project();
+        let t: &mut Template = &mut p.templates[0];
+        if let crate::model::LayerKind::Text { text, .. } = &mut t.layers[0].kind {
+            *text = "{{scores_team}}".into();
+        }
+        t.layers[0].live_change = Some(LiveChange {
+            kind: ValueChange::Slide,
+            secs: None,
+        });
+        let mut other = t.layers[0].clone();
+        other.id = "l2".into();
+        if let crate::model::LayerKind::Text { text, .. } = &mut other.kind {
+            *text = "Hi".into();
+        }
+        t.layers.push(other);
+        let mut ch = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(0),
+            template_id: "t".into(),
+            data: Some([("scores_team".to_string(), "Nice".to_string())].into()),
+            rundown_id: None,
+        };
+        ch.apply(&p, take).unwrap();
+        let item = ch.layers.get_mut(&0).unwrap();
+        let old = item.data.clone();
+        item.data.insert("scores_team".into(), "Lyon".into());
+        live_changes(&p, item, &old);
+        assert_eq!(item.changes.len(), 1);
+        let c = &item.changes[0];
+        assert_eq!(
+            (c.layer.as_str(), c.kind, c.from.as_str()),
+            ("l", ValueChange::Slide, "Nice")
+        );
+        // Set to cut (none): at once.
+        p.templates[0].layers[0].live_change = None;
+        let item = ch.layers.get_mut(&0).unwrap();
+        item.changes.clear();
+        let old = item.data.clone();
+        item.data.insert("scores_team".into(), "Lens".into());
+        live_changes(&p, item, &old);
+        assert!(item.changes.is_empty() && item.fade.is_none());
     }
 
     #[test]

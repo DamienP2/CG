@@ -103,6 +103,8 @@ export type Layer = LayerKind & {
   lockRatio?: boolean;
   /** Drop shadow under the layer and its children (props shadowColor / shadowX / shadowY / shadowBlur); not for Texts (their own). */
   dropShadow?: boolean;
+  /** How a new value of the data it shows (a source, a data set) shows on air; none = at once. */
+  liveChange?: { kind: ValueChange; secs?: number };
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -175,7 +177,7 @@ export interface FieldBinding {
   /** Table pipeline (compiled from the Data canvas): the list read as rows, then the steps. */
   list?: string;
   steps?: DataStep[];
-  /** How a new value of the source shows on air (at once when unset). */
+  /** How a new value of the source shows on air, set before it was the layers' (Layer.liveChange wins). */
   change?: ValueChange;
   /** Length of that change, in seconds (0.6 when unset). */
   changeSecs?: number;
@@ -187,6 +189,8 @@ export type ValueChange = 'cut' | 'fade' | 'slide' | 'flip' | 'count' | 'outIn';
 export interface ValueMove {
   key: string;
   kind: ValueChange;
+  /** The layer moving (slide, flip); none: every layer showing the value. */
+  layer?: string;
   from: string;
   frame: number;
   length: number;

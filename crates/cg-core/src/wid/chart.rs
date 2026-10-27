@@ -1564,6 +1564,7 @@ mod tests {
             bindings: BTreeMap::new(),
             setting_bindings: BTreeMap::new(),
             overrides: BTreeMap::new(),
+            live_change: None,
         }
     }
 

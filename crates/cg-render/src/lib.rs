@@ -966,8 +966,11 @@ impl Renderer {
                     }
                     let json = serde_json::to_string(l).unwrap_or_default();
                     if let Some(c) = turning.iter().find(|c| {
-                        json.contains(&format!("{{{{{}}}}}", c.key))
-                            || json.contains(&format!("\"{}\"", c.key))
+                        if c.layer.is_empty() {
+                            cg_core::playout::layer_shows(&json, &c.key)
+                        } else {
+                            c.layer == l.id
+                        }
                     }) {
                         layers.insert(l.id.clone(), (c.kind, c.eased() as f32));
                     }

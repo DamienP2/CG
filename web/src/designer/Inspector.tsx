@@ -6,11 +6,12 @@ import { AssetLibrary, AssetPicker } from './AssetPicker';
 import { loadLottieAsset } from './lottie';
 import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Sparkles, Unlink } from 'lucide-react';
-import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
-import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { fedByData, layerShows } from '../engine/valueMotion';
+import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value, type ValueChange } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { useZoneEdit } from './ZoneEditor';
@@ -25,7 +26,7 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, CentreModeContext, ContentExtra, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
 import { t, tc, tn } from '../i18n';
 import { useDisplayPref } from '../displayPrefs';
 import { START_MODES, startMode } from '../widgets/centre';
@@ -1027,7 +1028,15 @@ function LayerInspector({ layer }: { layer: Layer }) {
   const hasLook = layer.type !== 'image' && layer.type !== 'slideshow' && !widgetOf(layer)?.ownsLook;
   const driven = useDrivenValues(layer);
   const spec = widgetOf(layer);
+  // « On air » goes in the « Content » section; in its own one when the layer has none.
+  const { template } = useDesigner(useShallow((s) => ({ template: s.template })));
+  const live = template && layer.type !== 'group' && fedByData(template, layer) ? <LiveChangeRows layer={layer} /> : null;
+  const claimed = useRef(false);
+  claimed.current = false;
+  const [alone, setAlone] = useState(false);
+  useLayoutEffect(() => setAlone(!!live && !claimed.current));
   return (
+    <ContentExtra.Provider value={{ node: live, claimed }}>
     <DrivenContext.Provider value={driven}>
       <FormatNote layer={layer} />
       <div className="pp-head">
@@ -1045,6 +1054,11 @@ function LayerInspector({ layer }: { layer: Layer }) {
         <Group id="general" title={t('General')}>
           <LayerGeneral layer={layer} />
         </Group>
+      )}
+      {alone && live && (
+        <SpecSection id="layer-live" title={t('On air')}>
+          {live}
+        </SpecSection>
       )}
       {layer.type !== 'text' && <EffectsGroup layer={layer} />}
       <Group id="properties" title={t('Properties')}>
@@ -1105,6 +1119,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
         </Group>
       </Group>
     </DrivenContext.Provider>
+    </ContentExtra.Provider>
   );
 }
 
@@ -1129,6 +1144,39 @@ function EffectsGroup({ layer }: { layer: Layer }) {
         )}
       </SpecSection>
     </Bound>
+  );
+}
+
+/** How a new value of the data a layer shows (a source, a data set) shows on air (Layer.liveChange). */
+const LIVE_CHANGES: { value: ValueChange; label: string }[] = [
+  { value: 'cut', label: 'Cut' },
+  { value: 'fade', label: 'Fade' },
+  { value: 'slide', label: 'Slide' },
+  { value: 'flip', label: 'Flip' },
+  { value: 'count', label: 'Count up' },
+  { value: 'outIn', label: 'Out, then in again' },
+];
+
+/** « On air »: how a new value shows, only for a layer showing data from a source or a data set; at the end of its « Content » section. */
+function LiveChangeRows({ layer }: { layer: Layer }) {
+  const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
+  if (!template || layer.type === 'group' || !fedByData(template, layer)) return null;
+  // Set on the variable before it was the layers'.
+  const legacy = template.fields.find((f) => f.binding?.change && layerShows(JSON.stringify(layer), f.key))?.binding;
+  const lc = layer.liveChange ?? (legacy?.change ? { kind: legacy.change, secs: legacy.changeSecs } : undefined);
+  const kind = lc?.kind ?? 'cut';
+  const edit = (v: Layer['liveChange'], coalesce?: string) => update((t) => void (findLayer(t, layer.id)!.liveChange = v), coalesce);
+  return (
+    <>
+      <KitRow label={t('On air')} title={t('When the value changes on air')} stack>
+        <Segmented value={kind} options={LIVE_CHANGES.map((o) => ({ value: o.value, label: tc('value change', o.label) }))} onChange={(k) => edit(k === 'cut' && !legacy ? undefined : { kind: k, secs: lc?.secs })} />
+      </KitRow>
+      {kind !== 'cut' && (
+        <KitRow label={t('Duration')}>
+          <NumberField value={lc?.secs ?? 0.6} min={0.1} max={10} step={0.1} precision={1} suffix=" s" onChange={(v) => edit({ kind, secs: v }, `live-${layer.id}`)} />
+        </KitRow>
+      )}
+    </>
   );
 }
 
