@@ -38,6 +38,9 @@ pub struct NetworkRoles {
     /// NDI Discovery Server(s) (`10.0.0.2`, comma separated); "" = mDNS.
     #[serde(default)]
     pub ndi_discovery: String,
+    /// The machine name of the NDI sources (`NAME (source)`); "" = the computer's.
+    #[serde(default)]
+    pub ndi_machine: String,
     /// ST 2110 primary network (SMPTE 2022-7 red).
     #[serde(default)]
     pub media_red: String,
@@ -671,6 +674,11 @@ pub fn ndi_settings(roles: &NetworkRoles) -> serde_json::Value {
             serde_json::json!({ "ips": "", "discovery": discovery }),
         );
     }
+    // In place of the computer's name: receivers see « NAME (source) ».
+    let machine = roles.ndi_machine.trim();
+    if !machine.is_empty() {
+        ndi.insert("machinename".into(), machine.into());
+    }
     serde_json::json!({ "ndi": ndi })
 }
 
@@ -1063,5 +1071,11 @@ mod tests {
         });
         assert_eq!(v["ndi"]["adapters"]["allowed"][0], "127.0.0.1");
         assert!(v["ndi"].get("networks").is_none());
+        assert!(v["ndi"].get("machinename").is_none(), "the computer's name");
+        let v = ndi_settings(&NetworkRoles {
+            ndi_machine: " REGIE-1 ".into(),
+            ..NetworkRoles::default()
+        });
+        assert_eq!(v["ndi"]["machinename"], "REGIE-1");
     }
 }

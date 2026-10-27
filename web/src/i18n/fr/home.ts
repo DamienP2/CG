@@ -682,4 +682,6 @@ export const home: Record<string, string> = {
   'The graphics of the channel are keyed over this video by the server: every destination gets the full picture.': 'Le serveur incruste les graphismes du canal sur cette vidéo : chaque destination reçoit l’image complète.',
   'no free output': 'aucune sortie libre',
   'The outputs set on the card in Hardware.': 'Les sorties réglées sur la carte dans Hardware.',
+  // Settings › Networks: the name NDI receivers see
+  'NDI machine name': 'Nom de machine NDI',
 };

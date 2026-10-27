@@ -266,6 +266,8 @@ export interface NetworkRoles {
   control: string;
   ndi: string;
   ndiDiscovery: string;
+  /** The machine name of the NDI sources (« NAME (source) »); '' = the computer's. */
+  ndiMachine?: string;
   mediaRed: string;
   mediaBlue: string;
   ptp: string;

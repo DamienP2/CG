@@ -135,6 +135,16 @@ export function Networks({ info, cfg, edit, det }: { info: SystemInfo; cfg: Serv
             ))}
             <tr>
               <td>
+                <b>{t('NDI machine name')}</b>
+              </td>
+              <td>
+                <input className="net-discovery" value={net.ndiMachine ?? ''} placeholder={info.hostname ? info.hostname.toUpperCase() : undefined} spellCheck={false} aria-label={t('NDI machine name')} onChange={(e) => set('ndiMachine', e.target.value)} />
+              </td>
+              <td />
+              <td />
+            </tr>
+            <tr>
+              <td>
                 <b>{t('NDI Discovery Server')}</b>
               </td>
               <td>
