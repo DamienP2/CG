@@ -54,6 +54,8 @@ zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 # Import (src/import): pictures of a PSD saved as PNG, SVG parts rasterised.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 resvg = { version = "0.45", default-features = false }
+# Illustrator files (.ai, PDF inside) uploaded as SVG pictures.
+hayro-svg = "0.8"
 
 [target.'cfg(unix)'.dependencies]
 # Thread priorities of the playout (src/rt.rs).

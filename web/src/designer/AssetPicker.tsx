@@ -51,7 +51,8 @@ type Tab = 'project' | 'shared';
 export type LibraryKind = 'image' | 'video' | 'lottie';
 
 const KIND: Record<LibraryKind, { keep: (m: MediaFile) => boolean; accept: string; upload: (f: File) => boolean }> = {
-  image: { keep: (m) => m.kind === 'image', accept: 'image/*', upload: (f) => f.type.startsWith('image/') },
+  // Illustrator files (.ai) come back as SVG pictures, one per artboard.
+  image: { keep: (m) => m.kind === 'image', accept: 'image/*,.ai', upload: (f) => f.type.startsWith('image/') || /\.ai$/i.test(f.name) },
   video: {
     keep: (m) => m.kind === 'video' || /\.(gif|apng)$/i.test(m.name),
     accept: 'video/*,.mov,.mxf,.mkv,.gif,.apng',

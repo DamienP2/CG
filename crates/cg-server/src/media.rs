@@ -150,9 +150,26 @@ async fn store(
     }
     f.flush().await.map_err(internal)?;
     drop(f);
-    tokio::fs::rename(&tmp, dir.join(name))
-        .await
-        .map_err(internal)?;
+    // An Illustrator file: kept as SVG pictures (one per artboard), vectors and all.
+    let name = if let Some(stem) = illustrator_stem(name) {
+        let bytes = tokio::fs::read(&tmp).await.map_err(internal)?;
+        let _ = tokio::fs::remove_file(&tmp).await;
+        let svgs = tokio::task::spawn_blocking(move || illustrator_svgs(bytes))
+            .await
+            .map_err(internal)?
+            .map_err(bad)?;
+        let names = artboard_names(stem, svgs.len());
+        for (n, svg) in names.iter().zip(svgs) {
+            tokio::fs::write(dir.join(n), svg).await.map_err(internal)?;
+        }
+        names.into_iter().next().unwrap_or_default()
+    } else {
+        tokio::fs::rename(&tmp, dir.join(name))
+            .await
+            .map_err(internal)?;
+        name.to_string()
+    };
+    let name = name.as_str();
     s.renderer
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -164,6 +181,42 @@ async fn store(
         .find(|m| m.name == name)
         .map(Json)
         .ok_or_else(|| internal("upload lost"))
+}
+
+/// The name without `.ai` of an Illustrator file.
+fn illustrator_stem(name: &str) -> Option<&str> {
+    let (stem, ext) = name.rsplit_once('.')?;
+    (ext.eq_ignore_ascii_case("ai") && !stem.is_empty()).then_some(stem)
+}
+
+/// The SVG pictures of an Illustrator file's artboards: `logo.svg`, then `logo-2.svg`…
+fn artboard_names(stem: &str, n: usize) -> Vec<String> {
+    (0..n)
+        .map(|i| match i {
+            0 => format!("{stem}.svg"),
+            i => format!("{stem}-{}.svg", i + 1),
+        })
+        .collect()
+}
+
+/// An Illustrator file as SVG, one picture per artboard. Illustrator saves a
+/// PDF inside its files (« Create PDF Compatible File », on by default): its
+/// pages are the artboards, drawn here with their paths, text and pictures.
+fn illustrator_svgs(bytes: Vec<u8>) -> Result<Vec<String>, String> {
+    use hayro_svg::hayro_syntax::Pdf;
+    let unreadable = "this Illustrator file cannot be read: save it again with « Create PDF Compatible File » checked";
+    let pdf = Pdf::new(bytes).map_err(|_| unreadable.to_string())?;
+    let cache = hayro_svg::RenderCache::new();
+    let settings = hayro_svg::hayro_interpret::InterpreterSettings::default();
+    let svgs: Vec<String> = pdf
+        .pages()
+        .iter()
+        .map(|page| hayro_svg::convert(page, &cache, &settings, &Default::default()))
+        .collect();
+    if svgs.is_empty() {
+        return Err(unreadable.into());
+    }
+    Ok(svgs)
 }
 
 async fn remove(s: &Shared, dir: &FsPath, name: &str) -> ApiResult<StatusCode> {
@@ -599,5 +652,73 @@ mod tests {
         assert_eq!(frames.len(), 2);
         assert_eq!(frames[0], png(2));
         assert_eq!(natural("f2.png", "f10.png"), std::cmp::Ordering::Less);
+    }
+}
+
+#[cfg(test)]
+mod illustrator_tests {
+    use super::*;
+
+    /// A PDF of one page (a red square on a 200 × 100 artboard), as Illustrator saves inside an .ai.
+    fn tiny_pdf() -> Vec<u8> {
+        let content = "1 0 0 rg 50 25 50 50 re f";
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R >>".to_string(),
+            format!(
+                "<< /Length {} >>\nstream\n{content}\nendstream",
+                content.len()
+            ),
+        ];
+        let mut out = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, o) in objects.iter().enumerate() {
+            offsets.push(out.len());
+            out.extend(format!("{} 0 obj\n{o}\nendobj\n", i + 1).bytes());
+        }
+        let xref = out.len();
+        out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).bytes());
+        for o in offsets {
+            out.extend(format!("{o:010} 00000 n \n").bytes());
+        }
+        out.extend(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .bytes(),
+        );
+        out
+    }
+
+    #[test]
+    fn an_illustrator_file_becomes_svg_pictures() {
+        assert_eq!(illustrator_stem("logo.AI"), Some("logo"));
+        assert_eq!(illustrator_stem("logo.png"), None);
+        assert_eq!(
+            artboard_names("logo", 3),
+            ["logo.svg", "logo-2.svg", "logo-3.svg"]
+        );
+        let svgs = illustrator_svgs(tiny_pdf()).unwrap();
+        assert_eq!(svgs.len(), 1);
+        assert!(
+            svgs[0].starts_with("<svg") || svgs[0].contains("<svg"),
+            "{}",
+            &svgs[0][..80.min(svgs[0].len())]
+        );
+        assert!(
+            svgs[0].contains("200") && svgs[0].contains("100"),
+            "the artboard's size"
+        );
+        // Drawn by the renderer like any SVG picture: the square is red, the rest transparent.
+        let tree = resvg::usvg::Tree::from_str(&svgs[0], &Default::default()).unwrap();
+        let mut pm = tiny_skia::Pixmap::new(200, 100).unwrap();
+        resvg::render(&tree, tiny_skia::Transform::identity(), &mut pm.as_mut());
+        let px = pm.pixel(75, 50).unwrap();
+        assert_eq!((px.red(), px.green(), px.alpha()), (255, 0, 255));
+        assert_eq!(pm.pixel(10, 10).unwrap().alpha(), 0);
+        // An old Illustrator file (PostScript only): a clear refusal.
+        assert!(illustrator_svgs(b"%!PS-Adobe-3.0 EPSF".to_vec()).is_err());
     }
 }
