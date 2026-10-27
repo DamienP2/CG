@@ -1060,10 +1060,10 @@ async fn advance(
                     }
                 }
                 let store = state.data.store();
-                crate::state::bind_state(p, &mut st, &store, None, None);
+                crate::state::bind_state(p, &mut st, &store, None, None, false);
                 // Items reading their sources "on take" read them now.
                 for id in &taken {
-                    crate::state::bind_state(p, &mut st, &store, None, Some(id));
+                    crate::state::bind_state(p, &mut st, &store, None, Some(id), false);
                 }
                 changed = true;
             }
@@ -1093,7 +1093,7 @@ async fn advance(
             let rows = st.auto_rows(p);
             let freed = st.expire_manual(crate::state::now_ms().max(0) as u64);
             if rows || freed {
-                crate::state::bind_state(p, &mut st, &state.data.store(), None, None);
+                crate::state::bind_state(p, &mut st, &state.data.store(), None, None, false);
                 changed = true;
             }
         }

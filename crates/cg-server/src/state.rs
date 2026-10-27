@@ -745,7 +745,7 @@ impl AppState {
                 }
             }
             st.apply(&project, cmd).map_err(|e| e.to_string())?;
-            bind_state(&project, &mut st, &store, None, taken.as_deref());
+            bind_state(&project, &mut st, &store, None, taken.as_deref(), false);
             if actor.kind != crate::antenna::ActorKind::Auto {
                 ch.ops.push_undo(crate::antenna::UndoStep {
                     at: now_ms(),
@@ -843,7 +843,7 @@ impl AppState {
             }
             *st = before;
             if let Some(p) = &project {
-                bind_state(p, &mut st, &self.data.store(), None, None);
+                bind_state(p, &mut st, &self.data.store(), None, None, false);
             }
             st.clone()
         };
@@ -923,6 +923,7 @@ pub fn bind_state(
     store: &cg_core::datapath::Store,
     only: Option<&str>,
     taken: Option<&str>,
+    live: bool,
 ) -> bool {
     let mut changed = false;
     for item in st.layers.values_mut() {
@@ -957,8 +958,11 @@ pub fn bind_state(
         if item.data != old {
             // Widgets that play a change of their list (the social wall's cards).
             cg_core::playout::source_data_changed(project, item, &old);
-            // New values shown as their bindings say (fade, slide, count…).
-            cg_core::playout::live_changes(project, item, &old);
+            // New values of the sources shown as their layers say (fade,
+            // slide, count, held until the operator updates…).
+            if live {
+                cg_core::playout::live_changes(project, item, &old);
+            }
         }
         if let Some(q) = &mut item.next {
             one(&q.template_id, q.rundown_id.as_deref(), &mut q.data);
@@ -980,7 +984,7 @@ impl AppState {
             };
             let changed = {
                 let mut st = ch.state.write().await;
-                bind_state(&project, &mut st, &store, source, None)
+                bind_state(&project, &mut st, &store, source, None, true)
             };
             if changed {
                 self.broadcast_channel(ch).await;

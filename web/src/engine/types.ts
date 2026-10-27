@@ -184,7 +184,7 @@ export interface FieldBinding {
 }
 
 /** How a value its data source changed shows on air (mirror of model::ValueChange). */
-export type ValueChange = 'cut' | 'fade' | 'slide' | 'flip' | 'count' | 'outIn';
+export type ValueChange = 'cut' | 'fade' | 'slide' | 'flip' | 'count' | 'outIn' | 'hold';
 /** How a layer shows a new value of its data on air (mirror of model::LiveChange). */
 export interface LiveChange {
   kind: ValueChange;

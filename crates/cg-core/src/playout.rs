@@ -260,6 +260,10 @@ pub fn live_changes(project: &Project, item: &mut PlayoutItem, old: &crate::anim
                 .max(1.0);
             match lc.kind {
                 ValueChange::Cut => {}
+                // The value on air stays (until a take or an update).
+                ValueChange::Hold => {
+                    item.data.insert(key.clone(), was.clone());
+                }
                 ValueChange::OutIn => out_in = true,
                 ValueChange::Fade => fade = Some(fade.map_or(length, |l| l.max(length))),
                 ValueChange::Count => {
@@ -2143,6 +2147,21 @@ mod tests {
             (c.layer.as_str(), c.kind, c.from.as_str()),
             ("l", ValueChange::Slide, "Nice")
         );
+        // Held: the value on air stays.
+        p.templates[0].layers[0].live_changes.insert(
+            "scores_team".into(),
+            LiveChange {
+                kind: ValueChange::Hold,
+                secs: None,
+            },
+        );
+        let item = ch.layers.get_mut(&0).unwrap();
+        item.changes.clear();
+        let old = item.data.clone();
+        item.data.insert("scores_team".into(), "Metz".into());
+        live_changes(&p, item, &old);
+        assert_eq!(item.data["scores_team"], "Lyon");
+        assert!(item.changes.is_empty());
         // Set to cut (none): at once.
         p.templates[0].layers[0].live_changes.clear();
         let item = ch.layers.get_mut(&0).unwrap();

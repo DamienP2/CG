@@ -19338,76 +19338,62 @@ a.opx-html5 {
   margin: 8px auto;
 }
 
-/* How a new value shows on air, at a layer's port (Data canvas). */
+/* How a new value shows on air, under a layer's port (Data canvas): icons, then its length. No frame. */
 .dc-live {
-  position: relative;
-  flex: none;
-  margin-right: 6px;
-}
-.dc-live-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  height: 17px;
-  padding: 0 6px;
-  border: 1px solid var(--line-2);
-  border-radius: 99px;
-  background: var(--panel-3);
-  color: var(--text-3);
-  font: inherit;
-  font-size: var(--fs-11);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.dc-live-chip.on {
-  color: var(--pvw);
-  border-color: color-mix(in srgb, var(--pvw) 45%, transparent);
-}
-.dc-live-chip:hover,
-.dc-live-chip.open {
-  color: var(--text);
-}
-.dc-live-pop {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 30;
-  width: 240px;
   display: grid;
-  gap: 8px;
-  padding: 10px;
-  background: var(--panel-2);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  grid-template-rows: 24px 20px;
+  align-content: center;
+  gap: 2px;
+  padding: 0 10px 4px 14px;
+  min-width: 0;
   cursor: default;
 }
-.dc-live-t {
-  font-size: var(--fs-11);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.dc-live-pop .segmented {
+.dc-live-icons {
   display: flex;
-  flex-wrap: wrap;
+  gap: 2px;
+  min-width: 0;
 }
-.dc-live-pop .segmented button {
-  flex: 1 1 auto;
-  padding: 5px 0;
+.dc-live-icons button {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.dc-live-icons button:hover {
+  color: var(--text);
+  background: var(--panel-3);
+}
+.dc-live-icons button.on {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .dc-live-secs {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-2);
+  min-width: 0;
+  color: var(--text-3);
 }
 .dc-live-secs input[type='range'] {
   flex: 1;
   min-width: 0;
+  margin: 0;
   accent-color: var(--accent);
 }
-.logic-node:has(.dc-live-pop) {
-  z-index: 40;
+.dc-live-secs span {
+  flex: none;
+  width: 34px;
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+.dc-live-secs.off {
+  opacity: 0.35;
 }

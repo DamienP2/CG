@@ -1053,6 +1053,9 @@ pub enum ValueChange {
     Count,
     /// The graphic goes out and comes in again with the new value.
     OutIn,
+    /// Not on air by itself: the value shown stays until the operator
+    /// takes or updates the graphic.
+    Hold,
 }
 
 /// Rows of a source (after its steps) shown one at a time: the value of

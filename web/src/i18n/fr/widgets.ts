@@ -834,6 +834,7 @@ export const widgets: Record<string, string> = {
   // A bound variable: how a new value of its source shows on air.
   'When the value changes on air': 'Quand la valeur change à l’antenne',
   'value change|Cut': 'Cut',
+  'No automatic update': 'Pas de mise à jour auto',
   'Cross-fade': 'Fondu enchaîné',
   'Count up': 'Compteur',
   'Out, then in again': 'Sortie › Entrée',
