@@ -204,6 +204,41 @@ struct Steps {
     fading: bool,
     /// Drawing the sprite of a layer drawn in two steps: its first only.
     base_only: bool,
+    /// Values sliding or turning over in the layers showing them.
+    anim: Option<ValueAnim>,
+}
+
+/// The layers showing values a data source changed, moving in their box
+/// (`ValueChange::Slide`, `Flip`), by layer id: how and how far (eased, 0 → 1).
+/// `old`: the pass drawing them with the old values (only them).
+struct ValueAnim {
+    layers: HashMap<String, (cg_core::ValueChange, f32)>,
+    old: bool,
+}
+
+/// Where a layer showing a changing value is drawn (`h` its height), or
+/// nowhere (turned edge on).
+fn value_tf(
+    tf: Transform,
+    kind: cg_core::ValueChange,
+    e: f32,
+    old: bool,
+    h: f32,
+) -> Option<Transform> {
+    match kind {
+        cg_core::ValueChange::Slide => {
+            Some(tf.pre_translate(0.0, if old { -e * h } else { (1.0 - e) * h }))
+        }
+        cg_core::ValueChange::Flip => {
+            let s = if old { 1.0 - 2.0 * e } else { 2.0 * e - 1.0 };
+            (s > 0.001).then(|| {
+                tf.pre_translate(0.0, h / 2.0)
+                    .pre_scale(1.0, s)
+                    .pre_translate(0.0, -h / 2.0)
+            })
+        }
+        _ => Some(tf),
+    }
 }
 
 /// Values of the layers changed by a template's logic graph, by layer id.
@@ -221,6 +256,8 @@ struct OnAir<'p> {
     logic: std::cell::OnceCell<Logic>,
     /// What the graphic's state is drawn from (`sprite`), hashed.
     key: std::cell::OnceCell<u64>,
+    /// Its data as shown now (values counting on their way).
+    data: std::borrow::Cow<'p, Data>,
 }
 
 /// A graphic on air, hashed (its template, data, widget states and clocks:
@@ -719,6 +756,7 @@ impl Renderer {
                     set: Default::default(),
                     logic: Default::default(),
                     key: Default::default(),
+                    data: cg_core::playout::shown_data(item),
                 })
             })
             .collect();
@@ -726,20 +764,18 @@ impl Renderer {
         macro_rules! ctx {
             ($i:expr) => {{
                 let a = &on_air[$i];
-                let t = a
-                    .set
-                    .get_or_init(|| prepared(a.template, format, &a.item.data));
+                let t = a.set.get_or_init(|| prepared(a.template, format, &a.data));
                 let logic = match a.logic.get() {
                     Some(l) => l,
                     None => {
-                        let l = self.logic_values(t, a.item.frame, &a.item.data);
+                        let l = self.logic_values(t, a.item.frame, &a.data);
                         a.logic.get_or_init(|| l)
                     }
                 };
                 Ctx {
                     template: t,
                     frame: a.item.frame,
-                    data: &a.item.data,
+                    data: &a.data,
                     time: TimeCtx {
                         now_ms: now,
                         age_secs: a.item.age / fps,
@@ -773,7 +809,7 @@ impl Renderer {
             self.steps.plan = Some(Vec::new());
             for (i, a) in on_air.iter().enumerate() {
                 self.steps.item = i;
-                if fading(a.item).is_some() || a.alpha < 1.0 {
+                if fading(a.item).is_some() || a.alpha < 1.0 || !a.item.changes.is_empty() {
                     self.plan_step(cache::Motion::Moving);
                 } else {
                     let ctx = ctx!(i);
@@ -806,8 +842,8 @@ impl Renderer {
             self.steps.plan = Some(Vec::new());
             for (i, a) in on_air.iter().enumerate() {
                 self.steps.item = i;
-                if fading(a.item).is_some() {
-                    // A cross-fade: the graphic drawn twice, as one step.
+                if fading(a.item).is_some() || !a.item.changes.is_empty() {
+                    // A cross-fade, values moving: the graphic drawn whole, as one step.
                     self.plan_step(cache::Motion::Moving);
                 } else if let Some(ops) = kept.still_steps(&scene, i) {
                     // The same graphic as in the frame before, nothing of it moving.
@@ -905,6 +941,60 @@ impl Renderer {
                     Transform::identity(),
                     None,
                 );
+                self.steps.whole -= 1;
+                self.steps.fading = false;
+                continue;
+            }
+            // Values sliding or turning over (a data source changed them): the
+            // graphic with the new values, the layers showing them moved in
+            // their box, then those layers with the old values.
+            let turning: Vec<&cg_core::playout::Change> = item
+                .changes
+                .iter()
+                .filter(|c| {
+                    matches!(
+                        c.kind,
+                        cg_core::ValueChange::Slide | cg_core::ValueChange::Flip
+                    )
+                })
+                .collect();
+            if !turning.is_empty() {
+                let mut layers = HashMap::new();
+                for l in &ctx.template.layers {
+                    if matches!(l.kind, LayerKind::Group { .. }) {
+                        continue;
+                    }
+                    let json = serde_json::to_string(l).unwrap_or_default();
+                    if let Some(c) = turning.iter().find(|c| {
+                        json.contains(&format!("{{{{{}}}}}", c.key))
+                            || json.contains(&format!("\"{}\"", c.key))
+                    }) {
+                        layers.insert(l.id.clone(), (c.kind, c.eased() as f32));
+                    }
+                }
+                self.enter_step(pm);
+                self.steps.whole += 1;
+                self.steps.fading = true;
+                self.steps.anim = Some(ValueAnim {
+                    layers: layers.clone(),
+                    old: false,
+                });
+                self.draw_children(pm, ctx, None, root, 1.0, zone_mask.as_ref());
+                let mut old_data = ctx.data.clone();
+                for c in &turning {
+                    old_data.insert(c.key.clone(), c.from.clone());
+                }
+                let t_old = prepared(on_air[i].template, format, &old_data);
+                let logic = self.logic_values(&t_old, item.frame, &old_data);
+                let old_ctx = Ctx {
+                    template: &t_old,
+                    data: &old_data,
+                    logic: &logic,
+                    ..ctx.at_frame(ctx.frame)
+                };
+                self.steps.anim = Some(ValueAnim { layers, old: true });
+                self.draw_children(pm, &old_ctx, None, root, 1.0, zone_mask.as_ref());
+                self.steps.anim = None;
                 self.steps.whole -= 1;
                 self.steps.fading = false;
                 continue;
@@ -1202,6 +1292,28 @@ impl Renderer {
             }
             let (w, h) = (r.num(Prop::Width) as f32, r.num(Prop::Height) as f32);
             let tf = parent_tf.pre_concat(local_transform(&r, w, h));
+            // A layer showing a value sliding or turning over: moved in its
+            // box, cut by it; the old values' pass draws only these.
+            let anim_mask;
+            let (tf, mask) = match self
+                .steps
+                .anim
+                .as_ref()
+                .map(|a| (a.old, a.layers.get(&layer.id).copied()))
+            {
+                Some((old, Some((kind, e)))) => {
+                    let Some(moved) = value_tf(tf, kind, e, old, h) else {
+                        continue;
+                    };
+                    let Some(rect) = Rect::from_xywh(0.0, 0.0, w.max(0.01), h.max(0.01)) else {
+                        continue;
+                    };
+                    anim_mask = build_mask(pm, mask, rect, tf);
+                    (moved, Some(&anim_mask))
+                }
+                Some((true, None)) if !matches!(layer.kind, LayerKind::Group { .. }) => continue,
+                _ => (tf, mask),
+            };
 
             // Crop (reveal mask) in layer space, intersected with the parent mask.
             let crop = crop_rect(&r, w, h);

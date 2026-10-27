@@ -6,6 +6,7 @@ import { Boundary } from '../ui/Boundary';
 import { Sparkles } from 'lucide-react';
 import { t } from '../i18n';
 import { withSettings } from './settings';
+import { ValueMotionContext, valueTransform } from './valueMotion';
 import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { TimeContext, useLayerTime, type Motion } from './LiveTime';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
@@ -375,16 +376,22 @@ function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; f
 const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold, interactive }: { layer: Layer; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
   const logic = useContext(LogicContext).get(layer.id);
   const framed = useContext(FramedContext);
+  const motion = useContext(ValueMotionContext);
+  const moving = motion?.layers.get(layer.id);
+  // The old values' pass of a value sliding or turning over: only the layers showing it.
+  if (motion?.old && !moving && layer.type !== 'group') return null;
   const self = layer;
   const { style, text, src, squeeze = 1, fit } = layerStyle(layer, frame, data, hold, logic);
+  const tf = moving ? valueTransform(moving[0], moving[1], motion!.old, typeof style.height === 'number' ? style.height : 0) : '';
+  if (tf === null) return null;
   const kids = childrenOf.get(self.id) ?? [];
   const lines = text?.split('\n').map((line, i) => (
     <div key={i} style={{ width: '100%' }}>
       {line || ' '}
     </div>
   ));
-  return (
-    <div style={style} data-layer-id={interactive ? layer.id : undefined} data-fit={interactive ? fit : undefined}>
+  const body = (
+    <>
       {lines && (squeeze < 1 ? <div style={{ width: `${100 / squeeze}%`, transform: `scaleX(${squeeze})`, transformOrigin: '0 0' }}>{lines}</div> : lines)}
       {src && layer.type === 'image' && <img src={src} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: layer.fit === 'stretch' ? 'fill' : layer.fit, display: 'block' }} />}
       {widgetOf(layer)?.Render ? <SpecWidget layer={layer} frame={frame} data={data} hold={hold} interactive={interactive} /> : LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
@@ -394,6 +401,16 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
         kids.map((k) => <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={framed.has(k.id) ? frame : hold} data={data} hold={hold} interactive={interactive} />)
       )}
       {interactive && layer.type === 'group' && layer.lottie !== undefined && !kids.length && <LottiePlaceholder />}
+    </>
+  );
+  return (
+    <div style={moving ? { ...style, overflow: 'hidden' } : style} data-layer-id={interactive ? layer.id : undefined} data-fit={interactive ? fit : undefined}>
+      {moving ? (
+        // Moved in its box, cut by it (mirror of the renderer's value_tf).
+        <div style={{ position: 'absolute', inset: 0, display: style.display, flexDirection: style.flexDirection, justifyContent: style.justifyContent, alignItems: style.alignItems, transform: tf || undefined }}>{body}</div>
+      ) : (
+        body
+      )}
     </div>
   );
 });

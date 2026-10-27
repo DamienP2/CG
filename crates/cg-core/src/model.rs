@@ -1014,6 +1014,31 @@ pub struct FieldBinding {
     pub list: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<DataStep>,
+    /// How a new value of the source shows on air (at once when unset).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change: Option<ValueChange>,
+    /// Length of that change, in seconds (0.6 when unset).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_secs: Option<f64>,
+}
+
+/// How a value its data source changed shows on air.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ValueChange {
+    /// At once.
+    #[default]
+    Cut,
+    /// The graphic with the old value fades into the one with the new.
+    Fade,
+    /// In the layers showing it: the old value goes up, the new comes from below.
+    Slide,
+    /// In the layers showing it: turned over, the new value on the back.
+    Flip,
+    /// Numbers count from the old value to the new (else a cross-fade).
+    Count,
+    /// The graphic goes out and comes in again with the new value.
+    OutIn,
 }
 
 /// Rows of a source (after its steps) shown one at a time: the value of

@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useRef } from 'react';
+import { movesAt, movingLayers, oldData, shownData, ValueMotionContext } from '../engine/valueMotion';
 import { formatFor, inFormat } from '../engine/formats';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { Scene } from '../engine/Scene';
@@ -58,6 +59,10 @@ export const Program = memo(function Program({ project, live, width, height, max
         const age = (item.age ?? 0) / fps;
         const frame = frameOf(layer, item);
         const fade = item.fade ? Math.min(item.fade.length, item.fade.frame + since * fps) : null;
+        // Values a data source changed: counting, sliding or turning over in the layers showing them.
+        const moves = movesAt(item, since * fps);
+        const shown = shownData(item.data, moves);
+        const turning = movingLayers(t, moves);
         // The graphic replaced in a « Fade » zone, fading out under the new one.
         const going = item.leaving;
         const goingT = going && templates.get(going.item.templateId);
@@ -82,7 +87,18 @@ export const Program = memo(function Program({ project, live, width, height, max
                 return (
                   <div style={{ position: 'absolute', inset: 0, ...(k < 1 ? { isolation: 'isolate' as const } : {}) }}>
                     <div style={k < 1 ? { position: 'absolute', inset: 0, opacity: k } : { position: 'absolute', inset: 0 }}>
-                      <Scene template={t} frame={frame} data={item.data} />
+                      {turning.size ? (
+                        <>
+                          <ValueMotionContext.Provider value={{ layers: turning, old: false }}>
+                            <Scene template={t} frame={frame} data={shown} />
+                          </ValueMotionContext.Provider>
+                          <ValueMotionContext.Provider value={{ layers: turning, old: true }}>
+                            <Scene template={t} frame={frame} data={oldData(shown, moves)} />
+                          </ValueMotionContext.Provider>
+                        </>
+                      ) : (
+                        <Scene template={t} frame={frame} data={shown} />
+                      )}
                     </div>
                     {k < 1 && item.fade && (
                       <div style={{ position: 'absolute', inset: 0, opacity: 1 - k, mixBlendMode: 'plus-lighter' }}>
@@ -117,4 +133,4 @@ function LayerTime({ item, template, ageSecs, since, now, maxFps, fps, lang, chi
 /** A timeline on its way to its target (not held at a stop). */
 const advancing = (item: PlayoutItem) => item.phase !== 'holding' && item.phase !== 'outHold' && item.frame < item.target;
 /** Something moves: the timeline, or a fade. */
-const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || (!!item.leaving && item.leaving.frame < item.leaving.length);
+const moving = (item: PlayoutItem) => advancing(item) || (!!item.fade && item.fade.frame < item.fade.length) || !!item.changes?.length || (!!item.leaving && item.leaving.frame < item.leaving.length);

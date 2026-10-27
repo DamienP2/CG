@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
 use crate::model::{
-    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, RundownItem, Template, ZoneTransition,
+    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, RundownItem, Template, ValueChange,
+    ZoneTransition,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +71,9 @@ pub struct PlayoutItem {
     /// The graphic as it was before a data set row change, fading out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fade: Option<Fade>,
+    /// Values a data source changed, moving in the layers showing them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<Change>,
     /// What the operator changed in the spec widgets (`wid`), by layer id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub widgets: BTreeMap<String, serde_json::Value>,
@@ -106,6 +110,164 @@ pub struct Fade {
     /// Frames since the change.
     pub frame: f64,
     pub length: f64,
+}
+
+/// A value a data source changed on air, moving in the layers showing it
+/// (slide, flip, count: see [`crate::model::ValueChange`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Change {
+    pub key: String,
+    pub kind: ValueChange,
+    /// The value before.
+    pub from: String,
+    /// Frames since the change.
+    pub frame: f64,
+    pub length: f64,
+}
+
+impl Change {
+    /// How far it is, 0 → 1, eased out (fast, then settling).
+    pub fn eased(&self) -> f64 {
+        let k = (self.frame / self.length.max(1.0)).clamp(0.0, 1.0);
+        1.0 - (1.0 - k).powi(3)
+    }
+}
+
+/// A number written `s` (spaces and a decimal comma allowed): its value, its
+/// decimals and whether the comma is the decimal separator.
+fn number(s: &str) -> Option<(f64, usize, bool)> {
+    let t: String = s
+        .trim()
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '\u{a0}' | '\u{202f}'))
+        .collect();
+    if t.is_empty()
+        || !t
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.' | ','))
+    {
+        return None;
+    }
+    let comma = t.contains(',') && !t.contains('.');
+    let v: f64 = t.replace(',', ".").parse().ok()?;
+    let dec = t.rsplit_once(['.', ',']).map_or(0, |(_, d)| d.len());
+    Some((v, dec, comma))
+}
+
+/// What a value counting from `from` to `to` shows `k` (0 → 1) of the way,
+/// written as `to` is; `None` when they are not both numbers.
+pub fn count_value(from: &str, to: &str, k: f64) -> Option<String> {
+    let (a, _, _) = number(from)?;
+    let (b, dec, comma) = number(to)?;
+    if k >= 1.0 {
+        return Some(to.to_string());
+    }
+    let p = 10f64.powi(dec as i32);
+    let v = format!(
+        "{:.*}",
+        dec,
+        ((a + (b - a) * k.clamp(0.0, 1.0)) * p).round() / p
+    );
+    Some(if comma { v.replace('.', ",") } else { v })
+}
+
+/// The data a graphic shows now: its counting values on their way.
+pub fn shown_data(item: &PlayoutItem) -> std::borrow::Cow<'_, crate::anim::Data> {
+    if !item.changes.iter().any(|c| c.kind == ValueChange::Count) {
+        return std::borrow::Cow::Borrowed(&item.data);
+    }
+    let mut d = item.data.clone();
+    for c in item.changes.iter().filter(|c| c.kind == ValueChange::Count) {
+        if let Some(v) = d
+            .get(&c.key)
+            .and_then(|to| count_value(&c.from, to, c.eased()))
+        {
+            d.insert(c.key.clone(), v);
+        }
+    }
+    std::borrow::Cow::Owned(d)
+}
+
+/// The values a data source just changed on a graphic on air, shown as their
+/// bindings say: a cross-fade, a slide, a flip, a count, out and in again,
+/// at once otherwise. `old` is the data before.
+pub fn live_changes(project: &Project, item: &mut PlayoutItem, old: &crate::anim::Data) {
+    if matches!(item.phase, Phase::Out | Phase::OutHold) || item.next.is_some() {
+        return;
+    }
+    let Some(t) = project.template(&item.template_id) else {
+        return;
+    };
+    let fps = project.frame_rate.as_f64().max(1.0);
+    let mut fade: Option<f64> = None;
+    let mut out_in = false;
+    for f in &t.fields {
+        let Some(b) = &f.binding else {
+            continue;
+        };
+        let (Some(was), Some(now)) = (old.get(&f.key), item.data.get(&f.key)) else {
+            continue;
+        };
+        if was == now {
+            continue;
+        }
+        let length = (b.change_secs.unwrap_or(0.6).clamp(0.05, 10.0) * fps)
+            .round()
+            .max(1.0);
+        let kind = b.change.unwrap_or_default();
+        match kind {
+            ValueChange::Cut => {}
+            ValueChange::OutIn => out_in = true,
+            ValueChange::Fade => fade = Some(fade.map_or(length, |l| l.max(length))),
+            // Not numbers: a cross-fade.
+            ValueChange::Count if number(was).is_none() || number(now).is_none() => {
+                fade = Some(fade.map_or(length, |l| l.max(length)))
+            }
+            _ => {
+                // From what shows now (a count on its way).
+                let from = item
+                    .changes
+                    .iter()
+                    .find(|c| {
+                        c.key == f.key && c.kind == ValueChange::Count && kind == ValueChange::Count
+                    })
+                    .and_then(|c| count_value(&c.from, was, c.eased()))
+                    .unwrap_or_else(|| was.clone());
+                item.changes.retain(|c| c.key != f.key);
+                item.changes.push(Change {
+                    key: f.key.clone(),
+                    kind,
+                    from,
+                    frame: 0.0,
+                    length,
+                });
+            }
+        }
+    }
+    if out_in {
+        let take = QueuedTake {
+            template_id: item.template_id.clone(),
+            data: item.data.clone(),
+            rundown_id: item.rundown_id.clone(),
+            target: hold_target(t, 0.0),
+        };
+        let new = std::mem::replace(&mut item.data, old.clone());
+        if begin_out(project, item) {
+            item.changes.clear();
+            item.next = Some(take);
+        } else {
+            item.data = new;
+        }
+        return;
+    }
+    if let Some(length) = fade {
+        item.fade = Some(Fade {
+            data: old.clone(),
+            frame: 0.0,
+            length,
+        });
+    }
 }
 
 impl Fade {
@@ -202,6 +364,7 @@ impl PlayoutItem {
             held: 0.0,
             pause_ahead: false,
             fade: None,
+            changes: Vec::new(),
             widgets: BTreeMap::new(),
             advanced: Default::default(),
             leaving: None,
@@ -921,6 +1084,13 @@ impl ChannelState {
                     item.fade = None;
                 }
             }
+            if !item.changes.is_empty() {
+                for c in &mut item.changes {
+                    c.frame += frames;
+                }
+                item.changes.retain(|c| c.frame < c.length);
+                changed = true;
+            }
             if let Some(l) = &mut item.leaving {
                 l.frame += frames;
                 l.item.age += frames;
@@ -1222,6 +1392,7 @@ impl ChannelState {
     pub fn is_animating(&self) -> bool {
         self.layers.values().any(|i| {
             i.fade.is_some()
+                || !i.changes.is_empty()
                 || i.leaving.is_some()
                 || !matches!(i.phase, Phase::Holding | Phase::OutHold)
         })
@@ -1813,6 +1984,61 @@ mod tests {
         let f = ch.layers[&0].fade.as_ref().expect("fade");
         assert_eq!(f.data["name"], "A");
         assert_eq!(ch.layers[&0].data["name"], "B");
+    }
+
+    #[test]
+    fn a_source_change_moves_as_its_binding_says() {
+        use crate::model::{Field, FieldBinding, FieldKind};
+        assert_eq!(count_value("9", "20", 0.5).as_deref(), Some("15"));
+        assert_eq!(count_value("1,5", "2,75", 0.0).as_deref(), Some("1,50"));
+        assert_eq!(count_value("9", "20", 1.0).as_deref(), Some("20"));
+        assert!(count_value("Nice", "20", 0.5).is_none());
+        let mut p = project();
+        p.templates[0].fields.push(Field {
+            key: "temp".into(),
+            label: "Temp".into(),
+            kind: FieldKind::Text,
+            default: String::new(),
+            binding: Some(FieldBinding {
+                source: "sheet".into(),
+                path: "b2".into(),
+                filters: Vec::new(),
+                sort: None,
+                list: None,
+                steps: Vec::new(),
+                change: Some(ValueChange::Count),
+                change_secs: Some(1.0),
+            }),
+            min: None,
+            max: None,
+            options: Vec::new(),
+        });
+        let mut ch = ChannelState::default();
+        let take = Command::Take {
+            zone: None,
+            layer: Some(0),
+            template_id: "t".into(),
+            data: Some([("temp".to_string(), "9".to_string())].into()),
+            rundown_id: None,
+        };
+        ch.apply(&p, take).unwrap();
+        let item = ch.layers.get_mut(&0).unwrap();
+        let old = item.data.clone();
+        item.data.insert("temp".into(), "20".into());
+        live_changes(&p, item, &old);
+        assert_eq!(item.changes.len(), 1);
+        assert_eq!(shown_data(item)["temp"], "9");
+        let fps = p.frame_rate.as_f64();
+        ch.tick(fps);
+        let item = &ch.layers[&0];
+        assert!(item.changes.is_empty(), "done after its second");
+        assert_eq!(shown_data(item)["temp"], "20");
+        // Not a number: a cross-fade.
+        let item = ch.layers.get_mut(&0).unwrap();
+        let old = item.data.clone();
+        item.data.insert("temp".into(), "N/A".into());
+        live_changes(&p, item, &old);
+        assert!(item.changes.is_empty() && item.fade.is_some());
     }
 
     #[test]

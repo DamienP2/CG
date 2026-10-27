@@ -1300,6 +1300,7 @@ mod tests {
                 held: 0.0,
                 pause_ahead: false,
                 fade: None,
+                changes: Vec::new(),
                 widgets: Default::default(),
                 advanced: false,
                 leaving: None,

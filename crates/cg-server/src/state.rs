@@ -957,6 +957,8 @@ pub fn bind_state(
         if item.data != old {
             // Widgets that play a change of their list (the social wall's cards).
             cg_core::playout::source_data_changed(project, item, &old);
+            // New values shown as their bindings say (fade, slide, count…).
+            cg_core::playout::live_changes(project, item, &old);
         }
         if let Some(q) = &mut item.next {
             one(&q.template_id, q.rundown_id.as_deref(), &mut q.data);

@@ -831,4 +831,9 @@ export const widgets: Record<string, string> = {
   'Picture {n}': 'Image {n}',
   'Height of the capitals': 'Hauteur des capitales',
   'Height of the line': 'Hauteur de la ligne',
+  // A bound variable: how a new value of its source shows on air.
+  'When the value changes on air': 'Quand la valeur change à l’antenne',
+  'Cross-fade': 'Fondu enchaîné',
+  'Count up': 'Compteur',
+  'Out, then in again': 'Sortie › Entrée',
 };

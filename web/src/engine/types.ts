@@ -175,6 +175,21 @@ export interface FieldBinding {
   /** Table pipeline (compiled from the Data canvas): the list read as rows, then the steps. */
   list?: string;
   steps?: DataStep[];
+  /** How a new value of the source shows on air (at once when unset). */
+  change?: ValueChange;
+  /** Length of that change, in seconds (0.6 when unset). */
+  changeSecs?: number;
+}
+
+/** How a value its data source changed shows on air (mirror of model::ValueChange). */
+export type ValueChange = 'cut' | 'fade' | 'slide' | 'flip' | 'count' | 'outIn';
+/** A value moving on air in the layers showing it (mirror of playout::Change). */
+export interface ValueMove {
+  key: string;
+  kind: ValueChange;
+  from: string;
+  frame: number;
+  length: number;
 }
 
 /** A step of the table pipeline (mirror of model::DataStep). */
@@ -459,6 +474,8 @@ export interface PlayoutItem {
   widgets?: Record<string, unknown>;
   /** A cross-fade from the data it had (drawn fading out above it). */
   fade?: { data: Record<string, string>; frame: number; length: number } | null;
+  /** Values a data source changed, moving in the layers showing them. */
+  changes?: ValueMove[];
   /** The graphic it replaced in a « Fade » zone, fading out under it. */
   leaving?: { item: PlayoutItem; frame: number; length: number } | null;
 }

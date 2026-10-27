@@ -870,6 +870,8 @@ mod tests {
             sort: None,
             list: None,
             steps: vec![],
+            change: None,
+            change_secs: None,
         });
         let mut store = Store::new();
         let mut data = d(&[("homeScore", "0")]);
