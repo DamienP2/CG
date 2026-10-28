@@ -15,7 +15,7 @@ import { useZoneEdit, ZonesEditOverlay } from './ZoneEditor';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { widgetOf } from '../widgets';
 import { useBoundData } from '../data/dataStore';
-import { snapShift, snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
+import { snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
 import { t, tn } from '../i18n';
 import { useLiveFrame } from '../engine/liveInputs';
 
@@ -31,7 +31,63 @@ interface Box {
 const same = (was: Box[], now: Box[]) => (was.length === now.length && was.every((b, i) => b.id === now[i].id && b.left === now[i].left && b.top === now[i].top && b.width === now[i].width && b.height === now[i].height) ? was : now);
 
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+/** A line a dragged box snaps to: a guide or the picture's edge (no box: across the picture), or another layer's edge or centre. */
+interface SnapLine {
+  v: number;
+  /** The other layer's extent along the line (stage pixels). */
+  from?: number;
+  to?: number;
+}
+
+/** The shift that puts one of `edges` on the nearest line within `th`, and that line. */
+function nearest(edges: number[], lines: SnapLine[], th: number): number {
+  let best = 0;
+  let bestD = th;
+  for (const e of edges)
+    for (const l of lines) {
+      const d = Math.abs(l.v - e);
+      if (d < bestD) {
+        bestD = d;
+        best = l.v - e;
+      }
+    }
+  return best;
+}
+
+/** A smart guide shown while dragging: along x (vertical line) or y, from / to on the other axis. */
+interface Shown {
+  axis: 'x' | 'y';
+  v: number;
+  from: number;
+  to: number;
+}
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+/** Zoom of the canvas, set by hand: from 5 % to 400 %. */
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 4;
+const clampZoom = (z: number) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+
+/** The canvas's zoom, in the canvas toolbar: a slider, Fit (once) and Auto (fits and follows the panels' size). */
+export function StageZoom() {
+  const { stageZoom, stageFit } = useDesigner(useShallow((s) => ({ stageZoom: s.stageZoom, stageFit: s.stageFit })));
+  const zoom = stageZoom ?? stageFit;
+  return (
+    <>
+      <label className="zoom" title={`${Math.round(zoom * 100)} %`}>
+        {t('Zoom')}
+        <input type="range" min={Math.log2(ZOOM_MIN)} max={Math.log2(ZOOM_MAX)} step={0.01} value={Math.log2(zoom)} onChange={(e) => useDesigner.setState({ stageZoom: clampZoom(2 ** +e.target.value) })} />
+      </label>
+      <button className="btn small" title={t('Fit the picture in the canvas')} onClick={() => useDesigner.setState({ stageZoom: stageFit })}>
+        {t('Fit')}
+      </button>
+      <button className={`btn small ${stageZoom === null ? 'on' : ''}`} title={t('Fit the picture in the canvas, and again when the panels are resized')} onClick={() => useDesigner.setState({ stageZoom: stageZoom === null ? stageFit : null })}>
+        {t('Auto')}
+      </button>
+    </>
+  );
+}
 
 /** The canvas, at the size of the format being edited. */
 export function Stage({ project: _project, size, showZones, background, bgInput }: { project: Project; size: { width: number; height: number }; showZones: boolean; background: string; /** The live input shown behind (« video » background). */ bgInput: string }) {
@@ -42,7 +98,9 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const data = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(0.5);
+  // Fitted to the canvas area (Auto), or as set by hand (StageZoom).
+  const { stageZoom, stageFit } = useDesigner(useShallow((s) => ({ stageZoom: s.stageZoom, stageFit: s.stageFit })));
+  const scale = stageZoom ?? stageFit;
   const [boxes, setBoxes] = useState<Box[]>([]);
   // The other layers: a faint frame, so the template's layout reads at a glance.
   const [ghosts, setGhosts] = useState<Box[]>([]);
@@ -68,13 +126,39 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     const el = wrapRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      const pad = 48;
-      setScale(Math.max(0.05, Math.min((el.clientWidth - pad) / project.width, (el.clientHeight - pad) / project.height)));
+      // Its padding and room for the rulers.
+      const pad = 72;
+      useDesigner.setState({ stageFit: Math.max(0.05, Math.min((el.clientWidth - pad) / project.width, (el.clientHeight - pad) / project.height)) });
     });
     ro.observe(el);
     return () => ro.disconnect();
     // The overview and a template have their own stage element.
   }, [project.width, project.height, !!template]);
+
+  // Ctrl / ⌘ + wheel (a pinch on a trackpad): zoom around the pointer.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const st = useDesigner.getState();
+      const was = st.stageZoom ?? st.stageFit;
+      const next = clampZoom(was * Math.exp(-e.deltaY * 0.0025));
+      const r = el.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      const py = e.clientY - r.top;
+      const ax = (el.scrollLeft + px) / was;
+      const ay = (el.scrollTop + py) / was;
+      useDesigner.setState({ stageZoom: next });
+      requestAnimationFrame(() => {
+        el.scrollLeft = ax * next - px;
+        el.scrollTop = ay * next - py;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [!!template]);
 
   // Selection boxes come from the DOM so they follow nested transforms.
   useLayoutEffect(() => {
@@ -113,7 +197,11 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     startX: number;
     startY: number;
     start: Record<string, { x: number; y: number; w: number; h: number; ox: number; oy: number }>;
+    /** The other layers' edges and centres (stage pixels), read when the drag began. */
+    objs: { x: SnapLine[]; y: SnapLine[] };
   } | null>(null);
+  // The smart guides of the drag going on.
+  const [smart, setSmart] = useState<Shown[]>([]);
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -126,24 +214,59 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
       const axis = d.mode === 'move' && e.shiftKey ? (Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y') : null;
       const snap = e.shiftKey && d.mode !== 'move' ? 10 : 1;
       const r = (v: number) => Math.round(v / snap) * snap;
-      // Snap the box's edges (and centre when moving) to the guides, edges and areas.
-      const first = Object.values(d.start)[0];
-      if (first && snapRef.current.on && !e.altKey) {
-        const { x: tx, y: ty } = snapRef.current.targets;
+      // Snap the box's edges (and centre when moving) to the guides, the picture's edges, the areas and the
+      // other layers' edges and centres (side by side, aligned, centred), showing the lines it snaps to.
+      const starts = Object.values(d.start);
+      const lines: Shown[] = [];
+      if (starts.length && snapRef.current.on && !e.altKey) {
+        const { x: gx, y: gy } = snapRef.current.targets;
+        const tx: SnapLine[] = [...gx.map((v) => ({ v })), ...d.objs.x];
+        const ty: SnapLine[] = [...gy.map((v) => ({ v })), ...d.objs.y];
         const th = 6 / scale;
-        // In a group, x / y are from the group: the guides are on the stage.
-        const nx = first.ox + first.x + dx;
-        const ny = first.oy + first.y + dy;
+        // The selection's box on the stage (in a group, x / y are from the group).
+        const bx = Math.min(...starts.map((s) => s.ox + s.x));
+        const by = Math.min(...starts.map((s) => s.oy + s.y));
+        const bw = Math.max(...starts.map((s) => s.ox + s.x + s.w)) - bx;
+        const bh = Math.max(...starts.map((s) => s.oy + s.y + s.h)) - by;
+        const nx = bx + dx;
+        const ny = by + dy;
+        let ex: number[];
+        let ey: number[];
         if (d.mode === 'move') {
-          dx += snapShift([nx, nx + first.w / 2, nx + first.w], tx, th);
-          dy += snapShift([ny, ny + first.h / 2, ny + first.h], ty, th);
+          ex = [nx, nx + bw / 2, nx + bw];
+          ey = [ny, ny + bh / 2, ny + bh];
         } else {
-          if (d.mode.includes('e')) dx += snapShift([nx + first.w], tx, th);
-          if (d.mode.includes('w')) dx += snapShift([nx], tx, th);
-          if (d.mode.includes('s')) dy += snapShift([ny + first.h], ty, th);
-          if (d.mode.includes('n')) dy += snapShift([ny], ty, th);
+          ex = d.mode.includes('e') ? [nx + bw] : d.mode.includes('w') ? [nx] : [];
+          ey = d.mode.includes('s') ? [ny + bh] : d.mode.includes('n') ? [ny] : [];
         }
+        const sx = nearest(ex, tx, th);
+        const sy = nearest(ey, ty, th);
+        dx += sx;
+        dy += sy;
+        // The lines now met, drawn from the box to the layer it lines up with (or across the picture).
+        const box = { l: bx + dx, t: by + dy, r: bx + dx + bw, b: by + dy + bh };
+        if (d.mode !== 'move') {
+          if (d.mode.includes('e')) box.r = bx + bw + dx;
+          if (d.mode.includes('w')) box.l = bx + dx;
+          if (d.mode.includes('s')) box.b = by + bh + dy;
+          if (d.mode.includes('n')) box.t = by + dy;
+          if (!/[ew]/.test(d.mode)) (box.l = bx), (box.r = bx + bw);
+          if (!/[ns]/.test(d.mode)) (box.t = by), (box.b = by + bh);
+        }
+        const meet = (axis: 'x' | 'y', edges: number[], targets: SnapLine[], lo: number, hi: number, size: number) => {
+          for (const tl of targets) {
+            if (!edges.some((e) => Math.abs(e - tl.v) < 0.75)) continue;
+            const from = tl.from === undefined ? 0 : Math.min(lo, tl.from);
+            const to = tl.to === undefined ? size : Math.max(hi, tl.to);
+            const same = lines.find((l) => l.axis === axis && Math.abs(l.v - tl.v) < 0.75);
+            if (same) (same.from = Math.min(same.from, from)), (same.to = Math.max(same.to, to));
+            else lines.push({ axis, v: tl.v, from, to });
+          }
+        };
+        if (sx !== 0 || ex.length) meet('x', d.mode === 'move' ? [box.l, (box.l + box.r) / 2, box.r] : ex.map((v) => v + sx), tx, box.t, box.b, project.height);
+        if (sy !== 0 || ey.length) meet('y', d.mode === 'move' ? [box.t, (box.t + box.b) / 2, box.b] : ey.map((v) => v + sy), ty, box.l, box.r, project.width);
       }
+      setSmart((was) => (was.length || lines.length ? lines : was));
       if (axis === 'x') dy = 0;
       if (axis === 'y') dx = 0;
       st.update((t) => {
@@ -183,7 +306,10 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         }
       }, 'stage-drag');
     };
-    const onUp = () => (drag.current = null);
+    const onUp = () => {
+      drag.current = null;
+      setSmart([]);
+    };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     return () => {
@@ -217,7 +343,25 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
         h: num(propValue(l, 'height', st.frame)),
       };
     }
-    drag.current = { mode, startX: e.clientX, startY: e.clientY, start };
+    // The other layers (not the ones dragged, nor inside them): their edges and centres.
+    const objs: { x: SnapLine[]; y: SnapLine[] } = { x: [], y: [] };
+    const root = sceneRef.current;
+    if (root) {
+      const origin = root.getBoundingClientRect();
+      const moving = ids.map((id) => root.querySelector<HTMLElement>(`[data-layer-id="${CSS.escape(id)}"]`)).filter((el): el is HTMLElement => !!el);
+      for (const el of root.querySelectorAll<HTMLElement>('[data-layer-id]')) {
+        if (moving.some((m) => m === el || m.contains(el) || el.contains(m))) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        const l = (r.left - origin.left) / scale;
+        const t = (r.top - origin.top) / scale;
+        const w = r.width / scale;
+        const h = r.height / scale;
+        for (const v of [l, l + w / 2, l + w]) objs.x.push({ v, from: t, to: t + h });
+        for (const v of [t, t + h / 2, t + h]) objs.y.push({ v, from: l, to: l + w });
+      }
+    }
+    drag.current = { mode, startX: e.clientX, startY: e.clientY, start, objs };
     useDesigner.setState({ lastCoalesce: null });
     e.stopPropagation();
   };
@@ -311,6 +455,9 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
           {view.frames && !zonesEdit && ghosts.map((b) => (
             <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
+          ))}
+          {smart.map((g) => (
+            <div key={`${g.axis}${g.v}`} className={`smart-guide ${g.axis}`} style={g.axis === 'x' ? { left: g.v * scale, top: g.from * scale, height: (g.to - g.from) * scale } : { top: g.v * scale, left: g.from * scale, width: (g.to - g.from) * scale }} />
           ))}
           {!zonesEdit && boxes.map((b) => (
             <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>

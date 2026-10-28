@@ -780,9 +780,13 @@ code {
   min-height: 0;
   position: relative;
   display: grid;
-  place-items: center;
   background: radial-gradient(ellipse at center, #141725 0%, #0b0c12 70%);
-  overflow: hidden;
+  /* Zoomed in: the picture scrolls (centred while it fits), its rulers still in view. */
+  overflow: auto;
+  padding: 28px;
+}
+.stage-wrap > .stage-frame {
+  margin: auto;
 }
 .stage-frame {
   box-shadow:
@@ -19360,4 +19364,20 @@ a.opx-html5 {
 }
 .dc-live-secs.off {
   opacity: 0.35;
+}
+
+/* Smart guides: the lines a dragged layer snaps to (another layer's edge or centre, a guide, the picture). */
+.smart-guide {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  background: #ff3df2;
+}
+.smart-guide.x {
+  width: 1px;
+  margin-left: -0.5px;
+}
+.smart-guide.y {
+  height: 1px;
+  margin-top: -0.5px;
 }

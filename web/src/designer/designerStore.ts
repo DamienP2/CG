@@ -33,6 +33,10 @@ interface DesignerStore {
   selectedSegment: { layerId: string; props: Prop[]; frame: number } | null;
   expanded: Record<string, boolean>;
   zoom: number;
+  /** The canvas's zoom set by hand; null: it fits the canvas area and follows its size (Auto). */
+  stageZoom: number | null;
+  /** The zoom at which the picture fits the canvas area. */
+  stageFit: number;
   previewData: Data;
   /** Someone else holds the template's edit lock: edits are ignored. */
   readOnly: boolean;
@@ -95,6 +99,8 @@ export const useDesigner = create<DesignerStore>((set, get) => ({
   selectedSegment: null,
   expanded: {},
   zoom: 8,
+  stageZoom: null,
+  stageFit: 0.5,
   previewData: {},
   readOnly: false,
   edits: 0,

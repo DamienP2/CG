@@ -8,7 +8,7 @@ import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setPro
 import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
 import { LockOverlay, TopPublish, useEditLock } from './Collab';
-import { Stage } from './Stage';
+import { Stage, StageZoom } from './Stage';
 import { Timeline } from './Timeline';
 import { clearSelectedKeys, copyLayers, cutLayers, pasteClipboard } from './clipboard';
 import { useZoneEdit, ZonesPanel } from './ZoneEditor';
@@ -551,6 +551,7 @@ export const Designer = memo(function Designer() {
             rightFull={rightFull}
             onLayout={(side, on) => setLayout(side, on ? 1 : 0)}
           />
+          <StageZoom />
         </div>
         <div className="stage-holder">
           <Stage project={project} size={formatById(project, format)} showZones={showZones} background={background} bgInput={bgInput} />
