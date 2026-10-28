@@ -65,7 +65,7 @@ mod imp {
     use super::*;
     use crate::paths::SERVICE_NAME;
 
-    const UNIT: &str = "/etc/systemd/system/strata-graphics.service";
+    pub(super) const UNIT: &str = "/etc/systemd/system/strata-graphics.service";
     const USER: &str = "strata";
     /// The service of an install from before the rename.
     const FORMER_UNIT: &str = "/etc/systemd/system/pulse-cg.service";
@@ -483,6 +483,44 @@ mod imp {
 }
 
 pub use imp::{install, start, status, stop, uninstall};
+
+/// The data folder of the installed service (`--data-dir` of its unit).
+#[cfg(target_os = "linux")]
+pub fn data_dir() -> Option<PathBuf> {
+    unit_data_dir(&std::fs::read_to_string(imp::UNIT).ok()?)
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn unit_data_dir(unit: &str) -> Option<PathBuf> {
+    let line = unit.lines().find(|l| l.starts_with("ExecStart="))?;
+    let rest = line.split_once("--data-dir ")?.1.trim();
+    let dir = match rest.strip_prefix('"') {
+        Some(r) => r.split_once('"')?.0,
+        None => rest.split_whitespace().next()?,
+    };
+    (!dir.is_empty()).then(|| PathBuf::from(dir))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn data_dir() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_unit_tells_the_data_folder() {
+        let unit = "[Service]\nExecStart=\"/opt/strata/strata-server\" run --default-bind 0.0.0.0:8080 --data-dir \"/srv/my strata\"\nUser=strata\n";
+        assert_eq!(unit_data_dir(unit), Some(PathBuf::from("/srv/my strata")));
+        assert_eq!(
+            unit_data_dir("ExecStart=/x run --data-dir /d\n"),
+            Some(PathBuf::from("/d"))
+        );
+        assert_eq!(unit_data_dir("ExecStart=/x run\n"), None);
+    }
+}
 
 // ---------------------------------------------- Windows service runtime ----
 /// Entry point when the SCM launches us (`run --service`).

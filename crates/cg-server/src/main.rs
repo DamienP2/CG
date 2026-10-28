@@ -131,14 +131,28 @@ impl From<CliRole> for auth::Role {
 /// The data directory a CLI command acts on: explicit, else the installed
 /// service's when it exists, else the per-user one.
 fn cli_data_dir(explicit: Option<PathBuf>) -> PathBuf {
-    explicit.unwrap_or_else(|| {
+    explicit.or_else(service::data_dir).unwrap_or_else(|| {
         let system = paths::system_data_dir();
-        if system.join("config.json").exists() {
+        if system.is_dir() {
             system
         } else {
             paths::user_data_dir()
         }
     })
+}
+
+/// Run with sudo, a command writes the users file as root: it goes to the
+/// owner of the data folder (the service account), which must read it.
+fn give_to_service(dir: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(m) = std::fs::metadata(dir) {
+            let _ = std::os::unix::fs::chown(dir.join("users.json"), Some(m.uid()), Some(m.gid()));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
 }
 
 fn prompt_password() -> anyhow::Result<String> {
@@ -172,6 +186,7 @@ fn user_command(cmd: UserCmd) -> anyhow::Result<()> {
                 password,
             };
             let u = a.create(input).map_err(err)?;
+            give_to_service(&dir);
             println!("User `{}` created in {}.", u.username, dir.display());
         }
         UserCmd::List { data_dir } => {
@@ -186,19 +201,23 @@ fn user_command(cmd: UserCmd) -> anyhow::Result<()> {
             }
         }
         UserCmd::Passwd { username, data_dir } => {
-            let a = auth::Auth::load(&cli_data_dir(data_dir));
+            let dir = cli_data_dir(data_dir);
+            let a = auth::Auth::load(&dir);
             let pw = prompt_password()?;
             a.set_password(&username, &pw).map_err(err)?;
+            give_to_service(&dir);
             println!("Password changed.");
         }
         UserCmd::Delete { username, data_dir } => {
-            let a = auth::Auth::load(&cli_data_dir(data_dir));
+            let dir = cli_data_dir(data_dir);
+            let a = auth::Auth::load(&dir);
             let u = a
                 .users()
                 .into_iter()
                 .find(|u| u.username.eq_ignore_ascii_case(&username))
                 .ok_or_else(|| anyhow::anyhow!("no such user"))?;
             a.delete(&u.id).map_err(err)?;
+            give_to_service(&dir);
             println!("User `{}` deleted.", u.username);
         }
     }

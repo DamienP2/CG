@@ -347,7 +347,12 @@ impl Auth {
                 tracing::error!(?path, "invalid file: {e}");
                 Vec::new()
             }),
-            Err(_) => Vec::new(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            // E.g. owned by root, unreadable by the service account.
+            Err(e) => {
+                tracing::error!(?path, "cannot read: {e}");
+                Vec::new()
+            }
         }
     }
 
