@@ -1083,6 +1083,7 @@ fn demo_project_layers() -> Project {
         guides: Default::default(),
         design_order: Vec::new(),
         language: "fr".into(),
+        template_secs: None,
         id: "demo".into(),
         name: "Demo show".into(),
         description: String::new(),

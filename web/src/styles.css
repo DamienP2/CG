@@ -19439,3 +19439,43 @@ a.opx-html5 {
   min-width: 0;
   accent-color: var(--accent);
 }
+
+/* The template's end on the timeline's ruler: dragged, its length. */
+.tl-dur {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  margin-left: -5px;
+  cursor: ew-resize;
+  z-index: 3;
+}
+.tl-dur::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-3);
+}
+.tl-dur:hover::before {
+  background: var(--accent);
+}
+.tl-dur span {
+  position: absolute;
+  bottom: 2px;
+  right: 9px;
+  font: 600 10px var(--mono);
+  color: var(--text-3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.pjp-secs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pjp-secs > :last-child {
+  width: 110px;
+}

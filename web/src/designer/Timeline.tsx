@@ -285,6 +285,37 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     window.addEventListener('pointerup', up);
   };
 
+  /** The template's end, dragged: its length (never before a marker, a keyframe or a layer's start). */
+  const dragDuration = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    const base = useDesigner.getState().template!;
+    const used = [
+      ...base.markers.map((m) => m.frame),
+      ...base.layers.flatMap((l) => [...Object.values(l.tracks).flatMap((tr) => (tr ?? []).map((k) => k.frame)), ...(l.span ? [l.span.from] : [])]),
+    ];
+    const min = Math.max(1, ...used) + 1;
+    const startX = e.clientX;
+    let last = base.duration;
+    useDesigner.setState({ lastCoalesce: null });
+    const move = (ev: PointerEvent) => {
+      const d = Math.max(min, Math.min(600 * fps, Math.round(base.duration + (ev.clientX - startX) / zoom)));
+      if (d === last) return;
+      last = d;
+      useDesigner.getState().update((t) => {
+        t.duration = d;
+        // A layer's bar stays within the template.
+        for (const l of t.layers) if (l.span) l.span = { from: l.span.from, to: Math.min(l.span.to, d) };
+      }, 'duration-drag');
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // A marker moves by dragging (its time shows meanwhile); a click edits it.
   const dragMarker = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
@@ -749,6 +780,9 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                   <span>{i * step}</span>
                 </div>
               ))}
+              <div className="tl-dur" style={{ left: template.duration * zoom }} title={t('Length of the template: drag')} onPointerDown={dragDuration}>
+                <span>{(template.duration / fps).toFixed(2)} s</span>
+              </div>
               {markers.map((m) => {
                 const role = markerRole(template, m);
                 const moving = dragging?.id === m.id;

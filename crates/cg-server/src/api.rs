@@ -617,6 +617,7 @@ async fn create_project(
             guides: Default::default(),
             design_order: Vec::new(),
             language: "fr".into(),
+            template_secs: None,
             id: String::new(),
             name: String::new(),
             description: String::new(),
@@ -655,7 +656,12 @@ async fn create_project(
         } else {
             "Modèle 1"
         };
-        let blank = cg_core::Template::blank(first, &zone, p.frame_rate.as_f64());
+        let blank = cg_core::Template::blank_secs(
+            first,
+            &zone,
+            p.frame_rate.as_f64(),
+            p.template_secs.unwrap_or(1.0),
+        );
         let id = blank.id.clone();
         p.drafts.push(blank);
         p.publish(&id);
@@ -917,6 +923,7 @@ async fn import_create(
         guides: Default::default(),
         design_order: Vec::new(),
         language: "fr".into(),
+        template_secs: None,
         id: cg_core::new_id(),
         name: c.name.trim().to_string(),
         description: String::new(),
@@ -1076,6 +1083,9 @@ struct ProjectMeta {
     /// Texts' language; unchanged when absent.
     #[serde(default)]
     language: Option<String>,
+    /// Length of new templates, seconds; unchanged when absent.
+    #[serde(default)]
+    template_secs: Option<f64>,
 }
 
 async fn put_project_meta(
@@ -1095,6 +1105,9 @@ async fn put_project_meta(
     p.frame_rate = m.frame_rate;
     if let Some(l) = m.language.filter(|l| !l.trim().is_empty()) {
         p.language = l.trim().to_string();
+    }
+    if let Some(secs) = m.template_secs.filter(|s| s.is_finite() && *s > 0.0) {
+        p.template_secs = Some(secs.clamp(0.1, 600.0));
     }
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)

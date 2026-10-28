@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
-import { NumberField } from '../ui/fields';
+import { NumberField, Segmented } from '../ui/fields';
 import { useDesigner } from './designerStore';
 import { draftOf } from '../engine/drafts';
 import { locale, t, tc, tn } from '../i18n';
@@ -142,6 +142,7 @@ function ProjectDialog({ project, readOnly, onClose }: { project: Project; readO
   const [size, setSize] = useState({ width: project.width, height: project.height });
   const [rate, setRate] = useState(project.frameRate);
   const [language, setLanguage] = useState(project.language ?? 'fr');
+  const [secs, setSecs] = useState(project.templateSecs ?? 1);
   const [busy, setBusy] = useState(false);
   const resized = size.width !== project.width || size.height !== project.height;
   const save = async (e: React.FormEvent) => {
@@ -159,7 +160,7 @@ function ProjectDialog({ project, readOnly, onClose }: { project: Project; readO
     try {
       // Kept in English (like the server's notes): shown translated by noteText.
       if (resized) await api('POST', `${url}/versions`, { note: `Before the change to ${size.width}×${size.height}` }).catch(() => {});
-      await api('PUT', url, { name: name.trim(), description, width: size.width, height: size.height, frameRate: rate, language });
+      await api('PUT', url, { name: name.trim(), description, width: size.width, height: size.height, frameRate: rate, language, templateSecs: secs });
       onClose();
     } catch (err) {
       toast((err as Error).message, 'error');
@@ -187,6 +188,13 @@ function ProjectDialog({ project, readOnly, onClose }: { project: Project; readO
         <div className="set-field">
           <span className="set-label">{t('Main resolution')}</span>
           <FormatButtons width={size.width} height={size.height} rate={rate} disabled={readOnly} onSize={(width, height) => setSize({ width, height })} onRate={setRate} />
+        </div>
+        <div className="set-field">
+          <span className="set-label">{t('Length of the templates')}</span>
+          <div className="pjp-secs">
+            <Segmented value={String(secs)} options={[1, 2, 3, 5, 10].map((n) => ({ value: String(n), label: `${n} s` }))} onChange={(v) => setSecs(+v)} />
+            <NumberField value={secs} min={0.1} max={600} step={0.5} precision={1} suffix=" s" onChange={setSecs} />
+          </div>
         </div>
         <div className="set-field">
           <span className="set-label">{t('Language of the texts')}</span>

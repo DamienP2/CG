@@ -420,6 +420,8 @@ export interface Project {
   frameRate: FrameRate;
   /** Language of the texts (hyphenation, French spaces), "fr" by default. */
   language?: string;
+  /** Length of a new template (its IN and OUT), seconds; each one is then set in the timeline. None: 1 s. */
+  templateSecs?: number;
   templates: Template[];
   rundown: RundownItem[];
   zones: Zone[];

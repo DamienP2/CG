@@ -453,8 +453,8 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
 }
 
 /** A new template: 1 s long (`fps` frames), on air at half of it. */
-export function newTemplate(name: string, zone = '', fps = 25): Template {
-  const len = Math.max(2, Math.round(fps));
+export function newTemplate(name: string, zone = '', fps = 25, secs = 1): Template {
+  const len = Math.max(2, Math.round(fps * Math.min(600, Math.max(0.1, secs))));
   return {
     id: newId(),
     name,

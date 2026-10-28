@@ -1473,6 +1473,7 @@ mod tests {
             guides: Default::default(),
             design_order: Vec::new(),
             language: "fr".into(),
+            template_secs: None,
             id: "p".into(),
             name: "p".into(),
             description: String::new(),

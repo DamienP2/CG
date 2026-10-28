@@ -221,7 +221,7 @@ function TemplateList({ project }: { project: Project }) {
     api('PUT', `/api/projects/${encodeURIComponent(project.id)}/design-order`, rest).catch((e) => toast((e as Error).message, 'error'));
   };
   const create = async (base?: Template) => {
-    const tpl = base ? { ...structuredClone(base), id: newId(), name: t('{name} copy', { name: base.name }) } : newTemplate(t('Template {n}', { n: designTemplates(project).length + 1 }), (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den);
+    const tpl = base ? { ...structuredClone(base), id: newId(), name: t('{name} copy', { name: base.name }) } : newTemplate(t('Template {n}', { n: designTemplates(project).length + 1 }), (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den, project.templateSecs ?? 1);
     // Open it at once; the save follows.
     load(tpl);
     await saveTemplate(tpl);

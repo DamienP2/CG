@@ -313,7 +313,7 @@ export function Segmented<T extends string>({
   return (
     <div className="segmented">
       {options.map((o) => (
-        <button key={o.value} title={o.title} className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
+        <button key={o.value} type="button" title={o.title} className={o.value === value ? 'on' : ''} onClick={() => onChange(o.value)}>
           {o.label}
         </button>
       ))}

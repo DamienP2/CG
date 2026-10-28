@@ -1418,7 +1418,12 @@ fn legacy_scroll(kind: &LayerKind) -> Option<LayerKind> {
 impl Template {
     /// An empty template: 1 s long (at `fps`), on air at half of it.
     pub fn blank(name: &str, zone: &str, fps: f64) -> Self {
-        let len = fps.round().max(2.0);
+        Self::blank_secs(name, zone, fps, 1.0)
+    }
+
+    /// An empty template `secs` long (its On air point half way).
+    pub fn blank_secs(name: &str, zone: &str, fps: f64, secs: f64) -> Self {
+        let len = (fps * secs.clamp(0.1, 600.0)).round().max(2.0);
         Template {
             id: new_id(),
             name: name.into(),
@@ -2016,6 +2021,10 @@ pub struct Project {
     /// Language of the texts (hyphenation rules, French spaces): "fr", "en"…
     #[serde(default = "default_language")]
     pub language: String,
+    /// Length of a new template (its IN and OUT), seconds; each one is then
+    /// set on its own in the timeline. None: one second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_secs: Option<f64>,
 }
 
 impl Project {

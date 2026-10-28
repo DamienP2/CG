@@ -264,6 +264,8 @@ export const designer: Record<string, string> = {
   'Hyphenation rules and French spaces of every text of the project': 'Règles de césure et espaces à la française de tous les textes du projet',
   'Language of the texts': 'Langue des textes',
   'Main resolution': 'Résolution principale',
+  'Length of the templates': 'Durée des modèles',
+  'Length of the template: drag': 'Durée du modèle : glisser',
   'Other templates': 'Autres modèles',
   // Timeline › Copy all, then Paste… (choose what to take).
   'Copy all (values and animation)': 'Tout copier (valeurs et animation)',
