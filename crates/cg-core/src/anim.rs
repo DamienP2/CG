@@ -268,7 +268,7 @@ pub fn resolve_template<'a>(
     template
         .layers
         .iter()
-        .filter(|l| l.visible)
+        .filter(|l| l.shown_at(frame))
         .map(|l| resolve_layer(l, frame, data, template.hold_frame()))
         .collect()
 }

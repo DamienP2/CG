@@ -1375,6 +1375,36 @@ code {
   background: linear-gradient(180deg, rgba(143, 163, 255, 0.28), rgba(143, 163, 255, 0.16));
   border: 1px solid rgba(143, 163, 255, 0.35);
 }
+/* A layer's bar: dragged, it moves the layer in time; its ends set when it is shown. */
+.tl-row.layer .tl-bar {
+  cursor: grab;
+}
+.tl-row.layer .tl-bar.locked {
+  cursor: default;
+}
+.tl-bar-end {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 7px;
+  cursor: ew-resize;
+  border-radius: 4px;
+}
+.tl-bar-end.from {
+  left: -1px;
+  border-left: 3px solid rgba(143, 163, 255, 0.75);
+}
+.tl-bar-end.to {
+  right: -1px;
+  border-right: 3px solid rgba(143, 163, 255, 0.75);
+}
+.tl-bar-end:hover {
+  background: rgba(143, 163, 255, 0.35);
+}
+.tl-bar.locked .tl-bar-end {
+  display: none;
+}
+
 .kf {
   position: absolute;
   top: 8px;

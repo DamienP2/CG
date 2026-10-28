@@ -4100,6 +4100,7 @@ mod conv {
             setting_bindings: BTreeMap::new(),
             overrides: BTreeMap::new(),
             live_changes: BTreeMap::new(),
+            span: None,
         }
     }
 

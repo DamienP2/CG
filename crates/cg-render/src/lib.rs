@@ -1278,7 +1278,7 @@ impl Renderer {
             .template
             .layers
             .iter()
-            .filter(|l| l.visible && l.parent.as_deref() == parent)
+            .filter(|l| l.shown_at(ctx.frame) && l.parent.as_deref() == parent)
             .collect();
         for layer in children {
             let mut r = resolve_layer(layer, ctx.frame, ctx.data, ctx.template.hold_frame());
@@ -1654,7 +1654,7 @@ impl Renderer {
                     .filter(|l| l.parent.as_deref() == Some(parent))
                 {
                     k.add(&self.sprites.def(l));
-                    if !l.visible {
+                    if !l.shown_at(ctx.frame) {
                         continue;
                     }
                     let mut c = resolve_layer(l, ctx.frame, ctx.data, hold);
@@ -3244,6 +3244,54 @@ mod tests {
         // Top-left zone: 4 %..28 % x 5 %..19 % of the frame.
         assert!(alpha(200, 100) > 0);
         assert_eq!(alpha(1500, 800), 0);
+    }
+
+    #[test]
+    fn a_layer_shows_only_within_its_span() {
+        let mut project = sample::demo_project();
+        project.zones = vec![cg_core::Zone {
+            id: "top-left".into(),
+            name: "Top left".into(),
+            layer: 50,
+            color: String::new(),
+            transition: cg_core::ZoneTransition::Cut,
+            areas: Default::default(),
+        }];
+        // Every layer of the credits shown from frame 0 to 8 only.
+        let t = project
+            .templates
+            .iter_mut()
+            .find(|t| t.id == "credits")
+            .unwrap();
+        for l in &mut t.layers {
+            l.span = Some(cg_core::Span { from: 0.0, to: 8.0 });
+        }
+        let mut state = ChannelState::default();
+        state
+            .apply(
+                &project,
+                Command::Take {
+                    zone: None,
+                    layer: Some(50),
+                    template_id: "credits".into(),
+                    data: None,
+                    rundown_id: None,
+                },
+            )
+            .unwrap();
+        let mut r = Renderer::new(std::env::temp_dir().join("cg-render-test-assets"));
+        let alpha = |f: &Frame| f.data[(100 * 1920 + 200) * 4 + 3];
+        for _ in 0..5 {
+            state.tick(1.0);
+        }
+        let f = r.render_channel(&project, &state, OUT, "UTC");
+        assert!(alpha(&f) > 0, "shown at frame 5");
+        // Held at its pause (frame 12): gone.
+        for _ in 0..20 {
+            state.tick(1.0);
+        }
+        let f = r.render_channel(&project, &state, OUT, "UTC");
+        assert_eq!(alpha(&f), 0, "gone after frame 8");
     }
 
     #[test]

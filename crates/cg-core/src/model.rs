@@ -814,6 +814,24 @@ pub struct Layer {
     /// air, by data key (set at its port in the Data canvas); none = at once.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub live_changes: BTreeMap<String, LiveChange>,
+    /// When the layer is shown, in frames of the template's timeline (its
+    /// bar in the Designer's timeline); none = all along.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<Span>,
+}
+
+/// A stretch of a template's timeline: from (shown) to (gone), in frames.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Span {
+    pub from: f64,
+    pub to: f64,
+}
+
+impl Layer {
+    /// Shown at `frame` of its template: visible, and within its span.
+    pub fn shown_at(&self, frame: f64) -> bool {
+        self.visible && self.span.is_none_or(|s| frame >= s.from && frame < s.to)
+    }
 }
 
 /// How a layer shows a new value of its data on air.

@@ -264,6 +264,7 @@ export const designer: Record<string, string> = {
   'Hyphenation rules and French spaces of every text of the project': 'Règles de césure et espaces à la française de tous les textes du projet',
   'Language of the texts': 'Langue des textes',
   'Main resolution': 'Résolution principale',
+  'Drag to start it later; its ends set when it is shown': 'Glisser pour le faire commencer plus tard ; ses bords règlent quand il est visible',
   // The canvas's zoom (toolbar).
   'Fit the picture in the canvas': 'Ajuster l’image au canevas',
   'Fit the picture in the canvas, and again when the panels are resized': 'Ajuster l’image au canevas, et à nouveau quand les panneaux changent de taille',

@@ -380,6 +380,8 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
   const moving = motion?.layers.get(layer.id);
   // The old values' pass of a value sliding or turning over: only the layers showing it.
   if (motion?.old && !moving && layer.type !== 'group') return null;
+  // Outside its span on the timeline: not shown (mirror of model::Layer::shown_at).
+  if (layer.span && !(frame >= layer.span.from && frame < layer.span.to)) return null;
   const self = layer;
   const { style, text, src, squeeze = 1, fit } = layerStyle(layer, frame, data, hold, logic);
   const tf = moving ? valueTransform(moving[0], moving[1], motion!.old, typeof style.height === 'number' ? style.height : 0) : '';
@@ -450,7 +452,7 @@ function framedLayers(layers: Layer[], childrenOf: Map<string | null, Layer[]>, 
   const visit = (l: Layer): boolean => {
     if (seen.has(l.id)) return out.has(l.id);
     seen.add(l.id);
-    let on = l.type === 'pen' || (l.type === 'group' && l.lottie !== undefined) || targets.has(l.id) || Object.values(l.tracks ?? {}).some((t) => (t?.length ?? 0) > 0);
+    let on = l.type === 'pen' || (l.type === 'group' && l.lottie !== undefined) || targets.has(l.id) || !!l.span || Object.values(l.tracks ?? {}).some((t) => (t?.length ?? 0) > 0);
     for (const k of childrenOf.get(l.id) ?? []) on = visit(k) || on;
     if (on) out.add(l.id);
     return on;

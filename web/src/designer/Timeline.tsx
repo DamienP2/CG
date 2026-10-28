@@ -235,6 +235,55 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     window.addEventListener('pointerup', up);
   };
 
+  /** A layer's bar: its ends set when it is shown (`from`, `to`), the bar itself moves it in time, its keyframes and its children's with it. */
+  const dragSpan = (e: React.PointerEvent, layerId: string, mode: 'move' | 'from' | 'to') => {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    const s = useDesigner.getState();
+    const base = s.template!;
+    const layer = findLayer(base, layerId);
+    if (!layer || layer.locked) return;
+    if (!s.selected.includes(layerId)) s.select([layerId]);
+    const full = { from: 0, to: base.duration };
+    const span0 = layer.span ?? full;
+    const ids = [layerId, ...(mode === 'move' ? descendants(base, layerId) : [])];
+    // Moving: every keyframe stays within the template (the bar is cut at its ends).
+    const keys = ids.flatMap((id) => Object.values(findLayer(base, id)?.tracks ?? {}).flatMap((tr) => (tr ?? []).map((k) => k.frame)));
+    const lo = Math.min(span0.to - 1, ...keys);
+    const hi = Math.max(span0.from + 1, ...keys);
+    const startX = e.clientX;
+    let last = 0;
+    useDesigner.setState({ lastCoalesce: null });
+    const move = (ev: PointerEvent) => {
+      let delta = Math.round((ev.clientX - startX) / zoom);
+      if (mode === 'move') delta = Math.max(-lo, Math.min(base.duration - hi, delta));
+      if (delta === last) return;
+      last = delta;
+      useDesigner.getState().update((t) => {
+        const set = (id: string, span: { from: number; to: number } | undefined) => {
+          const l = findLayer(t, id)!;
+          if (!span || (span.from <= 0 && span.to >= t.duration)) delete l.span;
+          else l.span = span;
+        };
+        if (mode === 'from') return set(layerId, { from: Math.max(0, Math.min(span0.to - 1, span0.from + delta)), to: span0.to });
+        if (mode === 'to') return set(layerId, { from: span0.from, to: Math.max(span0.from + 1, Math.min(base.duration, span0.to + delta)) });
+        for (const id of ids) {
+          const was = findLayer(base, id)!;
+          const l = findLayer(t, id)!;
+          const sp = was.span ?? (id === layerId ? span0 : undefined);
+          if (sp) set(id, { from: Math.max(0, sp.from + delta), to: Math.min(t.duration, sp.to + delta) });
+          for (const [p, tr] of Object.entries(was.tracks)) if (tr) l.tracks[p as Prop] = tr.map((k) => ({ ...k, frame: k.frame + delta }));
+        }
+      }, 'span-drag');
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // A marker moves by dragging (its time shows meanwhile); a click edits it.
   const dragMarker = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
@@ -487,7 +536,15 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     for (const p of animated) for (const k of layer.tracks[p]!) allFrames.set(k.frame, k);
     body.push(
       <div key={layer.id} className={`tl-row layer ${isSel ? 'selected' : ''}`}>
-        <div className="tl-bar" style={{ width: template.duration * zoom }} />
+        {(() => {
+          const sp = layer.span ?? { from: 0, to: template.duration };
+          return (
+            <div className={`tl-bar ${layer.locked ? 'locked' : ''}`} style={{ left: sp.from * zoom, width: (sp.to - sp.from) * zoom }} title={t('Drag to start it later; its ends set when it is shown')} onPointerDown={(e) => dragSpan(e, layer.id, 'move')}>
+              <span className="tl-bar-end from" onPointerDown={(e) => dragSpan(e, layer.id, 'from')} />
+              <span className="tl-bar-end to" onPointerDown={(e) => dragSpan(e, layer.id, 'to')} />
+            </div>
+          );
+        })()}
         {!open && [...allFrames.values()].map((k) => diamond({ layerId: layer.id, prop: 'x', frame: k.frame }, k, true))}
       </div>,
     );

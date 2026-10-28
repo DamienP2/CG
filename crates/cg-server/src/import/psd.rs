@@ -2172,6 +2172,7 @@ fn layer(name: &str, kind: LayerKind) -> Layer {
         setting_bindings: BTreeMap::new(),
         overrides: BTreeMap::new(),
         live_changes: BTreeMap::new(),
+        span: None,
     }
 }
 

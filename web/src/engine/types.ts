@@ -105,6 +105,8 @@ export type Layer = LayerKind & {
   dropShadow?: boolean;
   /** How a new value of the data it shows (a source, a data set) shows on air, by data key (set at its port in the Data canvas); none = at once. */
   liveChanges?: Record<string, LiveChange>;
+  /** When the layer is shown, in frames of the template's timeline (its bar in the timeline); none = all along. */
+  span?: { from: number; to: number };
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
