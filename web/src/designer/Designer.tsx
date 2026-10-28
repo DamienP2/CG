@@ -9,6 +9,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
 import { LockOverlay, TopPublish, useEditLock } from './Collab';
 import { Stage, StageZoom } from './Stage';
+import { PasteDialog } from './PasteDialog';
 import { Timeline } from './Timeline';
 import { clearSelectedKeys, copyLayers, cutLayers, pasteClipboard } from './clipboard';
 import { useZoneEdit, ZonesPanel } from './ZoneEditor';
@@ -571,6 +572,7 @@ export const Designer = memo(function Designer() {
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
       <DataCanvas />
       <TableEditor />
+      <PasteDialog />
     </div>
   );
 });

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Prop } from '../engine/types';
 import { t } from '../i18n';
-import { animatedProps, clearKeyframes, copyAnimation, copyLayers, cutLayers, pasteAnimation, pasteAnimationOnRow, pasteLayers, rowMapping, useClipboard } from './clipboard';
+import { animatedProps, clearKeyframes, copyAll, copyAnimation, copyLayers, cutLayers, pasteAnimationOnRow, pasteLayers, rowMapping, useClipboard } from './clipboard';
 import { descendants, duplicateLayers, findLayer, useDesigner } from './designerStore';
 import { moveLayer } from './LayersPanel';
 
@@ -91,13 +91,27 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
           <div className="menu-sep" />
         </>
       )}
-      <button disabled={!rowAnimated} title={rowAnimated ? undefined : t('No keyframes here')} onClick={run(() => copyAnimation(layer.id, at.row?.props, at.row?.label))}>
-        <ClipboardCopy size={13} /> {at.row ? t('Copy the animation of {prop}', { prop: t(at.row.label) }) : t('Copy the animation')}
-      </button>
-      <button disabled={ro || !fits} title={anim && !fits ? t('This animation does not fit this property') : undefined} onClick={run(() => (at.row ? pasteAnimationOnRow(layer.id, at.row.props) : pasteAnimation(targets)))}>
-        <ClipboardPaste size={13} /> {t('Paste the animation')}
-        {anim && <em>{anim.label}</em>}
-      </button>
+      {at.row ? (
+        <>
+          <button disabled={!rowAnimated} title={rowAnimated ? undefined : t('No keyframes here')} onClick={run(() => copyAnimation(layer.id, at.row?.props, at.row?.label))}>
+            <ClipboardCopy size={13} /> {t('Copy the animation of {prop}', { prop: t(at.row.label) })}
+          </button>
+          <button disabled={ro || !fits} title={anim && !fits ? t('This animation does not fit this property') : undefined} onClick={run(() => pasteAnimationOnRow(layer.id, at.row!.props))}>
+            <ClipboardPaste size={13} /> {t('Paste the animation')}
+            {anim && <em>{anim.label}</em>}
+          </button>
+        </>
+      ) : (
+        <>
+          <button onClick={run(() => copyAll(layer.id))}>
+            <ClipboardCopy size={13} /> {t('Copy all (values and animation)')}
+          </button>
+          <button disabled={ro || !clip.all} onClick={run(() => useClipboard.setState({ pasting: targets }))}>
+            <ClipboardPaste size={13} /> {t('Paste…')}
+            {clip.all && <em>{clip.all.label}</em>}
+          </button>
+        </>
+      )}
       <button
         disabled={ro || (at.row ? !rowAnimated : !targets.some((id) => st.template && animatedProps(findLayer(st.template, id)!).length))}
         onClick={run(() =>

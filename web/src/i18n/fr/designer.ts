@@ -264,6 +264,18 @@ export const designer: Record<string, string> = {
   'Hyphenation rules and French spaces of every text of the project': 'Règles de césure et espaces à la française de tous les textes du projet',
   'Language of the texts': 'Langue des textes',
   'Main resolution': 'Résolution principale',
+  // Timeline › Copy all, then Paste… (choose what to take).
+  'Copy all (values and animation)': 'Tout copier (valeurs et animation)',
+  'Paste…': 'Coller…',
+  'Paste from “{name}”': 'Coller depuis « {name} »',
+  'When it is shown (timeline bar)': 'Moment où il est visible (barre de la timeline)',
+  'Paste': 'Coller',
+  'Copy all (values and animation), to paste on another layer': 'Tout copier (valeurs et animation), pour le coller sur un autre calque',
+  'Paste from “{name}”…': 'Coller depuis « {name} »…',
+  '“{name}” copied: paste on another layer to choose what to take': '« {name} » copié : collez-le sur un autre calque pour choisir ce que vous reprenez',
+  'Pasted on {n} layer': 'Collé sur {n} calque',
+  'Pasted on {n} layers': 'Collé sur {n} calques',
+  'Select the layers to paste on': 'Sélectionnez les calques sur lesquels coller',
   'Drag to start it later; its ends set when it is shown': 'Glisser pour le faire commencer plus tard ; ses bords règlent quand il est visible',
   // The canvas's zoom (toolbar).
   'Fit the picture in the canvas': 'Ajuster l’image au canevas',

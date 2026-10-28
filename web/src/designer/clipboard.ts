@@ -5,13 +5,13 @@ import { create } from 'zustand';
 import { newId, num, propValue } from '../engine/evaluate';
 import { forgetKeys } from '../engine/settings';
 import { setOnTimeline } from '../engine/timelineProps';
-import { COLOR_PROPS, PROPS, TEXT_LIKE, type Field, type Keyframe, type Layer, type Prop, type Template } from '../engine/types';
+import { COLOR_PROPS, PROPS, TEXT_LIKE, type Field, type Keyframe, type Layer, type Prop, type Template, type Value } from '../engine/types';
 import { useData } from '../data/dataStore';
 import { useApp } from '../store';
 import { widgetOf } from '../widgets';
 import { t, tn } from '../i18n';
 import { PROP_LABELS } from './Inspector';
-import { descendants, findLayer, useDesigner } from './designerStore';
+import { descendants, findLayer, setProp, useDesigner } from './designerStore';
 import { confirmDialog } from '../ui/dialogs';
 
 /** Copied layers, with their children, as saved (all formats). */
@@ -37,14 +37,25 @@ export interface AnimClip {
   label: string;
 }
 
+/** Everything of a layer (« Copy all »): its values at the playhead, its keyframes, its span; pasted as chosen (PasteDialog). */
+export interface AllClip {
+  values: Partial<Record<Prop, Value>>;
+  tracks: Partial<Record<Prop, Keyframe[]>>;
+  span?: { from: number; to: number };
+  label: string;
+}
+
 interface ClipboardState {
   layers: LayersClip | null;
   animation: AnimClip | null;
+  all: AllClip | null;
+  /** The layers « Paste… » is choosing what to paste on (PasteDialog open). */
+  pasting: string[] | null;
   /** What Ctrl+V pastes. */
-  last: 'layers' | 'animation' | null;
+  last: 'layers' | 'animation' | 'all' | null;
 }
 
-export const useClipboard = create<ClipboardState>(() => ({ layers: null, animation: null, last: null }));
+export const useClipboard = create<ClipboardState>(() => ({ layers: null, animation: null, all: null, pasting: null, last: null }));
 
 const toast = (m: string, kind: 'info' | 'error' = 'info') => useApp.getState().toast(m, kind);
 const propName = (p: Prop) => t(PROP_LABELS[p] ?? p);
@@ -139,6 +150,71 @@ export function pasteAnimationOnRow(layerId: string, props: Prop[]) {
     const l = findLayer(tpl, layerId);
     if (l) applyTracks(l, pairs, clip);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Copy all, paste as chosen
+
+/** The values « Paste… » offers, by group. */
+export const PASTE_GROUPS: { id: string; label: string; props: Prop[] }[] = [
+  { id: 'position', label: 'Position', props: ['x', 'y'] },
+  { id: 'size', label: 'Size', props: ['width', 'height'] },
+  { id: 'scale', label: 'Scale', props: ['scaleX', 'scaleY'] },
+  { id: 'rotation', label: 'Rotation', props: ['rotation'] },
+  { id: 'opacity', label: 'Opacity', props: ['opacity'] },
+  { id: 'anchor', label: 'Anchor', props: ['anchorX', 'anchorY'] },
+  { id: 'crop', label: 'Reveal mask', props: ['cropLeft', 'cropRight', 'cropTop', 'cropBottom'] },
+  { id: 'colours', label: 'Colours', props: ['fill', 'fill2', 'stroke', 'strokeWidth'] },
+  { id: 'corners', label: 'Corners', props: ['cornerRadius', 'cornerTl', 'cornerTr', 'cornerBr', 'cornerBl'] },
+  { id: 'text', label: 'Text size and spacing', props: ['fontSize', 'letterSpacing'] },
+];
+
+/** Copies everything of a layer: its values at the playhead, its keyframes and its span. */
+export function copyAll(layerId: string) {
+  const st = useDesigner.getState();
+  const l = st.template && findLayer(st.template, layerId);
+  if (!l) return;
+  const values: AllClip['values'] = {};
+  for (const g of PASTE_GROUPS) for (const p of g.props) if (layerHasProp(l, p)) values[p] = structuredClone(propValue(l, p, st.frame));
+  const tracks: AllClip['tracks'] = {};
+  for (const p of animatedProps(l)) tracks[p] = structuredClone(l.tracks[p]!);
+  useClipboard.setState({ all: { values, tracks, span: l.span ? { ...l.span } : undefined, label: l.name }, last: 'all' });
+  toast(t('“{name}” copied: paste on another layer to choose what to take', { name: l.name }));
+}
+
+/** What « Paste… » can paste on these layers: the value groups both sides have, the animation, the span. */
+export function pasteChoices(clip: AllClip, targets: Layer[]) {
+  const has = (p: Prop) => clip.values[p] !== undefined && targets.some((l) => layerHasProp(l, p));
+  const animated = (Object.keys(clip.tracks) as Prop[]).filter((p) => targets.some((l) => layerHasProp(l, p)));
+  return { groups: PASTE_GROUPS.filter((g) => g.props.some(has)), animated, span: !!clip.span };
+}
+
+/** Pastes on layers what was chosen: value groups, then the animation (its keyframes win), then the span. */
+export function pasteAll(layerIds: string[], chosen: { groups: string[]; animation: boolean; span: boolean }) {
+  const st = useDesigner.getState();
+  const clip = useClipboard.getState().all;
+  if (!clip || !st.template || st.readOnly) return;
+  const props = PASTE_GROUPS.filter((g) => chosen.groups.includes(g.id)).flatMap((g) => g.props);
+  st.update((tpl) => {
+    for (const id of layerIds) {
+      const l = findLayer(tpl, id);
+      if (!l || l.locked) continue;
+      for (const p of props) if (clip.values[p] !== undefined && layerHasProp(l, p)) setProp(l, p, structuredClone(clip.values[p]!), st.frame);
+      if (chosen.animation) {
+        const ps = (Object.keys(clip.tracks) as Prop[]).filter((p) => layerHasProp(l, p));
+        applyTracks(
+          l,
+          ps.map((p) => [p, p]),
+          { tracks: clip.tracks, props: ps, scope: 'layer', label: clip.label },
+        );
+      }
+      if (chosen.span) {
+        if (clip.span) l.span = { ...clip.span };
+        else delete l.span;
+      }
+    }
+  });
+  toast(tn(layerIds.length, 'Pasted on {n} layer', 'Pasted on {n} layers'));
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +402,11 @@ export function pasteClipboard() {
   if (c.last === 'animation' && c.animation) {
     if (st.selected.length) return pasteAnimation(st.selected);
     if (!c.layers) return toast(t('Select the layers to paste the animation on'), 'error');
+  }
+  // « Copy all »: what to paste is chosen (PasteDialog).
+  if (c.last === 'all' && c.all) {
+    if (st.selected.length) return useClipboard.setState({ pasting: [...st.selected] });
+    if (!c.layers) return toast(t('Select the layers to paste on'), 'error');
   }
   if (c.layers) pasteLayers();
 }

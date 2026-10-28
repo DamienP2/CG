@@ -19411,3 +19411,18 @@ a.opx-html5 {
   height: 1px;
   margin-top: -0.5px;
 }
+
+/* « Paste… » after « Copy all »: what to take from the copied layer. */
+.paste-dialog {
+  width: 420px;
+}
+.paste-list {
+  display: grid;
+  gap: 8px;
+}
+.paste-list .set-label {
+  margin-top: 4px;
+}
+.paste-list .check .muted {
+  margin-left: 6px;
+}

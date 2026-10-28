@@ -49,7 +49,7 @@ import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKey
 import { PROP_LABELS } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
-import { clearKeyframes, clearSelectedKeys, copyAnimation, pasteAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
+import { clearKeyframes, clearSelectedKeys, copyAll, copyAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
 import { t, tc, tn } from '../i18n';
 
@@ -120,6 +120,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   // Right-click menu of a row: copy / paste layers and animations.
   const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
   const animClip = useClipboard((c) => c.animation);
+  const allClip = useClipboard((c) => c.all);
   const st = useDesigner();
   const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -490,13 +491,11 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         )}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
         <span className="row-actions">
-          {animated.length > 0 && (
-            <button className="tl-anim" title={t('Copy the animation (keyframes of all its properties), to paste it on another layer')} onClick={(e) => (e.stopPropagation(), copyAnimation(layer.id))}>
-              <ClipboardCopy size={12} />
-            </button>
-          )}
-          {animClip && (
-            <button className="tl-anim" title={t('Paste the animation of {what}', { what: animClip.label })} onClick={(e) => (e.stopPropagation(), pasteAnimation(isSel ? selected : [layer.id]))}>
+          <button className="tl-anim" title={t('Copy all (values and animation), to paste on another layer')} onClick={(e) => (e.stopPropagation(), copyAll(layer.id))}>
+            <ClipboardCopy size={12} />
+          </button>
+          {allClip && (
+            <button className="tl-anim" title={t('Paste from “{name}”…', { name: allClip.label })} onClick={(e) => (e.stopPropagation(), useClipboard.setState({ pasting: isSel ? selected : [layer.id] }))}>
               <ClipboardPaste size={12} />
             </button>
           )}
