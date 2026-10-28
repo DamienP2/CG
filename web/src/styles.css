@@ -19426,3 +19426,16 @@ a.opx-html5 {
 .paste-list .check .muted {
   margin-left: 6px;
 }
+
+/* Display › Other templates: the ones shown faint under the open template. */
+.ux2-ghosts {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow: auto;
+}
+.ux2-ghost-op input[type='range'] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}

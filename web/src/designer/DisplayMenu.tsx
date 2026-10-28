@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronRight, Contrast, Eye, LayoutGrid, PanelLeft, PanelRight, Ruler, Settings2, ShieldCheck, SquareDashed } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Contrast, Eye, Layers, LayoutGrid, PanelLeft, PanelRight, Ruler, Settings2, ShieldCheck, SquareDashed } from 'lucide-react';
 import { inputMessage, useInputs, useLiveFrame, type InputInfo } from '../engine/liveInputs';
 import { useEffect, useState } from 'react';
 import type { Project } from '../engine/types';
@@ -6,6 +6,8 @@ import { Segmented } from '../ui/fields';
 import { t } from '../i18n';
 import { useDesigner } from './designerStore';
 import { GuidesSettings, SafeSettings, STAGE_VIEWS, useGuidesView } from './Guides';
+import { useGhosts } from './ghosts';
+import { designTemplates } from '../engine/drafts';
 
 /*
  * The Designer toolbar's "Display" menu: zones, guides, safe areas (each
@@ -21,7 +23,7 @@ const BACKGROUNDS: { id: StageBackground; label: string }[] = [
   { id: 'video', label: 'video' },
 ];
 
-type Sub = 'zones' | 'guides' | 'safe' | null;
+type Sub = 'zones' | 'guides' | 'safe' | 'ghosts' | null;
 
 export function DisplayMenu({
   project,
@@ -50,6 +52,7 @@ export function DisplayMenu({
   onLayout: (side: 'leftFull' | 'rightFull', on: boolean) => void;
 }) {
   const view = useGuidesView();
+  const ghosts = useGhosts();
   const current = useDesigner((s) => s.template?.zone);
   const [open, setOpen] = useState<{ left: number; top: number } | null>(null);
   const [sub, setSub] = useState<Sub>(null);
@@ -134,6 +137,7 @@ export function DisplayMenu({
               <span>{t('Widget frames')}</span>
             </button>
           </div>
+          {row('ghosts', ghosts.on, () => ghosts.set({ on: !ghosts.on }), <Layers size={13} />, t('Other templates'), <GhostSettings project={project} />)}
           {row('guides', view.guides, () => view.set({ guides: !view.guides }), <Ruler size={13} />, t('Guides'), <GuidesSettings />)}
           {row('safe', view.safe, () => view.set({ safe: !view.safe, editSafe: false }), <ShieldCheck size={13} />, t('Safe area'), <SafeSettings project={project} />)}
           <div className="menu-sep" />
@@ -163,6 +167,40 @@ export function DisplayMenu({
         </div>
       )}
     </div>
+  );
+}
+
+/** Which other templates show faint under the open one (all, or some), and how faint. */
+function GhostSettings({ project }: { project: Project }) {
+  const ghosts = useGhosts();
+  const open = useDesigner((s) => s.template?.id);
+  const others = designTemplates(project).filter((tpl) => tpl.id !== open);
+  const all = ghosts.ids === null;
+  const shown = (id: string) => all || ghosts.ids!.includes(id);
+  const toggle = (id: string) => {
+    const ids = all ? others.map((o) => o.id) : ghosts.ids!;
+    ghosts.set({ on: true, ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] });
+  };
+  return (
+    <>
+      <div className="ux2-ghosts">
+        <button className="ux2-dcheck" role="menuitemcheckbox" aria-checked={all} onClick={() => ghosts.set({ on: true, ids: all ? [] : null })}>
+          <span className={`ux2-ck ${all ? 'on' : ''}`}>{all && <Check size={11} />}</span>
+          <span>{t('All')}</span>
+        </button>
+        {others.map((o) => (
+          <button key={o.id} className="ux2-dcheck" role="menuitemcheckbox" aria-checked={shown(o.id)} onClick={() => toggle(o.id)}>
+            <span className={`ux2-ck ${shown(o.id) ? 'on' : ''}`}>{shown(o.id) && <Check size={11} />}</span>
+            <span>{o.name}</span>
+          </button>
+        ))}
+      </div>
+      <label className="ux2-dline ux2-ghost-op">
+        <span>{t('Opacity')}</span>
+        <input type="range" min={0.1} max={0.8} step={0.05} value={ghosts.opacity} onChange={(e) => ghosts.set({ opacity: +e.target.value })} />
+        <span className="fit-val">{Math.round(ghosts.opacity * 100)} %</span>
+      </label>
+    </>
   );
 }
 

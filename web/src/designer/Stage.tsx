@@ -18,6 +18,7 @@ import { useBoundData } from '../data/dataStore';
 import { snapTargets, StageGuides, stageViewStyle, useGuidesView, useProjectGuides } from './Guides';
 import { t, tn } from '../i18n';
 import { useLiveFrame } from '../engine/liveInputs';
+import { useGhosts } from './ghosts';
 
 interface Box {
   id: string;
@@ -119,6 +120,12 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const [guides] = useProjectGuides(_project);
   const view = useGuidesView();
   const zonesEdit = useZoneEdit((s) => s.on);
+  // The other templates shown faint under this one.
+  const ghostPick = useGhosts();
+  const zoneById = new Map(_project.zones.map((z) => [z.id, z]));
+  const ghostTemplates = template && ghostPick.on ? designTemplates(_project).filter((tpl) => tpl.id !== template.id && (ghostPick.ids === null || ghostPick.ids.includes(tpl.id))) : [];
+  const ghostOn = ghostTemplates.length > 0;
+  const ghostOpacity = ghostPick.opacity;
   const snapRef = useRef({ on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) });
   snapRef.current = { on: view.snap, targets: snapTargets(guides, project.width, project.height, view.safe) };
 
@@ -436,6 +443,19 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
             {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
             <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
+              {/* The other templates picked (Display › Other templates), faint, under it: to arrange it against them. */}
+              {!zonesEdit && ghostOn && (
+                <div className="stage-ghosts" style={{ position: 'absolute', inset: 0, opacity: ghostOpacity, pointerEvents: 'none', filter: shown.filter }} aria-hidden>
+                  {ghostTemplates.map((tpl) => {
+                    const z = zoneById.get(tpl.zone);
+                    return (
+                      <div key={tpl.id} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, project.height > project.width)) }}>
+                        <OverviewScene template={tpl} format={format} ticking={false} fps={fps} lang={_project.language || 'fr'} />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {/* While the zones are edited: the zones alone, no graphic. */}
               {!zonesEdit && (
                 <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
