@@ -10,3 +10,6 @@ if [ "${1:-}" = "--purge" ]; then
   userdel strata 2>/dev/null || true
 fi
 echo "Strata Graphics removed."
+if dpkg -s desktopvideo >/dev/null 2>&1; then
+  echo "The DeckLink driver stays (Blackmagic Desktop Video): sudo apt remove desktopvideo to remove it."
+fi

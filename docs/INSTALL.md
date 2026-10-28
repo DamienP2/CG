@@ -43,10 +43,30 @@ Désinstallation : **Applications ▸ Strata Graphics ▸ Désinstaller Strata G
 
 ```bash
 tar xzf Strata-*-ubuntu-x64.tar.gz && cd Strata-*/
-sudo ./install.sh                      # options : --bind 0.0.0.0:80 --data-dir /srv/strata
+sudo ./install.sh
 ```
+L'installateur pose ses questions au fur et à mesure (en français si la langue du système l'est) :
+1. le **port** de l'interface web (8080 par défaut ; une mise à jour garde le port et le dossier de données) ;
+2. le **runtime NDI** : il télécharge le SDK NDI pour Linux (licence de Vizrt NDI AB à accepter), installe `libndi` dans `/opt/strata/lib` et Avahi (découverte des sources NDI) ;
+3. le **pilote des cartes DeckLink** (Blackmagic Desktop Video), proposé quand une carte Blackmagic est détectée. Blackmagic demande un enregistrement pour le télécharger : récupérez « Desktop Video » pour Linux sur https://www.blackmagicdesign.com/support/family/capture-and-playback, puis donnez le chemin de l'archive. L'installateur ajoute DKMS et les en-têtes du noyau, installe le pilote et signale si Secure Boot demande de signer le module ou si un firmware est à mettre à jour ;
+4. le **compte administrateur**, quand il n'y en a pas encore.
+
+NDI ou DeckLink s'ajoutent aussi plus tard :
+```bash
+sudo /opt/strata/install.sh ndi
+sudo /opt/strata/install.sh decklink --decklink-driver ~/Blackmagic_Desktop_Video_Linux_14.4.1.tar.gz
+```
+
+Sans questions (déploiement automatisé) :
+```bash
+sudo ./install.sh --yes --bind 0.0.0.0:8080 --data-dir /srv/strata \
+  --ndi --accept-ndi-license \
+  --decklink-driver /tmp/Blackmagic_Desktop_Video_Linux_14.4.1.tar.gz
+```
+Autres options : `--no-ndi`, `--ndi-sdk <fichier>` (SDK NDI déjà téléchargé, pour une machine sans Internet), `--no-decklink`, `--no-admin` ; `./install.sh --help` les liste.
+
 Le binaire est copié dans `/opt/strata` (lien `/usr/local/bin/strata-server`) ; le service tourne sous l'utilisateur `strata`, en priorité élevée (`Nice=-10`), et peut écouter sur un port < 1024.
-Désinstallation : `sudo ./uninstall.sh` (`--purge` pour supprimer aussi les données).
+Désinstallation : `sudo /opt/strata/uninstall.sh` (`--purge` pour supprimer aussi les données). Le pilote Desktop Video reste installé (`sudo apt remove desktopvideo` pour l'enlever).
 
 ## Archives sans installateur (macOS / Windows)
 
@@ -178,7 +198,8 @@ Le dossier utilisateur par défaut est `~/.local/share/stratagraphics` (Linux), 
 ## Notes pour la production broadcast
 
 - **ST 2110** : la machine doit être synchronisée en PTP. Sous Linux, utilisez `ptp4l` + `phc2sys`. Sous Windows Server 2019 ou plus récent, utilisez le service PTP de Windows ou l'agent du fabricant de la carte réseau. Sous macOS, le PTP n'est pas disponible nativement : préférez Linux pour le 2110.
-- **SDI** : installez le pilote Blackmagic Desktop Video. La sortie DeckLink nécessite un binaire compilé avec la feature `decklink` (voir `docs/ARCHITECTURE.md`).
+- **SDI** : installez le pilote Blackmagic Desktop Video (sous Ubuntu : `sudo /opt/strata/install.sh decklink`). La sortie DeckLink nécessite un binaire compilé avec la feature `decklink`, ce que sont les paquets publiés (voir `docs/ARCHITECTURE.md`).
+- **NDI** : sous Ubuntu, `sudo /opt/strata/install.sh ndi` ; les installateurs macOS et Windows embarquent le runtime.
 - **Multicast** : sur une machine qui a plusieurs interfaces, choisissez la carte du réseau média de chaque sortie dans la page **Réglages**.
 - **Mot de passe perdu** : `strata-server user passwd <nom>` sur le serveur.
 
