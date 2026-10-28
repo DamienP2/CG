@@ -8506,7 +8506,7 @@ body.cv-moving * {
 }
 .pjp-sizes {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 4px;
 }
 .pjp-sizes button {
@@ -8800,45 +8800,21 @@ body.cv-moving * {
 .history-pop .pjp-timeline {
   max-height: 420px;
 }
-/* Project block: the format, folded. */
-.pjp-title {
+/* The project's dialog (Designer › project name): the main format, any size (Custom). */
+.pjp-dialog {
+  width: 560px;
+}
+.pjp-dialog textarea {
+  resize: vertical;
+}
+.pjp-custom {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 6px;
 }
-.pjp-title .pjp-name {
-  flex: 1;
-  min-width: 0;
-}
-.pjp-format-sum {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 6px 0 2px;
-  border-radius: 6px;
-  border: 0;
-  background: transparent;
-  color: var(--text-3);
-  font-size: var(--fs-11);
-  font-family: var(--mono);
-}
-.pjp-format-sum .pjp-shape-box {
-  width: 16px;
-  height: 16px;
-  transform: scale(0.7);
-}
-.pjp-format-sum:hover,
-.pjp-format-sum.open {
-  color: var(--text);
-  background: var(--panel-2);
-}
-.pjp-format-sum svg {
-  transition: transform 0.15s;
-}
-.pjp-format-sum.open svg {
-  transform: rotate(180deg);
+.pjp-custom > :not(span) {
+  width: 110px;
 }
 .tpl-publish-row {
   padding: 10px 12px;
@@ -10107,18 +10083,6 @@ body.cv-moving * {
 .font-sample {
   font-size: 18px;
   min-width: 220px;
-}
-.pjp-lang {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-2);
-  margin-top: 6px;
-}
-.pjp-lang select {
-  width: 120px;
 }
 
 /* ---- Properties: one grid for every row (◆ · label · fields · exposed), fields 6 digits wide ---- */

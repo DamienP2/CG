@@ -31,7 +31,6 @@ const AsRun = lazy(() => import('./pages/AsRun').then((m) => ({ default: m.AsRun
 const Hardware = lazy(() => import('./hardware/Hardware').then((m) => ({ default: m.Hardware })));
 const Users = lazy(() => import('./pages/Users').then((m) => ({ default: m.Users })));
 const DataPage = lazy(() => import('./data/DataPage').then((m) => ({ default: m.DataPage })));
-const ProjectSettings = lazy(() => import('./pages/ProjectPages').then((m) => ({ default: m.ProjectSettings })));
 const Settings = lazy(() => import('./settings/Settings').then((m) => ({ default: m.Settings })));
 const Social = lazy(() => import('./social/Social').then((m) => ({ default: m.Social })));
 
@@ -259,7 +258,6 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
   else if (sub === 'social') page = <Social key={projectId} projectId={projectId} />;
   else if (sub === 'data') page = <DataPage key={projectId} projectId={projectId} />;
   else if (sub === 'media') page = <MediaLibrary key={projectId} projectId={projectId} />;
-  else if (sub === 'settings') page = <ProjectSettings project={summary ?? { ...project, description: project.description ?? '' }} />;
   else {
     // Without an output of this project, the operator still prepares and previews.
     const own = operated && operated.projectId === projectId ? operated.id : null;
@@ -281,7 +279,6 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           {tab('social', <MessagesSquare size={14} />, t('Social'))}
           {tab('data', <Database size={14} />, t('Data'))}
           {tab('media', <Images size={14} />, t('Assets'))}
-          {tab('settings', <SettingsIcon size={14} />, t('Settings'))}
         </div>
         <div className="spacer" />
         {/* Filled by the page (the Designer's undo, redo and history). */}

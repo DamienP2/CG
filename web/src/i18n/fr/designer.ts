@@ -263,6 +263,8 @@ export const designer: Record<string, string> = {
   'Format of the project': 'Format du projet',
   'Hyphenation rules and French spaces of every text of the project': 'Règles de césure et espaces à la française de tous les textes du projet',
   'Language of the texts': 'Langue des textes',
+  'Main resolution': 'Résolution principale',
+  'resolution|Custom': 'Personnalisée',
   French: 'Français',
   English: 'Anglais',
   German: 'Allemand',

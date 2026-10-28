@@ -1,17 +1,19 @@
 import { HYPHEN_LANGS } from '../engine/textFit';
 import { Dropdown } from '../ui/Dropdown';
-import { ChevronDown, History, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { History, MoreHorizontal, Pencil, Plus, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../engine/types';
 import { api, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
+import { NumberField } from '../ui/fields';
 import { useDesigner } from './designerStore';
 import { draftOf } from '../engine/drafts';
-import { locale, t, tn } from '../i18n';
+import { locale, t, tc, tn } from '../i18n';
 
 /*
- * Left panel, above the templates: the project — its name and format (its
- * autosave state and Publish are in the top bar, TopPublish). The history of versions
+ * Left panel, above the templates: the project — its name, which opens its
+ * settings (name, description, main format, texts' language) in a dialog
+ * (its autosave state and Publish are in the top bar, TopPublish). The history of versions
  * (kept at each publish, or by hand) with restore is in the top bar
  * (ProjectHistory).
  */
@@ -48,24 +50,35 @@ function Shape({ width, height }: { width: number; height: number }) {
   return <span className="pjp-shape" style={{ width: Math.round(width * k), height: Math.round(height * k) }} />;
 }
 
-/** The picture size, by its shape, and the frame rate, as buttons. */
+/** The picture size, by its shape (or any other: Custom), and the frame rate, as buttons. */
 export function FormatButtons({ width, height, rate, disabled, onSize, onRate }: { width: number; height: number; rate: Project['frameRate']; disabled?: boolean; onSize: (w: number, h: number) => void; onRate: (r: Project['frameRate']) => void }) {
+  const preset = SIZES.some((f) => f.width === width && f.height === height);
+  const [custom, setCustom] = useState(!preset);
   return (
     <div className="pjp-format">
       <div className="pjp-sizes">
         {SIZES.map((f) => (
-          <button key={f.label} className={f.width === width && f.height === height ? 'on' : ''} title={t(f.title)} disabled={disabled} type="button" onClick={() => onSize(f.width, f.height)}>
+          <button key={f.label} className={!custom && f.width === width && f.height === height ? 'on' : ''} title={t(f.title)} disabled={disabled} type="button" onClick={() => (setCustom(false), onSize(f.width, f.height))}>
             <span className="pjp-shape-box">
               <Shape width={f.width} height={f.height} />
             </span>
             {f.label}
           </button>
         ))}
+        <button className={custom ? 'on' : ''} disabled={disabled} type="button" onClick={() => setCustom(true)}>
+          <span className="pjp-shape-box">
+            <MoreHorizontal size={16} />
+          </span>
+          {tc('resolution', 'Custom')}
+        </button>
       </div>
-      {!SIZES.some((f) => f.width === width && f.height === height) && (
-        <span className="muted small">
-          {width}×{height}
-        </span>
+      {custom && (
+        <div className="pjp-custom">
+          <NumberField value={width} min={16} max={7680} step={2} precision={0} onChange={(w) => onSize(Math.round(w), height)} />
+          <span>×</span>
+          <NumberField value={height} min={16} max={4320} step={2} precision={0} onChange={(h) => onSize(width, Math.round(h))} />
+          <span className="muted">px</span>
+        </div>
       )}
       <div className="pjp-rates" title={t('Frames per second')}>
         {RATES.map((r) => (
@@ -103,64 +116,92 @@ const when = (ms: number) => {
 };
 
 export function ProjectPanel({ project, readOnly }: { project: Project; readOnly: boolean }) {
-  const toast = useApp((s) => s.toast);
-  const [formatOpen, setFormatOpen] = useState(false);
-  const url = `/api/projects/${encodeURIComponent(project.id)}`;
-  const fps = +(project.frameRate.num / project.frameRate.den).toFixed(2);
-
-  const meta = (patch: Partial<{ name: string; width: number; height: number; frameRate: Project['frameRate']; language: string }>) =>
-    api('PUT', url, { name: project.name, description: project.description ?? '', width: project.width, height: project.height, frameRate: project.frameRate, ...patch }).catch((e) => toast((e as Error).message, 'error'));
-
-  const rename = async () => {
-    const name = await promptDialog({ title: t('Rename the project'), label: t('Name'), value: project.name, confirm: t('Rename') });
-    if (name?.trim()) await meta({ name: name.trim() });
-  };
-  const setSize = async (w: number, h: number) => {
-    if (w === project.width && h === project.height) return;
-    if (
-      !(await confirmDialog({
-        title: t('Change the main format to {size}?', { size: `${w}×${h}` }),
-        message: t('The templates keep their positions in pixels: check them afterwards. A version of the project is kept first.'),
-        confirm: t('Change'),
-      }))
-    )
-      return;
-    // Kept in English (like the server's notes): shown translated by noteText.
-    await api('POST', `${url}/versions`, { note: `Before the change to ${w}×${h}` }).catch(() => {});
-    await meta({ width: w, height: h });
-  };
-  const setRate = (rate: Project['frameRate']) => !sameRate(rate, project.frameRate) && meta({ frameRate: rate });
-
+  const [open, setOpen] = useState(false);
   return (
     <section className="project-panel">
       <header>
         <span>{t('Project')}</span>
       </header>
       <div className="pjp-body">
-        <div className="pjp-title">
-          <button className="pjp-name" onClick={rename} disabled={readOnly} title={t('Rename')}>
-            <span>{project.name}</span>
-            <Pencil size={12} />
-          </button>
-          <button className={`pjp-format-sum ${formatOpen ? 'open' : ''}`} onClick={() => setFormatOpen(!formatOpen)} title={t('Format of the project')}>
-            <span className="pjp-shape-box">
-              <Shape width={project.width} height={project.height} />
-            </span>
-            {project.height > project.width ? `${project.width}×${project.height}` : `${project.height}p`} · {fps}
-            <ChevronDown size={11} />
-          </button>
-        </div>
-        {formatOpen && (
-          <>
-            <FormatButtons width={project.width} height={project.height} rate={project.frameRate} disabled={readOnly} onSize={(w, h) => void setSize(w, h)} onRate={(r) => void setRate(r)} />
-            <label className="pjp-lang" title={t('Hyphenation rules and French spaces of every text of the project')}>
-              <span>{t('Language of the texts')}</span>
-              <Dropdown value={project.language ?? 'fr'} options={HYPHEN_LANGS.map(([v, l]) => ({ value: v, label: t(l) }))} onChange={(v) => !readOnly && void meta({ language: v })} />
-            </label>
-          </>
-        )}
+        <button className="pjp-name" onClick={() => setOpen(true)} title={t('Project settings')}>
+          <span>{project.name}</span>
+          <Pencil size={12} />
+        </button>
       </div>
+      {open && <ProjectDialog project={project} readOnly={readOnly} onClose={() => setOpen(false)} />}
     </section>
+  );
+}
+
+/** The project's name, description, main format (resolution and frame rate) and texts' language. */
+function ProjectDialog({ project, readOnly, onClose }: { project: Project; readOnly: boolean; onClose: () => void }) {
+  const toast = useApp((s) => s.toast);
+  const url = `/api/projects/${encodeURIComponent(project.id)}`;
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description ?? '');
+  const [size, setSize] = useState({ width: project.width, height: project.height });
+  const [rate, setRate] = useState(project.frameRate);
+  const [language, setLanguage] = useState(project.language ?? 'fr');
+  const [busy, setBusy] = useState(false);
+  const resized = size.width !== project.width || size.height !== project.height;
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (readOnly || !name.trim()) return;
+    if (resized) {
+      const ok = await confirmDialog({
+        title: t('Change the main format to {size}?', { size: `${size.width}×${size.height}` }),
+        message: t('The templates keep their positions in pixels: check them afterwards. A version of the project is kept first.'),
+        confirm: t('Change'),
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      // Kept in English (like the server's notes): shown translated by noteText.
+      if (resized) await api('POST', `${url}/versions`, { note: `Before the change to ${size.width}×${size.height}` }).catch(() => {});
+      await api('PUT', url, { name: name.trim(), description, width: size.width, height: size.height, frameRate: rate, language });
+      onClose();
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="modal-back" onPointerDown={onClose}>
+      <form className="modal pjp-dialog" onSubmit={save} onPointerDown={(e) => e.stopPropagation()}>
+        <header>
+          <h2>{t('Project')}</h2>
+          <button type="button" className="icon-btn ghost" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <label className="set-field">
+          <span className="set-label">{t('Name')}</span>
+          <input autoFocus value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label className="set-field">
+          <span className="set-label">{t('Description')}</span>
+          <textarea rows={2} value={description} disabled={readOnly} placeholder={t('What this project is for')} onChange={(e) => setDescription(e.target.value)} />
+        </label>
+        <div className="set-field">
+          <span className="set-label">{t('Main resolution')}</span>
+          <FormatButtons width={size.width} height={size.height} rate={rate} disabled={readOnly} onSize={(width, height) => setSize({ width, height })} onRate={setRate} />
+        </div>
+        <div className="set-field">
+          <span className="set-label">{t('Language of the texts')}</span>
+          <Dropdown value={language} options={HYPHEN_LANGS.map(([v, l]) => ({ value: v, label: t(l) }))} onChange={(v) => !readOnly && setLanguage(v)} />
+        </div>
+        <footer>
+          <button type="button" className="btn" onClick={onClose}>
+            {t('Cancel')}
+          </button>
+          <button className="btn primary" disabled={readOnly || busy || !name.trim()}>
+            {t('Save')}
+          </button>
+        </footer>
+      </form>
+    </div>
   );
 }
 

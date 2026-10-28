@@ -1,5 +1,5 @@
 /** Minimal history router. */
-export type ProjectPage = 'designer' | 'operator' | 'social' | 'data' | 'media' | 'settings';
+export type ProjectPage = 'designer' | 'operator' | 'social' | 'data' | 'media';
 
 export type Route =
   | { page: 'projects' }
@@ -28,7 +28,7 @@ export type Route =
   | { page: 'embedPreview' }
   | { page: 'output'; channelId: string | null; rendition: string | null };
 
-const SUBS: ProjectPage[] = ['designer', 'operator', 'social', 'data', 'media', 'settings'];
+const SUBS: ProjectPage[] = ['designer', 'operator', 'social', 'data', 'media'];
 
 export function parseRoute(path = location.pathname): Route {
   const [first, second, third, fourth] = path.split('/').filter(Boolean).map(decodeURIComponent);
