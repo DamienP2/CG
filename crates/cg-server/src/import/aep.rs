@@ -4106,7 +4106,11 @@ mod conv {
     }
 
     fn group(clip: bool) -> LayerKind {
-        LayerKind::Group { clip, lottie: None }
+        LayerKind::Group {
+            clip,
+            lottie: None,
+            mask: None,
+        }
     }
 
     fn set(l: &mut Layer, p: Prop, v: f64) {

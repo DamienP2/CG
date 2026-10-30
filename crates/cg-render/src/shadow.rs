@@ -112,7 +112,7 @@ fn box_columns(src: &[f32], dst: &mut [f32], w: usize, h: usize, radius: usize) 
 }
 
 /// Gaussian blur (three box passes each way) of a `w` × `h` alpha buffer.
-fn blur(alpha: &mut [f32], w: usize, h: usize, sigma: f32) {
+pub(crate) fn blur(alpha: &mut [f32], w: usize, h: usize, sigma: f32) {
     if sigma < 0.3 {
         return;
     }

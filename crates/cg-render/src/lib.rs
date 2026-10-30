@@ -211,6 +211,8 @@ pub struct Renderer {
     root_scale: f32,
     /// Drawing a sprite (no sprite inside one, pictures at their best).
     in_sprite: bool,
+    /// Drawing a mask folder's mask alone (its layer id): only it is drawn among the folder's children.
+    mask_only: Option<String>,
     /// Sprites off: every layer drawn straight (to compare, to measure).
     sprites_on: bool,
 }
@@ -532,6 +534,7 @@ impl Renderer {
             sprites: Default::default(),
             root_scale: 1.0,
             in_sprite: false,
+            mask_only: None,
             sprites_on: true,
         }
     }
@@ -1313,11 +1316,20 @@ impl Renderer {
         if clocked {
             self.steps.clocked += 1;
         }
+        // A mask folder: its mask is not drawn with the others (only when it is drawn alone).
+        let mask_of = parent
+            .and_then(|id| folder_mask(ctx.template, id))
+            .map(|m| m.layer.clone());
         let children: Vec<_> = ctx
             .template
             .layers
             .iter()
             .filter(|l| l.shown_at(ctx.frame) && l.parent.as_deref() == parent)
+            .filter(|l| match &mask_of {
+                Some(m) if self.mask_only.as_deref() == Some(m.as_str()) => &l.id == m,
+                Some(m) => &l.id != m,
+                None => true,
+            })
             .collect();
         for layer in children {
             let mut r = resolve_layer(layer, ctx.frame, ctx.data, ctx.template.hold_frame());
@@ -1375,7 +1387,21 @@ impl Renderer {
             };
             let is_group = matches!(layer.kind, LayerKind::Group { .. });
             let shadowed = layer.drop_shadow && !matches!(layer.kind, LayerKind::Text { .. });
+            // A mask folder: its children drawn through its mask (one step, drawn each frame).
+            let masked = folder_mask(ctx.template, &layer.id).filter(|m| {
+                ctx.template
+                    .layers
+                    .iter()
+                    .any(|l| l.id == m.layer && l.parent.as_deref() == Some(layer.id.as_str()))
+            });
 
+            if planning && masked.is_some() {
+                let outer = self.steps.plan.replace(Vec::new());
+                self.draw_children(pm, ctx, Some(&layer.id), tf, 1.0, None);
+                self.steps.plan = outer;
+                self.plan_step(cache::Motion::Moving);
+                continue;
+            }
             if planning {
                 if shadowed {
                     // The layer and its children are one step (drawn together).
@@ -1432,6 +1458,19 @@ impl Renderer {
                 .filter(|(m, _)| *m != cache::Motion::Moving);
             let own_mask = own_rect.map(|rect| build_mask(pm, mask, rect, tf));
             let m = own_mask.as_ref().or(mask);
+            if let Some(gm) = masked {
+                let child_mask = if clip_children || crop.is_some() {
+                    m
+                } else {
+                    mask
+                };
+                self.steps.whole += 1;
+                if let Some(cut) = self.folder_cut(pm, ctx, &layer.id, tf, gm, child_mask) {
+                    self.draw_children(pm, ctx, Some(&layer.id), tf, opacity, Some(&cut));
+                }
+                self.steps.whole -= 1;
+                continue;
+            }
 
             // A drop shadow (not for a Text: it has its own): the layer and its children drawn
             // alone, their shadow under them, all at the layer's opacity, cut by its crop.
@@ -1935,6 +1974,55 @@ impl Renderer {
             }
         }
         s.at += 1;
+    }
+
+    /// The mask of a mask folder, frame-sized: its mask layer drawn alone,
+    /// read as a shape (or its opacity), softened, turned round when it
+    /// excludes, cut by `parent`.
+    fn folder_cut(
+        &mut self,
+        pm: &Pixmap,
+        ctx: &Ctx,
+        folder: &str,
+        tf: Transform,
+        gm: &cg_core::model::GroupMask,
+        parent: Option<&Mask>,
+    ) -> Option<Mask> {
+        let mut alone = Pixmap::new(pm.width(), pm.height())?;
+        let was = self.mask_only.replace(gm.layer.clone());
+        let in_sprite = std::mem::replace(&mut self.in_sprite, true);
+        self.draw_children(&mut alone, ctx, Some(folder), tf, 1.0, None);
+        self.in_sprite = in_sprite;
+        self.mask_only = was;
+        let (w, h) = (alone.width() as usize, alone.height() as usize);
+        let mut a: Vec<f32> = alone
+            .data()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|p| {
+                let v = p[3] as f32 / 255.0;
+                // Its shape: what it covers, whatever its opacity (its edge stays smooth).
+                if gm.alpha {
+                    v
+                } else {
+                    (v * 4.0).min(1.0)
+                }
+            })
+            .collect();
+        let scale = (tf.sx * tf.sy - tf.kx * tf.ky).abs().sqrt();
+        shadow::blur(&mut a, w, h, gm.feather.max(0.0) * scale / 2.0);
+        let mut cut = Mask::new(w as u32, h as u32)?;
+        for (d, v) in cut.data_mut().iter_mut().zip(&a) {
+            let v = if gm.exclude { 1.0 - v } else { *v };
+            *d = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+        if let Some(p) = parent {
+            for (d, q) in cut.data_mut().iter_mut().zip(p.data()) {
+                *d = ((*d as u16 * *q as u16 + 127) / 255) as u8;
+            }
+        }
+        Some(cut)
     }
 
     /// A layer with its drop shadow (`Layer::drop_shadow`), as the HTML5 renderer's CSS
@@ -3047,6 +3135,17 @@ fn crop_rect(r: &ResolvedLayer, w: f32, h: f32) -> Option<Option<Rect>> {
     Some(Rect::from_ltrb(x0, y0, x1, y1))
 }
 
+/// The mask of a mask folder (its layer `id`), if it is one.
+fn folder_mask<'a>(t: &'a Template, id: &str) -> Option<&'a cg_core::model::GroupMask> {
+    t.layers
+        .iter()
+        .find(|l| l.id == id)
+        .and_then(|l| match &l.kind {
+            LayerKind::Group { mask: Some(m), .. } if !m.layer.is_empty() => Some(m),
+            _ => None,
+        })
+}
+
 fn build_mask(pm: &Pixmap, parent: Option<&Mask>, rect: Rect, tf: Transform) -> Mask {
     let path = PathBuilder::from_rect(rect);
     match parent {
@@ -3158,6 +3257,44 @@ mod tests {
             n < 20_000,
             "moving, {n} bytes differ by more than 1 (max {max})"
         );
+    }
+
+    /// A mask folder: its others seen in its mask's shape (or outside it), the
+    /// mask itself not drawn.
+    #[test]
+    fn a_mask_folder_shows_its_layers_in_its_mask() {
+        use super::*;
+        let project = cg_core::sample::demo_project();
+        let make = |exclude: bool| -> Template {
+            serde_json::from_value(serde_json::json!({
+                "id": "mk", "name": "M", "duration": 10.0, "markers": [], "fields": [], "zone": "",
+                "layers": [
+                    {"id": "g", "name": "Masque", "type": "group", "mask": {"layer": "m", "exclude": exclude},
+                     "props": {"x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0}},
+                    {"id": "p", "name": "Photo", "type": "rect", "parent": "g",
+                     "props": {"x": 0.0, "y": 0.0, "width": 1920.0, "height": 1080.0, "fill": [1.0, 0.0, 0.0, 1.0]}},
+                    {"id": "m", "name": "Cadre", "type": "rect", "parent": "g",
+                     "props": {"x": 0.0, "y": 0.0, "width": 960.0, "height": 1080.0, "fill": [0.0, 0.0, 1.0, 1.0]}}
+                ]
+            }))
+            .unwrap()
+        };
+        let dir = std::env::temp_dir().join("cg-render-test-assets");
+        let mut r = Renderer::new(&dir);
+        let data = Data::default();
+        let px = |f: &Frame, x: usize, y: usize| {
+            let i = (y * f.width as usize + x) * 4;
+            [f.data[i], f.data[i + 1], f.data[i + 2], f.data[i + 3]]
+        };
+        let f = r.render_template(&project, &make(false), "main", 1.0, &data);
+        let (w, h) = (f.width as usize, f.height as usize);
+        // Inside the mask: the photo (red), never the mask's blue.
+        assert_eq!(px(&f, w / 4, h / 2), [255, 0, 0, 255]);
+        // Outside: nothing.
+        assert_eq!(px(&f, 3 * w / 4, h / 2)[3], 0);
+        let f = r.render_template(&project, &make(true), "main", 1.0, &data);
+        assert_eq!(px(&f, w / 4, h / 2)[3], 0);
+        assert_eq!(px(&f, 3 * w / 4, h / 2), [255, 0, 0, 255]);
     }
 
     /// Over a live picture: the graphics where they draw, the picture

@@ -2345,6 +2345,7 @@ impl Cx<'_, '_> {
                     LayerKind::Group {
                         clip: false,
                         lottie: None,
+                        mask: None,
                     },
                 );
                 Some(self.finish(raw, l, rect, kind, notes, depth, kids))

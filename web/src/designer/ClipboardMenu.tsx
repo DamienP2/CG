@@ -1,7 +1,7 @@
 // Right-click menu of the timeline's layer and property rows, and of the
 // layers on the stage: copy / paste layers and animations (clipboard.ts),
 // the layer's animation, its order and delete.
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, SquareDashed, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Prop } from '../engine/types';
@@ -11,6 +11,7 @@ import { animatedProps, clearKeyframes, copyAll, copyAnimation, copyLayers, cutL
 import { descendants, duplicateLayers, findLayer, useDesigner } from './designerStore';
 import { moveLayer } from './LayersPanel';
 import { openAnimations } from './animPresets';
+import { maskFolderOf, stopMasking, makeMask } from './masks';
 
 export interface ClipMenuAt {
   x: number;
@@ -130,6 +131,21 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
           <button disabled={ro} onClick={run(() => openAnimations(targets))}>
             <Sparkles size={13} /> {t('Animation…')}
           </button>
+          {/* A mask folder (or its mask): undone; else this layer as the mask of a new folder. */}
+          {(() => {
+            const folder = layer.type === 'group' && layer.mask ? layer : st.template && maskFolderOf(st.template, layer.id);
+            if (folder)
+              return (
+                <button disabled={ro} onClick={run(() => stopMasking(folder.id))}>
+                  <Undo2 size={13} /> {t('Stop masking')}
+                </button>
+              );
+            return (
+              <button disabled={ro} onClick={run(() => makeMask(targets, false))}>
+                <SquareDashed size={13} /> {t('Use as mask')}
+              </button>
+            );
+          })()}
           <div className="ux2-sub-wrap" onMouseEnter={() => setOrderOpen(true)} onMouseLeave={() => setOrderOpen(false)}>
             <button disabled={ro} aria-haspopup="menu" aria-expanded={orderOpen} onClick={() => setOrderOpen(!orderOpen)}>
               <BringToFront size={13} /> {t('Order')}

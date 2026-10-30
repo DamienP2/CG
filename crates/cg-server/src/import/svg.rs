@@ -3796,7 +3796,11 @@ fn layer(id: &str, name: &str, parent: Option<&str>, kind: LayerKind) -> Layer {
 }
 
 fn group_kind(clip: bool) -> LayerKind {
-    LayerKind::Group { clip, lottie: None }
+    LayerKind::Group {
+        clip,
+        lottie: None,
+        mask: None,
+    }
 }
 
 /// Places the box `b` (user space) by `m` in the parent layer: position,

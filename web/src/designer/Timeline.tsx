@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  SquareDashed,
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -48,6 +49,7 @@ import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Mar
 import { NumberField } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
+import { maskFolderOf } from './masks';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
@@ -95,7 +97,11 @@ function flatten(t: Template): { layer: Layer; depth: number }[] {
   const tree = childrenMap(t.layers, true);
   const out: { layer: Layer; depth: number }[] = [];
   const walk = (pid: string | null, depth: number) => {
-    for (const l of [...(tree.get(pid) ?? [])].reverse()) {
+    const parent = pid ? t.layers.find((l) => l.id === pid) : undefined;
+    const mask = parent?.type === 'group' ? parent.mask?.layer : undefined;
+    // A mask folder's mask is always its first row.
+    const rows = [...(tree.get(pid) ?? [])].reverse().sort((a, b) => Number(b.id === mask) - Number(a.id === mask));
+    for (const l of rows) {
       out.push({ layer: l, depth });
       walk(l.id, depth + 1);
     }
@@ -455,12 +461,14 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
     const animated = PROPS.filter((p) => layer.tracks[p]?.length);
     const open = expanded[layer.id];
     const isSel = selected.includes(layer.id);
-    const Icon = layerIcon(layer);
+    // A mask folder's mask: its first row, its colour and icon.
+    const isMask = !!maskFolderOf(template, layer.id);
+    const Icon = isMask || (layer.type === 'group' && layer.mask) ? SquareDashed : layerIcon(layer);
     const dropCls = drop?.id === layer.id ? `drop-${drop.pos}` : '';
     labels.push(
       <div
         key={layer.id}
-        className={`tl-label layer ${isSel ? 'selected' : ''} ${layer.visible ? '' : 'dim'} ${dropCls}`}
+        className={`tl-label layer ${isSel ? 'selected' : ''} ${layer.visible ? '' : 'dim'} ${isMask ? 'mask-layer' : ''} ${layer.type === 'group' && layer.mask ? 'mask-folder' : ''} ${dropCls}`}
         style={{ paddingLeft: 4 + depth * 14 }}
         draggable={renaming !== layer.id}
         onDragStart={(e) => e.dataTransfer.setData('text/layer', layer.id)}
@@ -523,6 +531,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <span className="layer-name">{layer.name}</span>
         )}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
+        {layer.type === 'group' && layer.mask && <span className="mask-mode">{layer.mask.exclude ? t('Exclude') : t('Include')}</span>}
         <span className="row-actions">
           <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
             <Copy size={12} />

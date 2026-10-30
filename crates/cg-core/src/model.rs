@@ -355,6 +355,10 @@ pub enum LayerKind {
         /// while none is chosen); its layers are the group's children.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         lottie: Option<String>,
+        /// A mask folder: one of its children is the mask (not drawn), the
+        /// others are seen in its shape (or outside it).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        mask: Option<GroupMask>,
     },
     Rect {
         /// Settings of the spec widget (`wid::quad`).
@@ -998,6 +1002,20 @@ pub struct Marker {
     /// How a pause resumes.
     #[serde(default, skip_serializing_if = "Resume::is_manual")]
     pub resume: Resume,
+}
+
+/// The mask of a mask folder (`LayerKind::Group::mask`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GroupMask {
+    /// The child layer that is the mask.
+    pub layer: String,
+    /// The others are seen outside its shape, not inside.
+    pub exclude: bool,
+    /// Softened edge, px.
+    pub feather: f32,
+    /// From its opacity (a gradient fades), not its shape.
+    pub alpha: bool,
 }
 
 /// How playback resumes from a pause marker.

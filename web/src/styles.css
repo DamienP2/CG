@@ -100,6 +100,8 @@
   --pvw: #22c55e;
   --warn: #f5a524;
   --key: #f5c542;
+  /* Mask folders and their mask layer. */
+  --mask: #2dd4bf;
   --radius: 8px;
   /* Type scale: nothing smaller than 11 px. */
   --fs-11: 11px;
@@ -5200,6 +5202,23 @@ input.mono {
   min-width: 0;
   height: 20px;
   font-size: 12px;
+}
+.tl-label.layer.mask-layer .layer-icon,
+.tl-label.layer.mask-layer .layer-name,
+.tl-label.layer.mask-folder .layer-icon {
+  color: var(--mask);
+}
+.tl-label.layer.mask-layer .layer-name {
+  font-weight: 600;
+}
+.tl-label .mask-mode {
+  flex: none;
+  font-size: var(--fs-11);
+  font-weight: 600;
+  color: var(--mask);
+}
+.pp-group > header .pp-head-tog {
+  margin-right: 14px;
 }
 .tl-label .row-actions {
   display: flex;

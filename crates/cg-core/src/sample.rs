@@ -92,6 +92,7 @@ pub fn lower_third() -> Template {
         LayerKind::Group {
             clip: true,
             lottie: None,
+            mask: None,
         },
         None,
         &[

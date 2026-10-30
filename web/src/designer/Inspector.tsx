@@ -10,7 +10,7 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useSta
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
 import { applyLogic, measureLayer } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
-import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type GroupMask, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { useZoneEdit } from './ZoneEditor';
@@ -25,7 +25,8 @@ import { fitLayer, layerText } from '../engine/Scene';
 import { TemplatePublish } from './Collab';
 import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
-import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, Toggle, Warnings, wiredKeys } from '../widgets/kit';
+import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, SliderNum, Toggle, Warnings, wiredKeys } from '../widgets/kit';
+import { makeMask, maskFolderOf, stopMasking } from './masks';
 import { t, tc, tn } from '../i18n';
 import { useDisplayPref } from '../displayPrefs';
 import { START_MODES, startMode } from '../widgets/centre';
@@ -112,8 +113,8 @@ export function Section({ title, children, actions }: { title: string; children:
 }
 
 /** Collapsible group of the properties panel (kept for the user). */
-function Group({ id, title, level = 1, children, actions }: { id: string; title: string; level?: 1 | 2; children: React.ReactNode; actions?: React.ReactNode }) {
-  const [open, setOpen] = useDisplayPref(`designer.group.${id}`, false);
+function Group({ id, title, level = 1, defaultOpen = false, children, actions }: { id: string; title: string; level?: 1 | 2; defaultOpen?: boolean; children: React.ReactNode; actions?: React.ReactNode }) {
+  const [open, setOpen] = useDisplayPref(`designer.group.${id}`, defaultOpen);
   const toggle = () => setOpen(!open);
   return (
     <section className={`pp-group l${level} ${open ? 'open' : ''}`}>
@@ -295,6 +296,63 @@ function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { val
 }
 
 /** A property row: ◀ ◆ ▶, name, animate, its fields (X / Y…). */
+/** A layer as a mask: on, it is the first row of a folder; the layers dragged in are seen in its shape (or outside). */
+function MaskGroup({ layer }: { layer: Layer }) {
+  const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
+  if (!template) return null;
+  const folder = layer.type === 'group' && layer.mask ? layer : maskFolderOf(template, layer.id);
+  const mask = folder?.type === 'group' ? folder.mask : undefined;
+  const set = (fn: (m: GroupMask) => void) =>
+    folder &&
+    update((tpl) => {
+      const f = findLayer(tpl, folder.id);
+      if (f?.type === 'group' && f.mask) fn(f.mask);
+    });
+  return (
+    <Group
+      id="mask"
+      title={t('Mask')}
+      defaultOpen
+      actions={
+        <button className={`wk-tog pp-head-tog ${mask ? 'on' : ''}`} aria-label={t('Use as mask')} onClick={() => (folder ? stopMasking(folder.id) : makeMask([layer.id], false))}>
+          <i />
+        </button>
+      }
+    >
+      {mask && (
+        <div className="pp-general">
+          <div className="row">
+            <span className="prop-label">{t('Mode')}</span>
+            <Segmented
+              value={mask.exclude ? 'exclude' : 'include'}
+              onChange={(v) => set((m) => void (m.exclude = v === 'exclude' || undefined))}
+              options={[
+                { value: 'include', label: t('Include') },
+                { value: 'exclude', label: t('Exclude') },
+              ]}
+            />
+          </div>
+          <div className="row">
+            <span className="prop-label">{t('Soft edge')}</span>
+            <SliderNum value={mask.feather ?? 0} min={0} max={100} unit="px" onRelease onChange={(v) => set((m) => void (m.feather = v || undefined))} />
+          </div>
+          <div className="row">
+            <span className="prop-label">{t('Based on')}</span>
+            <Segmented
+              value={mask.alpha ? 'alpha' : 'shape'}
+              onChange={(v) => set((m) => void (m.alpha = v === 'alpha' || undefined))}
+              options={[
+                { value: 'shape', label: t('Shape') },
+                { value: 'alpha', label: t('Opacity') },
+              ]}
+            />
+          </div>
+        </div>
+      )}
+    </Group>
+  );
+}
+
 export function GroupRow({ layer, spec }: { layer: Layer; spec: RowSpec }) {
   const { frame, update, format, updateBase } = useDesigner(useShallow((s) => ({ frame: s.frame, update: s.update, format: s.format, updateBase: s.updateBase })));
   const driven = useContext(DrivenContext);
@@ -1037,6 +1095,7 @@ function LayerInspector({ layer }: { layer: Layer }) {
         <TextInput value={layer.name} commitOnBlur onChange={(v) => edit((l) => void (l.name = v))} />
       </div>
       <OperatorPreview layer={layer} />
+      {(layer.type !== 'group' || layer.mask) && <MaskGroup layer={layer} />}
       {spec?.Inspector ? (
         <Boundary resetKey={layer} fallback={<div className="hint wk-note">{t("This widget's settings cannot be shown.")}</div>}>
           <SpecInspector layer={layer} />

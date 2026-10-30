@@ -112,6 +112,7 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
             LayerKind::Group {
                 clip: false,
                 lottie: None,
+                mask: None,
             },
         );
         set(&mut g, Prop::X, ((opts.width - w * s) / 2.0).round());
@@ -428,6 +429,7 @@ impl Converter {
                     LayerKind::Group {
                         clip: false,
                         lottie: None,
+                        mask: None,
                     },
                     Box2 {
                         x: 0.0,
@@ -477,6 +479,7 @@ impl Converter {
                     LayerKind::Group {
                         clip: false,
                         lottie: None,
+                        mask: None,
                     },
                     Box2 {
                         x: 0.0,
@@ -531,6 +534,7 @@ impl Converter {
                         LayerKind::Group {
                             clip: false,
                             lottie: None,
+                            mask: None,
                         },
                         b,
                     )
@@ -567,6 +571,7 @@ impl Converter {
                     LayerKind::Group {
                         clip: false,
                         lottie: None,
+                        mask: None,
                     },
                     Some(c),
                 )

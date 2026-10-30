@@ -36,7 +36,7 @@ export interface FontStyle {
 export type ClockMode = 'time' | 'countdown' | 'elapsed' | 'timer';
 
 export type LayerKind =
-  | { type: 'group'; clip?: boolean; /** A Lottie animation placed by the Lottie widget: its file ('' = not chosen yet). */ lottie?: string }
+  | { type: 'group'; clip?: boolean; /** A Lottie animation placed by the Lottie widget: its file ('' = not chosen yet). */ lottie?: string; /** A mask folder: one of its children is the mask (not drawn), the others are seen in its shape (or outside it). */ mask?: GroupMask }
   | ({ type: 'rect' } & import('../widgets/quad').Config)
   | ({ type: 'ellipse' } & import('../widgets/ellipse').Config)
   | (({
@@ -147,6 +147,18 @@ export interface Marker {
   kind: MarkerKind;
   /** How a pause resumes (default: the operator's Continue). */
   resume?: Resume;
+}
+
+/** The mask of a mask folder (mirror of model::GroupMask). */
+export interface GroupMask {
+  /** The child layer that is the mask. */
+  layer: string;
+  /** The others are seen outside its shape. */
+  exclude?: boolean;
+  /** Softened edge, px. */
+  feather?: number;
+  /** From its opacity (a gradient fades), not its shape. */
+  alpha?: boolean;
 }
 
 export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'triggers' };

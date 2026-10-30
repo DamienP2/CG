@@ -10,7 +10,7 @@ import { ValueMotionContext, valueTransform } from './valueMotion';
 import { createContext, memo, useContext, useEffect, useMemo, useReducer, type CSSProperties } from 'react';
 import { TimeContext, useLayerTime, type Motion } from './LiveTime';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
-import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
+import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
 import { applyLogic, measureLayer } from './logic';
 import { fitText, type Fitted } from './textFit';
@@ -380,6 +380,7 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
   const lt = useLayerTime(layer.motion ? 'wall' : false);
   const logic = layer.motion ? applyMotion(logic0 ?? resolveLayer(layer, frame, data, hold), layer.motion, frame, lt.fps ?? 50, lt.layerAge ? lt.layerAge(layer) : lt.ageSecs) : logic0;
   const framed = useContext(FramedContext);
+  const logics = useContext(LogicContext);
   const motion = useContext(ValueMotionContext);
   const moving = motion?.layers.get(layer.id);
   // The old values' pass of a value sliding or turning over: only the layers showing it.
@@ -403,6 +404,33 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
       {widgetOf(layer)?.Render ? <SpecWidget layer={layer} frame={frame} data={data} hold={hold} interactive={interactive} /> : LIVE_TYPES.has(layer.type) || layer.type === 'qrCode' ? <WidgetContent layer={layer} frame={frame} data={data} hold={hold} /> : null}
       {layer.type === 'group' && layer.lottie !== undefined ? (
         <LottieKids group={layer} kids={kids} childrenOf={childrenOf} frame={frame} data={data} hold={hold} interactive={interactive} />
+      ) : layer.type === 'group' && layer.mask && kids.some((k) => k.id === layer.mask!.layer) ? (
+        // A mask folder: the others seen through its mask (mirror of cg-render's folder_cut).
+        (() => {
+          const gm = layer.mask!;
+          const m = kids.find((k) => k.id === gm.layer)!;
+          const mf = framed.has(m.id) ? frame : hold;
+          const mr = logics.get(m.id) ?? resolveLayer(m, mf, data, hold);
+          const ls = layerStyle(m, mf, data, hold, mr);
+          const gw = typeof style.width === 'number' ? style.width : 0;
+          const gh = typeof style.height === 'number' ? style.height : 0;
+          const { position, left, top, width, height, transform, transformOrigin } = ls.style;
+          return (
+            <>
+              {/* The mask, not drawn: its box only, to pick and move it in the Designer. */}
+              {interactive && <div data-layer-id={m.id} style={{ position, left, top, width, height, transform, transformOrigin, pointerEvents: 'none' }} />}
+            <div style={maskStyle(m, mr, gm, gw, gh, ls.src, ls.text)}>
+              <div style={{ position: 'absolute', left: gm.exclude ? MASK_PAD : 0, top: gm.exclude ? MASK_PAD : 0, width: gw, height: gh }}>
+                {kids
+                  .filter((k) => k.id !== m.id)
+                  .map((k) => (
+                    <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={framed.has(k.id) ? frame : hold} data={data} hold={hold} interactive={interactive} />
+                  ))}
+              </div>
+            </div>
+            </>
+          );
+        })()
       ) : (
         kids.map((k) => <LayerNode key={k.id} layer={k} childrenOf={childrenOf} frame={framed.has(k.id) ? frame : hold} data={data} hold={hold} interactive={interactive} />)
       )}
@@ -420,6 +448,56 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
     </div>
   );
 });
+
+/** Room around a folder that excludes: its layers seen outside its box too. */
+const MASK_PAD = 400;
+const svgEsc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+/**
+ * The CSS mask of a mask folder's layers, from its mask layer: its shape (a
+ * box, an ellipse, a text) drawn in an SVG, softened, turned round when it
+ * excludes; a picture masks with its own transparency.
+ */
+function maskStyle(m: Layer, r: Resolved, gm: GroupMask, gw: number, gh: number, src?: string, text?: string): CSSProperties {
+  const pad = gm.exclude ? MASK_PAD : 0;
+  const box: CSSProperties = { position: 'absolute', left: -pad, top: -pad, width: gw + 2 * pad, height: gh + 2 * pad };
+  const w = num(r.width);
+  const h = num(r.height);
+  const op = gm.alpha ? num(r.opacity) * (col(r.fill)[3] ?? 1) : 1;
+  // A picture: its own transparency, at its box (not turned).
+  if (m.type === 'image' && src) {
+    const at = `${pad + num(r.x)}px ${pad + num(r.y)}px`;
+    const size = `${w}px ${h}px`;
+    const img = `url("${src}")`;
+    return gm.exclude
+      ? { ...box, maskImage: `linear-gradient(#000, #000), ${img}`, maskSize: `100% 100%, ${size}`, maskPosition: `0 0, ${at}`, maskRepeat: 'no-repeat', maskComposite: 'exclude', WebkitMaskComposite: 'xor' }
+      : { ...box, maskImage: img, maskSize: size, maskPosition: at, maskRepeat: 'no-repeat' };
+  }
+  const ax = num(r.anchorX) * w;
+  const ay = num(r.anchorY) * h;
+  const tf = `translate(${pad + num(r.x) + ax} ${pad + num(r.y) + ay}) rotate(${num(r.rotation)}) scale(${num(r.scaleX)} ${num(r.scaleY)}) translate(${-ax} ${-ay})`;
+  let shape: string;
+  if (m.type === 'ellipse') shape = `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}"/>`;
+  else if ((m.type === 'text' || m.type === 'typewriter') && text) {
+    const f = m as Layer & FontStyle;
+    const size = num(r.fontSize) || 40;
+    const anchor = f.align === 'center' ? 'middle' : f.align === 'right' ? 'end' : 'start';
+    const x = f.align === 'center' ? w / 2 : f.align === 'right' ? w : 0;
+    const lines = text.split('\n');
+    const top = f.verticalAlign === 'bottom' ? h - lines.length * size * 1.2 : f.verticalAlign === 'middle' ? (h - lines.length * size * 1.2) / 2 : 0;
+    shape = lines.map((line, i) => `<text x="${x}" y="${top + size * (0.95 + i * 1.2)}" font-family="${svgEsc(f.fontFamily ?? 'Inter')}, sans-serif" font-weight="${f.fontWeight ?? 700}" font-size="${size}" text-anchor="${anchor}">${svgEsc(line)}</text>`).join('');
+  } else shape = `<rect width="${w}" height="${h}" rx="${num(r.cornerRadius) || 0}"/>`;
+  const feather = gm.feather ?? 0;
+  const blur = feather > 0 ? `<filter id="f" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${feather / 2}"/></filter>` : '';
+  const soft = feather > 0 ? ' filter="url(#f)"' : '';
+  const W = gw + 2 * pad;
+  const H = gh + 2 * pad;
+  const svg = gm.exclude
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${blur}<mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><g fill="#000" fill-opacity="${op}"${soft}><g transform="${tf}">${shape}</g></g></mask></defs><rect width="${W}" height="${H}" fill="#fff" mask="url(#m)"/></svg>`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs>${blur}</defs><g fill="#fff" fill-opacity="${op}"${soft}><g transform="${tf}">${shape}</g></g></svg>`;
+  const url = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  return { ...box, maskImage: url, WebkitMaskImage: url, maskSize: '100% 100%', WebkitMaskSize: '100% 100%', maskRepeat: 'no-repeat', WebkitMaskRepeat: 'no-repeat' };
+}
 
 /** The layers of a Lottie group: at the group's own clock when the operator controls it (reads the time context so only it re-renders). */
 function LottieKids({ group, kids, childrenOf, frame, data, hold, interactive }: { group: Layer; kids: Layer[]; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {

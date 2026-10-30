@@ -555,4 +555,10 @@ export const designer: Record<string, string> = {
   'Fire a trigger': 'Lancer un déclencheur',
   'Conditions': 'Conditions',
   'History of the versions · the Operator uses v{rev}': 'Historique des versions · l’Opérateur utilise la v{rev}',
+  'Stop masking': 'Ne plus masquer',
+  'Use as mask': 'Utiliser comme masque',
+  'Include': 'Inclure',
+  'Exclude': 'Exclure',
+  'Soft edge': 'Bord adouci',
+  'Based on': 'D’après',
 };
