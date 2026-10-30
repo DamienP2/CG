@@ -135,7 +135,7 @@ const ROW_LABEL: Record<string, () => string> = {
 };
 
 /** The exposed properties of one layer: its header, then the Designer's sections. */
-export function LayerProperties({ entry, io, bare }: { entry: ExposedLayer; io: FieldIO; /** Without its header (the widget's tab names it). */ bare?: boolean }) {
+export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: FieldIO; /** Rows only, as the Operator's values: no header, no section titles. */ flat?: boolean }) {
   const { layer, at } = entry;
   const Icon = widgetOf(layer)?.icon ?? ICONS[layer.type];
   const kind = widgetOf(layer)?.label;
@@ -270,8 +270,8 @@ export function LayerProperties({ entry, io, bare }: { entry: ExposedLayer; io: 
     );
 
   return (
-    <div className="opx-layer">
-      {!bare && (
+    <div className={`opx-layer ${flat ? 'flat' : ''}`}>
+      {!flat && (
         <div className="opx-layer-head">
           <span className="pp-type">
             <Icon size={13} />

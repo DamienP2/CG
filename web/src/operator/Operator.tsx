@@ -481,6 +481,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const datasets = [...new Map(shownParts.flatMap((p) => p.datasets).map((d) => [d.key, d])).values()];
   // The data part only when the widgets read data (a source or a data set).
   const hasData = datasets.length > 0 || bound.length > 0;
+  // The widgets' own transport in the preview, at the top of their values.
+  const controls = mon.preview ? shownParts.filter((p) => p.controls) : [];
   // Nothing to type for them (a table fed by a data set…): the data takes the width.
   const showShared = together || sharedSel || parts.widgets.length === 0;
   const hasContent = (showShared && parts.shared.length > 0) || (!part && !sharedSel) || shownParts.some((p) => p.fields.length > 0 || !!p.exposed || p.fed.length > 0);
@@ -678,16 +680,6 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 </Screen>
               </div>
               )}
-              {/* The preview's own transport, in a bar under its picture (it hides none of it; nothing goes on air). */}
-              {mon.preview && item && shownParts.some((p) => p.controls) && (
-                <div className="opx-pvbar">
-                  {shownParts
-                    .filter((p) => p.controls)
-                    .map((p) => (
-                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
-                    ))}
-                </div>
-              )}
             </section>
             {mon.preview && <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
         </>
@@ -727,25 +719,41 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   )}
                 </div>
               )}
-              <div className="opx-tiles">
-                {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} names={new Map(shownParts.flatMap((p) => (p.fields.length === 1 && (p.layer.type !== 'text' || p.layer.text.trim() === `{{${p.fields[0].key}}}`) ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
-                {hasData &&
-                  part !== undefined &&
-                  datasets.map((ds) =>
-                    datasetUse(template, ds).source ? (
-                      <div key={ds.key} className="opx-vt wide">
-                        <DataSetSource ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
-                      </div>
-                    ) : (
-                      <div key={ds.key} className="opx-vt wide opx-ds-stack">
-                        <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
-                        <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
-                      </div>
-                    ),
+              {hasContent || hasData || controls.length > 0 ? (
+                <div className={`opx-tiles ${hasData ? 'split' : ''}`}>
+                  {(hasContent || controls.length > 0) && (
+                    <div className="opx-tcol">
+                      {/* The preview's own transport, in its layer (it hides none of the picture; nothing goes on air). */}
+                      {controls.map((p) => (
+                        <div key={`${item.id}-${p.layer.id}`} className={`opx-pvrow ${together ? 'named' : ''}`}>
+                          <PreviewControls layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
+                        </div>
+                      ))}
+                      {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} names={new Map(shownParts.flatMap((p) => (p.fields.length === 1 && (p.layer.type !== 'text' || p.layer.text.trim() === `{{${p.fields[0].key}}}`) ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
+                    </div>
                   )}
-                {!hasContent && !hasData && <Empty icon={SlidersHorizontal} text={t('No value to type')} />}
-                {bound.length > 0 && <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />}
-              </div>
+                  {hasData && (
+                    <div className="opx-tcol data">
+                      {part !== undefined &&
+                        datasets.map((ds) =>
+                          datasetUse(template, ds).source ? (
+                            <div key={ds.key} className="opx-vt wide">
+                              <DataSetSource ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
+                            </div>
+                          ) : (
+                            <div key={ds.key} className="opx-vt wide opx-ds-stack">
+                              <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
+                              <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                            </div>
+                          ),
+                        )}
+                      {bound.length > 0 && <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Empty icon={SlidersHorizontal} text={t('No value to type')} />
+              )}
             </>
           ) : (
             <Empty icon={MousePointerClick} text={t('No graphic selected')} />
@@ -1206,13 +1214,9 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
             })}
         </Fragment>
       ))}
+      {/* Its exposed properties: rows like its values, without a box or its name again. */}
       {exposed.map((e) => (
-        <div key={e.layer.id} className={`opx-vt wide ${[...e.at.values()].some((f) => changed.has(f.key)) ? 'chg' : ''}`}>
-          <div className="opx-vt-h">
-            <span className="opx-vt-l">{e.layer.name}</span>
-          </div>
-          <LayerProperties entry={e} io={io} bare />
-        </div>
+        <LayerProperties key={e.layer.id} entry={e} io={io} flat />
       ))}
     </>
   );

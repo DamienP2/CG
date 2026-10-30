@@ -18354,6 +18354,18 @@ button.ux1-pill.lost:hover {
   overflow: auto;
   padding: 12px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 12px 20px;
+}
+/* With data: two columns, the data on the right (one under the other when narrow). */
+.opx-tiles.split {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.opx-tcol {
+  min-width: 0;
+  display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   align-content: start;
   gap: 8px;
@@ -18449,7 +18461,7 @@ button.ux1-pill.lost:hover {
   width: 100%;
   box-sizing: border-box;
 }
-.opx-tiles > .opx-data {
+.opx-tcol > .opx-data {
   grid-column: 1 / -1;
   border: 1px solid var(--op-3);
   border-radius: 9px;
@@ -18632,23 +18644,19 @@ a.opx-html5 {
 .opx-pane > .opx-monitor {
   position: relative;
 }
-/* The preview's transport: a bar under the picture (it covered the bottom of it, where tickers run). */
-.opx-pvbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-top: 1px solid var(--line);
+/* The preview's transport: a row at the top of its layer's values (it hid the bottom of the picture, where tickers run). */
+.opx-pvrow {
+  grid-column: 1 / -1;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.opx-pvbar .opx-pvctl {
+.opx-pvrow .opx-pvctl {
   padding: 0;
   background: none;
   border: none;
 }
-.opx-pvbar .cc.air {
+.opx-pvrow .cc.air {
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -18656,23 +18664,32 @@ a.opx-html5 {
   border-radius: 0;
   background: none;
 }
-.opx-pvbar .cc.air .cc-l1 .cc-name {
+/* Its layer's name only with the layers together. */
+.opx-pvrow:not(.named) .cc.air .cc-l1 .cc-name {
   display: none;
 }
-.opx-pvbar .cc.air .cc-l1:empty {
+.opx-pvrow.named .cc.air .cc-l1 .cc-name {
+  flex: 0 1 170px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.opx-pvrow .cc.air .cc-l1:empty {
   display: none;
 }
-.opx-pvbar .cc.air .cc-l {
+.opx-pvrow .cc.air .cc-l {
   flex-wrap: nowrap;
 }
-.opx-pvbar .cc.air .cc-ob,
-.opx-pvbar .cc.air .cc-sq {
+.opx-pvrow .cc.air .cc-ob,
+.opx-pvrow .cc.air .cc-sq {
   height: 30px;
 }
-.opx-pvbar .cc.air .cc-sq {
+.opx-pvrow .cc.air .cc-sq {
   width: 30px;
 }
-.opx-pvbar .cc.air .cc-ob {
+.opx-pvrow .cc.air .cc-ob {
   flex: none;
   padding: 0 12px;
 }
@@ -18696,7 +18713,7 @@ a.opx-html5 {
   color: var(--text);
 }
 /* Value tiles, bento: a number, a colour or a switch takes one cell, a text two, a long text the row. */
-.opx-tiles {
+.opx-tcol {
   container-type: inline-size;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   grid-auto-flow: row dense;
@@ -20806,9 +20823,58 @@ input.lc-pal-name:focus {
 .marker-editor .seg button {
   white-space: nowrap;
 }
-.opx-pvbar .cc-num {
+.opx-pvrow .cc-num {
   font-size: 16px;
 }
-.opx-pvbar .cc-num small {
+.opx-pvrow .cc-num small {
   font-size: 12px;
+}
+
+/* Operator · a layer's exposed properties among its values: rows like them, no box, no titles. */
+.opx-layer.flat {
+  grid-column: 1 / -1;
+  gap: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+.opx-layer.flat .opx-sec > header {
+  display: none;
+}
+.opx-layer.flat .pp-row,
+.opx-layer.flat .wk-row {
+  grid-template-columns: 8px minmax(90px, 170px) minmax(0, 1fr);
+  gap: 6px 8px;
+}
+.opx-layer.flat .pp-row > .wk-gut:first-child,
+.opx-layer.flat .wk-row > .wk-gut:first-child {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.opx-layer.flat .pp-row > .wk-gut:last-child,
+.opx-layer.flat .wk-row > .wk-ctl ~ * {
+  display: none;
+}
+.opx-layer.flat .pp-label,
+.opx-layer.flat .prop-label {
+  min-width: 0;
+  font-size: inherit;
+  color: var(--text-2);
+}
+/* A narrow column (two columns with data): a shorter name, the source as its icon only. */
+@container (max-width: 440px) {
+  .opx-var,
+  .opx-layer.flat .pp-row,
+  .opx-layer.flat .wk-row {
+    grid-template-columns: 8px minmax(60px, 36%) minmax(0, 1fr) auto;
+  }
+  .opx-var-tail .opx-vt-src {
+    max-width: none;
+    font-size: 0;
+    gap: 0;
+  }
+}
+.opx-pvrow .cc.air {
+  border: none;
 }
