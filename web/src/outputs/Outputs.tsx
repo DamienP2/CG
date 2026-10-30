@@ -1295,7 +1295,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                       </Field>
                       <Field label={t('Clock reference')} hint={t('What the channel clock follows. PTP: frames on the ST 2059 grid of the PTP-locked system clock. DeckLink: the genlock of its first SDI destination.')}>
                         <select value={ch.clock ?? ''} onChange={(e) => editCh((c) => void (c.clock = (e.target.value || null) as ChannelConfig['clock']))}>
-                          <option value="">{t('Default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'free') })}</option>
+                          <option value="">{t('Default ({reference})', { reference: clockLabel(hardwareOf(cfg).sync?.reference ?? 'auto') })}</option>
                           {CLOCKS.map((r) => (
                             <option key={r} value={r}>
                               {clockLabel(r)}

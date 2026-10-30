@@ -714,3 +714,34 @@
   padding: 0 10px;
   font-size: 13px;
 }
+
+/* Settings › Time */
+.time-now {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-bottom: 12px;
+}
+.time-clock {
+  font: 600 32px/1.1 var(--mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.ntp-servers {
+  display: grid;
+  gap: 6px;
+  max-width: 520px;
+}
+.ntp-servers.off .ntp-server {
+  opacity: 0.5;
+}
+.ntp-server {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ntp-server input {
+  flex: 1;
+  min-width: 0;
+}

@@ -60,8 +60,14 @@ pub struct NetworkRoles {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ClockReference {
-    /// The machine's own clock, frames counted from when the channel starts.
+    /// The best reference there is, followed as it comes and goes: the
+    /// DeckLink card when its reference input is locked, else PTP when
+    /// locked, else the card's own clock (an SDI output), else the server's
+    /// time.
     #[default]
+    Auto,
+    /// The server's time (NTP): frames fall on the same grid as with PTP,
+    /// so servers on the same NTP time show theirs about together.
     Free,
     /// The system clock disciplined by PTP (ptp4l + phc2sys): frames fall on
     /// the SMPTE ST 2059 grid (multiples of the frame period since the PTP
@@ -85,6 +91,19 @@ pub struct SyncConfig {
     /// and RTP timestamps count TAI.
     #[serde(default = "default_tai")]
     pub tai_offset: u32,
+    /// Settings saved before « Auto » (1): their default « Free » was not
+    /// chosen, it becomes « Auto ».
+    #[serde(default)]
+    pub version: u8,
+}
+
+impl SyncConfig {
+    pub fn migrate(&mut self) {
+        if self.version < 1 && self.reference == ClockReference::Free {
+            self.reference = ClockReference::Auto;
+        }
+        self.version = 1;
+    }
 }
 
 fn default_domain() -> u8 {
@@ -97,9 +116,10 @@ fn default_tai() -> u32 {
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
-            reference: ClockReference::Free,
+            reference: ClockReference::Auto,
             ptp_domain: default_domain(),
             tai_offset: default_tai(),
+            version: 1,
         }
     }
 }

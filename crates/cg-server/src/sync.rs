@@ -28,6 +28,8 @@ pub struct NtpStatus {
     /// The tool that told (`chronyc`, `timedatectl`, `w32tm`…); none: unknown.
     pub tool: Option<String>,
     pub synced: Option<bool>,
+    /// NTP is on (None: unknown).
+    pub enabled: Option<bool>,
     /// Time server.
     pub source: Option<String>,
     /// System clock − NTP time, in ms.
@@ -51,6 +53,8 @@ pub struct PtpStatus {
     pub jitter_ns: Option<f64>,
     /// Following a grandmaster, within 10 µs.
     pub locked: bool,
+    /// phc2sys runs: PTP sets the system clock (NTP must not).
+    pub sets_clock: bool,
 }
 
 /// The status, read again in the background.
@@ -183,16 +187,22 @@ fn ntp() -> NtpStatus {
                     "timedatectl",
                     &["show", "-p", "NTPSynchronized", "-p", "NTP"],
                 )?;
-                Some(timedatectl(&t))
+                let mut s = timedatectl(&t);
+                s.source = output(
+                    "timedatectl",
+                    &["show-timesync", "-p", "ServerName", "--value"],
+                )
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+                Some(s)
             })
             .unwrap_or_default(),
         "windows" => output("w32tm", &["/query", "/status", "/verbose"])
             .map(|t| w32tm(&t))
             .unwrap_or_default(),
-        "macos" => NtpStatus {
-            tool: Some("systemsetup".into()),
+        "macos" => {
             // Needs administrator rights: unknown otherwise.
-            synced: output("/usr/sbin/systemsetup", &["-getusingnetworktime"]).and_then(|t| {
+            let on = output("/usr/sbin/systemsetup", &["-getusingnetworktime"]).and_then(|t| {
                 if t.contains("Network Time: On") {
                     Some(true)
                 } else if t.contains("Network Time: Off") {
@@ -200,11 +210,16 @@ fn ntp() -> NtpStatus {
                 } else {
                     None
                 }
-            }),
-            source: output("/usr/sbin/systemsetup", &["-getnetworktimeserver"])
-                .and_then(|t| Some(t.split_once("Network Time Server:")?.1.trim().to_string())),
-            offset_ms: None,
-        },
+            });
+            NtpStatus {
+                tool: Some("systemsetup".into()),
+                synced: on,
+                enabled: on,
+                source: output("/usr/sbin/systemsetup", &["-getnetworktimeserver"])
+                    .and_then(|t| Some(t.split_once("Network Time Server:")?.1.trim().to_string())),
+                offset_ms: None,
+            }
+        }
         _ => NtpStatus::default(),
     }
 }
@@ -227,6 +242,7 @@ fn chrony(t: &str) -> NtpStatus {
     NtpStatus {
         tool: Some("chronyc".into()),
         synced: Some(!leap.is_empty() && leap != "Not synchronised"),
+        enabled: Some(true),
         source,
         offset_ms,
     }
@@ -241,6 +257,7 @@ fn timedatectl(t: &str) -> NtpStatus {
     NtpStatus {
         tool: Some("timedatectl".into()),
         synced: value("NTPSynchronized").map(|v| v == "yes"),
+        enabled: value("NTP").map(|v| v == "yes"),
         source: None,
         offset_ms: None,
     }
@@ -252,10 +269,12 @@ fn w32tm(t: &str) -> NtpStatus {
     let offset_ms = field(t, "Phase Offset")
         .and_then(|v| v.trim_end_matches('s').parse::<f64>().ok())
         .map(|s| s * 1000.0);
+    let source = field(t, "Source").map(|s| s.trim_end_matches(",0x9").to_string());
     NtpStatus {
         tool: Some("w32tm".into()),
         synced: (!leap.is_empty()).then(|| !leap.starts_with('3')),
-        source: field(t, "Source").map(|s| s.trim_end_matches(",0x9").to_string()),
+        enabled: source.as_deref().map(|s| !s.contains("Local CMOS Clock")),
+        source,
         offset_ms,
     }
 }
@@ -286,6 +305,7 @@ fn ptp(domain: u8) -> PtpStatus {
     };
     let mut s = pmc(&t);
     s.domain = domain;
+    s.sets_clock = output("pgrep", &["-x", "phc2sys"]).is_some();
     s
 }
 
@@ -318,6 +338,7 @@ fn pmc(t: &str) -> PtpStatus {
         offset_ns,
         jitter_ns: None,
         locked,
+        sets_clock: false,
     }
 }
 

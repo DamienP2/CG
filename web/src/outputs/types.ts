@@ -184,6 +184,8 @@ export interface ServerConfig {
   bind?: string | null;
   publicOutputs: boolean;
   timezone: string;
+  /** How the machine keeps its time (NTP), see crates/cg-server/src/timectl.rs. */
+  time?: TimeConfig;
   /** Path of the NDI runtime library ("" = search for it). */
   ndiLibrary?: string;
   locations?: Location[];
@@ -275,12 +277,28 @@ export interface NetworkRoles {
   mos?: string;
 }
 
-export type ClockReference = 'free' | 'ptp' | 'decklink';
+export type ClockReference = 'auto' | 'free' | 'ptp' | 'decklink';
 
 export interface SyncConfig {
   reference: ClockReference;
   ptpDomain: number;
   taiOffset: number;
+  version?: number;
+}
+
+export interface TimeConfig {
+  ntp: boolean;
+  ntpServers: string[];
+}
+
+export const emptyTime = (): TimeConfig => ({ ntp: true, ntpServers: [] });
+
+/** GET /api/system/time. */
+export interface TimeState {
+  supported: boolean;
+  last?: { ok: boolean; message: string; at: number } | null;
+  /** The server's time (ms). */
+  now: number;
 }
 
 export interface HardwareConfig {
@@ -291,12 +309,12 @@ export interface HardwareConfig {
 }
 
 export const emptyNetwork = (): NetworkRoles => ({ control: '', ndi: '', ndiDiscovery: '', mediaRed: '', mediaBlue: '', ptp: '', mos: '' });
-export const emptySync = (): SyncConfig => ({ reference: 'free', ptpDomain: 127, taiOffset: 37 });
+export const emptySync = (): SyncConfig => ({ reference: 'auto', ptpDomain: 127, taiOffset: 37, version: 1 });
 
 /** NTP / PTP status (crates/cg-server/src/sync.rs). */
 export interface SyncStatus {
-  ntp: { tool?: string | null; synced?: boolean | null; source?: string | null; offsetMs?: number | null };
-  ptp: { running: boolean; message?: string | null; domain: number; portState?: string | null; grandmaster?: string | null; offsetNs?: number | null; jitterNs?: number | null; locked: boolean };
+  ntp: { tool?: string | null; synced?: boolean | null; enabled?: boolean | null; source?: string | null; offsetMs?: number | null };
+  ptp: { running: boolean; message?: string | null; domain: number; portState?: string | null; grandmaster?: string | null; offsetNs?: number | null; jitterNs?: number | null; locked: boolean; setsClock?: boolean };
   checkedAt: number;
 }
 

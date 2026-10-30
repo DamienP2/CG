@@ -1,4 +1,4 @@
-import { t } from '../i18n';
+import { t, tc } from '../i18n';
 import { emptyHardware, emptyNetwork, emptySync, type ClockReference, type DeckLinkModel, type DetectedCard, type HardwareConfig, type PortCap, type SdiCard, type SdiModel, type SdiMode, type SdiOutput, type SdiOutputDef, type ServerConfig, type St2110Flow, type St2110Output } from '../outputs/types';
 
 /*
@@ -109,9 +109,10 @@ export const hardwareOf = (c: ServerConfig): HardwareConfig => {
   return hw;
 };
 
-export const CLOCKS: ClockReference[] = ['free', 'ptp', 'decklink'];
+export const CLOCKS: ClockReference[] = ['auto', 'free', 'ptp', 'decklink'];
 
-export const clockLabel = (r: ClockReference) => (r === 'ptp' ? 'PTP' : r === 'decklink' ? 'DeckLink (genlock)' : t('Free'));
+export const clockLabel = (r: ClockReference) =>
+  r === 'ptp' ? 'PTP' : r === 'decklink' ? 'DeckLink (genlock)' : r === 'auto' ? tc('clock reference', 'Automatic') : t("Server's time");
 
 /** "SDI 1 + 2" (a keyer's pair) or "SDI 4". */
 export const sdiPorts = (d: SdiOutputDef) => (d.mode !== 'fillOnly' && d.key != null ? `SDI ${d.fill + 1} + ${d.key + 1}` : `SDI ${d.fill + 1}`);

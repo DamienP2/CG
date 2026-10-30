@@ -168,6 +168,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/asrun", get(crate::asrun::get_asrun))
         .route("/api/asrun.csv", get(crate::asrun::get_asrun_csv))
         .route("/api/system/config", put(put_system_config))
+        .route("/api/system/time", get(get_system_time))
+        .route("/api/system/time/sync", post(sync_system_time))
         .route("/api/outputs/status", get(outputs_status))
         .route("/api/hardware", get(get_hardware))
         .route("/api/system/restart", post(post_restart))
@@ -2471,13 +2473,58 @@ async fn put_system_config(
             .map_err(|e| bad(format!("cannot listen on {bind}: {e}")))?;
     }
     let dir = s.data_dir.clone();
+    let before = ServerConfig::load(&dir);
+    let time = (before.time != cfg.time).then(|| cfg.time.clone());
+    // Only the time changed: the engine goes on.
+    let restart = {
+        let mut same = before.clone();
+        same.time = cfg.time.clone();
+        same != cfg
+    };
     tokio::task::spawn_blocking(move || cfg.save(&dir))
         .await
         .map_err(internal)?
         .map_err(internal)?;
-    tracing::info!("settings saved, restarting the engine");
+    if let Some(time) = time {
+        let dir = s.data_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = crate::timectl::apply(&dir, &time, false) {
+                tracing::warn!("cannot set the time: {e}");
+            }
+        });
+    }
     s.changed("config");
-    s.restart.notify_one();
+    if restart {
+        tracing::info!("settings saved, restarting the engine");
+        s.restart.notify_one();
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// Whether the time can be set here, and how its last change went (admins).
+async fn get_system_time(
+    State(_): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<Json<crate::timectl::TimeState>> {
+    require(me.is_admin())?;
+    tokio::task::spawn_blocking(crate::timectl::state)
+        .await
+        .map(Json)
+        .map_err(internal)
+}
+
+/// Synchronises the machine's time now (NTP).
+async fn sync_system_time(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+) -> ApiResult<StatusCode> {
+    require(me.is_admin())?;
+    let dir = s.data_dir.clone();
+    let time = ServerConfig::load(&dir).time;
+    tokio::task::spawn_blocking(move || crate::timectl::apply(&dir, &time, true))
+        .await
+        .map_err(internal)?
+        .map_err(bad)?;
     Ok(StatusCode::ACCEPTED)
 }
 

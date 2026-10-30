@@ -33,6 +33,7 @@ mod social;
 mod state;
 mod sync;
 mod thumbs;
+mod timectl;
 mod update;
 mod web;
 mod webimages;

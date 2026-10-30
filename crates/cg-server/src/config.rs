@@ -369,6 +369,9 @@ pub struct ServerConfig {
     /// Default IANA time zone of clocks ("" = the server's zone).
     #[serde(default)]
     pub timezone: String,
+    /// How the machine keeps its time (NTP), set from Settings › Time.
+    #[serde(default)]
+    pub time: crate::timectl::TimeConfig,
     /// Path of the NDI runtime library ("" = search the usual places).
     #[serde(default)]
     pub ndi_library: String,
@@ -408,6 +411,7 @@ impl Default for ServerConfig {
             bind: None,
             public_outputs: true,
             timezone: String::new(),
+            time: Default::default(),
             ndi_library: String::new(),
             locations: Vec::new(),
             channels: Vec::new(),
@@ -467,6 +471,8 @@ impl ServerConfig {
     /// Ids for every destination, and a location for the channels of a
     /// config made before locations existed.
     pub fn normalize(&mut self) {
+        self.hardware.sync.migrate();
+        self.time.normalize();
         if self.locations.is_empty() {
             // A config from before the outputs canvas: its channels already
             // had their web page, which is now a destination like the others.
@@ -642,6 +648,7 @@ impl ServerConfig {
         if self.bind.is_some_and(|b| b.port() == 0) {
             return Err("port 0 is not allowed".into());
         }
+        self.time.validate()?;
         if !self.timezone.trim().is_empty()
             && jiff::tz::TimeZone::get(self.timezone.trim()).is_err()
         {

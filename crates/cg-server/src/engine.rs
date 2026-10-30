@@ -665,40 +665,74 @@ fn clock(
         .config
         .clock
         .unwrap_or(state.config.hardware.sync.reference);
+    let tai = state.config.hardware.sync.tai_offset;
     let card = pictures.iter().find_map(|p| p.card.clone());
-    let mut pace = match (reference, card) {
-        (ClockReference::Ptp, _) => {
-            Pace::Grid(Grid::new(rate, state.config.hardware.sync.tai_offset))
+    let auto = reference == ClockReference::Auto;
+    // What Auto follows now: the card when its reference input is locked,
+    // else PTP when locked, else the card's own clock (an SDI output is on
+    // it), else the server's time.
+    let choose = |card: &Option<Arc<dyn FrameClock>>| {
+        let ptp = state.perf.sync.get().ptp.locked;
+        match card {
+            Some(c) if c.locked() == Some(true) => ClockReference::Decklink,
+            _ if ptp => ClockReference::Ptp,
+            Some(_) => ClockReference::Decklink,
+            None => ClockReference::Free,
         }
-        (ClockReference::Decklink, Some(clock)) => Pace::card(clock, period),
+    };
+    let mut followed = match (reference, &card) {
+        (ClockReference::Auto, _) => choose(&card),
         // An SDI output is on the card's clock: the channel follows it, so
         // the card never has to repeat or drop a frame to stay in step.
-        (ClockReference::Free, Some(clock)) => {
+        (ClockReference::Free, Some(_)) => {
             tracing::info!(
                 channel = ch.config.name,
                 "the channel runs on its DeckLink output's clock"
             );
-            Pace::card(clock, period)
+            ClockReference::Decklink
         }
         (ClockReference::Decklink, None) => {
             tracing::warn!(
                 channel = ch.config.name,
-                "no DeckLink output to follow: the channel runs on its own clock"
+                "no DeckLink output to follow: the channel runs on the server's time"
             );
-            Pace::free(period)
+            ClockReference::Free
         }
-        (ClockReference::Free, _) => Pace::free(period),
+        (r, _) => r,
     };
-    let followed = if matches!(pace, Pace::Card { .. }) {
-        ClockReference::Decklink
-    } else {
-        reference
+    let pace_for = |r: ClockReference| match (&card, r) {
+        (Some(clock), ClockReference::Decklink) => Pace::card(clock.clone(), period),
+        // PTP or the server's time: the same grid on the system clock (PTP
+        // sets it when phc2sys runs, NTP otherwise).
+        _ => Pace::Grid(Grid::new(rate, tai)),
     };
+    let mut pace = pace_for(followed);
     stats.set_reference(followed, &ch.config.name);
+    let check_every = (rate.num as u64 / rate.den.max(1) as u64).max(1);
     let mut n: u64 = 0;
     let mut saved_at = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         n += 1;
+        // Auto: about once a second, the reference that is best now.
+        if auto && n.is_multiple_of(check_every) {
+            let now = choose(&card);
+            if now != followed {
+                tracing::info!(
+                    channel = ch.config.name,
+                    "the channel now follows {}",
+                    match now {
+                        ClockReference::Decklink => "its DeckLink card",
+                        ClockReference::Ptp => "PTP",
+                        _ => "the server's time",
+                    }
+                );
+                if (now == ClockReference::Decklink) != (followed == ClockReference::Decklink) {
+                    pace = pace_for(now);
+                }
+                followed = now;
+                stats.set_reference(followed, &ch.config.name);
+            }
+        }
         let tick = pace.next();
         stats.ticked(tick.late);
         if let Pace::Card { clock, .. } = &pace {
@@ -739,14 +773,8 @@ struct Tick {
 
 /// When the ticks of a channel fall.
 enum Pace {
-    /// Every period from the channel start.
-    Free {
-        start: Instant,
-        wall: SystemTime,
-        period: Duration,
-        n: u64,
-    },
-    /// On the frame grid of the PTP-disciplined system clock.
+    /// On the frame grid of the system clock (set by PTP when phc2sys
+    /// runs, by NTP otherwise).
     Grid(Grid),
     /// On the frame boundaries of a DeckLink output (its genlock); on its
     /// own while the card does not tick.
@@ -763,15 +791,6 @@ enum Pace {
 }
 
 impl Pace {
-    fn free(period: Duration) -> Self {
-        Pace::Free {
-            start: Instant::now(),
-            wall: SystemTime::now(),
-            period,
-            n: 0,
-        }
-    }
-
     fn card(clock: Arc<dyn FrameClock>, period: Duration) -> Self {
         let now = Instant::now();
         Pace::Card {
@@ -825,28 +844,6 @@ impl Pace {
                     late,
                     skipped,
                 }
-            }
-            Pace::Free {
-                start,
-                wall,
-                period,
-                n,
-            } => {
-                *n += 1;
-                let secs = period.as_secs_f64();
-                let due = *start + Duration::from_secs_f64(*n as f64 * secs);
-                wait_until(due);
-                let late = Instant::now().saturating_duration_since(due);
-                // Stalled (machine overloaded, suspended): carry on from now
-                // rather than racing through the missed ticks.
-                let mut skipped = 0;
-                if late > *period * 2 {
-                    skipped = (late.as_secs_f64() / secs) as u64;
-                    *n += skipped;
-                }
-                // Frame times on the clock's own steady scale (RTP timestamps).
-                let at = *wall + Duration::from_secs_f64(*n as f64 * secs);
-                Tick { at, late, skipped }
             }
             Pace::Grid(g) => g.next(),
         }

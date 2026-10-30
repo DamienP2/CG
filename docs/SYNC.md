@@ -1,9 +1,10 @@
 # Réseau et synchronisation
 
 Strata ne discipline pas l'horloge de la machine lui-même : c'est le système qui
-le fait (NTP, ou PTP avec linuxptp). Strata lit leur état, cale ses canaux
+le fait (NTP, ou PTP avec linuxptp) ; Strata peut seulement régler le NTP. Il lit leur état, cale ses canaux
 dessus et prévient quand la synchro est perdue (page **Performance**). Les
-réglages sont dans **Matériel › Réseau** et **Matériel › Synchronisation**.
+réglages sont dans **Réglages › Réseaux**, **Réglages › Heure** et
+**Réglages › Synchro vidéo**.
 
 ## Rôles réseau
 
@@ -28,22 +29,53 @@ flux même si un réseau tombe. Le SDP du flux décrit les deux chemins
 
 Les horodatages RTP comptent le temps **TAI** (ST 2110-10) : l'heure système
 (UTC) plus l'écart TAI − UTC, 37 s depuis 2017 (réglable dans
-Synchronisation).
+**Matériel › ST 2110**).
 
-## Référence d'horloge des canaux
+## Heure du serveur (Réglages › Heure)
 
-Dans **Matériel › Synchronisation**, la référence par défaut ; chaque canal
-peut en choisir une autre.
+L'heure du jour du serveur sert aux horloges et décomptes, aux prises
+programmées, au journal et à l'as-run. Le système la tient :
 
-- **Libre** : les images sont comptées depuis le démarrage du canal, sur
-  l'horloge de la machine. Suffisant pour NDI, les flux SRT/RTMP/HLS et la
-  sortie HTML5.
-- **PTP** : les images tombent sur la grille SMPTE ST 2059-1 (un multiple de la
-  durée d'image depuis l'époque PTP). Tous les équipements calés sur le même
-  grand maître montrent leurs images aux mêmes instants. Il faut que l'horloge
-  système suive le PTP (voir linuxptp ci-dessous).
+- par **NTP** : la page **Heure** règle les serveurs NTP (vide : ceux du
+  système), coupe ou rallume le NTP et force une synchronisation
+  (**Synchroniser maintenant**). Sous Linux, le service tourne sous le compte
+  `strata`, qui ne peut pas modifier le système : un petit assistant root
+  (`/usr/local/lib/strata/strata-time`, installé avec le service) applique la
+  demande à chrony s'il est installé, sinon à systemd-timesyncd. Sous macOS,
+  seul le premier serveur est utilisé (`systemsetup`). Sous Windows : `w32tm`.
+- par **PTP**, quand `phc2sys` cale l'horloge système sur le grand maître : la
+  page affiche alors « Donnée par le PTP ». Coupez le NTP pour qu'il ne la
+  contredise pas.
+
+Le fuseau horaire par défaut des horloges et de la programmation est aussi sur
+cette page.
+
+## Référence d'horloge des canaux (Réglages › Synchro vidéo)
+
+La synchro vidéo, c'est la cadence des images des sorties. La page **Synchro
+vidéo** donne la référence par défaut ; chaque canal peut en choisir une autre.
+
+- **Automatique** (par défaut) : la meilleure référence disponible, suivie au
+  fil de l'eau (vérifiée chaque seconde) :
+  1. la carte DeckLink quand son entrée référence (REF) est verrouillée ;
+  2. sinon le PTP quand il est verrouillé ;
+  3. sinon l'horloge de la carte DeckLink si le canal a une sortie SDI ;
+  4. sinon l'heure du serveur.
+- **Heure du serveur** : les images tombent sur la même grille que le PTP
+  (SMPTE ST 2059-1), sur l'horloge système calée par NTP. Deux serveurs Strata
+  à l'heure NTP sortent leurs images à peu près ensemble (à la précision du
+  NTP, ~1 ms) : ce n'est pas un genlock. Un canal avec une sortie SDI suit
+  l'horloge de sa carte.
+- **PTP** : la grille SMPTE ST 2059-1 sur l'horloge système calée par le PTP.
+  Tous les équipements calés sur le même grand maître montrent leurs images
+  aux mêmes instants. Il faut que l'horloge système suive le PTP (voir
+  linuxptp ci-dessous).
 - **DeckLink** : le canal suit les tops image de sa première sortie SDI, donc
   la référence (genlock) branchée sur la carte.
+
+Dans une installation, ces références viennent d'un même générateur de synchro
+calé sur le GPS (REF pour le SDI, PTP pour le 2110, souvent NTP pour les
+ordinateurs) : elles sont cohérentes entre elles.
 
 ## Mettre en place PTP (Linux)
 

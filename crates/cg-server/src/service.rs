@@ -96,7 +96,8 @@ mod imp {
             )
             .context("cannot create the service account (are you root?)")?;
         }
-        std::fs::create_dir_all(&o.data_dir).map_err(|e| permission_hint(e.into(), &o.data_dir))?;
+        std::fs::create_dir_all(o.data_dir.join("time"))
+            .map_err(|e| permission_hint(e.into(), &o.data_dir))?;
         run(
             "chown",
             &[
@@ -129,13 +130,19 @@ mod imp {
             data = o.data_dir.display(),
         );
         std::fs::write(UNIT, unit).map_err(|e| permission_hint(e.into(), Path::new(UNIT)))?;
+        // Settings › Time sets the NTP through a root helper.
+        crate::timectl::install_helper(&o.data_dir)
+            .map_err(|e| permission_hint(e.into(), Path::new(crate::timectl::HELPER)))?;
         run("systemctl", &["daemon-reload"])?;
         run("systemctl", &["enable", "--now", SERVICE_NAME])?;
+        let _ = run("systemctl", &["enable", "--now", "strata-time.path"]);
         Ok(())
     }
 
     pub fn uninstall() -> Result<()> {
         let _ = run("systemctl", &["disable", "--now", SERVICE_NAME]);
+        let _ = run("systemctl", &["disable", "--now", "strata-time.path"]);
+        crate::timectl::uninstall_helper();
         match std::fs::remove_file(UNIT) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

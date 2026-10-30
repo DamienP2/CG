@@ -1,4 +1,4 @@
-import { Clock, CloudDownload, Cpu, Keyboard, Network, RotateCcw, Server, SlidersHorizontal } from 'lucide-react';
+import { Clock, CloudDownload, Cpu, Keyboard, Network, RotateCcw, Server, SlidersHorizontal, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from '../pages/SidePage';
@@ -7,7 +7,8 @@ import type { HardwareInfo } from '../outputs/types';
 import { Card, Field, SaveBar } from './ui';
 import { useServerConfig } from './serverConfig';
 import { Networks } from './Networks';
-import { TimeSync } from './TimeSync';
+import { TimePage } from './TimePage';
+import { VideoSync } from './VideoSync';
 import { Updates } from './Updates';
 import { LibraryUpdates } from './LibraryUpdates';
 import { ShortcutsPage } from './Shortcuts';
@@ -27,8 +28,8 @@ function uptime(s: number) {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`;
 }
 
-type Section = 'shortcuts' | 'general' | 'network' | 'sync' | 'updates' | 'system';
-const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'sync', 'updates', 'system'];
+type Section = 'shortcuts' | 'general' | 'network' | 'time' | 'sync' | 'updates' | 'system';
+const SECTIONS: Section[] = ['shortcuts', 'general', 'network', 'time', 'sync', 'updates', 'system'];
 const sectionOf = (hash: string): Section => SECTIONS.find((s) => `#${s}` === hash) ?? 'general';
 
 /** Your own settings; an admin's also the server's. */
@@ -59,13 +60,13 @@ function ServerSettings() {
     window.addEventListener('hashchange', follow);
     return () => window.removeEventListener('hashchange', follow);
   }, []);
-  // Network cards and clock status (Networks, Time and sync).
+  // Network cards and clock status (Networks, Time, Video sync).
   const detect = () =>
     api<HardwareInfo>('GET', '/api/hardware')
       .then(setDet)
       .catch(() => {});
   useEffect(() => {
-    if (section === 'network' || section === 'sync') void detect();
+    if (section === 'network' || section === 'time' || section === 'sync') void detect();
   }, [section]);
   if (!info || !cfg) return <div className="loading">{t('Loading settings…')}</div>;
 
@@ -87,7 +88,8 @@ function ServerSettings() {
       <NavSection>{t('Server')}</NavSection>
       {item('general', <SlidersHorizontal size={15} />, t('General'))}
       {item('network', <Network size={15} />, t('Networks'))}
-      {item('sync', <Clock size={15} />, t('Time and sync'))}
+      {item('time', <Clock size={15} />, t('Time'))}
+      {item('sync', <Timer size={15} />, t('Video sync'))}
       {item('updates', <CloudDownload size={15} />, t('Updates'))}
       {item('system', <Cpu size={15} />, t('System'))}
       <div className="lib-nav-foot">
@@ -114,14 +116,6 @@ function ServerSettings() {
             <Field label={t('Server name')} hint={t('Shown in the UI and the menu bar app.')}>
               <input value={cfg.name} onChange={(e) => edit((c) => void (c.name = e.target.value))} />
             </Field>
-            <Field label={t('Time zone')} hint={t('Default zone of clock widgets. Empty = server zone ({zone}).', { zone: info.timezone })}>
-              <input list="tz-list" value={cfg.timezone} placeholder={info.timezone} onChange={(e) => edit((c) => void (c.timezone = e.target.value))} />
-              <datalist id="tz-list">
-                {TIMEZONES.map((z) => (
-                  <option key={z} value={z} />
-                ))}
-              </datalist>
-            </Field>
             <Field label={t('HTML5 outputs')} hint={t('Browser sources (OBS, vMix, CasparCG) can play /output/<channel> without logging in.')}>
               <label className="check">
                 <input type="checkbox" checked={cfg.publicOutputs} onChange={(e) => edit((c) => void (c.publicOutputs = e.target.checked))} />
@@ -134,7 +128,9 @@ function ServerSettings() {
 
       {section === 'network' && <Networks info={info} cfg={cfg} edit={edit} det={det} />}
 
-      {section === 'sync' && <TimeSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />}
+      {section === 'time' && <TimePage cfg={cfg} edit={edit} det={det} zone={info.timezone} timezones={TIMEZONES} onRefresh={() => void detect()} />}
+
+      {section === 'sync' && <VideoSync cfg={cfg} edit={edit} det={det} onRefresh={() => void detect()} />}
 
       {section === 'updates' && (
         <>
