@@ -1,4 +1,4 @@
-import { BadgeCheck, MessagesSquare, Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Timer, Type, Video } from 'lucide-react';
+import { BadgeCheck, MessagesSquare, Globe, ChartColumn, Map as MapIcon, Pentagon, PenTool, Pilcrow, ScrollText, Table, Trophy, BarChart3, Circle, Clock, Folder, GalleryHorizontal, Hash, Image, Keyboard, MoveHorizontal, MoveVertical, QrCode, Repeat, SlidersHorizontal, Sparkles, Square, Timer, Type, Video } from 'lucide-react';
 import type { Layer, LayerType, Template } from '../engine/types';
 import { descendants, findLayer } from './designerStore';
 import { num, propValue } from '../engine/evaluate';
@@ -34,7 +34,7 @@ export const ICONS: Record<LayerType, typeof Square> = {
 };
 
 /** A layer's icon: Video and Lottie layers are an image and a group underneath; a clock layer is a Clock or, stopwatch or countdown, a Time. */
-export const layerIcon = (l: Layer) => (l.type === 'image' && l.video ? Video : l.type === 'group' && l.lottie !== undefined ? Sparkles : l.type === 'clock' && timed(eff(l, {})) ? Timer : ICONS[l.type]);
+export const layerIcon = (l: Layer) => (l.type === 'text' && l.wrap ? Pilcrow : l.type === 'image' && l.video ? Video : l.type === 'group' && l.lottie !== undefined ? Sparkles : l.type === 'clock' && timed(eff(l, {})) ? Timer : ICONS[l.type]);
 
 export type DropPos = 'above' | 'below' | 'into';
 

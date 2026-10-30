@@ -314,7 +314,7 @@ function TemplateList({ project }: { project: Project }) {
                 ) : null;
               })()}
             </span>
-            {unpublished && <span className="tpl-draft" title={published ? t('Changes not in the Operator yet (publish from the properties on the right)') : t('New: not in the Operator yet')} />}
+            {unpublished && <span className="tpl-draft" title={published ? t('Changes not in the Operator yet: click Publish at the top') : t('New, not in the Operator yet: click Publish at the top')} />}
             <div className="item-actions">
               <button className="icon-btn ghost" title={t('Duplicate')} onClick={(e) => (e.stopPropagation(), create(tpl))}>
                 <Copy size={12} />

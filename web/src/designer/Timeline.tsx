@@ -762,7 +762,10 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       <div className="tl-scroll" ref={scrollRef}>
         <div className="tl-grid" style={{ width: LEFT_W + width }}>
           <div className="tl-left" style={{ width: LEFT_W }}>
-            <div className="tl-corner">{t('Layers')}</div>
+            <div className="tl-corner">
+              {t('Layers')}
+              <AddMenu onAdd={onAdd} />
+            </div>
             {labels}
           </div>
           <div className="tl-right" style={{ width }}>
@@ -975,6 +978,10 @@ const LOREM_PARAGRAPH = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit
 function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
   return (
     <div className="tl-insert" style={{ width }}>
+      <button className="add-btn folder" title={t('New folder (group)')} onClick={() => onAdd('group')}>
+        <FolderPlus size={14} />
+      </button>
+      <span className="tl-pipe" />
       <button className="tool" title={t('Rectangle')} onClick={() => onAdd('rect')}>
         <Square size={15} />
       </button>
@@ -1028,11 +1035,6 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       </button>
       <button className="tool" title={t('Pen')} onClick={() => onAdd('pen')}>
         <PenTool size={15} />
-      </button>
-      <div className="spacer" />
-      <AddMenu onAdd={onAdd} />
-      <button className="add-btn folder" title={t('New folder (group)')} onClick={() => onAdd('group')}>
-        <FolderPlus size={14} />
       </button>
     </div>
   );

@@ -7552,6 +7552,7 @@ a.btn {
 .ruler-tick {
   position: absolute;
   white-space: nowrap;
+  font-size: 9px;
 }
 .ruler-x .ruler-tick {
   top: 1px;
@@ -10404,10 +10405,9 @@ body.cv-moving * {
 .tl-insert .menu-wrap {
   flex: none;
 }
-/* Folder: not a widget, so a quieter outlined button beside "+". */
+/* Folder: not a widget, so a quieter outlined button, first, apart from the quick tools. */
 .add-btn.folder {
   flex: none;
-  margin-left: 4px;
   background: transparent;
   border-style: dashed;
   color: var(--text-2);
@@ -19888,4 +19888,23 @@ input.lc-pal-name:focus {
   margin-left: 1px;
   border-radius: 50%;
   background: var(--accent);
+}
+
+/* Timeline: the folder, a pipe, then the quick tools. */
+.tl-insert .tl-pipe {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--line-2);
+}
+/* "+" (widgets) right after the LAYERS title. */
+.tl-corner .menu-wrap {
+  margin-left: 8px;
+  letter-spacing: 0;
+}
+.tl-corner .add-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
 }
