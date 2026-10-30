@@ -277,8 +277,11 @@ function TemplateList({ project }: { project: Project }) {
                   <X size={16} />
                 </button>
               </header>
-              <button type="button" className="btn primary new-tpl-blank" onClick={() => (setNewOpen(false), void create())}>
-                <FilePlus size={15} /> {t('New')}
+              <div className="new-tpl-row">
+              <button type="button" className="new-tpl-blank" onClick={() => (setNewOpen(false), void create())}>
+                <FilePlus size={30} />
+                <strong>{t('New')}</strong>
+                <span>{t('Blank template')}</span>
               </button>
               <button
                 type="button"
@@ -300,6 +303,7 @@ function TemplateList({ project }: { project: Project }) {
                 <strong>{t('Drop a file here or click to choose one')}</strong>
                 <span>{t('Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')}</span>
               </button>
+              </div>
             </div>
           </div>,
             document.body,

@@ -19412,18 +19412,98 @@ a.opx-html5 {
 }
 
 /* « Paste… » after « Copy all »: what to take from the copied layer. */
-.paste-dialog {
-  width: 420px;
+.modal.paste-dialog {
+  width: min(540px, 100%);
 }
-.paste-list {
+.pd-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: -6px;
+}
+.pd-section {
   display: grid;
   gap: 8px;
 }
-.paste-list .set-label {
-  margin-top: 4px;
+.pd-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
-.paste-list .check .muted {
-  margin-left: 6px;
+@media (max-width: 520px) {
+  .pd-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.pd-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text-3);
+  text-align: left;
+  cursor: pointer;
+}
+.pd-tile:hover {
+  border-color: var(--line-2);
+  color: var(--text-2);
+}
+.pd-tile.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.pd-tile > svg {
+  flex: none;
+}
+.pd-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pd-text strong {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pd-detail {
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pd-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+}
+.pd-tile.on .pd-check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+.pd-swatches {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+}
+.pd-swatches i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--line-2);
 }
 
 /* Display › Other templates: the ones shown faint under the open template. */
@@ -19906,9 +19986,20 @@ input.lc-pal-name:focus {
 }
 
 /* Designer › Templates › « + »: New, or a file dropped. */
-.new-tpl-blank {
-  align-self: flex-start;
+.modal.new-tpl {
+  width: min(560px, 100%);
 }
+.new-tpl-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 10px;
+}
+@media (max-width: 520px) {
+  .new-tpl-row {
+    grid-template-columns: 1fr;
+  }
+}
+.new-tpl-blank,
 .new-tpl-drop {
   display: flex;
   flex-direction: column;
@@ -19922,12 +20013,19 @@ input.lc-pal-name:focus {
   text-align: center;
   cursor: pointer;
 }
+.new-tpl-blank {
+  justify-content: center;
+  border-style: solid;
+  border-color: var(--line);
+}
+.new-tpl-blank:hover,
 .new-tpl-drop:hover,
 .new-tpl-drop.over {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--text-2);
 }
+.new-tpl-blank strong,
 .new-tpl-drop strong {
   font-size: 13px;
   color: var(--text);
