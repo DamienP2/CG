@@ -18632,47 +18632,47 @@ a.opx-html5 {
 .opx-pane > .opx-monitor {
   position: relative;
 }
-.opx-pvover {
-  position: absolute;
-  left: 18px;
-  bottom: 8px;
-  max-width: calc(100% - 36px);
+/* The preview's transport: a bar under the picture (it covered the bottom of it, where tickers run). */
+.opx-pvbar {
+  flex: none;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  z-index: 2;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.opx-pvover .opx-pvctl {
+.opx-pvbar .opx-pvctl {
   padding: 0;
   background: none;
   border: none;
 }
-.opx-pvover .cc.air {
+.opx-pvbar .cc.air {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  padding: 5px;
-  border-radius: 8px;
-  background: rgba(10, 12, 18, 0.78);
-  backdrop-filter: blur(6px);
+  padding: 0;
+  border-radius: 0;
+  background: none;
 }
-.opx-pvover .cc.air .cc-l1 .cc-name {
+.opx-pvbar .cc.air .cc-l1 .cc-name {
   display: none;
 }
-.opx-pvover .cc.air .cc-l1:empty {
+.opx-pvbar .cc.air .cc-l1:empty {
   display: none;
 }
-.opx-pvover .cc.air .cc-l {
+.opx-pvbar .cc.air .cc-l {
   flex-wrap: nowrap;
 }
-.opx-pvover .cc.air .cc-ob,
-.opx-pvover .cc.air .cc-sq {
+.opx-pvbar .cc.air .cc-ob,
+.opx-pvbar .cc.air .cc-sq {
   height: 30px;
 }
-.opx-pvover .cc.air .cc-sq {
+.opx-pvbar .cc.air .cc-sq {
   width: 30px;
 }
-.opx-pvover .cc.air .cc-ob {
+.opx-pvbar .cc.air .cc-ob {
   flex: none;
   padding: 0 12px;
 }
@@ -20805,4 +20805,10 @@ input.lc-pal-name:focus {
 }
 .marker-editor .seg button {
   white-space: nowrap;
+}
+.opx-pvbar .cc-num {
+  font-size: 16px;
+}
+.opx-pvbar .cc-num small {
+  font-size: 12px;
 }

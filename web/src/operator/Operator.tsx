@@ -676,17 +676,17 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     </div>
                   )}
                 </Screen>
-                {/* The preview's own transport, over its picture (nothing goes on air). */}
-                {item && shownParts.some((p) => p.controls) && (
-                  <div className="opx-pvover">
-                    {shownParts
-                      .filter((p) => p.controls)
-                      .map((p) => (
-                        <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
-                      ))}
-                  </div>
-                )}
               </div>
+              )}
+              {/* The preview's own transport, in a bar under its picture (it hides none of it; nothing goes on air). */}
+              {mon.preview && item && shownParts.some((p) => p.controls) && (
+                <div className="opx-pvbar">
+                  {shownParts
+                    .filter((p) => p.controls)
+                    .map((p) => (
+                      <PreviewControls key={`${item.id}-${p.layer.id}`} layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
+                    ))}
+                </div>
               )}
             </section>
             {mon.preview && <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
