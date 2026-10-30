@@ -192,9 +192,7 @@ function duplicateSelection() {
 
 function TemplateList({ project }: { project: Project }) {
   // Not the playhead: the list is not drawn again on each frame of the playback.
-  const { template, load, format, update } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format, update: s.update })));
-  // The template whose name is being edited (a click on the open template's name).
-  const [renaming, setRenaming] = useState<string | null>(null);
+  const { template, load, format } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format })));
   const saveTemplate = useApp((s) => s.saveTemplate);
   const deleteTemplate = useApp((s) => s.deleteTemplate);
   const toast = useApp((s) => s.toast);
@@ -282,7 +280,7 @@ function TemplateList({ project }: { project: Project }) {
           <div
             key={tpl.id}
             className={`template-item ${template?.id === tpl.id ? 'selected' : ''} ${dragging === tpl.id ? 'dragging' : ''} ${dropAt?.id === tpl.id && dragging !== tpl.id ? (dropAt.after ? 'drop-after' : 'drop-before') : ''}`}
-            draggable={renaming !== tpl.id}
+            draggable
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = 'move';
               e.dataTransfer.setData('text/template', tpl.id);
@@ -306,38 +304,7 @@ function TemplateList({ project }: { project: Project }) {
           >
             <img src={thumbnailUrl(project.id, tpl, format, true)} alt="" loading="lazy" />
             <span className="tpl-text">
-              {renaming === tpl.id && template?.id === tpl.id ? (
-                <input
-                  className="tpl-rename"
-                  autoFocus
-                  defaultValue={template.name}
-                  onClick={(e) => e.stopPropagation()}
-                  onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') e.currentTarget.blur();
-                    if (e.key === 'Escape') setRenaming(null);
-                  }}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (renaming && v && v !== template.name) update((x) => void (x.name = v));
-                    setRenaming(null);
-                  }}
-                />
-              ) : (
-                <span
-                  className="tpl-name"
-                  title={template?.id === tpl.id ? t('Click to rename') : undefined}
-                  onClick={(e) => {
-                    // The open template: rename it. Another one: open it first.
-                    if (template?.id !== tpl.id) return;
-                    e.stopPropagation();
-                    setRenaming(tpl.id);
-                  }}
-                >
-                  {tpl.name}
-                </span>
-              )}
+              <span className="tpl-name">{tpl.name}</span>
               {(() => {
                 const z = project.zones.find((z) => z.id === tpl.zone);
                 return z ? (
@@ -532,9 +499,8 @@ export const Designer = memo(function Designer() {
           <div className="spacer" />
           {template && (
             <>
-              <button className={`btn small ${logicCount ? 'on' : ''}`} onClick={() => setLogicOpen(true)} title={t('Relations between values: a box that follows a text, conditions…')}>
+              <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Relations between values: a box that follows a text, conditions…')}>
                 <Link2 size={13} /> {t('Logic')}
-                {logicCount ? ` · ${logicCount}` : ''}
               </button>
               <DataCanvasButton />
             </>

@@ -11073,26 +11073,6 @@ body.cv-moving * {
   border-radius: 50%;
   background: var(--live);
 }
-.template-item.selected .tpl-name {
-  cursor: text;
-  border-radius: 4px;
-}
-.template-item.selected .tpl-name:hover {
-  box-shadow: 0 0 0 1px var(--line-2);
-  background: var(--panel-3);
-}
-.tpl-rename {
-  width: 100%;
-  min-width: 0;
-  height: 22px;
-  padding: 0 6px;
-  margin-left: -6px;
-  border: 1px solid var(--accent);
-  border-radius: 5px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-}
 .gm-switch {
   justify-content: space-between;
   width: 100%;
@@ -19898,4 +19878,14 @@ input.lc-pal-name:focus {
 .lc-chip.lc-new:hover {
   color: var(--text);
   border-color: var(--line-2);
+}
+
+/* A canvas button (Logic, Data) whose canvas holds something: a dot, not the "on" look. */
+.btn.has::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin-left: 1px;
+  border-radius: 50%;
+  background: var(--accent);
 }
