@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -419,6 +419,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // On air, front-most zone first; the internal controls show one of them.
   const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
   const busy = zones.filter((z) => channel.layers[String(z.layer)]);
+  const airList = useRef<HTMLDivElement>(null);
+  useAirBento(airList, busy.length > 0);
   // CONTINUE / OUT drive the front-most graphic on air.
   const selZone = busy[0];
 
@@ -507,11 +509,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
       <div className="opx-col">
         <section className="opx-pane grow">
           <div className="opx-pltabs">
-            <div className="opx-pltabs-scroll" role="tablist" aria-label={t('Playlists')}>
+            <PlaylistTabs project={project} active={activeList} onSelect={setPlaylistId}>
               {playlists.map((p) => (
                 <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
               ))}
-            </div>
+            </PlaylistTabs>
             {canEdit && (
               <button
                 className="opx-add"
@@ -778,7 +780,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         )}
         <section className="opx-pane grow">
           {busy.length ? (
-            <div className="opx-airlist">
+            <div className="opx-airlist" ref={airList}>
               {busy.map((z) => {
                 const p = channel.layers[String(z.layer)];
                 return (
@@ -889,6 +891,91 @@ function NextButton({ project, live, target, disabled, onTake, cap }: { project:
       {target && <span className="opx-next-name">{target.name}</span>}
       {cap}
     </button>
+  );
+}
+
+/** The playlist tabs on one line; when they do not fit: < > to scroll a tab at a time, and ▾ listing them all. */
+function PlaylistTabs({ project, active, onSelect, children }: { project: Project; active: string; onSelect: (id: string) => void; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ over: false, left: false, right: false });
+  const [list, setList] = useState<{ left: number; top: number } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const read = () => {
+      const over = el.scrollWidth > el.clientWidth + 1;
+      const next = { over, left: over && el.scrollLeft > 1, right: over && el.scrollLeft < el.scrollWidth - el.clientWidth - 1 };
+      setEdge((e) => (e.over === next.over && e.left === next.left && e.right === next.right ? e : next));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    for (const c of el.children) ro.observe(c);
+    el.addEventListener('scroll', read, { passive: true });
+    return () => (ro.disconnect(), el.removeEventListener('scroll', read));
+  }, [project.playlists.length]);
+  // The open playlist stays in sight.
+  useEffect(() => {
+    box.current?.querySelector<HTMLElement>('.opx-pl.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [active]);
+  useEffect(() => {
+    if (!list) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setList(null));
+    const away = (e: PointerEvent) => !listRef.current?.contains(e.target as Node) && setList(null);
+    window.addEventListener('keydown', esc);
+    window.addEventListener('pointerdown', away, true);
+    return () => (window.removeEventListener('keydown', esc), window.removeEventListener('pointerdown', away, true));
+  }, [list]);
+  // A tab at a time, to the left or the right.
+  const step = (dir: -1 | 1) => {
+    const el = box.current;
+    if (!el) return;
+    const tabs = [...el.children] as HTMLElement[];
+    const x = el.scrollLeft;
+    const to = dir > 0 ? tabs.find((c) => c.offsetLeft + c.offsetWidth > x + el.clientWidth + 1) : [...tabs].reverse().find((c) => c.offsetLeft < x - 1);
+    if (to) el.scrollTo({ left: dir > 0 ? to.offsetLeft + to.offsetWidth - el.clientWidth : to.offsetLeft, behavior: 'smooth' });
+  };
+  return (
+    <>
+      {edge.over && (
+        <button className="opx-pl-arrow" disabled={!edge.left} title={t('Previous')} onClick={() => step(-1)}>
+          <ChevronLeft size={15} />
+        </button>
+      )}
+      <div className="opx-pltabs-scroll" ref={box} role="tablist" aria-label={t('Playlists')}>
+        {children}
+      </div>
+      {edge.over && (
+        <>
+          <button className="opx-pl-arrow" disabled={!edge.right} title={t('Next')} onClick={() => step(1)}>
+            <ChevronRight size={15} />
+          </button>
+          <button
+            className={`opx-pl-arrow ${list ? 'open' : ''}`}
+            title={t('Playlists')}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setList(list ? null : { left: Math.max(8, Math.min(r.right - 220, window.innerWidth - 228)), top: r.bottom + 4 });
+            }}
+          >
+            <ChevronDown size={15} />
+          </button>
+        </>
+      )}
+      {list &&
+        createPortal(
+          <div ref={listRef} className="menu project-menu clip-menu opx-pl-menu" style={{ position: 'fixed', left: list.left, top: list.top, right: 'auto', width: 220 }}>
+            {project.playlists.map((p) => (
+              <button key={p.id} className={p.id === active ? 'on' : ''} onClick={() => (setList(null), onSelect(p.id))}>
+                <span className="opx-pl-menu-n">{p.name}</span>
+                <em>{project.rundown.filter((r) => r.playlist === p.id).length}</em>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
@@ -1579,6 +1666,59 @@ function useUpdateFade(): [boolean, (v: boolean) => void] {
 }
 
 /** One graphic on air: a card — the on-air family in its header, the animation pills below. */
+/** On air, bento: the cells a control takes (Continue, Out: one; a widget: two to four, by its buttons; anything else: the whole row, -1). */
+function cellsOf(el: Element): number {
+  if (el.classList.contains('opx-tile')) return 1;
+  if (el.classList.contains('opx-widget') || el.classList.contains('opx-trig')) {
+    const n = el.querySelectorAll('button').length;
+    return n <= 2 ? 2 : n <= 4 ? 3 : 4;
+  }
+  return -1;
+}
+
+const AIR_CELL = 88;
+const AIR_GAP = 8;
+
+/**
+ * Lays the on-air cards out as a bento: each as wide as its controls need (two cells at least),
+ * never wider than the column, the holes filled (grid-auto-flow: dense).
+ */
+function useAirBento(ref: React.RefObject<HTMLDivElement | null>, shown: boolean) {
+  useLayoutEffect(() => {
+    const list = ref.current;
+    if (!list) return;
+    const lay = () => {
+      const cs = getComputedStyle(list);
+      const inner = list.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const cols = Math.max(2, Math.floor((inner + AIR_GAP) / (AIR_CELL + AIR_GAP)));
+      list.style.setProperty('--cols', String(cols));
+      for (const card of list.querySelectorAll<HTMLElement>(':scope > .opx-aircard')) {
+        const kids = [...(card.querySelector('.opx-controls')?.children ?? [])] as HTMLElement[];
+        const cells = kids.map(cellsOf);
+        const used = cells.reduce((a, c) => a + Math.max(0, c), 0);
+        const span = cells.includes(-1) ? cols : Math.min(cols, Math.max(2, used));
+        card.style.gridColumn = `span ${span}`;
+        card.style.setProperty('--s', String(span));
+        // The last control takes what is left of its row (a lone Out fills its card).
+        kids.forEach((k, i) => {
+          const c = cells[i];
+          const want = c < 0 ? span : Math.min(span, c + (i === kids.length - 1 && !cells.includes(-1) ? Math.max(0, span - used) : 0));
+          k.style.gridColumn = `span ${want}`;
+        });
+      }
+    };
+    lay();
+    const ro = new ResizeObserver(lay);
+    ro.observe(list);
+    const mo = new MutationObserver(lay);
+    mo.observe(list, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [ref, shown]);
+}
+
 function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; liveAt: number; operate: boolean; /** Its zone is held by another operator. */ lockedBy?: ZoneLock; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const waiting = tpl ? pauseOf(item, project) : undefined;
@@ -1594,17 +1734,12 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
   return (
     <div className={`opx-aircard ${lockedBy ? 'opl-locked' : ''}`} title={lockedBy ? t('{name} holds this zone', { name: lockedBy.userName }) : undefined}>
       <header>
-        <span className="opx-dot" style={{ background: 'var(--live)' }} />
         <strong>{name}</strong>
-        <span className="muted small">
-          {zone.name}
-          {lockedBy && (
-            <>
-              {' · '}
-              <Lock size={10} /> {lockedBy.userName}
-            </>
-          )}
-        </span>
+        {lockedBy && (
+          <span className="muted small">
+            <Lock size={10} /> {lockedBy.userName}
+          </span>
+        )}
         <span className="spacer" />
         <DataWarning template={tpl} />
       </header>

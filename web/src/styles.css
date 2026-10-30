@@ -20437,3 +20437,78 @@ input.lc-pal-name:focus {
   display: flex;
   flex-direction: column;
 }
+
+/* Operator · on air, bento: the cards side by side, each as wide as its controls (useAirBento). */
+.opx-airlist {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  align-content: start;
+  gap: 8px;
+}
+.opx-airlist > .opx-aircard {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.opx-airlist > .opx-aircard > header {
+  gap: 6px;
+  padding: 7px 9px 4px;
+  border-bottom: none;
+  min-width: 0;
+}
+.opx-airlist > .opx-aircard > header strong {
+  min-width: 0;
+}
+.opx-airlist > .opx-aircard .opx-controls {
+  flex: 1;
+  grid-template-columns: repeat(var(--s, 2), minmax(0, 1fr));
+  grid-auto-rows: minmax(76px, auto);
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+.opx-airlist > .opx-aircard .opx-controls > .opx-tile.cont {
+  grid-column: span 1;
+}
+
+/* Operator · playlist tabs that do not fit: < > and the list. */
+.opx-pl-arrow {
+  flex: none;
+  width: 22px;
+  height: 26px;
+  margin-bottom: 5px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.opx-pl-arrow:hover:not(:disabled),
+.opx-pl-arrow.open {
+  background: var(--op-3);
+  color: var(--text);
+}
+.opx-pl-arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.opx-pltabs {
+  gap: 2px;
+}
+.opx-pltabs > .opx-add {
+  margin-left: 4px;
+}
+.opx-pl-menu button.on {
+  background: var(--op-3);
+  color: var(--text);
+  font-weight: 600;
+}
+.opx-pl-menu-n {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
