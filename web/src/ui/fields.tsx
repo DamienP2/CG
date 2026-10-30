@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { parseHex, toHex } from '../engine/evaluate';
 import type { Color } from '../engine/types';
 import { t } from '../i18n';
@@ -302,6 +302,7 @@ export function TextInput({
   placeholder,
   commitOnBlur,
   maxLength,
+  autoGrow,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -310,9 +311,18 @@ export function TextInput({
   commitOnBlur?: boolean;
   /** Most characters that can be typed. */
   maxLength?: number;
+  /** As tall as its text (a line wraps, without a return). */
+  autoGrow?: boolean;
 }) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
+  const area = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!autoGrow || !el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [autoGrow, text]);
   const props = {
     value: text,
     placeholder,
@@ -324,9 +334,13 @@ export function TextInput({
     onBlur: () => commitOnBlur && text !== value && onChange(text),
     onKeyDown: (e: React.KeyboardEvent) => {
       e.stopPropagation();
-      if (e.key === 'Enter' && !multiline) (e.target as HTMLInputElement).blur();
+      if (e.key === 'Enter' && !multiline) {
+        e.preventDefault();
+        (e.target as HTMLInputElement).blur();
+      }
     },
   };
+  if (autoGrow) return <textarea ref={area} rows={1} className={`tx-grow ${multiline ? '' : 'line'}`} {...props} />;
   return multiline ? <textarea rows={3} {...props} /> : <input {...props} />;
 }
 

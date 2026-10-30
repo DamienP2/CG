@@ -254,7 +254,7 @@ export const ExposedFilter = createContext<((paths: readonly string[]) => boolea
 
 /** A labelled row of the inspector; `expose` adds its expose-to-Operator button. In the Operator
  *  (ExposedFilter) a row with `expose` paths shows only when they are exposed, without the button. */
-export function Row({ label, children, title, lead, tail, expose, exposeValue, exposeOptions, stack }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; /** The control under its label (a wide choice), in a control centre. */ stack?: boolean }) {
+export function Row({ label, children, title, lead, tail, expose, exposeValue, exposeOptions, exposeRange, stack }: { label?: ReactNode; children: ReactNode; title?: string; lead?: ReactNode; tail?: ReactNode; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; /** A slider's bounds, kept in the exposed field (the Operator's slider). */ exposeRange?: [number, number]; /** The control under its label (a wide choice), in a control centre. */ stack?: boolean }) {
   const filter = useContext(ExposedFilter);
   const paths = expose ? (typeof expose === 'string' ? [expose] : expose) : undefined;
   if (filter) {
@@ -271,13 +271,13 @@ export function Row({ label, children, title, lead, tail, expose, exposeValue, e
       {lead ?? <span className="wk-gut" />}
       {label !== undefined && <span className="prop-label">{label}</span>}
       <div className="wk-ctl">{children}</div>
-      {tail ?? (paths ? <ExposeSetting paths={paths} label={typeof label === 'string' ? label : undefined} value={exposeValue} options={exposeOptions} /> : <span className="wk-gut" />)}
+      {tail ?? (paths ? <ExposeSetting paths={paths} label={typeof label === 'string' ? label : undefined} value={exposeValue} options={exposeOptions} range={exposeRange} /> : <span className="wk-gut" />)}
     </div>
   );
 }
 
 /** The radio button exposing settings of the layer to the Operator: one click exposes, one click stops. */
-export function ExposeSetting({ paths, label, value, options }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][] }) {
+export function ExposeSetting({ paths, label, value, options, range }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][]; range?: [number, number] }) {
   const { obj } = useContext(BindContext);
   const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const layer = obj as Layer | undefined;
@@ -306,7 +306,7 @@ export function ExposeSetting({ paths, label, value, options }: { paths: readonl
         const last = p.split('.').pop()!;
         const name = paths.length > 1 || !label ? last.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (x) => x.toUpperCase()) : label;
         const key = newFieldKey(t, `${l.name} ${name}`);
-        t.fields.push({ key, label: `${l.name} · ${name}`, kind: settingKind(cur, p), default: formatSetting(cur), ...(options?.length && paths.length === 1 ? { options } : {}) });
+        t.fields.push({ key, label: `${l.name} · ${name}`, kind: settingKind(cur, p), default: formatSetting(cur), ...(options?.length && paths.length === 1 ? { options } : {}), ...(range && paths.length === 1 ? { min: range[0], max: range[1] } : {}) });
         l.settingBindings[p] = key;
       }
     });
@@ -431,7 +431,7 @@ export function SliderNum({ value, onChange, min, max, step = 1, precision = 0, 
 export function RangeNum(p: { label?: ReactNode; path?: string; expose?: Expose; exposeValue?: unknown; exposeOptions?: [string, string][]; value?: number; onChange?: (v: number) => void; min: number; max: number; step?: number; precision?: number; unit?: string; onRelease?: boolean }) {
   const [v, set] = useBind<number>(p.path, p.value, p.onChange);
   return (
-    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions}>
+    <Row label={p.label} expose={p.expose ?? p.path} exposeValue={p.exposeValue ?? (p.path ? v : undefined)} exposeOptions={p.exposeOptions} exposeRange={[p.min, p.max]}>
       <SliderNum value={Number(v ?? 0)} min={p.min} max={p.max} step={p.step} precision={p.precision} unit={p.unit} onRelease={p.onRelease} onChange={(x) => set(x, true)} />
     </Row>
   );

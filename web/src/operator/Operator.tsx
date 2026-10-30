@@ -17,7 +17,7 @@ import { formatFor, inFormat, projectFormats } from '../engine/formats';
 import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { KeyScope } from '../widgets/kit';
+import { KeyScope, SliderNum } from '../widgets/kit';
 import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
@@ -81,8 +81,10 @@ export function FieldInput({ field, value, onChange, rich, maxLength }: { field:
   }
   switch (field.kind) {
     case 'multiline':
-      return <TextInput multiline value={value} onChange={onChange} maxLength={maxLength} />;
+      return <TextInput multiline autoGrow value={value} onChange={onChange} maxLength={maxLength} />;
     case 'number':
+      // Between bounds: a slider.
+      if (field.min != null && field.max != null) return <SliderNum value={parseFloat(value) || 0} min={field.min} max={field.max} step={field.max - field.min > 20 ? 1 : 0.1} precision={field.max - field.min > 20 ? 0 : 1} onChange={(v) => onChange(String(v))} />;
       return (
         <span className="pp-field">
           <NumberField value={parseFloat(value) || 0} min={field.min} max={field.max} step={1} precision={value.includes('.') ? Math.min(3, value.split('.')[1].length) : 0} onChange={(v) => onChange(String(v))} />
@@ -105,7 +107,7 @@ export function FieldInput({ field, value, onChange, rich, maxLength }: { field:
     case 'table':
       return <TableRowsField value={value} onChange={onChange} />;
     default:
-      return <TextInput value={value} onChange={onChange} maxLength={maxLength} />;
+      return <TextInput autoGrow value={value} onChange={onChange} maxLength={maxLength} />;
   }
 }
 

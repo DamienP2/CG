@@ -184,7 +184,8 @@ export function Centre({ name, readout, status, actions, rows, children }: { nam
   const list = (actions ?? []).filter((a) => a && !(mode === 'air' && a !== GAP && 'field' in a)) as Exclude<Line2Item, false | null | undefined>[];
   return (
     <div className={`cc ${mode}`}>
-      {(readout || status || (mode !== 'designer' && name)) && (
+      {/* On air and in the preview: the controls only (no readout, no state). */}
+      {mode !== 'air' && (readout || status || (mode !== 'designer' && name)) && (
         <div className="cc-l cc-l1">
           {mode !== 'designer' && name && <span className="cc-name">{name}</span>}
           {readout?.k && <span className="cc-k">{readout.k}</span>}

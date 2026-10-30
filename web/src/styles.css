@@ -21012,3 +21012,16 @@ th[data-wire-to] {
 .opx-layer.flat .pp-fields {
   max-width: 210px;
 }
+
+/* A text field as tall as its text (a line wraps, a paragraph grows). */
+textarea.tx-grow {
+  resize: none;
+  overflow: hidden;
+  min-height: 30px;
+  line-height: 1.4;
+}
+.opx-linked {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding: 5px 0;
+}

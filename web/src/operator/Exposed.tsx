@@ -3,7 +3,7 @@ import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyC
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick } from '../ui/FontPick';
-import { Row } from '../widgets/kit';
+import { Row, SliderNum } from '../widgets/kit';
 import { widgetOf } from '../widgets';
 import { ICONS } from '../designer/LayersPanel';
 import { AssetPicker } from '../designer/AssetPicker';
@@ -247,7 +247,7 @@ export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: 
           return (
             <Row key={p} label={at > 0 ? f.label.slice(at + 3) : f.label}>
               {ctl(p, (v, set) => (
-                <SettingInput field={f} value={v} onChange={set} />
+                <SettingInput field={f} value={v} onChange={set} range={f.min != null && f.max != null ? [f.min, f.max] : SETTING_RANGES[p.split('.').pop()!]} />
               ))}
             </Row>
           );
@@ -634,7 +634,10 @@ export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: 
 }
 
 /** A setting this page has no layout of its own for: the Designer's kind of control for its value. */
-function SettingInput({ field, value, onChange }: { field: Field; value: string; onChange: (v: string) => void }) {
+/** Bounds of the settings exposed before their fields kept them (a slider for them). */
+const SETTING_RANGES: Record<string, [number, number]> = { speed: [10, 800] };
+
+function SettingInput({ field, value, onChange, range }: { field: Field; value: string; onChange: (v: string) => void; /** Between these bounds: a slider. */ range?: [number, number] }) {
   if (field.options?.length) {
     const short = field.options.length <= 4 && field.options.every(([, l]) => l.length <= 12);
     const options = [...(field.options.some(([v]) => v === value) ? [] : [[value, value] as [string, string]]), ...field.options];
@@ -642,6 +645,7 @@ function SettingInput({ field, value, onChange }: { field: Field; value: string;
   }
   switch (field.kind) {
     case 'number':
+      if (range) return <SliderNum value={parseFloat(value) || 0} min={range[0]} max={range[1]} step={range[1] - range[0] > 20 ? 1 : 0.1} precision={range[1] - range[0] > 20 ? 0 : 1} onRelease onChange={(v) => onChange(String(v))} />;
       return (
         <span className="pp-field">
           <NumberField value={parseFloat(value) || 0} min={field.min} max={field.max} step={1} precision={value.includes('.') ? Math.min(3, value.split('.')[1].length) : 0} onChange={(v) => onChange(String(v))} />
@@ -662,7 +666,7 @@ function SettingInput({ field, value, onChange }: { field: Field; value: string;
     case 'image':
       return <AssetPicker value={value} onChange={onChange} />;
     default:
-      return <TextInput value={value} onChange={onChange} multiline={field.kind === 'multiline'} />;
+      return <TextInput autoGrow value={value} onChange={onChange} multiline={field.kind === 'multiline'} />;
   }
 }
 
