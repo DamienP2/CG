@@ -239,6 +239,7 @@ export const designer: Record<string, string> = {
   'New template': 'Nouveau modèle',
   'Imported “{name}” — not converted: {warnings}': '« {name} » importé ; non converti : {warnings}',
   'Click to rename': 'Cliquez pour renommer',
+  Blank: 'Vierge',
   'New, not in the Operator yet: click Publish at the top': 'Nouveau, pas encore dans l’Opérateur : cliquez sur Publier en haut',
   'Changes not in the Operator yet: click Publish at the top': 'Modifications pas encore dans l’Opérateur : cliquez sur Publier en haut',
   'New: not in the Operator yet': 'Nouveau : pas encore dans l’Opérateur',

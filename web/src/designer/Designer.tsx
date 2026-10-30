@@ -1,9 +1,9 @@
-import { Copy, FileUp, Link2, Plus, Redo2, Trash2, Undo2 } from 'lucide-react';
+import { Copy, File as FileIcon, FileCode2, Layers, Link2, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
-import { api, importAfterEffects, thumbnailUrl, useApp } from '../store';
+import { api, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
@@ -197,7 +197,15 @@ function TemplateList({ project }: { project: Project }) {
   const deleteTemplate = useApp((s) => s.deleteTemplate);
   const toast = useApp((s) => s.toast);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
+  // « + »: blank, or from an SVG or a Photoshop file.
+  const [newOpen, setNewOpen] = useState(false);
+  const pickFile = (accept: string) => {
+    const el = fileRef.current;
+    if (!el) return;
+    el.accept = accept;
+    setNewOpen(false);
+    el.click();
+  };
   // A file in the import window, then the first template it added (opened once the project has it).
   const [importFile, setImportFile] = useState<File | null>(null);
   const [toOpen, setToOpen] = useState<string | null>(null);
@@ -230,36 +238,51 @@ function TemplateList({ project }: { project: Project }) {
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
-          <button className="icon-btn ghost" title={t('Import templates: Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')} onClick={() => fileRef.current?.click()} disabled={importing}>
-            <FileUp size={14} />
-          </button>
-          <button className="icon-btn ghost" title={t('New template')} onClick={() => create()}>
+          <button className="icon-btn ghost" title={t('New template')} onClick={() => setNewOpen(true)}>
             <Plus size={14} />
           </button>
         </div>
         <input
           ref={fileRef}
           type="file"
-          accept=".psd,.psb,.svg,.mogrt,.aep,.json,.zip,.lottie"
+          accept=".svg"
           hidden
-          onChange={async (e) => {
+          onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = '';
-            if (!f) return;
-            // Photoshop, SVG, Motion Graphics, After Effects projects: the import window (what to keep, how).
-            if (/\.(psd|psb|svg|mogrt|aep)$/i.test(f.name)) return setImportFile(f);
-            setImporting(true);
-            try {
-              const { template: imp, warnings } = await importAfterEffects(project.id, f);
-              load(imp);
-              toast(warnings.length ? t('Imported “{name}” — not converted: {warnings}', { name: imp.name, warnings: warnings.join('; ') }) : t('Imported “{name}”', { name: imp.name }), 'info');
-            } catch (err) {
-              toast(String(err instanceof Error ? err.message : err), 'error');
-            } finally {
-              setImporting(false);
-            }
+            // SVG, Photoshop: the import window (what to keep, how).
+            if (f) setImportFile(f);
           }}
         />
+        {newOpen &&
+          createPortal(
+          <div className="modal-back" onPointerDown={() => setNewOpen(false)}>
+            <div className="modal new-tpl" role="dialog" aria-label={t('New template')} onPointerDown={(e) => e.stopPropagation()}>
+              <header>
+                <h2>{t('New template')}</h2>
+                <button type="button" className="icon-btn ghost" title={t('Close')} onClick={() => setNewOpen(false)}>
+                  <X size={16} />
+                </button>
+              </header>
+              <div className="new-tpl-choices">
+                <button type="button" onClick={() => (setNewOpen(false), void create())}>
+                  <FileIcon size={22} />
+                  <strong>{t('Blank')}</strong>
+                </button>
+                <button type="button" onClick={() => pickFile('.svg')}>
+                  <FileCode2 size={22} />
+                  <strong>SVG</strong>
+                </button>
+                <button type="button" onClick={() => pickFile('.psd,.psb')}>
+                  <Layers size={22} />
+                  <strong>Photoshop</strong>
+                  <span>.psd</span>
+                </button>
+              </div>
+            </div>
+          </div>,
+            document.body,
+          )}
         {importFile && (
           <ImportModal
             file={importFile}

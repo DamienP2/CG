@@ -1117,7 +1117,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
   return (
     <div className="menu-wrap" onPointerDown={(e) => e.stopPropagation()}>
       <button
-        className={`add-btn ${open ? 'on' : ''}`}
+        className={`icon-btn ghost ${open ? 'on' : ''}`}
         title={t('Widgets')}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
@@ -1131,7 +1131,7 @@ function AddMenu({ onAdd }: { onAdd: AddLayer }) {
           );
         }}
       >
-        <Plus size={15} />
+        <Plus size={14} />
       </button>
       {open && (
         <div

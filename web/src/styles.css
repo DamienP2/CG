@@ -19898,13 +19898,48 @@ input.lc-pal-name:focus {
   margin: 0 6px;
   background: var(--line-2);
 }
-/* "+" (widgets) right after the LAYERS title. */
+/* "+" (widgets) at the right of the LAYERS title, as the Templates one. */
 .tl-corner .menu-wrap {
-  margin-left: 8px;
+  margin-left: auto;
+  margin-right: -4px;
   letter-spacing: 0;
 }
-.tl-corner .add-btn {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+
+/* Designer › Templates › « + »: blank, SVG or Photoshop. */
+.new-tpl-choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.new-tpl-choices button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 104px;
+  padding: 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.new-tpl-choices button:hover {
+  border-color: var(--line-2);
+  background: var(--panel-3);
+  color: var(--text);
+}
+.new-tpl-choices strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.new-tpl-choices span {
+  font-size: var(--fs-11);
+  color: var(--text-3);
+}
+@media (max-width: 520px) {
+  .new-tpl-choices {
+    grid-template-columns: 1fr;
+  }
 }
