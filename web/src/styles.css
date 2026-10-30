@@ -19905,41 +19905,34 @@ input.lc-pal-name:focus {
   letter-spacing: 0;
 }
 
-/* Designer › Templates › « + »: blank, SVG or Photoshop. */
-.new-tpl-choices {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+/* Designer › Templates › « + »: New, or a file dropped. */
+.new-tpl-blank {
+  align-self: flex-start;
 }
-.new-tpl-choices button {
+.new-tpl-drop {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 104px;
-  padding: 12px 8px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
+  gap: 8px;
+  padding: 28px 18px;
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
   background: var(--panel-2);
-  color: var(--text-2);
+  color: var(--text-3);
+  text-align: center;
   cursor: pointer;
 }
-.new-tpl-choices button:hover {
-  border-color: var(--line-2);
-  background: var(--panel-3);
-  color: var(--text);
+.new-tpl-drop:hover,
+.new-tpl-drop.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-2);
 }
-.new-tpl-choices strong {
+.new-tpl-drop strong {
   font-size: 13px;
   color: var(--text);
 }
-.new-tpl-choices span {
-  font-size: var(--fs-11);
-  color: var(--text-3);
-}
-@media (max-width: 520px) {
-  .new-tpl-choices {
-    grid-template-columns: 1fr;
-  }
+.new-tpl-drop span {
+  font-size: 12px;
+  line-height: 1.5;
 }

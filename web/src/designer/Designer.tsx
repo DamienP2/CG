@@ -1,9 +1,9 @@
-import { Copy, File as FileIcon, FileCode2, Layers, Link2, Plus, Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { Copy, FilePlus, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
-import { api, thumbnailUrl, useApp } from '../store';
+import { api, importAfterEffects, thumbnailUrl, useApp } from '../store';
 import { descendants, duplicateLayers, findLayer, makeLayer, newTemplate, setProp, useDesigner } from './designerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { Inspector } from './Inspector';
@@ -190,6 +190,9 @@ function duplicateSelection() {
   duplicateLayers(useDesigner.getState().selected);
 }
 
+/** The files a template can be made from. */
+const TEMPLATE_FILES = '.psd,.psb,.svg,.mogrt,.aep,.json,.zip,.lottie';
+
 function TemplateList({ project }: { project: Project }) {
   // Not the playhead: the list is not drawn again on each frame of the playback.
   const { template, load, format } = useDesigner(useShallow((s) => ({ template: s.template, load: s.load, format: s.format })));
@@ -197,14 +200,25 @@ function TemplateList({ project }: { project: Project }) {
   const deleteTemplate = useApp((s) => s.deleteTemplate);
   const toast = useApp((s) => s.toast);
   const fileRef = useRef<HTMLInputElement>(null);
-  // « + »: blank, or from an SVG or a Photoshop file.
+  // « + »: a blank template, or one from a file dropped or picked.
   const [newOpen, setNewOpen] = useState(false);
-  const pickFile = (accept: string) => {
-    const el = fileRef.current;
-    if (!el) return;
-    el.accept = accept;
+  const [over, setOver] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fromFile = async (f: File) => {
     setNewOpen(false);
-    el.click();
+    // Photoshop, SVG, Motion Graphics, After Effects projects: the import window (what to keep, how).
+    if (/\.(psd|psb|svg|mogrt|aep)$/i.test(f.name)) return setImportFile(f);
+    // Bodymovin / Lottie: straight in.
+    setImporting(true);
+    try {
+      const { template: imp, warnings } = await importAfterEffects(project.id, f);
+      load(imp);
+      toast(warnings.length ? t('Imported “{name}” — not converted: {warnings}', { name: imp.name, warnings: warnings.join('; ') }) : t('Imported “{name}”', { name: imp.name }), 'info');
+    } catch (err) {
+      toast(String(err instanceof Error ? err.message : err), 'error');
+    } finally {
+      setImporting(false);
+    }
   };
   // A file in the import window, then the first template it added (opened once the project has it).
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -238,20 +252,19 @@ function TemplateList({ project }: { project: Project }) {
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
-          <button className="icon-btn ghost" title={t('New template')} onClick={() => setNewOpen(true)}>
+          <button className="icon-btn ghost" title={t('New template')} disabled={importing} onClick={() => setNewOpen(true)}>
             <Plus size={14} />
           </button>
         </div>
         <input
           ref={fileRef}
           type="file"
-          accept=".svg"
+          accept={TEMPLATE_FILES}
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = '';
-            // SVG, Photoshop: the import window (what to keep, how).
-            if (f) setImportFile(f);
+            if (f) void fromFile(f);
           }}
         />
         {newOpen &&
@@ -264,21 +277,29 @@ function TemplateList({ project }: { project: Project }) {
                   <X size={16} />
                 </button>
               </header>
-              <div className="new-tpl-choices">
-                <button type="button" onClick={() => (setNewOpen(false), void create())}>
-                  <FileIcon size={22} />
-                  <strong>{t('Blank')}</strong>
-                </button>
-                <button type="button" onClick={() => pickFile('.svg')}>
-                  <FileCode2 size={22} />
-                  <strong>SVG</strong>
-                </button>
-                <button type="button" onClick={() => pickFile('.psd,.psb')}>
-                  <Layers size={22} />
-                  <strong>Photoshop</strong>
-                  <span>.psd</span>
-                </button>
-              </div>
+              <button type="button" className="btn primary new-tpl-blank" onClick={() => (setNewOpen(false), void create())}>
+                <FilePlus size={15} /> {t('New')}
+              </button>
+              <button
+                type="button"
+                className={`new-tpl-drop ${over ? 'over' : ''}`}
+                onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setOver(true);
+                }}
+                onDragLeave={() => setOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setOver(false);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) void fromFile(f);
+                }}
+              >
+                <UploadCloud size={30} />
+                <strong>{t('Drop a file here or click to choose one')}</strong>
+                <span>{t('Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')}</span>
+              </button>
             </div>
           </div>,
             document.body,
