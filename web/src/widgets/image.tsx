@@ -14,7 +14,6 @@ import { Bound, Btns, clamp, ColorPick, DataValue, defineWidget, ExposeToggle, H
 import { Centre, StartRow, WaitsContinue, WaitsTrigger } from './centre';
 import { confirmDialog } from '../ui/dialogs';
 import { lang, t, tc, tn } from '../i18n';
-import { ON_AIR, SocialSource } from './socialSource';
 
 export interface Crop {
   l: number;
@@ -552,7 +551,6 @@ export default defineWidget({
           <VideoSource k={k} ed={ed} />
         ) : (
           <>
-            <SocialSource label={t('Picture')} picks={[ON_AIR.avatar('src'), ON_AIR.photo('src')]} />
             <Section id="image-source" title={t('Picture')}>
               <PictureRow />
               <Row expose="fallback" exposeValue={k.fallback} label={t('Fallback')}>

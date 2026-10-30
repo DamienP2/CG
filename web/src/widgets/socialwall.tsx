@@ -10,7 +10,6 @@ import { Dropdown } from '../ui/Dropdown';
 import { ColorPick, Content, defineWidget, headerRows, Num, RangeNum, Row, Section, Seg, Toggle, type Warning } from './kit';
 import { ellipse, poly, rrect, tf, Pt, type Cmd } from './scoreboard-paint';
 import { t } from '../i18n';
-import { ON_AIR, SocialSource } from './socialSource';
 
 export interface Config {
   /** The messages: `{{key}}` of a field holding a JSON list of messages (or a data set's table). */
@@ -589,7 +588,6 @@ export default defineWidget({
     const c = cfg(layer as unknown as Config);
     return (
       <>
-        <SocialSource label={t('Messages')} picks={[ON_AIR.approved('items', 'handItems')]} />
         <Section id="sw-content" title={t('Content')}>
           <Content label={t('Messages')} path="items" value={c.items} multiline placeholder="{{messages}}" />
           <Num label={t('Cards shown')} path="max" value={c.max} min={1} max={12} />

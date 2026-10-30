@@ -14,7 +14,6 @@ import { Btns, clamp, ColorPick, findCol, headerRows, hex as cssBg, Content, def
 import { Centre, GAP, StartRow, WaitsContinue, WaitsTrigger, type Line2Item } from './centre';
 import { FitLine, FONT_CSS, tw, useLiveClock } from './table-text';
 import { t, tc } from '../i18n';
-import { ON_AIR, SocialSource } from './socialSource';
 
 export interface Item {
   cat?: string;
@@ -692,16 +691,6 @@ export default defineWidget({
     const cats: [string, string][] = [['', '—'], ...k.cats.map((c) => [c.name, c.name] as [string, string])];
     return (
       <>
-        <SocialSource
-          label={t('Content')}
-          picks={[ON_AIR.approved('text')]}
-          after={(x) => {
-            const tl = x as unknown as TL;
-            if (!tl.itemFormat) tl.itemFormat = '{name} · {text}';
-            // The items typed by hand go: the data set's rows are the items.
-            if (tl.items?.length) tl.items = tl.items.filter((i) => /\{\{\w+__table\}\}/.test(i.text ?? ''));
-          }}
-        />
         <Section id="ticker-items" title={t('Content')}>
           {k.items.length ? (
             <Row expose="items" exposeValue={k.items}>

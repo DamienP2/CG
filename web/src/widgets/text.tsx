@@ -18,7 +18,6 @@ import { ColorGroupRow, GroupRow } from '../designer/Inspector';
 import { Dropdown } from '../ui/Dropdown';
 import { ColorPick, Content, defineWidget, hex, Num, Row, Section, Seg, Select, Toggle, type LayerOf, type Warning, withDefaults } from './kit';
 import { t, tc } from '../i18n';
-import { ON_AIR, SocialSource } from './socialSource';
 
 /** Settings of the layer (flattened into it; every field optional: older projects lack them). */
 export interface Config {
@@ -487,7 +486,6 @@ function Inspector({ layer, template, edit }: { layer: TextLayer; data: Data; te
   const typoOwn = Object.keys(vs).some((x) => x !== 'color');
   return (
     <>
-      <SocialSource label={t('Text')} picks={[ON_AIR.name('text'), ON_AIR.text('text'), ON_AIR.city('text'), ON_AIR.platformName('text'), ON_AIR.time('text'), ON_AIR.count('text'), ON_AIR.tag('text'), ON_AIR.tagCount('text'), ON_AIR.tagPerMin('text')]} />
       <Section id="text-content" title={t('Content')}>
         <Content path="text" rich plain vars value="" multiline={para} expose placeholder={t('Text')} />
       </Section>
