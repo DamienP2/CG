@@ -73,7 +73,7 @@ export function AnimationsDialog() {
   const grid = useRef<HTMLDivElement>(null);
   const layers = (ids ?? []).map((id) => template && findLayer(template, id)).filter((l) => !!l);
   const list = presetsFor(cat, layers);
-  const auto = template ? autoFor(template, layers, fps) : 0.6;
+  const auto = template ? autoFor(template, layers, fps) : 1.5;
   const secs = choice.secs ?? auto;
   usePreviews(grid, list, secs);
   useEffect(() => {
@@ -145,7 +145,7 @@ export function AnimationsDialog() {
             <input type="checkbox" checked={choice.secs === null} onChange={(e) => setChoice((c) => ({ ...c, secs: e.target.checked ? null : auto }))} />
             {t('Auto')}
           </label>
-          <input className="an-range" type="range" min={0.2} max={2} step={0.1} value={secs} disabled={choice.secs === null} onChange={(e) => setChoice((c) => ({ ...c, secs: +e.target.value }))} />
+          <input className="an-range" type="range" min={0.2} max={3} step={0.1} value={secs} disabled={choice.secs === null} onChange={(e) => setChoice((c) => ({ ...c, secs: +e.target.value }))} />
           <span className="an-secs">{(+secs.toFixed(1)).toLocaleString()} s</span>
           <button type="button" className="btn" onClick={close}>
             {t('Cancel')}

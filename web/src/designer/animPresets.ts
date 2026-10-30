@@ -132,13 +132,13 @@ function shown(t: Template, l: Layer) {
   return { from, to, hold };
 }
 
-/** The length of an in or out (s) that fits a layer shown `secs`: a tenth of it, 0.3 s to 1.2 s. */
-export const autoSecs = (secs: number) => Math.min(1.2, Math.max(0.3, secs * 0.1));
+/** The length of an in or out (s) that fits a layer shown `secs`: 1.5 s, less on a short layer (half of it, at least 0.3 s). */
+export const autoSecs = (secs: number) => Math.min(1.5, Math.max(0.3, secs * 0.5));
 
 /** The automatic length for these layers (the first one's). */
 export function autoFor(t: Template, layers: Layer[], fps: number): number {
   const l = layers[0];
-  if (!l) return 0.6;
+  if (!l) return 1.5;
   const w = shown(t, l);
   return autoSecs((w.to - w.from) / fps);
 }
