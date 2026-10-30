@@ -4489,7 +4489,7 @@
      "Channels & playout"
     ],
     "summary": "Take a zone",
-    "description": "**Rights:** admin, designer, operator. Taken from whoever held it, who is told (`zoneLocks` event). Other people's commands on it are then refused (409).",
+    "description": "**Rights:** admin, designer, operator. Taken from whoever held it, who is told (`zoneLocks` event). Other people's commands on it are then refused (409). A person taking a graphic on a free zone holds it too; the zones of someone who closes the Operator are freed after 15 s.",
     "responses": {
      "204": {
       "description": "Taken"

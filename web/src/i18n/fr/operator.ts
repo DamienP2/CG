@@ -516,4 +516,9 @@ export const operator: Record<string, string> = {
   'No value to type': 'Aucune valeur à saisir',
   'No graphic selected': 'Aucun habillage sélectionné',
   'On air for {time}': 'À l’antenne depuis {time}',
+  'Free my zones': 'Libérer mes zones',
+  '{name} took over {zone}': '{name} a pris la main sur {zone}',
+  'Take it back': 'Reprendre',
+  'zone|Free': 'Libérer',
+  'zone|Take': 'Prendre',
 };

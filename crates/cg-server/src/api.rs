@@ -3286,7 +3286,18 @@ async fn ws_session(s: Shared, socket: WebSocket, viewer: Viewer) {
         let _ = s.events.send(Event::Presence {
             present: s.presence.list(),
         });
+        release_locks_later(&s);
     }
+}
+
+/// The zones of someone who left the Operator are freed after a while (a
+/// page reloaded comes back before).
+fn release_locks_later(s: &Shared) {
+    let s = s.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+        s.release_absent_locks();
+    });
 }
 
 async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id: u64) {
@@ -3443,6 +3454,7 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
                             });
                             if s.presence.set(socket_id, at) {
                                 let _ = s.events.send(Event::Presence { present: s.presence.list() });
+                                release_locks_later(&s);
                             }
                             None
                         }

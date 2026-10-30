@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -31,8 +31,8 @@ import { TableRowsField } from './TableRowsField';
 import { Dropdown, type DropOption } from '../ui/Dropdown';
 import { Splitter, useLayout } from '../ui/Splitter';
 import { lang, t, tc, tn } from '../i18n';
-import { LockedBy, useZoneLocks, ZoneBar } from './ZoneBar';
-import { OperatorTop } from './Presence';
+import { TakenNotice, TakeOver, useZoneLocks, ZonesButton } from './ZoneBar';
+import { Avatar, OperatorTop } from './Presence';
 import { requestUndo, UndoHistory, UndoShortcut } from './UndoToast';
 import { KeyCap, openShortcuts } from './ShortcutsOverlay';
 import { ScheduleCell, ScheduleTop, toggleScheduleList } from './Schedule';
@@ -500,10 +500,11 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
   return (
     <div className="opl-page">
+    {channelId && <ZonesButton project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
     <OperatorTop channelId={channelId} operate={operate} />
     <TopControls channelId={channelId} channelInfo={channelInfo} screens={screens} onScreens={setScreens} />
     <ScheduleTop channelId={channelId} project={project} />
-    {channelId && <ZoneBar project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
+    <TakenNotice />
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
       {/* Left: playlists and graphics. */}
       <div className="opx-col">
@@ -576,6 +577,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 cue={r.id === nextTarget?.id}
                 operate={operate && !lockOf(r)}
                 lockedBy={lockOf(r)}
+                takeOver={lockOf(r) && channelId ? <TakeOver channelId={channelId} lock={lockOf(r)!} operate={operate} /> : undefined}
                 schedule={<ScheduleCell channelId={channelId} project={project} item={r} operate={operate && !lockOf(r)} />}
                 editable={canEdit}
                 onSelect={() => setCued(r.id)}
@@ -792,6 +794,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     liveAt={liveState?.at ?? 0}
                     operate={operate && !zoneLocks.other(z.id)}
                     lockedBy={channelId ? zoneLocks.other(z.id) : undefined}
+                    takeOver={channelId && zoneLocks.other(z.id) ? <TakeOver channelId={channelId} lock={zoneLocks.other(z.id)!} operate={operate} /> : undefined}
                     command={command}
                     nextRowOf={(key) => nextRowOf(p, key)}
                     widget={{ selected: airWidget, onSelect: setAirWidget, more: airMore, onMore: (k, open) => setAirMore({ ...airMore, [k]: open }) }}
@@ -1260,6 +1263,8 @@ function GraphicRow(props: {
   operate: boolean;
   /** Its zone is held by another operator. */
   lockedBy?: ZoneLock;
+  /** « Take over » its zone (shown on hover while someone else holds it). */
+  takeOver?: React.ReactNode;
   /** Its scheduled takes and the clock button. */
   schedule?: React.ReactNode;
   editable: boolean;
@@ -1291,7 +1296,10 @@ function GraphicRow(props: {
       )}
       {props.lockedBy ? (
         <button className={`opx-sq big opl-sq ${air ? 'red' : ''}`} disabled title={t('{name} holds this zone', { name: props.lockedBy.userName })} onClick={(e) => e.stopPropagation()}>
-          <Lock size={14} />
+          {air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+          <span className="opl-sq-av">
+            <Avatar id={props.lockedBy.userId} name={props.lockedBy.userName} small />
+          </span>
         </button>
       ) : air && pause ? (
         <PauseButton pause={pause} step={step} left={left} operate={props.operate} onContinue={props.onContinue} />
@@ -1344,7 +1352,7 @@ function GraphicRow(props: {
         <MiniTimeline template={tpl} air={air} />
       </span>
       <DataWarning template={tpl} />
-      {props.lockedBy && <LockedBy lock={props.lockedBy} />}
+      {props.takeOver && <span className="opl-row-take">{props.takeOver}</span>}
       {props.schedule}
       {props.editable && (
         <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
@@ -1783,7 +1791,7 @@ function useAirBento(ref: React.RefObject<HTMLDivElement | null>, shown: boolean
   }, [ref, shown]);
 }
 
-function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; liveAt: number; operate: boolean; /** Its zone is held by another operator. */ lockedBy?: ZoneLock; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
+function AirCard({ project, zone, item, liveAt, operate, lockedBy, takeOver, command, nextRowOf, widget }: { project: Project; zone: Zone; item: PlayoutItem; liveAt: number; operate: boolean; /** Its zone is held by another operator. */ lockedBy?: ZoneLock; /** « Take over », over its controls while someone else holds it. */ takeOver?: React.ReactNode; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const waiting = tpl ? pauseOf(item, project) : undefined;
   const step = autoStep(project, item, liveAt);
@@ -1793,11 +1801,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
     <div className={`opx-aircard ${lockedBy ? 'opl-locked' : ''}`} title={lockedBy ? t('{name} holds this zone', { name: lockedBy.userName }) : undefined}>
       <header>
         <strong>{name}</strong>
-        {lockedBy && (
-          <span className="muted small">
-            <Lock size={10} /> {lockedBy.userName}
-          </span>
-        )}
+        {lockedBy && <Avatar id={lockedBy.userId} name={lockedBy.userName} small />}
         <span className="spacer" />
         <DataWarning template={tpl} />
       </header>
@@ -1825,6 +1829,15 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
           </>
         }
       />
+      {lockedBy && takeOver && (
+        <div className="opl-veil">
+          <span className="opl-veil-who">
+            <Avatar id={lockedBy.userId} name={lockedBy.userName} small />
+            {lockedBy.userName}
+          </span>
+          {takeOver}
+        </div>
+      )}
     </div>
   );
 }

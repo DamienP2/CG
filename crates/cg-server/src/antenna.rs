@@ -132,6 +132,39 @@ impl ChannelOps {
         l.get(zone).filter(|l| l.user_id != actor.id).cloned()
     }
 
+    /// Gives a free `zone` to the person driving it (a take): true when it was free.
+    pub fn claim(&self, zone: &str, actor: &Actor, now: i64) -> bool {
+        if !actor.bound_by_locks() {
+            return false;
+        }
+        let Ok(mut l) = self.locks.lock() else {
+            return false;
+        };
+        if l.contains_key(zone) {
+            return false;
+        }
+        l.insert(
+            zone.into(),
+            ZoneLock {
+                zone: zone.into(),
+                user_id: actor.id.clone(),
+                user_name: actor.name.clone(),
+                since: now,
+            },
+        );
+        true
+    }
+
+    /// Frees the zones of the people `here` says left: true when one was freed.
+    pub fn release_absent(&self, here: &dyn Fn(&str) -> bool) -> bool {
+        let Ok(mut l) = self.locks.lock() else {
+            return false;
+        };
+        let n = l.len();
+        l.retain(|_, z| here(&z.user_id));
+        l.len() != n
+    }
+
     pub fn push_undo(&self, step: UndoStep) {
         if let Ok(mut u) = self.undo.lock() {
             u.push_back(step);
@@ -324,6 +357,20 @@ mod tests {
         assert!(ops
             .held_by_other("lower", &Actor::auto("auto next"))
             .is_none());
+    }
+
+    #[test]
+    fn a_take_gives_a_free_zone_and_leaving_frees_it() {
+        let ops = ChannelOps::default();
+        assert!(ops.claim("lower", &person("thomas"), 1));
+        // Held: a second take does not move it (taking it over is a click of its own).
+        assert!(!ops.claim("lower", &person("julie"), 2));
+        assert_eq!(ops.locks()[0].user_id, "thomas");
+        // The engine and the control surfaces never hold a zone.
+        assert!(!ops.claim("bug", &Actor::auto("auto next"), 3));
+        assert!(!ops.release_absent(&|u| u == "thomas"));
+        assert!(ops.release_absent(&|u| u == "julie"));
+        assert!(ops.locks().is_empty());
     }
 
     #[test]

@@ -14699,53 +14699,10 @@ a.lib-nav-item {
 .topbar:has(.opl-people) .air-indicator {
   white-space: nowrap;
 }
-.opl-zonebar {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-}
-.opl-zone {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid var(--line-2);
-  background: var(--panel-2);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.opl-zone b {
-  font-weight: 700;
-}
-.opl-zone:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-.opl-zone.mine {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.opl-zone.other {
-  color: var(--text-2);
-  opacity: 0.8;
-}
-.opl-zone.other:hover:not(:disabled) {
-  opacity: 1;
-}
-.opl-zone:disabled {
-  cursor: default;
-}
 .opl-free {
   color: var(--text-2);
 }
-.opx-gr.opl-locked > :not(.opl-lockby):not(.opx-acts) {
+.opx-gr.opl-locked > :not(.opl-lockby):not(.opx-acts):not(.opl-row-take) {
   opacity: 0.55;
 }
 .opx-sq.opl-sq:disabled {
@@ -20548,4 +20505,170 @@ input.lc-pal-name:focus {
 }
 .opx-tile > span:not(.opx-tile-top) {
   position: relative;
+}
+
+/* ===== Operator · several operators: the Zones button, « Take over » where it is held, told when taken ===== */
+.opl-zbtn {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px 0 9px;
+  border: 1px solid var(--op-3, #252938);
+  border-radius: 7px;
+  background: var(--op-2, #1c1f2c);
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.opl-zbtn:hover,
+.opl-zbtn.open {
+  color: var(--text);
+  border-color: var(--op-4, #2f3446);
+}
+.opl-zdots {
+  display: inline-flex;
+  gap: 3px;
+}
+.opl-zdots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #3a3f55;
+}
+.opl-zstack {
+  display: inline-flex;
+}
+.opl-zstack .opl-av {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--op-2, #1c1f2c);
+}
+.opl-zstack .opl-av:first-child {
+  margin-left: 0;
+}
+.opl-zpop {
+  z-index: 1000;
+  width: 300px;
+  padding: 6px;
+}
+.opl-zrow {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 6px 0 8px;
+  border-radius: 6px;
+}
+.opl-zrow:hover {
+  background: var(--panel-2);
+}
+.opl-zc {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.opl-zn {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opl-zwho {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.opl-mini {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--panel-3);
+  color: var(--text);
+  font: 600 11.5px var(--font, inherit);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.opl-mini.take {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink, #0b0c12);
+}
+.opl-mini:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.opl-zpop .opl-zall {
+  width: 100%;
+}
+/* A rundown row held by someone else: their face on its button, « Take over » on hover. */
+.opx-sq.opl-sq {
+  position: relative;
+}
+.opl-sq-av {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+}
+.opl-row-take {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  z-index: 1;
+  display: none;
+  transform: translateY(-50%);
+}
+.opx-gr.opl-locked:hover .opl-row-take {
+  display: inline-flex;
+}
+/* An on-air tile held by someone else: its controls veiled, who holds it and « Take over ». */
+.opx-aircard.opl-locked {
+  position: relative;
+  opacity: 1;
+}
+.opx-aircard.opl-locked .opx-controls {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+.opl-veil {
+  position: absolute;
+  inset: 30px 8px 8px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(15, 16, 23, 0.45);
+}
+.opl-veil-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+}
+/* Someone took one of my zones. */
+.opl-taken {
+  position: fixed;
+  right: 16px;
+  bottom: 76px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--panel-2);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px;
 }

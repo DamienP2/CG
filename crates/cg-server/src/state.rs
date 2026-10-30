@@ -650,6 +650,16 @@ impl AppState {
         if let Some(l) = zone.as_deref().and_then(|z| ch.ops.held_by_other(z, actor)) {
             return Err(format!("{} holds this zone", l.user_name));
         }
+        // Taking a graphic on a free zone gives it to the operator.
+        if let (Command::Take { .. }, Some(z)) = (&cmd, zone.as_deref()) {
+            if ch.ops.claim(z, actor, now_ms()) {
+                let _ = self.events.send(Event::ZoneLocks {
+                    channel_id: channel_id.into(),
+                    locks: ch.ops.locks(),
+                    taken_from: None,
+                });
+            }
+        }
         // Everything out: but the zones others hold.
         let others: Vec<String> = project
             .zones
@@ -869,6 +879,26 @@ impl AppState {
             server_time: now_ms(),
         });
         Ok(snapshot)
+    }
+
+    /// Frees the zones held by people who no longer have the channel's
+    /// Operator open.
+    pub fn release_absent_locks(&self) {
+        let present = self.presence.list();
+        for (id, ch) in &self.channels {
+            let here = |u: &str| {
+                present
+                    .iter()
+                    .any(|p| p.user_id == u && &p.channel_id == id)
+            };
+            if ch.ops.release_absent(&here) {
+                let _ = self.events.send(Event::ZoneLocks {
+                    channel_id: id.clone(),
+                    locks: ch.ops.locks(),
+                    taken_from: None,
+                });
+            }
+        }
     }
 
     /// Gives `zone` of a channel to `user` (taken from whoever held it, who
