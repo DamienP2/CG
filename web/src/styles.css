@@ -20706,16 +20706,42 @@ input.lc-pal-name:focus {
   color: var(--text-3);
 }
 
-/* Operator · the timecode of the day in the transport bar (beside Undo). */
+/* Operator · the timecode of the day in the transport bar (beside Undo): plain, big. */
 .ux1-transport .sch-tc {
-  height: 44px;
-  padding: 0 14px;
+  padding: 0 12px;
   border: none;
-  border-radius: 5px;
-  background: var(--op-2);
-  font: 600 13px var(--mono);
-  letter-spacing: 0.04em;
+  border-radius: 0;
+  background: none;
+  align-items: baseline;
+  align-self: center;
+  height: auto;
+  gap: 8px;
+  font: 700 12px var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--text-3);
 }
 .ux1-transport .sch-tc b {
-  font-size: 17px;
+  font: 700 26px/1 var(--mono);
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+/* Operator · a rundown row's menu (« … », right-click). */
+.opx-row-menu {
+  z-index: 1000;
+  min-width: 220px;
+}
+.opx-row-menu button.danger {
+  color: var(--live);
+}
+.opx-row-menu-on {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.opx-acts button.on {
+  background: var(--op-4);
+  color: var(--text);
 }

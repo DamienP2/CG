@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -578,7 +578,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 operate={operate && !lockOf(r)}
                 lockedBy={lockOf(r)}
                 takeOver={lockOf(r) && channelId ? <TakeOver channelId={channelId} lock={lockOf(r)!} operate={operate} /> : undefined}
-                schedule={<ScheduleCell channelId={channelId} project={project} item={r} operate={operate && !lockOf(r)} />}
+                schedule={(editAt, onClose) => <ScheduleCell channelId={channelId} project={project} item={r} editAt={editAt} onClose={onClose} />}
+                canSchedule={!!channelId && operate && !lockOf(r)}
                 editable={canEdit}
                 onSelect={() => setCued(r.id)}
                 onTake={() => takeItem(r)}
@@ -1280,8 +1281,10 @@ function GraphicRow(props: {
   lockedBy?: ZoneLock;
   /** « Take over » its zone (shown on hover while someone else holds it). */
   takeOver?: React.ReactNode;
-  /** Its scheduled takes and the clock button. */
-  schedule?: React.ReactNode;
+  /** Its next scheduled take, and the editor to schedule one (opened from its menu). */
+  schedule: (editAt: DOMRect | null, onClose: () => void) => React.ReactNode;
+  /** A take can be scheduled (the project plays on an output, the zone is free). */
+  canSchedule: boolean;
   editable: boolean;
   onSelect: () => void;
   onTake: () => void;
@@ -1302,8 +1305,17 @@ function GraphicRow(props: {
   const left = useLeft(step);
   const [renaming, setRenaming] = useState(false);
   const [autoAt, setAutoAt] = useState<DOMRect | null>(null);
+  const [schedAt, setSchedAt] = useState<DOMRect | null>(null);
+  // The row's menu (« … » or a right-click): where it opens.
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   return (
-    <div className={`opx-gr ${props.selected ? 'on' : ''} ${props.cue ? 'cue' : ''} ${air ? 'air' : ''} ${props.lockedBy ? 'opl-locked' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`} onClick={props.onSelect} onDragOver={props.drag.onOver} onDrop={props.drag.onDrop}>
+    <div
+      className={`opx-gr ${props.selected ? 'on' : ''} ${props.cue ? 'cue' : ''} ${air ? 'air' : ''} ${props.lockedBy ? 'opl-locked' : ''} ${props.drag.over ? `drop-${props.drag.over}` : ''}`}
+      onClick={props.onSelect}
+      onContextMenu={(e) => (e.preventDefault(), props.onSelect(), setMenu({ x: e.clientX, y: e.clientY }))}
+      onDragOver={props.drag.onOver}
+      onDrop={props.drag.onDrop}
+    >
       {props.editable && (
         <span className="opx-grip" draggable onDragStart={props.drag.onStart} onDragEnd={props.drag.onEnd} title={t('Drag to reorder')} onClick={(e) => e.stopPropagation()}>
           <GripVertical size={14} />
@@ -1368,22 +1380,84 @@ function GraphicRow(props: {
       </span>
       <DataWarning template={tpl} />
       {props.takeOver && <span className="opl-row-take">{props.takeOver}</span>}
-      {props.schedule}
-      {props.editable && (
-        <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
-          <button title={t('Auto next of this graphic: its time on air')} className={item.autoSecs !== undefined ? 'on' : ''} onClick={(e) => setAutoAt(autoAt ? null : e.currentTarget.getBoundingClientRect())}>
-            <Timer size={13} />
-          </button>
-          <button title={t('Duplicate')} onClick={props.onDuplicate}>
-            <Copy size={13} />
-          </button>
-          <button className="red" title={t('Remove')} onClick={props.onDelete}>
-            <Trash2 size={13} />
-          </button>
-        </span>
+      {props.schedule(schedAt, () => setSchedAt(null))}
+      <span className="opx-acts" onClick={(e) => e.stopPropagation()}>
+        {props.editable && (
+          <>
+            <button title={t('Duplicate')} onClick={props.onDuplicate}>
+              <Copy size={13} />
+            </button>
+            <button className="red" title={t('Remove')} onClick={props.onDelete}>
+              <Trash2 size={13} />
+            </button>
+          </>
+        )}
+        <button className={menu ? 'on' : ''} title={t('More')} onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu(menu ? null : { x: r.left, y: r.bottom + 4 });
+        }}>
+          <MoreHorizontal size={14} />
+        </button>
+      </span>
+      {menu && (
+        <RowMenu
+          at={menu}
+          onClose={() => setMenu(null)}
+          items={[
+            { icon: <Clock size={13} />, label: t('Schedule a take…'), disabled: !props.canSchedule, run: () => setSchedAt(new DOMRect(menu.x, menu.y, 0, 0)) },
+            { icon: <Timer size={13} />, label: t('Auto next…'), disabled: !props.editable, run: () => setAutoAt(new DOMRect(menu.x, menu.y, 0, 0)), on: item.autoSecs !== undefined },
+            null,
+            { icon: <Pencil size={13} />, label: t('Rename…'), disabled: !props.editable, run: () => setRenaming(true) },
+            { icon: <Copy size={13} />, label: t('Duplicate'), disabled: !props.editable, run: props.onDuplicate },
+            null,
+            { icon: <Trash2 size={13} />, label: t('Remove…'), disabled: !props.editable, run: props.onDelete, danger: true },
+          ]}
+        />
       )}
       {autoAt && <AutoNextEditor item={item} at={autoAt} onChange={props.onAuto} onClose={() => setAutoAt(null)} />}
     </div>
+  );
+}
+
+interface RowMenuItem {
+  icon: React.ReactNode;
+  label: string;
+  run: () => unknown;
+  disabled?: boolean;
+  danger?: boolean;
+  /** Set on this graphic (auto next). */
+  on?: boolean;
+}
+
+/** A rundown row's menu (« … » or right-click), kept in the window; Esc or a click elsewhere closes it. */
+function RowMenu({ at, items, onClose }: { at: { x: number; y: number }; items: (RowMenuItem | null)[]; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), onClose());
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
+    window.addEventListener('keydown', esc);
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      window.removeEventListener('keydown', esc);
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [onClose]);
+  return createPortal(
+    <div ref={ref} className="menu project-menu clip-menu opx-row-menu" style={{ position: 'fixed', left: Math.max(8, Math.min(at.x, window.innerWidth - 240)), top: Math.max(8, Math.min(at.y, window.innerHeight - 240)), right: 'auto' }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+      {items.map((it, i) =>
+        it ? (
+          <button key={i} className={it.danger ? 'danger' : ''} disabled={it.disabled} onClick={() => (onClose(), void it.run())}>
+            {it.icon} {it.label}
+            {it.on && <i className="opx-row-menu-on" />}
+          </button>
+        ) : (
+          <div key={i} className="menu-sep" />
+        ),
+      )}
+    </div>,
+    document.body,
   );
 }
 

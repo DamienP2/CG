@@ -1,4 +1,4 @@
-import { AlarmClock, Clock, X } from 'lucide-react';
+import { AlarmClock, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { create } from 'zustand';
@@ -229,19 +229,15 @@ function ScheduleList({ channelId, project, entries, anchor }: { channelId: stri
 
 // ------------------------------------------------------------ cards ----
 
-/** On a graphic of the playlist: its next scheduled take (badge) and the clock button. */
-export function ScheduleCell({ channelId, project, item, operate }: { channelId: string | null; project: Project; item: RundownItem; operate: boolean }) {
+/** A graphic's next scheduled take (a badge), and the editor to schedule one, opened from its row's menu at `editAt`. */
+export function ScheduleCell({ channelId, project, item, editAt, onClose }: { channelId: string | null; project: Project; item: RundownItem; editAt: DOMRect | null; onClose: () => void }) {
   const entries = useEntries(channelId);
-  const [at, setAt] = useState<DOMRect | null>(null);
   const mine = useMemo(() => entries.filter((e) => e.item === item.id && e.projectId === project.id && e.enabled && !e.missed).sort((a, b) => a.next - b.next), [entries, item.id, project.id]);
+  if (!mine[0] && !editAt) return null;
   return (
     <span className="sch-cell" onClick={(e) => e.stopPropagation()}>
       {mine[0] && <Badge entry={mine[0]} more={mine.length - 1} />}
-      {/* Always there; usable once the project plays on an output. */}
-      <button className={`sch-clock ${at ? 'on' : ''}`} disabled={!channelId || !operate} title={t('Schedule a take')} onClick={(e) => setAt(at ? null : e.currentTarget.getBoundingClientRect())}>
-        <Clock size={13} />
-      </button>
-      {at && channelId && <ScheduleEditor channelId={channelId} item={item} at={at} onClose={() => setAt(null)} />}
+      {editAt && channelId && <ScheduleEditor channelId={channelId} item={item} at={editAt} onClose={onClose} />}
     </span>
   );
 }

@@ -523,4 +523,6 @@ export const operator: Record<string, string> = {
   'zone|Take': 'Prendre',
   'Hide the picture': 'Masquer l’image',
   'Show the picture': 'Afficher l’image',
+  'Schedule a take…': 'Programmer une prise…',
+  'Auto next…': 'Suivant automatique…',
 };
