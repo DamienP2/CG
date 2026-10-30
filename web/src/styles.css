@@ -782,6 +782,30 @@ code {
 .stage-wrap > .stage-frame {
   margin: auto;
 }
+/* The picture and the room for the widgets out of it (zoomed by hand). */
+.stage-wrap > .stage-room {
+  margin: auto;
+}
+/* Size and zoom in the corner of the canvas, however far it is scrolled. */
+.stage-wrap > .stage-room,
+.stage-wrap > .stage-frame,
+.stage-wrap > .stage-info {
+  grid-area: 1 / 1;
+}
+.stage-wrap > .stage-info {
+  position: sticky;
+  align-self: end;
+  justify-self: end;
+  bottom: 0;
+  right: 0;
+  margin: 0 -16px -20px 0;
+  pointer-events: none;
+  z-index: 3;
+}
+/* Auto: the picture fits, the canvas does not scroll. */
+.stage-wrap:has(> .stage-room.fit) {
+  overflow: hidden;
+}
 .stage-frame {
   box-shadow:
     0 0 0 1px var(--line-2),

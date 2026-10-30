@@ -102,6 +102,8 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   // Fitted to the canvas area (Auto), or as set by hand (StageZoom).
   const { stageZoom, stageFit } = useDesigner(useShallow((s) => ({ stageZoom: s.stageZoom, stageFit: s.stageFit })));
   const scale = stageZoom ?? stageFit;
+  // Opening the Designer: Auto, the picture fitted.
+  useEffect(() => useDesigner.setState({ stageZoom: null }), []);
   const [boxes, setBoxes] = useState<Box[]>([]);
   // The other layers: a faint frame, so the template's layout reads at a glance.
   const [ghosts, setGhosts] = useState<Box[]>([]);
@@ -198,6 +200,62 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
       ),
     );
   }, [selected, template, frame, scale, previewData]);
+
+  // Zoomed by hand, the canvas scrolls over the picture and the widgets out
+  // of it, no further (Auto fits the picture: no scroll).
+  const W = project.width * scale;
+  const H = project.height * scale;
+  const all = [...ghosts, ...boxes];
+  const out = (v: number) => (v > 0.5 ? Math.ceil(v) + 24 : 0);
+  const room =
+    stageZoom === null
+      ? { l: 0, t: 0, r: 0, b: 0 }
+      : {
+          l: out(-Math.min(0, ...all.map((b) => b.left))),
+          t: out(-Math.min(0, ...all.map((b) => b.top))),
+          r: out(Math.max(W, ...all.map((b) => b.left + b.width)) - W),
+          b: out(Math.max(H, ...all.map((b) => b.top + b.height)) - H),
+        };
+  // More room above or left: the picture stays where it was on screen.
+  const roomWas = useRef(room);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    const was = roomWas.current;
+    roomWas.current = room;
+    if (!el) return;
+    if (room.l !== was.l) el.scrollLeft += room.l - was.l;
+    if (room.t !== was.t) el.scrollTop += room.t - was.t;
+  }, [room.l, room.t]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The part of the canvas in view (picture pixels from its top left): the
+  // grey outside the picture covers it, no more (else it would scroll).
+  const [vis, setVis] = useState({ x0: 0, y0: 0, x1: 0, y1: 0 });
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const sc = sceneRef.current;
+    if (!wrap || !sc) return;
+    const update = () => {
+      const w = wrap.getBoundingClientRect();
+      const o = sc.getBoundingClientRect();
+      const x0 = Math.ceil(w.left + wrap.clientLeft - o.left);
+      const y0 = Math.ceil(w.top + wrap.clientTop - o.top);
+      let next = { x0, y0, x1: x0 + Math.floor(wrap.clientWidth) - 1, y1: y0 + Math.floor(wrap.clientHeight) - 1 };
+      // Zoomed by hand: no further than the picture and its widgets (the
+      // canvas would scroll over the grey itself, kept as wide as it was).
+      if (stageZoom !== null) {
+        const m = 28;
+        next = { x0: Math.max(next.x0, -room.l - m), y0: Math.max(next.y0, -room.t - m), x1: Math.min(next.x1, W + room.r + m), y1: Math.min(next.y1, H + room.b + m) };
+      }
+      setVis((v) => (v.x0 === next.x0 && v.y0 === next.y0 && v.x1 === next.x1 && v.y1 === next.y1 ? v : next));
+    };
+    update();
+    wrap.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(wrap);
+    return () => {
+      wrap.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, [scale, stageZoom === null, room.l, room.t, room.r, room.b, !!template]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const drag = useRef<{
     mode: 'move' | Handle;
@@ -424,67 +482,69 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   return (
     // Around the picture too: a layer dragged out of it is still picked there (or nothing: deselects).
     <div className="stage-wrap" ref={wrapRef} onPointerDown={onPointerDown}>
-      <div className={`stage-frame bg-${shown.background}`} onPointerDown={(e) => e.stopPropagation()}>
-        {shown.background === 'video' && <StageVideo input={bgInput} />}
-        <div
-          ref={sceneRef}
-          onPointerDown={onPointerDown}
-          onDoubleClick={onDoubleClick}
-          onContextMenu={(e) => {
-            const id = layerAt(e);
-            if (!id) return;
-            e.preventDefault();
-            const st = useDesigner.getState();
-            if (!st.selected.includes(id)) st.select([id]);
-            setCtx({ x: e.clientX, y: e.clientY, layerId: id });
-          }}
-          style={{ position: 'relative' }}
-        >
-          <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
-            {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-            <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
-              {/* The other templates picked (Display › Other templates), faint, under it: to arrange it against them. */}
-              {!zonesEdit && ghostOn && (
-                <div className="stage-ghosts" style={{ position: 'absolute', inset: 0, opacity: ghostOpacity, pointerEvents: 'none', filter: shown.filter }} aria-hidden>
-                  {ghostTemplates.map((tpl) => {
-                    const z = zoneById.get(tpl.zone);
-                    return (
-                      <div key={tpl.id} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, project.height > project.width)) }}>
-                        <OverviewScene template={tpl} format={format} ticking={false} fps={fps} lang={_project.language || 'fr'} />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {/* While the zones are edited: the zones alone, no graphic. */}
-              {!zonesEdit && (
-                <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
-                  <Scene template={template} frame={frame} data={data} interactive />
-                </div>
-              )}
-            </LiveTime>
-          </Viewport>
-          {/* What is outside the picture still shows, greyed (it is cut on air). */}
-          <div className="stage-outside" aria-hidden>
-            <i style={{ left: -5000, top: -5000, width: 10000 + project.width * scale, height: 5000 }} />
-            <i style={{ left: -5000, top: project.height * scale, width: 10000 + project.width * scale, height: 5000 }} />
-            <i style={{ left: -5000, top: 0, width: 5000, height: project.height * scale }} />
-            <i style={{ left: project.width * scale, top: 0, width: 5000, height: project.height * scale }} />
-          </div>
-          <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
-          {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
-          {view.frames && !zonesEdit && ghosts.map((b) => (
-            <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
-          ))}
-          {smart.map((g) => (
-            <div key={`${g.axis}${g.v}`} className={`smart-guide ${g.axis}`} style={g.axis === 'x' ? { left: g.v * scale, top: g.from * scale, height: (g.to - g.from) * scale } : { top: g.v * scale, left: g.from * scale, width: (g.to - g.from) * scale }} />
-          ))}
-          {!zonesEdit && boxes.map((b) => (
-            <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
-              {selected.length === 1 && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
-              {selected.length === 1 && <WidgetOverlay layerId={b.id} box={b} frame={frame} />}
+      <div className={`stage-room ${stageZoom === null ? 'fit' : ''}`} style={{ padding: `${room.t}px ${room.r}px ${room.b}px ${room.l}px` }}>
+        <div className={`stage-frame bg-${shown.background}`} onPointerDown={(e) => e.stopPropagation()}>
+          {shown.background === 'video' && <StageVideo input={bgInput} />}
+          <div
+            ref={sceneRef}
+            onPointerDown={onPointerDown}
+            onDoubleClick={onDoubleClick}
+            onContextMenu={(e) => {
+              const id = layerAt(e);
+              if (!id) return;
+              e.preventDefault();
+              const st = useDesigner.getState();
+              if (!st.selected.includes(id)) st.select([id]);
+              setCtx({ x: e.clientX, y: e.clientY, layerId: id });
+            }}
+            style={{ position: 'relative' }}
+          >
+            <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
+              {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
+              <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
+                {/* The other templates picked (Display › Other templates), faint, under it: to arrange it against them. */}
+                {!zonesEdit && ghostOn && (
+                  <div className="stage-ghosts" style={{ position: 'absolute', inset: 0, opacity: ghostOpacity, pointerEvents: 'none', filter: shown.filter }} aria-hidden>
+                    {ghostTemplates.map((tpl) => {
+                      const z = zoneById.get(tpl.zone);
+                      return (
+                        <div key={tpl.id} style={{ position: 'absolute', inset: 0, ...areaClip(z && zoneArea(z, format, project.height > project.width)) }}>
+                          <OverviewScene template={tpl} format={format} ticking={false} fps={fps} lang={_project.language || 'fr'} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* While the zones are edited: the zones alone, no graphic. */}
+                {!zonesEdit && (
+                  <div style={{ position: 'absolute', inset: 0, filter: shown.filter }}>
+                    <Scene template={template} frame={frame} data={data} interactive />
+                  </div>
+                )}
+              </LiveTime>
+            </Viewport>
+            {/* What is outside the picture still shows, greyed (it is cut on air). */}
+            <div className="stage-outside" aria-hidden>
+              <i style={{ left: vis.x0, top: vis.y0, width: Math.max(0, vis.x1 - vis.x0), height: Math.max(0, -vis.y0) }} />
+              <i style={{ left: vis.x0, top: H, width: Math.max(0, vis.x1 - vis.x0), height: Math.max(0, vis.y1 - H) }} />
+              <i style={{ left: vis.x0, top: Math.max(0, vis.y0), width: Math.max(0, -vis.x0), height: Math.max(0, Math.min(H, vis.y1) - Math.max(0, vis.y0)) }} />
+              <i style={{ left: W, top: Math.max(0, vis.y0), width: Math.max(0, vis.x1 - W), height: Math.max(0, Math.min(H, vis.y1) - Math.max(0, vis.y0)) }} />
             </div>
-          ))}
+            <StageGuides project={_project} width={project.width} height={project.height} scale={scale} frameRef={sceneRef} />
+            {zonesEdit ? <ZonesEditOverlay format={format} width={project.width} height={project.height} scale={scale} /> : showZones && <ZoneOverlay zones={_project.zones ?? []} only={template.zone} format={format} width={project.width} height={project.height} scale={scale} current={template.zone} />}
+            {view.frames && !zonesEdit && ghosts.map((b) => (
+              <div key={`g${b.id}`} className="ghost-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
+            ))}
+            {smart.map((g) => (
+              <div key={`${g.axis}${g.v}`} className={`smart-guide ${g.axis}`} style={g.axis === 'x' ? { left: g.v * scale, top: g.from * scale, height: (g.to - g.from) * scale } : { top: g.v * scale, left: g.from * scale, width: (g.to - g.from) * scale }} />
+            ))}
+            {!zonesEdit && boxes.map((b) => (
+              <div key={b.id} className="sel-box" style={{ left: b.left, top: b.top, width: b.width, height: b.height }}>
+                {selected.length === 1 && HANDLES.map((h) => <div key={h} className={`handle h-${h}`} onPointerDown={(e) => beginDrag(e, h, [b.id])} />)}
+                {selected.length === 1 && <WidgetOverlay layerId={b.id} box={b} frame={frame} />}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <div className="stage-info">
