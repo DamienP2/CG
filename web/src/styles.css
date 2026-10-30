@@ -20705,3 +20705,17 @@ input.lc-pal-name:focus {
 .opx-mon-eye[aria-pressed='false'] {
   color: var(--text-3);
 }
+
+/* Operator · the timecode of the day in the transport bar (beside Undo). */
+.ux1-transport .sch-tc {
+  height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 5px;
+  background: var(--op-2);
+  font: 600 13px var(--mono);
+  letter-spacing: 0.04em;
+}
+.ux1-transport .sch-tc b {
+  font-size: 17px;
+}

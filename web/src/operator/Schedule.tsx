@@ -144,7 +144,6 @@ export function ScheduleTop({ channelId, project }: { channelId: string | null; 
   if (!slot || !channelId) return null;
   return createPortal(
     <>
-      <TimecodeChip channelId={channelId} />
       <button ref={btn} className={`sch-topbtn ${open ? 'on' : ''} ${active.length ? 'some' : ''}`} title={t('Scheduled takes')} onClick={toggleScheduleList}>
         <AlarmClock size={13} />
         {active.length > 0 && <b>{active.length}</b>}
@@ -155,7 +154,8 @@ export function ScheduleTop({ channelId, project }: { channelId: string | null; 
   );
 }
 
-function TimecodeChip({ channelId }: { channelId: string }) {
+/** The time of day in timecode (in the transport bar). */
+export function TimecodeChip({ channelId }: { channelId: string }) {
   const tz = useApp((s) => s.timezone);
   const rate = useApp((s) => s.channels.find((c) => c.id === channelId)?.frameRate) ?? { num: 25, den: 1 };
   const now = useServerNow(25);

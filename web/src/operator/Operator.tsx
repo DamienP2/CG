@@ -33,9 +33,9 @@ import { Splitter, useLayout } from '../ui/Splitter';
 import { lang, t, tc, tn } from '../i18n';
 import { TakenNotice, TakeOver, useZoneLocks, ZonesButton } from './ZoneBar';
 import { Avatar, OperatorTop } from './Presence';
-import { requestUndo, UndoHistory, UndoShortcut } from './UndoToast';
+import { requestUndo, UndoShortcut } from './UndoToast';
 import { KeyCap, openShortcuts } from './ShortcutsOverlay';
-import { ScheduleCell, ScheduleTop, toggleScheduleList } from './Schedule';
+import { ScheduleCell, ScheduleTop, TimecodeChip, toggleScheduleList } from './Schedule';
 import { actionLabel, useShortcuts } from './shortcuts';
 import type { ZoneLock } from '../store';
 
@@ -823,7 +823,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
       </div>
     </div>
-    {/* The transport, the whole width: NEXT, CONTINUE, OUT · history, undo, clear, shortcuts. */}
+    {/* The transport, the whole width: NEXT, CONTINUE, OUT · timecode, undo, clear, shortcuts. */}
     <footer className="ux1-transport">
       <NextButton project={project} live={liveState} target={nextTarget} disabled={!nextTarget || !operate || !!lockOf(nextTarget)} onTake={take} cap={<KeyCap action="next" />} />
       <button className={`opx-btn ${selZone && pauseOf(channel.layers[String(selZone.layer)], project) ? 'amber' : ''}`} disabled={!operate || !selZone || !!zoneLocks.other(selZone.id)} onClick={() => continueZone(selZone)} title={actionLabel('continue')}>
@@ -840,7 +840,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
         <UpdateMode value={updateFade} onChange={setUpdateFade} disabled={false} />
       </div>
       <span className="spacer" />
-      {channelId && <UndoHistory channelId={channelId} operate={operate} />}
+      {channelId && <TimecodeChip channelId={channelId} />}
       <button className="opx-btn" disabled={!operate} onClick={requestUndo} title={actionLabel('undo')}>
         <Undo2 size={16} /> {t('Undo')} <KeyCap action="undo" />
       </button>
