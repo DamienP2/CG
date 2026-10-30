@@ -1,6 +1,6 @@
 import {
   ChevronDown,
-  Link2,
+  Zap,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -795,13 +795,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     {moving ? (
                       <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
                     ) : role === 'onair' ? (
-                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : m.resume?.type === 'logic' ? t('Goes out when the Logic says so') : t('Holds until Take out')}>
-                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' ? '⚡' : m.resume?.type === 'logic' ? <Link2 size={10} /> : '∞'}
+                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : m.resume?.type === 'triggers' ? t('Goes out when its Triggers say so') : t('Holds until Take out')}>
+                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' ? '⚡' : m.resume?.type === 'triggers' ? <Zap size={10} /> : '∞'}
                       </span>
                     ) : (
                       <span>
                         {m.name}
-                        {m.resume?.type === 'after' ? ` · ${m.resume.seconds}s` : m.resume?.type === 'trigger' ? ' · ⚡' : m.resume?.type === 'logic' ? ' · ⇆' : ''}
+                        {m.resume?.type === 'after' ? ` · ${m.resume.seconds}s` : m.resume?.type === 'trigger' ? ' · ⚡' : m.resume?.type === 'triggers' ? ' · ⚡' : ''}
                       </span>
                     )}
                   </div>
@@ -857,17 +857,17 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
     }, coalesce);
   const onAir = m.kind === 'out';
   const resume = m.resume ?? { type: 'manual' };
-  // Its node in the Logic: « Sortir (OUT) » for the IN/OUT point, « Reprendre la pause » for a pause.
-  const ownNode = (l: Template['logic']) => l?.nodes.find((n) => (onAir ? n.type === 'out' : n.type === 'resume' && n.marker === id));
-  const events = (tpl.logic?.nodes ?? []).filter((n) => n.type === 'event').length;
+  // Its node in the Triggers: « Sortir (OUT) » for the IN/OUT point, « Reprendre la pause » for a pause.
+  const ownNode = (l: Template['triggers']) => l?.nodes.find((n) => (onAir ? n.type === 'out' : n.type === 'resume' && n.marker === id));
+  const events = (tpl.triggers?.nodes ?? []).filter((n) => n.type === 'event').length;
   const toLogic = () =>
     st.update((tt) => {
       const x = tt.markers.find((y) => y.id === id);
-      if (x) x.resume = { type: 'logic' };
-      tt.logic ??= { nodes: [], edges: [] };
-      if (!ownNode(tt.logic)) {
-        const right = Math.max(400, ...tt.logic.nodes.map((n) => n.x + 280));
-        tt.logic.nodes.push(onAir ? { id: newId(), type: 'out', x: right, y: 60 } : { id: newId(), type: 'resume', marker: id, x: right, y: 200 });
+      if (x) x.resume = { type: 'triggers' };
+      tt.triggers ??= { nodes: [], edges: [] };
+      if (!ownNode(tt.triggers)) {
+        const right = Math.max(400, ...tt.triggers.nodes.map((n) => n.x + 280));
+        tt.triggers.nodes.push(onAir ? { id: newId(), type: 'out', x: right, y: 60 } : { id: newId(), type: 'resume', marker: id, x: right, y: 200 });
       }
     });
   return createPortal(
@@ -906,12 +906,12 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               ).map(([k, label]) => (
                 <button
                   key={k}
-                  className={resume.type === k || (k === 'trigger' && resume.type === 'logic') ? 'on' : ''}
+                  className={resume.type === k || (k === 'trigger' && resume.type === 'triggers') ? 'on' : ''}
                   onClick={() =>
                     edit((x) => {
                       if (k === 'manual') delete x.resume;
                       else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : onAir ? 5 : 2 };
-                      else if (resume.type !== 'trigger' && resume.type !== 'logic') x.resume = { type: 'trigger', name: 'next' };
+                      else if (resume.type !== 'trigger' && resume.type !== 'triggers') x.resume = { type: 'trigger', name: 'next' };
                     })
                   }
                 >
@@ -926,15 +926,15 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
             </label>
           )}
-          {(resume.type === 'trigger' || resume.type === 'logic') && (
+          {(resume.type === 'trigger' || resume.type === 'triggers') && (
             <div className="me-field">
               <span>{t('By')}</span>
               <div className="seg">
                 <button className={resume.type === 'trigger' ? 'on' : ''} onClick={() => edit((x) => void (x.resume = { type: 'trigger', name: 'next' }))}>
                   {tc('trigger', 'Name')}
                 </button>
-                <button className={resume.type === 'logic' ? 'on' : ''} onClick={() => resume.type !== 'logic' && toLogic()}>
-                  {t('Logic')}
+                <button className={resume.type === 'triggers' ? 'on' : ''} onClick={() => resume.type !== 'triggers' && toLogic()}>
+                  {t('Triggers')}
                 </button>
               </div>
             </div>
@@ -945,20 +945,20 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               <input value={resume.name} placeholder={t('goal, next, line2…')} onChange={(e) => edit((x) => void (x.resume = { type: 'trigger', name: e.target.value }), `marker-trigger-${id}`)} />
             </label>
           )}
-          {resume.type === 'logic' && (
+          {resume.type === 'triggers' && (
             <button
               className="me-logic"
               onClick={() => {
-                if (!ownNode(tpl.logic)) toLogic();
-                window.dispatchEvent(new Event('strata:open-logic'));
+                if (!ownNode(tpl.triggers)) toLogic();
+                window.dispatchEvent(new Event('strata:open-triggers'));
                 onClose();
               }}
             >
-              <Link2 size={14} /> {t('Open the Logic')}
+              <Zap size={14} /> {t('Open the Triggers')}
               <small>{tn(events, '{n} event', '{n} events')}</small>
             </button>
           )}
-          {resume.type !== 'logic' && (
+          {resume.type !== 'triggers' && (
           <p className="hint">
             {onAir
               ? resume.type === 'manual'

@@ -1,10 +1,10 @@
-import { Ampersand, ArrowLeftRight, Calculator, Crosshair, Diamond, Hash, Link2, Pause, Play, Rows3, Split, Square, SquareStack, Target, TextCursorInput, Timer, Trash2, Type } from 'lucide-react';
+import { Ampersand, ArrowDown, ArrowLeftRight, Calculator, Crosshair, Diamond, Hash, Link2, Pause, Play, Rows3, Split, Square, SquareStack, Target, TextCursorInput, Timer, Trash2, Type, Zap } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMemo, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
 import { INPUTS, measureLayer, nodeValues, type LVal } from '../engine/logic';
 import { COLOR_PROPS, PROPS, TEXT_LIKE, type Cmp, type Layer, type Logic, type LogicNode, type MathOp, type Prop, type Template, type TextMetric, type TriggerEvent } from '../engine/types';
-import { CanvasHeader } from '../ui/CanvasHeader';
+import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { NumberField, Segmented, TextInput } from '../ui/fields';
 import { useApp } from '../store';
@@ -27,32 +27,43 @@ const ROW = 24;
 
 /** Node kinds, by category (the palette's sections and the nodes' colors). An event node per event (`ev`). */
 type Cat = 'input' | 'event' | 'op' | 'output' | 'air';
-export const KINDS: { type: LogicNode['type']; ev?: TriggerEvent['kind']; label: string; cat: Cat; icon: typeof Hash }[] = [
-  { type: 'layerProp', label: 'Layer property', cat: 'input', icon: Crosshair },
-  { type: 'field', label: 'Data field', cat: 'input', icon: TextCursorInput },
-  { type: 'constant', label: 'Number', cat: 'input', icon: Hash },
-  { type: 'text', label: 'Text', cat: 'input', icon: Type },
-  { type: 'event', ev: 'scrollEnd', label: 'End of the scroll', cat: 'event', icon: ArrowLeftRight },
-  { type: 'event', ev: 'timerZero', label: 'Timer', cat: 'event', icon: Timer },
-  { type: 'event', ev: 'videoEnd', label: 'End of the video', cat: 'event', icon: Play },
-  { type: 'event', ev: 'lastRow', label: 'Last row', cat: 'event', icon: Rows3 },
-  { type: 'event', ev: 'dataChange', label: 'Value changes', cat: 'event', icon: Diamond },
-  { type: 'event', ev: 'graphic', label: 'Another graphic', cat: 'event', icon: SquareStack },
-  { type: 'math', label: 'Math', cat: 'op', icon: Calculator },
-  { type: 'clamp', label: 'Clamp', cat: 'op', icon: Split },
-  { type: 'condition', label: 'Condition', cat: 'op', icon: Split },
-  { type: 'bool', label: 'And / Or', cat: 'op', icon: Ampersand },
-  { type: 'target', label: 'Set property', cat: 'output', icon: Target },
-  { type: 'out', label: 'Take out (OUT)', cat: 'air', icon: Square },
-  { type: 'resume', label: 'Resume the pause', cat: 'air', icon: Pause },
+/** The Logic (what is drawn) or the Triggers (what happens on air). */
+export type Graph = 'logic' | 'triggers';
+export const KINDS: { type: LogicNode['type']; ev?: TriggerEvent['kind']; label: string; cat: Cat; icon: typeof Hash; in: Graph[] }[] = [
+  { type: 'event', ev: 'scrollEnd', label: 'End of the scroll', cat: 'event', icon: ArrowLeftRight, in: ['triggers'] },
+  { type: 'event', ev: 'timerZero', label: 'Timer', cat: 'event', icon: Timer, in: ['triggers'] },
+  { type: 'event', ev: 'videoEnd', label: 'End of the video', cat: 'event', icon: Play, in: ['triggers'] },
+  { type: 'event', ev: 'lastRow', label: 'Last row', cat: 'event', icon: Rows3, in: ['triggers'] },
+  { type: 'event', ev: 'dataChange', label: 'Value changes', cat: 'event', icon: Diamond, in: ['triggers'] },
+  { type: 'event', ev: 'graphic', label: 'Another graphic', cat: 'event', icon: SquareStack, in: ['triggers'] },
+  { type: 'layerProp', label: 'Layer property', cat: 'input', icon: Crosshair, in: ['logic'] },
+  { type: 'field', label: 'Data field', cat: 'input', icon: TextCursorInput, in: ['logic', 'triggers'] },
+  { type: 'text', label: 'Text', cat: 'input', icon: Type, in: ['logic', 'triggers'] },
+  { type: 'constant', label: 'Number', cat: 'input', icon: Hash, in: ['logic', 'triggers'] },
+  { type: 'math', label: 'Math', cat: 'op', icon: Calculator, in: ['logic'] },
+  { type: 'clamp', label: 'Clamp', cat: 'op', icon: Split, in: ['logic'] },
+  { type: 'condition', label: 'Condition', cat: 'op', icon: Split, in: ['logic', 'triggers'] },
+  { type: 'bool', label: 'And / Or', cat: 'op', icon: Ampersand, in: ['logic', 'triggers'] },
+  { type: 'target', label: 'Set property', cat: 'output', icon: Target, in: ['logic'] },
+  { type: 'out', label: 'Take out (OUT)', cat: 'air', icon: Square, in: ['triggers'] },
+  { type: 'resume', label: 'Resume the pause', cat: 'air', icon: Pause, in: ['triggers'] },
+  { type: 'fire', label: 'Fire a trigger', cat: 'air', icon: Zap, in: ['triggers'] },
+  { type: 'nextRow', label: 'Next row', cat: 'air', icon: ArrowDown, in: ['triggers'] },
 ];
-const CATS: { id: Cat; label: string }[] = [
-  { id: 'input', label: 'Inputs' },
-  { id: 'event', label: 'Events' },
-  { id: 'op', label: 'Operations' },
-  { id: 'output', label: 'Output' },
-  { id: 'air', label: 'On air' },
-];
+/** The palette's sections, by graph. */
+const CATS: Record<Graph, { id: Cat; label: string }[]> = {
+  logic: [
+    { id: 'input', label: 'Inputs' },
+    { id: 'op', label: 'Operations' },
+    { id: 'output', label: 'Output' },
+  ],
+  triggers: [
+    { id: 'event', label: 'Events' },
+    { id: 'input', label: 'Values' },
+    { id: 'op', label: 'Conditions' },
+    { id: 'air', label: 'On air' },
+  ],
+};
 /** The event an event node's kind stands for (a timer at a time is the Timer node). */
 const evKind = (on: TriggerEvent) => (on.kind === 'timerAt' ? 'timerZero' : on.kind === 'dataIs' ? 'dataChange' : on.kind);
 /** A node's kind (a text measurement is a Layer property). */
@@ -145,6 +156,10 @@ export function makeNode(type: LogicNode['type'], t: Template, x: number, y: num
       return { ...base, type };
     case 'resume':
       return { ...base, type, marker: t.markers.find((m) => m.kind === 'pause')?.id ?? '' };
+    case 'fire':
+      return { ...base, type, name: '' };
+    case 'nextRow':
+      return { ...base, type, dataset: t.datasets?.[0]?.key ?? '' };
     case 'event': {
       const of = (f: (l: Layer) => boolean) => t.layers.find(f)?.id ?? '';
       const on: TriggerEvent =
@@ -274,6 +289,10 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
       return <Dropdown value={n.marker} placeholder={t('Choose a pause')} options={template.markers.filter((m) => m.kind === 'pause').map((m) => ({ value: m.id, label: m.name || t('Pause') }))} onChange={(marker) => setNode(n.id, { marker })} />;
     case 'event':
       return <EventBody n={n} template={template} set={(on, key) => setNode(n.id, { on } as Partial<LogicNode>, key)} />;
+    case 'fire':
+      return <TextInput value={n.name} placeholder={t('goal, next, line2…')} onChange={(name) => setNode(n.id, { name }, `logic-v-${n.id}`)} />;
+    case 'nextRow':
+      return <Dropdown value={n.dataset} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => setNode(n.id, { dataset })} />;
   }
 }
 
@@ -340,11 +359,11 @@ function EventBody({ n, template, set }: { n: Extract<LogicNode, { type: 'event'
 
 export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' || n.type === 'bool' ? port.toUpperCase() : port === 'when' ? 'When' : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port) ?? port);
 
-export function LogicEditor({ onClose }: { onClose: () => void }) {
+export function LogicEditor({ onClose, graph = 'logic' }: { onClose: () => void; /** The Logic (what is drawn) or the Triggers (what happens on air). */ graph?: Graph }) {
   const { template, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
-  const cv = useCanvasView(`logic.${template?.id ?? ''}`, '.logic-node', { onArrange: () => arrange() });
+  const cv = useCanvasView(`${graph}.${template?.id ?? ''}`, '.logic-node', { onArrange: () => arrange() });
   // Node widths, kept for the user.
-  const sizesKey = `logic.sizes.${template?.id ?? ''}`;
+  const sizesKey = `${graph}.sizes.${template?.id ?? ''}`;
   const [sizes, setSizesState] = useState<Record<string, number>>(() => displayPref(sizesKey, {}));
   const setSize = (id: string, w: number) =>
     setSizesState((cur) => {
@@ -355,7 +374,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const widthOf = (n: LogicNode) => sizes[n.id] ?? NODE_W;
   const [selected, setSelected] = useState<string | null>(null);
   const [wire, setWire] = useState<{ from: string; x: number; y: number } | null>(null);
-  const logic: Logic = template?.logic ?? { nodes: [], edges: [] };
+  const logic: Logic = template?.[graph] ?? { nodes: [], edges: [] };
 
   // Live values at the playhead.
   const values = useMemo(() => {
@@ -369,9 +388,9 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
   const edit = (fn: (l: Logic) => void, key?: string) =>
     update((t) => {
-      t.logic ??= { nodes: [], edges: [] };
-      fn(t.logic);
-      if (!t.logic.nodes.length) delete t.logic;
+      const g = (t[graph] ??= { nodes: [], edges: [] });
+      fn(g);
+      if (!g.nodes.length) delete t[graph];
     }, key);
   const setNode = (id: string, patch: Partial<LogicNode>, key?: string) =>
     edit((l) => {
@@ -385,7 +404,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const arrange = () => {
     const size = measureNodes(cv.ref.current);
     const at = autoLayout(
-      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: n.type === 'target' || n.type === 'out' || n.type === 'resume' ? ('end' as const) : undefined })),
+      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: ['target', 'out', 'resume', 'fire', 'nextRow'].includes(n.type) ? ('end' as const) : undefined })),
       logic.edges,
       { tightSources: true },
     );
@@ -452,13 +471,13 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="logic-editor" onKeyDown={(e) => e.stopPropagation()}>
-      <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={template.name} onClose={onClose} />
+      <CanvasHeader icon={graph === 'logic' ? <Link2 size={15} /> : <Zap size={15} />} title={graph === 'logic' ? t('Logic') : t('Triggers')} subject={template.name} onClose={onClose} />
       <div className="logic-body">
         <aside className="logic-palette">
-          {CATS.map((c) => (
+          {CATS[graph].map((c) => (
             <div key={c.id} className="lp-group">
               <div className="dc-pal-title">{t(c.label)}</div>
-              {KINDS.filter((k) => k.cat === c.id).map((k) => (
+              {KINDS.filter((k) => k.cat === c.id && k.in.includes(graph)).map((k) => (
                 <button key={`${k.type}-${k.ev ?? ''}`} onClick={() => add(k.type, k.ev)} className={`cat-${k.cat}`}>
                   <k.icon size={14} />
                   <strong>{t(k.label)}</strong>
@@ -527,7 +546,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                     >
                       <Trash2 size={11} />
                     </button>
-                    {n.type !== 'target' && n.type !== 'out' && n.type !== 'resume' && <span className="port out" title={t('Drag to an input')} onPointerDown={(e) => startWire(e, n.id)} />}
+                    {!['target', 'out', 'resume', 'fire', 'nextRow'].includes(n.type) && <span className="port out" title={t('Drag to an input')} onPointerDown={(e) => startWire(e, n.id)} />}
                   </div>
                   {INPUTS[n.type].map((port) => (
                     <div key={port} className="ln-input" style={{ height: ROW }}>
@@ -542,12 +561,9 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                 </div>
               );
             })}
-            {!logic.nodes.length && (
-              <div className="logic-empty">
-                <p>{t('No relation yet.')}</p>
-              </div>
-            )}
           </div>
+          {/* Nothing yet: a small icon and a word, centred (as in the Operator). */}
+          {!logic.nodes.length && <CanvasVoid icon={graph === 'logic' ? Link2 : Zap} text={graph === 'logic' ? t('No relation') : t('No trigger')} />}
           {cv.controls}
         </div>
       </div>

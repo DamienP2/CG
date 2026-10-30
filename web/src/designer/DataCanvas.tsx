@@ -19,7 +19,7 @@ import { layerIcon } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
 import { BuildCard, TableNodeInfo } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
-import { CanvasHeader } from '../ui/CanvasHeader';
+import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { fedKey } from '../engine/valueMotion';
 import { getPath, setPath } from '../widgets/kit';
@@ -1379,6 +1379,8 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               return <BuildCard key={l.id} layer={l} template={template} values={values} onClose={() => setBuilding(null)} />;
             })()}
           </div>
+          {/* Nothing yet: a small icon and a word, centred (as in the Operator). */}
+          {!flow.nodes.length && !shownFields.length && !template.layers.length && <CanvasVoid icon={Database} text={t('No data')} />}
           {cv.controls}
         </div>
       </div>

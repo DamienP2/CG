@@ -142,6 +142,7 @@ pub fn import(json: &Json, opts: &Options) -> Result<Imported, String> {
         layers: cx.out,
         zone: opts.zone.clone(),
         logic: Default::default(),
+        triggers: Default::default(),
         dataflow: None,
         datasets: vec![],
         revision: 0,

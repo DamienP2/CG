@@ -92,6 +92,7 @@
 :root[data-theme='light'] .topbar {
   background: var(--panel);
 }
+:root[data-theme='light'] .brand .brand-f-lead,
 :root[data-theme='light'] .brand-name {
   color: var(--text);
 }

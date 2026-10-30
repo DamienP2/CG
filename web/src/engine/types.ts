@@ -149,8 +149,8 @@ export interface Marker {
   resume?: Resume;
 }
 
-export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'logic' };
-/** What an event node of the Logic watches on air (the server). */
+export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'triggers' };
+/** What an event node of the Triggers watches on air (the server). */
 export type TriggerEvent =
   | { kind: 'scrollEnd'; layer: string; passes?: number }
   | { kind: 'timerZero'; layer: string }
@@ -337,6 +337,8 @@ export interface Template {
   zone: string;
   /** Relations between values (node graph). */
   logic?: Logic;
+  /** What happens on air: events → out, a pause playing on, a trigger, the next row (the server runs it). */
+  triggers?: Logic;
   /** The Data canvas graph; the fields' bindings and the data sets are compiled from it. */
   dataflow?: DataFlow;
   datasets?: DataSet[];
@@ -364,7 +366,9 @@ export type LogicNodeKind =
   | { type: 'event'; on: TriggerEvent }
   | { type: 'bool'; op: 'and' | 'or' }
   | { type: 'out' }
-  | { type: 'resume'; marker: string };
+  | { type: 'resume'; marker: string }
+  | { type: 'fire'; name: string }
+  | { type: 'nextRow'; dataset: string };
 
 export type LogicNode = LogicNodeKind & { id: string; x: number; y: number };
 

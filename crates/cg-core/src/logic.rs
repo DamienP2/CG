@@ -152,6 +152,16 @@ pub enum NodeKind {
     Resume {
         marker: String,
     },
+    /// On air: fires the trigger `name` (as the API or Companion) when
+    /// input `when` becomes true.
+    Fire {
+        name: String,
+    },
+    /// On air: the data set `dataset` shows its next row when input `when`
+    /// becomes true.
+    NextRow {
+        dataset: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,6 +176,15 @@ pub enum BoolOp {
 pub enum AirAction {
     Out,
     Resume(String),
+    /// Fires a trigger (`node`: the node asking, for its edge).
+    Fire {
+        node: String,
+        name: String,
+    },
+    NextRow {
+        node: String,
+        dataset: String,
+    },
 }
 
 /// Whether an event node's event has happened: (node id, event).
@@ -355,7 +374,10 @@ impl<'a> Graph<'a> {
                     BoolOp::Or => (a || b) as u8 as f64,
                 })
             }
-            NodeKind::Out {} | NodeKind::Resume { .. } => input("when").unwrap_or(LVal::Num(0.0)),
+            NodeKind::Out {}
+            | NodeKind::Resume { .. }
+            | NodeKind::Fire { .. }
+            | NodeKind::NextRow { .. } => input("when").unwrap_or(LVal::Num(0.0)),
         }
     }
 }
@@ -382,6 +404,14 @@ pub fn air_actions(logic: &Logic, data: &Data, events: &mut Events) -> Vec<AirAc
         let action = match &n.kind {
             NodeKind::Out {} => AirAction::Out,
             NodeKind::Resume { marker } => AirAction::Resume(marker.clone()),
+            NodeKind::Fire { name } => AirAction::Fire {
+                node: n.id.clone(),
+                name: name.clone(),
+            },
+            NodeKind::NextRow { dataset } => AirAction::NextRow {
+                node: n.id.clone(),
+                dataset: dataset.clone(),
+            },
             _ => continue,
         };
         if g.inputs.contains_key(&(n.id.as_str(), "when"))
@@ -395,10 +425,15 @@ pub fn air_actions(logic: &Logic, data: &Data, events: &mut Events) -> Vec<AirAc
 
 /// The graph has « On air » nodes (the server evaluates it on air).
 pub fn drives_air(logic: &Logic) -> bool {
-    logic
-        .nodes
-        .iter()
-        .any(|n| matches!(n.kind, NodeKind::Out {} | NodeKind::Resume { .. }))
+    logic.nodes.iter().any(|n| {
+        matches!(
+            n.kind,
+            NodeKind::Out {}
+                | NodeKind::Resume { .. }
+                | NodeKind::Fire { .. }
+                | NodeKind::NextRow { .. }
+        )
+    })
 }
 
 /// Applies the graph's targets to `values`, in dependency order (a target

@@ -83,10 +83,11 @@ pub struct PlayoutItem {
     /// The graphic this one replaced in a « Fade » zone, fading out under it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaving: Option<Box<Leaving>>,
-    /// What the events its Logic watches were when it began waiting (a
-    /// value that changes, another graphic going out), by node, at this frame.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub watch: Option<(f64, BTreeMap<String, String>)>,
+    /// What its Triggers watch, by node, since the take: a value as it was
+    /// (it changes), another graphic seen on air (it goes out), an action
+    /// done (it acts once each time its input becomes true).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub watch: BTreeMap<String, String>,
 }
 
 /// Text widths for the events that need them (a crawl's passes): the
@@ -464,7 +465,7 @@ impl PlayoutItem {
             changes: Vec::new(),
             widgets: BTreeMap::new(),
             advanced: Default::default(),
-            watch: None,
+            watch: BTreeMap::new(),
             leaving: None,
         }
     }
@@ -744,27 +745,36 @@ fn hold_target(template: &Template, from: f64) -> f64 {
 
 /// Plays on from the stop the item holds at (or is heading to). Holding on
 /// air waits for Take out; nothing happens while the out animation moves.
-/// The value an event node watches changed since the graphic began waiting
-/// (the first look only notes it).
+/// The value an event node watches changed since the take (the first look
+/// only notes it).
 fn changed_since(item: &mut PlayoutItem, id: &str, value: String) -> bool {
-    if item
-        .watch
-        .as_ref()
-        .is_none_or(|(at, _)| (*at - item.frame).abs() >= 1e-6)
-    {
-        item.watch = Some((item.frame, BTreeMap::new()));
-    }
-    let seen = &mut item.watch.as_mut().expect("just set").1;
-    match seen.get(id) {
+    match item.watch.get(id) {
         Some(was) => *was != value,
         None => {
-            seen.insert(id.to_string(), value);
+            item.watch.insert(id.to_string(), value);
             false
         }
     }
 }
 
-/// The event of a Logic node (`id`) has happened on air.
+/// The row after the one a data set shows (the first after the last when it
+/// loops); None at its end.
+fn next_row(project: &Project, item: &PlayoutItem, dataset: &str) -> Option<u32> {
+    let t = project.template(&item.template_id)?;
+    let ds = t.datasets.iter().find(|d| d.key == dataset)?;
+    let num = |k: String| item.data.get(&k).and_then(|v| v.trim().parse::<f64>().ok());
+    let n = num(ds.count_key()).unwrap_or(0.0) as u32;
+    let row = num(ds.row_key()).unwrap_or(1.0).max(1.0) as u32;
+    if row < n {
+        Some(row + 1)
+    } else if item.data.get(&ds.loop_key()).is_some_and(|l| l == "1") && n > 1 {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+/// The event of a Triggers node (`id`) has happened on air.
 #[allow(clippy::too_many_arguments)]
 fn happened(
     id: &str,
@@ -867,19 +877,13 @@ fn happened(
             if !*out {
                 return now_on;
             }
-            // Out: once seen on air since it began waiting.
+            // Out: once seen on air since the take.
             let seen = format!("{id}:seen");
             if now_on {
-                changed_since(item, &seen, "1".into());
-                if let Some((_, w)) = &mut item.watch {
-                    w.insert(seen, "1".into());
-                }
+                item.watch.insert(seen, "1".into());
                 return false;
             }
-            changed_since(item, &seen, "0".into());
-            item.watch
-                .as_ref()
-                .is_some_and(|(_, w)| w.get(&seen).is_some_and(|v| v == "1"))
+            item.watch.get(&seen).is_some_and(|v| v == "1")
         }
     }
 }
@@ -1567,15 +1571,19 @@ impl ChannelState {
         out
     }
 
-    /// The pauses and on-air points set to « Logique » (`Resume::Logic`) go
-    /// on, or out, when the template's Logic says so: its event nodes are
-    /// watched here. Returns what went (for the as-run log).
+    /// The template's Triggers, on air: their actions run when their input
+    /// is true. A pause or the on-air point set to « Déclencheurs »
+    /// (`Resume::Triggers`) plays on or goes out; a trigger is fired and a
+    /// data set goes to its next row once each time their input becomes
+    /// true. The event nodes are watched here. Returns what was done (for
+    /// the as-run log).
     pub fn event_resumes(
         &mut self,
         project: &Project,
         default_tz: &str,
         m: &mut dyn TextWidth,
     ) -> Vec<String> {
+        use crate::logic::AirAction;
         let now = now_ms();
         let fps = project.frame_rate.as_f64().max(1.0);
         // The graphics on air (another one's in / out).
@@ -1585,40 +1593,75 @@ impl ChannelState {
             .filter(|i| !matches!(i.phase, Phase::Out | Phase::OutHold))
             .map(|i| i.template_id.clone())
             .collect();
-        let mut fired = Vec::new();
+        let mut done = Vec::new();
         let mut gone = Vec::new();
+        let mut fires = Vec::new();
+        let mut rows = Vec::new();
         for (layer, item) in self.layers.iter_mut() {
-            if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
-                item.watch = None;
+            if matches!(item.phase, Phase::Out) {
                 continue;
             }
             let Some(t) = project.template(&item.template_id) else {
                 continue;
             };
+            if !crate::logic::drives_air(&t.triggers) {
+                continue;
+            }
+            let data = shown_data(item).into_owned();
+            let actions = crate::logic::air_actions(&t.triggers, &data, &mut |id, on| {
+                happened(id, on, t, item, &on_air, now, fps, default_tz, m)
+            });
+            // Once each time their input becomes true.
+            let once = |item: &mut PlayoutItem, node: &str| {
+                let key = format!("act:{node}");
+                let first = item.watch.get(&key).is_none_or(|v| v != "1");
+                item.watch.insert(key, "1".into());
+                first
+            };
+            let asked: std::collections::HashSet<String> = actions
+                .iter()
+                .filter_map(|a| match a {
+                    AirAction::Fire { node, .. } | AirAction::NextRow { node, .. } => {
+                        Some(format!("act:{node}"))
+                    }
+                    _ => None,
+                })
+                .collect();
+            item.watch
+                .iter_mut()
+                .filter(|(k, _)| k.starts_with("act:") && !asked.contains(*k))
+                .for_each(|(_, v)| *v = "0".into());
+            for a in &actions {
+                match a {
+                    AirAction::Fire { node, name } if once(item, node) => fires.push(name.clone()),
+                    AirAction::NextRow { node, dataset } if once(item, node) => {
+                        rows.push((*layer, dataset.clone()))
+                    }
+                    _ => {}
+                }
+            }
+            // A pause or the on-air point set to « Déclencheurs ».
+            if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                continue;
+            }
             let on_point = item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
             let waits = if on_point {
                 t.markers.iter().find(|m| m.kind == MarkerKind::Out)
             } else {
                 t.pause_at(item.frame)
             };
-            let Some(marker) = waits.filter(|w| w.resume == Resume::Logic) else {
-                item.watch = None;
+            let Some(marker) = waits.filter(|w| w.resume == Resume::Triggers) else {
                 continue;
             };
-            let data = shown_data(item).into_owned();
-            let actions = crate::logic::air_actions(&t.logic, &data, &mut |id, on| {
-                happened(id, on, t, item, &on_air, now, fps, default_tz, m)
-            });
             let go = if on_point {
-                actions.contains(&crate::logic::AirAction::Out)
+                actions.contains(&AirAction::Out)
             } else {
-                actions.contains(&crate::logic::AirAction::Resume(marker.id.clone()))
+                actions.contains(&AirAction::Resume(marker.id.clone()))
             };
             if !go {
                 continue;
             }
-            item.watch = None;
-            fired.push(t.name.clone());
+            done.push(t.name.clone());
             if on_point {
                 if !begin_out(project, item) {
                     gone.push(*layer);
@@ -1630,7 +1673,38 @@ impl ChannelState {
         for layer in gone {
             self.layers.remove(&layer);
         }
-        fired
+        for name in fires {
+            if self
+                .apply(project, Command::Trigger { name: name.clone() })
+                .is_ok()
+            {
+                done.push(format!("⚡ {name}"));
+            }
+        }
+        for (layer, dataset) in rows {
+            let Some(row) = self
+                .layers
+                .get(&layer)
+                .and_then(|item| next_row(project, item, &dataset))
+            else {
+                continue;
+            };
+            if self
+                .apply(
+                    project,
+                    Command::Row {
+                        zone: None,
+                        layer: Some(layer),
+                        dataset: dataset.clone(),
+                        row,
+                    },
+                )
+                .is_ok()
+            {
+                done.push(format!("{dataset} → {row}"));
+            }
+        }
+        done
     }
 
     /// Data sets going on by themselves: the next row once the graphic has
@@ -1739,6 +1813,7 @@ mod tests {
             frame_rate: FrameRate::default(),
             templates: vec![Template {
                 logic: Default::default(),
+                triggers: Default::default(),
                 dataflow: None,
                 datasets: vec![],
                 revision: 0,
@@ -2195,8 +2270,8 @@ mod tests {
         let mut p = project();
         let t = &mut p.templates[0];
         t.markers.retain(|m| m.kind == MarkerKind::Out);
-        t.markers[0].resume = Resume::Logic;
-        t.logic = graph(
+        t.markers[0].resume = Resume::Triggers;
+        t.triggers = graph(
             vec![
                 (
                     "f",
@@ -2239,8 +2314,8 @@ mod tests {
         let mut p = project();
         let t = &mut p.templates[0];
         t.markers.retain(|m| m.kind == MarkerKind::Out);
-        t.markers[0].resume = Resume::Logic;
-        t.logic = graph(
+        t.markers[0].resume = Resume::Triggers;
+        t.triggers = graph(
             vec![
                 (
                     "e",
@@ -2292,7 +2367,7 @@ mod tests {
         let mut p = project();
         let t = &mut p.templates[0];
         t.markers.retain(|m| m.kind == MarkerKind::Out);
-        t.logic = graph(
+        t.triggers = graph(
             vec![
                 ("n", NodeKind::Constant { value: 1.0 }),
                 ("o", NodeKind::Out {}),
@@ -2307,6 +2382,52 @@ mod tests {
             ch.event_resumes(&p, "UTC", &mut w);
         }
         assert_eq!(ch.layers[&1].phase, Phase::Holding);
+    }
+
+    #[test]
+    fn a_trigger_node_fires_its_trigger_once() {
+        use crate::logic::NodeKind;
+        let mut p = project();
+        let t = &mut p.templates[0];
+        // Its first pause waits for « go »; the Triggers fire it when « ready » is set.
+        t.markers[0].resume = Resume::Trigger { name: "go".into() };
+        t.triggers = graph(
+            vec![
+                (
+                    "r",
+                    NodeKind::Field {
+                        key: "ready".into(),
+                    },
+                ),
+                ("f", NodeKind::Fire { name: "go".into() }),
+            ],
+            &[("r", "f", "when")],
+        );
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        let mut w = EstimatedWidth;
+        for _ in 0..30 {
+            ch.tick(1.0);
+            assert!(ch.event_resumes(&p, "UTC", &mut w).is_empty());
+        }
+        let pause = p.templates[0].markers[0].frame;
+        assert_eq!(ch.layers[&1].frame, pause);
+        ch.layers
+            .get_mut(&1)
+            .unwrap()
+            .data
+            .insert("ready".into(), "1".into());
+        let mut fired = 0;
+        for _ in 0..10 {
+            fired += ch
+                .event_resumes(&p, "UTC", &mut w)
+                .iter()
+                .filter(|d| d.starts_with('⚡'))
+                .count();
+            ch.tick(1.0);
+        }
+        assert_eq!(fired, 1);
+        assert!(ch.layers[&1].frame > pause);
     }
 
     #[test]

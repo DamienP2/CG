@@ -25,6 +25,8 @@ export const INPUTS: Record<LogicNode['type'], string[]> = {
   bool: ['a', 'b'],
   out: ['when'],
   resume: ['when'],
+  fire: ['when'],
+  nextRow: ['when'],
 };
 
 /** A value read as true: a number not 0, a text not empty, « false » or « 0 ». */
@@ -146,6 +148,8 @@ class Graph {
       }
       case 'out':
       case 'resume':
+      case 'fire':
+      case 'nextRow':
         return input('when') ?? 0;
     }
   }

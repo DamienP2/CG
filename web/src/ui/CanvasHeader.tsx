@@ -21,3 +21,15 @@ export function CanvasHeader({ icon, title, subject, onClose, children }: { icon
     </header>
   );
 }
+
+/** An empty canvas: a small icon and a word, centred over it (as the Operator's empty areas). */
+export function CanvasVoid({ icon: Icon, text }: { icon: React.ComponentType<{ size?: number }>; text: string }) {
+  return (
+    <div className="cv-void">
+      <span className="cv-void-ic">
+        <Icon size={20} />
+      </span>
+      <span>{text}</span>
+    </div>
+  );
+}

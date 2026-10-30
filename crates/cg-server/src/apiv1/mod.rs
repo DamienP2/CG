@@ -1303,7 +1303,7 @@ mod tests {
                 changes: Vec::new(),
                 widgets: Default::default(),
                 advanced: false,
-                watch: None,
+                watch: Default::default(),
                 leaving: None,
             },
         );

@@ -1011,12 +1011,12 @@ pub enum Resume {
     After { seconds: f64 },
     /// When this trigger is fired (by the operator, the API, Companion…).
     Trigger { name: String },
-    /// When the template's Logic says so (its « Sortir » or « Reprendre la
-    /// pause » node, wired to events the server watches on air).
-    Logic,
+    /// When the template's Triggers say so (their « Sortir » or « Reprendre
+    /// la pause » node, wired to events the server watches on air).
+    Triggers,
 }
 
-/// What an event node of the Logic watches on air (the server).
+/// What an event node of the Triggers watches on air (the server).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TriggerEvent {
@@ -1463,6 +1463,10 @@ pub struct Template {
     /// Relations between values (node graph), see [`crate::logic`].
     #[serde(default, skip_serializing_if = "crate::logic::Logic::is_empty")]
     pub logic: crate::logic::Logic,
+    /// What happens on air (events → out, a pause playing on, a trigger…),
+    /// the same kind of graph, evaluated by the server, see [`crate::logic`].
+    #[serde(default, skip_serializing_if = "crate::logic::Logic::is_empty")]
+    pub triggers: crate::logic::Logic,
     /// The Data canvas graph (sources, filters, sorts, transforms and their
     /// wires), kept as the editor wrote it; the fields' bindings are
     /// compiled from it.
@@ -1541,6 +1545,7 @@ impl Template {
             layers: Vec::new(),
             zone: zone.into(),
             logic: Default::default(),
+            triggers: Default::default(),
             dataflow: None,
             datasets: vec![],
             revision: 0,

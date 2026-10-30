@@ -58,6 +58,12 @@ export function Brand({ stacked = false }: { stacked?: boolean }) {
   return (
     <div className={`brand ${stacked ? 'stacked' : ''}`} aria-label={`Strata ${MODULE}, Le Figaro AudioVisuel`}>
       <span className="brand-lockup">
+        {/* The F with its quill before the name (the top bar): as tall as the name, its quill above. */}
+        {!stacked && (
+          <svg className="brand-f-lead" viewBox="93.8 -0.2 52.3 52.95" width={23.7} height={24} aria-hidden="true">
+            <path fill="currentColor" d={F} />
+          </svg>
+        )}
         <span className="brand-name">Strata</span>
         <span className="brand-module">{MODULE}</span>
       </span>
