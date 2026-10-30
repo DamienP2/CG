@@ -1069,6 +1069,25 @@ pub fn due_trigger(
     (v.zero && st.fired != Some(at)).then(|| (name.to_string(), at))
 }
 
+/// What a timer shows now, once started: its time (ms), whether it counts
+/// down and whether it is at zero.
+pub fn reading(
+    layer: &Layer,
+    st: &State,
+    data: &Data,
+    now: i64,
+    age_ms: i64,
+    default_tz: &str,
+) -> Option<(i64, bool, bool)> {
+    let e = eff(layer, data)?;
+    let r = run(&e, st, now, age_ms, default_tz);
+    if !r.started(&e) {
+        return None;
+    }
+    let v = value(&e, &r, now, default_tz)?;
+    Some((v.v, e.mode == TimerMode::Countdown, v.zero))
+}
+
 fn resume(s: &mut State, now: i64) {
     if let Some(p) = s.paused_at.take() {
         s.paused_total += now - p;

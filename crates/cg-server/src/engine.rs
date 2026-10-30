@@ -1085,6 +1085,35 @@ async fn advance(
                 let _ = st.apply(p, cg_core::playout::Command::Trigger { name });
                 changed = true;
             }
+            // Pauses and on-air points waiting for an event that happened.
+            let fired = {
+                static WIDTHS: std::sync::OnceLock<std::sync::Mutex<cg_render::TextWidths>> =
+                    std::sync::OnceLock::new();
+                let widths = WIDTHS.get_or_init(|| {
+                    std::sync::Mutex::new(cg_render::TextWidths::new(state.assets_dir()))
+                });
+                let mut w = widths.lock().unwrap_or_else(|e| e.into_inner());
+                st.event_resumes(p, &state.config.timezone, &mut *w)
+            };
+            for name in fired {
+                crate::asrun::record(
+                    state,
+                    crate::asrun::Entry {
+                        at: crate::state::now_ms(),
+                        channel_id: ch.config.id.clone(),
+                        channel_name: ch.config.name.clone(),
+                        project_id: p.id.clone(),
+                        project_name: p.name.clone(),
+                        action: "event".into(),
+                        label: name,
+                        zone: String::new(),
+                        actor: crate::antenna::Actor::auto("event"),
+                        values: Default::default(),
+                        detail: String::new(),
+                    },
+                );
+                changed = true;
+            }
             // Rows going on by themselves, values set by hand for a time:
             // the data is read again for them.
             let rows = st.auto_rows(p);

@@ -1610,9 +1610,9 @@ function PauseButton({ pause, step, left, operate, onContinue }: { pause: Marker
       </span>
     );
   }
-  if (resume.type === 'trigger')
+  if (resume.type === 'trigger' || resume.type === 'event')
     return (
-      <span className="opx-sq big amber opx-pause wait" title={t('Pause · waits for the trigger {name}', { name: resume.name })} onClick={(e) => e.stopPropagation()}>
+      <span className="opx-sq big amber opx-pause wait" title={resume.type === 'trigger' ? t('Pause · waits for the trigger {name}', { name: resume.name }) : t('Pause · waits for an event')} onClick={(e) => e.stopPropagation()}>
         <Zap size={14} fill="currentColor" />
       </span>
     );

@@ -149,7 +149,17 @@ export interface Marker {
   resume?: Resume;
 }
 
-export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string };
+export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'event'; on: TriggerEvent };
+/** What a pause or the on-air point waits for, watched on air by the server. */
+export type TriggerEvent =
+  | { kind: 'scrollEnd'; layer: string; passes?: number }
+  | { kind: 'timerZero'; layer: string }
+  | { kind: 'timerAt'; layer: string; seconds: number }
+  | { kind: 'videoEnd'; layer: string }
+  | { kind: 'lastRow'; dataset: string }
+  | { kind: 'dataChange'; key: string }
+  | { kind: 'dataIs'; key: string; op: string; value: string }
+  | { kind: 'graphic'; template: string; out?: boolean };
 
 /** Marker model of templates made by this version (see Template.markerModel). */
 export const MARKER_MODEL = 2;

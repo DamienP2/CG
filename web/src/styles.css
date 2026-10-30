@@ -20843,7 +20843,15 @@ input.lc-pal-name:focus {
   flex-wrap: nowrap;
 }
 .marker-editor .seg button {
+  flex: 1;
   white-space: nowrap;
+}
+/* An event's condition: the operator, then the value. */
+.marker-editor .me-cond {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
 }
 .opx-pvrow .cc-num {
   font-size: 16px;

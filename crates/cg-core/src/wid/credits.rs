@@ -797,6 +797,41 @@ pub fn remaining(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> 
     (1.0 - f) / rate.max(1e-9)
 }
 
+/// The roll or crawl has gone all the way, as drawn on air (a crawl
+/// measures its text with `m`, the renderer's fonts; its logos are guessed).
+pub fn ended(
+    layer: &Layer,
+    st: &State,
+    data: &Data,
+    now_ms: i64,
+    age_secs: f64,
+    m: &mut dyn crate::playout::TextWidth,
+) -> Option<bool> {
+    let c = config(layer).ok()?;
+    let num = |p: crate::model::Prop, d: f64| {
+        layer.props.get(&p).and_then(|v| v.as_number()).unwrap_or(d) as f32
+    };
+    let (w, h) = (
+        num(crate::model::Prop::Width, 600.0),
+        num(crate::model::Prop::Height, 400.0),
+    );
+    let es = entries(c, data);
+    let t = match c.mode {
+        Mode::Crawl => {
+            let mut mw =
+                |t: &str, s: &Style| m.width(&c.font, s.weight, &styled(s, t), s.size, ls(s));
+            let mut lw = |_: &str, lh: f32| lh * 3.0;
+            let (items, len) = crawl_items(c, &es, h, &mut mw, &mut lw);
+            travel(c, len, items.last().map(|i| i.x + i.w / 2.0), w)
+        }
+        _ => {
+            let (bl, len) = blocks(c, &es);
+            travel(c, len, bl.last().map(|b| b.y + b.h / 2.0), h)
+        }
+    };
+    Some(progress(c, st, t.x, now_ms, age_secs) >= 1.0 - 1e-6)
+}
+
 fn config(layer: &Layer) -> Result<&Config, String> {
     match &layer.kind {
         LayerKind::Credits { x } => Ok(x),

@@ -1011,6 +1011,73 @@ pub enum Resume {
     After { seconds: f64 },
     /// When this trigger is fired (by the operator, the API, Companion…).
     Trigger { name: String },
+    /// When something happens on air: the server watches it and goes on by itself.
+    Event { on: TriggerEvent },
+}
+
+/// What a pause or the on-air point waits for, watched on air by the server.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum TriggerEvent {
+    /// A ticker or a credit roll is done: after `passes` passes (0 = at its end).
+    ScrollEnd {
+        layer: String,
+        #[serde(default)]
+        passes: u32,
+    },
+    /// A countdown reaches zero.
+    TimerZero { layer: String },
+    /// A timer shows this time (seconds).
+    TimerAt { layer: String, seconds: f64 },
+    /// A video (or an animated sequence) ends.
+    VideoEnd { layer: String },
+    /// A data set shows its last row.
+    LastRow { dataset: String },
+    /// A value changes.
+    DataChange { key: String },
+    /// A value meets a condition: `op` is `=`, `!=`, `>`, `<`, `>=`, `<=` or `contains`.
+    DataIs {
+        key: String,
+        op: String,
+        value: String,
+    },
+    /// Another graphic goes on air (`out`: goes out).
+    Graphic {
+        template: String,
+        #[serde(default)]
+        out: bool,
+    },
+}
+
+impl TriggerEvent {
+    /// A value meeting the condition (numbers compared as numbers).
+    pub fn holds(op: &str, have: &str, want: &str) -> bool {
+        let (a, b) = (have.trim(), want.trim());
+        let nums = a
+            .replace(',', ".")
+            .parse::<f64>()
+            .ok()
+            .zip(b.replace(',', ".").parse::<f64>().ok());
+        let ord = match nums {
+            Some((x, y)) => x.partial_cmp(&y),
+            None => Some(a.to_lowercase().cmp(&b.to_lowercase())),
+        };
+        match op.trim() {
+            "!=" | "≠" => ord != Some(std::cmp::Ordering::Equal),
+            ">" => ord == Some(std::cmp::Ordering::Greater),
+            "<" => ord == Some(std::cmp::Ordering::Less),
+            ">=" | "≥" => matches!(
+                ord,
+                Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+            ),
+            "<=" | "≤" => matches!(
+                ord,
+                Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            ),
+            "contains" => a.to_lowercase().contains(&b.to_lowercase()),
+            _ => ord == Some(std::cmp::Ordering::Equal),
+        }
+    }
 }
 
 impl Resume {

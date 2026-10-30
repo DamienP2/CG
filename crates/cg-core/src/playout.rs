@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::anim::Data;
 use crate::model::{
-    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, RundownItem, Template, ValueChange,
-    ZoneTransition,
+    Layer, LayerKind, MarkerKind, Project, Resume, RowChange, RundownItem, Template, TriggerEvent,
+    ValueChange, ZoneTransition,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +83,40 @@ pub struct PlayoutItem {
     /// The graphic this one replaced in a « Fade » zone, fading out under it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaving: Option<Box<Leaving>>,
+    /// What an event it waits for was when it began waiting (a value that
+    /// changes, another graphic going out), at this frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watch: Option<(f64, String)>,
+}
+
+/// Text widths for the events that need them (a crawl's passes): the
+/// renderer's fonts on the server.
+pub trait TextWidth {
+    fn width(
+        &mut self,
+        family: &str,
+        weight: u16,
+        text: &str,
+        size: f32,
+        letter_spacing: f32,
+    ) -> f32;
+}
+
+/// Without fonts: a rough width.
+pub struct EstimatedWidth;
+
+impl TextWidth for EstimatedWidth {
+    fn width(
+        &mut self,
+        _family: &str,
+        _weight: u16,
+        text: &str,
+        size: f32,
+        letter_spacing: f32,
+    ) -> f32 {
+        let n = text.chars().count() as f32;
+        n * (size * 0.56 + letter_spacing)
+    }
 }
 
 /// A graphic replaced in a « Fade » zone: drawn under the new one while it fades out.
@@ -430,6 +464,7 @@ impl PlayoutItem {
             changes: Vec::new(),
             widgets: BTreeMap::new(),
             advanced: Default::default(),
+            watch: None,
             leaving: None,
         }
     }
@@ -709,6 +744,137 @@ fn hold_target(template: &Template, from: f64) -> f64 {
 
 /// Plays on from the stop the item holds at (or is heading to). Holding on
 /// air waits for Take out; nothing happens while the out animation moves.
+/// The value an event watches changed since the graphic began waiting
+/// (the first look only notes it).
+fn changed_since(item: &mut PlayoutItem, value: String) -> bool {
+    match &item.watch {
+        Some((at, was)) if (*at - item.frame).abs() < 1e-6 => *was != value,
+        _ => {
+            item.watch = Some((item.frame, value));
+            false
+        }
+    }
+}
+
+/// The event a pause or the on-air point waits for has happened.
+#[allow(clippy::too_many_arguments)]
+fn happened(
+    on: &TriggerEvent,
+    t: &Template,
+    item: &mut PlayoutItem,
+    on_air: &std::collections::HashSet<String>,
+    now: i64,
+    fps: f64,
+    default_tz: &str,
+    m: &mut dyn TextWidth,
+) -> bool {
+    let layer = |id: &str| t.layers.iter().find(|l| l.id == id);
+    let state = |item: &PlayoutItem, id: &str| {
+        item.widgets
+            .get(id)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    };
+    let age_secs = item.age / fps;
+    let data = shown_data(item).into_owned();
+    match on {
+        TriggerEvent::ScrollEnd { layer: id, passes } => {
+            let Some(l) = layer(id) else { return false };
+            let v = state(item, id);
+            if let Some((pass, ended)) = crate::wid::ticker::progress(
+                l,
+                &serde_json::from_value(v.clone()).unwrap_or_default(),
+                &data,
+                now,
+                age_secs,
+                fps,
+                m,
+            ) {
+                return if *passes > 0 {
+                    pass > *passes || ended
+                } else {
+                    ended
+                };
+            }
+            crate::wid::credits::ended(
+                l,
+                &serde_json::from_value(v).unwrap_or_default(),
+                &data,
+                now,
+                age_secs,
+                m,
+            )
+            .unwrap_or(false)
+        }
+        TriggerEvent::TimerZero { layer: id } | TriggerEvent::TimerAt { layer: id, .. } => {
+            let Some(l) = layer(id) else { return false };
+            let st = serde_json::from_value(state(item, id)).unwrap_or_default();
+            let age_ms = (age_secs * 1000.0) as i64;
+            let Some((v, countdown, zero)) =
+                crate::wid::timer::reading(l, &st, &data, now, age_ms, default_tz)
+            else {
+                return false;
+            };
+            match on {
+                TriggerEvent::TimerAt { seconds, .. } => {
+                    let at = (seconds * 1000.0).round() as i64;
+                    if countdown {
+                        v <= at
+                    } else {
+                        v >= at
+                    }
+                }
+                _ => zero,
+            }
+        }
+        TriggerEvent::VideoEnd { layer: id } => {
+            let Some(l) = layer(id) else { return false };
+            let LayerKind::Image { x: c, .. } = &l.kind else {
+                return false;
+            };
+            if c.frames.is_empty() {
+                return false;
+            }
+            let st = serde_json::from_value(state(item, id)).unwrap_or_default();
+            crate::wid::image::seq(c, &st, crate::wid::image::manual(l, c), now, age_secs).ended
+        }
+        TriggerEvent::LastRow { dataset } => {
+            let Some(ds) = t.datasets.iter().find(|d| &d.key == dataset) else {
+                return false;
+            };
+            let num = |k: String| data.get(&k).and_then(|v| v.trim().parse::<f64>().ok());
+            let count = num(ds.count_key()).unwrap_or(0.0);
+            count > 0.0 && num(ds.row_key()).unwrap_or(1.0) >= count
+        }
+        TriggerEvent::DataChange { key } => {
+            let v = data.get(key).cloned().unwrap_or_default();
+            changed_since(item, v)
+        }
+        TriggerEvent::DataIs { key, op, value } => {
+            TriggerEvent::holds(op, data.get(key).map(String::as_str).unwrap_or(""), value)
+        }
+        TriggerEvent::Graphic { template, out } => {
+            let now_on = on_air.contains(template);
+            if !*out {
+                return now_on;
+            }
+            // Out: once seen on air since it began waiting.
+            match &item.watch {
+                Some((at, was)) if (*at - item.frame).abs() < 1e-6 => {
+                    if now_on && was == "0" {
+                        item.watch = Some((item.frame, "1".into()));
+                    }
+                    !now_on && item.watch.as_ref().is_some_and(|w| w.1 == "1")
+                }
+                _ => {
+                    item.watch = Some((item.frame, if now_on { "1" } else { "0" }.into()));
+                    false
+                }
+            }
+        }
+    }
+}
+
 fn resume(t: &Template, item: &mut PlayoutItem) -> bool {
     match item.phase {
         Phase::Out => false,
@@ -1392,6 +1558,65 @@ impl ChannelState {
         out
     }
 
+    /// The pauses and on-air points waiting for an event (`Resume::Event`)
+    /// that has happened go on, or out. Returns what fired (for the as-run log).
+    pub fn event_resumes(
+        &mut self,
+        project: &Project,
+        default_tz: &str,
+        m: &mut dyn TextWidth,
+    ) -> Vec<String> {
+        let now = now_ms();
+        let fps = project.frame_rate.as_f64().max(1.0);
+        // The graphics on air (another one's in / out).
+        let on_air: std::collections::HashSet<String> = self
+            .layers
+            .values()
+            .filter(|i| !matches!(i.phase, Phase::Out | Phase::OutHold))
+            .map(|i| i.template_id.clone())
+            .collect();
+        let mut fired = Vec::new();
+        let mut gone = Vec::new();
+        for (layer, item) in self.layers.iter_mut() {
+            if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
+                item.watch = None;
+                continue;
+            }
+            let Some(t) = project.template(&item.template_id) else {
+                continue;
+            };
+            let on_point = item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
+            let waits = if on_point {
+                t.markers
+                    .iter()
+                    .find(|m| m.kind == MarkerKind::Out)
+                    .map(|m| &m.resume)
+            } else {
+                t.pause_at(item.frame).map(|m| &m.resume)
+            };
+            let Some(Resume::Event { on }) = waits else {
+                item.watch = None;
+                continue;
+            };
+            if !happened(on, t, item, &on_air, now, fps, default_tz, m) {
+                continue;
+            }
+            item.watch = None;
+            fired.push(t.name.clone());
+            if on_point {
+                if !begin_out(project, item) {
+                    gone.push(*layer);
+                }
+            } else {
+                resume(t, item);
+            }
+        }
+        for layer in gone {
+            self.layers.remove(&layer);
+        }
+        fired
+    }
+
     /// Data sets going on by themselves: the next row once the graphic has
     /// held on air (on the on-air marker, after its in animation) for the
     /// data set's seconds. Returns true when a row changed.
@@ -1920,6 +2145,77 @@ mod tests {
         ch.apply(&p, Command::Trigger { name: "end".into() })
             .unwrap();
         assert_eq!(ch.layers[&1].phase, Phase::Out);
+    }
+
+    #[test]
+    fn an_event_takes_out_on_air() {
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        t.markers[0].resume = Resume::Event {
+            on: TriggerEvent::DataIs {
+                key: "status".into(),
+                op: "=".into(),
+                value: "Final".into(),
+            },
+        };
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        let mut w = EstimatedWidth;
+        for _ in 0..85 {
+            ch.tick(1.0);
+            ch.auto_resume(&p);
+            assert!(ch.event_resumes(&p, "UTC", &mut w).is_empty());
+        }
+        assert_eq!(ch.layers[&1].phase, Phase::Holding);
+        ch.layers
+            .get_mut(&1)
+            .unwrap()
+            .data
+            .insert("status".into(), "final".into());
+        assert_eq!(ch.event_resumes(&p, "UTC", &mut w).len(), 1);
+        assert_eq!(ch.layers[&1].phase, Phase::Out);
+    }
+
+    #[test]
+    fn an_event_on_a_change_waits_for_the_change() {
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        t.markers[0].resume = Resume::Event {
+            on: TriggerEvent::DataChange {
+                key: "score".into(),
+            },
+        };
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        ch.layers
+            .get_mut(&1)
+            .unwrap()
+            .data
+            .insert("score".into(), "1".into());
+        let mut w = EstimatedWidth;
+        for _ in 0..90 {
+            ch.tick(1.0);
+            ch.event_resumes(&p, "UTC", &mut w);
+        }
+        assert_eq!(ch.layers[&1].phase, Phase::Holding);
+        ch.layers
+            .get_mut(&1)
+            .unwrap()
+            .data
+            .insert("score".into(), "2".into());
+        ch.event_resumes(&p, "UTC", &mut w);
+        assert_eq!(ch.layers[&1].phase, Phase::Out);
+    }
+
+    #[test]
+    fn conditions_compare_numbers_as_numbers() {
+        assert!(TriggerEvent::holds(">", "10", "9"));
+        assert!(TriggerEvent::holds("<=", "2,5", "2.5"));
+        assert!(TriggerEvent::holds("=", "Final", "final"));
+        assert!(TriggerEvent::holds("contains", "Score final", "FINAL"));
+        assert!(!TriggerEvent::holds("!=", "3", "3.0"));
     }
 
     #[test]

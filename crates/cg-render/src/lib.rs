@@ -32,6 +32,45 @@ use cg_core::{
 };
 use tiny_skia::{FillRule, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform};
 
+/// Text widths with the renderer's fonts, for the server's events (a
+/// crawl's passes): the fonts load at the first width asked.
+pub struct TextWidths {
+    dir: PathBuf,
+    fonts: Option<FontStore>,
+}
+
+impl TextWidths {
+    pub fn new(assets_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            dir: assets_dir.into(),
+            fonts: None,
+        }
+    }
+}
+
+impl cg_core::playout::TextWidth for TextWidths {
+    fn width(
+        &mut self,
+        family: &str,
+        weight: u16,
+        text: &str,
+        size: f32,
+        letter_spacing: f32,
+    ) -> f32 {
+        let dir = self.dir.join("fonts");
+        let fonts = self.fonts.get_or_insert_with(|| FontStore::new(Some(&dir)));
+        match fonts
+            .font(family, weight)
+            .or_else(|| fonts.font("Inter", weight))
+        {
+            Some(f) => text::text_width(&f, text, size, letter_spacing),
+            None => {
+                cg_core::playout::EstimatedWidth.width(family, weight, text, size, letter_spacing)
+            }
+        }
+    }
+}
+
 pub use cache::FrameCache;
 pub use text::{fonts_changed, FontFamily, FontStore, BUNDLED_FONTS};
 pub use wid::qrcode::qr_modules_ec;

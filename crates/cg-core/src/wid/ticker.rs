@@ -734,6 +734,99 @@ pub fn pass_at(placed: &[Placed], x: f64) -> u32 {
     1
 }
 
+/// Where the tape is on air, as drawn: its pass (1-based) and whether it has
+/// ended. A crawl measures its items with `m` (the renderer's fonts).
+pub fn progress(
+    layer: &Layer,
+    st: &State,
+    data: &Data,
+    now_ms: i64,
+    age_secs: f64,
+    fps: f64,
+    m: &mut dyn crate::playout::TextWidth,
+) -> Option<(u32, bool)> {
+    let LayerKind::Ticker {
+        x: c,
+        text,
+        separator,
+        speed,
+        font,
+    } = &layer.kind
+    else {
+        return None;
+    };
+    let t = Ticker {
+        c,
+        text,
+        separator,
+        speed: *speed,
+    };
+    let num = |p: Prop, d: f64| layer.props.get(&p).and_then(|v| v.as_number()).unwrap_or(d) as f32;
+    let e = clock(&t, st, now_ms, age_secs, fps);
+    if c.mode != Mode::Crawl {
+        let p = period(&t, st, num(Prop::Height, 80.0));
+        let placed = resolve(&runs(&t, st), data, &mut |_| 1.0, 0.0, 0.0, limit(c));
+        let k = (e / p).floor();
+        return Some((
+            pass_at(&placed, k),
+            tape_end(&placed).is_some_and(|end| k >= end),
+        ));
+    }
+    let (w, size, ls) = (
+        num(Prop::Width, 600.0),
+        num(Prop::FontSize, 32.0).max(1.0),
+        num(Prop::LetterSpacing, 0.0),
+    );
+    let zx = if c.title.on {
+        c.title.w.min(w - 40.0).max(0.0)
+    } else {
+        0.0
+    };
+    let zw = (w - zx).max(40.0);
+    let up = |s: &str| {
+        if font.uppercase {
+            s.to_uppercase()
+        } else {
+            s.to_string()
+        }
+    };
+    let sep_w = match c.sep_type {
+        SepType::None => 0.0,
+        SepType::Image => (size * 1.05).round() * 2.4,
+        SepType::Symbol => m.width("Inter", 900, &c.sep_symbol, (size * 0.7).round(), 0.0),
+        SepType::Text => m.width(
+            &font.font_family,
+            font.font_weight,
+            &up(separator),
+            size,
+            ls,
+        ),
+    };
+    let gap = c.spacing + sep_w;
+    let mut wf = |it: &Item| {
+        let chip = c
+            .cats
+            .iter()
+            .find(|k| !it.cat.is_empty() && k.name == it.cat)
+            .map(|k| {
+                let (cs, cp, cg) = (
+                    (size * 0.6).round(),
+                    (size * 0.36).round(),
+                    (size * 0.45).round(),
+                );
+                m.width("Inter", 900, &k.name.to_uppercase(), cs, 0.0) + 2.0 * cp + cg
+            })
+            .unwrap_or(0.0);
+        (m.width(&font.font_family, font.font_weight, &up(&it.text), size, ls) + chip + gap) as f64
+    };
+    let first = if c.start_full { 0.0 } else { zw as f64 };
+    let placed = resolve(&runs(&t, st), data, &mut wf, zw as f64, first, limit(c));
+    Some((
+        pass_at(&placed, e),
+        tape_end(&placed).is_some_and(|end| e >= end),
+    ))
+}
+
 // --------------------------------------------------------------- actions --
 
 fn height(layer: &Layer) -> f32 {
