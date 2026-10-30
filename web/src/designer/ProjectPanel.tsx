@@ -7,7 +7,7 @@ import { api, useApp } from '../store';
 import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { NumberField, Segmented } from '../ui/fields';
 import { useDesigner } from './designerStore';
-import { draftOf } from '../engine/drafts';
+import { draftOf, publishState } from '../engine/drafts';
 import { locale, t, tc, tn } from '../i18n';
 
 /*
@@ -231,6 +231,9 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // The version of the open template the Operator uses.
+  const openId = useDesigner((s) => s.base?.id);
+  const live = openId ? publishState(project, openId).published : undefined;
   const url = `/api/projects/${encodeURIComponent(project.id)}`;
   const loadVersions = () =>
     api<Version[]>('GET', `${url}/versions`)
@@ -274,9 +277,9 @@ export function ProjectHistory({ project, readOnly }: { project: Project; readOn
 
   return (
     <div className="history-menu" ref={ref}>
-      <button className={`top-tool ${open ? 'on' : ''}`} title={t('History of the versions')} onClick={() => setOpen(!open)}>
+      <button className={`top-tool ${open ? 'on' : ''}`} title={live ? t('History of the versions · the Operator uses v{rev}', { rev: live.revision || 1 }) : t('History of the versions')} onClick={() => setOpen(!open)}>
         <History size={15} />
-        {versions && versions.length > 0 && <span className="pjp-count">{versions.length}</span>}
+        {live && <span className="pjp-count">v{live.revision || 1}</span>}
       </button>
       {open && (
         <div className="history-pop">

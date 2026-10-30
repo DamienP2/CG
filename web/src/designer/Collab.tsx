@@ -189,12 +189,7 @@ async function confirmPublish(project: Project, ids: string[]): Promise<boolean>
 /** Publish state of one template, in its properties (it is published with the top bar's Publish). */
 export function TemplatePublish({ project, id }: { project: Project; id: string }) {
   const { published, draft } = publishState(project, id);
-  if (published && !draft)
-    return (
-      <span className="publish-state" title={t('The Operator uses this template as it is here')}>
-        <Check size={12} /> {t('In the Operator · v{rev}', { rev: published.revision || 1 })}
-      </span>
-    );
+  if (published && !draft) return null;
   return (
     <div className="publish publish-line">
       <span className="publish-draft">{published ? t('Changes not in the Operator') : t('New · not in the Operator')}</span>
@@ -235,22 +230,11 @@ export function TopPublish({ project, saving, readOnly }: { project: Project; sa
         {t('Saving…')}
       </span>
     );
-  else if (changed.length)
-    state = (
-      <span className="ux2-pub dirty" title={t('Not yet in the Operator: {list}', { list: changed.map((d) => (isNew(d.id) ? t('{name} (new)', { name: d.name }) : d.name)).join(', ') })}>
-        <i /> {tn(changed.length, '{n} change', '{n} changes')}
-      </span>
-    );
-  else
-    state = (
-      <span className="ux2-pub clean" title={t('The Operator uses the templates as they are here')}>
-        <Check size={13} /> {t('All published')}
-      </span>
-    );
   return (
     <>
       {state}
-      <button className="btn small primary ux2-publish" disabled={busy || readOnly || !changed.length} title={t('Publish to the Operator')} onClick={publish}>
+      {/* Changes waiting: Publish pulses lightly. */}
+      <button className={`btn small primary ux2-publish ${changed.length && !readOnly && !busy ? 'pending' : ''}`} disabled={busy || readOnly || !changed.length} title={changed.length ? t('Not yet in the Operator: {list}', { list: changed.map((d) => (isNew(d.id) ? t('{name} (new)', { name: d.name }) : d.name)).join(', ') }) : t('Publish to the Operator')} onClick={publish}>
         <Upload size={13} /> {busy ? t('Publishing…') : t('Publish')}
       </button>
     </>

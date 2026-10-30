@@ -21128,3 +21128,22 @@ textarea.tx-grow {
 .stage-wrap.grabbing * {
   cursor: grabbing !important;
 }
+
+/* Changes not in the Operator yet: Publish pulses lightly. */
+.ux2-publish.pending {
+  animation: publish-pulse 2.2s ease-in-out infinite;
+}
+@keyframes publish-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ux2-publish.pending {
+    animation: none;
+  }
+}
