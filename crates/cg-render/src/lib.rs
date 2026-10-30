@@ -1289,6 +1289,11 @@ impl Renderer {
             if let Some(v) = ctx.logic.get(&layer.id) {
                 r.values = v.clone();
             }
+            // Its repeated movement, on its time on air.
+            if let Some(m) = &layer.motion {
+                let age = ctx.time_for(layer).age_secs;
+                cg_core::anim::apply_motion(&mut r.values, m, ctx.frame, ctx.fps, age);
+            }
             let opacity = parent_opacity * r.num(Prop::Opacity).clamp(0.0, 1.0) as f32;
             if opacity <= 0.0 {
                 continue;
@@ -1476,6 +1481,10 @@ impl Renderer {
         opacity: f32,
     ) -> (cache::Motion, Option<cache::Motion>) {
         use cache::Motion;
+        // It (or a group it is in) repeats a movement: drawn again on each frame.
+        if loops(ctx.template, r.layer) {
+            return (Motion::Moving, None);
+        }
         if cg_core::wid::widget_id(&r.layer.kind).is_some() {
             if let Some((a, b)) = self.widget(pm, ctx, r, tf, opacity, None, wid::split_motions) {
                 return (a, Some(b));
@@ -2916,6 +2925,22 @@ fn load_svg(path: &Path) -> Option<Pixmap> {
     let mut pm = Pixmap::new(w, h)?;
     resvg::render(&tree, Transform::from_scale(k, k), &mut pm.as_mut());
     Some(pm)
+}
+
+/// The layer or one of its parents repeats a movement (`Layer::motion`).
+fn loops(t: &Template, layer: &cg_core::Layer) -> bool {
+    let mut at = Some(layer);
+    for _ in 0..64 {
+        let Some(l) = at else { break };
+        if l.motion.is_some() {
+            return true;
+        }
+        at = l
+            .parent
+            .as_deref()
+            .and_then(|id| t.layers.iter().find(|x| x.id == id));
+    }
+    false
 }
 
 /// The layer or one of its parents moves, turns or changes size between

@@ -10,6 +10,7 @@ import { confirmDialog } from '../ui/dialogs';
 import { animatedProps, clearKeyframes, copyAll, copyAnimation, copyLayers, cutLayers, pasteAnimationOnRow, pasteLayers, rowMapping, useClipboard } from './clipboard';
 import { descendants, duplicateLayers, findLayer, useDesigner } from './designerStore';
 import { moveLayer } from './LayersPanel';
+import { openAnimations } from './animPresets';
 
 export interface ClipMenuAt {
   x: number;
@@ -126,14 +127,7 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
       {!at.row && (
         <>
           <div className="menu-sep" />
-          <button
-            title={t('Show its keyframes in the timeline')}
-            onClick={run(() => {
-              const s = useDesigner.getState();
-              s.set({ expanded: { ...s.expanded, [layer.id]: true } });
-              requestAnimationFrame(() => document.querySelector('.tl-label.layer.selected')?.scrollIntoView({ block: 'nearest' }));
-            })}
-          >
+          <button disabled={ro} onClick={run(() => openAnimations(targets))}>
             <Sparkles size={13} /> {t('Animation…')}
           </button>
           <div className="ux2-sub-wrap" onMouseEnter={() => setOrderOpen(true)} onMouseLeave={() => setOrderOpen(false)}>

@@ -1,4 +1,5 @@
 import { useTableEditor } from '../widgets/table-editor-store';
+import { clientNow } from '../store';
 import { useShallow } from 'zustand/react/shallow';
 import { settingDefaults } from '../engine/settings';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -115,6 +116,10 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
   const fps = project.frameRate.num / project.frameRate.den || 1;
   // Only the widgets that move redraw on each frame: all of them while a try-out runs, else those moving with the wall clock (a clock…).
   const ticking: Ticking = running ? 'all' : 'wall';
+  // Resting on a pause or the On air point, the time on air runs on, as on air: loop animations keep moving.
+  const playing = useDesigner((s) => s.playing);
+  const atHold = !playing && !!template?.markers.some((m) => (m.kind === 'pause' || m.kind === 'out') && Math.abs(m.frame - frame) < 1e-3);
+  const holdSince = useMemo(() => (atHold ? clientNow() : undefined), [atHold, frame]);
   const layerAge = useCallback((l: Layer, age: number, now: number) => (widgetRun[l.id] ? runAge(widgetRun[l.id], now) : age), [widgetRun]);
   const clocked = useCallback((l: Layer) => !!widgetRun[l.id], [widgetRun]);
   const stateOf = useCallback((id: string) => widgetState[id], [widgetState]);
@@ -501,7 +506,7 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
           >
             <Viewport width={project.width} height={project.height} scale={scale} style={{ overflow: 'visible' }}>
               {/* Widgets run on the playhead: scrub to see a ticker or a counter move. */}
-              <LiveTime ageSecs={frame / fps} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
+              <LiveTime ageSecs={frame / fps} since={holdSince} ticking={ticking} layerAge={layerAge} clocked={clocked} widgetState={stateOf} fps={fps} lang={_project.language || 'fr'}>
                 {/* The other templates picked (Display › Other templates), faint, under it: to arrange it against them. */}
                 {!zonesEdit && ghostOn && (
                   <div className="stage-ghosts" style={{ position: 'absolute', inset: 0, opacity: ghostOpacity, pointerEvents: 'none', filter: shown.filter }} aria-hidden>

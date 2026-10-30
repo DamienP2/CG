@@ -366,3 +366,80 @@ mod tests {
         assert_eq!(interpolate_text("open {{ brace", &d), "open {{ brace");
     }
 }
+
+/// Adds a layer's repeated movement ([`crate::Motion`]) to its values, at
+/// `age_secs` of its time on air (mirror of web/src/engine/motion.ts).
+pub fn apply_motion(
+    values: &mut BTreeMap<Prop, Value>,
+    m: &crate::Motion,
+    frame: f64,
+    fps: f64,
+    age_secs: f64,
+) {
+    use crate::MotionKind as K;
+    if frame < m.from || m.period <= 0.0 {
+        return;
+    }
+    // From 0, where the in animation ends (the layer as set), smoothly.
+    let t = (age_secs - m.from / fps.max(1.0)).max(0.0);
+    let phase = (t / m.period) * std::f64::consts::TAU;
+    let wave = phase.sin(); // -1..1
+    let swell = (1.0 - phase.cos()) / 2.0; // 0..1..0
+    let num = |v: &BTreeMap<Prop, Value>, p: Prop| {
+        v.get(&p)
+            .and_then(Value::as_number)
+            .unwrap_or_else(|| default_value(p).as_number().unwrap_or(0.0))
+    };
+    let (w, h) = (num(values, Prop::Width), num(values, Prop::Height));
+    let mut set = |p: Prop, f: &dyn Fn(f64) -> f64| {
+        let v = f(num(values, p));
+        values.insert(p, Value::Number(v));
+    };
+    match m.kind {
+        K::Pulse => {
+            set(Prop::ScaleX, &|v| v * (1.0 + 0.06 * swell));
+            set(Prop::ScaleY, &|v| v * (1.0 + 0.06 * swell));
+        }
+        K::Blink => set(Prop::Opacity, &|v| v * (1.0 - 0.75 * swell)),
+        K::Swing => set(Prop::Rotation, &|v| v + 3.0 * wave),
+        K::Float => set(Prop::Y, &|v| v + (h * 0.05).max(4.0) * wave),
+        K::Shake => set(Prop::X, &|v| v + (w * 0.01).max(3.0) * wave),
+        K::KenBurns => {
+            set(Prop::ScaleX, &|v| v * (1.0 + 0.08 * swell));
+            set(Prop::ScaleY, &|v| v * (1.0 + 0.08 * swell));
+        }
+    }
+}
+
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+    use crate::{Motion, MotionKind};
+
+    #[test]
+    fn a_loop_moves_on_the_age_after_its_start() {
+        let m = Motion {
+            kind: MotionKind::Pulse,
+            period: 2.0,
+            from: 25.0,
+        };
+        let base = || {
+            BTreeMap::from([
+                (Prop::ScaleX, Value::Number(1.0)),
+                (Prop::ScaleY, Value::Number(1.0)),
+            ])
+        };
+        // Before its start: as set.
+        let mut v = base();
+        apply_motion(&mut v, &m, 10.0, 50.0, 0.2);
+        assert_eq!(v[&Prop::ScaleX], Value::Number(1.0));
+        // Half a cycle after its start (0.5 s + 1 s): at its largest.
+        let mut v = base();
+        apply_motion(&mut v, &m, 25.0, 50.0, 1.5);
+        assert!((v[&Prop::ScaleX].as_number().unwrap() - 1.06).abs() < 1e-9);
+        // The template holds (frame frozen), the age goes on: it keeps moving.
+        let mut v = base();
+        apply_motion(&mut v, &m, 25.0, 50.0, 2.5);
+        assert!((v[&Prop::ScaleX].as_number().unwrap() - 1.0).abs() < 1e-9);
+    }
+}

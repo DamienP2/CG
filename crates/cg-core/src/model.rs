@@ -818,6 +818,40 @@ pub struct Layer {
     /// bar in the Designer's timeline); none = all along.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<Span>,
+    /// A movement repeated while the layer is on air (Designer › Animations ›
+    /// Loop): it runs on the layer's age, also once the template holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<Motion>,
+}
+
+/// A movement a layer repeats (see [`crate::anim::apply_motion`]).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Motion {
+    pub kind: MotionKind,
+    /// One cycle, in seconds.
+    pub period: f64,
+    /// The frame of the template from which it moves (the end of the in
+    /// animation); before, the layer is as set.
+    #[serde(default)]
+    pub from: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MotionKind {
+    /// Grows a little and back.
+    Pulse,
+    /// Fades a little and back.
+    Blink,
+    /// Turns a few degrees each way.
+    Swing,
+    /// Goes up and down.
+    Float,
+    /// Shakes sideways.
+    Shake,
+    /// A slow zoom in and out (pictures).
+    KenBurns,
 }
 
 /// A stretch of a template's timeline: from (shown) to (gone), in frames.

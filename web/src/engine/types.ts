@@ -107,6 +107,8 @@ export type Layer = LayerKind & {
   liveChanges?: Record<string, LiveChange>;
   /** When the layer is shown, in frames of the template's timeline (its bar in the timeline); none = all along. */
   span?: { from: number; to: number };
+  /** A movement repeated while the layer is on air (Designer › Animations › Loop); runs on the layer's age, also once the template holds. */
+  motion?: Motion;
   /** Properties on the Designer's timeline (animatable); none = position, size, opacity. */
   timeline?: Prop[];
   props: Partial<Record<Prop, Value>>;
@@ -592,3 +594,13 @@ export interface Palette {
   name: string;
   colors: NamedColor[];
 }
+
+/** A movement a layer repeats (mirror of model::Motion). */
+export interface Motion {
+  kind: MotionKind;
+  /** One cycle, in seconds. */
+  period: number;
+  /** The frame from which it moves (the end of the in animation). */
+  from: number;
+}
+export type MotionKind = 'pulse' | 'blink' | 'swing' | 'float' | 'shake' | 'kenBurns';

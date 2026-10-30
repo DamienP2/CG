@@ -14,6 +14,7 @@ import type { Data, FontStyle, Layer, LayerType, Template, TextAlign, VerticalAl
 import * as W from './widgets';
 import { applyLogic, measureLayer } from './logic';
 import { fitText, type Fitted } from './textFit';
+import { applyMotion } from './motion';
 import { useFonts } from './fonts';
 import { widgetOf } from '../widgets';
 
@@ -374,7 +375,10 @@ function SpecWidget({ layer, frame, data, hold, interactive }: { layer: Layer; f
 }
 
 const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold, interactive }: { layer: Layer; childrenOf: Map<string | null, Layer[]>; frame: number; data: Data; hold: number; interactive?: boolean }) {
-  const logic = useContext(LogicContext).get(layer.id);
+  const logic0 = useContext(LogicContext).get(layer.id);
+  // A repeated movement (Layer.motion): follows the layer's age, also while it holds on air (the rest stands still).
+  const lt = useLayerTime(layer.motion ? 'wall' : false);
+  const logic = layer.motion ? applyMotion(logic0 ?? resolveLayer(layer, frame, data, hold), layer.motion, frame, lt.fps ?? 50, lt.layerAge ? lt.layerAge(layer) : lt.ageSecs) : logic0;
   const framed = useContext(FramedContext);
   const motion = useContext(ValueMotionContext);
   const moving = motion?.layers.get(layer.id);

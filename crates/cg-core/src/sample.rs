@@ -45,6 +45,7 @@ fn layer(
         overrides: BTreeMap::new(),
         live_changes: BTreeMap::new(),
         span: None,
+        motion: None,
     }
 }
 

@@ -11,6 +11,7 @@ import { Inspector } from './Inspector';
 import { LockOverlay, TopPublish, useEditLock } from './Collab';
 import { Stage, StageZoom } from './Stage';
 import { PasteDialog } from './PasteDialog';
+import { AnimationsDialog } from './AnimationsDialog';
 import { Timeline } from './Timeline';
 import { clearSelectedKeys, copyLayers, cutLayers, pasteClipboard } from './clipboard';
 import { useZoneEdit, ZonesPanel } from './ZoneEditor';
@@ -619,6 +620,7 @@ export const Designer = memo(function Designer() {
       <DataCanvas />
       <TableEditor />
       <PasteDialog />
+      <AnimationsDialog />
     </div>
   );
 });
