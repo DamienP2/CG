@@ -30,7 +30,7 @@ import { confirmDialog, promptDialog } from '../ui/dialogs';
 import { TableRowsField } from './TableRowsField';
 import { Dropdown, type DropOption } from '../ui/Dropdown';
 import { Splitter, useLayout } from '../ui/Splitter';
-import { t, tc, tn } from '../i18n';
+import { lang, t, tc, tn } from '../i18n';
 import { LockedBy, useZoneLocks, ZoneBar } from './ZoneBar';
 import { OperatorTop } from './Presence';
 import { requestUndo, UndoHistory, UndoShortcut } from './UndoToast';
@@ -1666,6 +1666,55 @@ function useUpdateFade(): [boolean, (v: boolean) => void] {
 }
 
 /** One graphic on air: a card — the on-air family in its header, the animation pills below. */
+/** How far an automatic step went (%), for the tile filling up to it. */
+const fillOf = (step: AutoStep, left: number) => (step.secs ? Math.min(100, Math.max(0, (1 - left / step.secs) * 100)) : 100);
+
+const secsText = (s: number) => (s < 10 ? s.toLocaleString(lang(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : String(Math.ceil(s)));
+const clockText = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+/**
+ * Out, on air: what counts in its corner (what is left of the in, the time on air, an automatism's
+ * countdown, what is left of the out), and the tile filling up to an automatism (out, next graphic).
+ */
+function OutTile({ project, item, template, liveAt, step, left, disabled, onOut }: { project: Project; item: PlayoutItem; template?: Template; liveAt: number; step: AutoStep | null; left: number; disabled: boolean; onOut: () => void }) {
+  const now = useTicker(true, 10);
+  const fps = project.frameRate.num / project.frameRate.den || 50;
+  const since = Math.max(0, (now - liveAt) / 1000);
+  // Where it is now: the frame moves on between two channel states while it plays.
+  const moving = item.phase === 'playing' || item.phase === 'out';
+  const frame = moving ? Math.min(Math.max(item.frame, item.target), item.frame + since * fps * Math.sign(item.target - item.frame || 1)) : item.frame;
+  const end = template ? template.duration : item.target;
+  let time: React.ReactNode;
+  let title: string | undefined;
+  const auto = step && (step.kind === 'out' || step.kind === 'next') ? step : null;
+  if (auto) {
+    time = (
+      <b className="opx-tile-time auto">
+        {auto.kind === 'next' && <SkipForward size={11} />}
+        {Math.ceil(left)} s
+      </b>
+    );
+    title = auto.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) });
+  } else if (item.phase === 'playing' && template && frame < holdFrame(template)) {
+    time = <b className="opx-tile-time">IN {secsText(Math.max(0, (Math.min(item.target, holdFrame(template)) - frame) / fps))} s</b>;
+  } else if (item.phase === 'out') {
+    time = <b className="opx-tile-time">OUT {secsText(Math.max(0, (end - frame) / fps))} s</b>;
+  } else {
+    time = <b className="opx-tile-time">{clockText((item.age ?? 0) / fps + since)}</b>;
+    title = t('On air for {time}', { time: clockText((item.age ?? 0) / fps + since) });
+  }
+  return (
+    <button className="opx-tile out" disabled={disabled} onClick={onOut} title={title}>
+      {auto && <i className="opx-tile-fill" style={{ width: `${fillOf(auto, left)}%` }} />}
+      <span className="opx-tile-top">
+        <CircleStop size={18} />
+        {time}
+      </span>
+      <span>Out</span>
+    </button>
+  );
+}
+
 /** On air, bento: the cells a control takes (Continue, Out: one; a widget: two to four, by its buttons; anything else: the whole row, -1). */
 function cellsOf(el: Element): number {
   if (el.classList.contains('opx-tile')) return 1;
@@ -1724,12 +1773,6 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
   const waiting = tpl ? pauseOf(item, project) : undefined;
   const step = autoStep(project, item, liveAt);
   const left = useLeft(step);
-  const count = (kind: AutoStep['kind']) =>
-    step?.kind === kind || (kind === 'out' && step?.kind === 'next') ? (
-      <b className="opx-count" style={{ '--p': step.secs ? 1 - left / step.secs : 1 } as React.CSSProperties} title={step.kind === 'resume' ? t('Pause · plays on in {n} s', { n: Math.ceil(left) }) : step.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) })}>
-        {Math.ceil(left)}
-      </b>
-    ) : null;
   const name = rundownName(project, item.rundownId) ?? tpl?.name ?? t('Deleted graphic');
   return (
     <div className={`opx-aircard ${lockedBy ? 'opl-locked' : ''}`} title={lockedBy ? t('{name} holds this zone', { name: lockedBy.userName }) : undefined}>
@@ -1754,17 +1797,16 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
         lead={
           <>
             {canContinue(item, tpl) && (
-              <button className={`opx-tile cont ${waiting ? 'waits' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })}>
-                <ChevronsRight size={18} />
+              <button className={`opx-tile cont ${waiting ? 'waits' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={step?.kind === 'resume' ? t('Pause · plays on in {n} s', { n: Math.ceil(left) }) : undefined}>
+                {step?.kind === 'resume' && <i className="opx-tile-fill" style={{ width: `${fillOf(step, left)}%` }} />}
+                <span className="opx-tile-top">
+                  <ChevronsRight size={18} />
+                  {step?.kind === 'resume' && <b className="opx-tile-time">{Math.ceil(left)} s</b>}
+                </span>
                 <span>Continue</span>
-                {count('resume')}
               </button>
             )}
-            <button className="opx-tile out" disabled={!operate} onClick={() => command({ action: 'takeOut', zone: zone.id })}>
-              <CircleStop size={18} />
-              <span>Out</span>
-              {count('out')}
-            </button>
+            <OutTile project={project} item={item} template={tpl} liveAt={liveAt} step={step} left={left} disabled={!operate} onOut={() => command({ action: 'takeOut', zone: zone.id })} />
           </>
         }
       />

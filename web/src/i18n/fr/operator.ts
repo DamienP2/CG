@@ -515,4 +515,5 @@ export const operator: Record<string, string> = {
   'Add a graphic': 'Ajouter un habillage',
   'No value to type': 'Aucune valeur à saisir',
   'No graphic selected': 'Aucun habillage sélectionné',
+  'On air for {time}': 'À l’antenne depuis {time}',
 };
