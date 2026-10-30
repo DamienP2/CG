@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical } from 'lucide-react';
+import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, Lock, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -47,10 +47,23 @@ import type { ZoneLock } from '../store';
  *           controls of the graphics on air (widgets, values, triggers)
  */
 
+/** An empty area: a small icon and a word, in its middle. */
+function Empty({ icon: Icon, text, children }: { icon: LucideIcon; text: string; children?: React.ReactNode }) {
+  return (
+    <div className="opx-void">
+      <span className="opx-void-ic">
+        <Icon size={18} />
+      </span>
+      <span className="opx-void-t">{text}</span>
+      {children}
+    </div>
+  );
+}
+
 /** The control of an exposed value, as in the Designer (text, choices, number, colour, picture, on / off). */
 export function FieldInput({ field, value, onChange, rich, maxLength }: { field: Field; value: string; onChange: (v: string) => void; rich?: boolean; /** Most characters (a Text's « Max characters »). */ maxLength?: number }) {
-  // A text the operator can style (bold, colour…: it is only shown in Texts).
-  if (rich) return <RichInput multiline={field.kind === 'multiline'} value={value} onChange={onChange} maxLength={maxLength} />;
+  // A text with styles set in the Designer (bold, colour…): kept, shown, without a style bar.
+  if (rich) return <RichInput bare multiline={field.kind === 'multiline'} value={value} onChange={onChange} maxLength={maxLength} />;
   if (field.options?.length) {
     const short = field.options.length <= 4 && field.options.every(([, l]) => l.length <= 12);
     return short ? (
@@ -493,10 +506,12 @@ export function Operator({ channelId }: { channelId: string | null }) {
       {/* Left: playlists and graphics. */}
       <div className="opx-col">
         <section className="opx-pane grow">
-          <div className="opx-pltabs" role="tablist" aria-label={t('Playlists')}>
-            {playlists.map((p) => (
-              <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
-            ))}
+          <div className="opx-pltabs">
+            <div className="opx-pltabs-scroll" role="tablist" aria-label={t('Playlists')}>
+              {playlists.map((p) => (
+                <PlaylistRow key={p.id} project={project} id={p.id} active={p.id === activeList} editable={canEdit} onSelect={setPlaylistId} />
+              ))}
+            </div>
             {canEdit && (
               <button
                 className="opx-add"
@@ -610,7 +625,15 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 }}
               />
             ))}
-            {!items.length && <p className="opx-hint">{t('Empty playlist: add graphics from your templates with +.')}</p>}
+            {!items.length && (
+              <Empty icon={ListPlus} text={t('Empty playlist')}>
+                {canEdit && (
+                  <button className="opx-btn small" onClick={() => setAdding(true)}>
+                    <Plus size={13} /> {t('Add a graphic')}
+                  </button>
+                )}
+              </Empty>
+            )}
           </div>
         </section>
       </div>
@@ -702,11 +725,12 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       </div>
                     ),
                   )}
+                {!hasContent && !hasData && <Empty icon={SlidersHorizontal} text={t('No value to type')} />}
                 {bound.length > 0 && <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />}
               </div>
             </>
           ) : (
-            <p className="opx-hint pad">{t('Select a graphic in the playlist.')}</p>
+            <Empty icon={MousePointerClick} text={t('No graphic selected')} />
           )}
         </section>
       </div>
@@ -745,7 +769,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     </div>
                   ))
                 ) : (
-                  <p className="opx-hint pad">{t('No output: choose one above to take graphics on air. You can still prepare the playlists.')}</p>
+                  <Empty icon={Unplug} text={t('No output')} />
                 )}
               </div>
             </section>
@@ -774,7 +798,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               })}
             </div>
           ) : (
-            <p className="opx-hint pad">{t('Nothing on air.')}</p>
+            <Empty icon={Radio} text={t('Nothing on air')} />
           )}
         </section>
       </div>
@@ -871,52 +895,85 @@ function NextButton({ project, live, target, disabled, onTake, cap }: { project:
 // Not drawn again on each frame of the channel (only its props matter).
 const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, onSelect }: { project: Project; id: string; active: boolean; editable: boolean; onSelect: (id: string) => void }) {
   const toast = useApp((s) => s.toast);
-  const [menu, setMenu] = useState(false);
-  // Esc closes the "…" menu.
+  // The "…" menu: where it opens (under the button, kept in the window).
+  const [menu, setMenu] = useState<{ left: number; top: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Esc, a click elsewhere or a resize closes it.
   useEffect(() => {
     if (!menu) return;
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setMenu(false));
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), setMenu(null));
+    const away = (e: PointerEvent) => !menuRef.current?.contains(e.target as Node) && setMenu(null);
+    const close = () => setMenu(null);
     window.addEventListener('keydown', esc);
-    return () => window.removeEventListener('keydown', esc);
+    window.addEventListener('pointerdown', away, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('keydown', esc);
+      window.removeEventListener('pointerdown', away, true);
+      window.removeEventListener('resize', close);
+    };
   }, [menu]);
   const p = project.playlists.find((x) => x.id === id)!;
   const count = project.rundown.filter((r) => r.playlist === id).length;
   const save = (lists: Project['playlists']) => api('PUT', `/api/projects/${encodeURIComponent(project.id)}/playlists`, lists).catch((e) => toast((e as Error).message, 'error'));
+  const run = (fn: () => unknown) => () => (setMenu(null), void fn());
+  const duplicate = async () => {
+    const copy = { ...structuredClone(p), id: newId(), name: t('{name} copy', { name: p.name }) };
+    const lists = [...project.playlists];
+    lists.splice(lists.indexOf(p) + 1, 0, copy);
+    await save(lists);
+    const items = project.rundown.filter((r) => r.playlist === id).map((r) => ({ ...structuredClone(r), id: newId(), playlist: copy.id }));
+    if (items.length) await useApp.getState().saveRundown([...project.rundown, ...items]);
+    onSelect(copy.id);
+  };
   return (
     <div className={`opx-pl ${active ? 'on' : ''}`} role="tab" aria-selected={active} tabIndex={0} title={tn(count, '{n} item', '{n} items')} onClick={() => onSelect(id)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onSelect(id))}>
       <span className="opx-name-cell">{p.name}</span>
       <span className="opx-pl-n">{count}</span>
-      {editable && active && (
-        <span className="opx-more" onClick={(e) => e.stopPropagation()}>
-          <button className="opx-x" onClick={() => setMenu(!menu)} title={t('More')}>
-            <MoreHorizontal size={14} />
-          </button>
-          {menu && (
-            <div className="popover" onMouseLeave={() => setMenu(false)}>
-              <button
-                onClick={async () => {
-                  setMenu(false);
-                  const name = await promptDialog({ title: t('Rename the playlist'), label: t('Name'), value: p.name, confirm: t('Rename') });
-                  if (name) save(project.playlists.map((x) => (x.id === id ? { ...x, name } : x)));
-                }}
-              >
-                {t('Rename…')}
-              </button>
-              {project.playlists.length > 1 && (
+      {editable && (
+        <button
+          className={`opx-x opx-pl-more ${menu ? 'open' : ''}`}
+          title={t('More')}
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenu(menu ? null : { left: Math.max(8, Math.min(r.left, window.innerWidth - 228)), top: r.bottom + 4 });
+          }}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+      )}
+      {menu &&
+        createPortal(
+          <div ref={menuRef} className="menu project-menu clip-menu opx-pl-menu" style={{ position: 'fixed', left: menu.left, top: menu.top, right: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={run(async () => {
+                const name = await promptDialog({ title: t('Rename the playlist'), label: t('Name'), value: p.name, confirm: t('Rename') });
+                if (name) save(project.playlists.map((x) => (x.id === id ? { ...x, name } : x)));
+              })}
+            >
+              <Pencil size={13} /> {t('Rename…')}
+            </button>
+            <button onClick={run(duplicate)}>
+              <Copy size={13} /> {t('Duplicate')}
+            </button>
+            {project.playlists.length > 1 && (
+              <>
+                <div className="menu-sep" />
                 <button
-                  onClick={async () => {
-                    setMenu(false);
+                  className="danger"
+                  onClick={run(async () => {
                     const other = project.playlists.find((x) => x.id !== id)!;
                     if (await confirmDialog({ title: t('Remove the playlist “{name}”?', { name: p.name }), message: tn(count, 'Its {n} graphic moves to “{name}”.', 'Its {n} graphics move to “{name}”.', { name: other.name }), confirm: t('Remove'), danger: true })) save(project.playlists.filter((x) => x.id !== id));
-                  }}
+                  })}
                 >
-                  {t('Remove…')}
+                  <Trash2 size={13} /> {t('Remove…')}
                 </button>
-              )}
-            </div>
-          )}
-        </span>
-      )}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 });
@@ -984,7 +1041,25 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
       {groups.map((g) => (
         <Fragment key={g.title}>
           {g.title && <div className="opx-vt-group">{g.title}</div>}
-          {g.fields.map(({ f, label }) => (
+          {g.fields.map(({ f, label }) =>
+            f.kind !== 'table' ? (
+              // A variable as in the Designer: its dot, its name (set in the Designer), its value.
+              <div key={f.key} className={`opx-var ${changed.has(f.key) ? 'chg' : ''}`}>
+                <i className="opx-var-dot" />
+                <span className="opx-var-name" title={label}>
+                  {label}
+                </span>
+                <div className="opx-var-val">{live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key) && /<\/?[bisuc]\b|<c=|<img=/.test(draft[f.key] ?? '')} onChange={(v) => onDraft({ [f.key]: v })} />}</div>
+                {fromData(f) && (
+                  <span className="opx-var-tail">
+                    <span className={`opx-vt-src ${byHand(f.key) ? 'hand' : ''}`} title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
+                      {byHand(f.key) ? <PenLine size={11} /> : <Database size={11} />} {byHand(f.key) ? t('Typed by hand') : sourceName(f.binding!.source)}
+                    </span>
+                    {handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
+                  </span>
+                )}
+              </div>
+            ) : (
             <div key={f.key} className={`opx-vt ${size(f)} ${changed.has(f.key) ? 'chg' : ''}`}>
               <div className="opx-vt-h">
                 {changed.has(f.key) && <i className="opx-chg" />}
@@ -996,9 +1071,10 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
                 )}
                 {fromData(f) && f.kind !== 'table' && handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
               </div>
-              {live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key)} onChange={(v) => onDraft({ [f.key]: v })} />}
+              {live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />}
             </div>
-          ))}
+            ),
+          )}
           {!g.title &&
             fed.map(({ layer, title, cols, at }) => {
               const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
@@ -1170,9 +1246,12 @@ function GraphicRow(props: {
             {item.name}
           </strong>
         )}
-        <span className="muted small">
+        <span className="muted small opx-gr-line">
           {props.cue && <b className="opx-cue" title={t('NEXT takes this graphic')}>CUE</b>}
-          <span className="opx-dot" style={{ background: zone?.color ?? '#6b7090' }} /> {zone?.name ?? t('no zone')} · {tpl?.name ?? t('missing template')}
+          <span className="opx-zpill" style={{ ['--zc' as string]: zone?.color ?? '#6b7090' }}>
+            {zone?.name ?? t('no zone')}
+          </span>
+          <span className="opx-gr-tpl">{tpl?.name ?? t('missing template')}</span>
           {props.autoNext && item.autoSecs !== undefined && <span className="opx-auto"> · {t('next {n} s', { n: item.autoSecs })}</span>}
         </span>
         <MiniTimeline template={tpl} air={air} />

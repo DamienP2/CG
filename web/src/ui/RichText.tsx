@@ -147,6 +147,7 @@ export function RichInput({
   maxLength,
   tokens,
   plain,
+  bare,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -157,6 +158,8 @@ export function RichInput({
   tokens?: Tokens;
   /** No style bar nor looks of its own: variables and pictures from a menu on right-click. */
   plain?: boolean;
+  /** No style bar: the styles there are kept and shown (Ctrl+B / I / U still work). */
+  bare?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -279,8 +282,8 @@ export function RichInput({
     </button>
   );
   return (
-    <div className={`rt ${plain ? 'plain' : ''}`}>
-      {!plain && (
+    <div className={`rt ${plain ? 'plain' : ''} ${bare ? 'bare' : ''}`}>
+      {!plain && !bare && (
       <div className="rt-bar">
         <B cmd="bold" icon={<Bold size={13} />} title={t('Bold (Ctrl+B)')} />
         <B cmd="italic" icon={<Italic size={13} />} title={t('Italic (Ctrl+I)')} />

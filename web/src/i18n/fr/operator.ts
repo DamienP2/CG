@@ -511,4 +511,8 @@ export const operator: Record<string, string> = {
   'Previous view': 'Vue précédente',
   'Next item': 'Élément suivant',
   'Split': 'Temps intermédiaire',
+  'Empty playlist': 'Playlist vide',
+  'Add a graphic': 'Ajouter un habillage',
+  'No value to type': 'Aucune valeur à saisir',
+  'No graphic selected': 'Aucun habillage sélectionné',
 };

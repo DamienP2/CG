@@ -1,4 +1,4 @@
-import { Copy, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
+import { Copy, GripVertical, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../ui/Dropdown';
@@ -266,8 +266,8 @@ function TemplateList({ project }: { project: Project }) {
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
-          <button className="icon-btn ghost" title={t('New template')} disabled={importing} onClick={openNew}>
-            <Plus size={14} />
+          <button className="opx-add" title={t('New template')} disabled={importing} onClick={openNew}>
+            <Plus size={15} />
           </button>
         </div>
         <input
@@ -383,6 +383,9 @@ function TemplateList({ project }: { project: Project }) {
             onDragEnd={() => (setDragging(null), setDropAt(null))}
             onClick={(e) => (e.stopPropagation(), template?.id !== tpl.id && load(tpl))}
           >
+            <span className="opx-grip" title={t('Drag to reorder')}>
+              <GripVertical size={13} />
+            </span>
             <img src={thumbnailUrl(project.id, tpl, format, true)} alt="" loading="lazy" />
             <span className="tpl-text">
               <span className="tpl-name">{tpl.name}</span>

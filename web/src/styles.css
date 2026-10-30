@@ -20196,3 +20196,244 @@ input.lc-pal-name:focus {
   font-family: var(--mono);
   font-size: 12px;
 }
+
+/* ===== Designer: the + and the drag grips of the Operator ===== */
+.template-list,
+.tl-corner {
+  --op-3: #252938;
+  --op-4: #2f3446;
+}
+.opx-add.on {
+  background: var(--op-4);
+}
+.opx-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.template-item {
+  padding-left: 2px;
+}
+.template-item .opx-grip {
+  flex: none;
+  width: 14px;
+}
+
+/* Operator · rundown row: the zone in a pill of its colour, then the template. */
+.opx-gr-main > .opx-gr-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.opx-gr-line .opx-cue {
+  margin-right: 0;
+  flex: none;
+}
+.opx-zpill {
+  flex: none;
+  max-width: 75%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  height: 18px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--zc) 80%, white);
+  background: color-mix(in srgb, var(--zc) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--zc) 38%, transparent);
+}
+.opx-gr-tpl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Operator · playlist tabs: one line (scrolls when too many), the "…" of each tab keeps its room, the + stays at the right. */
+.opx-pltabs {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.opx-pltabs-scroll {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.opx-pltabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+/* Over the line under the tabs by 1 px: the open tab hides it. */
+.opx-pltabs-scroll {
+  margin-bottom: -1px;
+}
+.opx-pltabs-scroll .opx-pl {
+  margin-bottom: 0;
+}
+.opx-pltabs .opx-pl {
+  flex: none;
+  padding-right: 6px;
+}
+.opx-pltabs .opx-pl .opx-pl-more {
+  visibility: hidden;
+}
+.opx-pltabs .opx-pl.on .opx-pl-more,
+.opx-pltabs .opx-pl:hover .opx-pl-more,
+.opx-pltabs .opx-pl .opx-pl-more.open {
+  visibility: visible;
+}
+.opx-pltabs .opx-pl .opx-pl-more.open {
+  color: var(--text);
+  background: var(--op-4);
+}
+.opx-pltabs > .opx-add {
+  flex: none;
+  margin-left: 0;
+}
+.opx-pl-menu {
+  min-width: 200px;
+}
+.opx-pl-menu button.danger {
+  color: var(--live);
+}
+
+/* Operator · the layers of the graphic: tabs like the playlists' (not pills). */
+.opx-wtabs {
+  height: auto;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--op-4);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.opx-wtabs button.opx-wtab {
+  flex: none;
+  height: 34px;
+  margin-bottom: -1px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 7px 7px 0 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.opx-wtabs button.opx-wtab:hover {
+  color: var(--text);
+}
+.opx-wtabs button.opx-wtab.on {
+  background: var(--op-2);
+  border-color: var(--op-4);
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Operator · a variable as in the Designer (.tv-var): its dot, its name, its value. */
+.opx-var {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 8px minmax(90px, 170px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.opx-var-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.opx-var-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+.opx-var-val {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.opx-var-val > input,
+.opx-var-val > textarea,
+.opx-var-val > select,
+.opx-var-val > .rt {
+  width: 100%;
+  min-width: 0;
+}
+.opx-var.chg .opx-var-val input,
+.opx-var.chg .opx-var-val textarea,
+.opx-var.chg .opx-var-val .rt {
+  border-color: color-mix(in srgb, var(--warn) 60%, transparent);
+}
+.opx-var:has(textarea) {
+  align-items: start;
+}
+.opx-var:has(textarea) .opx-var-dot,
+.opx-var:has(textarea) .opx-var-name {
+  margin-top: 9px;
+}
+.opx-var .opx-bound {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--op-2);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.opx-var-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.opx-var-tail .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+/* Operator · an empty area: a small icon and a word, centred both ways. */
+.opx-void {
+  flex: 1;
+  grid-column: 1 / -1;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  color: var(--text-3);
+  text-align: center;
+}
+.opx-void-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--op-2);
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+.opx-void-t {
+  color: var(--text-2);
+}
+.opx-scroll:has(> .opx-void) {
+  display: flex;
+  flex-direction: column;
+}
