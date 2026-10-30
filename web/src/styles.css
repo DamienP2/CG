@@ -20950,6 +20950,7 @@ input.lc-pal-name:focus {
 /* The cables from those values to their column or source. */
 .opx-wires {
   position: absolute;
+  z-index: 2;
   top: 0;
   left: 0;
   pointer-events: none;

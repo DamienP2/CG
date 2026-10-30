@@ -1321,10 +1321,12 @@ function Wires({ root }: { root: React.RefObject<HTMLDivElement | null> }) {
         if (!b) return;
         const ra = a.getBoundingClientRect();
         const rb = b.getBoundingClientRect();
-        if (!rb.width || rb.left < ra.right) return;
+        // It plugs into the card's edge, level with its column.
+        const card = (b.closest('.ods') ?? b).getBoundingClientRect();
+        if (!rb.width || card.left < ra.right) return;
         const x1 = ra.right - box.left + el.scrollLeft + 4;
         const y1 = ra.top + ra.height / 2 - box.top + el.scrollTop;
-        const x2 = rb.left - box.left + el.scrollLeft - 2;
+        const x2 = card.left - box.left + el.scrollLeft;
         const y2 = rb.top + rb.height / 2 - box.top + el.scrollTop;
         const dx = Math.max(16, (x2 - x1) / 2);
         out.push({ d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`, kind: a.classList.contains('live') ? 'live' : 'ds', x1, y1, x2, y2 });
