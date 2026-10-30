@@ -19987,7 +19987,7 @@ input.lc-pal-name:focus {
 
 /* Designer › Templates › « + »: a new one (name, zone) or a file dropped, side by side. */
 .modal.new-tpl {
-  width: min(620px, 100%);
+  width: min(820px, 100%);
 }
 .new-tpl-cols {
   display: grid;
