@@ -20672,3 +20672,36 @@ input.lc-pal-name:focus {
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
   font-size: 12.5px;
 }
+
+/* Operator · monitor headers, always shown: the graphic's name (editable) in the preview's, an eye at the right of each. */
+.opx-mon-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+.opx-mon-name .opx-name {
+  flex: 0 1 auto;
+  min-width: 60px;
+  width: 22ch;
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 6px;
+}
+.opx-mon-name .opx-name:hover:not(:disabled) {
+  background: var(--op-2);
+}
+.opx-mon-head .opx-zpill {
+  max-width: 30%;
+}
+.opx-mon-eye {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+.opx-mon-eye[aria-pressed='false'] {
+  color: var(--text-3);
+}

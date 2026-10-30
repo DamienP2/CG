@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Columns2, Copy, Eye, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -290,7 +290,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [playlistId, setPlaylistId] = useState<string | null>(null);
   const [shown, setShown] = useState<string[]>(['main']);
   // The monitors shown: the preview, the on-air picture or both (never none).
-  const [screens, setScreens] = useScreens();
+  const [mon, setMon] = useMonitors();
   // The widget of a graphic on air whose keys are on (`zone:layer`, a click on its row), and the ⋯ unfolded.
   const [airWidget, setAirWidget] = useState<string | null>(null);
   const [airMore, setAirMore] = useState<Record<string, boolean>>({});
@@ -502,7 +502,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
     <div className="opl-page">
     {channelId && <ZonesButton project={project} channelId={channelId} locks={zoneLocks.locks} operate={operate} />}
     <OperatorTop channelId={channelId} operate={operate} />
-    <TopControls channelId={channelId} channelInfo={channelInfo} screens={screens} onScreens={setScreens} />
+    <TopControls channelId={channelId} channelInfo={channelInfo} />
     <ScheduleTop channelId={channelId} project={project} />
     <TakenNotice />
     <div className="opx" style={{ gridTemplateColumns: `${layout.left}px 1px minmax(0, 1fr) 1px ${layout.right}px` }}>
@@ -646,13 +646,27 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
       {/* Center: preview, then the graphic's values as tiles. */}
       <div className="opx-col">
-        {screens !== 'air' && (
-          <>
-            <section className="opx-pane" style={{ height: layout.preview, flex: 'none' }}>
+        <>
+            <section className="opx-pane" style={mon.preview ? { height: layout.preview, flex: 'none' } : { flex: 'none' }}>
               <header className="opx-head opx-mon-head">
                 <span className="opx-title">{t('Preview')}</span>
-                {itemZone && <span className="muted small">{itemZone.name}</span>}
+                {item && template && (
+                  <>
+                    <span className="opx-mon-name" title={t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}>
+                      <Pencil size={12} className="muted" />
+                      <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} aria-label={t('Name in the playlist')} />
+                    </span>
+                    {itemZone && (
+                      <span className="opx-zpill" style={{ ['--zc' as string]: itemZone.color }}>
+                        {itemZone.name}
+                      </span>
+                    )}
+                  </>
+                )}
+                <span className="spacer" />
+                <MonitorToggle on={mon.preview} onChange={(preview) => setMon({ preview })} />
               </header>
+              {mon.preview && (
               <div className="opx-monitor">
                 <Screen width={previewFormat.width} height={previewFormat.height}>
                   {template && (
@@ -672,26 +686,17 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   </div>
                 )}
               </div>
+              )}
             </section>
-            <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
-          </>
-        )}
+            {mon.preview && <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
+        </>
         <section className="opx-pane grow">
           {item && template ? (
             <>
-              <header className="opx-head tall">
-                <Pencil size={13} className="muted" />
-                <input className="opx-name" value={item.name} disabled={!canEdit} onChange={(e) => setItem(item.id, { name: e.target.value })} onKeyDown={(e) => e.stopPropagation()} title={t('Name in the playlist')} />
-                <span className="muted small opx-head-sub" title={t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}>{t('{template} · zone {zone}', { template: template.name, zone: itemZone?.name ?? '—' })}</span>
-                <span className="spacer" />
-                {parts.widgets.length > 1 && (
-                  <button className={`opx-btn small opx-together ${together ? 'violet' : ''}`} aria-pressed={together} title={together ? t('One tab per layer') : t('All the layers together')} onClick={toggleMerged}>
-                    <Layers size={13} /> {t('Layers together')}
-                  </button>
-                )}
-              </header>
-              {!together && (parts.widgets.length > 1 || (parts.widgets.length > 0 && parts.shared.length > 0)) && (
+              {(parts.widgets.length > 1 || (parts.widgets.length > 0 && parts.shared.length > 0)) && (
                 <div className="opx-head opx-tabs opx-wtabs">
+                  {!together && (
+                    <>
                   {parts.widgets.map((p, i) => {
                     const Icon = widgetOf(p.layer)?.icon;
                     const ws = pv.widgets[p.layer.id] as { running?: boolean } | undefined;
@@ -709,6 +714,14 @@ export function Operator({ channelId }: { channelId: string | null }) {
                       <Type size={13} />
                       <span>{t('Texts')}</span>
                       {parts.shared.some((f) => changed.has(f.key)) && <i className="opx-chg" />}
+                    </button>
+                  )}
+                    </>
+                  )}
+                  <span className="spacer" />
+                  {parts.widgets.length > 1 && (
+                    <button className={`opx-btn small opx-together ${together ? 'violet' : ''}`} aria-pressed={together} title={together ? t('One tab per layer') : t('All the layers together')} onClick={toggleMerged}>
+                      <Layers size={13} /> {t('Layers together')}
                     </button>
                   )}
                 </div>
@@ -743,9 +756,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
 
       {/* Right: on air (the same size as the preview), then the controls of the graphics on air. */}
       <div className="opx-col">
-        {screens !== 'preview' && (
-          <>
-            <section className="opx-pane" style={{ height: layout.preview, flex: 'none' }}>
+        <>
+            <section className="opx-pane" style={mon.air ? { height: layout.preview, flex: 'none' } : { flex: 'none' }}>
               <header className="opx-head opx-mon-head">
                 <span className={`opx-title ${busy.length ? 'live' : ''}`}>● {t('On air')}</span>
                 {pictures.length > 1 && (
@@ -761,7 +773,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
                     })}
                   </div>
                 )}
+                <span className="spacer" />
+                <MonitorToggle on={mon.air} onChange={(air) => setMon({ air })} />
               </header>
+              {mon.air && (
               <div className="opx-programs">
                 {channelId ? (
                   programs.map((p) => (
@@ -776,10 +791,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   <Empty icon={Unplug} text={t('No output')} />
                 )}
               </div>
+              )}
             </section>
-            <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />
-          </>
-        )}
+            {mon.air && <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
+        </>
         <section className="opx-pane grow">
           {busy.length ? (
             <div className="opx-airlist" ref={airList}>
@@ -1934,22 +1949,26 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare, le
   );
 }
 
-type Screens = 'both' | 'preview' | 'air';
+interface Monitors {
+  preview: boolean;
+  air: boolean;
+}
 
-/** Which monitors show: the preview, the on-air picture or both (kept per browser). */
-function useScreens(): [Screens, (v: Screens) => void] {
-  const [v, setV] = useState<Screens>(() => {
+/** Which monitors show their picture: the preview, the on-air one (kept per browser; their headers always show). */
+function useMonitors(): [Monitors, (patch: Partial<Monitors>) => void] {
+  const [v, setV] = useState<Monitors>(() => {
     try {
       const s = localStorage.getItem('strata.opScreens');
-      return s === 'preview' || s === 'air' ? s : 'both';
+      return { preview: s !== 'air', air: s !== 'preview' };
     } catch {
-      return 'both';
+      return { preview: true, air: true };
     }
   });
-  const set = (x: Screens) => {
-    setV(x);
+  const set = (patch: Partial<Monitors>) => {
+    const next = { ...v, ...patch };
+    setV(next);
     try {
-      localStorage.setItem('strata.opScreens', x);
+      localStorage.setItem('strata.opScreens', next.preview && next.air ? 'both' : next.preview ? 'preview' : next.air ? 'air' : 'none');
     } catch {
       /* private mode */
     }
@@ -1957,25 +1976,22 @@ function useScreens(): [Screens, (v: Screens) => void] {
   return [v, set];
 }
 
-/** In the project's top bar: the monitors shown, the output and its web page. */
-function TopControls({ channelId, channelInfo, screens, onScreens }: { channelId: string | null; channelInfo?: ChannelInfo; screens: Screens; onScreens: (v: Screens) => void }) {
+/** Shows or hides a monitor's picture, at the right of its header. */
+function MonitorToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button className="icon-btn ghost opx-mon-eye" aria-pressed={on} title={on ? t('Hide the picture') : t('Show the picture')} onClick={() => onChange(!on)}>
+      {on ? <Eye size={15} /> : <EyeOff size={15} />}
+    </button>
+  );
+}
+
+/** In the project's top bar: the output and its web page. */
+function TopControls({ channelId, channelInfo }: { channelId: string | null; channelInfo?: ChannelInfo }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useEffect(() => setSlot(document.getElementById('topbar-slot')), []);
   if (!slot) return null;
-  const opts: [Screens, string, typeof Eye][] = [
-    ['preview', t('Preview'), Eye],
-    ['air', t('On air'), Radio],
-    ['both', t('Both'), Columns2],
-  ];
   return createPortal(
     <div className="opx-top">
-      <div className="opx-seg opx-screens" role="group" aria-label={t('Monitors')}>
-        {opts.map(([v, l, Icon]) => (
-          <button key={v} className={screens === v ? 'on' : ''} aria-pressed={screens === v} aria-label={l} title={l} onClick={() => onScreens(v)}>
-            <Icon size={14} />
-          </button>
-        ))}
-      </div>
       <OutputSelect channelId={channelId} />
       {channelInfo && (
         <a className="opx-btn small opx-html5" href={`/output/${encodeURIComponent(channelInfo.id)}`} target="_blank" rel="noreferrer">

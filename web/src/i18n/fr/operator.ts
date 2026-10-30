@@ -521,4 +521,6 @@ export const operator: Record<string, string> = {
   'Take it back': 'Reprendre',
   'zone|Free': 'Libérer',
   'zone|Take': 'Prendre',
+  'Hide the picture': 'Masquer l’image',
+  'Show the picture': 'Afficher l’image',
 };
