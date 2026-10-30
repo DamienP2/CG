@@ -1308,6 +1308,9 @@ code {
 .timecode {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   font-family: var(--mono);
   line-height: 1.1;
   min-width: 90px;
@@ -20790,5 +20793,16 @@ input.lc-pal-name:focus {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Designer · a marker's popover: Operator / After / Trigger on one line. */
+.marker-editor {
+  min-width: 320px;
+}
+.marker-editor .seg {
+  flex-wrap: nowrap;
+}
+.marker-editor .seg button {
   white-space: nowrap;
 }

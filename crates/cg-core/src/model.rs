@@ -1759,11 +1759,8 @@ impl Template {
         for m in &mut self.markers {
             m.frame = m.frame.clamp(0.0, self.duration.max(0.0));
             if m.kind == MarkerKind::Out {
+                // It holds until Take out, goes out by itself after a delay, or on a trigger.
                 m.name = "On air".into();
-                // It holds until Take out, or goes out by itself after a delay.
-                if matches!(m.resume, Resume::Trigger { .. }) {
-                    m.resume = Resume::Manual;
-                }
             }
         }
         self.markers.sort_by(|a, b| a.frame.total_cmp(&b.frame));

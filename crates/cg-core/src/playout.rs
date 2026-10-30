@@ -912,7 +912,9 @@ impl ChannelState {
                             .is_some_and(|n| n.trim().eq_ignore_ascii_case(name.trim()))
                     });
                 }
-                for item in self.layers.values_mut() {
+                let is = |r: &Resume| matches!(r, Resume::Trigger { name: n } if n.trim().eq_ignore_ascii_case(name.trim()));
+                let mut gone = Vec::new();
+                for (layer, item) in self.layers.iter_mut() {
                     let Some(t) = project.template(&item.template_id) else {
                         continue;
                     };
@@ -921,12 +923,25 @@ impl ChannelState {
                     if !matches!(item.phase, Phase::Holding | Phase::OutHold) {
                         continue;
                     }
-                    let waits = t.pause_at(item.frame).is_some_and(|m| {
-                        matches!(&m.resume, Resume::Trigger { name: n } if n.trim().eq_ignore_ascii_case(name.trim()))
-                    });
-                    if waits {
+                    // On air, its IN/OUT point set to go out on this trigger: it goes out.
+                    let on_air =
+                        item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
+                    if on_air {
+                        if t.markers
+                            .iter()
+                            .any(|m| m.kind == MarkerKind::Out && is(&m.resume))
+                            && !begin_out(project, item)
+                        {
+                            gone.push(*layer);
+                        }
+                        continue;
+                    }
+                    if t.pause_at(item.frame).is_some_and(|m| is(&m.resume)) {
                         resume(t, item);
                     }
+                }
+                for layer in gone {
+                    self.layers.remove(&layer);
                 }
             }
             Command::TakeOut { zone, layer } => {
@@ -1878,6 +1893,33 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn a_trigger_takes_out_on_air() {
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        t.markers[0].resume = Resume::Trigger { name: "End".into() };
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        for _ in 0..85 {
+            ch.tick(1.0);
+            ch.auto_resume(&p);
+        }
+        assert_eq!(ch.layers[&1].phase, Phase::Holding);
+        // Another trigger: it stays; its own: it goes out.
+        ch.apply(
+            &p,
+            Command::Trigger {
+                name: "other".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(ch.layers[&1].phase, Phase::Holding);
+        ch.apply(&p, Command::Trigger { name: "end".into() })
+            .unwrap();
+        assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
 
     #[test]

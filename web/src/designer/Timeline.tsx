@@ -690,8 +690,14 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <button className="icon-btn" title={t('Previous marker')} onClick={() => jumpMarker(-1)}>
             <StepBack size={15} />
           </button>
+          <button className="icon-btn" title={t('Previous frame')} onClick={() => st.setFrame(Math.max(0, Math.ceil(frame - 1e-6) - 1))}>
+            <ChevronLeft size={15} />
+          </button>
           <button className="icon-btn play" title={t('Play / pause (Space)')} onClick={() => st.setPlaying(!playing)}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
+          </button>
+          <button className="icon-btn" title={t('Next frame')} onClick={() => st.setFrame(Math.min(template.duration, Math.floor(frame + 1e-6) + 1))}>
+            <ChevronRight size={15} />
           </button>
           <button className="icon-btn" title={t('Next marker')} onClick={() => jumpMarker(1)}>
             <StepForward size={15} />
@@ -700,20 +706,22 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <SkipForward size={15} />
           </button>
         </div>
+        <button className={`btn small tl-loop ${loop ? 'on' : ''}`} title={t('Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (Space resumes).')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
+          <Repeat size={13} />
+        </button>
+        <KeysMenu />
+        <button className="btn small mk-pause" title={t('Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)')} onClick={addPause}>
+          <Flag size={13} /> {t('Pause')}
+        </button>
+        {/* The playhead's time, in the middle of the room between Pause and Zoom. */}
+        <div className="spacer" />
         <div className="timecode">
           <strong>{formatTime(frame, fps)}</strong>
           <span>
             {Math.round(frame)} / {template.duration}
           </span>
         </div>
-        <button className={`btn small ${loop ? 'on' : ''}`} title={t('Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (Space resumes).')} onClick={() => st.set({ loop: !loop })}>
-          <Repeat size={13} /> {t('Loop')}
-        </button>
         <div className="spacer" />
-        <KeysMenu />
-        <button className="btn small mk-pause" title={t('Add a pause at the playhead: playback stops there and resumes on Continue, after a delay or on a trigger (click the marker to set it)')} onClick={addPause}>
-          <Flag size={13} /> {t('Pause')}
-        </button>
         <label className="zoom">
           {t('Zoom')}
           <input
@@ -786,8 +794,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     {moving ? (
                       <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
                     ) : role === 'onair' ? (
-                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : t('Holds until Take out')}>
-                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : '∞'}
+                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : t('Holds until Take out')}>
+                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' ? '⚡' : '∞'}
                       </span>
                     ) : (
                       <span>
@@ -825,7 +833,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   );
 }
 
-/** Popover of a marker: its time, and for a pause its name, how it resumes and delete. */
+/** Popover of a marker: how it plays on (Operator, after a delay, on a trigger); for a pause also its name, time and delete. */
 function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos: { left: number; bottom: number }; onClose: () => void }) {
   const st = useDesigner();
   const tpl = st.template!;
@@ -858,42 +866,22 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
           <X size={14} />
         </button>
       </header>
-      {onAir && (
-        <>
-          <div className="me-field">
-            <span>{t('Hold')}</span>
-            <div className="seg">
-              <button className={resume.type !== 'after' ? 'on' : ''} title={t('Stays on air until Take out')} onClick={() => edit((x) => void delete x.resume)}>
-                {t('Until Take out')}
-              </button>
-              <button className={resume.type === 'after' ? 'on' : ''} title={t('Goes out by itself after the delay')} onClick={() => edit((x) => void (x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : 5 }))}>
-                {t('Auto out')}
-              </button>
-            </div>
-          </div>
-          {resume.type === 'after' && (
-            <label className="me-field">
-              <span>{t('After')}</span>
-              <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
-            </label>
-          )}
-        </>
-      )}
       {!onAir && (
         <label className="me-field">
           <span>{t('Name')}</span>
           <input value={m.name} onChange={(e) => edit((x) => void (x.name = e.target.value), `marker-name-${id}`)} />
         </label>
       )}
-      <label className="me-field">
-        <span>{tc('position', 'Time')}</span>
-        <NumberField value={m.frame} min={0} max={tpl.duration} suffix="fr" onChange={(v) => edit((x) => void (x.frame = Math.round(v)), `marker-${id}`)} />
-        <em>{formatTime(m.frame, fps)}</em>
-      </label>
       {!onAir && (
-        <>
+        <label className="me-field">
+          <span>{tc('position', 'Time')}</span>
+          <NumberField value={m.frame} min={0} max={tpl.duration} suffix="fr" onChange={(v) => edit((x) => void (x.frame = Math.round(v)), `marker-${id}`)} />
+          <em>{formatTime(m.frame, fps)}</em>
+        </label>
+      )}
+      <>
           <div className="me-field">
-            <span>{t('Resume')}</span>
+            <span>{onAir ? tc('marker', 'Out') : t('Resume')}</span>
             <div className="seg">
               {(
                 [
@@ -908,7 +896,7 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
                   onClick={() =>
                     edit((x) => {
                       if (k === 'manual') delete x.resume;
-                      else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : 2 };
+                      else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : onAir ? 5 : 2 };
                       else x.resume = { type: 'trigger', name: resume.type === 'trigger' ? resume.name : 'next' };
                     })
                   }
@@ -931,12 +919,19 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
             </label>
           )}
           <p className="hint">
-            {resume.type === 'manual'
-              ? t('Holds until the operator presses Continue.')
-              : resume.type === 'after'
-                ? t('Holds, then plays on by itself after the delay.')
-                : t('Holds until this trigger is fired: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.')}
+            {onAir
+              ? resume.type === 'manual'
+                ? t('Stays on air until Take out.')
+                : resume.type === 'after'
+                  ? t('Goes out by itself after the delay.')
+                  : t('Stays on air until this trigger is fired, then goes out: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.')
+              : resume.type === 'manual'
+                ? t('Holds until the operator presses Continue.')
+                : resume.type === 'after'
+                  ? t('Holds, then plays on by itself after the delay.')
+                  : t('Holds until this trigger is fired: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.')}
           </p>
+          {!onAir && (
           <div className="row end">
             <button
               className="btn small danger"
@@ -948,8 +943,8 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               <Trash2 size={13} /> {t('Delete pause')}
             </button>
           </div>
-        </>
-      )}
+          )}
+      </>
     </div>,
     document.body,
   );

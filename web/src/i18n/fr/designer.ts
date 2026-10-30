@@ -523,4 +523,10 @@ export const designer: Record<string, string> = {
   'Float': 'Flottement',
   'Shake': 'Secousse',
   'Ken Burns': 'Ken Burns',
+  'Previous frame': 'Image précédente',
+  'Next frame': 'Image suivante',
+  'Goes out on the trigger {name}': 'Sort sur le déclencheur {name}',
+  'Stays on air until Take out.': 'Reste à l’antenne jusqu’à Out.',
+  'Goes out by itself after the delay.': 'Sort tout seul après le délai.',
+  'Stays on air until this trigger is fired, then goes out: by the operator, the API (POST /api/channels/{id}/command {"action":"trigger","name":…}) or Companion.': 'Reste à l’antenne jusqu’à ce que ce déclencheur soit lancé, puis sort : par l’opérateur, l’API (POST /api/channels/{id}/command {"action":"trigger","name":…}) ou Companion.',
 };
