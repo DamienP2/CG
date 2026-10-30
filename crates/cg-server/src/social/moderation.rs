@@ -1819,7 +1819,11 @@ mod tests {
             .collect();
         Arc::new(AppState {
             data_dir: dir.to_path_buf(),
-            library: RwLock::new(crate::library::Library::load(dir).unwrap()),
+            library: RwLock::new({
+                let mut lib = crate::library::Library::load(dir).unwrap();
+                lib.save(cg_core::sample::demo_project()).unwrap();
+                lib
+            }),
             channels,
             events: crate::state::Events::new(256),
             renderer: Mutex::new(cg_render::Renderer::new(dir.join("assets"))),

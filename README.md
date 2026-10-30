@@ -94,7 +94,7 @@ Guide complet, dossiers de données, pare-feu, proxy : [`docs/INSTALL.md`](docs/
 ## 3. Premiers pas
 
 1. Ouvrez `http://<serveur>:8080`. Sur le serveur lui-même, la page propose de **créer le compte administrateur** ; à distance, utilisez `strata-server user add admin`.
-2. Une chaîne de sortie **`main`** (1080p50) et un **projet de démonstration** sont créés. La sortie HTML5 de la chaîne est sur `http://<serveur>:8080/output/main`.
+2. Une chaîne de sortie **`main`** (1080p50) est créée ; la liste des projets est vide. La sortie HTML5 de la chaîne est sur `http://<serveur>:8080/output/main`.
 3. Dans **Projets › Exemples**, créez un projet à partir d'un des **21 exemples** : journal télévisé, info continue, football, soirée électorale, météo, bourse, talk-show, e-sport, grand prix, tennis, podcast, festival, documentaire, keynote, cérémonie, jeu télévisé, basket, cyclisme, matinale, live shopping, réseaux sociaux. Chacun est complet : modèles, conducteur, sources de données.
 4. Ouvrez le projet dans le **Designer** pour voir comment il est fait, puis dans l'**Opérateur** pour le jouer sur la chaîne.
 

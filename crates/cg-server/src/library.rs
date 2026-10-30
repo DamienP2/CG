@@ -93,7 +93,7 @@ pub fn valid_id(id: &str) -> bool {
 
 impl Library {
     /// Loads every project. A pre-0.2 `project.json` becomes the first
-    /// project; an empty library gets the demo project.
+    /// project; an empty library stays empty.
     pub fn load(data_dir: &Path) -> std::io::Result<Self> {
         let dir = data_dir.join("projects");
         std::fs::create_dir_all(&dir)?;
@@ -144,9 +144,6 @@ impl Library {
                 }
                 _ => tracing::error!("cannot migrate project.json (left in place)"),
             }
-        }
-        if lib.projects.is_empty() {
-            lib.save(cg_core::sample::demo_project())?;
         }
         Ok(lib)
     }
