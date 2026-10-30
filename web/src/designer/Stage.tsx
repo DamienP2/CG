@@ -174,6 +174,49 @@ export function Stage({ project: _project, size, showZones, background, bgInput 
     return () => el.removeEventListener('wheel', onWheel);
   }, [!!template]);
 
+  // Space held: the hand. A drag moves the zoomed canvas (no layer is picked).
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    let held = false;
+    const typing = (e: Event) => !!(e.target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"]');
+    const set = (on: boolean) => {
+      held = on;
+      el.classList.toggle('hand', on);
+    };
+    const down = (e: KeyboardEvent) => e.key === ' ' && !typing(e) && !document.querySelector('.logic-editor, .modal-back') && set(true);
+    const up = (e: KeyboardEvent) => e.key === ' ' && set(false);
+    const blur = () => set(false);
+    const grab = (e: PointerEvent) => {
+      if (!held || e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const from = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
+      el.classList.add('grabbing');
+      const move = (ev: PointerEvent) => {
+        el.scrollLeft = from.l - (ev.clientX - from.x);
+        el.scrollTop = from.t - (ev.clientY - from.y);
+      };
+      const stop = () => {
+        el.classList.remove('grabbing');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    el.addEventListener('pointerdown', grab, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+      el.removeEventListener('pointerdown', grab, { capture: true });
+    };
+  }, [!!template]);
+
   // Selection boxes come from the DOM so they follow nested transforms.
   useLayoutEffect(() => {
     const root = sceneRef.current;

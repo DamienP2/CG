@@ -694,7 +694,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <button className="icon-btn" title={t('Previous frame')} onClick={() => st.setFrame(Math.max(0, Math.ceil(frame - 1e-6) - 1))}>
             <ChevronLeft size={15} />
           </button>
-          <button className="icon-btn play" title={t('Play / pause (Space)')} onClick={() => st.setPlaying(!playing)}>
+          <button className="icon-btn play" title={t('Play / pause (K)')} onClick={() => st.setPlaying(!playing)}>
             {playing ? <Pause size={16} /> : <Play size={16} />}
           </button>
           <button className="icon-btn" title={t('Next frame')} onClick={() => st.setFrame(Math.min(template.duration, Math.floor(frame + 1e-6) + 1))}>
@@ -707,7 +707,7 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
             <SkipForward size={15} />
           </button>
         </div>
-        <button className={`btn small tl-loop ${loop ? 'on' : ''}`} title={t('Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (Space resumes).')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
+        <button className={`btn small tl-loop ${loop ? 'on' : ''}`} title={t('Loop: play through the markers and start over at the end. Off: playback stops on On air, Pause and Out, like on air (K resumes).')} aria-label={t('Loop')} onClick={() => st.set({ loop: !loop })}>
           <Repeat size={13} />
         </button>
         <KeysMenu />

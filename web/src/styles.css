@@ -21118,3 +21118,13 @@ textarea.tx-grow {
   place-items: center;
   color: var(--text-2);
 }
+
+/* The canvas with Space held: the hand moves it. */
+.stage-wrap.hand,
+.stage-wrap.hand * {
+  cursor: grab !important;
+}
+.stage-wrap.grabbing,
+.stage-wrap.grabbing * {
+  cursor: grabbing !important;
+}

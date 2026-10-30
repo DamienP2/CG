@@ -147,9 +147,11 @@ function useShortcuts() {
         else if (k === 'x') cutLayers(st.selected);
         else pasteClipboard();
       } else if (e.key === ' ') {
+        // Space held: the hand, to move the canvas (Stage). A focused button would also "click" on it.
         e.preventDefault();
-        // A focused button would also "click" on Space.
         if (target.closest('button')) (target as HTMLElement).blur();
+      } else if (!mod && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
         if (!e.repeat) st.setPlaying(!st.playing);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (st.selectedKeys.length) void clearSelectedKeys(false);
