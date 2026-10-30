@@ -19985,49 +19985,69 @@ input.lc-pal-name:focus {
   letter-spacing: 0;
 }
 
-/* Designer › Templates › « + »: New, or a file dropped. */
+/* Designer › Templates › « + »: a new one (name, zone) or a file dropped, side by side. */
 .modal.new-tpl {
-  width: min(560px, 100%);
+  width: min(620px, 100%);
 }
-.new-tpl-row {
+.new-tpl-cols {
   display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 10px;
+  grid-template-columns: 1fr 1px 1fr;
+  gap: 20px;
 }
-@media (max-width: 520px) {
-  .new-tpl-row {
+.new-tpl-sep {
+  background: var(--line);
+}
+@media (max-width: 560px) {
+  .new-tpl-cols {
     grid-template-columns: 1fr;
   }
+  .new-tpl-sep {
+    height: 1px;
+  }
 }
-.new-tpl-blank,
+.new-tpl-new {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.new-tpl-new .dd-btn {
+  width: 100%;
+}
+.new-tpl-new .btn.primary {
+  align-self: flex-start;
+  margin-top: auto;
+}
+.ntpl-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 .new-tpl-drop {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 28px 18px;
-  border: 1px dashed var(--line-2);
-  border-radius: 10px;
-  background: var(--panel-2);
+  min-height: 170px;
+  padding: 18px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
   color: var(--text-3);
   text-align: center;
   cursor: pointer;
 }
-.new-tpl-blank {
-  justify-content: center;
-  border-style: solid;
-  border-color: var(--line);
-}
-.new-tpl-blank:hover,
 .new-tpl-drop:hover,
 .new-tpl-drop.over {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--text-2);
 }
-.new-tpl-blank strong,
 .new-tpl-drop strong {
   font-size: 13px;
+  font-weight: 600;
   color: var(--text);
 }
 .new-tpl-drop span {

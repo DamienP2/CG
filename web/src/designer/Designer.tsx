@@ -1,6 +1,7 @@
-import { Copy, FilePlus, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
+import { Copy, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Dropdown } from '../ui/Dropdown';
 import { newId, num, propValue } from '../engine/evaluate';
 import type { Layer, LayerType, Project, Template } from '../engine/types';
 import { api, importAfterEffects, thumbnailUrl, useApp } from '../store';
@@ -202,6 +203,17 @@ function TemplateList({ project }: { project: Project }) {
   const fileRef = useRef<HTMLInputElement>(null);
   // « + »: a blank template, or one from a file dropped or picked.
   const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newZone, setNewZone] = useState('');
+  const openNew = () => {
+    setNewName(t('Template {n}', { n: designTemplates(project).length + 1 }));
+    setNewZone(defaultZone ?? '');
+    setNewOpen(true);
+  };
+  const createNew = () => {
+    setNewOpen(false);
+    void create(undefined, newName, newZone || undefined);
+  };
   const [over, setOver] = useState(false);
   const [importing, setImporting] = useState(false);
   const fromFile = async (f: File) => {
@@ -240,8 +252,9 @@ function TemplateList({ project }: { project: Project }) {
     useApp.setState((s) => (s.project?.id === project.id ? { project: { ...s.project, designOrder: rest } } : {}));
     api('PUT', `/api/projects/${encodeURIComponent(project.id)}/design-order`, rest).catch((e) => toast((e as Error).message, 'error'));
   };
-  const create = async (base?: Template) => {
-    const tpl = base ? { ...structuredClone(base), id: newId(), name: t('{name} copy', { name: base.name }) } : newTemplate(t('Template {n}', { n: designTemplates(project).length + 1 }), (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id, project.frameRate.num / project.frameRate.den, project.templateSecs ?? 1);
+  const defaultZone = (project.zones.find((z) => z.id === 'full-screen' || /full/i.test(z.name)) ?? project.zones[0])?.id;
+  const create = async (base?: Template, name?: string, zone?: string) => {
+    const tpl = base ? { ...structuredClone(base), id: newId(), name: t('{name} copy', { name: base.name }) } : newTemplate(name?.trim() || t('Template {n}', { n: designTemplates(project).length + 1 }), zone ?? defaultZone, project.frameRate.num / project.frameRate.den, project.templateSecs ?? 1);
     // Open it at once; the save follows.
     load(tpl);
     await saveTemplate(tpl);
@@ -252,7 +265,7 @@ function TemplateList({ project }: { project: Project }) {
       <header onClick={(e) => e.stopPropagation()}>
         <span>{t('Templates')}</span>
         <div className="header-actions">
-          <button className="icon-btn ghost" title={t('New template')} disabled={importing} onClick={() => setNewOpen(true)}>
+          <button className="icon-btn ghost" title={t('New template')} disabled={importing} onClick={openNew}>
             <Plus size={14} />
           </button>
         </div>
@@ -277,32 +290,51 @@ function TemplateList({ project }: { project: Project }) {
                   <X size={16} />
                 </button>
               </header>
-              <div className="new-tpl-row">
-              <button type="button" className="new-tpl-blank" onClick={() => (setNewOpen(false), void create())}>
-                <FilePlus size={30} />
-                <strong>{t('New')}</strong>
-                <span>{t('Blank template')}</span>
-              </button>
-              <button
-                type="button"
-                className={`new-tpl-drop ${over ? 'over' : ''}`}
-                onClick={() => fileRef.current?.click()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setOver(true);
-                }}
-                onDragLeave={() => setOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setOver(false);
-                  const f = e.dataTransfer.files?.[0];
-                  if (f) void fromFile(f);
-                }}
-              >
-                <UploadCloud size={30} />
-                <strong>{t('Drop a file here or click to choose one')}</strong>
-                <span>{t('Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')}</span>
-              </button>
+              <div className="new-tpl-cols">
+                <form
+                  className="new-tpl-new"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    createNew();
+                  }}
+                >
+                  <label className="set-field">
+                    <span className="set-label">{t('Name')}</span>
+                    <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} onFocus={(e) => e.target.select()} />
+                  </label>
+                  <div className="set-field">
+                    <span className="set-label">{t('Zone')}</span>
+                    <Dropdown
+                      value={newZone}
+                      options={project.zones.map((z) => ({ value: z.id, label: z.name || '—', note: `L${z.layer}`, icon: <span className="ntpl-dot" style={{ background: z.color }} /> }))}
+                      onChange={setNewZone}
+                    />
+                  </div>
+                  <button className="btn primary">
+                    <Plus size={14} /> {t('Create')}
+                  </button>
+                </form>
+                <span className="new-tpl-sep" />
+                <button
+                  type="button"
+                  className={`new-tpl-drop ${over ? 'over' : ''}`}
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setOver(true);
+                  }}
+                  onDragLeave={() => setOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setOver(false);
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) void fromFile(f);
+                  }}
+                >
+                  <UploadCloud size={26} />
+                  <strong>{t('Drop a file here or click to choose one')}</strong>
+                  <span>{t('Photoshop (.psd), SVG, Motion Graphics (.mogrt), After Effects (.aep, Bodymovin .json, .zip, .lottie)')}</span>
+                </button>
               </div>
             </div>
           </div>,

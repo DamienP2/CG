@@ -36,6 +36,7 @@ import {
   Type,
   Unlock,
   Video,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -50,9 +51,9 @@ import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKey
 import { PROP_LABELS } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
-import { clearKeyframes, clearSelectedKeys, copyAll, copyAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
+import { clearKeyframes, clearSelectedKeys, copyAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
-import { t, tc, tn } from '../i18n';
+import { t, tc } from '../i18n';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -121,7 +122,6 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
   // Right-click menu of a row: copy / paste layers and animations.
   const [ctx, setCtx] = useState<ClipMenuAt | null>(null);
   const animClip = useClipboard((c) => c.animation);
-  const allClip = useClipboard((c) => c.all);
   const st = useDesigner();
   const { template, frame, zoom, expanded, selectedKeys, playing, loop, selected } = st;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -523,36 +523,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         )}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
         <span className="row-actions">
-          <button className="tl-anim" title={t('Copy all (values and animation), to paste on another layer')} onClick={(e) => (e.stopPropagation(), copyAll(layer.id))}>
-            <ClipboardCopy size={12} />
-          </button>
-          {allClip && (
-            <button className="tl-anim" title={t('Paste from “{name}”…', { name: allClip.label })} onClick={(e) => (e.stopPropagation(), useClipboard.setState({ pasting: isSel ? selected : [layer.id] }))}>
-              <ClipboardPaste size={12} />
-            </button>
-          )}
-          {animated.length > 0 && (
-            <button className="tl-anim tl-erase" title={t('Erase the keyframes of the layer')} onClick={(e) => (e.stopPropagation(), clearKeyframes([layer.id], undefined, t('Erase the keyframes of “{name}”?', { name: layer.name })))}>
-              <DiamondMinus size={12} />
-            </button>
-          )}
           <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
             <Copy size={12} />
-          </button>
-          <button
-            title={t('Delete (Del)')}
-            onClick={async (e) => {
-              e.stopPropagation();
-              const kids = descendants(template, layer.id).length;
-              if (kids && !(await confirmDialog({ title: t('Delete “{name}”?', { name: layer.name }), message: tn(kids, 'The {n} layer inside it is deleted too.', 'The {n} layers inside it are deleted too.'), confirm: t('Delete'), danger: true }))) return;
-              st.update((t) => {
-                const ids = new Set([layer.id, ...descendants(t, layer.id)]);
-                t.layers = t.layers.filter((x) => !ids.has(x.id));
-              });
-              st.select(selected.filter((x) => x !== layer.id));
-            }}
-          >
-            <Trash2 size={12} />
           </button>
         </span>
         <button className={`row-btn ${layer.visible ? '' : 'off'}`} title={layer.visible ? t('Hide') : t('Show')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.visible = !layer.visible)))}>
@@ -560,6 +532,18 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
         </button>
         <button className={`row-btn ${layer.locked ? 'on' : ''}`} title={layer.locked ? t('Unlock') : t('Lock')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.locked = !layer.locked)))}>
           {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
+        </button>
+        <button
+          className="row-btn"
+          title={t('More')}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!isSel) st.select([layer.id]);
+            const r = e.currentTarget.getBoundingClientRect();
+            setCtx({ x: r.left, y: r.bottom + 4, layerId: layer.id });
+          }}
+        >
+          <MoreHorizontal size={12} />
         </button>
       </div>,
     );

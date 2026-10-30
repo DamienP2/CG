@@ -5,7 +5,8 @@ import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, Chevr
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Prop } from '../engine/types';
-import { t } from '../i18n';
+import { t, tn } from '../i18n';
+import { confirmDialog } from '../ui/dialogs';
 import { animatedProps, clearKeyframes, copyAll, copyAnimation, copyLayers, cutLayers, pasteAnimationOnRow, pasteLayers, rowMapping, useClipboard } from './clipboard';
 import { descendants, duplicateLayers, findLayer, useDesigner } from './designerStore';
 import { moveLayer } from './LayersPanel';
@@ -63,7 +64,7 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
   if (!layer) return null;
   // The selection when the row is part of it, else this layer.
   const targets = st.selected.includes(layer.id) ? st.selected : [layer.id];
-  const run = (fn: () => void) => () => (onClose(), fn());
+  const run = (fn: () => unknown) => () => (onClose(), void fn());
   const anim = clip.animation;
   const rowAnimated = at.row ? at.row.props.some((p) => layer.tracks[p]?.length) : animatedProps(layer).length > 0;
   const fits = !!anim && (!at.row || rowMapping(anim, at.row.props).length > 0);
@@ -161,8 +162,11 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
           <button
             className="danger"
             disabled={ro}
-            onClick={run(() => {
+            onClick={run(async () => {
               const s = useDesigner.getState();
+              // A folder: the layers inside it go too, said first.
+              const kids = s.template ? targets.reduce((n, id) => n + descendants(s.template!, id).length, 0) : 0;
+              if (kids && !(await confirmDialog({ title: targets.length > 1 ? t('Delete the {n} layers?', { n: targets.length }) : t('Delete “{name}”?', { name: layer.name }), message: tn(kids, 'The {n} layer inside it is deleted too.', 'The {n} layers inside it are deleted too.'), confirm: t('Delete'), danger: true }))) return;
               s.update((tpl) => {
                 const ids = new Set(targets.flatMap((id) => [id, ...descendants(tpl, id)]));
                 tpl.layers = tpl.layers.filter((l) => !ids.has(l.id));

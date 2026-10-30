@@ -240,6 +240,7 @@ export const designer: Record<string, string> = {
   'Imported “{name}” — not converted: {warnings}': '« {name} » importé ; non converti : {warnings}',
   'Click to rename': 'Cliquez pour renommer',
   New: 'Nouveau',
+  'Delete the {n} layers?': 'Supprimer les {n} calques ?',
   'Blank template': 'Modèle vierge',
   'On “{name}”': 'Sur « {name} »',
   'On {n} layer': 'Sur {n} calque',
