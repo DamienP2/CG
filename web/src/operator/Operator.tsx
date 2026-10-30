@@ -1332,17 +1332,17 @@ function GraphicRow(props: {
         <PauseButton pause={pause} step={step} left={left} operate={props.operate} onContinue={props.onContinue} />
       ) : (
         <button
-          className={`opx-sq big ${air ? 'red' : ''} ${step ? 'opx-pause wait-out' : ''}`}
+          className={`opx-sq big ${air ? 'red' : props.cue ? 'cue' : ''} ${step ? 'opx-pause wait-out' : ''}`}
           style={step ? ({ '--p': step.secs ? 1 - left / step.secs : 1 } as React.CSSProperties) : undefined}
           disabled={!props.operate}
-          title={air ? (step ? `${(step.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) }))} · ${t('Take out')}` : t('Take out')) : t('Take')}
+          title={air ? (step ? `${(step.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) }))} · ${t('Take out')}` : t('Take out')) : props.cue ? `${t('Take')} · ${t('NEXT takes this graphic')}` : t('Take')}
           onClick={(e) => {
             e.stopPropagation();
             if (air) props.onOut();
             else props.onTake();
           }}
         >
-          {step ? <b>{Math.ceil(left)}</b> : air ? <Square size={12} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
+          {step ? <b>{Math.ceil(left)}</b> : air ? <Square size={12} fill="currentColor" /> : props.cue ? <span className="opx-sq-cue">CUE</span> : <Play size={14} fill="currentColor" />}
         </button>
       )}
       <span className="opx-gr-main">
@@ -1369,7 +1369,6 @@ function GraphicRow(props: {
           </strong>
         )}
         <span className="muted small opx-gr-line">
-          {props.cue && <b className="opx-cue" title={t('NEXT takes this graphic')}>CUE</b>}
           <span className="opx-zpill" style={{ ['--zc' as string]: zone?.color ?? '#6b7090' }}>
             {zone?.name ?? t('no zone')}
           </span>
