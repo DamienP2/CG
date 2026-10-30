@@ -1084,6 +1084,7 @@ fn demo_project_layers() -> Project {
         design_order: Vec::new(),
         language: "fr".into(),
         template_secs: None,
+        colors: Vec::new(),
         id: "demo".into(),
         name: "Demo show".into(),
         description: String::new(),

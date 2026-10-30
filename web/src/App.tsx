@@ -1,4 +1,4 @@
-import { ArrowRightToLine, Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, HeartPulse, Images, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, TriangleAlert, Users as UsersIcon } from 'lucide-react';
+import { ArrowRightToLine, Braces, CircuitBoard, MessagesSquare, ClipboardList, Database, FolderOpen, Gauge, HeartPulse, Library as LibraryIcon, MonitorPlay, Newspaper, PenTool, Radio, Server, Settings as SettingsIcon, TriangleAlert, Users as UsersIcon } from 'lucide-react';
 import { needsLook, useHealth, useHealthStore } from './perf/health';
 import { Brand } from './ui/Brand';
 import { DialogHost } from './ui/dialogs';
@@ -173,7 +173,7 @@ function Home({ route }: { route: Extract<Route, { page: 'projects' | 'media' | 
         <Brand />
         <div className="tabs home-tabs ux1-home-tabs">
           {tab('projects', '/projects', <FolderOpen size={14} />, t('Projects'))}
-          {tab('media', '/media', <Images size={14} />, t('Assets'))}
+          {tab('media', '/media', <LibraryIcon size={14} />, t('Library'))}
           {can.design(user) && tab('data', '/data', <Database size={14} />, t('Data'))}
           <NavGroup icon={<Radio size={14} />} label={tc('menu', 'Broadcast')} entries={broadcast} current={route.page} />
           <NavGroup icon={<Server size={14} />} label={t('System')} entries={system} current={route.page} dot={admin && needsLook(health)} />
@@ -278,7 +278,7 @@ function ProjectShell({ route }: { route: Extract<Route, { page: 'project' }> })
           {tab('operator', <Radio size={14} />, t('Operator'))}
           {tab('social', <MessagesSquare size={14} />, t('Social'))}
           {tab('data', <Database size={14} />, t('Data'))}
-          {tab('media', <Images size={14} />, t('Assets'))}
+          {tab('media', <LibraryIcon size={14} />, t('Library'))}
         </div>
         <div className="spacer" />
         {/* Filled by the page (the Designer's undo, redo and history). */}

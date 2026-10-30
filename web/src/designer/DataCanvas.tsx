@@ -1,4 +1,5 @@
 import { widgetOf } from '../widgets';
+import { HexColorField } from '../ui/fields';
 import { useShallow } from 'zustand/react/shallow';
 import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Repeat, Rows3, Timer, ToggleLeft, Trash2, Type, Variable, Wand2, X, Zap, Blend, Pause, ChevronsUp, FlipVertical2 } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -1908,8 +1909,7 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
       const c = parseHex(f.default) ?? [1, 1, 1, 1];
       return (
         <div className="row">
-          <input type="color" value={toHex(c).slice(0, 7)} onChange={(e) => set(e.target.value)} />
-          <input className="mono" value={f.default} placeholder="#ffffff" onChange={(e) => set(e.target.value)} />
+          <HexColorField value={toHex(c, c[3] < 1)} onChange={set} />
         </div>
       );
     }

@@ -4,6 +4,7 @@ mod api;
 mod apiv1;
 mod asrun;
 mod auth;
+mod colors;
 mod config;
 mod datarules;
 mod datasources;

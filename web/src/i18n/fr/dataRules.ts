@@ -20,7 +20,7 @@ export const dataRules: Record<string, string> = {
   '{min} to {max}': '{min} à {max}',
   '{n} decimal': '{n} décimale',
   '{n} decimals': '{n} décimales',
-  'exists in Assets': 'existe dans Ressources',
+  'exists in the Library': 'existe dans la Bibliothèque',
   'Expected {n}': 'Attendu : {n}',
   // Warnings
   '{n} invalid row': '{n} ligne invalide',

@@ -1,5 +1,5 @@
 import { FormatButtons } from '../designer/ProjectPanel';
-import { ArrowLeft, Check, CheckSquare, ChevronRight, Clock, Copy, Database, GraduationCap, Download, Folder, FolderInput, FolderOpen, FolderPlus, Images, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Check, CheckSquare, ChevronRight, Clock, Copy, Database, GraduationCap, Download, Folder, FolderInput, FolderOpen, FolderPlus, Library as LibraryIcon, Inbox, Layers, LayoutGrid, MonitorPlay, MoreHorizontal, PenTool, Pencil, Plus, Radio, Search, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FrameRate, ProjectSummary } from '../engine/types';
 import { api, can, useApp } from '../store';
@@ -758,7 +758,7 @@ export function Projects() {
                           ) : (
                             <CardMenu page={0}>
                               {page('data', <Database size={13} />, t('Data'), design)}
-                              {page('media', <Images size={13} />, t('Assets'), can.operate(user))}
+                              {page('media', <LibraryIcon size={13} />, t('Library'), can.operate(user))}
                               <div className="menu-sep" />
                               <a href={`/api/projects/${encodeURIComponent(p.id)}/export`} onClick={() => setMenu(null)}>
                                 <Download size={13} /> {t('Export')}

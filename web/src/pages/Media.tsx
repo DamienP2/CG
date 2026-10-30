@@ -1,10 +1,12 @@
-import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
+import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, Palette as PaletteIcon, Plus, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { loadFonts, useFonts } from '../engine/fonts';
 import { locale, t, tn } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
+import { addPalette, ColorsPanel } from './ColorsPanel';
+import { useColors } from '../colors';
 
 type Kind = MediaFile['kind'];
 
@@ -113,7 +115,14 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (!families.length) void loadFonts();
   }, [families.length]);
-  const [kind, setKind] = useState<Kind | 'all'>('all');
+  const [kind, setKind] = useState<Kind | 'all' | 'colors'>('all');
+  const palettes = useColors((s) => s.palettes);
+  const loadColors = useColors((s) => s.load);
+  const colorsLoaded = useColors((s) => s.loaded);
+  useEffect(() => {
+    if (!colorsLoaded) void loadColors();
+  }, [colorsLoaded, loadColors]);
+  const projectColors = useApp((s) => (projectId ? (s.full[projectId]?.colors?.length ?? 0) : 0));
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'name' | 'date' | 'size'>('name');
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -137,10 +146,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const upload = async (list: FileList | File[]) => {
     // Fonts are global: they go to the server's fonts, never to a project.
     const fonts = [...list].filter((f) => FONT_FILE.test(f.name));
-    if (fonts.length) {
-      if (projectId) toast(t('Fonts are shared by every project: add them in Assets (main page).'), 'error');
-      else await uploadFonts(fonts, toast);
-    }
+    if (fonts.length) await uploadFonts(fonts, toast);
     const todo = [...list].filter((f) => !FONT_FILE.test(f.name));
     if (!todo.length) return;
     const existing = new Set(files?.map((f) => f.name));
@@ -191,21 +197,20 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   const shown = (files ?? [])
     .filter((f) => (kind === 'all' || f.kind === kind) && f.name.toLowerCase().includes(q))
     .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || a.name.localeCompare(b.name));
-  const fonts = !projectId && kind === 'font';
+  const fonts = kind === 'font';
+  const colors = kind === 'colors';
   const label = KINDS.find((k) => k.kind === kind)?.label ?? 'All files';
 
   const nav = (
     <>
-      <NavSection>{projectId ? t('This project') : t('Library')}</NavSection>
+      <NavSection>{projectId ? t('Media of the project') : t('Media')}</NavSection>
       {KINDS.filter((k) => k.kind !== 'font').map(({ kind: k, label: l, icon: Icon }) => (
         <NavItem key={k} on={kind === k} icon={<Icon size={15} />} label={t(l)} count={counts[k] ?? 0} className={k !== 'all' && !counts[k] ? 'dim' : ''} onClick={() => setKind(k)} />
       ))}
-      {!projectId && (
-        <>
-          <NavSection>{t('Typography')}</NavSection>
-          <NavItem on={kind === 'font'} icon={<Type size={15} />} label={t('Fonts')} count={families.length} onClick={() => setKind('font')} />
-        </>
-      )}
+      <NavSection>{t('Typography')}</NavSection>
+      <NavItem on={kind === 'font'} icon={<Type size={15} />} label={t('Fonts')} count={families.length} onClick={() => setKind('font')} />
+      <NavSection>{t('Colours')}</NavSection>
+      <NavItem on={colors} icon={<PaletteIcon size={15} />} label={t('Colours')} count={palettes.reduce((n, p) => n + p.colors.length, projectColors)} onClick={() => setKind('colors')} />
       <div className="lib-nav-foot">
         <HardDrive size={13} /> {files ? `${tn(files.length, '{n} file', '{n} files')} · ${formatSize(total)}` : '…'}
       </div>
@@ -244,10 +249,15 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       }
     >
       <PageHead
-        title={fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Assets') : t('Shared assets')) : t(label)}
-        sub={fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
+        title={colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
+        sub={colors ? undefined : fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
       >
-        {canUpload && (
+        {colors && canDelete && (
+          <button className="btn primary" onClick={addPalette}>
+            <Plus size={14} /> {t('Palette')}
+          </button>
+        )}
+        {!colors && canUpload && (
           <label className="btn primary">
             <Upload size={14} /> {fonts ? t('Add fonts') : t('Upload')}
             <input type="file" multiple hidden accept={fonts ? '.ttf,.otf,.woff,.woff2,.ttc' : undefined} onChange={(e) => e.target.files && void upload(e.target.files)} />
@@ -255,7 +265,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         )}
       </PageHead>
 
-      {!fonts && (
+      {!fonts && !colors && (
         <div className="media-toolbar">
           <label className="search">
             <Search size={14} />
@@ -295,7 +305,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         </div>
       )}
 
-      {fonts ? (
+      {colors ? (
+        <ColorsPanel projectId={projectId} canEdit={canDelete} />
+      ) : fonts ? (
         <FontsPanel canEdit={canDelete} />
       ) : files && files.length === 0 ? (
         <label className={`media-empty ${canUpload ? '' : 'static'}`}>

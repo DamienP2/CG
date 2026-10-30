@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { HexColorField } from '../ui/fields';
 import { ImageOff } from 'lucide-react';
 import { api, useApp, type MediaFile } from '../store';
 import { t } from '../i18n';
@@ -156,7 +157,7 @@ export function PictureLibrary({ q, onChoose }: { q: string; onChoose: (src: str
               {(kind === 'illustrations' ? [ACCENT[set], ...COLORS] : COLORS).map((c) => (
                 <button key={c} className={c === color ? 'on' : ''} style={{ background: c }} onClick={() => setColor(c)} />
               ))}
-              <input type="color" value={color} title={t('Another colour')} onChange={(e) => setColor(e.target.value)} />
+              <HexColorField compact title={t('Another colour')} value={color} onChange={(c) => setColor(c.slice(0, 7))} />
             </div>
           </div>
         )}

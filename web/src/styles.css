@@ -958,44 +958,110 @@ code {
   font-size: 11px;
   width: 14px;
 }
+/* A colour field: swatch (opens the picker), HEX or palette name, opacity. */
 .color-field {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex: 1;
   min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  overflow: hidden;
 }
-.color-field .num-field input {
-  width: 40px;
-  min-width: 40px;
+.color-field.open {
+  border-color: var(--line-2);
 }
-.color-field .suffix {
-  display: none;
+.color-field.compact {
+  flex: none;
+  width: 28px;
+}
+.color-field .cf-sw {
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+  background: repeating-conic-gradient(#666 0 25%, #333 0 50%) 0 0 / 8px 8px;
+}
+.color-field.compact .cf-sw {
+  border-right: 0;
+}
+.color-field .cf-sw i,
+.cp-prev i,
+.cp-sw i,
+.cp-alpha i {
+  position: absolute;
+  inset: 0;
+}
+.color-field .hex,
+.color-field .cf-name {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0 8px;
+  color: var(--text);
+}
+.color-field .hex {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.color-field .cf-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.color-field .cf-name b,
+.cp-named b {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.color-field > .num-field,
+.wk-ctl .pp-field .color-field > .num-field {
+  flex: 0 0 62px;
+  width: 62px;
+  height: 100%;
+  padding: 0 7px 0 4px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  gap: 2px;
+}
+.color-field > .num-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.color-field > .num-field .suffix {
+  display: inline;
+  width: auto;
+  font-size: var(--fs-11);
 }
 .prop-row .color-field ~ .bind,
 .prop-row:has(.color-field) .prop-label {
   min-width: 40px;
-}
-.swatch {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  flex: none;
-  cursor: pointer;
-  border: 1px solid var(--line-2);
-  background:
-    linear-gradient(var(--c), var(--c)),
-    repeating-conic-gradient(#666 0 25%, #333 0 50%) 0 0 / 8px 8px;
-}
-.swatch input {
-  opacity: 0;
-  width: 100%;
-  height: 100%;
-}
-.color-field .hex {
-  width: 80px;
-  font-family: var(--mono);
-  font-size: 12px;
 }
 .bind {
   position: relative;
@@ -10189,28 +10255,8 @@ body.cv-moving * {
   width: auto;
 }
 .pp-field.color .color-field {
-  gap: 6px;
-}
-.pp-field.color .color-field .hex {
-  width: 84px;
-}
-.pp-field.color .color-field > .num-field {
-  width: 90px;
-  flex: 0 0 90px;
-  height: 28px;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-}
-.pp-field.color .color-field > .num-field input {
-  border: none;
-  background: none;
-  text-align: right;
-  width: 100%;
-}
-.pp-field.color .color-field .suffix {
-  display: inline;
+  width: 186px;
+  flex: none;
 }
 .pp-tl,
 .pp-op {
@@ -12595,26 +12641,12 @@ body.cv-moving * {
   background: var(--line-2);
 }
 .rt-pick {
-  position: relative;
-  width: 18px;
-  height: 18px;
+  display: inline-flex;
   margin-left: 2px;
-  cursor: pointer;
 }
-.rt-pick span {
-  position: absolute;
-  inset: 2px;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px var(--line-2);
-  background-image: conic-gradient(red, yellow, lime, aqua, blue, magenta, red) !important;
-}
-.rt-pick input {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  padding: 0;
-  border: none;
+.rt-pick .color-field.compact {
+  width: 20px;
+  height: 20px;
 }
 .rt-box {
   min-height: 30px;
@@ -19543,4 +19575,303 @@ a.opx-html5 {
 }
 .tx-own {
   color: var(--warn);
+}
+
+/* ===== Colour picker (ui/ColorPicker.tsx): a layer like the drop-down lists. ===== */
+.cp-pop {
+  position: fixed;
+  z-index: 2000;
+  width: 264px;
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12.5px;
+  animation: dd-in 0.12s ease-out;
+}
+.cp-sv {
+  position: relative;
+  height: 150px;
+  border-radius: 6px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.cp-knob {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.cp-bars {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px 10px;
+  align-items: center;
+}
+.cp-prev {
+  position: relative;
+  grid-row: span 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  background: repeating-conic-gradient(#666 0 25%, #333 0 50%) 0 0 / 8px 8px;
+}
+.cp-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  touch-action: none;
+}
+.cp-bar .cp-knob {
+  top: 50%;
+}
+.cp-hue {
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.cp-alpha {
+  background: repeating-conic-gradient(#666 0 25%, #333 0 50%) 0 0 / 8px 8px;
+}
+.cp-alpha i {
+  border-radius: 5px;
+}
+.cp-vals {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.cp-vals .dd-btn.cp-mode {
+  flex: 0 0 64px;
+  height: 28px;
+}
+.cp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+}
+.cp-main input,
+.cp-a input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+}
+.cp-a {
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.cp-a input {
+  border: 0;
+  background: none;
+  text-align: right;
+  padding: 0 2px;
+}
+.cp-a span {
+  padding-right: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-11);
+}
+.cp-vals .cp-pick {
+  width: 28px;
+  height: 28px;
+}
+.cp-src {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.cp-src > span {
+  padding-top: 8px;
+}
+.cp-src .dd-btn.cp-source {
+  margin-left: auto;
+  margin-top: 8px;
+  height: 26px;
+  max-width: 150px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.cp-swatches {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 5px;
+}
+.cp-sw {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  overflow: hidden;
+  cursor: pointer;
+  background: repeating-conic-gradient(#666 0 25%, #333 0 50%) 0 0 / 8px 8px;
+}
+.cp-sw.on {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 3px var(--text);
+}
+.cp-sw.cp-add {
+  display: grid;
+  place-items: center;
+  background: var(--panel-3);
+  color: var(--text-2);
+}
+.cp-sw.cp-add:hover {
+  color: var(--text);
+}
+.cp-named {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+/* ===== Library › Colours (pages/ColorsPanel.tsx) ===== */
+.lc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.lc-pal header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.lc-pal-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+input.lc-pal-name {
+  width: 220px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+}
+input.lc-pal-name:hover:not(:disabled),
+input.lc-pal-name:focus {
+  border-color: var(--line);
+  background: var(--bg);
+}
+.lc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.lc-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.lc-swatch {
+  position: relative;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  background: repeating-conic-gradient(#666 0 25%, #333 0 50%) 0 0 / 10px 10px;
+}
+.lc-swatch:disabled {
+  cursor: default;
+}
+.lc-swatch i {
+  position: absolute;
+  inset: 0;
+}
+.lc-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px 7px;
+}
+.lc-name {
+  height: 22px;
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.lc-name:hover:not(:disabled),
+.lc-name:focus {
+  border-color: var(--line);
+  background: var(--bg);
+}
+.lc-text code {
+  font-family: var(--mono);
+  font-size: var(--fs-11);
+  color: var(--text-3);
+}
+.lc-x {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(10, 11, 18, 0.75);
+  color: #fff;
+  cursor: pointer;
+}
+.lc-chip:hover .lc-x {
+  display: grid;
+}
+.lc-chip.lc-new {
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+  gap: 6px;
+  min-height: 100px;
+  border-style: dashed;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.lc-chip.lc-new:hover {
+  color: var(--text);
+  border-color: var(--line-2);
 }

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { HexColorField } from '../ui/fields';
 import { GripVertical, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { designTemplates } from '../engine/drafts';
@@ -244,7 +245,7 @@ export function ZonesPanel({ project }: { project: Project }) {
                       {COLORS.map((c) => (
                         <button key={c} className={z.color.toLowerCase() === c ? 'on' : ''} style={{ background: c }} onClick={() => edit(z.id, { color: c })} />
                       ))}
-                      <input type="color" value={z.color.slice(0, 7)} title={t('Another colour')} onChange={(e) => edit(z.id, { color: e.target.value })} />
+                      <HexColorField compact title={t('Another colour')} value={z.color} onChange={(c) => edit(z.id, { color: c })} />
                     </span>
                   </label>
                   <label>

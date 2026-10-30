@@ -422,6 +422,8 @@ export interface Project {
   language?: string;
   /** Length of a new template (its IN and OUT), seconds; each one is then set in the timeline. None: 1 s. */
   templateSecs?: number;
+  /** The project's own palette (the shared ones are in the Library). */
+  colors?: NamedColor[];
   templates: Template[];
   rundown: RundownItem[];
   zones: Zone[];
@@ -575,3 +577,18 @@ export interface User {
 
 /** Layer types whose text is styled with a FontStyle. */
 export const TEXT_LIKE = new Set<LayerType>(['text', 'clock', 'ticker', 'roll', 'counter', 'rotator', 'typewriter', 'barChart']);
+
+/** A colour of a palette: the layers using its value follow it when it changes. */
+export interface NamedColor {
+  id: string;
+  name: string;
+  /** `#rrggbb` or `#rrggbbaa`. */
+  value: string;
+}
+
+/** A palette shared by every project (Library › Colours). */
+export interface Palette {
+  id: string;
+  name: string;
+  colors: NamedColor[];
+}

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { parseHex, toHex } from '../engine/evaluate';
 import type { Color } from '../engine/types';
 import { t } from '../i18n';
+import { namedOf, useColors } from '../colors';
+import { useApp } from '../store';
+import { ColorPicker, swatchCss } from './ColorPicker';
 
 /*
  * Mouse wheel / trackpad on number fields, without clicking first: resting
@@ -232,38 +235,64 @@ export function NumberField({
   );
 }
 
-export function ColorField({ value, onChange }: { value: Color; onChange: (c: Color) => void }) {
-  const [text, setText] = useState(toHex(value, true));
-  useEffect(() => setText(toHex(value, true)), [value]);
+export function ColorField({ value, onChange, compact, title }: { value: Color; onChange: (c: Color) => void; /** The swatch alone (tight places). */ compact?: boolean; title?: string }) {
+  const [text, setText] = useState(toHex(value).slice(1).toUpperCase());
+  useEffect(() => setText(toHex(value).slice(1).toUpperCase()), [value]);
+  const [open, setOpen] = useState<DOMRect | null>(null);
+  const [typing, setTyping] = useState(false);
+  const project = useApp((s) => s.project);
+  useColors((s) => s.palettes);
+  const named = namedOf(value, project);
+  const sw = (
+    <button type="button" className="cf-sw" title={title ?? named?.name} onClick={(e) => setOpen(open ? null : e.currentTarget.closest('.color-field')!.getBoundingClientRect())}>
+      <i style={{ background: swatchCss(value) }} />
+    </button>
+  );
+  const picker = open && <ColorPicker value={value} anchor={open} onChange={onChange} onClose={() => setOpen(null)} />;
+  if (compact)
+    return (
+      <span className="color-field compact">
+        {sw}
+        {picker}
+      </span>
+    );
   return (
-    <div className="color-field">
-      <label className="swatch" style={{ ['--c' as string]: `rgba(${value[0] * 255},${value[1] * 255},${value[2] * 255},${value[3]})` }}>
+    <div className={`color-field ${open ? 'open' : ''}`}>
+      {sw}
+      {named && !typing ? (
+        <button type="button" className="cf-name" title={toHex(value, value[3] < 1).toUpperCase()} onClick={() => setTyping(true)}>
+          <b />
+          {named.name}
+        </button>
+      ) : (
         <input
-          type="color"
-          value={toHex(value)}
-          onChange={(e) => {
-            const c = parseHex(e.target.value);
-            if (c) onChange([c[0], c[1], c[2], value[3]]);
+          className="hex"
+          value={text}
+          spellCheck={false}
+          autoFocus={typing}
+          aria-label="HEX"
+          onChange={(e) => setText(e.target.value.replace(/[^0-9a-f#]/gi, '').toUpperCase())}
+          onBlur={() => {
+            setTyping(false);
+            const c = parseHex(text);
+            if (c && text.replace('#', '').length >= 6) onChange(text.replace('#', '').length === 8 ? c : [c[0], c[1], c[2], value[3]]);
+            else setText(toHex(value).slice(1).toUpperCase());
+          }}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           }}
         />
-      </label>
-      <input
-        className="hex"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          const c = parseHex(text);
-          if (c) onChange(c);
-          else setText(toHex(value, true));
-        }}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-      />
+      )}
       <NumberField value={value[3]} display={100} min={0} max={1} suffix="%" onChange={(a) => onChange([value[0], value[1], value[2], a])} />
+      {picker}
     </div>
   );
+}
+
+/** A colour field on a `#rrggbb[aa]` value. */
+export function HexColorField({ value, onChange, compact, title, fallback = '#ffffff' }: { value: string | undefined; onChange: (hex: string) => void; compact?: boolean; title?: string; fallback?: string }) {
+  return <ColorField compact={compact} title={title} value={parseHex(value ?? '') ?? parseHex(fallback) ?? [1, 1, 1, 1]} onChange={(c) => onChange(toHex(c, c[3] < 1))} />;
 }
 
 export function TextInput({

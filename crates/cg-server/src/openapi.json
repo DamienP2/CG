@@ -2445,6 +2445,86 @@
     }
    }
   },
+  "/api/colors": {
+   "get": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Shared colour palettes",
+    "responses": {
+     "200": {
+      "description": "The palettes: [{id, name, colors: [{id, name, value}]}]"
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Replace the shared colour palettes",
+    "description": "Designers. Layers using a colour whose value changed (same id) take the new value in every project.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "array",
+        "items": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Saved"
+     }
+    }
+   }
+  },
+  "/api/projects/{id}/colors": {
+   "parameters": [
+    {
+     "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "string"
+     }
+    }
+   ],
+   "put": {
+    "tags": [
+     "Assets"
+    ],
+    "summary": "Replace the project's own palette",
+    "description": "Layers using a colour whose value changed (same id) take the new value.",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "colors": {
+          "type": "array",
+          "items": {
+           "type": "object"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "204": {
+      "description": "Saved"
+     }
+    }
+   }
+  },
   "/api/fonts": {
    "get": {
     "tags": [

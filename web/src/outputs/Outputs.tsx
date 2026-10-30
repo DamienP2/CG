@@ -1,4 +1,5 @@
 import { ArrowLeftRight, ArrowRightToLine, Check, Copy, Cpu, ExternalLink, Frame, ImageOff, MapPin, MoreHorizontal, Network, PanelRightClose, PanelRightOpen, Pencil, Play, Plus, Radio, RadioTower, RefreshCw, Save, Trash2, Tv, Globe } from 'lucide-react';
+import { HexColorField } from '../ui/fields';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, useApp, useChanged } from '../store';
 import { VIDEO_FORMATS, slateStyleOf, videoFormatIndex, type ChannelConfig, type InputConfig, type InputKind, type HardwareConfig, type Html5Output, type NdiOutput, type OutputState, type OutputsConfig, type SdiOutput, type ServerConfig, type SlateStyle, type St2110Output, type StreamOutput, type StreamProtocol, type SystemInfo } from './types';
@@ -1716,8 +1717,7 @@ export function Outputs({ mode }: { mode: Mode }) {
                           </div>
                           <Group label={t('Background colour')}>
                             <span className="vs-color">
-                              <input type="color" aria-label={t('Background colour')} value={hexColor(o.background)} onChange={(e) => editDest<StreamOutput>((d) => void (d.background = e.target.value))} />
-                              <input value={o.background} aria-label={t('Background colour')} spellCheck={false} onChange={(e) => editDest<StreamOutput>((d) => void (d.background = e.target.value))} />
+                              <HexColorField value={hexColor(o.background)} onChange={(c) => editDest<StreamOutput>((d) => void (d.background = c))} />
                             </span>
                           </Group>
                           <label className="check">

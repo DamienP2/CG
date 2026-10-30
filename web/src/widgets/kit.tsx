@@ -16,7 +16,7 @@ import { interpolateText, parseHex, toHex, type Resolved } from '../engine/evalu
 import type { Data, FieldKind, Layer, LayerType, PlayoutItem, Prop, Template, Value } from '../engine/types';
 import type { TimeCtx } from '../engine/widgets';
 import { onFrames } from '../engine/frameClock';
-import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
+import { ColorField, NumberField, Segmented, TextInput, HexColorField } from '../ui/fields';
 import { alertDialog, confirmDialog, promptDialog } from '../ui/dialogs';
 import { t } from '../i18n';
 
@@ -754,7 +754,7 @@ export function ListEditor(p: { label?: ReactNode; path?: string; value?: Record
                 </span>
               );
             }
-            if (f.color) return <input key={f.key} type="color" style={style} value={String(val ?? '#ffffff').slice(0, 7)} onChange={(e) => change(e.target.value, true)} />;
+            if (f.color) return <HexColorField key={f.key} compact value={String(val ?? '#ffffff')} onChange={(v) => change(v, true)} />;
             return <input key={f.key} style={style} placeholder={f.placeholder ?? f.key} value={String(val ?? '')} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => change(f.num ? +e.target.value : e.target.value, true)} />;
           })}
           <button className="wk-x" title={t('Up')} disabled={!i} onClick={() => put(items.map((x, j) => (j === i - 1 ? items[i] : j === i ? items[i - 1] : x)))}>

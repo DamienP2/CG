@@ -1,6 +1,7 @@
 // Chart: settings, drawing, inspector and Operator controls.
 // Same picture as crates/cg-render/src/wid/chart.rs; layout mirrored in chart-layout.tsx; actions in crates/cg-core/src/wid/chart.rs.
 import { Dropdown } from '../ui/Dropdown';
+import { HexColorField } from '../ui/fields';
 import { ChartColumn, ChevronsRight, Pause, Play, RefreshCw, SkipBack, SkipForward, Square, Zap } from 'lucide-react';
 import { num, type Resolved } from '../engine/evaluate';
 import type { Data } from '../engine/types';
@@ -541,7 +542,7 @@ export default defineWidget({
               const s = seriesStyle(c, j);
               return (
                 <Row expose={[`series.${j}.color`, `series.${j}.width`, `series.${j}.marker`]} exposeValue={{ [`series.${j}.color`]: s.color, [`series.${j}.width`]: s.width, [`series.${j}.marker`]: s.marker }} key={j} label={name}>
-                  <input type="color" value={s.color.slice(0, 7)} onChange={(e) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), color: e.target.value }), `chs-${layer.id}-${j}`)} />
+                  <HexColorField compact value={s.color} onChange={(v) => edit((l) => void ((l.series ??= [])[j] = { ...(l.series?.[j] ?? {}), color: v }), `chs-${layer.id}-${j}`)} />
                   {type !== 'columns' && (
                     <>
                       <span className="dd-cell" title={t('Line width')}>

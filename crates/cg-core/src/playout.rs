@@ -1474,6 +1474,7 @@ mod tests {
             design_order: Vec::new(),
             language: "fr".into(),
             template_secs: None,
+            colors: Vec::new(),
             id: "p".into(),
             name: "p".into(),
             description: String::new(),

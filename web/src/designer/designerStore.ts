@@ -1,6 +1,7 @@
 import { syncSettingDefaults } from '../engine/settings';
 import { widgetOf } from '../widgets';
 import { api, useApp } from '../store';
+import { replaceColor } from '../colors';
 import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
 import { fromFormatView, inFormat } from '../engine/formats';
@@ -492,3 +493,13 @@ export function duplicateLayers(ids: string[]) {
   });
   st.select(newIds);
 }
+
+// A palette colour changed: the open template follows it (the server has
+// rewritten the saved ones).
+window.addEventListener('colors-replaced', (e) => {
+  const changes = (e as CustomEvent<[string, string][]>).detail;
+  const { base, updateBase } = useDesigner.getState();
+  if (!base) return;
+  const probe = structuredClone(base);
+  if (changes.reduce((n, [from, to]) => n + replaceColor(probe, from, to), 0)) updateBase((t) => void changes.forEach(([from, to]) => replaceColor(t, from, to)));
+});

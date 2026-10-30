@@ -2085,6 +2085,30 @@ pub struct Project {
     /// set on its own in the timeline. None: one second.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template_secs: Option<f64>,
+    /// The project's own palette (the shared ones are in the Library).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub colors: Vec<NamedColor>,
+}
+
+/// A colour of a palette: the layers using its value follow it when it
+/// changes (see [`crate::palette`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NamedColor {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// `#rrggbb` or `#rrggbbaa`.
+    pub value: String,
+}
+
+/// A palette shared by every project (Library › Colours).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Palette {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub colors: Vec<NamedColor>,
 }
 
 impl Project {

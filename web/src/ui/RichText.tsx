@@ -1,4 +1,5 @@
 import { Bold, Braces, ImagePlus, Italic, RemoveFormatting, Strikethrough, Underline } from 'lucide-react';
+import { HexColorField } from './fields';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { imageIndex, imageTags, parse, type Run, type RunStyle } from '../engine/rich';
@@ -289,10 +290,9 @@ export function RichInput({
         {SWATCHES.map((c) => (
           <button key={c} type="button" className="rt-sw" title={t('Colour {c}', { c })} style={{ background: c }} onMouseDown={keep} onClick={() => run('foreColor', c)} />
         ))}
-        <label className="rt-pick" title={t('Another colour')} onMouseDown={(e) => e.stopPropagation()}>
-          <span style={{ background: color }} />
-          <input type="color" value={color} onChange={(e) => (setColor(e.target.value), run('foreColor', e.target.value))} />
-        </label>
+        <span className="rt-pick" onMouseDown={keep}>
+          <HexColorField compact title={t('Another colour')} value={color} onChange={(c) => (setColor(c), run('foreColor', c.slice(0, 7)))} />
+        </span>
         <span className="rt-sep" />
         <B cmd="removeFormat" icon={<RemoveFormatting size={13} />} title={t('Back to the style of the whole text')} />
         {tokens?.makeVariable && (

@@ -107,7 +107,7 @@ function ruleText(r: DataRule): string {
       parts.push((r.values ?? []).join(' · '));
       break;
     case 'image':
-      parts.push(t('exists in Assets'));
+      parts.push(t('exists in the Library'));
       break;
     case 'date':
       parts.push(r.format || 'ISO 8601');

@@ -7,6 +7,7 @@ pub mod easing;
 pub mod logic;
 pub mod lottie;
 pub mod model;
+pub mod palette;
 pub mod playout;
 pub mod rich;
 pub mod sample;
