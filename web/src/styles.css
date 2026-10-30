@@ -20513,7 +20513,7 @@ input.lc-pal-name:focus {
   white-space: nowrap;
 }
 
-/* Operator · on air, Out and Continue: the time that counts in the corner, the fill of an automatism. */
+/* Operator · on air, Out and Continue: the time that counts in the corner, a sweep (.opx-next-fill) through the in, the out or up to an automatism. */
 .opx-aircard .opx-tile {
   position: relative;
   overflow: hidden;
@@ -20545,13 +20545,6 @@ input.lc-pal-name:focus {
 .opx-tile-time.auto {
   background: #fff;
   color: #9f1239;
-}
-.opx-tile-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: rgba(0, 0, 0, 0.22);
-  pointer-events: none;
-  transition: width 0.1s linear;
 }
 .opx-tile > span:not(.opx-tile-top) {
   position: relative;

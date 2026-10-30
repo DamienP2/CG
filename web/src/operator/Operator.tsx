@@ -1676,8 +1676,16 @@ const clockText = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 
  * Out, on air: what counts in its corner (what is left of the in, the time on air, an automatism's
  * countdown, what is left of the out), and the tile filling up to an automatism (out, next graphic).
  */
-function OutTile({ project, item, template, liveAt, step, left, disabled, onOut }: { project: Project; item: PlayoutItem; template?: Template; liveAt: number; step: AutoStep | null; left: number; disabled: boolean; onOut: () => void }) {
-  const now = useTicker(true, 10);
+/** A tile sweeping from the left up to an automatic step, as NEXT does with an auto next. */
+function Sweep({ step }: { step: AutoStep }) {
+  const now = useTicker(true, MONITOR_FPS);
+  const left = Math.max(0, (step.at - now) / 1000);
+  return <i className="opx-next-fill" style={{ width: `${fillOf(step, left)}%` }} />;
+}
+
+function OutTile({ project, item, template, liveAt, step, disabled, onOut }: { project: Project; item: PlayoutItem; template?: Template; liveAt: number; step: AutoStep | null; disabled: boolean; onOut: () => void }) {
+  const now = useTicker(true, MONITOR_FPS);
+  const left = step ? Math.max(0, (step.at - now) / 1000) : 0;
   const fps = project.frameRate.num / project.frameRate.den || 50;
   const since = Math.max(0, (now - liveAt) / 1000);
   // Where it is now: the frame moves on between two channel states while it plays.
@@ -1686,6 +1694,8 @@ function OutTile({ project, item, template, liveAt, step, left, disabled, onOut 
   const end = template ? template.duration : item.target;
   let time: React.ReactNode;
   let title: string | undefined;
+  // The sweep: up to the automatism, through the in, through the out.
+  let sweep: number | null = null;
   const auto = step && (step.kind === 'out' || step.kind === 'next') ? step : null;
   if (auto) {
     time = (
@@ -1695,17 +1705,22 @@ function OutTile({ project, item, template, liveAt, step, left, disabled, onOut 
       </b>
     );
     title = auto.kind === 'next' ? t('Next graphic in {n} s', { n: Math.ceil(left) }) : t('Goes out in {n} s', { n: Math.ceil(left) });
+    sweep = fillOf(auto, left);
   } else if (item.phase === 'playing' && template && frame < holdFrame(template)) {
-    time = <b className="opx-tile-time">IN {secsText(Math.max(0, (Math.min(item.target, holdFrame(template)) - frame) / fps))} s</b>;
+    const to = Math.min(item.target, holdFrame(template));
+    time = <b className="opx-tile-time">IN {secsText(Math.max(0, (to - frame) / fps))} s</b>;
+    sweep = to > 0 ? Math.min(100, (frame / to) * 100) : 100;
   } else if (item.phase === 'out') {
+    const from = template ? holdFrame(template) : 0;
     time = <b className="opx-tile-time">OUT {secsText(Math.max(0, (end - frame) / fps))} s</b>;
+    sweep = end > from ? Math.min(100, Math.max(0, ((frame - from) / (end - from)) * 100)) : 100;
   } else {
     time = <b className="opx-tile-time">{clockText((item.age ?? 0) / fps + since)}</b>;
     title = t('On air for {time}', { time: clockText((item.age ?? 0) / fps + since) });
   }
   return (
     <button className="opx-tile out" disabled={disabled} onClick={onOut} title={title}>
-      {auto && <i className="opx-tile-fill" style={{ width: `${fillOf(auto, left)}%` }} />}
+      {sweep !== null && <i className="opx-next-fill" style={{ width: `${sweep}%` }} />}
       <span className="opx-tile-top">
         <CircleStop size={18} />
         {time}
@@ -1798,7 +1813,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
           <>
             {canContinue(item, tpl) && (
               <button className={`opx-tile cont ${waiting ? 'waits' : ''}`} disabled={!operate} onClick={() => command({ action: 'continue', zone: zone.id })} title={step?.kind === 'resume' ? t('Pause · plays on in {n} s', { n: Math.ceil(left) }) : undefined}>
-                {step?.kind === 'resume' && <i className="opx-tile-fill" style={{ width: `${fillOf(step, left)}%` }} />}
+                {step?.kind === 'resume' && <Sweep step={step} />}
                 <span className="opx-tile-top">
                   <ChevronsRight size={18} />
                   {step?.kind === 'resume' && <b className="opx-tile-time">{Math.ceil(left)} s</b>}
@@ -1806,7 +1821,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, command, next
                 <span>Continue</span>
               </button>
             )}
-            <OutTile project={project} item={item} template={tpl} liveAt={liveAt} step={step} left={left} disabled={!operate} onOut={() => command({ action: 'takeOut', zone: zone.id })} />
+            <OutTile project={project} item={item} template={tpl} liveAt={liveAt} step={step} disabled={!operate} onOut={() => command({ action: 'takeOut', zone: zone.id })} />
           </>
         }
       />
