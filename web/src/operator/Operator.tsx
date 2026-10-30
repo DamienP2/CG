@@ -1,13 +1,13 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
 import { defaultData, holdFrame, interpolateText, newId, parseHex, toHex } from '../engine/evaluate';
-import { oneKey, rowKey, usedDatasets, type Command, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone, type ChannelInfo } from '../engine/types';
+import { oneKey, rowKey, usedDatasets, type Command, type DataSet, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone, type ChannelInfo } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
 import { CentreModeContext } from '../widgets/kit';
@@ -291,6 +291,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const [shown, setShown] = useState<string[]>(['main']);
   // The monitors shown: the preview, the on-air picture or both (never none).
   const [mon, setMon] = useMonitors();
+  const tilesRef = useRef<HTMLDivElement>(null);
   // The widget of a graphic on air whose keys are on (`zone:layer`, a click on its row), and the ⋯ unfolded.
   const [airWidget, setAirWidget] = useState<string | null>(null);
   const [airMore, setAirMore] = useState<Record<string, boolean>>({});
@@ -486,6 +487,10 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // Nothing to type for them (a table fed by a data set…): the data takes the width.
   const showShared = together || sharedSel || parts.widgets.length === 0;
   const hasContent = (showShared && parts.shared.length > 0) || (!part && !sharedSel) || shownParts.some((p) => p.fields.length > 0 || !!p.exposed || p.fed.length > 0);
+  // The values by section: one per layer with the layers together (its name, its values, its data in front of them); one in a tab.
+  const sections: { key: string; title?: string; parts: WidgetPart[]; shared: boolean; data: boolean }[] = together
+    ? [...(parts.shared.length ? [{ key: SHARED_TAB, title: t('Texts'), parts: [], shared: true, data: false }] : []), ...parts.widgets.map((p, i) => ({ key: p.layer.id, title: tabName(parts.widgets, i), parts: [p], shared: false, data: true }))]
+    : [{ key: 'tab', parts: shownParts, shared: showShared, data: part !== undefined }];
   // What Update would change on air, by widget.
   const onAirNow = item ? onAirByItem.get(item.id) : undefined;
   const sent = template ? updateData(template, draft, readMode) : {};
@@ -720,36 +725,66 @@ export function Operator({ channelId }: { channelId: string | null }) {
                 </div>
               )}
               {hasContent || hasData || controls.length > 0 ? (
-                <div className={`opx-tiles ${hasData ? 'split' : ''}`}>
-                  {(hasContent || controls.length > 0) && (
-                    <div className="opx-tcol">
-                      {/* The preview's own transport, in its layer (it hides none of the picture; nothing goes on air). */}
-                      {controls.map((p) => (
-                        <div key={`${item.id}-${p.layer.id}`} className={`opx-pvrow ${together ? 'named' : ''}`}>
-                          <PreviewControls layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
+                <div className="opx-tiles" ref={tilesRef}>
+                  {sections.map((sec) => {
+                    const sBound = [...new Set(sec.parts.flatMap((p) => p.bound))];
+                    const sSets = sec.data ? [...new Map(sec.parts.flatMap((p) => p.datasets).map((d) => [d.key, d])).values()] : [];
+                    const sData = sSets.length > 0 || (sec.data && sBound.length > 0);
+                    const sControls = mon.preview ? sec.parts.filter((p) => p.controls) : [];
+                    const sFields = [...(sec.shared ? parts.shared : []), ...sec.parts.flatMap((p) => p.fields)];
+                    const sContent = sFields.length > 0 || sec.parts.some((p) => !!p.exposed || p.fed.length > 0);
+                    if (!sContent && !sData && !sControls.length) return null;
+                    // The columns its layers read (its values and their settings): only those are shown.
+                    const only = readColumns(sec.parts, sSets);
+                    return (
+                      <section key={sec.key} className="opx-sect">
+                        {sec.title && <div className="opx-sect-h">{sec.title}</div>}
+                        <div className={`opx-sect-b ${sData ? 'split' : ''}`}>
+                          {(sContent || sControls.length > 0) && (
+                            <div className="opx-tcol">
+                              {/* The preview's own transport, in its layer (it hides none of the picture; nothing goes on air). */}
+                              {sControls.map((p) => (
+                                <div key={`${item.id}-${p.layer.id}`} className="opx-pvrow">
+                                  <PreviewControls layer={p.layer} run={pv} setRun={setRun} data={previewData} fps={fps} ageSecs={pvAge} holdSecs={pvHold} lang={lang} onData={editDraft} mode="air" />
+                                </div>
+                              ))}
+                              {sContent && <ValuesPane template={template} fields={sFields} names={new Map(sec.parts.flatMap((p) => (p.fields.length === 1 && (p.layer.type !== 'text' || p.layer.text.trim() === `{{${p.fields[0].key}}}`) ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={sec.parts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={sec.parts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
+                            </div>
+                          )}
+                          {sData && (
+                            <div className="opx-tcol data">
+                              {sSets.map((ds) =>
+                                datasetUse(template, ds).source ? (
+                                  <div key={ds.key} className="opx-ds">
+                                    <DataSetSource ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} only={only.get(ds.key)} />
+                                  </div>
+                                ) : (
+                                  <div key={ds.key} className="opx-ds opx-ds-stack">
+                                    <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} only={only.get(ds.key)} />
+                                    <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
+                                  </div>
+                                ),
+                              )}
+                              {sBound.length > 0 && <DataBlock project={project} template={template} fields={sBound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} show={together ? 'cards' : 'all'} />}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                      {hasContent && <ValuesPane template={template} fields={[...(showShared ? parts.shared : []), ...shownParts.flatMap((p) => p.fields)]} names={new Map(shownParts.flatMap((p) => (p.fields.length === 1 && (p.layer.type !== 'text' || p.layer.text.trim() === `{{${p.fields[0].key}}}`) ? [[p.fields[0].key, p.layer.name.trim()]] : [])))} exposed={shownParts.flatMap((p) => (p.exposed ? [p.exposed] : []))} fedLayers={shownParts.filter((p) => p.fed.length).map((p) => p.layer)} changed={changed} draft={draft} boundDraft={boundDraft} readMode={readMode} sourceName={sourceName} previewData={previewData} onDraft={editDraft} />}
-                    </div>
+                      </section>
+                    );
+                  })}
+                  {/* The layers together: how the sources are read, once, under them. */}
+                  {together && bound.length > 0 && (
+                    <section className="opx-sect">
+                      <div className="opx-sect-b split">
+                        <div />
+                        <div className="opx-tcol data">
+                          <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} show="controls" />
+                        </div>
+                      </div>
+                    </section>
                   )}
-                  {hasData && (
-                    <div className="opx-tcol data">
-                      {part !== undefined &&
-                        datasets.map((ds) =>
-                          datasetUse(template, ds).source ? (
-                            <div key={ds.key} className="opx-vt wide">
-                              <DataSetSource ds={ds} template={template} draft={draft} onAir={onAirNow} sourceName={sourceName(ds.source)} onDraft={editDraft} />
-                            </div>
-                          ) : (
-                            <div key={ds.key} className="opx-vt wide opx-ds-stack">
-                              <DataSetPanel ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} fps={fps} onDraft={editDraft} command={command} keys={ds === steppedDatasets(template)[0]} />
-                              <DataSetHand ds={ds} template={template} draft={draft} onAir={onAirNow} operate={operateItem} zone={itemZone?.id} onDraft={editDraft} command={command} />
-                            </div>
-                          ),
-                        )}
-                      {bound.length > 0 && <DataBlock project={project} template={template} fields={bound} item={item} draft={draft} canEdit={canEdit} onRead={(patch) => editDraft(patch)} onMode={(m) => setItem(item.id, { read: m === 'live' ? undefined : m })} />}
-                    </div>
-                  )}
+                  {/* In a tab: a cable from each value read from the data to its column or source. */}
+                  {!together && hasData && <Wires root={tilesRef} />}
                 </div>
               ) : (
                 <Empty icon={SlidersHorizontal} text={t('No value to type')} />
@@ -1143,6 +1178,45 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
     ) : (
       label
     );
+  // A value a data set gives (its column), unless typed by hand.
+  const fieldKeys = new Set(fields.map((f) => f.key));
+  const columnOf = (k: string) => usedDatasets(template).find((d) => k.startsWith(`${d.key}_`) && k[d.key.length + 1] !== '_');
+  /** A value read from the data: read only, in the data's colour, the column or path it comes from, the pen to type it by hand. */
+  const linkedRow = (k: string, label: string, value: string, chip: string, kind: 'ds' | 'live', wire: string, toggle: React.ReactNode) => (
+    <div key={k} className={`opx-var linked ${kind} ${changed.has(k) ? 'chg' : ''}`} data-wire={wire}>
+      <i className="opx-var-dot" />
+      <span className="opx-var-name" title={label}>
+        {label}
+      </span>
+      <div className="opx-var-val">
+        <span className="opx-linked" title={value}>
+          {value || '…'}
+        </span>
+      </div>
+      <span className="opx-var-tail">
+        <span className="opx-link">
+          {kind === 'ds' ? <Rows3 size={11} /> : <Database size={11} />} {chip}
+        </span>
+        {toggle}
+      </span>
+    </div>
+  );
+  /** Typed by hand over the data: its field, and the way back to the data. */
+  const handRow = (k: string, label: string, input: React.ReactNode, toggle: React.ReactNode) => (
+    <div key={k} className={`opx-var ${changed.has(k) ? 'chg' : ''}`}>
+      <i className="opx-var-dot" />
+      <span className="opx-var-name" title={label}>
+        {label}
+      </span>
+      <div className="opx-var-val">{input}</div>
+      <span className="opx-var-tail">
+        <span className="opx-vt-src hand">
+          <PenLine size={11} /> {t('Typed by hand')}
+        </span>
+        {toggle}
+      </span>
+    </div>
+  );
   // A text with a style toolbar, several lines or a table takes the whole row of tiles.
   const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || f.kind === 'table';
   // Bento: a number, a colour or a switch takes one cell, a text, an image or a read value two.
@@ -1156,22 +1230,24 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
         <Fragment key={g.title}>
           {g.title && <div className="opx-vt-group">{g.title}</div>}
           {g.fields.map(({ f, label }) =>
-            f.kind !== 'table' ? (
+            f.kind !== 'table' && fromData(f) && !byHand(f.key) ? (
+              linkedRow(f.key, label, boundDraft[f.key] ?? draft[f.key] ?? '', (f.binding!.path || bindingLabel(f.binding!)).split('.').pop()!.replace(/\[.*$/, ''), 'live', `src:${f.binding!.source}`, handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? ''))
+            ) : f.kind !== 'table' && fromData(f) ? (
+              handRow(f.key, label, <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />, handToggle([f.key], (k) => draft[k] ?? ''))
+            ) : f.kind !== 'table' && columnOf(f.key) && !byHand(f.key) ? (
+              linkedRow(f.key, label, previewData[f.key] ?? '', f.key.slice(columnOf(f.key)!.key.length + 1), 'ds', f.key, handToggle([f.key], (k) => previewData[k] ?? ''))
+            ) : f.kind !== 'table' && columnOf(f.key) ? (
+              handRow(f.key, label, <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />, handToggle([f.key], (k) => previewData[k] ?? ''))
+            ) : f.kind !== 'table' ? (
               // A variable as in the Designer: its dot, its name (set in the Designer), its value.
               <div key={f.key} className={`opx-var ${changed.has(f.key) ? 'chg' : ''}`}>
                 <i className="opx-var-dot" />
                 <span className="opx-var-name" title={label}>
                   {label}
                 </span>
-                <div className="opx-var-val">{live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key) && /<\/?[bisuc]\b|<c=|<img=/.test(draft[f.key] ?? '')} onChange={(v) => onDraft({ [f.key]: v })} />}</div>
-                {fromData(f) && (
-                  <span className="opx-var-tail">
-                    <span className={`opx-vt-src ${byHand(f.key) ? 'hand' : ''}`} title={t(readMode === 'live' ? '{binding} · {source}, read live' : '{binding} · {source}, read on take', { binding: bindingLabel(f.binding!), source: sourceName(f.binding!.source) })}>
-                      {byHand(f.key) ? <PenLine size={11} /> : <Database size={11} />} {byHand(f.key) ? t('Typed by hand') : sourceName(f.binding!.source)}
-                    </span>
-                    {handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
-                  </span>
-                )}
+                <div className="opx-var-val">
+                  <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key) && /<\/?[bisuc]\b|<c=|<img=/.test(draft[f.key] ?? '')} onChange={(v) => onDraft({ [f.key]: v })} />
+                </div>
               </div>
             ) : (
             <div key={f.key} className={`opx-vt ${size(f)} ${changed.has(f.key) ? 'chg' : ''}`}>
@@ -1191,26 +1267,19 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
           )}
           {!g.title &&
             fed.map(({ layer, title, cols, at }) => {
-              const toggle = cols.length ? handToggle(cols, (k) => previewData[k] ?? '') : undefined;
-              return cols.some(byHand) ? (
-                cols.map((k, i) => (
-                  <div key={k} className={`opx-vt w2 ${changed.has(k) ? 'chg' : ''}`}>
-                    <div className="opx-vt-h">
-                      {changed.has(k) && <i className="opx-chg" />}
-                      <span className="opx-vt-l">{cols.length > 1 ? `${layer.name} · ${k.slice(at)}` : layer.name}</span>
-                      <span className="opx-vt-src hand">
-                        <PenLine size={11} /> {t('Typed by hand')}
-                      </span>
-                      {i === 0 && toggle}
-                    </div>
-                    <TextInput value={draft[k] ?? ''} onChange={(v) => onDraft({ [k]: v })} />
+              // Its columns as values read from the data (the ones not already a variable above).
+              const own = cols.filter((k) => !fieldKeys.has(k));
+              if (!cols.length)
+                return (
+                  <div key={layer.id} className="opx-vt wide">
+                    <FedText label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : layer.type === 'typewriter' ? interpolateText(layer.text, previewData) : ''} title={title} />
                   </div>
-                ))
-              ) : (
-                <div key={layer.id} className="opx-vt wide">
-                  <FedText label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : layer.type === 'typewriter' ? interpolateText(layer.text, previewData) : ''} title={title} tail={toggle} />
-                </div>
-              );
+                );
+              return own.map((k) => {
+                const label = cols.length > 1 ? `${layer.name} · ${k.slice(at)}` : layer.name;
+                const toggle = handToggle([k], (x) => previewData[x] ?? '');
+                return byHand(k) ? handRow(k, label, <TextInput value={draft[k] ?? ''} onChange={(v) => onDraft({ [k]: v })} />, toggle) : linkedRow(k, label, previewData[k] ?? '', k.slice(at), 'ds', k, toggle);
+              });
             })}
         </Fragment>
       ))}
@@ -1219,6 +1288,71 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
         <LayerProperties key={e.layer.id} entry={e} io={io} flat />
       ))}
     </>
+  );
+}
+
+/** The keys of the columns of each data set the layers read (their values and settings); null: all of them (a whole table). */
+function readColumns(parts: WidgetPart[], sets: DataSet[]): Map<string, Set<string> | null> {
+  const json = JSON.stringify(parts.map((p) => [p.layer, p.fields.map((f) => f.key)]));
+  return new Map(
+    sets.map((ds) => {
+      const keys = new Set(json.match(new RegExp(`${ds.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}_[A-Za-z0-9]\\w*`, 'g')) ?? []);
+      return [ds.key, keys.size ? keys : null];
+    }),
+  );
+}
+
+/**
+ * Cables from the values read from the data (`data-wire`) to their column
+ * or source (`data-wire-to`), drawn over `root` (the values beside the data;
+ * none once the data goes under them).
+ */
+function Wires({ root }: { root: React.RefObject<HTMLDivElement | null> }) {
+  const [wires, setWires] = useState<{ d: string; kind: string; x1: number; y1: number; x2: number; y2: number }[]>([]);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const draw = () => {
+      const box = el.getBoundingClientRect();
+      const out: typeof wires = [];
+      el.querySelectorAll<HTMLElement>('[data-wire]').forEach((a) => {
+        const b = el.querySelector<HTMLElement>(`[data-wire-to="${CSS.escape(a.dataset.wire ?? '')}"]`);
+        if (!b) return;
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
+        if (!rb.width || rb.left < ra.right) return;
+        const x1 = ra.right - box.left + el.scrollLeft + 4;
+        const y1 = ra.top + ra.height / 2 - box.top + el.scrollTop;
+        const x2 = rb.left - box.left + el.scrollLeft - 2;
+        const y2 = rb.top + rb.height / 2 - box.top + el.scrollTop;
+        const dx = Math.max(16, (x2 - x1) / 2);
+        out.push({ d: `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`, kind: a.classList.contains('live') ? 'live' : 'ds', x1, y1, x2, y2 });
+      });
+      setWires((w) => (JSON.stringify(w) === JSON.stringify(out) ? w : out));
+      setSize((z) => (z.w === el.scrollWidth && z.h === el.scrollHeight ? z : { w: el.scrollWidth, h: el.scrollHeight }));
+    };
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(el);
+    // Rows load, pages turn, values change: drawn again now and then.
+    const h = setInterval(draw, 400);
+    return () => {
+      ro.disconnect();
+      clearInterval(h);
+    };
+  }, [root]);
+  if (!wires.length) return null;
+  return (
+    <svg className="opx-wires" width={size.w} height={size.h} aria-hidden>
+      {wires.map((w, i) => (
+        <g key={i} className={w.kind}>
+          <path d={w.d} />
+          <circle cx={w.x1} cy={w.y1} r={3} />
+          <circle cx={w.x2} cy={w.y2} r={3} />
+        </g>
+      ))}
+    </svg>
   );
 }
 
@@ -1542,7 +1676,7 @@ function AutoNextEditor({ item, at, onChange, onClose }: { item: RundownItem; at
 }
 
 /** Sources the graphic reads, when it reads them, and Read now. */
-function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, children }: { children?: React.ReactNode; project: Project; template: Template; /** The fields of the widget read from a source. */ fields: Field[]; item: RundownItem; draft: Record<string, string>; canEdit: boolean; onRead: (patch: Record<string, string>) => void; onMode: (m: ReadMode) => void }) {
+function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, children, show = 'all' }: { children?: React.ReactNode; project: Project; template: Template; /** The fields of the widget read from a source. */ fields: Field[]; item: RundownItem; draft: Record<string, string>; canEdit: boolean; onRead: (patch: Record<string, string>) => void; onMode: (m: ReadMode) => void; /** The sources only (in front of their variables), or how they are read only. */ show?: 'all' | 'cards' | 'controls' }) {
   const all = useSources();
   const auth = useApp((s) => s.auth);
   const toast = useApp((s) => s.toast);
@@ -1570,17 +1704,19 @@ function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, chi
   };
   return (
     <div className="opx-data">
-      <div className="opx-data-title">{t('Data')}</div>
       {children}
       {used.length > 0 && (
         <>
-          {used.map((s) => (
-            <div key={s.id} className="opx-source">
-              <span className={`live-dot ${s.error ? 'err' : ''}`} />
-              <strong>{s.name}</strong>
-              <span className="muted small">{s.error ? s.error : ago(s.updatedAt)}</span>
-            </div>
-          ))}
+          {show !== 'controls' &&
+            used.map((s) => (
+              <div key={s.id} className="opx-source" data-wire-to={`src:${s.id}`}>
+                <span className={`live-dot ${s.error ? 'err' : ''}`} />
+                <strong>{s.name}</strong>
+                <span className="muted small">{s.error ? s.error : ago(s.updatedAt)}</span>
+              </div>
+            ))}
+          {show !== 'cards' && (
+          <>
           <div>
             <span className="opx-label">{t('Read the data')}</span>
             <div className="opx-seg">
@@ -1623,6 +1759,8 @@ function DataBlock({ template, fields, item, draft, canEdit, onRead, onMode, chi
             <button className="opx-btn" disabled={reading || !canEdit} onClick={readNow} title={mode === 'manual' ? t('Read the sources now and keep the values in this item') : t('Read now to check; the take reads again')}>
               <RefreshCw size={13} /> {reading ? t('Reading…') : t('Read now')}
             </button>
+          )}
+          </>
           )}
         </>
       )}

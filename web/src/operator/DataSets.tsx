@@ -119,6 +119,14 @@ const rowText = (r: string[]) => r.join(" ");
 const rowCell = (r: string[], i: number) => r[i] ?? "";
 const NO_ROWS: string[][] = [];
 
+/** The indexes of the columns shown: the ones read (`only`), all when none of them is in the table. */
+function shownColumns(columns: string[] | undefined, ds: DataSet, only?: Set<string> | null): number[] {
+  const all = (columns ?? []).map((_, i) => i);
+  if (!only || !columns) return all;
+  const read = all.filter((i) => only.has(columnKey(ds.key, columns[i])));
+  return read.length ? read : all;
+}
+
 const rowOf = (data: Data | undefined, ds: DataSet) =>
   Math.max(1, parseInt(data?.[rowKey(ds.key)] ?? "1", 10) || 1);
 /**
@@ -212,6 +220,7 @@ export function DataSetPanel({
   onDraft,
   command,
   keys,
+  only,
 }: {
   ds: DataSet;
   template: Template;
@@ -226,6 +235,8 @@ export function DataSetPanel({
   command: (c: Command) => void;
   /** ← → drive this one. */
   keys?: boolean;
+  /** The columns shown (their keys): the ones the shown layers read; all when null. */
+  only?: Set<string> | null;
 }) {
   const stage = useDatasetRows(ds, draft);
   const live = onAir ? shownData(onAir) : undefined;
@@ -243,6 +254,7 @@ export function DataSetPanel({
   const after = (row: number) => (row < total ? row + 1 : loop ? 1 : row);
   // 8 rows at a time; the page of the NEXT row follows it.
   const paged = usePaged(table?.rows ?? NO_ROWS, rowText, next - 1, table?.columns, rowCell);
+  const cols = shownColumns(table?.columns, ds, only);
 
   /** Changes kept in the item and, on air, sent to the graphic. */
   const set = (patch: Data) => {
@@ -399,8 +411,10 @@ export function DataSetPanel({
               <tr>
                 <th />
                 <th>#</th>
-                {table.columns.map((c) => (
-                  <th key={c}>{c}</th>
+                {cols.map((j) => (
+                  <th key={j} data-wire-to={columnKey(ds.key, table.columns[j])}>
+                    {table.columns[j]}
+                  </th>
                 ))}
                 <th />
               </tr>
@@ -432,9 +446,9 @@ export function DataSetPanel({
                         <span className="ods-manual">{t("manual")}</span>
                       )}
                     </td>
-                    {r.map((c, j) => (
+                    {cols.map((j) => (
                       <td key={j}>
-                        <Cell v={c} />
+                        <Cell v={r[j] ?? ""} />
                       </td>
                     ))}
                     <td className="ods-x">
@@ -834,6 +848,7 @@ export function DataSetSource({
   onAir,
   sourceName,
   onDraft,
+  only,
 }: {
   ds: DataSet;
   template: Template;
@@ -841,6 +856,8 @@ export function DataSetSource({
   onAir: PlayoutItem | undefined;
   sourceName: string;
   onDraft: (patch: Data) => void;
+  /** The columns shown (their keys): the ones the shown layers read; all when null. */
+  only?: Set<string> | null;
 }) {
   const stage = useDatasetRows(ds, draft);
   const use = datasetUse(template, ds);
@@ -854,6 +871,7 @@ export function DataSetSource({
   const picks = use.row || use.lines;
   // 8 rows at a time; the page of the chosen row follows it.
   const paged = usePaged(table?.rows ?? NO_ROWS, rowText, picks ? chosen - 1 : null, table?.columns, rowCell);
+  const cols = shownColumns(table?.columns, ds, only);
   return (
     <div className="ods ods-src">
       <div className="ods-bar">
@@ -877,8 +895,10 @@ export function DataSetSource({
               <tr>
                 <th />
                 <th>#</th>
-                {table.columns.map((c) => (
-                  <th key={c}>{c}</th>
+                {cols.map((j) => (
+                  <th key={j} data-wire-to={columnKey(ds.key, table.columns[j])}>
+                    {table.columns[j]}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -908,9 +928,9 @@ export function DataSetSource({
                       ) : null}
                     </td>
                     <td className="ods-n">{n}</td>
-                    {r.map((c, j) => (
+                    {cols.map((j) => (
                       <td key={j}>
-                        <Cell v={c} />
+                        <Cell v={r[j] ?? ""} />
                       </td>
                     ))}
                   </tr>

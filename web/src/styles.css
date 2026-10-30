@@ -18353,15 +18353,37 @@ button.ux1-pill.lost:hover {
   min-height: 0;
   overflow: auto;
   padding: 12px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* A section: a layer's values and, in front of them, its data (one under the other when narrow). */
+.opx-sect-b {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-content: start;
   align-items: start;
-  gap: 12px 20px;
+  gap: 12px 44px;
 }
-/* With data: two columns, the data on the right (one under the other when narrow). */
-.opx-tiles.split {
+.opx-sect-b.split {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.opx-sect-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.opx-sect-h::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
 }
 .opx-tcol {
   min-width: 0;
@@ -20867,7 +20889,10 @@ input.lc-pal-name:focus {
   .opx-var,
   .opx-layer.flat .pp-row,
   .opx-layer.flat .wk-row {
-    grid-template-columns: 8px minmax(60px, 36%) minmax(0, 1fr) auto;
+    grid-template-columns: 8px minmax(60px, 34%) minmax(36px, 1fr) auto;
+  }
+  .opx-link {
+    max-width: 72px;
   }
   .opx-var-tail .opx-vt-src {
     max-width: none;
@@ -20877,4 +20902,104 @@ input.lc-pal-name:focus {
 }
 .opx-pvrow .cc.air {
   border: none;
+}
+
+/* Operator · a value read from the data: read only, in the data's colour (a data set's yellow, a live source's green), its column. */
+.opx-var.linked .opx-var-dot {
+  background: none;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px var(--wire);
+}
+.opx-var.linked {
+  --wire: #facc15;
+}
+.opx-var.linked.live {
+  --wire: var(--pvw);
+}
+.opx-var.linked.live .opx-var-dot {
+  border-radius: 50%;
+}
+.opx-linked {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wire);
+  font-weight: 600;
+}
+.opx-link {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 120px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wire);
+  background: color-mix(in srgb, var(--wire) 16%, transparent);
+}
+/* The cables from those values to their column or source. */
+.opx-wires {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.opx-wires g {
+  --wire: #facc15;
+}
+.opx-wires g.live {
+  --wire: var(--pvw);
+}
+.opx-wires path {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 1.5;
+  opacity: 0.75;
+}
+.opx-wires circle {
+  fill: var(--wire);
+}
+.opx-sect-b [data-wire-to] {
+  position: relative;
+}
+th[data-wire-to] {
+  color: #facc15;
+}
+/* The data: its cards only (no frame around them). */
+.opx-tcol.data .opx-data {
+  grid-column: 1 / -1;
+  padding: 0;
+  background: none;
+  border: none;
+  overflow: visible;
+  gap: 10px;
+}
+.opx-tcol.data .opx-source {
+  border: 1px solid var(--op-3);
+  border-radius: 9px;
+  background: var(--op-1);
+  padding: 9px 12px;
+}
+.opx-ds {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* Exposed settings as wide as in the Designer's inspector. */
+.opx-layer.flat .wk-ctl,
+.opx-layer.flat .pp-fields {
+  max-width: 210px;
 }

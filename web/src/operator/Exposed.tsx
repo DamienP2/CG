@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Italic, Rows3, Strikethrough, Underline } from 'lucide-react';
+import { AlignCenter, AlignJustify, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, Bold, Italic, Rows3, Strikethrough, Underline } from 'lucide-react';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
 import { FontPick } from '../ui/FontPick';
@@ -315,44 +315,85 @@ export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: 
           {numField('@fontSize', { min: 1, suffix: 'px' })}
         </PRow>
       ),
+      // As in the Designer: bold, italic, underline, strike in one row.
+      use('italic', 'decoration') && (
+        <Row key="deco" label={t('Decoration')}>
+          {(() => {
+            const free = (p: Path) => {
+              const f = at.get(p);
+              return f && io.fed(f) === null ? f : undefined;
+            };
+            const wf = free('fontWeight');
+            const it = free('italic');
+            const dec = free('decoration');
+            const d = val('decoration');
+            const items: [string, ReactNode, string, boolean][] = [
+              ...(wf ? [['bold', <Bold key="b" size={13} />, t('Bold'), num(val('fontWeight'), 400) >= 600] as [string, ReactNode, string, boolean]] : []),
+              ...(it ? [['italic', <Italic key="i" size={13} />, t('Italic'), TRUE.has(val('italic'))] as [string, ReactNode, string, boolean]] : []),
+              ...(dec
+                ? ([
+                    ['underline', <Underline key="u" size={13} />, t('Underline'), d === 'underline'],
+                    ['strike', <Strikethrough key="s" size={13} />, t('Strike through'), d === 'lineThrough'],
+                  ] as [string, ReactNode, string, boolean][])
+                : []),
+            ];
+            if (!items.length) return null;
+            return (
+              <div className="segmented">
+                {items.map(([k, icon, title, on]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    title={title}
+                    className={on ? 'on' : ''}
+                    onClick={() => {
+                      if (k === 'bold' && wf) io.set(wf, on ? '400' : '700');
+                      else if (k === 'italic' && it) io.set(it, String(!on));
+                      else if (dec) io.set(dec, on ? 'none' : k === 'underline' ? 'underline' : 'lineThrough');
+                    }}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </Row>
+      ),
       use('lineHeight') && (
         <Row key="lh" label={t('Line height')}>
           {numField('lineHeight', { min: 0.5, max: 4, step: 0.05, precision: 2, suffix: '×' })}
         </Row>
       ),
       use('@letterSpacing') && (
-        <PRow key="ls" label={t('Spacing')}>
+        <PRow key="ls" label={tc('text', 'Spacing')}>
           {numField('@letterSpacing', { precision: 1, suffix: 'px' })}
         </PRow>
       ),
-      use('align', 'justify', 'italic') && (
+      use('align', 'justify') && (
         <Row key="align" label={t('Align')}>
-          {(has('align') || has('justify')) &&
-            ctl(at.has('align') ? 'align' : 'justify', () => (
-              <Segmented
-                key="al"
-                value={justify ? 'justify' : val('align') || 'left'}
-                onChange={(v) => {
-                  const a = at.get('align');
-                  const j = at.get('justify');
-                  if (v === 'justify') return j && io.set(j, 'true');
-                  if (j && justify) io.set(j, 'false');
-                  if (a) io.set(a, v);
-                }}
-                options={[
-                  ...(has('align')
-                    ? [
-                        { value: 'left', label: <AlignLeft size={13} />, title: t('Left') },
-                        { value: 'center', label: <AlignCenter size={13} />, title: t('Centre') },
-                        { value: 'right', label: <AlignRight size={13} />, title: t('Right') },
-                      ]
-                    : []),
-                  ...(has('justify') ? [{ value: 'justify', label: <AlignJustify size={13} />, title: t('Justify (not the last line)') }] : []),
-                ]}
-              />
-            ))}
-          {ctl('italic', (v, set) => (
-            <Segmented key="it" value={TRUE.has(v) ? 'i' : ''} onChange={() => set(String(!TRUE.has(v)))} options={[{ value: 'i', label: <Italic size={13} />, title: t('Italic') }]} />
+          {ctl(at.has('align') ? 'align' : 'justify', () => (
+            <Segmented
+              key="al"
+              value={justify ? 'justify' : val('align') || 'left'}
+              onChange={(v) => {
+                const a = at.get('align');
+                const j = at.get('justify');
+                if (v === 'justify') return j && io.set(j, 'true');
+                if (j && justify) io.set(j, 'false');
+                if (a) io.set(a, v);
+              }}
+              options={[
+                ...(has('align')
+                  ? [
+                      { value: 'left', label: <AlignLeft size={13} />, title: t('Left') },
+                      { value: 'center', label: <AlignCenter size={13} />, title: t('Centre') },
+                      { value: 'right', label: <AlignRight size={13} />, title: t('Right') },
+                    ]
+                  : []),
+                ...(has('justify') ? [{ value: 'justify', label: <AlignJustify size={13} />, title: t('Justify (not the last line)') }] : []),
+              ]}
+            />
           ))}
         </Row>
       ),
@@ -365,7 +406,7 @@ export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: 
           ])}
         </Row>
       ),
-      use('transform', 'decoration') && (
+      use('transform') && (
         <Row key="case" label={t('Case')}>
           {ctl('transform', (v, set) => (
             <Segmented
@@ -377,18 +418,6 @@ export function LayerProperties({ entry, io, flat }: { entry: ExposedLayer; io: 
                 { value: 'upper', label: 'AA', title: t('UPPER CASE') },
                 { value: 'lower', label: 'aa', title: t('lower case') },
                 { value: 'capitalize', label: 'Aa', title: t('Each Word') },
-              ]}
-            />
-          ))}
-          {ctl('decoration', (v, set) => (
-            <Segmented
-              key="dec"
-              value={v || 'none'}
-              onChange={set}
-              options={[
-                { value: 'none', label: '—', title: t('No decoration') },
-                { value: 'underline', label: <Underline size={13} />, title: t('Underline') },
-                { value: 'lineThrough', label: <Strikethrough size={13} />, title: t('Strike through') },
               ]}
             />
           ))}
