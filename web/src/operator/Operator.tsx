@@ -1826,9 +1826,9 @@ function OutTile({ project, item, template, liveAt, step, disabled, onOut }: { p
   );
 }
 
-/** On air, bento: the cells a control takes (Continue, Out: one; a widget: two to four, by its buttons; anything else: the whole row, -1). */
+/** On air, bento: the cells a control takes (Continue, Out: two, for their label and time; a widget: two to four, by its buttons; anything else: the whole row, -1). */
 function cellsOf(el: Element): number {
-  if (el.classList.contains('opx-tile')) return 1;
+  if (el.classList.contains('opx-tile')) return 2;
   if (el.classList.contains('opx-widget') || el.classList.contains('opx-trig')) {
     const n = el.querySelectorAll('button').length;
     return n <= 2 ? 2 : n <= 4 ? 3 : 4;
