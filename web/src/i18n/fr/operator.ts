@@ -525,5 +525,5 @@ export const operator: Record<string, string> = {
   'Show the picture': 'Afficher l’image',
   'Schedule a take…': 'Programmer une prise…',
   'Auto next…': 'Suivant automatique…',
-  'Pause · waits for an event': 'Pause · attend un événement',
+  'Pause · waits for the Logic': 'Pause · attend la Logique',
 };

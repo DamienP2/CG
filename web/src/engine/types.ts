@@ -149,8 +149,8 @@ export interface Marker {
   resume?: Resume;
 }
 
-export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'event'; on: TriggerEvent };
-/** What a pause or the on-air point waits for, watched on air by the server. */
+export type Resume = { type: 'manual' } | { type: 'after'; seconds: number } | { type: 'trigger'; name: string } | { type: 'logic' };
+/** What an event node of the Logic watches on air (the server). */
 export type TriggerEvent =
   | { kind: 'scrollEnd'; layer: string; passes?: number }
   | { kind: 'timerZero'; layer: string }
@@ -359,7 +359,12 @@ export type LogicNodeKind =
   | { type: 'math'; op: MathOp }
   | { type: 'clamp'; min: number; max: number }
   | { type: 'condition'; cmp: Cmp }
-  | { type: 'target'; layer: string; prop: Prop; mode: TargetMode };
+  | { type: 'target'; layer: string; prop: Prop; mode: TargetMode }
+  | { type: 'text'; value: string }
+  | { type: 'event'; on: TriggerEvent }
+  | { type: 'bool'; op: 'and' | 'or' }
+  | { type: 'out' }
+  | { type: 'resume'; marker: string };
 
 export type LogicNode = LogicNodeKind & { id: string; x: number; y: number };
 

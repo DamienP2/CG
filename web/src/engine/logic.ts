@@ -20,7 +20,15 @@ export const INPUTS: Record<LogicNode['type'], string[]> = {
   clamp: ['in'],
   condition: ['a', 'b', 'then', 'else'],
   target: ['in'],
+  text: [],
+  event: [],
+  bool: ['a', 'b'],
+  out: ['when'],
+  resume: ['when'],
 };
+
+/** A value read as true: a number not 0, a text not empty, « false » or « 0 ». */
+const truthy = (v: LVal | undefined) => v !== undefined && (typeof v === 'number' ? v !== 0 : !['', '0', 'false'].includes(v.trim().toLowerCase()));
 
 class Graph {
   nodes = new Map<string, LogicNode>();
@@ -37,7 +45,7 @@ class Graph {
     if (!n) return;
     if (n.type === 'layerProp') out.add(`${n.layer}|${n.prop}`);
     if (n.type === 'textSize') out.add(`${n.layer}|*`);
-    for (const port of ['a', 'b', 'in', 'then', 'else']) {
+    for (const port of ['a', 'b', 'in', 'then', 'else', 'when']) {
       const from = this.inputs.get(`${id}|${port}`);
       if (from) this.reads(from, seen, out);
     }
@@ -126,6 +134,19 @@ class Graph {
       }
       case 'target':
         return input('in') ?? 0;
+      case 'text':
+        return n.value;
+      // Watched on air by the server: not yet happened here.
+      case 'event':
+        return 0;
+      case 'bool': {
+        const a = truthy(input('a'));
+        const b = truthy(input('b'));
+        return (n.op === 'and' ? a && b : a || b) ? 1 : 0;
+      }
+      case 'out':
+      case 'resume':
+        return input('when') ?? 0;
     }
   }
 }

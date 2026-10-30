@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  Link2,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -43,9 +44,7 @@ import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { childrenMap } from '../engine/Scene';
 import { newId, num, propValue } from '../engine/evaluate';
-import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template, type TriggerEvent } from '../engine/types';
-import { Dropdown } from '../ui/Dropdown';
-import { useApp } from '../store';
+import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template } from '../engine/types';
 import { NumberField } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
@@ -55,7 +54,7 @@ import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
 import { confirmDialog } from '../ui/dialogs';
 import { clearKeyframes, clearSelectedKeys, copyAnimation, pasteAnimationOnRow, rowMapping, useClipboard } from './clipboard';
 import { ClipboardMenu, type ClipMenuAt } from './ClipboardMenu';
-import { t, tc } from '../i18n';
+import { t, tc, tn } from '../i18n';
 
 /** Rows shown under an expanded layer, like After Effects' Transform group. */
 const PROP_ROWS: {
@@ -796,13 +795,13 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     {moving ? (
                       <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
                     ) : role === 'onair' ? (
-                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : m.resume?.type === 'event' ? t('Goes out on an event') : t('Holds until Take out')}>
-                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' || m.resume?.type === 'event' ? '⚡' : '∞'}
+                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : m.resume?.type === 'logic' ? t('Goes out when the Logic says so') : t('Holds until Take out')}>
+                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' ? '⚡' : m.resume?.type === 'logic' ? <Link2 size={10} /> : '∞'}
                       </span>
                     ) : (
                       <span>
                         {m.name}
-                        {m.resume?.type === 'after' ? ` · ${m.resume.seconds}s` : m.resume?.type === 'trigger' || m.resume?.type === 'event' ? ' · ⚡' : ''}
+                        {m.resume?.type === 'after' ? ` · ${m.resume.seconds}s` : m.resume?.type === 'trigger' ? ' · ⚡' : m.resume?.type === 'logic' ? ' · ⇆' : ''}
                       </span>
                     )}
                   </div>
@@ -858,9 +857,19 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
     }, coalesce);
   const onAir = m.kind === 'out';
   const resume = m.resume ?? { type: 'manual' };
-  const project = useApp((s) => s.project);
-  const events = useMemo(() => triggerEvents(tpl), [tpl]);
-  const others = (project?.templates ?? []).filter((x) => x.id !== tpl.id);
+  // Its node in the Logic: « Sortir (OUT) » for the IN/OUT point, « Reprendre la pause » for a pause.
+  const ownNode = (l: Template['logic']) => l?.nodes.find((n) => (onAir ? n.type === 'out' : n.type === 'resume' && n.marker === id));
+  const events = (tpl.logic?.nodes ?? []).filter((n) => n.type === 'event').length;
+  const toLogic = () =>
+    st.update((tt) => {
+      const x = tt.markers.find((y) => y.id === id);
+      if (x) x.resume = { type: 'logic' };
+      tt.logic ??= { nodes: [], edges: [] };
+      if (!ownNode(tt.logic)) {
+        const right = Math.max(400, ...tt.logic.nodes.map((n) => n.x + 280));
+        tt.logic.nodes.push(onAir ? { id: newId(), type: 'out', x: right, y: 60 } : { id: newId(), type: 'resume', marker: id, x: right, y: 200 });
+      }
+    });
   return createPortal(
     <div ref={ref} className="menu marker-editor" style={{ position: 'fixed', left: Math.max(8, pos.left), bottom: pos.bottom, top: 'auto' }} onKeyDown={(e) => e.stopPropagation()}>
       <header>
@@ -897,12 +906,12 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               ).map(([k, label]) => (
                 <button
                   key={k}
-                  className={resume.type === k || (k === 'trigger' && resume.type === 'event') ? 'on' : ''}
+                  className={resume.type === k || (k === 'trigger' && resume.type === 'logic') ? 'on' : ''}
                   onClick={() =>
                     edit((x) => {
                       if (k === 'manual') delete x.resume;
                       else if (k === 'after') x.resume = { type: 'after', seconds: resume.type === 'after' ? resume.seconds : onAir ? 5 : 2 };
-                      else if (resume.type !== 'trigger' && resume.type !== 'event') x.resume = { type: 'trigger', name: 'next' };
+                      else if (resume.type !== 'trigger' && resume.type !== 'logic') x.resume = { type: 'trigger', name: 'next' };
                     })
                   }
                 >
@@ -917,15 +926,15 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               <NumberField value={resume.seconds} min={0} step={0.5} suffix="s" onChange={(v) => edit((x) => void (x.resume = { type: 'after', seconds: Math.max(0, v) }), `marker-delay-${id}`)} />
             </label>
           )}
-          {(resume.type === 'trigger' || resume.type === 'event') && (
+          {(resume.type === 'trigger' || resume.type === 'logic') && (
             <div className="me-field">
               <span>{t('By')}</span>
               <div className="seg">
                 <button className={resume.type === 'trigger' ? 'on' : ''} onClick={() => edit((x) => void (x.resume = { type: 'trigger', name: 'next' }))}>
                   {tc('trigger', 'Name')}
                 </button>
-                <button className={resume.type === 'event' ? 'on' : ''} onClick={() => resume.type !== 'event' && events.length > 0 && edit((x) => void (x.resume = { type: 'event', on: events[0].on }))} disabled={!events.length}>
-                  {t('Event')}
+                <button className={resume.type === 'logic' ? 'on' : ''} onClick={() => resume.type !== 'logic' && toLogic()}>
+                  {t('Logic')}
                 </button>
               </div>
             </div>
@@ -936,8 +945,20 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
               <input value={resume.name} placeholder={t('goal, next, line2…')} onChange={(e) => edit((x) => void (x.resume = { type: 'trigger', name: e.target.value }), `marker-trigger-${id}`)} />
             </label>
           )}
-          {resume.type === 'event' && <EventFields on={resume.on} events={events} fields={tpl.fields} templates={others} set={(on, c) => edit((x) => void (x.resume = { type: 'event', on }), c)} />}
-          {resume.type !== 'event' && (
+          {resume.type === 'logic' && (
+            <button
+              className="me-logic"
+              onClick={() => {
+                if (!ownNode(tpl.logic)) toLogic();
+                window.dispatchEvent(new Event('strata:open-logic'));
+                onClose();
+              }}
+            >
+              <Link2 size={14} /> {t('Open the Logic')}
+              <small>{tn(events, '{n} event', '{n} events')}</small>
+            </button>
+          )}
+          {resume.type !== 'logic' && (
           <p className="hint">
             {onAir
               ? resume.type === 'manual'
@@ -968,86 +989,6 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
       </>
     </div>,
     document.body,
-  );
-}
-
-/** The events a template can wait for: its layers' (a ticker, a timer, a video…), its data sets', its values', another graphic. */
-function triggerEvents(tpl: Template): { on: TriggerEvent; label: string; group: string }[] {
-  const out: { on: TriggerEvent; label: string; group: string }[] = [];
-  for (const l of tpl.layers) {
-    const x = l as Layer & { timerMode?: string; mode?: string; frames?: string[]; video?: boolean };
-    if (l.type === 'ticker') out.push({ on: { kind: 'scrollEnd', layer: l.id, passes: 1 }, label: t('End of the scroll'), group: l.name });
-    else if (l.type === 'credits') out.push({ on: { kind: 'scrollEnd', layer: l.id }, label: t('End of the credits'), group: l.name });
-    else if (l.type === 'clock' && (x.timerMode || x.mode === 'countdown' || x.mode === 'stopwatch')) {
-      out.push({ on: { kind: 'timerZero', layer: l.id }, label: t('Reaches zero'), group: l.name });
-      out.push({ on: { kind: 'timerAt', layer: l.id, seconds: 10 }, label: t('Reaches a time'), group: l.name });
-    } else if (l.type === 'image' && (x.video || (x.frames?.length ?? 0) > 0)) out.push({ on: { kind: 'videoEnd', layer: l.id }, label: t('End of the video'), group: l.name });
-  }
-  for (const d of tpl.datasets ?? []) out.push({ on: { kind: 'lastRow', dataset: d.key }, label: t('Last row shown'), group: d.name });
-  const key = tpl.fields[0]?.key;
-  if (key) {
-    out.push({ on: { kind: 'dataChange', key }, label: t('A value changes'), group: t('Data') });
-    out.push({ on: { kind: 'dataIs', key, op: '=', value: '' }, label: t('A value meets a condition'), group: t('Data') });
-  }
-  out.push({ on: { kind: 'graphic', template: '' }, label: t('Goes on air'), group: t('Another graphic') });
-  out.push({ on: { kind: 'graphic', template: '', out: true }, label: t('Goes out'), group: t('Another graphic') });
-  return out;
-}
-
-/** Which of the events it is (its kind and what it watches; not its settings). */
-const eventId = (on: TriggerEvent) => `${on.kind}|${'layer' in on ? on.layer : 'dataset' in on ? on.dataset : on.kind === 'graphic' ? (on.out ? 'out' : 'in') : ''}`;
-
-/** The event a pause or the on-air point waits for, and its settings. */
-function EventFields({ on, events, fields, templates, set }: { on: TriggerEvent; events: { on: TriggerEvent; label: string; group: string }[]; fields: Template['fields']; templates: Template[]; set: (on: TriggerEvent, coalesce?: string) => void }) {
-  const ops = ['=', '!=', '>', '<', '>=', '<=', 'contains'];
-  const keys = fields.map((f) => ({ value: f.key, label: f.label || f.key }));
-  return (
-    <>
-      <div className="me-field">
-        <span>{t('When')}</span>
-        <Dropdown
-          value={eventId(on)}
-          options={events.map((e) => ({ value: eventId(e.on), label: e.label, group: e.group }))}
-          onChange={(v) => {
-            const e = events.find((x) => eventId(x.on) === v);
-            if (e) set(on.kind === 'dataChange' || on.kind === 'dataIs' ? ('key' in e.on ? { ...e.on, key: on.key } : e.on) : e.on);
-          }}
-        />
-      </div>
-      {on.kind === 'scrollEnd' && on.passes !== undefined && (
-        <label className="me-field">
-          <span>{t('Passes')}</span>
-          <NumberField value={on.passes} min={1} step={1} onChange={(v) => set({ ...on, passes: Math.max(1, Math.round(v)) }, 'ev-passes')} />
-        </label>
-      )}
-      {on.kind === 'timerAt' && (
-        <label className="me-field">
-          <span>{t('At')}</span>
-          <NumberField value={on.seconds} min={0} step={1} suffix="s" onChange={(v) => set({ ...on, seconds: Math.max(0, v) }, 'ev-secs')} />
-        </label>
-      )}
-      {(on.kind === 'dataChange' || on.kind === 'dataIs') && (
-        <div className="me-field">
-          <span>{t('Value')}</span>
-          <Dropdown value={on.key} options={keys} onChange={(k) => set({ ...on, key: k })} />
-        </div>
-      )}
-      {on.kind === 'dataIs' && (
-        <div className="me-field">
-          <span>{t('If')}</span>
-          <div className="me-cond">
-            <Dropdown value={on.op} options={ops.map((o) => ({ value: o, label: o === 'contains' ? t('contains') : o.replace('!=', '≠').replace('>=', '≥').replace('<=', '≤') }))} onChange={(o) => set({ ...on, op: o })} />
-            <input value={on.value} onChange={(e) => set({ ...on, value: e.target.value }, 'ev-value')} />
-          </div>
-        </div>
-      )}
-      {on.kind === 'graphic' && (
-        <div className="me-field">
-          <span>{t('Graphic')}</span>
-          <Dropdown value={on.template} placeholder={t('Choose…')} options={templates.map((x) => ({ value: x.id, label: x.name }))} onChange={(v) => set({ ...on, template: v })} />
-        </div>
-      )}
-    </>
   );
 }
 

@@ -1,12 +1,13 @@
-import { Calculator, Crosshair, Hash, Link2, Split, Target, TextCursorInput, Trash2 } from 'lucide-react';
+import { Ampersand, ArrowLeftRight, Calculator, Crosshair, Diamond, Hash, Link2, Pause, Play, Rows3, Split, Square, SquareStack, Target, TextCursorInput, Timer, Trash2, Type } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMemo, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
 import { INPUTS, measureLayer, nodeValues, type LVal } from '../engine/logic';
-import { COLOR_PROPS, PROPS, TEXT_LIKE, type Cmp, type Layer, type Logic, type LogicNode, type MathOp, type Prop, type Template, type TextMetric } from '../engine/types';
+import { COLOR_PROPS, PROPS, TEXT_LIKE, type Cmp, type Layer, type Logic, type LogicNode, type MathOp, type Prop, type Template, type TextMetric, type TriggerEvent } from '../engine/types';
 import { CanvasHeader } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
-import { NumberField } from '../ui/fields';
+import { NumberField, Segmented, TextInput } from '../ui/fields';
+import { useApp } from '../store';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
@@ -24,23 +25,43 @@ const NODE_W = 210;
 const HEAD = 30;
 const ROW = 24;
 
-/** Node kinds, by category (the palette's sections and the nodes' colors). */
-export const KINDS: { type: LogicNode['type']; label: string; cat: 'input' | 'op' | 'output'; icon: typeof Hash }[] = [
+/** Node kinds, by category (the palette's sections and the nodes' colors). An event node per event (`ev`). */
+type Cat = 'input' | 'event' | 'op' | 'output' | 'air';
+export const KINDS: { type: LogicNode['type']; ev?: TriggerEvent['kind']; label: string; cat: Cat; icon: typeof Hash }[] = [
   { type: 'layerProp', label: 'Layer property', cat: 'input', icon: Crosshair },
   { type: 'field', label: 'Data field', cat: 'input', icon: TextCursorInput },
   { type: 'constant', label: 'Number', cat: 'input', icon: Hash },
+  { type: 'text', label: 'Text', cat: 'input', icon: Type },
+  { type: 'event', ev: 'scrollEnd', label: 'End of the scroll', cat: 'event', icon: ArrowLeftRight },
+  { type: 'event', ev: 'timerZero', label: 'Timer', cat: 'event', icon: Timer },
+  { type: 'event', ev: 'videoEnd', label: 'End of the video', cat: 'event', icon: Play },
+  { type: 'event', ev: 'lastRow', label: 'Last row', cat: 'event', icon: Rows3 },
+  { type: 'event', ev: 'dataChange', label: 'Value changes', cat: 'event', icon: Diamond },
+  { type: 'event', ev: 'graphic', label: 'Another graphic', cat: 'event', icon: SquareStack },
   { type: 'math', label: 'Math', cat: 'op', icon: Calculator },
   { type: 'clamp', label: 'Clamp', cat: 'op', icon: Split },
   { type: 'condition', label: 'Condition', cat: 'op', icon: Split },
+  { type: 'bool', label: 'And / Or', cat: 'op', icon: Ampersand },
   { type: 'target', label: 'Set property', cat: 'output', icon: Target },
+  { type: 'out', label: 'Take out (OUT)', cat: 'air', icon: Square },
+  { type: 'resume', label: 'Resume the pause', cat: 'air', icon: Pause },
 ];
-const CATS: { id: 'input' | 'op' | 'output'; label: string }[] = [
+const CATS: { id: Cat; label: string }[] = [
   { id: 'input', label: 'Inputs' },
+  { id: 'event', label: 'Events' },
   { id: 'op', label: 'Operations' },
   { id: 'output', label: 'Output' },
+  { id: 'air', label: 'On air' },
 ];
+/** The event an event node's kind stands for (a timer at a time is the Timer node). */
+const evKind = (on: TriggerEvent) => (on.kind === 'timerAt' ? 'timerZero' : on.kind === 'dataIs' ? 'dataChange' : on.kind);
 /** A node's kind (a text measurement is a Layer property). */
-export const kindOf = (n: LogicNode) => KINDS.find((k) => k.type === (n.type === 'textSize' ? 'layerProp' : n.type))!;
+export const kindOf = (n: LogicNode) => KINDS.find((k) => k.type === (n.type === 'textSize' ? 'layerProp' : n.type) && (n.type !== 'event' || k.ev === evKind(n.on)))!;
+
+/** Layers an event can watch. */
+const timerLayer = (l: Layer) => l.type === 'clock' && !!((l as { timerMode?: string }).timerMode || ['countdown', 'stopwatch'].includes((l as { mode?: string }).mode ?? ''));
+const videoLayer = (l: Layer) => l.type === 'image' && !!((l as { video?: boolean }).video || ((l as { frames?: string[] }).frames?.length ?? 0) > 0);
+const scrollLayer = (l: Layer) => l.type === 'ticker' || l.type === 'credits';
 
 const MATH: { value: MathOp; label: string }[] = [
   { value: 'add', label: 'A + B' },
@@ -95,7 +116,7 @@ const METRICS: { value: TextMetric; label: string }[] = [
   { value: 'chars', label: 'Characters' },
 ];
 
-export function makeNode(type: LogicNode['type'], t: Template, x: number, y: number): LogicNode {
+export function makeNode(type: LogicNode['type'], t: Template, x: number, y: number, ev?: TriggerEvent['kind']): LogicNode {
   const first = t.layers[0]?.id ?? '';
   const text = t.layers.find((l) => l.type === 'text')?.id ?? first;
   const base = { id: newId(), x, y };
@@ -116,6 +137,30 @@ export function makeNode(type: LogicNode['type'], t: Template, x: number, y: num
       return { ...base, type, cmp: 'gt' };
     case 'target':
       return { ...base, type, layer: first, prop: 'width', mode: 'set' };
+    case 'text':
+      return { ...base, type, value: '' };
+    case 'bool':
+      return { ...base, type, op: 'or' };
+    case 'out':
+      return { ...base, type };
+    case 'resume':
+      return { ...base, type, marker: t.markers.find((m) => m.kind === 'pause')?.id ?? '' };
+    case 'event': {
+      const of = (f: (l: Layer) => boolean) => t.layers.find(f)?.id ?? '';
+      const on: TriggerEvent =
+        ev === 'timerZero'
+          ? { kind: 'timerZero', layer: of(timerLayer) }
+          : ev === 'videoEnd'
+            ? { kind: 'videoEnd', layer: of(videoLayer) }
+            : ev === 'lastRow'
+              ? { kind: 'lastRow', dataset: t.datasets?.[0]?.key ?? '' }
+              : ev === 'dataChange'
+                ? { kind: 'dataChange', key: t.fields[0]?.key ?? '' }
+                : ev === 'graphic'
+                  ? { kind: 'graphic', template: '' }
+                  : { kind: 'scrollEnd', layer: of(scrollLayer), passes: 1 };
+      return { ...base, type, on };
+    }
   }
 }
 
@@ -210,10 +255,90 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
         </>
       );
     }
+    case 'text':
+      return <TextInput value={n.value} onChange={(value) => setNode(n.id, { value }, `logic-v-${n.id}`)} />;
+    case 'bool':
+      return (
+        <Segmented
+          value={n.op}
+          onChange={(op) => setNode(n.id, { op })}
+          options={[
+            { value: 'and', label: t('And') },
+            { value: 'or', label: t('Or') },
+          ]}
+        />
+      );
+    case 'out':
+      return null;
+    case 'resume':
+      return <Dropdown value={n.marker} placeholder={t('Choose a pause')} options={template.markers.filter((m) => m.kind === 'pause').map((m) => ({ value: m.id, label: m.name || t('Pause') }))} onChange={(marker) => setNode(n.id, { marker })} />;
+    case 'event':
+      return <EventBody n={n} template={template} set={(on, key) => setNode(n.id, { on } as Partial<LogicNode>, key)} />;
   }
 }
 
-export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' ? port.toUpperCase() : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port) ?? port);
+/** What an event node watches: its layer, data set, value or graphic, and its settings. */
+function EventBody({ n, template, set }: { n: Extract<LogicNode, { type: 'event' }>; template: Template; set: (on: TriggerEvent, key?: string) => void }) {
+  const project = useApp((s) => s.project);
+  const on = n.on;
+  const layers = (f: (l: Layer) => boolean) => template.layers.filter(f).map((l) => ({ value: l.id, label: l.name }));
+  const fields = template.fields.map((f) => ({ value: f.key, label: f.label || f.key }));
+  switch (on.kind) {
+    case 'scrollEnd': {
+      const ticker = template.layers.find((l) => l.id === on.layer)?.type === 'ticker';
+      return (
+        <>
+          <Dropdown value={on.layer} placeholder={t('Choose a layer')} options={layers(scrollLayer)} onChange={(layer) => set({ ...on, layer, passes: template.layers.find((l) => l.id === layer)?.type === 'ticker' ? (on.passes ?? 1) : undefined })} />
+          {ticker && (
+            <label className="ln-row">
+              <span>{t('Passes')}</span>
+              <NumberField value={on.passes ?? 1} min={1} step={1} onChange={(v) => set({ ...on, passes: Math.max(1, Math.round(v)) }, `logic-v-${n.id}`)} />
+            </label>
+          )}
+        </>
+      );
+    }
+    case 'timerZero':
+    case 'timerAt':
+      return (
+        <>
+          <Dropdown value={on.layer} placeholder={t('Choose a layer')} options={layers(timerLayer)} onChange={(layer) => set({ ...on, layer })} />
+          <Segmented
+            value={on.kind}
+            onChange={(k) => set(k === 'timerAt' ? { kind: 'timerAt', layer: on.layer, seconds: 10 } : { kind: 'timerZero', layer: on.layer })}
+            options={[
+              { value: 'timerZero', label: t('At zero') },
+              { value: 'timerAt', label: t('At a time') },
+            ]}
+          />
+          {on.kind === 'timerAt' && <NumberField value={on.seconds} min={0} step={1} suffix="s" onChange={(v) => set({ ...on, seconds: Math.max(0, v) }, `logic-v-${n.id}`)} />}
+        </>
+      );
+    case 'videoEnd':
+      return <Dropdown value={on.layer} placeholder={t('Choose a layer')} options={layers(videoLayer)} onChange={(layer) => set({ ...on, layer })} />;
+    case 'lastRow':
+      return <Dropdown value={on.dataset} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => set({ ...on, dataset })} />;
+    case 'dataChange':
+    case 'dataIs':
+      return <Dropdown value={on.key} placeholder={t('Choose a field')} options={fields} onChange={(key) => set({ kind: 'dataChange', key })} />;
+    case 'graphic':
+      return (
+        <>
+          <Dropdown value={on.template} placeholder={t('Choose a graphic')} options={(project?.templates ?? []).filter((x) => x.id !== template.id).map((x) => ({ value: x.id, label: x.name }))} onChange={(tpl) => set({ ...on, template: tpl })} />
+          <Segmented
+            value={on.out ? 'out' : 'in'}
+            onChange={(v) => set({ ...on, out: v === 'out' || undefined })}
+            options={[
+              { value: 'in', label: t('Comes in') },
+              { value: 'out', label: t('Goes out') },
+            ]}
+          />
+        </>
+      );
+  }
+}
+
+export const inputLabel = (n: LogicNode, port: string) => t((n.type === 'condition' ? { a: 'A', b: 'B', then: 'then', else: 'else' }[port] : n.type === 'math' || n.type === 'bool' ? port.toUpperCase() : port === 'when' ? 'When' : port === 'in' ? (n.type === 'target' ? 'value' : 'in') : port) ?? port);
 
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const { template, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
@@ -260,7 +385,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const arrange = () => {
     const size = measureNodes(cv.ref.current);
     const at = autoLayout(
-      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: n.type === 'target' ? ('end' as const) : undefined })),
+      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: n.type === 'target' || n.type === 'out' || n.type === 'resume' ? ('end' as const) : undefined })),
       logic.edges,
       { tightSources: true },
     );
@@ -270,12 +395,12 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     });
   };
 
-  const add = (type: LogicNode['type']) => {
+  const add = (type: LogicNode['type'], ev?: TriggerEvent['kind']) => {
     const v = cv.visible();
     const x = Math.round(v.x + 60 + ((logic.nodes.length * 30) % 300));
     const y = Math.round(v.y + 60 + ((logic.nodes.length * 40) % 360));
     const at = freeSpot(document.querySelector('.logic-editor:not(.data-canvas) .logic-canvas'), { x, y });
-    const n = makeNode(type, template, at.x, at.y);
+    const n = makeNode(type, template, at.x, at.y, ev);
     edit((l) => void l.nodes.push(n));
     setSelected(n.id);
   };
@@ -334,7 +459,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
             <div key={c.id} className="lp-group">
               <div className="dc-pal-title">{t(c.label)}</div>
               {KINDS.filter((k) => k.cat === c.id).map((k) => (
-                <button key={k.type} onClick={() => add(k.type)} className={`cat-${k.cat}`}>
+                <button key={`${k.type}-${k.ev ?? ''}`} onClick={() => add(k.type, k.ev)} className={`cat-${k.cat}`}>
                   <k.icon size={14} />
                   <strong>{t(k.label)}</strong>
                 </button>
@@ -402,7 +527,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                     >
                       <Trash2 size={11} />
                     </button>
-                    {n.type !== 'target' && <span className="port out" title={t('Drag to an input')} onPointerDown={(e) => startWire(e, n.id)} />}
+                    {n.type !== 'target' && n.type !== 'out' && n.type !== 'resume' && <span className="port out" title={t('Drag to an input')} onPointerDown={(e) => startWire(e, n.id)} />}
                   </div>
                   {INPUTS[n.type].map((port) => (
                     <div key={port} className="ln-input" style={{ height: ROW }}>

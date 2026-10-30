@@ -83,10 +83,10 @@ pub struct PlayoutItem {
     /// The graphic this one replaced in a « Fade » zone, fading out under it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leaving: Option<Box<Leaving>>,
-    /// What an event it waits for was when it began waiting (a value that
-    /// changes, another graphic going out), at this frame.
+    /// What the events its Logic watches were when it began waiting (a
+    /// value that changes, another graphic going out), by node, at this frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub watch: Option<(f64, String)>,
+    pub watch: Option<(f64, BTreeMap<String, String>)>,
 }
 
 /// Text widths for the events that need them (a crawl's passes): the
@@ -744,21 +744,30 @@ fn hold_target(template: &Template, from: f64) -> f64 {
 
 /// Plays on from the stop the item holds at (or is heading to). Holding on
 /// air waits for Take out; nothing happens while the out animation moves.
-/// The value an event watches changed since the graphic began waiting
+/// The value an event node watches changed since the graphic began waiting
 /// (the first look only notes it).
-fn changed_since(item: &mut PlayoutItem, value: String) -> bool {
-    match &item.watch {
-        Some((at, was)) if (*at - item.frame).abs() < 1e-6 => *was != value,
-        _ => {
-            item.watch = Some((item.frame, value));
+fn changed_since(item: &mut PlayoutItem, id: &str, value: String) -> bool {
+    if item
+        .watch
+        .as_ref()
+        .is_none_or(|(at, _)| (*at - item.frame).abs() >= 1e-6)
+    {
+        item.watch = Some((item.frame, BTreeMap::new()));
+    }
+    let seen = &mut item.watch.as_mut().expect("just set").1;
+    match seen.get(id) {
+        Some(was) => *was != value,
+        None => {
+            seen.insert(id.to_string(), value);
             false
         }
     }
 }
 
-/// The event a pause or the on-air point waits for has happened.
+/// The event of a Logic node (`id`) has happened on air.
 #[allow(clippy::too_many_arguments)]
 fn happened(
+    id: &str,
     on: &TriggerEvent,
     t: &Template,
     item: &mut PlayoutItem,
@@ -848,7 +857,7 @@ fn happened(
         }
         TriggerEvent::DataChange { key } => {
             let v = data.get(key).cloned().unwrap_or_default();
-            changed_since(item, v)
+            changed_since(item, id, v)
         }
         TriggerEvent::DataIs { key, op, value } => {
             TriggerEvent::holds(op, data.get(key).map(String::as_str).unwrap_or(""), value)
@@ -859,18 +868,18 @@ fn happened(
                 return now_on;
             }
             // Out: once seen on air since it began waiting.
-            match &item.watch {
-                Some((at, was)) if (*at - item.frame).abs() < 1e-6 => {
-                    if now_on && was == "0" {
-                        item.watch = Some((item.frame, "1".into()));
-                    }
-                    !now_on && item.watch.as_ref().is_some_and(|w| w.1 == "1")
+            let seen = format!("{id}:seen");
+            if now_on {
+                changed_since(item, &seen, "1".into());
+                if let Some((_, w)) = &mut item.watch {
+                    w.insert(seen, "1".into());
                 }
-                _ => {
-                    item.watch = Some((item.frame, if now_on { "1" } else { "0" }.into()));
-                    false
-                }
+                return false;
             }
+            changed_since(item, &seen, "0".into());
+            item.watch
+                .as_ref()
+                .is_some_and(|(_, w)| w.get(&seen).is_some_and(|v| v == "1"))
         }
     }
 }
@@ -1558,8 +1567,9 @@ impl ChannelState {
         out
     }
 
-    /// The pauses and on-air points waiting for an event (`Resume::Event`)
-    /// that has happened go on, or out. Returns what fired (for the as-run log).
+    /// The pauses and on-air points set to « Logique » (`Resume::Logic`) go
+    /// on, or out, when the template's Logic says so: its event nodes are
+    /// watched here. Returns what went (for the as-run log).
     pub fn event_resumes(
         &mut self,
         project: &Project,
@@ -1587,18 +1597,24 @@ impl ChannelState {
             };
             let on_point = item.phase == Phase::Holding && item.frame >= t.hold_frame() - 1e-6;
             let waits = if on_point {
-                t.markers
-                    .iter()
-                    .find(|m| m.kind == MarkerKind::Out)
-                    .map(|m| &m.resume)
+                t.markers.iter().find(|m| m.kind == MarkerKind::Out)
             } else {
-                t.pause_at(item.frame).map(|m| &m.resume)
+                t.pause_at(item.frame)
             };
-            let Some(Resume::Event { on }) = waits else {
+            let Some(marker) = waits.filter(|w| w.resume == Resume::Logic) else {
                 item.watch = None;
                 continue;
             };
-            if !happened(on, t, item, &on_air, now, fps, default_tz, m) {
+            let data = shown_data(item).into_owned();
+            let actions = crate::logic::air_actions(&t.logic, &data, &mut |id, on| {
+                happened(id, on, t, item, &on_air, now, fps, default_tz, m)
+            });
+            let go = if on_point {
+                actions.contains(&crate::logic::AirAction::Out)
+            } else {
+                actions.contains(&crate::logic::AirAction::Resume(marker.id.clone()))
+            };
+            if !go {
                 continue;
             }
             item.watch = None;
@@ -2147,18 +2163,58 @@ mod tests {
         assert_eq!(ch.layers[&1].phase, Phase::Out);
     }
 
+    /// A Logic graph: its nodes and wires (from, to, port).
+    fn graph(
+        nodes: Vec<(&str, crate::logic::NodeKind)>,
+        edges: &[(&str, &str, &str)],
+    ) -> crate::logic::Logic {
+        crate::logic::Logic {
+            nodes: nodes
+                .into_iter()
+                .map(|(id, kind)| crate::logic::Node {
+                    id: id.into(),
+                    kind,
+                    x: 0.0,
+                    y: 0.0,
+                })
+                .collect(),
+            edges: edges
+                .iter()
+                .map(|(f, t, p)| crate::logic::Edge {
+                    from: (*f).into(),
+                    to: (*t).into(),
+                    port: (*p).into(),
+                })
+                .collect(),
+        }
+    }
+
     #[test]
-    fn an_event_takes_out_on_air() {
+    fn the_logic_takes_out_on_air() {
+        use crate::logic::{Cmp, NodeKind};
         let mut p = project();
         let t = &mut p.templates[0];
         t.markers.retain(|m| m.kind == MarkerKind::Out);
-        t.markers[0].resume = Resume::Event {
-            on: TriggerEvent::DataIs {
-                key: "status".into(),
-                op: "=".into(),
-                value: "Final".into(),
-            },
-        };
+        t.markers[0].resume = Resume::Logic;
+        t.logic = graph(
+            vec![
+                (
+                    "f",
+                    NodeKind::Field {
+                        key: "status".into(),
+                    },
+                ),
+                (
+                    "v",
+                    NodeKind::Text {
+                        value: "final".into(),
+                    },
+                ),
+                ("c", NodeKind::Condition { cmp: Cmp::Eq }),
+                ("o", NodeKind::Out {}),
+            ],
+            &[("f", "c", "a"), ("v", "c", "b"), ("c", "o", "when")],
+        );
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
         let mut w = EstimatedWidth;
@@ -2178,15 +2234,36 @@ mod tests {
     }
 
     #[test]
-    fn an_event_on_a_change_waits_for_the_change() {
+    fn an_event_node_waits_for_the_change() {
+        use crate::logic::{BoolOp, NodeKind};
         let mut p = project();
         let t = &mut p.templates[0];
         t.markers.retain(|m| m.kind == MarkerKind::Out);
-        t.markers[0].resume = Resume::Event {
-            on: TriggerEvent::DataChange {
-                key: "score".into(),
-            },
-        };
+        t.markers[0].resume = Resume::Logic;
+        t.logic = graph(
+            vec![
+                (
+                    "e",
+                    NodeKind::Event {
+                        on: TriggerEvent::DataChange {
+                            key: "score".into(),
+                        },
+                    },
+                ),
+                (
+                    "g",
+                    NodeKind::Event {
+                        on: TriggerEvent::Graphic {
+                            template: "other".into(),
+                            out: false,
+                        },
+                    },
+                ),
+                ("or", NodeKind::Bool { op: BoolOp::Or }),
+                ("o", NodeKind::Out {}),
+            ],
+            &[("e", "or", "a"), ("g", "or", "b"), ("or", "o", "when")],
+        );
         let mut ch = ChannelState::default();
         take(&mut ch, &p);
         ch.layers
@@ -2207,6 +2284,29 @@ mod tests {
             .insert("score".into(), "2".into());
         ch.event_resumes(&p, "UTC", &mut w);
         assert_eq!(ch.layers[&1].phase, Phase::Out);
+    }
+
+    #[test]
+    fn without_logic_on_the_marker_the_graph_does_nothing() {
+        use crate::logic::NodeKind;
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.markers.retain(|m| m.kind == MarkerKind::Out);
+        t.logic = graph(
+            vec![
+                ("n", NodeKind::Constant { value: 1.0 }),
+                ("o", NodeKind::Out {}),
+            ],
+            &[("n", "o", "when")],
+        );
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        let mut w = EstimatedWidth;
+        for _ in 0..90 {
+            ch.tick(1.0);
+            ch.event_resumes(&p, "UTC", &mut w);
+        }
+        assert_eq!(ch.layers[&1].phase, Phase::Holding);
     }
 
     #[test]

@@ -1011,11 +1011,12 @@ pub enum Resume {
     After { seconds: f64 },
     /// When this trigger is fired (by the operator, the API, Companion…).
     Trigger { name: String },
-    /// When something happens on air: the server watches it and goes on by itself.
-    Event { on: TriggerEvent },
+    /// When the template's Logic says so (its « Sortir » or « Reprendre la
+    /// pause » node, wired to events the server watches on air).
+    Logic,
 }
 
-/// What a pause or the on-air point waits for, watched on air by the server.
+/// What an event node of the Logic watches on air (the server).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TriggerEvent {

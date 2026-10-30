@@ -132,7 +132,44 @@ pub enum NodeKind {
         #[serde(default)]
         mode: TargetMode,
     },
+    /// A text (compared with a data field).
+    Text {
+        #[serde(default)]
+        value: String,
+    },
+    /// 1 when the event has happened on air (watched by the server; 0 elsewhere).
+    Event {
+        on: crate::model::TriggerEvent,
+    },
+    /// Inputs `a` and `b`: 1 when both (and) or either (or) are true.
+    Bool {
+        op: BoolOp,
+    },
+    /// On air: the graphic goes out when input `when` is true (its IN/OUT
+    /// point set to « Logique »).
+    Out {},
+    /// On air: the pause `marker` plays on when input `when` is true.
+    Resume {
+        marker: String,
+    },
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BoolOp {
+    And,
+    Or,
+}
+
+/// What the graph asks of a graphic on air.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AirAction {
+    Out,
+    Resume(String),
+}
+
+/// Whether an event node's event has happened: (node id, event).
+pub type Events<'a> = dyn FnMut(&str, &crate::model::TriggerEvent) -> bool + 'a;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -209,19 +246,21 @@ impl<'a> Graph<'a> {
             }
             _ => {}
         }
-        for port in ["a", "b", "in", "then", "else"] {
+        for port in ["a", "b", "in", "then", "else", "when"] {
             if let Some(from) = self.inputs.get(&(id, port)) {
                 self.reads(from, seen, out);
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn eval(
         &self,
         id: &str,
         values: &Values,
         data: &Data,
         measure: &mut Measure,
+        events: &mut Events,
         depth: usize,
     ) -> LVal {
         let Some(n) = self.nodes.get(id) else {
@@ -233,7 +272,7 @@ impl<'a> Graph<'a> {
         let mut input = |port: &str| -> Option<LVal> {
             self.inputs
                 .get(&(id, port))
-                .map(|from| self.eval(from, values, data, measure, depth + 1))
+                .map(|from| self.eval(from, values, data, measure, events, depth + 1))
         };
         match &n.kind {
             NodeKind::LayerProp { layer, prop } => LVal::Num(
@@ -306,8 +345,60 @@ impl<'a> Graph<'a> {
                 }))
             }
             NodeKind::Target { .. } => input("in").unwrap_or(LVal::Num(0.0)),
+            NodeKind::Text { value } => LVal::Text(value.clone()),
+            NodeKind::Event { on } => LVal::Num(if events(id, on) { 1.0 } else { 0.0 }),
+            NodeKind::Bool { op } => {
+                let a = input("a").is_some_and(|v| truthy(&v));
+                let b = input("b").is_some_and(|v| truthy(&v));
+                LVal::Num(match op {
+                    BoolOp::And => (a && b) as u8 as f64,
+                    BoolOp::Or => (a || b) as u8 as f64,
+                })
+            }
+            NodeKind::Out {} | NodeKind::Resume { .. } => input("when").unwrap_or(LVal::Num(0.0)),
         }
     }
+}
+
+/// A value read as true: a number not 0, a text not empty, « false » or « 0 ».
+fn truthy(v: &LVal) -> bool {
+    match v {
+        LVal::Num(n) => *n != 0.0,
+        LVal::Text(t) => {
+            let t = t.trim();
+            !t.is_empty() && t != "0" && !t.eq_ignore_ascii_case("false")
+        }
+    }
+}
+
+/// What the graph's « On air » nodes ask now: out, or a pause playing on.
+/// `events` says whether an event node's event has happened.
+pub fn air_actions(logic: &Logic, data: &Data, events: &mut Events) -> Vec<AirAction> {
+    let g = Graph::new(logic);
+    let values = Values::new();
+    let mut measure = |_: &str, _: &BTreeMap<Prop, Value>, _: TextMetric| 0.0;
+    let mut out = Vec::new();
+    for n in &logic.nodes {
+        let action = match &n.kind {
+            NodeKind::Out {} => AirAction::Out,
+            NodeKind::Resume { marker } => AirAction::Resume(marker.clone()),
+            _ => continue,
+        };
+        if g.inputs.contains_key(&(n.id.as_str(), "when"))
+            && truthy(&g.eval(&n.id, &values, data, &mut measure, events, 0))
+        {
+            out.push(action);
+        }
+    }
+    out
+}
+
+/// The graph has « On air » nodes (the server evaluates it on air).
+pub fn drives_air(logic: &Logic) -> bool {
+    logic
+        .nodes
+        .iter()
+        .any(|n| matches!(n.kind, NodeKind::Out {} | NodeKind::Resume { .. }))
 }
 
 /// Applies the graph's targets to `values`, in dependency order (a target
@@ -370,7 +461,7 @@ pub fn apply(logic: &Logic, values: &mut Values, data: &Data, measure: &mut Meas
         if !g.inputs.contains_key(&(t.id.as_str(), "in")) {
             continue;
         }
-        let v = g.eval(&t.id, values, data, measure, 0);
+        let v = g.eval(&t.id, values, data, measure, &mut |_, _| false, 0);
         let Some(layer_values) = values.get_mut(layer) else {
             continue;
         };

@@ -21025,3 +21025,64 @@ textarea.tx-grow {
   overflow-wrap: anywhere;
   padding: 5px 0;
 }
+
+/* Logic · events (watched on air) and what they do on air. */
+.cat-event,
+.logic-node.cat-event {
+  --kind: #c084fc;
+}
+.cat-air,
+.logic-node.cat-air {
+  --kind: var(--live);
+}
+.logic-palette button.cat-event,
+.logic-palette button.cat-air {
+  align-items: center;
+  padding: 7px 9px;
+}
+.logic-palette button.cat-event > svg,
+.logic-palette button.cat-air > svg {
+  color: var(--kind);
+}
+.ln-body .segmented,
+.ln-body .ln-row,
+.ln-body > .pp-field,
+.ln-body > input {
+  margin-top: 6px;
+}
+.ln-body .segmented:first-child,
+.ln-body > input:first-child {
+  margin-top: 0;
+}
+.ln-body .ln-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+/* The marker set to « Logique »: its way to the canvas. */
+.marker-editor .me-logic {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, #c084fc 45%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, #c084fc 10%, transparent);
+  color: #c084fc;
+  font-weight: 600;
+  cursor: pointer;
+}
+.marker-editor .me-logic small {
+  margin-left: auto;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.ln-body .segmented {
+  display: flex;
+}
+.ln-body .segmented button {
+  flex: 1;
+}

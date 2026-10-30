@@ -441,6 +441,12 @@ export const Designer = memo(function Designer() {
   useEffect(() => setTopSlot(document.getElementById('topbar-slot')), []);
   const [showZones, setShowZones] = useDisplayPref('designer.zones', true);
   const [logicOpen, setLogicOpen] = useState(false);
+  // A marker set to « Logique » opens it.
+  useEffect(() => {
+    const open = () => setLogicOpen(true);
+    window.addEventListener('strata:open-logic', open);
+    return () => window.removeEventListener('strata:open-logic', open);
+  }, []);
   const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
   // Panel sizes, adjustable with the splitters.
   const [layout, setLayout] = useLayout('designer.layout', {
