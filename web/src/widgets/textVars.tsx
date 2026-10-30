@@ -3,7 +3,7 @@
 // picture in the line (<img=src|height>, engine/rich.ts) the Operator may
 // change when exposed. The chips of the box are selected to set them here.
 import { useState, type ReactNode } from 'react';
-import { Braces, ImagePlus, Radio, Trash2 } from 'lucide-react';
+import { ImagePlus, Radio, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useDesigner } from '../designer/designerStore';
 import { AssetLibrary } from '../designer/AssetPicker';
@@ -40,8 +40,14 @@ export function useTextTokens(layerId: string | undefined, markup: string, setMa
         const key = single(src);
         return `▣ ${key ? (field(key)?.label ?? key) : fileName(src)}`;
       }
+      // A variable shows its text (the value set so far); its name in the tooltip.
       const key = single(tok)!;
-      return field(key)?.label ?? key;
+      const f = field(key);
+      return f?.default || f?.label || key;
+    },
+    title: (tok) => {
+      const key = single(tok);
+      return key ? (field(key)?.label ?? key) : '';
     },
     selected,
     onSelect: select,
@@ -58,39 +64,38 @@ export function useTextTokens(layerId: string | undefined, markup: string, setMa
     },
   };
 
-  // The selected chip's settings.
+  // Its variables: name, value, back to text.
+  const keys = [...new Set([...markup.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]))].filter((k) => field(k) && !field(k)!.binding?.source && field(k)!.kind !== 'image');
+  const backToText = (key: string) => {
+    const f = field(key);
+    if (!f) return;
+    setMarkup(markup.split(`{{${key}}}`).join(f.default));
+    update((tpl) => {
+      const l = tpl.layers.find((x) => x.id === layerId) as { varStyles?: Record<string, unknown> } | undefined;
+      if (l?.varStyles) delete l.varStyles[key];
+      if (!usedElsewhere(tpl, layerId, key)) tpl.fields = tpl.fields.filter((x) => x.key !== key);
+    }, coalesce);
+    if (selected === `{{${key}}}`) select(null);
+  };
+  const list = keys.length ? (
+    <div className="tv-vars">
+      {keys.map((key) => {
+        const f = field(key)!;
+        const edit = (patch: Partial<typeof f>) => update((tpl) => void Object.assign(tpl.fields.find((x) => x.key === key)!, patch), `field-${key}`);
+        return (
+          <div key={key} className={`tv-var ${selected === `{{${key}}}` ? 'on' : ''}`}>
+            <i />
+            <TextInput value={f.label} commitOnBlur onChange={(x) => x.trim() && edit({ label: x.trim() })} />
+            <TextInput value={f.default} onChange={(x) => edit({ default: x })} />
+            <button className="icon-btn ghost" title={t('Back to text')} onClick={() => backToText(key)}>
+              <X size={13} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  ) : null;
   let panel: ReactNode = null;
-  const varKey = selected && !selected.startsWith('img:') ? single(selected) : undefined;
-  const v = varKey ? field(varKey) : undefined;
-  if (v && markup.includes(`{{${v.key}}}`)) {
-    const edit = (patch: Partial<typeof v>) => update((tpl) => void Object.assign(tpl.fields.find((f) => f.key === v.key)!, patch), `field-${v.key}`);
-    panel = (
-      <div className="tv-pop">
-        <div className="tv-pop-h">
-          <Braces size={12} /> {t('Variable')}
-          <button
-            className="tv-pop-x"
-            onClick={() => {
-              // Back to plain text: the value set so far.
-              setMarkup(markup.split(`{{${v.key}}}`).join(v.default));
-              if (!usedElsewhere(template, layerId, v.key)) update((tpl) => void (tpl.fields = tpl.fields.filter((f) => f.key !== v.key)), coalesce);
-              select(null);
-            }}
-          >
-            {t('Back to text')}
-          </button>
-        </div>
-        <label className="tv-row">
-          <span>{t('Name')}</span>
-          <TextInput value={v.label} commitOnBlur onChange={(x) => x.trim() && edit({ label: x.trim() })} />
-        </label>
-        <label className="tv-row">
-          <span>{t('Default')}</span>
-          <TextInput value={v.default} onChange={(x) => edit({ default: x })} />
-        </label>
-      </div>
-    );
-  }
   const n = selected?.startsWith('img:') ? +selected.slice(4) : -1;
   const tag = n >= 0 ? imgs[n] : undefined;
   if (tag) {
@@ -168,6 +173,7 @@ export function useTextTokens(layerId: string | undefined, markup: string, setMa
     tokens,
     panel: (
       <>
+        {list}
         {panel}
         {picking && (
           <AssetLibrary

@@ -1519,10 +1519,70 @@ impl Template {
             .find(|m| m.kind == MarkerKind::Pause && (m.frame - frame).abs() < 1e-6)
     }
 
+    /// Texts written with style tags (made before the variables had their
+    /// own looks): each styled part becomes a variable of the template
+    /// keeping its looks. Returns true if anything changed.
+    fn unstyle_texts(&mut self) -> bool {
+        let mut changed = false;
+        for i in 0..self.layers.len() {
+            let LayerKind::Text { text, .. } = &self.layers[i].kind else {
+                continue;
+            };
+            if !text.contains('<') {
+                continue;
+            }
+            let mut made: Vec<Field> = Vec::new();
+            let fields = &self.fields;
+            let Some((plain, looks)) = crate::rich::unstyle(text, |typed| {
+                let mut n = fields.len() + made.len() + 1;
+                let taken = |k: &str| fields.iter().chain(&made).any(|f| f.key == k);
+                while taken(&format!("var_{n}")) {
+                    n += 1;
+                }
+                let key = format!("var_{n}");
+                made.push(Field {
+                    key: key.clone(),
+                    label: format!("Variable {n}"),
+                    kind: FieldKind::Text,
+                    default: typed.to_string(),
+                    binding: None,
+                    min: None,
+                    max: None,
+                    options: Vec::new(),
+                });
+                key
+            }) else {
+                continue;
+            };
+            if let LayerKind::Text { text, x, .. } = &mut self.layers[i].kind {
+                *text = plain;
+                for (key, v) in looks {
+                    let e = x.var_styles.entry(key).or_default();
+                    for (to, from) in [
+                        (&mut e.bold, v.bold),
+                        (&mut e.italic, v.italic),
+                        (&mut e.underline, v.underline),
+                        (&mut e.strike, v.strike),
+                    ] {
+                        if from.is_some() {
+                            *to = from;
+                        }
+                    }
+                    if v.color.is_some() {
+                        e.color = v.color;
+                    }
+                }
+            }
+            self.fields.extend(made);
+            changed = true;
+        }
+        changed
+    }
+
     /// Layers of widgets that are gone become their replacement. Returns
     /// true if anything changed.
     pub fn upgrade_layers(&mut self) -> bool {
-        let mut changed = false;
+        let mut changed = self.unstyle_texts();
         for l in &mut self.layers {
             // The Ellipse's « Circle » is now the width / height lock of every layer.
             if let LayerKind::Ellipse { x } = &mut l.kind {

@@ -232,6 +232,7 @@ pub fn resolve_layer<'a>(
             text,
             uppercase,
             transform,
+            x,
             ..
         } => {
             let case = |t: &str| {
@@ -242,7 +243,7 @@ pub fn resolve_layer<'a>(
                 }
             };
             // Styled parts (<b>…): the text without its tags.
-            let shown = match crate::rich::runs(text, data, |_| false, case) {
+            let shown = match crate::rich::runs_with(text, data, |_| false, case, &x.var_styles) {
                 Some(runs) => runs.into_iter().map(|r| r.text).collect(),
                 None => case(&interpolate_text(text, data)),
             };

@@ -13,7 +13,7 @@
 // sources never add styles.
 import { createContext } from 'react';
 import { interpolateText } from './evaluate';
-import type { Data, Template } from './types';
+import type { Data, Template, TextTransform } from './types';
 
 export interface RunStyle {
   bold?: boolean;
@@ -22,6 +22,44 @@ export interface RunStyle {
   strike?: boolean;
   /** #rrggbb[aa]; unset = the colour of the text. */
   color?: string;
+  /** A variable's own looks (see VarStyle): font, weight, size and letter spacing (px, at the text's fontSize), above / below the line, case. */
+  fontFamily?: string;
+  fontWeight?: number;
+  fontSize?: number;
+  letterSpacing?: number;
+  sup?: boolean;
+  sub?: boolean;
+  transform?: TextTransform;
+}
+
+/** The looks of a variable set in a text (`{{key}}`); unset: as the rest of the text. Mirror of wid::text::VarStyle. */
+export interface VarStyle {
+  fontFamily?: string;
+  fontWeight?: number;
+  fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  sup?: boolean;
+  sub?: boolean;
+  letterSpacing?: number;
+  transform?: TextTransform;
+  color?: string;
+}
+export type VarStyles = Record<string, VarStyle>;
+
+/** Measured otherwise than the rest of the text (another font, weight, size or spacing). */
+export const metric = (s: RunStyle) => !!(s.bold || s.italic || s.sup || s.sub || s.fontFamily || s.fontWeight || s.fontSize != null || s.letterSpacing != null);
+
+function withVar(s: RunStyle, v: VarStyle) {
+  for (const k of ['bold', 'italic', 'underline', 'strike', 'sup', 'sub'] as const) if (v[k] != null) s[k] = v[k];
+  if (v.color) s.color = v.color;
+  if (v.fontFamily) s.fontFamily = v.fontFamily;
+  if (v.fontWeight != null) s.fontWeight = v.fontWeight;
+  if (v.fontSize != null) s.fontSize = v.fontSize;
+  if (v.letterSpacing != null) s.letterSpacing = v.letterSpacing;
+  if (v.transform) s.transform = v.transform;
 }
 export interface Run {
   text: string;
@@ -57,12 +95,14 @@ export function imgValue(v: string): { src: string; height: ImgHeight } {
 export const imgTag = (src: string, height: ImgHeight) => `<img=${src}${height === 'size' ? '' : `|${height}`}>`;
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
-function tagAt(s: string): Tag | null {
+function tagAt(s: string, vars: VarStyles = {}): Tag | null {
   for (const t of ['b', 'i', 'u', 's']) if (s.startsWith(`<${t}>`)) return { open: true, t, len: 3 };
   const end = s.indexOf('>');
   if (end < 0) return null;
   const inner = s.slice(1, end);
   if (inner.startsWith('img=')) return inner.slice(4).trim() ? { open: true, t: 'img', v: inner.slice(4), len: end + 1 } : null;
+  if (inner.startsWith('v=')) return vars[inner.slice(2)] ? { open: true, t: 'v', v: inner.slice(2), len: end + 1 } : null;
+  if (inner === '/v' && Object.keys(vars).length) return { open: false, t: 'v', len: end + 1 };
   if (/^\/[biusc]$/.test(inner)) return { open: false, t: inner[1], len: end + 1 };
   if (inner.startsWith('c=') && HEX.test(inner.slice(2))) return { open: true, t: 'c', v: inner.slice(2), len: end + 1 };
   return null;
@@ -73,10 +113,16 @@ export const hasMarkup = (s: string) => {
   return false;
 };
 
-const same = (a: RunStyle, b: RunStyle) => !!a.bold === !!b.bold && !!a.italic === !!b.italic && !!a.underline === !!b.underline && !!a.strike === !!b.strike && (a.color ?? '') === (b.color ?? '');
+const same = (a: RunStyle, b: RunStyle) => JSON.stringify(a) === JSON.stringify(b);
+
+/** `markup` with every variable of `vars` wrapped in `<v=key>…</v>` (mirror of rich::with_vars). */
+function withVars(markup: string, vars: VarStyles): string {
+  if (!Object.keys(vars).length) return markup;
+  return markup.replace(/\{\{([^}]*)\}\}/g, (m, k: string) => (vars[k.trim()] ? `<v=${k.trim()}>${m}</v>` : m));
+}
 
 /** The parts of `markup` with their style. */
-export function parse(markup: string): Run[] {
+export function parse(markup: string, vars: VarStyles = {}): Run[] {
   const runs: Run[] = [];
   const stack: { t: string; v?: string }[] = [];
   const style = (): RunStyle => {
@@ -86,7 +132,9 @@ export function parse(markup: string): Run[] {
       else if (t === 'i') s.italic = true;
       else if (t === 'u') s.underline = true;
       else if (t === 's') s.strike = true;
-      else s.color = v;
+      else if (t === 'v') {
+        if (v && vars[v]) withVar(s, vars[v]);
+      } else s.color = v;
     }
     return s;
   };
@@ -104,7 +152,7 @@ export function parse(markup: string): Run[] {
   for (let i = rest.indexOf('<'); i >= 0; i = rest.indexOf('<')) {
     cur += rest.slice(0, i);
     const at = rest.slice(i);
-    const tag = tagAt(at);
+    const tag = tagAt(at, vars);
     if (!tag) {
       cur += '<';
       rest = at.slice(1);
@@ -159,13 +207,14 @@ export function inlineImages(markup: string, data: Data, rich: (key: string) => 
   return out;
 }
 
-/** The parts as shown (mirror of rich::runs); null without style tags. */
-export function runs(markup: string, data: Data, rich: (key: string) => boolean, kase: (s: string) => string): Run[] | null {
-  // The operator's styled values first, as if typed in the text.
-  const expanded = expand(markup, data, rich);
-  if (!hasMarkup(expanded)) return null;
-  const out = parse(expanded).map((r) => ({ text: interpolateText(r.text, data), style: r.style }));
-  const whole = out.map((r) => r.text).join('');
+/** The parts as shown (mirror of rich::runs_with); null without styles. */
+export function runs(markup: string, data: Data, rich: (key: string) => boolean, kase: (s: string) => string, vars: VarStyles = {}, ownCase: (t: TextTransform, s: string) => string = (_, s) => s): Run[] | null {
+  // The variables in their own looks, then the operator's styled values, as if typed in the text.
+  const expanded = expand(withVars(markup, vars), data, rich);
+  if (!hasMarkup(expanded) && !(Object.keys(vars).length && expanded.includes('<v='))) return null;
+  const out = parse(expanded, vars).map((r) => ({ text: interpolateText(r.text, data), style: r.style }));
+  const typed = out.map((r) => r.text);
+  const whole = typed.join('');
   const cased = kase(whole);
   if ([...cased].length === [...whole].length) {
     const chars = [...cased];
@@ -176,8 +225,40 @@ export function runs(markup: string, data: Data, rich: (key: string) => boolean,
       at += n;
     }
   } else for (const r of out) r.text = kase(r.text);
+  // A variable's own case, on what was typed.
+  out.forEach((r, i) => {
+    if (r.style.transform) r.text = ownCase(r.style.transform, typed[i]);
+  });
   return out.filter((r) => r.text);
 }
+
+/** First private character standing for a character of a part measured in its own style (mirror of rich::RUN_BASE). */
+export const RUN_BASE = 0xf0000;
+
+/** The shown text for the line breaking: the characters of the parts measured in their own style stand as private characters (mirror of rich::encode). */
+export function encodeRuns(rs: Run[]): { text: string; table: [string, number][] } {
+  let text = '';
+  const table: [string, number][] = [];
+  rs.forEach((r, i) => {
+    const own = metric(r.style);
+    for (const c of r.text) {
+      if (own && c !== ' ' && c !== '\n' && imageIndex(c) < 0) {
+        text += String.fromCodePoint(RUN_BASE + table.length);
+        table.push([c, i]);
+      } else text += c;
+    }
+  });
+  return { text, table };
+}
+
+/** The character `c` of an encoded text stands for, and its run. */
+export function decodeChar(c: string, table: [string, number][]): [string, number] | null {
+  const v = (c.codePointAt(0) ?? 0) - RUN_BASE;
+  return v >= 0 && v < table.length ? table[v] : null;
+}
+
+/** An encoded line back to the shown characters. */
+export const decodeLine = (line: string, table: [string, number][]) => (table.length ? [...line].map((c) => decodeChar(c, table)?.[0] ?? c).join('') : line);
 
 const space = (c: string | undefined) => c === ' ' || c === ' ' || c === ' ' || c === '\n' || c === '\t';
 

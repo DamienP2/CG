@@ -1,5 +1,6 @@
 import { Bold, Braces, ImagePlus, Italic, RemoveFormatting, Strikethrough, Underline } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { imageIndex, imageTags, parse, type Run, type RunStyle } from '../engine/rich';
 import { t } from '../i18n';
 
@@ -16,6 +17,8 @@ const attr = (s: string) => esc(s).replace(/"/g, '&quot;');
 export interface Tokens {
   /** A chip's name: the variable's, or the picture's. */
   label: (tok: string) => string;
+  /** A chip's tooltip. */
+  title?: (tok: string) => string;
   /** The chip shown selected ('{{key}}' or 'img:n'). */
   selected?: string | null;
   onSelect?: (id: string | null) => void;
@@ -26,8 +29,8 @@ export interface Tokens {
 }
 
 /** The HTML of a chip. */
-const chip = (tok: string, id: string, label: string) =>
-  `<span class="rt-tok ${id.startsWith('img:') ? 'i' : 'v'}" contenteditable="false" data-tok="${attr(tok)}" data-id="${attr(id)}">${esc(label)}</span>`;
+const chip = (tok: string, id: string, label: string, title = '') =>
+  `<span class="rt-tok ${id.startsWith('img:') ? 'i' : 'v'}" contenteditable="false" data-tok="${attr(tok)}" data-id="${attr(id)}"${title ? ` title="${attr(title)}"` : ''}>${esc(label)}</span>`;
 
 /** Tags → HTML for the editable box (with `tokens`: variables and pictures as chips). */
 export function toHtml(markup: string, tokens?: Tokens): string {
@@ -38,7 +41,7 @@ export function toHtml(markup: string, tokens?: Tokens): string {
     let cur = '';
     const flush = () => {
       if (!cur) return;
-      h += esc(cur).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => chip(`{{${k}}}`, `{{${k}}}`, tokens.label(`{{${k}}}`)));
+      h += esc(cur).replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => chip(`{{${k}}}`, `{{${k}}}`, tokens.label(`{{${k}}}`), tokens.title?.(`{{${k}}}`)));
       cur = '';
     };
     for (const c of text) {
@@ -71,8 +74,8 @@ const rgbHex = (c: string) => {
   return m ? `#${[m[1], m[2], m[3]].map((x) => (+x).toString(16).padStart(2, '0')).join('')}` : c.startsWith('#') ? c : undefined;
 };
 
-/** The editable box's HTML → the text with its tags. */
-export function fromHtml(root: HTMLElement): string {
+/** The editable box's HTML → the text with its tags (`plain`: without style tags). */
+export function fromHtml(root: HTMLElement, plain = false): string {
   const runs: Run[] = [];
   const push = (text: string, style: RunStyle) => {
     if (!text) return;
@@ -122,6 +125,7 @@ export function fromHtml(root: HTMLElement): string {
     .filter((r) => r.text)
     .map(({ text, style: s }) => {
       let t = text;
+      if (plain) return t;
       if (s.color) t = `<c=${s.color}>${t}</c>`;
       if (s.strike) t = `<s>${t}</s>`;
       if (s.underline) t = `<u>${t}</u>`;
@@ -134,8 +138,27 @@ export function fromHtml(root: HTMLElement): string {
 
 const SWATCHES = ['#ffffff', '#ff3b5c', '#facc15', '#22c55e', '#38bdf8', '#7c5cff', '#111111'];
 
-export function RichInput({ value, onChange, multiline, placeholder, maxLength, tokens }: { value: string; onChange: (v: string) => void; multiline?: boolean; placeholder?: string; /** Most characters that can be typed. */ maxLength?: number; tokens?: Tokens }) {
+export function RichInput({
+  value,
+  onChange,
+  multiline,
+  placeholder,
+  maxLength,
+  tokens,
+  plain,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  /** Most characters that can be typed. */
+  maxLength?: number;
+  tokens?: Tokens;
+  /** No style bar nor looks of its own: variables and pictures from a menu on right-click. */
+  plain?: boolean;
+}) {
   const box = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; text: string } | null>(null);
   const sent = useRef<string | null>(null);
   const [color, setColor] = useState('#ff3b5c');
   const [state, setState] = useState<Record<string, boolean>>({});
@@ -181,7 +204,7 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
   };
   const emit = () => {
     if (!box.current) return;
-    const v = fromHtml(box.current);
+    const v = fromHtml(box.current, plain);
     sent.current = v;
     if (v !== value) onChange(v);
   };
@@ -220,13 +243,43 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
   };
   // Buttons keep the selection (no focus change on press).
   const keep = (e: React.MouseEvent) => e.preventDefault();
+  /** The selection (maybe empty) becomes a variable. */
+  const makeVariable = (text: string) => {
+    const tok = tokens?.makeVariable?.(text);
+    if (!tok) return;
+    insert(chip(tok, tok, tokens!.label(tok), tokens!.title?.(tok)));
+    tokens!.onSelect?.(tok);
+  };
+  /** A picture where the caret is. */
+  const addPicture = async () => {
+    const tag = await tokens?.pickImage?.();
+    if (!tag) return;
+    insert(chip(tag, 'img:new', '▣'));
+    saved.current = null;
+    // Its rank: the chip gets its id when the box is drawn again.
+    const n = [...(box.current?.querySelectorAll<HTMLElement>('.rt-tok') ?? [])].filter((x) => x.dataset.tok?.startsWith('<img=')).findIndex((x) => x.dataset.id === 'img:new');
+    tokens?.onSelect?.(`img:${Math.max(0, n)}`);
+  };
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('pointerdown', close);
+    // Before the editor and the Designer, which keep Escape for themselves.
+    window.addEventListener('keydown', key, true);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', key, true);
+    };
+  }, [menu]);
   const B = ({ cmd, icon, title }: { cmd: string; icon: React.ReactNode; title: string }) => (
     <button type="button" className={state[cmd] ? 'on' : ''} title={title} onMouseDown={keep} onClick={() => run(cmd)}>
       {icon}
     </button>
   );
   return (
-    <div className="rt">
+    <div className={`rt ${plain ? 'plain' : ''}`}>
+      {!plain && (
       <div className="rt-bar">
         <B cmd="bold" icon={<Bold size={13} />} title={t('Bold (Ctrl+B)')} />
         <B cmd="italic" icon={<Italic size={13} />} title={t('Italic (Ctrl+I)')} />
@@ -250,11 +303,8 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
             onMouseDown={keep}
             onClick={() => {
               const sel = selectionIn();
-              const tok = tokens.makeVariable!(sel?.toString() ?? '');
-              if (!tok) return;
               saved.current = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
-              insert(chip(tok, tok, tokens.label(tok)));
-              tokens.onSelect?.(tok);
+              makeVariable(sel?.toString() ?? '');
             }}
           >
             <Braces size={13} /> {t('Variable')}
@@ -266,22 +316,17 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
             className="rt-new i"
             title={t('Insert a picture in the text')}
             onMouseDown={keep}
-            onClick={async () => {
+            onClick={() => {
               const sel = selectionIn();
               saved.current = sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
-              const tag = await tokens.pickImage!();
-              if (!tag) return;
-              insert(chip(tag, 'img:new', '▣'));
-              saved.current = null;
-              // Its rank: the chip gets its id when the box is drawn again.
-              const n = [...(box.current?.querySelectorAll<HTMLElement>('.rt-tok') ?? [])].filter((x) => x.dataset.tok?.startsWith('<img=')).findIndex((x) => x.dataset.id === 'img:new');
-              tokens.onSelect?.(`img:${Math.max(0, n)}`);
+              void addPicture();
             }}
           >
             <ImagePlus size={13} /> {t('Picture')}
           </button>
         )}
       </div>
+      )}
       <div
         ref={box}
         className={`rt-box ${multiline ? 'multi' : ''}`}
@@ -291,6 +336,19 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
         aria-multiline={multiline}
         data-placeholder={placeholder}
         onInput={emit}
+        onContextMenu={(e) => {
+          if (!plain || !tokens) return;
+          e.preventDefault();
+          const sel = selectionIn();
+          const text = sel?.toString() ?? '';
+          if (text.trim() && sel?.rangeCount) saved.current = sel.getRangeAt(0).cloneRange();
+          else {
+            // No selection: the picture goes where the click is.
+            const at = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+            saved.current = at && box.current?.contains(at.startContainer) ? at : null;
+          }
+          setMenu({ x: e.clientX, y: e.clientY, text: text.trim() ? text : '' });
+        }}
         onClick={(e) => {
           if (!tokens?.onSelect) return;
           const c = (e.target as HTMLElement).closest<HTMLElement>('.rt-tok');
@@ -307,7 +365,7 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
           }
           if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
             e.preventDefault();
-            run({ b: 'bold', i: 'italic', u: 'underline' }[e.key.toLowerCase() as 'b' | 'i' | 'u']);
+            if (!plain) run({ b: 'bold', i: 'italic', u: 'underline' }[e.key.toLowerCase() as 'b' | 'i' | 'u']);
           }
         }}
         onPaste={(e) => {
@@ -318,6 +376,36 @@ export function RichInput({ value, onChange, multiline, placeholder, maxLength, 
           if (text) document.execCommand('insertText', false, text);
         }}
       />
+      {menu &&
+        createPortal(
+          <div className="rt-menu" style={{ left: Math.min(menu.x, window.innerWidth - 260), top: menu.y }} onPointerDown={(e) => e.stopPropagation()}>
+            {menu.text ? (
+              <>
+                <div className="rt-menu-h">« {menu.text.length > 32 ? `${menu.text.slice(0, 32)}…` : menu.text} »</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(null);
+                    makeVariable(menu.text);
+                  }}
+                >
+                  <Braces size={13} /> {t('Expose the selection to the Operator')}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(null);
+                  void addPicture();
+                }}
+              >
+                <ImagePlus size={13} /> {t('Insert a picture…')}
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

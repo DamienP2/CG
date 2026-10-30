@@ -7,6 +7,8 @@
 //! `minSize`, `warnBelow`, `transform`, `decoration`, `lineHeight`,
 //! `scroll`…): an old text looks exactly the same with the defaults below.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::ActCtx;
@@ -88,6 +90,51 @@ pub struct Config {
     /// Lines (but the last of a paragraph) fill the width.
     pub justify: bool,
     pub dir: Direction,
+    /// The looks of the variables set in the text (`{{key}}`), over the
+    /// text's own: what each sets differs from the rest of the text.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub var_styles: BTreeMap<String, VarStyle>,
+}
+
+/// The looks of a variable of the text; unset: as the rest of the text.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct VarStyle {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<u16>,
+    /// px, as the text's `fontSize` (scaled with it when the text fits its box).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bold: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub italic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underline: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strike: Option<bool>,
+    /// Smaller, above the line (exposant).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sup: Option<bool>,
+    /// Smaller, below the line (indice).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub: Option<bool>,
+    /// px, as the text's `letterSpacing`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub letter_spacing: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transform: Option<crate::model::TextTransform>,
+    /// `#rrggbb[aa]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+impl VarStyle {
+    pub fn is_empty(&self) -> bool {
+        *self == VarStyle::default()
+    }
 }
 
 impl Default for Config {
@@ -116,6 +163,7 @@ impl Default for Config {
             band_accent_color: "#ff3b5c".into(),
             justify: false,
             dir: Direction::Ltr,
+            var_styles: BTreeMap::new(),
         }
     }
 }

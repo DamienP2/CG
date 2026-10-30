@@ -21,6 +21,9 @@ use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
 use super::{rrect, Draw};
 use crate::text::{self as tx, FitOpts};
 
+/// Size of a part above or below the line (exposant / indice).
+const SUP: f32 = 0.62;
+
 /// A scrolling text moves; any other does not (see `draw`: only the scroll reads the time).
 pub(crate) fn motion(d: &mut Draw) -> Option<crate::cache::Motion> {
     let LayerKind::Text { scroll, .. } = &d.layer.kind else {
@@ -84,12 +87,36 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         }
         r
     });
-    let bold = runs
-        .as_ref()
-        .filter(|r| r.iter().any(|r| r.style.bold))
-        .and_then(|_| paint::main_font(d, font_family, ((*font_weight).max(400) + 300).min(900)))
-        .map(|f| paint::chain(d, f, &content));
     let size0 = d.num(Prop::FontSize);
+    // The font of each part: the text's, or its own (a variable's font,
+    // weight, bold): 0 is the text's, n the n-th of `chains`.
+    let mut chains: Vec<tx::Chain> = Vec::new();
+    let mut keys: Vec<(String, u16)> = vec![(font_family.clone(), *font_weight)];
+    let mut run_chain: Vec<usize> = Vec::new();
+    for r in runs.iter().flatten() {
+        let st = &r.style;
+        let family = st
+            .font_family
+            .clone()
+            .unwrap_or_else(|| font_family.clone());
+        let mut weight = st.font_weight.unwrap_or(*font_weight);
+        if st.bold {
+            weight = (weight.max(400) + 300).min(900);
+        }
+        let key = (family, weight);
+        let at = match keys.iter().position(|k| *k == key) {
+            Some(i) => i,
+            None => match paint::main_font(d, &key.0, key.1) {
+                Some(f) => {
+                    chains.push(paint::chain(d, f, &content));
+                    keys.push(key);
+                    chains.len()
+                }
+                None => 0,
+            },
+        };
+        run_chain.push(at);
+    }
     let ls = d.num(Prop::LetterSpacing);
     let lh = line_height.unwrap_or(tx::LINE_HEIGHT);
     let pad = if c.band { c.band_pad_x.max(0.0) } else { 0.0 };
@@ -97,6 +124,27 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         (d.w - 2.0 * pad).max(20.0)
     } else {
         d.w
+    };
+    // Size factor, letter spacing and baseline shift of each part.
+    let style_of = |run: usize| runs.as_ref().map(|r| &r[run].style);
+    let scale_of = |run: usize| {
+        style_of(run).map_or(1.0, |st| {
+            let own = st
+                .font_size
+                .filter(|_| size0 > 0.0)
+                .map_or(1.0, |fs| fs / size0);
+            own * if st.sup || st.sub { SUP } else { 1.0 }
+        })
+    };
+    let ls_of = |run: usize| style_of(run).and_then(|st| st.letter_spacing).unwrap_or(ls);
+    let chain_of = |run: usize| match run_chain.get(run).copied().unwrap_or(0) {
+        0 => &chain,
+        n => &chains[n - 1],
+    };
+    // The line breaking measures each part in its own style.
+    let (encoded, table) = match (&runs, scrolling) {
+        (Some(r), false) => cg_core::rich::encode(r),
+        _ => (content.clone(), Vec::new()),
     };
     let opts = FitOpts {
         size: size0,
@@ -112,8 +160,43 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         lang: if c.lang.is_empty() { d.lang } else { &c.lang },
         ellipsis_end: c.fit_end == FitEnd::Ellipsis,
     };
-    // With bold parts, measured in bold: the lines never get wider than the box.
-    let measure = bold.as_ref().unwrap_or(&chain);
+    let measure = &chain;
+    // Width of a line of the encoded text: each part in its own style, the
+    // rest in the text's.
+    let styled_width = |s: &str, z: f32| -> f32 {
+        if table.is_empty() {
+            return tx::chain_width(&chain, s, z, ls);
+        }
+        let mut total = 0.0;
+        let mut parts = 0;
+        let mut cur = String::new();
+        let mut cur_run: Option<usize> = None;
+        let mut flush = |cur: &mut String, run: Option<usize>| {
+            if cur.is_empty() {
+                return;
+            }
+            let w = match run {
+                Some(i) => tx::chain_width(chain_of(i), cur, z * scale_of(i), ls_of(i)),
+                None => tx::chain_width(&chain, cur, z, ls),
+            };
+            total += w;
+            parts += 1;
+            cur.clear();
+        };
+        for c in s.chars() {
+            let (ch, run) = match cg_core::rich::decode(c, &table) {
+                Some((ch, i)) => (ch, Some(i)),
+                None => (c, None),
+            };
+            if run != cur_run {
+                flush(&mut cur, cur_run);
+                cur_run = run;
+            }
+            cur.push(ch);
+        }
+        flush(&mut cur, cur_run);
+        total + ls * (parts.max(1) - 1) as f32
+    };
     let fit = if horizontal {
         tx::FitLines {
             lines: vec![tx::FitLine {
@@ -140,9 +223,11 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
         f.clip = true;
         f
     } else {
-        tx::fit_lines(&content, &opts, &mut |s, z| {
-            tx::chain_width(measure, s, z, ls)
-        })
+        let mut f = tx::fit_lines(&encoded, &opts, &mut |s, z| styled_width(s, z));
+        for l in &mut f.lines {
+            l.text = cg_core::rich::decoded(&l.text, &table);
+        }
+        f
     };
     let (size, sx) = (fit.size, fit.squeeze);
     let parts = runs.as_ref().map(|r| {
@@ -151,11 +236,27 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
     });
     let bw = avail / sx; // the box the lines are aligned in, before squeezing
     let line_h = size * lh;
-    let n = fit.lines.len();
+    // A line with a bigger part is as much taller, the room added above it.
+    let heights: Vec<f32> = (0..fit.lines.len())
+        .map(|i| {
+            let grow = parts.as_ref().map_or(1.0, |p| {
+                p[i].iter()
+                    .map(|(_, run)| scale_of(*run))
+                    .fold(1.0, f32::max)
+            });
+            line_h * grow
+        })
+        .collect();
+    let mut tops = Vec::with_capacity(heights.len());
+    let mut block = 0.0;
+    for h in &heights {
+        tops.push(block);
+        block += h;
+    }
     let top = match vertical_align {
         VerticalAlign::Top => 0.0,
-        VerticalAlign::Middle => (d.h - line_h * n as f32) / 2.0,
-        VerticalAlign::Bottom => d.h - line_h * n as f32,
+        VerticalAlign::Middle => (d.h - block) / 2.0,
+        VerticalAlign::Bottom => d.h - block,
     };
     let (asc, desc) = tx::metrics(&main, size);
     let half = (line_h - (asc - desc)) / 2.0;
@@ -168,7 +269,6 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             .map(|x| (x as f32, 0.0))
             .collect()
     } else if scrolling {
-        let block = line_h * n as f32;
         // A screen-high gap before the roll comes round again.
         let cycle = if *looping { block + d.h } else { block };
         scroll_positions(d.h as f64, cycle as f64, travelled, *looping)
@@ -197,18 +297,15 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             };
             let spaces = shown.chars().filter(|ch| *ch == ' ').count();
             let segs = parts.as_ref().map(|p| &p[i]);
-            let chain_of = |run: usize| {
-                let styled = runs.as_ref().map(|r| &r[run].style);
-                match (styled.is_some_and(|s| s.bold), &bold) {
-                    (true, Some(b)) => b,
-                    _ => &chain,
-                }
-            };
             let w = match segs {
-                Some(segs) => segs
-                    .iter()
-                    .map(|(t, run)| tx::chain_width(chain_of(*run), t, size, ls))
-                    .sum(),
+                Some(segs) => {
+                    segs.iter()
+                        .map(|(t, run)| {
+                            tx::chain_width(chain_of(*run), t, size * scale_of(*run), ls_of(*run))
+                        })
+                        .sum::<f32>()
+                        + ls * segs.len().saturating_sub(1) as f32
+                }
                 None => tx::chain_width(&chain, &shown, size, ls),
             };
             let justified = c.justify && !l.end && spaces > 0 && w < bw;
@@ -234,7 +331,7 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
                 TextAlign::Center => (bw - lw) / 2.0,
                 TextAlign::Right => bw - lw,
             };
-            let baseline = top + i as f32 * line_h + half + asc;
+            let baseline = top + tops[i] + heights[i] - line_h + half + asc;
             let (lx, lwx) = (pad + x * sx, lw * sx);
             let thick = (size * 0.06).max(1.0);
             let bar = |pb: &mut PathBuilder, y: f32, x0: f32, w: f32| {
@@ -251,14 +348,22 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
                     let mut px = pad + x;
                     for (t, run) in segs {
                         let st = &runs.as_ref().expect("parts come from runs")[*run].style;
+                        // Above or below the line (exposant / indice).
+                        let shift = if st.sup {
+                            -size * 0.33
+                        } else if st.sub {
+                            size * 0.12
+                        } else {
+                            0.0
+                        };
                         let lp = paint::line(
                             chain_of(*run),
                             t,
-                            size,
-                            ls,
+                            size * scale_of(*run),
+                            ls_of(*run),
                             extra,
                             px,
-                            baseline,
+                            baseline + shift,
                             sx,
                             pad,
                             if c.italic || st.italic { 0.25 } else { 0.0 },
@@ -286,7 +391,7 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
                             }
                         }
                         pictures.extend(lp.pictures);
-                        px += lp.width;
+                        px += lp.width + ls;
                     }
                 }
                 None => {
@@ -319,9 +424,9 @@ pub(crate) fn draw(d: &mut Draw, _st: &State) -> bool {
             if c.band && !l.text.trim().is_empty() {
                 bands.push((
                     lx - pad,
-                    top + i as f32 * line_h + c.band_gap / 2.0,
+                    top + tops[i] + c.band_gap / 2.0,
                     lwx + 2.0 * pad,
-                    (line_h - c.band_gap).max(4.0),
+                    (heights[i] - c.band_gap).max(4.0),
                 ));
             }
         }

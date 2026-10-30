@@ -276,9 +276,7 @@
 }
 .fio-name:focus {
   outline: none;
-  border-color: var(--accent);
   background: var(--panel-2);
-  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .fio-card h3,
 .fio-box h3 {

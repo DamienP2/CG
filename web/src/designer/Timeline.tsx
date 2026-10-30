@@ -32,6 +32,7 @@ import {
   Unlink,
   Link as LinkIcon,
   X,
+  Pilcrow,
   Type,
   Unlock,
   Video,
@@ -967,6 +968,9 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
   );
 }
 
+/** A Paragraph's text to begin with. */
+const LOREM_PARAGRAPH = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.';
+
 /** Shapes on hand above the layers; the rest behind "+". */
 function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
   return (
@@ -1009,8 +1013,15 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       >
         <Minus size={15} />
       </button>
-      <button className="tool" title={t('Text')} onClick={() => onAdd('text')}>
+      <button className="tool" title={tc('text', 'Line')} onClick={() => onAdd('text', undefined, tc('text', 'Line'))}>
         <Type size={15} />
+      </button>
+      <button
+        className="tool"
+        title={t('Paragraph')}
+        onClick={() => onAdd('text', { wrap: true, text: LOREM_PARAGRAPH, props: { width: 900, height: 300, fontSize: 40 } }, t('Paragraph'))}
+      >
+        <Pilcrow size={15} />
       </button>
       <button className="tool" title={t('Image')} onClick={() => onAdd('image')}>
         <Image size={15} />

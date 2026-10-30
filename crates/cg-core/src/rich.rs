@@ -16,8 +16,11 @@
 //! the Designer, and the values the operator types (`rich` keys); the values
 //! of the data sources never add styles (a `<b>` in them is text).
 
+use std::collections::BTreeMap;
+
 use crate::anim::{interpolate_text, Data};
-use crate::model::{LayerKind, Template};
+use crate::model::{LayerKind, Template, TextTransform};
+use crate::wid::text::VarStyle;
 
 /// Keys whose values may have styles: the template's values typed by the
 /// operator (not read from a data source).
@@ -125,12 +128,13 @@ pub fn layer_runs(t: &Template, layer: &crate::model::Layer, data: &Data) -> Opt
         text,
         uppercase,
         transform,
+        x,
         ..
     } = &layer.kind
     else {
         return None;
     };
-    runs(
+    runs_with(
         text,
         data,
         |k| typed_key(t, k),
@@ -141,11 +145,55 @@ pub fn layer_runs(t: &Template, layer: &crate::model::Layer, data: &Data) -> Opt
                 transform.apply(s)
             }
         },
+        &x.var_styles,
     )
 }
 
+/// First private character standing for a character of a part measured in
+/// its own style (plane 15, which no font draws): the n-th such character
+/// of the text is `RUN_BASE + n`.
+pub const RUN_BASE: u32 = 0xF_0000;
+
+/// The shown text for the line breaking: the characters of the parts
+/// measured in their own style (bold, another font, size…) stand as private
+/// characters, so the measure knows their part; `table[n]` is the n-th:
+/// (character, index of its run). Spaces and line ends stay as they are.
+pub fn encode(runs: &[Run]) -> (String, Vec<(char, usize)>) {
+    let mut text = String::new();
+    let mut table = Vec::new();
+    for (i, r) in runs.iter().enumerate() {
+        let own = r.style.metric();
+        for c in r.text.chars() {
+            if own && !matches!(c, ' ' | '\n') && image_index(c).is_none() {
+                if let Some(p) = char::from_u32(RUN_BASE + table.len() as u32) {
+                    table.push((c, i));
+                    text.push(p);
+                    continue;
+                }
+            }
+            text.push(c);
+        }
+    }
+    (text, table)
+}
+
+/// The character `c` of an [`encode`]d text stands for, and its run.
+pub fn decode(c: char, table: &[(char, usize)]) -> Option<(char, usize)> {
+    let v = c as u32;
+    v.checked_sub(RUN_BASE)
+        .and_then(|n| table.get(n as usize))
+        .copied()
+}
+
+/// An [`encode`]d line back to the shown characters.
+pub fn decoded(line: &str, table: &[(char, usize)]) -> String {
+    line.chars()
+        .map(|c| decode(c, table).map_or(c, |(c, _)| c))
+        .collect()
+}
+
 /// The style of a part of the text, over the style of the whole text.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Style {
     pub bold: bool,
     pub italic: bool,
@@ -153,10 +201,58 @@ pub struct Style {
     pub strike: bool,
     /// `#rrggbb[aa]`; none = the colour of the text.
     pub color: Option<String>,
+    /// A variable's own looks (see [`VarStyle`]): font, weight, size and
+    /// letter spacing (px, at the text's `fontSize`), smaller above or below
+    /// the line, case.
+    pub font_family: Option<String>,
+    pub font_weight: Option<u16>,
+    pub font_size: Option<f32>,
+    pub letter_spacing: Option<f32>,
+    pub sup: bool,
+    pub sub: bool,
+    pub transform: Option<TextTransform>,
+}
+
+impl Style {
+    /// It is measured otherwise than the rest of the text (another font,
+    /// weight, size or spacing).
+    pub fn metric(&self) -> bool {
+        self.bold
+            || self.italic
+            || self.sup
+            || self.sub
+            || self.font_family.is_some()
+            || self.font_weight.is_some()
+            || self.font_size.is_some()
+            || self.letter_spacing.is_some()
+    }
+
+    /// The variable's looks over the tags around it.
+    fn with_var(&mut self, v: &VarStyle) {
+        let set = |on: &mut bool, o: Option<bool>| {
+            if let Some(o) = o {
+                *on = o;
+            }
+        };
+        set(&mut self.bold, v.bold);
+        set(&mut self.italic, v.italic);
+        set(&mut self.underline, v.underline);
+        set(&mut self.strike, v.strike);
+        set(&mut self.sup, v.sup);
+        set(&mut self.sub, v.sub);
+        if v.color.is_some() {
+            self.color = v.color.clone();
+        }
+        self.font_family = v.font_family.clone().or(self.font_family.take());
+        self.font_weight = v.font_weight.or(self.font_weight);
+        self.font_size = v.font_size.or(self.font_size);
+        self.letter_spacing = v.letter_spacing.or(self.letter_spacing);
+        self.transform = v.transform.or(self.transform);
+    }
 }
 
 /// A part of the text and its style.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Run {
     pub text: String,
     pub style: Style,
@@ -169,15 +265,28 @@ enum Tag {
     Img(String),
 }
 
-/// The tag at the start of `s` and its length in bytes.
-fn tag_at(s: &str) -> Option<(Tag, usize)> {
+/// No variables with looks of their own.
+fn no_vars() -> &'static BTreeMap<String, VarStyle> {
+    static EMPTY: BTreeMap<String, VarStyle> = BTreeMap::new();
+    &EMPTY
+}
+
+/// The tag at the start of `s` and its length in bytes (`<v=key>`: the
+/// looks of a variable of `vars`, put around it by [`with_vars`]).
+fn tag_at(s: &str, vars: &BTreeMap<String, VarStyle>) -> Option<(Tag, usize)> {
     let end = s.find('>')?;
     let inner = &s[1..end];
     if let Some(v) = inner.strip_prefix("img=") {
         return (!v.trim().is_empty()).then(|| (Tag::Img(v.to_string()), end + 1));
     }
+    if let Some(k) = inner.strip_prefix("v=") {
+        return vars
+            .contains_key(k)
+            .then(|| (Tag::Open('v', Some(k.to_string())), end + 1));
+    }
     let tag = match inner {
         "b" | "i" | "u" | "s" | "c" => return None,
+        "/v" if !vars.is_empty() => Tag::Close('v'),
         "/b" | "/i" | "/u" | "/s" | "/c" => Tag::Close(inner.chars().nth(1)?),
         _ => {
             let hex = inner.strip_prefix("c=")?;
@@ -193,12 +302,47 @@ fn tag_at(s: &str) -> Option<(Tag, usize)> {
 
 /// `<b>`, `<i>`, `<u>`, `<s>` (bare letters are matched here, `c` needs a colour).
 fn open_at(s: &str) -> Option<(Tag, usize)> {
+    open_with(s, no_vars())
+}
+
+fn open_with(s: &str, vars: &BTreeMap<String, VarStyle>) -> Option<(Tag, usize)> {
     for t in ['b', 'i', 'u', 's'] {
         if s.starts_with(&format!("<{t}>")) {
             return Some((Tag::Open(t, None), 3));
         }
     }
-    tag_at(s)
+    tag_at(s, vars)
+}
+
+/// `markup` with every variable of `vars` set in it wrapped in `<v=key>…</v>`.
+fn with_vars(markup: &str, vars: &BTreeMap<String, VarStyle>) -> String {
+    if vars.is_empty() {
+        return markup.to_string();
+    }
+    let mut out = String::with_capacity(markup.len() + 16);
+    let mut rest = markup;
+    while let Some(i) = rest.find("{{") {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 2..];
+        match after.find("}}") {
+            Some(end) => {
+                let key = after[..end].trim();
+                let token = &rest[i..i + 2 + end + 2];
+                if vars.contains_key(key) {
+                    out.push_str(&format!("<v={key}>{token}</v>"));
+                } else {
+                    out.push_str(token);
+                }
+                rest = &after[end + 2..];
+            }
+            None => {
+                out.push_str("{{");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Whether `s` has style tags.
@@ -209,6 +353,11 @@ pub fn has_markup(s: &str) -> bool {
 
 /// The parts of `markup` with their style (one part, unstyled, without tags).
 pub fn parse(markup: &str) -> Vec<Run> {
+    parse_with(markup, no_vars())
+}
+
+/// [`parse`], with the looks of the variables (`<v=key>` tags).
+fn parse_with(markup: &str, vars: &BTreeMap<String, VarStyle>) -> Vec<Run> {
     let mut runs: Vec<Run> = Vec::new();
     let mut stack: Vec<(char, Option<String>)> = Vec::new();
     let style = |stack: &[(char, Option<String>)]| {
@@ -219,6 +368,11 @@ pub fn parse(markup: &str) -> Vec<Run> {
                 'i' => s.italic = true,
                 'u' => s.underline = true,
                 's' => s.strike = true,
+                'v' => {
+                    if let Some(vs) = v.as_ref().and_then(|k| vars.get(k)) {
+                        s.with_var(vs);
+                    }
+                }
                 _ => s.color = v.clone(),
             }
         }
@@ -243,7 +397,7 @@ pub fn parse(markup: &str) -> Vec<Run> {
     while let Some(i) = rest.find('<') {
         cur.push_str(&rest[..i]);
         let at = &rest[i..];
-        match open_at(at) {
+        match open_with(at, vars) {
             Some((Tag::Img(_), len)) => {
                 // One character as wide as the picture, in the style around it.
                 if let Some(c) = char::from_u32(IMG_BASE + pictures) {
@@ -319,20 +473,34 @@ pub fn runs(
     rich: impl Fn(&str) -> bool,
     case: impl Fn(&str) -> String,
 ) -> Option<Vec<Run>> {
-    // The operator's styled values first, as if typed in the text.
-    let expanded = expand(markup, data, rich);
+    runs_with(markup, data, rich, case, no_vars())
+}
+
+/// [`runs`], the variables of `vars` in their own looks (and case).
+pub fn runs_with(
+    markup: &str,
+    data: &Data,
+    rich: impl Fn(&str) -> bool,
+    case: impl Fn(&str) -> String,
+    vars: &BTreeMap<String, VarStyle>,
+) -> Option<Vec<Run>> {
+    // The variables in their own looks, then the operator's styled values,
+    // as if typed in the text.
+    let wrapped = with_vars(markup, vars);
+    let expanded = expand(&wrapped, data, rich);
     let markup = expanded.as_str();
-    if !has_markup(markup) {
+    if !has_markup(markup) && !(!vars.is_empty() && markup.contains("<v=")) {
         return None;
     }
-    let mut runs: Vec<Run> = parse(markup)
+    let mut runs: Vec<Run> = parse_with(markup, vars)
         .into_iter()
         .map(|r| Run {
             text: interpolate_text(&r.text, data),
             style: r.style,
         })
         .collect();
-    let whole: String = runs.iter().map(|r| r.text.as_str()).collect();
+    let typed: Vec<String> = runs.iter().map(|r| r.text.clone()).collect();
+    let whole: String = typed.concat();
     let cased = case(&whole);
     if cased.chars().count() == whole.chars().count() {
         let mut chars = cased.chars();
@@ -345,8 +513,139 @@ pub fn runs(
             r.text = case(&r.text);
         }
     }
+    // A variable's own case, on what was typed.
+    for (r, t) in runs.iter_mut().zip(typed) {
+        if let Some(tr) = r.style.transform {
+            r.text = tr.apply(&t);
+        }
+    }
     runs.retain(|r| !r.text.is_empty());
     Some(runs)
+}
+
+/// A text written with style tags (`<b>`, `<c=…>`…), without them: each
+/// styled part becomes a variable keeping its looks (the variables already
+/// there keep theirs); `new_var(text)` makes a variable for a typed part
+/// and gives its key. Pictures stay as they are. `None` without style tags.
+pub fn unstyle(
+    markup: &str,
+    mut new_var: impl FnMut(&str) -> String,
+) -> Option<(String, Vec<(String, VarStyle)>)> {
+    let mut parts: Vec<(String, Style)> = Vec::new();
+    let mut stack: Vec<(char, Option<String>)> = Vec::new();
+    let mut styled = false;
+    let mut cur = String::new();
+    let style = |stack: &[(char, Option<String>)]| {
+        let mut s = Style::default();
+        for (t, v) in stack {
+            match t {
+                'b' => s.bold = true,
+                'i' => s.italic = true,
+                'u' => s.underline = true,
+                's' => s.strike = true,
+                _ => s.color = v.clone(),
+            }
+        }
+        s
+    };
+    let mut rest = markup;
+    while let Some(i) = rest.find('<') {
+        cur.push_str(&rest[..i]);
+        let at = &rest[i..];
+        match open_at(at) {
+            Some((Tag::Img(_), len)) => {
+                cur.push_str(&at[..len]);
+                rest = &at[len..];
+            }
+            Some((tag, len)) => {
+                styled = true;
+                if !cur.is_empty() {
+                    parts.push((std::mem::take(&mut cur), style(&stack)));
+                }
+                match tag {
+                    Tag::Open(t, v) => stack.push((t, v)),
+                    Tag::Close(t) => {
+                        if let Some(p) = stack.iter().rposition(|(x, _)| *x == t) {
+                            stack.remove(p);
+                        }
+                    }
+                    Tag::Img(_) => {}
+                }
+                rest = &at[len..];
+            }
+            None => {
+                cur.push('<');
+                rest = &at[1..];
+            }
+        }
+    }
+    cur.push_str(rest);
+    if !cur.is_empty() {
+        parts.push((cur, style(&stack)));
+    }
+    if !styled {
+        return None;
+    }
+    let looks = |s: &Style| VarStyle {
+        bold: s.bold.then_some(true),
+        italic: s.italic.then_some(true),
+        underline: s.underline.then_some(true),
+        strike: s.strike.then_some(true),
+        color: s.color.clone(),
+        ..VarStyle::default()
+    };
+    let mut out = String::new();
+    let mut vars: Vec<(String, VarStyle)> = Vec::new();
+    for (text, st) in parts {
+        if st == Style::default() {
+            out.push_str(&text);
+            continue;
+        }
+        // Its variables, pictures and typed pieces.
+        let mut rest = text.as_str();
+        let mut typed = |piece: &str, out: &mut String, vars: &mut Vec<(String, VarStyle)>| {
+            let trimmed = piece.trim();
+            if trimmed.is_empty() {
+                out.push_str(piece);
+                return;
+            }
+            let lead = &piece[..piece.len() - piece.trim_start().len()];
+            let trail = &piece[piece.trim_end().len()..];
+            let key = new_var(trimmed);
+            out.push_str(&format!("{lead}{{{{{key}}}}}{trail}"));
+            vars.push((key, looks(&st)));
+        };
+        loop {
+            let tok = rest.find("{{");
+            let img = rest.find("<img=");
+            let next = match (tok, img) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            let Some(at) = next else {
+                typed(rest, &mut out, &mut vars);
+                break;
+            };
+            typed(&rest[..at], &mut out, &mut vars);
+            let after = &rest[at..];
+            let end = if after.starts_with("{{") {
+                after.find("}}").map(|e| e + 2)
+            } else {
+                after.find('>').map(|e| e + 1)
+            };
+            let Some(end) = end else {
+                typed(after, &mut out, &mut vars);
+                break;
+            };
+            let piece = &after[..end];
+            out.push_str(piece);
+            if let Some(key) = piece.strip_prefix("{{").and_then(|p| p.strip_suffix("}}")) {
+                vars.push((key.trim().to_string(), looks(&st)));
+            }
+            rest = &after[end..];
+        }
+    }
+    Some((out, vars))
 }
 
 /// Spaces the line breaking may change (French spaces before `: ; ! ?`).
@@ -481,6 +780,58 @@ mod tests {
         assert_eq!(plain(m), "Paris  24 °");
         // An empty picture tag stays text.
         assert_eq!(plain("a <img=> b"), "a <img=> b");
+    }
+
+    #[test]
+    fn styled_parts_become_variables() {
+        let mut made = Vec::new();
+        let (text, vars) = unstyle(
+            "Hello <b>big <c=#ff0000>{{name}}</c></b> <img=a.png> <i>end</i>",
+            |t| {
+                made.push(t.to_string());
+                format!("v{}", made.len())
+            },
+        )
+        .unwrap();
+        assert_eq!(text, "Hello {{v1}} {{name}} <img=a.png> {{v2}}");
+        assert_eq!(made, ["big", "end"]);
+        assert_eq!(vars[0].0, "v1");
+        assert_eq!(vars[0].1.bold, Some(true));
+        assert_eq!(vars[1].0, "name");
+        assert_eq!(vars[1].1.color.as_deref(), Some("#ff0000"));
+        assert_eq!(vars[2].1.italic, Some(true));
+        assert!(unstyle("plain <img=a.png> {{x}}", |_| String::new()).is_none());
+    }
+
+    #[test]
+    fn variables_have_their_own_looks() {
+        let vars: BTreeMap<String, VarStyle> = [(
+            "n".to_string(),
+            VarStyle {
+                font_size: Some(60.0),
+                transform: Some(TextTransform::Upper),
+                ..VarStyle::default()
+            },
+        )]
+        .into();
+        let data: Data = [("n".to_string(), "Zoé".to_string())].into();
+        let r = runs_with(
+            "Bonjour {{n}} !",
+            &data,
+            |_| false,
+            |t| t.to_string(),
+            &vars,
+        )
+        .unwrap();
+        assert_eq!(r.len(), 3);
+        assert_eq!(
+            (r[1].text.as_str(), r[1].style.font_size),
+            ("ZOÉ", Some(60.0))
+        );
+        assert!(r[1].style.metric() && !r[0].style.metric());
+        let (enc, table) = encode(&r);
+        assert_eq!(decoded(&enc, &table), "Bonjour ZOÉ !");
+        assert_ne!(enc, "Bonjour ZOÉ !");
     }
 
     #[test]

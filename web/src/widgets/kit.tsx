@@ -508,9 +508,11 @@ export function useExposable(path: string | undefined, value: string | undefined
   const shown = exposed ? field!.default : raw;
   const change = (x: string) => (exposed ? update((t) => void (t.fields.find((f) => f.key === field!.key)!.default = x), `field-${field!.key}`) : set(x, true));
   const canExpose = expose !== false && !!path && !!layer.id;
-  const toggleExpose = () =>
+  /** `value`: the exposed field's value (else the content as it is); `also`: more changes in the same step. */
+  const toggleExpose = (opts?: { value?: string; also?: (t: Template, l: Layer) => void }) =>
     update((t) => {
       const l = t.layers.find((x) => x.id === layer.id)!;
+      opts?.also?.(t, l);
       if (exposed) {
         // Back to a plain content: the value set so far.
         setPath(l, path!, field!.default);
@@ -526,7 +528,7 @@ export function useExposable(path: string | undefined, value: string | undefined
           .replace(/^./, (ch) => ch.toLowerCase()) || kind;
       if (!/^[a-z]/i.test(key)) key = `t${key}`;
       for (let i = 2; taken.has(key); i++) key = key.replace(/\d*$/, String(i));
-      t.fields.push({ key, label: l.name || key, kind, default: raw });
+      t.fields.push({ key, label: l.name || key, kind, default: opts?.value ?? raw });
       setPath(l, path!, `{{${key}}}`);
     });
   return { raw, data, field, exposed, wired, shown, change, canExpose, toggleExpose };
@@ -541,7 +543,21 @@ export function ExposeToggle({ on, onClick }: { on: boolean; onClick: () => void
   );
 }
 
-export function Content(p: { label?: ReactNode; path?: string; value?: string; onChange?: (v: string) => void; multiline?: boolean; placeholder?: string; lorem?: boolean; expose?: boolean; rich?: boolean; /** Parts of it made variables, pictures in it (a Text). */ vars?: boolean }) {
+export function Content(p: {
+  label?: ReactNode;
+  path?: string;
+  value?: string;
+  onChange?: (v: string) => void;
+  multiline?: boolean;
+  placeholder?: string;
+  lorem?: boolean;
+  expose?: boolean;
+  rich?: boolean;
+  /** Parts of it made variables, pictures in it (a Text). */
+  vars?: boolean;
+  /** No looks of its own (the text's typography applies): no style bar, a menu on right-click. */
+  plain?: boolean;
+}) {
   const { raw, data, field, exposed, wired: anyKey, shown: value, change, canExpose, toggleExpose } = useExposable(p.path, p.value, p.onChange, p.multiline ? 'multiline' : 'text', p.expose);
   const tpl = useDesigner((s) => s.template);
   const { obj } = useContext(BindContext);
@@ -550,10 +566,35 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
   const wired = anyKey && (!p.vars || wiredKeys(raw).some((k) => !tpl?.fields.some((f) => f.key === k && !f.binding?.source)));
   if (wired) return <DataValue label={p.label} value={plainText(interpolateText(raw, data))} multiline={p.multiline} />;
   const inline = p.label === undefined;
+  // The whole text exposed: its variables go back to their text (asked first).
+  const expose = async () => {
+    if (exposed || !p.vars || !tpl) return toggleExpose();
+    const keys = [...new Set([...raw.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]))].filter((k) => tpl.fields.some((f) => f.key === k && !f.binding?.source));
+    if (keys.length) {
+      const ok = await confirmDialog({
+        title: t('Expose the whole text?'),
+        message: keys.length === 1 ? t('The variable set in the text will be removed (its text stays).') : t('The {n} variables set in the text will be removed (their text stays).', { n: keys.length }),
+        confirm: t('Expose the whole text'),
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    const text = keys.reduce((s, k) => s.split(`{{${k}}}`).join(tpl.fields.find((f) => f.key === k)?.default ?? ''), raw);
+    toggleExpose({
+      value: text,
+      also: (t, l) => {
+        const own = (l as { varStyles?: Record<string, unknown> }).varStyles;
+        for (const k of keys) {
+          if (own) delete own[k];
+          if (!t.layers.some((x) => x.id !== l.id && JSON.stringify(x).includes(`{{${k}}}`))) t.fields = t.fields.filter((f) => f.key !== k);
+        }
+      },
+    });
+  };
   return (
-    <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={toggleExpose} /> : undefined}>
+    <Row label={p.label} tail={canExpose && !inline ? <ExposeToggle on={exposed} onClick={() => void expose()} /> : undefined}>
       <div className="wk-content">
-        {p.rich && !exposed ? <RichInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} tokens={vars.tokens} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
+        {p.rich && !exposed ? <RichInput plain={p.plain} multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} tokens={vars.tokens} /> : <TextInput multiline={p.multiline} value={value} placeholder={p.placeholder} onChange={change} />}
         {(p.lorem || (canExpose && inline) || exposed) && (
           <div className="wk-content-tools">
             {p.lorem && (
@@ -562,7 +603,7 @@ export function Content(p: { label?: ReactNode; path?: string; value?: string; o
               </button>
             )}
             {canExpose && inline ? (
-              <button className={`wk-chip op ${exposed ? 'on' : ''}`} title={exposed ? t('Exposed to the Operator as “{name}” · click to stop', { name: field!.label }) : t('Expose to the Operator')} onClick={toggleExpose}>
+              <button className={`wk-chip op ${exposed ? 'on' : ''}`} title={exposed ? t('Exposed to the Operator as “{name}” · click to stop', { name: field!.label }) : t('Expose to the Operator')} onClick={() => void expose()}>
                 <Radio size={12} /> {exposed ? t('Exposed to the Operator') : p.vars ? t('Expose the whole text') : t('Expose to the Operator')}
               </button>
             ) : (

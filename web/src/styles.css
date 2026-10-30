@@ -176,12 +176,6 @@ textarea {
   transition: border-color 0.12s;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--accent);
-}
-
 textarea {
   width: 100%;
   resize: vertical;
@@ -2222,9 +2216,6 @@ code {
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--text-3);
-}
-.search:focus-within {
-  border-color: var(--accent);
 }
 .search input {
   flex: 1;
@@ -6095,9 +6086,6 @@ a.btn {
   border: 1px solid var(--line);
   gap: 4px;
 }
-.pp-fields .num-field:focus-within {
-  border-color: var(--accent);
-}
 .pp-fields .num-field .scrub {
   min-width: 10px;
   font-size: 11px;
@@ -8432,9 +8420,6 @@ body.cv-moving * {
   border: 1px solid var(--line-2);
   overflow: hidden;
 }
-.dur-main:focus-within {
-  border-color: var(--accent);
-}
 .dur-step {
   width: 30px;
   flex: none;
@@ -10177,9 +10162,6 @@ body.cv-moving * {
   border: 1px solid var(--line);
   gap: 4px;
 }
-.pp-field .num-field:focus-within {
-  border-color: var(--accent);
-}
 .pp-field .num-field .scrub {
   min-width: 0;
   width: 10px;
@@ -11070,11 +11052,11 @@ body.cv-moving * {
   border-color: var(--text-3);
   background: var(--panel-3);
 }
-.dd-btn.open,
 .dd-btn:focus-visible {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.dd-btn.open {
+  border-color: var(--line-2);
 }
 .dd-btn > svg {
   flex: none;
@@ -12449,7 +12431,6 @@ body.cv-moving * {
 }
 .opx-addsearch input:focus {
   outline: none;
-  border-color: var(--accent);
 }
 .opx-addbody {
   flex: 1;
@@ -12490,9 +12471,11 @@ body.cv-moving * {
   text-align: left;
   cursor: pointer;
 }
-.opx-addcard:hover,
-.opx-addcard:focus-visible {
+.opx-addcard:hover {
   border-color: var(--accent);
+  background: var(--op-3);
+}
+.opx-addcard:focus-visible {
   background: var(--op-3);
   outline: none;
 }
@@ -12566,9 +12549,6 @@ body.cv-moving * {
   border-radius: 6px;
   background: var(--panel-3);
   transition: border-color 0.12s;
-}
-.rt:focus-within {
-  border-color: var(--accent);
 }
 .rt-bar {
   display: flex;
@@ -13614,9 +13594,6 @@ a.lib-nav-item {
   border: 1px solid var(--line);
   color: var(--text-3);
 }
-.opg-search:focus-within {
-  border-color: var(--accent);
-}
 .opg-search input {
   flex: 1;
   min-width: 0;
@@ -13693,7 +13670,6 @@ a.lib-nav-item {
 }
 .opt input:focus {
   outline: none;
-  border-color: var(--accent);
   background: var(--op-1, #151722);
 }
 .opt-n {
@@ -15370,9 +15346,6 @@ a.lib-nav-item {
   text-align: center;
   outline: none;
 }
-.sch-time:focus {
-  border-color: var(--accent);
-}
 .sch-time.bad {
   border-color: var(--live);
 }
@@ -16683,9 +16656,6 @@ button.mod-word {
   box-shadow: 0 0 0 1px var(--line-2);
   cursor: ew-resize;
 }
-.mod-range-knob:focus-visible {
-  outline: 2px solid var(--accent);
-}
 
 /* Hashtags */
 .mod-tags-page {
@@ -16837,15 +16807,9 @@ button.mod-word {
   gap: 4px;
 }
 
-/* ===== ux3: global focus ring, control heights on the pages, shared bits ===== */
+/* ===== ux3: no focus frame (fields, editors and controls keep their border), control heights on the pages, shared bits ===== */
+:focus,
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-/* Text fields show their focus with the accent border. */
-input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):focus-visible,
-select:focus-visible,
-textarea:focus-visible {
   outline: none;
 }
 :is(.projects-page, .data-page, .vs-page, .outputs-page, .mod-page, .settings, .modal-back)
@@ -17216,8 +17180,7 @@ button.ux1-pill.lost:hover {
 .ux1-user-btn.named.on {
   background: var(--panel-2);
 }
-.ux1-user-btn.on .avatar,
-.ux1-user-btn:focus-visible .avatar {
+.ux1-user-btn.on .avatar {
   box-shadow:
     0 0 0 2px #12141f,
     0 0 0 4px var(--accent);
@@ -19478,4 +19441,106 @@ a.opx-html5 {
 }
 .pjp-secs > :last-child {
   width: 110px;
+}
+
+/* Text: content without its own looks (Line / Paragraph) */
+.rt.plain .rt-tok.v {
+  font-size: inherit;
+  font-weight: 500;
+  white-space: pre-wrap;
+  background: rgba(245, 165, 36, 0.14);
+  border-color: rgba(245, 165, 36, 0.55);
+  color: var(--text);
+}
+.rt.plain .rt-tok.v::before {
+  content: none;
+}
+.rt.plain .rt-tok.v.on {
+  border-color: var(--warn);
+}
+.rt-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 220px;
+  padding: 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--panel-2);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.rt-menu-h {
+  padding: 5px 10px 4px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-11);
+  color: var(--text-3);
+}
+.rt-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.rt-menu button:hover {
+  background: var(--panel-3);
+}
+.tv-vars {
+  display: grid;
+  gap: 6px;
+}
+.tv-var {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) minmax(0, 1fr) 26px;
+  align-items: center;
+  gap: 6px;
+}
+.tv-var > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.tv-var input {
+  min-width: 0;
+  width: 100%;
+}
+.tv-var.on input {
+  border-color: var(--warn);
+}
+.tx-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.tx-target > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.tx-target .var {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.tx-reset {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  color: var(--warn);
+  font: inherit;
+  font-size: var(--fs-12);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tx-own {
+  color: var(--warn);
 }

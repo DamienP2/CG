@@ -200,7 +200,7 @@
   border-color: color-mix(in srgb, currentColor 30%, transparent);
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
-:root[data-theme='light'] :is(.ux1-user-btn.on .avatar, .ux1-user-btn:focus-visible .avatar) {
+:root[data-theme='light'] .ux1-user-btn.on .avatar {
   box-shadow:
     0 0 0 2px var(--panel),
     0 0 0 4px var(--accent);

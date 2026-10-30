@@ -5,7 +5,7 @@ import { create } from 'zustand';
 import { DEFAULTS, defaultData, newId, propValue } from '../engine/evaluate';
 import { fromFormatView, inFormat } from '../engine/formats';
 import { MAIN_FORMAT, MARKER_MODEL, type Data, type FontStyle, type Keyframe, type Layer, type LayerType, type Marker, type Prop, type Template, type Value } from '../engine/types';
-import { t } from '../i18n';
+import { t, tc } from '../i18n';
 
 export interface KeyRef {
   layerId: string;
@@ -376,10 +376,9 @@ export function makeLayer(type: LayerType, width: number, height: number, parent
     case 'text':
       return {
         ...base,
-        // Named by its default text, in the interface's language.
-        name: t('New text'),
+        name: tc('text', 'Line'),
         type,
-        text: t('New text'),
+        text: 'Lorem ipsum dolor sit amet',
         fontFamily: 'Inter',
         fontWeight: 700,
         align: 'left',

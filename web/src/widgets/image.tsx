@@ -422,7 +422,7 @@ function PictureRow() {
   const b = useBound();
   if (x.wired) return <DataValue label={t('Picture')} value={interpolateText(x.raw, x.data)} />;
   return (
-    <Row label={t('Picture')} tail={x.canExpose ? <ExposeToggle on={x.exposed} onClick={x.toggleExpose} /> : undefined}>
+    <Row label={t('Picture')} tail={x.canExpose ? <ExposeToggle on={x.exposed} onClick={() => x.toggleExpose()} /> : undefined}>
       <AssetPicker
         value={x.shown}
         clearable={false}
