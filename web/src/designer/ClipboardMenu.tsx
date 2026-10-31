@@ -1,7 +1,7 @@
 // Right-click menu of the timeline's layer and property rows, and of the
 // layers on the stage: copy / paste layers and animations (clipboard.ts),
 // the layer's animation, its order and delete.
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, SquareDashed, Trash2, Undo2 } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, BringToFront, ChevronRight, ClipboardCopy, ClipboardPaste, Copy, Scissors, DiamondMinus, Sparkles, Shrink, SquareDashed, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Prop } from '../engine/types';
@@ -12,6 +12,7 @@ import { descendants, duplicateLayers, findLayer, useDesigner } from './designer
 import { moveLayer } from './LayersPanel';
 import { openAnimations } from './animPresets';
 import { maskFolderOf, stopMasking, makeMask } from './masks';
+import { fitToContent } from './fitContent';
 
 export interface ClipMenuAt {
   x: number;
@@ -131,6 +132,11 @@ export function ClipboardMenu({ at, onClose }: { at: ClipMenuAt; onClose: () => 
           <button disabled={ro} onClick={run(() => openAnimations(targets))}>
             <Sparkles size={13} /> {t('Animation…')}
           </button>
+          {st.template && targets.some((id) => findLayer(st.template!, id)?.type !== 'group') && (
+            <button disabled={ro} onClick={run(() => fitToContent(targets))}>
+              <Shrink size={13} /> {t('Fit the frame to its content')}
+            </button>
+          )}
           {/* A mask folder (or its mask): undone; else this layer as the mask of a new folder. */}
           {(() => {
             const folder = layer.type === 'group' && layer.mask ? layer : st.template && maskFolderOf(st.template, layer.id);

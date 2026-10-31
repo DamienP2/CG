@@ -2646,6 +2646,14 @@ async fn tray_info(
         .filter(|o| o.ok)
         .count();
     let roles = &s.config.hardware.network;
+    // A newer release (found by the automatic or the menu's check) and how
+    // its install goes.
+    let up = crate::update::status();
+    let available = up
+        .latest
+        .as_ref()
+        .filter(|r| crate::update::is_newer(&r.version, env!("CARGO_PKG_VERSION")))
+        .map(|r| r.version.clone());
     Ok(Json(serde_json::json!({
         "name": s.config.name,
         "version": env!("CARGO_PKG_VERSION"),
@@ -2657,6 +2665,7 @@ async fn tray_info(
         "ndi": roles.ndi,
         "channels": s.channels.len(),
         "outputs": { "ok": ok, "total": total },
+        "update": { "available": available, "phase": up.phase, "progress": up.progress, "message": up.message },
     })))
 }
 
@@ -3145,11 +3154,13 @@ async fn update_settings(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Admins, or the tray app on the server itself.
 async fn update_check(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    MaybeUser(me): MaybeUser,
 ) -> ApiResult<Json<Option<crate::update::Release>>> {
-    require(me.is_admin())?;
+    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
     let dir = s.data_dir.clone();
     tokio::task::spawn_blocking(move || crate::update::check(&dir))
         .await
@@ -3166,15 +3177,17 @@ struct InstallQuery {
 }
 
 /// Downloads and installs a release in the background; follow progress
-/// with GET /api/system/update.
+/// with GET /api/system/update. Admins, or the tray app on the server itself.
 async fn update_install(
     State(s): State<Shared>,
-    CurrentUser(me): CurrentUser,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    MaybeUser(me): MaybeUser,
     Query(q): Query<InstallQuery>,
 ) -> ApiResult<StatusCode> {
-    require(me.is_admin())?;
+    let admin = me.as_ref().filter(|u| u.is_admin());
+    require(peer.ip().is_loopback() || admin.is_some())?;
     tracing::warn!(
-        user = me.username,
+        user = admin.map_or("menu bar app", |u| u.username.as_str()),
         version = q.version.as_deref().unwrap_or("latest"),
         "installing a release"
     );

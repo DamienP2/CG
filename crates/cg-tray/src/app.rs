@@ -30,11 +30,18 @@ struct Status {
     ndi: String,
     outputs_ok: usize,
     outputs_total: usize,
+    /// A newer release the server found ("" = none).
+    update: String,
+    /// "idle", "checking", "downloading", "installing", "restarting", "error".
+    update_phase: String,
+    /// 0..100 while downloading.
+    update_pct: u32,
+    update_message: String,
 }
 
 enum UserEvent {
     Menu(MenuEvent),
-    Status(Status),
+    Status(Box<Status>),
 }
 
 // -------------------------------------------------------------- language ----
@@ -58,6 +65,17 @@ struct Words {
     port_invalid: &'static str,
     port_failed: &'static str,
     port_in_use: &'static str,
+    update_check: &'static str,
+    update_checking: &'static str,
+    update_install: &'static str,
+    update_downloading: &'static str,
+    update_installing: &'static str,
+    update_restarting: &'static str,
+    update_confirm: &'static str,
+    update_ok: &'static str,
+    cancel: &'static str,
+    update_none: &'static str,
+    update_failed: &'static str,
     start: &'static str,
     stop: &'static str,
     restart: &'static str,
@@ -86,6 +104,17 @@ const FR: Words = Words {
     port_invalid: "Port invalide : entrez un nombre entre 1 et 65535.",
     port_failed: "Impossible de passer au port {p}.",
     port_in_use: "Le port {p} est déjà utilisé par un autre logiciel.",
+    update_check: "Rechercher une mise à jour",
+    update_checking: "Recherche d’une mise à jour…",
+    update_install: "Installer la version {v}…",
+    update_downloading: "Téléchargement de la version {v}… {n} %",
+    update_installing: "Installation de la mise à jour…",
+    update_restarting: "Redémarrage sur la nouvelle version…",
+    update_confirm: "Installer Strata Graphics {v} ?\n\nLe serveur redémarre : les sorties vidéo s’interrompent quelques secondes.",
+    update_ok: "Installer",
+    cancel: "Annuler",
+    update_none: "Strata Graphics est à jour (version {v}).",
+    update_failed: "La mise à jour n’a pas pu se faire.",
     start: "Démarrer le serveur",
     stop: "Arrêter le serveur",
     restart: "Redémarrer le serveur",
@@ -114,6 +143,17 @@ const EN: Words = Words {
     port_invalid: "Invalid port: enter a number from 1 to 65535.",
     port_failed: "Could not switch to port {p}.",
     port_in_use: "Port {p} is already used by another program.",
+    update_check: "Check for Updates",
+    update_checking: "Checking for updates…",
+    update_install: "Install Version {v}…",
+    update_downloading: "Downloading version {v}… {n}%",
+    update_installing: "Installing the update…",
+    update_restarting: "Restarting on the new version…",
+    update_confirm: "Install Strata Graphics {v}?\n\nThe server restarts: the video outputs stop for a few seconds.",
+    update_ok: "Install",
+    cancel: "Cancel",
+    update_none: "Strata Graphics is up to date (version {v}).",
+    update_failed: "The update could not be done.",
     start: "Start Server",
     stop: "Stop Server",
     restart: "Restart Server",
@@ -390,6 +430,134 @@ fn change_port(current: u16, w: &'static Words) {
     });
 }
 
+/// Shows a native information dialog.
+fn notice(message: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "display alert \"Strata Graphics\" message \"{}\"",
+            esc(message)
+        );
+        let _ = Command::new("osascript").args(["-e", &script]).spawn();
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let ps = format!(
+            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Strata Graphics', 'OK', 'Information')",
+            message.replace('\'', "''")
+        );
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+}
+
+/// Asks to go on in a native dialog; `ok` names the button that goes on.
+fn confirm(message: &str, ok: &str, cancel: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    let out = {
+        let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "display alert \"Strata Graphics\" message \"{}\" buttons {{\"{}\", \"{}\"}} default button 2 cancel button 1",
+            esc(message),
+            esc(cancel),
+            esc(ok)
+        );
+        Command::new("osascript").args(["-e", &script]).output()
+    };
+    #[cfg(windows)]
+    let out = {
+        let _ = (ok, cancel);
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let ps = format!(
+            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Strata Graphics', 'OKCancel', 'Question')",
+            message.replace('\'', "''")
+        );
+        Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+    };
+    out.is_ok_and(|o| {
+        let text = String::from_utf8_lossy(&o.stdout);
+        // macOS: the button is printed ("button returned:…"); Cancel exits with an error.
+        o.status.success() && (cfg!(target_os = "macos") || text.trim() == "OK")
+    })
+}
+
+/// A POST to the server on this machine; its answer, or why it failed.
+fn post(port: u16, path: &str) -> Result<String, String> {
+    let a: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(60)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut r = a
+        .post(format!("{}{path}", base_url(port)))
+        .send_empty()
+        .map_err(|e| e.to_string())?;
+    let body = r.body_mut().read_to_string().unwrap_or_default();
+    if r.status().is_success() {
+        Ok(body)
+    } else {
+        Err(body)
+    }
+}
+
+/// Looks for a newer release; says so when there is none (when there is
+/// one, the menu offers it).
+fn check_update(port: u16, w: &'static Words, refresh: EventLoopProxy<UserEvent>) {
+    std::thread::spawn(move || {
+        match post(port, "/api/system/update/check") {
+            Ok(body) => {
+                let newer = serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|j| j.get("version")?.as_str().map(str::to_string));
+                let s = read_status();
+                if newer.is_none() || s.update.is_empty() {
+                    let v = if s.version.is_empty() {
+                        VERSION.to_string()
+                    } else {
+                        s.version
+                    };
+                    notice(&w.update_none.replace("{v}", &v));
+                }
+            }
+            Err(e) => alert(&format!("{}\n\n{e}", w.update_failed)),
+        }
+        let _ = refresh.send_event(UserEvent::Status(Box::new(read_status())));
+    });
+}
+
+/// Installs the newer release once confirmed (the server downloads it,
+/// installs it and restarts; the menu shows how it goes).
+fn install_update(
+    port: u16,
+    version: String,
+    w: &'static Words,
+    refresh: EventLoopProxy<UserEvent>,
+) {
+    std::thread::spawn(move || {
+        if !confirm(
+            &w.update_confirm.replace("{v}", &version),
+            w.update_ok,
+            w.cancel,
+        ) {
+            return;
+        }
+        let path = format!("/api/system/update/install?version={version}");
+        if let Err(e) = post(port, &path) {
+            alert(&format!("{}\n\n{e}", w.update_failed));
+        }
+        let _ = refresh.send_event(UserEvent::Status(Box::new(read_status())));
+    });
+}
+
 /// Runs `strata-server service <action>` with administrator rights: without a
 /// password when the installer allowed it (sudoers), else the system prompt.
 fn service_as_admin(action: &'static str) -> Result<(), String> {
@@ -479,7 +647,7 @@ fn server_action(action: Action, port: u16, w: &'static Words, refresh: EventLoo
             };
             alert(&format!("{}\n\n{e}", w.cannot.replace("{a}", what)));
         }
-        let _ = refresh.send_event(UserEvent::Status(read_status()));
+        let _ = refresh.send_event(UserEvent::Status(Box::new(read_status())));
     });
 }
 
@@ -560,12 +728,36 @@ fn read_status() -> Status {
             .pointer("/outputs/total")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize,
+        update: j
+            .pointer("/update/available")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        update_phase: j
+            .pointer("/update/phase")
+            .and_then(|v| v.as_str())
+            .unwrap_or("idle")
+            .to_string(),
+        update_pct: (j
+            .pointer("/update/progress")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0)
+            * 100.0)
+            .round() as u32,
+        update_message: j
+            .pointer("/update/message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
     }
 }
 
 fn poll(proxy: EventLoopProxy<UserEvent>) {
     std::thread::spawn(move || loop {
-        if proxy.send_event(UserEvent::Status(read_status())).is_err() {
+        if proxy
+            .send_event(UserEvent::Status(Box::new(read_status())))
+            .is_err()
+        {
             return;
         }
         std::thread::sleep(Duration::from_secs(2));
@@ -613,6 +805,7 @@ struct Items {
     choices: Vec<(CheckMenuItem, Role, String)>,
     /// What the submenu shows (adapters, chosen ones), to rebuild it on change only.
     shown_network: Option<NetworkView>,
+    update: MenuItem,
     start_stop: MenuItem,
     restart: MenuItem,
     log: MenuItem,
@@ -637,6 +830,7 @@ impl Items {
             ),
             choices: Vec::new(),
             shown_network: None,
+            update: MenuItem::new(w.update_check, false, None),
             start_stop: MenuItem::new(w.start, true, None),
             restart: MenuItem::new(w.restart, false, None),
             log: MenuItem::new(w.log, true, None),
@@ -657,6 +851,7 @@ impl Items {
             &PredefinedMenuItem::separator(),
             &items.start_stop,
             &items.restart,
+            &items.update,
             &PredefinedMenuItem::separator(),
             &items.log,
             &items.uninstall,
@@ -749,6 +944,21 @@ impl Items {
         if s.running {
             self.rebuild_network(s);
         }
+        let (text, enabled) = match s.update_phase.as_str() {
+            "checking" => (w.update_checking.to_string(), false),
+            "downloading" => (
+                w.update_downloading
+                    .replace("{v}", &s.update)
+                    .replace("{n}", &s.update_pct.to_string()),
+                false,
+            ),
+            "installing" => (w.update_installing.to_string(), false),
+            "restarting" => (w.update_restarting.to_string(), false),
+            _ if !s.update.is_empty() => (w.update_install.replace("{v}", &s.update), true),
+            _ => (w.update_check.to_string(), true),
+        };
+        self.update.set_text(text);
+        self.update.set_enabled(s.running && enabled);
         self.start_stop
             .set_text(if s.running { w.stop } else { w.start });
         if let Some(t) = tray {
@@ -815,12 +1025,19 @@ pub fn run() {
                 poll(proxy.clone());
             }
             Event::UserEvent(UserEvent::Status(s)) => {
+                let s = *s;
                 // Opened by the user (not at login): show the web interface
                 // once the server answers.
                 if first_status && !background && s.running {
                     open_url(&format!("{}/", base_url(s.port)));
                 }
                 first_status = false;
+                // An install that failed: say why, once.
+                if s.update_phase == "error"
+                    && matches!(status.update_phase.as_str(), "downloading" | "installing")
+                {
+                    alert(&format!("{}\n\n{}", w.update_failed, s.update_message));
+                }
                 if s != status || items.status.text() == w.checking {
                     items.apply(&s, tray.as_ref());
                     status = s;
@@ -844,6 +1061,12 @@ pub fn run() {
                     server_action(a, status.port, w, proxy.clone());
                 } else if id == items.restart.id() {
                     server_action(Action::Restart, status.port, w, proxy.clone());
+                } else if id == items.update.id() {
+                    if status.update.is_empty() {
+                        check_update(status.port, w, proxy.clone());
+                    } else {
+                        install_update(status.port, status.update.clone(), w, proxy.clone());
+                    }
                 } else if id == items.port.id() {
                     change_port(status.port, w);
                 } else if id == items.log.id() {

@@ -555,6 +555,7 @@ export const designer: Record<string, string> = {
   'Fire a trigger': 'Lancer un déclencheur',
   'Conditions': 'Conditions',
   'History of the versions · the Operator uses v{rev}': 'Historique des versions · l’Opérateur utilise la v{rev}',
+  'Fit the frame to its content': 'Ajuster le cadre au contenu',
   'Stop masking': 'Ne plus masquer',
   'Use as mask': 'Utiliser comme masque',
   'Include': 'Inclure',
