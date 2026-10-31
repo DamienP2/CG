@@ -1,11 +1,10 @@
 import type { Layer, Template } from '../engine/types';
 import { newId } from '../engine/evaluate';
 import { useApp } from '../store';
-import { t } from '../i18n';
 import { useDesigner } from './designerStore';
 
 /*
- * Mask folders: a layer used as a mask becomes the first row of a new folder;
+ * Mask folders: a layer used as a mask becomes a folder (one timeline row);
  * the layers dragged into it are seen in its shape (Include) or outside it
  * (Exclude). The renderers draw them so (Scene.tsx, cg-render).
  */
@@ -32,7 +31,7 @@ export function makeMask(ids: string[], exclude: boolean) {
     // As big as what it is in: its children keep their places.
     const width = Number(parent?.props.width ?? project?.width ?? 1920);
     const height = Number(parent?.props.height ?? project?.height ?? 1080);
-    const group: Layer = { id: newId(), name: `${t('Mask')} · ${maskLayer.name}`, type: 'group', clip: false, parent: maskLayer.parent ?? null, visible: true, locked: false, tracks: {}, bindings: {}, props: { x: 0, y: 0, width, height }, mask: { layer: maskLayer.id, exclude } } as Layer;
+    const group: Layer = { id: newId(), name: maskLayer.name, type: 'group', clip: false, parent: maskLayer.parent ?? null, visible: true, locked: false, tracks: {}, bindings: {}, props: { x: 0, y: 0, width, height }, mask: { layer: maskLayer.id, exclude } } as Layer;
     mask = maskLayer.id;
     const moved = [...others, maskLayer];
     const rest = tpl.layers.filter((l) => !moved.includes(l));

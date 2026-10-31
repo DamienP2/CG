@@ -5204,8 +5204,7 @@ input.mono {
   font-size: 12px;
 }
 .tl-label.layer.mask-layer .layer-icon,
-.tl-label.layer.mask-layer .layer-name,
-.tl-label.layer.mask-folder .layer-icon {
+.tl-label.layer.mask-layer .layer-name {
   color: var(--mask);
 }
 .tl-label.layer.mask-layer .layer-name {

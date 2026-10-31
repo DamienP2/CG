@@ -1,6 +1,5 @@
 import {
   ChevronDown,
-  SquareDashed,
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -49,7 +48,6 @@ import { COLOR_PROPS, PROPS, type Keyframe, type Layer, type LayerType, type Mar
 import { NumberField } from '../ui/fields';
 import { WIDGET_LIST } from '../widgets';
 import { onTimeline, setOnTimeline } from '../engine/timelineProps';
-import { maskFolderOf } from './masks';
 import { descendants, duplicateLayers, findLayer, markerRole, setProp, toggleKeyAt, useDesigner, WIDGET_PRESETS, type KeyRef } from './designerStore';
 import { PROP_LABELS } from './Inspector';
 import { layerIcon, moveLayer, type DropPos } from './LayersPanel';
@@ -98,10 +96,10 @@ function flatten(t: Template): { layer: Layer; depth: number }[] {
   const out: { layer: Layer; depth: number }[] = [];
   const walk = (pid: string | null, depth: number) => {
     const parent = pid ? t.layers.find((l) => l.id === pid) : undefined;
+    // A mask folder's mask is shown on the folder's own row.
     const mask = parent?.type === 'group' ? parent.mask?.layer : undefined;
-    // A mask folder's mask is always its first row.
-    const rows = [...(tree.get(pid) ?? [])].reverse().sort((a, b) => Number(b.id === mask) - Number(a.id === mask));
-    for (const l of rows) {
+    for (const l of [...(tree.get(pid) ?? [])].reverse()) {
+      if (l.id === mask) continue;
       out.push({ layer: l, depth });
       walk(l.id, depth + 1);
     }
@@ -457,28 +455,30 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
       </>
     );
   };
-  for (const { layer, depth } of rows) {
+  for (const { layer: row, depth } of rows) {
+    // A mask folder is one row, its mask's: the mask's name, properties and bar; the folder's eye, lock and drop.
+    const gm = row.type === 'group' ? row.mask : undefined;
+    const layer = (gm && template.layers.find((l) => l.id === gm.layer && l.parent === row.id)) || row;
+    const isMask = layer !== row;
     const animated = PROPS.filter((p) => layer.tracks[p]?.length);
     const open = expanded[layer.id];
-    const isSel = selected.includes(layer.id);
-    // A mask folder's mask: its first row, its colour and icon.
-    const isMask = !!maskFolderOf(template, layer.id);
-    const Icon = isMask || (layer.type === 'group' && layer.mask) ? SquareDashed : layerIcon(layer);
-    const dropCls = drop?.id === layer.id ? `drop-${drop.pos}` : '';
+    const isSel = selected.includes(layer.id) || selected.includes(row.id);
+    const Icon = layerIcon(layer);
+    const dropCls = drop?.id === row.id ? `drop-${drop.pos}` : '';
     labels.push(
       <div
         key={layer.id}
-        className={`tl-label layer ${isSel ? 'selected' : ''} ${layer.visible ? '' : 'dim'} ${isMask ? 'mask-layer' : ''} ${layer.type === 'group' && layer.mask ? 'mask-folder' : ''} ${dropCls}`}
+        className={`tl-label layer ${isSel ? 'selected' : ''} ${row.visible ? '' : 'dim'} ${isMask ? 'mask-layer' : ''} ${dropCls}`}
         style={{ paddingLeft: 4 + depth * 14 }}
         draggable={renaming !== layer.id}
-        onDragStart={(e) => e.dataTransfer.setData('text/layer', layer.id)}
+        onDragStart={(e) => e.dataTransfer.setData('text/layer', row.id)}
         onDragOver={(e) => {
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
           const y = (e.clientY - r.top) / r.height;
           setDrop({
-            id: layer.id,
-            pos: layer.type === 'group' && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below',
+            id: row.id,
+            pos: row.type === 'group' && y > 0.3 && y < 0.7 ? 'into' : y < 0.5 ? 'above' : 'below',
           });
         }}
         onDragLeave={() => setDrop(null)}
@@ -531,17 +531,17 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
           <span className="layer-name">{layer.name}</span>
         )}
         {animated.length > 0 && !open && <span className="badge">{animated.length}</span>}
-        {layer.type === 'group' && layer.mask && <span className="mask-mode">{layer.mask.exclude ? t('Exclude') : t('Include')}</span>}
+        {gm && isMask && <span className="mask-mode">{gm.exclude ? t('Exclude') : t('Include')}</span>}
         <span className="row-actions">
-          <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([layer.id]))}>
+          <button title={t('Duplicate (Ctrl+D)')} onClick={(e) => (e.stopPropagation(), duplicateLayers([row.id]))}>
             <Copy size={12} />
           </button>
         </span>
-        <button className={`row-btn ${layer.visible ? '' : 'off'}`} title={layer.visible ? t('Hide') : t('Show')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.visible = !layer.visible)))}>
-          {layer.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+        <button className={`row-btn ${row.visible ? '' : 'off'}`} title={row.visible ? t('Hide') : t('Show')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, row.id)!.visible = !row.visible)))}>
+          {row.visible ? <Eye size={12} /> : <EyeOff size={12} />}
         </button>
-        <button className={`row-btn ${layer.locked ? 'on' : ''}`} title={layer.locked ? t('Unlock') : t('Lock')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, layer.id)!.locked = !layer.locked)))}>
-          {layer.locked ? <Lock size={12} /> : <Unlock size={12} />}
+        <button className={`row-btn ${row.locked ? 'on' : ''}`} title={row.locked ? t('Unlock') : t('Lock')} onClick={(e) => (e.stopPropagation(), st.update((t) => void (findLayer(t, row.id)!.locked = !row.locked)))}>
+          {row.locked ? <Lock size={12} /> : <Unlock size={12} />}
         </button>
         <button
           className="row-btn"
@@ -1050,7 +1050,7 @@ function InsertBar({ width, onAdd }: { width: number; onAdd: AddLayer }) {
       >
         <Minus size={15} />
       </button>
-      <button className="tool" title={tc('text', 'Line')} onClick={() => onAdd('text', undefined, tc('text', 'Line'))}>
+      <button className="tool" title={tc('text', 'Line')} onClick={() => onAdd('text', undefined, t('Text'))}>
         <Type size={15} />
       </button>
       <button
