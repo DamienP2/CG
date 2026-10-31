@@ -17,6 +17,7 @@ import { fitText, type Fitted } from './textFit';
 import { applyMotion } from './motion';
 import { useFonts } from './fonts';
 import { widgetOf } from '../widgets';
+import { shownText } from '../widgets/text';
 
 export { TimeContext } from './LiveTime';
 
@@ -419,7 +420,7 @@ const LayerNode = memo(function LayerNode({ layer, childrenOf, frame, data, hold
             <>
               {/* The mask, not drawn: its box only, to pick and move it in the Designer. */}
               {interactive && <div data-layer-id={m.id} style={{ position, left, top, width, height, transform, transformOrigin, pointerEvents: 'none' }} />}
-            <div style={maskStyle(m, mr, gm, gw, gh, ls.src, ls.text)}>
+            <div style={maskStyle(m, mr, gm, gw, gh, ls.src, m.type === 'text' ? shownText(m, data) : ls.text)}>
               <div style={{ position: 'absolute', left: gm.exclude ? MASK_PAD : 0, top: gm.exclude ? MASK_PAD : 0, width: gw, height: gh }}>
                 {kids
                   .filter((k) => k.id !== m.id)
