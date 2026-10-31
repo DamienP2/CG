@@ -41,6 +41,8 @@ export function friendlyError(raw: string | null | undefined): string {
   if (/NDI runtime found but not loadable/i.test(s)) return t('NDI runtime unreadable');
   if (/NDI runtime not found/i.test(s)) return t('NDI runtime missing');
   if (/NDI runtime refused to start/i.test(s)) return t('NDI runtime refused to start');
+  if ((m = s.match(/^NDI name already used: `(.+)`$/))) return t('NDI name “{name}” already used', { name: m[1] });
+  if (/^every NDI output needs a name/i.test(s)) return t('Every NDI output needs a name');
   return s;
 }
 

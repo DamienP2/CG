@@ -716,7 +716,7 @@ export function Outputs({ mode }: { mode: Mode }) {
       const reload = (tries: number) => void load().catch(() => tries > 0 && setTimeout(() => reload(tries - 1), 1000));
       setTimeout(() => reload(15), 1500);
     } catch (e) {
-      toast((e as Error).message, 'error');
+      toast(friendlyError((e as Error).message), 'error');
     } finally {
       setSaving(false);
     }
@@ -1600,10 +1600,14 @@ export function Outputs({ mode }: { mode: Mode }) {
                   {selDest?.kind === 'ndi' &&
                     (() => {
                       const o = selDest.value as NdiOutput;
+                      const key = o.name.trim().toLowerCase();
+                      const taken = !!key && cfg.channels.some((x) => pictures(x).some((pp) => (pp.outputs.ndi ?? []).some((n) => n !== o && n.name.trim().toLowerCase() === key)));
+                      const nameErr = !key ? t('Name required') : taken ? t('Name already used') : '';
                       return (
                         <>
                           <Field label={t('Source name')} hint={t('Receivers see it as “SERVER (name)”.')}>
-                            <input value={o.name} onChange={(e) => editDest<NdiOutput>((d) => void (d.name = e.target.value))} />
+                            <input value={o.name} aria-invalid={!!nameErr} onChange={(e) => editDest<NdiOutput>((d) => void (d.name = e.target.value))} />
+                            {nameErr && <span className="set-error">{nameErr}</span>}
                           </Field>
                           <Field label={t('Groups')} hint={t('Comma-separated; empty = public.')}>
                             <input value={o.groups} placeholder="public" onChange={(e) => editDest<NdiOutput>((d) => void (d.groups = e.target.value))} />

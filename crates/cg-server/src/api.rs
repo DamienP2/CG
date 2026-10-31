@@ -2701,10 +2701,13 @@ struct NetworkRolesInput {
     control: Option<String>,
     /// The interface NDI uses ("" = every one).
     ndi: Option<String>,
+    /// The port of the web UI and the API.
+    port: Option<u16>,
 }
 
-/// Picks the network adapter of the web UI and of NDI, then restarts the
-/// server (NDI reads its network at start). Admins, or the server itself.
+/// Picks the network adapter of the web UI and of NDI, or the port, then
+/// restarts the server (NDI reads its network at start). Admins, or the
+/// server itself.
 async fn put_network_roles(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -2720,9 +2723,25 @@ async fn put_network_roles(
             )));
         }
     }
+    if let Some(port) = i.port.filter(|p| *p != s.bind.port()) {
+        if port == 0 {
+            return Err(bad("the port must be between 1 and 65535"));
+        }
+        // Fail early rather than restarting onto a port in use.
+        std::net::TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port)))
+            .map_err(|e| bad(format!("cannot listen on port {port}: {e}")))?;
+    }
     let dir = s.data_dir.clone();
+    let bind = s.bind;
     tokio::task::spawn_blocking(move || {
         let mut cfg = ServerConfig::load(&dir);
+        if let Some(port) = i.port {
+            let mut addr = cfg
+                .bind
+                .unwrap_or(SocketAddr::from(([0, 0, 0, 0], bind.port())));
+            addr.set_port(port);
+            cfg.bind = Some(addr);
+        }
         if let Some(c) = i.control {
             cfg.hardware.network.control = c;
         }
@@ -2734,7 +2753,7 @@ async fn put_network_roles(
     .await
     .map_err(internal)?
     .map_err(internal)?;
-    tracing::info!("network roles changed from the menu bar app, restarting");
+    tracing::info!("network settings changed from the menu bar app, restarting");
     crate::update::restart_soon();
     Ok(StatusCode::ACCEPTED)
 }

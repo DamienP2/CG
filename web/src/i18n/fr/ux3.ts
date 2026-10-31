@@ -23,6 +23,10 @@ export const ux3: Record<string, string> = {
   'NDI runtime unreadable': 'Runtime NDI illisible',
   'NDI runtime missing': 'Runtime NDI absent',
   'NDI runtime refused to start': 'Le runtime NDI refuse de démarrer',
+  'NDI name “{name}” already used': 'Nom NDI « {name} » déjà utilisé',
+  'Every NDI output needs a name': 'Chaque sortie NDI doit avoir un nom',
+  'Name already used': 'Nom déjà utilisé',
+  'Name required': 'Nom obligatoire',
   'Port {port} already in use': 'Port {port} déjà utilisé',
   // Projects
   'Modified just now': 'Modifié à l’instant',

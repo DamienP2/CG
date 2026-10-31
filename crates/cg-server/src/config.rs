@@ -725,11 +725,11 @@ impl ServerConfig {
                     }
                 }
                 for o in &outputs.ndi {
-                    if o.name.trim().is_empty() || !ndi_names.insert(o.name.trim().to_lowercase()) {
-                        return Err(format!(
-                            "NDI source names must be unique and non-empty (`{}`)",
-                            o.name
-                        ));
+                    if o.name.trim().is_empty() {
+                        return Err("every NDI output needs a name".into());
+                    }
+                    if !ndi_names.insert(o.name.trim().to_lowercase()) {
+                        return Err(format!("NDI name already used: `{}`", o.name.trim()));
                     }
                 }
             }

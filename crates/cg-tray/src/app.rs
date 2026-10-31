@@ -53,6 +53,11 @@ struct Words {
     network: &'static str,
     web_ui: &'static str,
     every_adapter: &'static str,
+    port: &'static str,
+    port_prompt: &'static str,
+    port_invalid: &'static str,
+    port_failed: &'static str,
+    port_in_use: &'static str,
     start: &'static str,
     stop: &'static str,
     restart: &'static str,
@@ -76,6 +81,11 @@ const FR: Words = Words {
     network: "Carte réseau",
     web_ui: "Interface web",
     every_adapter: "Toutes les cartes",
+    port: "Port de connexion : {p}…",
+    port_prompt: "Port de connexion de l’interface web (1 à 65535) :",
+    port_invalid: "Port invalide : entrez un nombre entre 1 et 65535.",
+    port_failed: "Impossible de passer au port {p}.",
+    port_in_use: "Le port {p} est déjà utilisé par un autre logiciel.",
     start: "Démarrer le serveur",
     stop: "Arrêter le serveur",
     restart: "Redémarrer le serveur",
@@ -99,6 +109,11 @@ const EN: Words = Words {
     network: "Network Adapter",
     web_ui: "Web interface",
     every_adapter: "Every adapter",
+    port: "Connection Port: {p}…",
+    port_prompt: "Port of the web interface (1 to 65535):",
+    port_invalid: "Invalid port: enter a number from 1 to 65535.",
+    port_failed: "Could not switch to port {p}.",
+    port_in_use: "Port {p} is already used by another program.",
     start: "Start Server",
     stop: "Stop Server",
     restart: "Restart Server",
@@ -294,6 +309,85 @@ fn ask(method: &str, port: u16, path: &str, json: Option<String>) -> bool {
         _ => a.post(&url).send_empty(),
     };
     r.is_ok_and(|r| r.status().is_success())
+}
+
+/// A JSON PUT to the server on this machine; the server's reason when it refuses.
+fn put(port: u16, path: &str, body: String) -> Result<(), String> {
+    let a: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(5)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut r = a
+        .put(format!("{}{path}", base_url(port)))
+        .header("Content-Type", "application/json")
+        .send(body)
+        .map_err(|e| e.to_string())?;
+    if r.status().is_success() {
+        Ok(())
+    } else {
+        Err(r.body_mut().read_to_string().unwrap_or_default())
+    }
+}
+
+/// Asks for a text in a native dialog; `None` when cancelled.
+fn prompt(message: &str, default: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    let out = {
+        let esc = |t: &str| t.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            "text returned of (display dialog \"{}\" default answer \"{}\" with title \"Strata Graphics\")",
+            esc(message),
+            esc(default)
+        );
+        Command::new("osascript").args(["-e", &script]).output()
+    };
+    #[cfg(windows)]
+    let out = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let ps = format!(
+            "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.Interaction]::InputBox('{}', 'Strata Graphics', '{}')",
+            message.replace('\'', "''"),
+            default.replace('\'', "''")
+        );
+        Command::new("powershell")
+            .args(["-NoProfile", "-Command", &ps])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+    };
+    let o = out.ok().filter(|o| o.status.success())?;
+    // Windows: Cancel gives an empty text.
+    Some(String::from_utf8_lossy(&o.stdout).trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// Asks for the port of the web interface, then has the server move to it
+/// (it restarts; the menu follows it through `runtime.json`).
+fn change_port(current: u16, w: &'static Words) {
+    std::thread::spawn(move || {
+        let Some(text) = prompt(w.port_prompt, &current.to_string()) else {
+            return;
+        };
+        let port = match text.parse::<u16>() {
+            Ok(p) if p > 0 => p,
+            _ => return alert(w.port_invalid),
+        };
+        if port == current {
+            return;
+        }
+        let body = serde_json::json!({ "port": port }).to_string();
+        match put(current, "/api/system/network", body) {
+            Ok(()) => {}
+            // macOS: "Address already in use"; Windows: os error 10048.
+            Err(e) if e.contains("already in use") || e.contains("10048") => {
+                alert(&w.port_in_use.replace("{p}", &port.to_string()))
+            }
+            Err(e) => alert(&format!(
+                "{}\n\n{e}",
+                w.port_failed.replace("{p}", &port.to_string())
+            )),
+        }
+    });
 }
 
 /// Runs `strata-server service <action>` with administrator rights: without a
@@ -514,6 +608,7 @@ struct Items {
     address: MenuItem,
     home: MenuItem,
     network: Submenu,
+    port: MenuItem,
     /// The adapter choices now in the submenu: item, role, adapter name.
     choices: Vec<(CheckMenuItem, Role, String)>,
     /// What the submenu shows (adapters, chosen ones), to rebuild it on change only.
@@ -535,6 +630,11 @@ impl Items {
             address: MenuItem::new("", false, None),
             home: MenuItem::new(w.open_home, false, None),
             network: Submenu::new(w.network, false),
+            port: MenuItem::new(
+                w.port.replace("{p}", &DEFAULT_PORT.to_string()),
+                false,
+                None,
+            ),
             choices: Vec::new(),
             shown_network: None,
             start_stop: MenuItem::new(w.start, true, None),
@@ -553,6 +653,7 @@ impl Items {
             &items.home,
             &PredefinedMenuItem::separator(),
             &items.network,
+            &items.port,
             &PredefinedMenuItem::separator(),
             &items.start_stop,
             &items.restart,
@@ -638,7 +739,9 @@ impl Items {
             self.address.set_text("—");
             self.address.set_enabled(false);
         }
-        for item in [&self.home, &self.restart] {
+        self.port
+            .set_text(w.port.replace("{p}", &s.port.to_string()));
+        for item in [&self.home, &self.restart, &self.port] {
             item.set_enabled(s.running);
         }
         self.network
@@ -741,6 +844,8 @@ pub fn run() {
                     server_action(a, status.port, w, proxy.clone());
                 } else if id == items.restart.id() {
                     server_action(Action::Restart, status.port, w, proxy.clone());
+                } else if id == items.port.id() {
+                    change_port(status.port, w);
                 } else if id == items.log.id() {
                     open_log();
                 } else if id == items.uninstall.id() {
