@@ -21173,89 +21173,76 @@ textarea.tx-grow {
   }
 }
 
-/* ---------- Data (main menu): two blocks, settings and a test ---------- */
-.data-list.dp-blocks {
-  padding: 10px;
-  gap: 12px;
-}
-.dp-block {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel-2);
-  overflow: hidden;
-  flex: none;
-}
-.dp-block > header {
+/* ---------- Data (main menu): settings and a test, laid out like Settings ---------- */
+.lib-nav-empty {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 42px;
-  padding: 0 6px 0 10px;
-  border-bottom: 1px solid var(--line);
-}
-.dp-block > header h3 {
-  flex: 1;
-  margin: 0;
-  font-size: var(--fs-11);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-2);
-}
-.dp-ic {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  display: grid;
-  place-items: center;
-  background: var(--panel-3);
-  color: var(--text-2);
-}
-.dp-block .data-item {
-  margin: 4px 6px;
-}
-.dp-block .ux3-empty-mini {
-  margin: 10px 12px;
-}
-.source-editor.dp-setup {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-}
-.dp-setup .se-form {
-  border-right: none;
-  border-bottom: 1px solid var(--line);
-  max-width: 820px;
-}
-.dp-kind-ic {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  background: var(--panel-3);
-  color: var(--accent-2);
-  flex: none;
-}
-.dp-kind {
-  font-size: var(--fs-11);
+  padding: 6px 10px;
   color: var(--text-3);
-  padding: 3px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  white-space: nowrap;
+  font-size: var(--fs-12);
 }
-.dp-setup .se-preview-head {
-  align-items: center;
+.data-home .library-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
-.dp-test-title {
-  font-size: var(--fs-11);
-  letter-spacing: 0.08em;
+.data-home .set-card > header .dp-pill,
+.data-home .set-card > header .dp-meta {
+  font-weight: 600;
+}
+/* Settings fields: a label above its control, as in Settings. */
+.dp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+}
+.dp-form > label:not(.check),
+.dp-form .push-help {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-2);
+}
+.dp-form > label:not(.check) > :not(span),
+.dp-form > label:not(.check) > span:not(:first-child),
+.dp-form .push-help > * {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  font-size: 13px;
+}
+.dp-form > label > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dp-form input:not([type='checkbox']),
+.dp-form select,
+.dp-form textarea {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.dp-form > label.check {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.dp-test {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dp-test .data-table-meta {
+  display: none;
 }
 .dp-pill {
   font-size: var(--fs-11);
-  font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
 }
@@ -21272,13 +21259,12 @@ textarea.tx-grow {
   color: var(--text-3);
 }
 .dp-test-empty {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 160px;
+  min-height: 140px;
   color: var(--text-3);
   font-size: var(--fs-12);
 }
@@ -21287,16 +21273,17 @@ textarea.tx-grow {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--bg);
   font-family: var(--mono);
   font-size: var(--fs-12);
   color: var(--text-2);
   overflow: auto;
 }
-.dp-block .data-item {
+.dp-form .soc-chips,
+.dp-form .soc-copy {
   display: flex;
-  width: calc(100% - 12px);
-}
-.dp-setup .data-table-meta {
-  display: none;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  font-size: 13px;
 }

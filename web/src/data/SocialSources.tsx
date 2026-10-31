@@ -1,9 +1,11 @@
-import { CircleAlert, Copy, MessagesSquare, Play, Plus, Save, Trash2 } from 'lucide-react';
+import { CircleAlert, Copy, MessagesSquare, Play, Plus, Save, Settings2, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api, changeEvents, useApp } from '../store';
 import { confirmDialog } from '../ui/dialogs';
 import { Segmented } from '../ui/fields';
+import { PageHead } from '../pages/SidePage';
+import { Card } from '../settings/ui';
 import { locale, t, tc, tn } from '../i18n';
 import { errorProps, friendlyError } from '../ui/serverError';
 import { PLATFORMS, PLATFORM_IDS, PlatformBadge, type Platform } from '../social/PlatformBadge';
@@ -143,7 +145,7 @@ export function SocialSection({ selected, onSelect, bare }: { selected: string |
 }
 
 /** The + of the Data page: a data source, or a social network connection. */
-export function AddSourceMenu({ onData, onSocial }: { onData?: () => void; onSocial: (p: Platform) => void }) {
+export function AddSourceMenu({ onData, onSocial, ghost }: { onData?: () => void; onSocial: (p: Platform) => void; /** In a list's section title. */ ghost?: boolean }) {
   // Fixed: the list it opens from scrolls (and would clip it).
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -162,7 +164,7 @@ export function AddSourceMenu({ onData, onSocial }: { onData?: () => void; onSoc
   return (
     <div className="menu-wrap" ref={ref}>
       <button
-        className="icon-btn"
+        className={`icon-btn ${ghost ? 'ghost' : ''}`}
         title={onData ? t('New data source') : t('New connection')}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
@@ -344,14 +346,8 @@ function Editor({ info, platform, editable, setup, onSaved, onClose }: { info?: 
   const hook = form.hook && hookToken ? `${location.origin}/api/social/hook/${s.id}?token=${hookToken}` : '';
   const read = (value('read') || 'chat,superChats').split(',').filter(Boolean);
 
-  return (
-    <div className={`source-editor soc-editor ${setup ? 'dp-setup' : ''}`}>
-      <div className="se-form">
-        <div className="se-head">
-          <PlatformBadge platform={s.platform} size={28} />
-          <input className="se-name" placeholder={t('Name')} value={s.name} disabled={!editable} onChange={(e) => setS({ ...s, name: e.target.value })} />
-          {setup && <span className="dp-kind">{PLATFORMS[s.platform].label}</span>}
-        </div>
+  const fields = (
+    <>
         {info?.account && (
           <label>
             {t('Account')}
@@ -405,13 +401,53 @@ function Editor({ info, platform, editable, setup, onSaved, onClose }: { info?: 
             </div>
           </div>
         )}
-        {!setup && (
-          <label className="switch check">
-            <input type="checkbox" checked={s.enabled} disabled={!editable} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
-            {t('Enabled')}
-          </label>
-        )}
-        {info?.error && !setup && (
+    </>
+  );
+  if (setup)
+    return (
+      <>
+        <PageHead title={s.name.trim() || PLATFORMS[s.platform].label} sub={PLATFORMS[s.platform].label}>
+          {editable && !isNew && (
+            <button className="btn danger" onClick={remove}>
+              <Trash2 size={14} /> {t('Delete')}
+            </button>
+          )}
+          {isNew && (
+            <button className="btn" onClick={onClose}>
+              {t('Cancel')}
+            </button>
+          )}
+          {editable && dirty && (
+            <button className="btn primary" disabled={busy || !s.name.trim()} onClick={save}>
+              <Save size={14} /> {isNew ? t('Create') : t('Save')}
+            </button>
+          )}
+        </PageHead>
+        <Card icon={<Settings2 size={16} />} title={t('Settings')}>
+          <div className="dp-form soc-editor">
+            <label>
+              {t('Name')}
+              <input placeholder={t('Name')} value={s.name} disabled={!editable} onChange={(e) => setS({ ...s, name: e.target.value })} />
+            </label>
+            {fields}
+          </div>
+        </Card>
+        {info && <TestPanel info={info} editable={editable} dirty={dirty} setup />}
+      </>
+    );
+  return (
+    <div className="source-editor soc-editor">
+      <div className="se-form">
+        <div className="se-head">
+          <PlatformBadge platform={s.platform} size={28} />
+          <input className="se-name" placeholder={t('Name')} value={s.name} disabled={!editable} onChange={(e) => setS({ ...s, name: e.target.value })} />
+        </div>
+        {fields}
+        <label className="switch check">
+          <input type="checkbox" checked={s.enabled} disabled={!editable} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
+          {t('Enabled')}
+        </label>
+        {info?.error && (
           <p className="error-text" title={errorProps(info.error).title}>
             <CircleAlert size={13} /> {errorProps(info.error).text}
           </p>
@@ -435,7 +471,7 @@ function Editor({ info, platform, editable, setup, onSaved, onClose }: { info?: 
           )}
         </div>
       </div>
-      {info ? <TestPanel info={info} editable={editable} dirty={dirty} setup={setup} /> : <div className="se-preview" />}
+      {info ? <TestPanel info={info} editable={editable} dirty={dirty} /> : <div className="se-preview" />}
     </div>
   );
 }
@@ -477,28 +513,32 @@ function TestPanel({ info, editable, dirty, setup }: { info: SocialInfo; editabl
   const time = (at: number) => new Date(at).toLocaleTimeString(locale(), { hour12: false });
   if (setup)
     return (
-      <div className="se-preview soc-test">
-        <div className="se-preview-head">
-          <strong className="dp-test-title">{tc('heading', 'Test')}</strong>
-          {result && <span className={`dp-pill ${result.ok ? 'ok' : 'err'}`}>{result.ok ? t('OK') : t('Error')}</span>}
-          {result && <span className="dp-meta">{[tn(result.messages.length, '{n} message', '{n} messages'), `${(result.tookMs / 1000).toFixed(1)} s`].join(' · ')}</span>}
-          <div className="spacer" />
-          {result && !!result.messages.length && (
-            <Segmented
-              value={view}
-              onChange={setView}
-              options={[
-                { value: 'table', label: t('Table') },
-                { value: 'raw', label: t('Raw') },
-              ]}
-            />
-          )}
-          {editable && (
-            <button className="btn small" disabled={busy || !!why} title={why} onClick={run}>
-              <Play size={13} /> {t('Test')}
-            </button>
-          )}
-        </div>
+      <Card
+        icon={<Play size={16} />}
+        title={tc('heading', 'Test')}
+        actions={
+          <>
+            {result && <span className={`dp-pill ${result.ok ? 'ok' : 'err'}`}>{result.ok ? t('OK') : t('Error')}</span>}
+            {result && <span className="dp-meta">{[tn(result.messages.length, '{n} message', '{n} messages'), `${(result.tookMs / 1000).toFixed(1)} s`].join(' · ')}</span>}
+            {result && !!result.messages.length && (
+              <Segmented
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: 'table', label: t('Table') },
+                  { value: 'raw', label: t('Raw') },
+                ]}
+              />
+            )}
+            {editable && (
+              <button className="btn small" disabled={busy || !!why} title={why} onClick={run}>
+                <Play size={13} /> {t('Test')}
+              </button>
+            )}
+          </>
+        }
+      >
+        <div className="dp-test">
         {busy ? (
           <p className="muted small">{t('Testing…')}</p>
         ) : !result ? (
@@ -536,7 +576,8 @@ function TestPanel({ info, editable, dirty, setup }: { info: SocialInfo; editabl
             </table>
           </div>
         )}
-      </div>
+        </div>
+      </Card>
     );
   return (
     <div className="se-preview soc-test">
