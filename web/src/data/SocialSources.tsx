@@ -1,4 +1,4 @@
-import { CircleAlert, Copy, Play, Plus, Save, Trash2 } from 'lucide-react';
+import { CircleAlert, Copy, MessagesSquare, Play, Plus, Save, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { api, changeEvents, useApp } from '../store';
@@ -115,11 +115,16 @@ export function connectionState(s: SocialInfo): { text: string; dot: string; raw
 }
 
 /** "Social networks" in the Data page's list. */
-export function SocialSection({ selected, onSelect }: { selected: string | null; onSelect: (id: string) => void }) {
+export function SocialSection({ selected, onSelect, bare }: { selected: string | null; onSelect: (id: string) => void; /** In its own block (its title above). */ bare?: boolean }) {
   const list = useSocialSources();
   return (
     <>
-      <div className="soc-sep">{t('Social networks')}</div>
+      {!bare && <div className="soc-sep">{t('Social networks')}</div>}
+      {bare && !list.length && (
+        <div className="ux3-empty-mini">
+          <MessagesSquare size={14} /> {t('No social network')}
+        </div>
+      )}
       {list.map((s) => {
         const st = connectionState(s);
         return (
@@ -127,7 +132,7 @@ export function SocialSection({ selected, onSelect }: { selected: string | null;
             <PlatformBadge platform={s.platform} />
             <span>
               <strong>{s.name}</strong>
-              <em title={st.raw ?? st.text}>{st.text}</em>
+              <em title={st.raw ?? st.text}>{bare ? PLATFORMS[s.platform].label : st.text}</em>
             </span>
             <i className={`status-dot ${st.dot}`} />
           </button>
@@ -138,7 +143,7 @@ export function SocialSection({ selected, onSelect }: { selected: string | null;
 }
 
 /** The + of the Data page: a data source, or a social network connection. */
-export function AddSourceMenu({ onData, onSocial }: { onData: () => void; onSocial: (p: Platform) => void }) {
+export function AddSourceMenu({ onData, onSocial }: { onData?: () => void; onSocial: (p: Platform) => void }) {
   // Fixed: the list it opens from scrolls (and would clip it).
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -158,7 +163,7 @@ export function AddSourceMenu({ onData, onSocial }: { onData: () => void; onSoci
     <div className="menu-wrap" ref={ref}>
       <button
         className="icon-btn"
-        title={t('New data source')}
+        title={onData ? t('New data source') : t('New connection')}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setAt(at ? null : { left: r.left, top: r.bottom + 6 });
@@ -168,11 +173,15 @@ export function AddSourceMenu({ onData, onSocial }: { onData: () => void; onSoci
       </button>
       {at && (
         <div className="menu soc-add-menu" style={{ left: at.left, top: at.top }}>
-          <button onClick={pick(onData)}>
-            <Plus size={14} /> {t('Data source')}
-          </button>
-          <div className="menu-sep" />
-          <div className="menu-label">{t('Social networks')}</div>
+          {onData && (
+            <>
+              <button onClick={pick(onData)}>
+                <Plus size={14} /> {t('Data source')}
+              </button>
+              <div className="menu-sep" />
+              <div className="menu-label">{t('Social networks')}</div>
+            </>
+          )}
           {PLATFORM_IDS.map((p) => (
             <button key={p} onClick={pick(() => onSocial(p))}>
               <PlatformBadge platform={p} size={18} /> {PLATFORMS[p].label}
@@ -272,13 +281,13 @@ const YT_READ = [
 const newId = (p: Platform) => `${p}-${Math.random().toString(36).slice(2, 8)}`;
 
 /** The editor of a connection (middle) and its live messages (right). */
-export function SocialEditor({ pick, editable, onSaved, onClose }: { pick: SocialPick; editable: boolean; onSaved: (id: string) => void; onClose: () => void }) {
+export function SocialEditor({ pick, editable, setup, onSaved, onClose }: { pick: SocialPick; editable: boolean; /** Main menu › Data: settings and a test, no on / off. */ setup?: boolean; onSaved: (id: string) => void; onClose: () => void }) {
   const info = useSocial((st) => ('id' in pick ? st.list.find((s) => s.id === pick.id) : undefined));
-  if ('platform' in pick) return <Editor key={`new-${pick.platform}`} platform={pick.platform} editable={editable} onSaved={onSaved} onClose={onClose} />;
-  return info ? <Editor key={info.id} info={info} editable={editable} onSaved={onSaved} onClose={onClose} /> : null;
+  if ('platform' in pick) return <Editor key={`new-${pick.platform}`} platform={pick.platform} editable={editable} setup={setup} onSaved={onSaved} onClose={onClose} />;
+  return info ? <Editor key={info.id} info={info} editable={editable} setup={setup} onSaved={onSaved} onClose={onClose} /> : null;
 }
 
-function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialInfo; platform?: Platform; editable: boolean; onSaved: (id: string) => void; onClose: () => void }) {
+function Editor({ info, platform, editable, setup, onSaved, onClose }: { info?: SocialInfo; platform?: Platform; editable: boolean; setup?: boolean; onSaved: (id: string) => void; onClose: () => void }) {
   const load = useSocial((st) => st.load);
   const toast = useApp((st) => st.toast);
   const isNew = !info;
@@ -336,11 +345,12 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
   const read = (value('read') || 'chat,superChats').split(',').filter(Boolean);
 
   return (
-    <div className="source-editor soc-editor">
+    <div className={`source-editor soc-editor ${setup ? 'dp-setup' : ''}`}>
       <div className="se-form">
         <div className="se-head">
           <PlatformBadge platform={s.platform} size={28} />
           <input className="se-name" placeholder={t('Name')} value={s.name} disabled={!editable} onChange={(e) => setS({ ...s, name: e.target.value })} />
+          {setup && <span className="dp-kind">{PLATFORMS[s.platform].label}</span>}
         </div>
         {info?.account && (
           <label>
@@ -395,11 +405,13 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
             </div>
           </div>
         )}
-        <label className="switch check">
-          <input type="checkbox" checked={s.enabled} disabled={!editable} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
-          {t('Enabled')}
-        </label>
-        {info?.error && (
+        {!setup && (
+          <label className="switch check">
+            <input type="checkbox" checked={s.enabled} disabled={!editable} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
+            {t('Enabled')}
+          </label>
+        )}
+        {info?.error && !setup && (
           <p className="error-text" title={errorProps(info.error).title}>
             <CircleAlert size={13} /> {errorProps(info.error).text}
           </p>
@@ -423,7 +435,7 @@ function Editor({ info, platform, editable, onSaved, onClose }: { info?: SocialI
           )}
         </div>
       </div>
-      {info ? <TestPanel info={info} editable={editable} dirty={dirty} /> : <div className="se-preview" />}
+      {info ? <TestPanel info={info} editable={editable} dirty={dirty} setup={setup} /> : <div className="se-preview" />}
     </div>
   );
 }
@@ -446,10 +458,11 @@ function StateLine({ info, children }: { info: SocialInfo; children?: React.Reac
  * and the last messages. Before any test: the connection's state as the
  * list gives it.
  */
-function TestPanel({ info, editable, dirty }: { info: SocialInfo; editable: boolean; dirty: boolean }) {
+function TestPanel({ info, editable, dirty, setup }: { info: SocialInfo; editable: boolean; dirty: boolean; setup?: boolean }) {
   const toast = useApp((st) => st.toast);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SocialTest | null>(null);
+  const [view, setView] = useState<'table' | 'raw'>('table');
   const run = async () => {
     setBusy(true);
     try {
@@ -460,7 +473,71 @@ function TestPanel({ info, editable, dirty }: { info: SocialInfo; editable: bool
       setBusy(false);
     }
   };
-  const why = !info.enabled ? t('Not enabled') : dirty ? t('Save the connection first') : undefined;
+  const why = !info.enabled && !setup ? t('Not enabled') : dirty ? t('Save the connection first') : undefined;
+  const time = (at: number) => new Date(at).toLocaleTimeString(locale(), { hour12: false });
+  if (setup)
+    return (
+      <div className="se-preview soc-test">
+        <div className="se-preview-head">
+          <strong className="dp-test-title">{tc('heading', 'Test')}</strong>
+          {result && <span className={`dp-pill ${result.ok ? 'ok' : 'err'}`}>{result.ok ? t('OK') : t('Error')}</span>}
+          {result && <span className="dp-meta">{[tn(result.messages.length, '{n} message', '{n} messages'), `${(result.tookMs / 1000).toFixed(1)} s`].join(' · ')}</span>}
+          <div className="spacer" />
+          {result && !!result.messages.length && (
+            <Segmented
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'table', label: t('Table') },
+                { value: 'raw', label: t('Raw') },
+              ]}
+            />
+          )}
+          {editable && (
+            <button className="btn small" disabled={busy || !!why} title={why} onClick={run}>
+              <Play size={13} /> {t('Test')}
+            </button>
+          )}
+        </div>
+        {busy ? (
+          <p className="muted small">{t('Testing…')}</p>
+        ) : !result ? (
+          <div className="dp-test-empty">
+            <Play size={20} />
+            <span>{t('Not tested yet')}</span>
+          </div>
+        ) : !result.messages.length ? (
+          <StateLine info={result.state} />
+        ) : view === 'raw' ? (
+          <pre className="dp-raw">{JSON.stringify(result.messages, null, 2)}</pre>
+        ) : (
+          <div className="data-table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>{t('Author')}</th>
+                  <th>{t('Message')}</th>
+                  <th>{t('Amount')}</th>
+                  <th>{t('Time')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.messages.map((m, i) => (
+                  <tr key={m.id}>
+                    <td className="n">{i + 1}</td>
+                    <td>{m.author.name || m.author.handle || '—'}</td>
+                    <td title={m.text}>{m.text}</td>
+                    <td>{m.amount ?? ''}</td>
+                    <td>{time(m.at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
   return (
     <div className="se-preview soc-test">
       <div className="se-preview-head soc-feed-head">
