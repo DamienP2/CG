@@ -378,6 +378,14 @@ export type LogicNodeKind =
   | { type: 'event'; on: TriggerEvent }
   /** 1 while the graphic `template` is on air, gliding over `transition` s (cg_core::logic::NodeKind::OnAir); `test` in the Designer. */
   | { type: 'onAir'; template: string; transition?: number; test?: boolean }
+  /** 1 for an instant when the trigger `name` is received (API, Companion…). */
+  | { type: 'triggerIn'; name: string }
+  /** 1 for an instant when Continue (F2) is pressed for the graphic. */
+  | { type: 'continue' }
+  /** On air: sets the variable when `when` becomes true; a number glides over `transition` s. */
+  | { type: 'setVar'; name: string; value: string; transition?: number }
+  /** The variable (0 until set on air; `test` in the Designer). */
+  | { type: 'var'; name: string; test?: number }
   | { type: 'bool'; op: 'and' | 'or' }
   | { type: 'out' }
   | { type: 'resume'; marker: string }
@@ -529,6 +537,8 @@ export interface PlayoutItem {
   changes?: ValueMove[];
   /** The graphic it replaced in a « Fade » zone, fading out under it. */
   leaving?: { item: PlayoutItem; frame: number; length: number } | null;
+  /** What its Logic saw on air (events, triggers, Continue: `__ev_<node>`; variables: `__var_<name>`), shown with its data. */
+  vals?: Record<string, string>;
 }
 
 /** Own time of a widget layer, in frames on air. */

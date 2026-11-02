@@ -173,6 +173,47 @@ pub enum NodeKind {
     NextRow {
         dataset: String,
     },
+    /// 1 for an instant when the trigger `name` is received (API, Companion,
+    /// a button of the Operator), 0 otherwise.
+    TriggerIn {
+        name: String,
+    },
+    /// 1 for an instant when Continue (F2) is pressed for the graphic.
+    Continue {},
+    /// On air: sets the variable `name` to `value` when input `when` becomes
+    /// true; a number glides there over `transition` seconds.
+    SetVar {
+        name: String,
+        #[serde(default)]
+        value: String,
+        #[serde(default)]
+        transition: f64,
+    },
+    /// The variable `name` (0 until set on air; `test` in the Designer).
+    Var {
+        name: String,
+        #[serde(default)]
+        test: f64,
+    },
+}
+
+/// The data key of what an event, trigger or Continue node saw on air (`1`
+/// or `0`), set by the server for the renderers.
+pub fn event_key(node: &str) -> String {
+    format!("__ev_{node}")
+}
+
+/// The data key of a variable.
+pub fn var_key(name: &str) -> String {
+    format!("__var_{}", name.trim())
+}
+
+/// `a` and `b` as one graph (the Logic and the Triggers of older templates).
+pub fn merged(a: &Logic, b: &Logic) -> Logic {
+    let mut out = a.clone();
+    out.nodes.extend(b.nodes.iter().cloned());
+    out.edges.extend(b.edges.iter().cloned());
+    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -195,6 +236,12 @@ pub enum AirAction {
     NextRow {
         node: String,
         dataset: String,
+    },
+    SetVar {
+        node: String,
+        name: String,
+        value: String,
+        transition: f64,
     },
 }
 
@@ -377,6 +424,20 @@ impl<'a> Graph<'a> {
             NodeKind::Target { .. } => input("in").unwrap_or(LVal::Num(0.0)),
             NodeKind::Text { value } => LVal::Text(value.clone()),
             NodeKind::Event { on } => LVal::Num(if events(id, on) { 1.0 } else { 0.0 }),
+            NodeKind::TriggerIn { .. } | NodeKind::Continue {} => {
+                LVal::Num(if data.get(&event_key(id)).is_some_and(|v| v == "1") {
+                    1.0
+                } else {
+                    0.0
+                })
+            }
+            NodeKind::Var { name, test } => match data.get(&var_key(name)) {
+                Some(v) => match v.trim().replace(',', ".").parse::<f64>() {
+                    Ok(x) => LVal::Num(x),
+                    Err(_) => LVal::Text(v.clone()),
+                },
+                None => LVal::Num(*test),
+            },
             NodeKind::OnAir { template, test, .. } => LVal::Num(
                 data.get(&on_air_key(template))
                     .and_then(|v| v.trim().parse::<f64>().ok())
@@ -393,7 +454,8 @@ impl<'a> Graph<'a> {
             NodeKind::Out {}
             | NodeKind::Resume { .. }
             | NodeKind::Fire { .. }
-            | NodeKind::NextRow { .. } => input("when").unwrap_or(LVal::Num(0.0)),
+            | NodeKind::NextRow { .. }
+            | NodeKind::SetVar { .. } => input("when").unwrap_or(LVal::Num(0.0)),
         }
     }
 }
@@ -428,6 +490,16 @@ pub fn air_actions(logic: &Logic, data: &Data, events: &mut Events) -> Vec<AirAc
                 node: n.id.clone(),
                 dataset: dataset.clone(),
             },
+            NodeKind::SetVar {
+                name,
+                value,
+                transition,
+            } => AirAction::SetVar {
+                node: n.id.clone(),
+                name: name.clone(),
+                value: value.clone(),
+                transition: *transition,
+            },
             _ => continue,
         };
         if g.inputs.contains_key(&(n.id.as_str(), "when"))
@@ -460,7 +532,8 @@ pub fn on_air_watched(logic: &Logic) -> Vec<(&str, f64)> {
         .collect()
 }
 
-/// The graph has « On air » nodes (the server evaluates it on air).
+/// The graph has nodes the server evaluates on air: actions, events,
+/// triggers, Continue, variables.
 pub fn drives_air(logic: &Logic) -> bool {
     logic.nodes.iter().any(|n| {
         matches!(
@@ -469,6 +542,11 @@ pub fn drives_air(logic: &Logic) -> bool {
                 | NodeKind::Resume { .. }
                 | NodeKind::Fire { .. }
                 | NodeKind::NextRow { .. }
+                | NodeKind::SetVar { .. }
+                | NodeKind::Var { .. }
+                | NodeKind::Event { .. }
+                | NodeKind::TriggerIn { .. }
+                | NodeKind::Continue {}
         )
     })
 }
@@ -533,7 +611,15 @@ pub fn apply(logic: &Logic, values: &mut Values, data: &Data, measure: &mut Meas
         if !g.inputs.contains_key(&(t.id.as_str(), "in")) {
             continue;
         }
-        let v = g.eval(&t.id, values, data, measure, &mut |_, _| false, 0);
+        // Events as the server saw them on air (none elsewhere).
+        let v = g.eval(
+            &t.id,
+            values,
+            data,
+            measure,
+            &mut |id, _| data.get(&event_key(id)).is_some_and(|v| v == "1"),
+            0,
+        );
         let Some(layer_values) = values.get_mut(layer) else {
             continue;
         };

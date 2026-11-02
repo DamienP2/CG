@@ -23,6 +23,10 @@ export const INPUTS: Record<LogicNode['type'], string[]> = {
   text: [],
   event: [],
   onAir: [],
+  triggerIn: [],
+  continue: [],
+  setVar: ['when'],
+  var: [],
   bool: ['a', 'b'],
   out: ['when'],
   resume: ['when'],
@@ -140,8 +144,17 @@ class Graph {
       case 'text':
         return n.value;
       // Watched on air by the server: not yet happened here.
+      // As the server saw them on air (nothing in the Designer).
       case 'event':
-        return 0;
+      case 'triggerIn':
+      case 'continue':
+        return data[evKey(n.id)] === '1' ? 1 : 0;
+      case 'var': {
+        const v = data[varKey(n.name)];
+        if (v === undefined) return n.test ?? 0;
+        const x = parseFloat(v.replace(',', '.'));
+        return Number.isFinite(x) && /^\s*-?[\d.,]+\s*$/.test(v) ? x : v;
+      }
       // On air the renderer gives its presence; in the Designer, its test value.
       case 'onAir': {
         const v = parseFloat(data[onAirKey(n.template)] ?? '');
@@ -156,12 +169,18 @@ class Graph {
       case 'resume':
       case 'fire':
       case 'nextRow':
+      case 'setVar':
         return input('when') ?? 0;
     }
   }
 }
 
 /** Applies the targets to `values` in dependency order (cycles skipped). */
+/** The data key of what an event, trigger or Continue node saw on air (cg_core::logic::event_key). */
+export const evKey = (node: string) => `__ev_${node}`;
+/** The data key of a variable (cg_core::logic::var_key). */
+export const varKey = (name: string) => `__var_${name.trim()}`;
+
 /** The data key of a graphic's presence on air, 0 → 1 (cg_core::logic::on_air_key). */
 export const onAirKey = (template: string) => `__onair_${template}`;
 

@@ -550,7 +550,7 @@ export const designer: Record<string, string> = {
   'What happens on air: events, out, a pause playing on…': 'Ce qui se passe à l’antenne : événements, sortie, reprise d’une pause…',
   'No relation': 'Aucune relation',
   'No trigger': 'Aucun déclencheur',
-  'Goes out when its Triggers say so': 'Sort quand ses déclencheurs le disent',
+  'Goes out when its Logic says so': 'Sort quand sa Logique le dit',
   'Open the Triggers': 'Ouvrir les Déclencheurs',
   'Fire a trigger': 'Lancer un déclencheur',
   'Conditions': 'Conditions',

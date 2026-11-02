@@ -21162,6 +21162,37 @@ textarea.tx-grow {
   padding: 5px 0;
 }
 
+/* Logic · functions, triggers received, actions and variables. */
+.cat-fn,
+.logic-node.cat-fn {
+  --kind: #a78bfa;
+}
+.cat-trigger,
+.logic-node.cat-trigger {
+  --kind: #facc15;
+}
+.cat-action,
+.logic-node.cat-action {
+  --kind: var(--live);
+}
+.cat-var,
+.logic-node.cat-var {
+  --kind: #2dd4bf;
+}
+.logic-palette button.cat-fn,
+.logic-palette button.cat-trigger,
+.logic-palette button.cat-action,
+.logic-palette button.cat-var {
+  align-items: center;
+  padding: 7px 9px;
+}
+.logic-palette button.cat-fn > svg,
+.logic-palette button.cat-trigger > svg,
+.logic-palette button.cat-action > svg,
+.logic-palette button.cat-var > svg {
+  color: var(--kind);
+}
+
 /* Logic · events (watched on air) and what they do on air. */
 .cat-event,
 .logic-node.cat-event {

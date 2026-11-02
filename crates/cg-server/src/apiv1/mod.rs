@@ -1304,6 +1304,7 @@ mod tests {
                 widgets: Default::default(),
                 advanced: false,
                 watch: Default::default(),
+                vals: Default::default(),
                 leaving: None,
             },
         );

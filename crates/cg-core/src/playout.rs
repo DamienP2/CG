@@ -88,6 +88,11 @@ pub struct PlayoutItem {
     /// done (it acts once each time its input becomes true).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub watch: BTreeMap<String, String>,
+    /// What its Logic saw on air, for the renderers: events, triggers and
+    /// Continue (`__ev_<node>`: 1 / 0) and its variables (`__var_<name>`).
+    /// Shown with its data ([`shown_data`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vals: BTreeMap<String, String>,
 }
 
 /// Text widths for the events that need them (a crawl's passes): the
@@ -247,12 +252,52 @@ pub fn presence<'a>(
         .fold(0.0, f64::max)
 }
 
+/// Continue (F2) pressed for a graphic, seen by its Logic at the next tick.
+const CONTINUE_FLAG: &str = "continue";
+
+/// The trigger `name` received, seen by the Logic at the next tick.
+fn trigger_flag(name: &str) -> String {
+    format!("trigger:{}", name.trim().to_lowercase())
+}
+
+/// A received trigger or Continue: true for one tick.
+fn is_pulse(k: &str) -> bool {
+    k == CONTINUE_FLAG || k.starts_with("trigger:")
+}
+
+/// Sets a variable of the graphic; a number glides there over `transition` s.
+fn set_var(item: &mut PlayoutItem, name: &str, value: &str, transition: f64, fps: f64) {
+    let key = crate::logic::var_key(name);
+    let num = |s: &str| s.trim().replace(',', ".").parse::<f64>().ok();
+    let to = num(value);
+    let from = item.vals.get(&key).cloned();
+    let glide = transition > 0.0 && to.is_some() && from.as_deref().and_then(num).is_some();
+    // Enough decimals to glide smoothly (counting keeps the target's decimals).
+    let v = match to {
+        Some(x) if transition > 0.0 => format!("{x:.4}"),
+        _ => value.trim().to_string(),
+    };
+    item.changes.retain(|c| c.key != key);
+    if glide {
+        item.changes.push(Change {
+            key: key.clone(),
+            kind: ValueChange::Count,
+            layer: String::new(),
+            from: from.unwrap_or_default(),
+            frame: 0.0,
+            length: (transition * fps).max(1.0),
+        });
+    }
+    item.vals.insert(key, v);
+}
+
 /// The data a graphic shows now: its counting values on their way.
 pub fn shown_data(item: &PlayoutItem) -> std::borrow::Cow<'_, crate::anim::Data> {
-    if !item.changes.iter().any(|c| c.kind == ValueChange::Count) {
+    if item.vals.is_empty() && !item.changes.iter().any(|c| c.kind == ValueChange::Count) {
         return std::borrow::Cow::Borrowed(&item.data);
     }
     let mut d = item.data.clone();
+    d.extend(item.vals.iter().map(|(k, v)| (k.clone(), v.clone())));
     for c in item.changes.iter().filter(|c| c.kind == ValueChange::Count) {
         if let Some(v) = d
             .get(&c.key)
@@ -503,6 +548,7 @@ impl PlayoutItem {
             widgets: BTreeMap::new(),
             advanced: Default::default(),
             watch: BTreeMap::new(),
+            vals: BTreeMap::new(),
             leaving: None,
         }
     }
@@ -1114,6 +1160,8 @@ impl ChannelState {
                 let t = project
                     .template(&item.template_id)
                     .ok_or_else(|| PlayoutError::UnknownTemplate(item.template_id.clone()))?;
+                // Seen by the Logic (« Continue (F2) ») at the next tick.
+                item.watch.insert(CONTINUE_FLAG.into(), "1".into());
                 // A widget waiting for Continue (its next page, its start) takes it first;
                 // the timeline's pause plays on once none does.
                 if !item.continue_widgets(t, project.frame_rate.as_f64()) {
@@ -1121,6 +1169,10 @@ impl ChannelState {
                 }
             }
             Command::Trigger { name } => {
+                // Seen by the Logic (« Trigger received ») at the next tick.
+                for item in self.layers.values_mut() {
+                    item.watch.insert(trigger_flag(&name), "1".into());
+                }
                 // Values set by hand until this trigger let go.
                 for item in self.layers.values_mut() {
                     release_manual(&mut item.data, |m| {
@@ -1659,13 +1711,55 @@ impl ChannelState {
                 }
                 continue;
             }
-            if !crate::logic::drives_air(&t.triggers) {
+            // One graph: the Logic (and the Triggers of a template not saved since).
+            let merged;
+            let graph = if t.triggers.nodes.is_empty() {
+                &t.logic
+            } else {
+                merged = crate::logic::merged(&t.logic, &t.triggers);
+                &merged
+            };
+            if !crate::logic::drives_air(graph) {
+                item.watch.retain(|k, _| !is_pulse(k));
                 continue;
             }
+            // What the renderers read: events, triggers and Continue as seen
+            // now; the variables, 0 until set.
+            let mut seen: Vec<(String, String)> = Vec::new();
+            for n in &graph.nodes {
+                use crate::logic::{event_key, var_key, NodeKind};
+                let bit = |v: bool| if v { "1" } else { "0" }.to_string();
+                match &n.kind {
+                    NodeKind::Event { on } => {
+                        let v = happened(&n.id, on, t, item, &on_air, now, fps, default_tz, m);
+                        seen.push((event_key(&n.id), bit(v)));
+                    }
+                    NodeKind::TriggerIn { name } => {
+                        let v = item.watch.contains_key(&trigger_flag(name));
+                        seen.push((event_key(&n.id), bit(v)));
+                    }
+                    NodeKind::Continue {} => {
+                        let v = item.watch.contains_key(CONTINUE_FLAG);
+                        seen.push((event_key(&n.id), bit(v)));
+                    }
+                    NodeKind::SetVar { name, .. } | NodeKind::Var { name, .. } => {
+                        item.vals.entry(var_key(name)).or_insert_with(|| "0".into());
+                    }
+                    _ => {}
+                }
+            }
+            for (k, v) in seen {
+                if item.vals.get(&k) != Some(&v) {
+                    item.vals.insert(k, v);
+                }
+            }
             let data = shown_data(item).into_owned();
-            let actions = crate::logic::air_actions(&t.triggers, &data, &mut |id, on| {
-                happened(id, on, t, item, &on_air, now, fps, default_tz, m)
+            let actions = crate::logic::air_actions(graph, &data, &mut |id, _| {
+                data.get(&crate::logic::event_key(id))
+                    .is_some_and(|v| v == "1")
             });
+            // Received once: gone after this tick.
+            item.watch.retain(|k, _| !is_pulse(k));
             // Once each time their input becomes true.
             let once = |item: &mut PlayoutItem, node: &str| {
                 let key = format!("act:{node}");
@@ -1676,9 +1770,9 @@ impl ChannelState {
             let asked: std::collections::HashSet<String> = actions
                 .iter()
                 .filter_map(|a| match a {
-                    AirAction::Fire { node, .. } | AirAction::NextRow { node, .. } => {
-                        Some(format!("act:{node}"))
-                    }
+                    AirAction::Fire { node, .. }
+                    | AirAction::NextRow { node, .. }
+                    | AirAction::SetVar { node, .. } => Some(format!("act:{node}")),
                     _ => None,
                 })
                 .collect();
@@ -1692,6 +1786,12 @@ impl ChannelState {
                     AirAction::NextRow { node, dataset } if once(item, node) => {
                         rows.push((*layer, dataset.clone()))
                     }
+                    AirAction::SetVar {
+                        node,
+                        name,
+                        value,
+                        transition,
+                    } if once(item, node) => set_var(item, name, value, *transition, fps),
                     _ => {}
                 }
             }
@@ -2361,6 +2461,93 @@ mod tests {
             .insert("status".into(), "final".into());
         assert_eq!(ch.event_resumes(&p, "UTC", &mut w).len(), 1);
         assert_eq!(ch.layers[&1].phase, Phase::Out);
+    }
+
+    #[test]
+    fn a_trigger_sets_a_variable_the_logic_reads() {
+        use crate::logic::{var_key, NodeKind};
+        let mut p = project();
+        let t = &mut p.templates[0];
+        // In the Logic (one graph): « but » received → flash = 1, gliding over 0,4 s;
+        // Continue (F2) → flash = 0 at once.
+        t.logic = graph(
+            vec![
+                ("tr", NodeKind::TriggerIn { name: "But".into() }),
+                (
+                    "on",
+                    NodeKind::SetVar {
+                        name: "flash".into(),
+                        value: "1".into(),
+                        transition: 0.4,
+                    },
+                ),
+                ("f2", NodeKind::Continue {}),
+                (
+                    "off",
+                    NodeKind::SetVar {
+                        name: "flash".into(),
+                        value: "0".into(),
+                        transition: 0.0,
+                    },
+                ),
+            ],
+            &[("tr", "on", "when"), ("f2", "off", "when")],
+        );
+        let mut ch = ChannelState::default();
+        take(&mut ch, &p);
+        let mut w = EstimatedWidth;
+        ch.event_resumes(&p, "UTC", &mut w);
+        let item = &ch.layers[&1];
+        assert_eq!(item.vals[&var_key("flash")], "0");
+        ch.apply(&p, Command::Trigger { name: "but".into() })
+            .unwrap();
+        ch.event_resumes(&p, "UTC", &mut w);
+        let item = &ch.layers[&1];
+        assert_eq!(item.vals[&var_key("flash")], "1.0000");
+        // Gliding: the renderers see it on its way.
+        let mid = shown_data(item)[&var_key("flash")].parse::<f64>().unwrap();
+        assert!(mid < 1.0);
+        for _ in 0..30 {
+            ch.tick(1.0);
+        }
+        assert_eq!(shown_data(&ch.layers[&1])[&var_key("flash")], "1.0000");
+        // A received trigger lasts one tick: nothing more happens after.
+        ch.event_resumes(&p, "UTC", &mut w);
+        assert!(!ch.layers[&1]
+            .watch
+            .keys()
+            .any(|k| k.starts_with("trigger:")));
+        ch.apply(
+            &p,
+            Command::Continue {
+                zone: None,
+                layer: Some(1),
+            },
+        )
+        .unwrap();
+        ch.event_resumes(&p, "UTC", &mut w);
+        assert_eq!(ch.layers[&1].vals[&var_key("flash")], "0");
+    }
+
+    #[test]
+    fn older_triggers_join_the_logic() {
+        use crate::logic::NodeKind;
+        let mut p = project();
+        let t = &mut p.templates[0];
+        t.logic = graph(vec![("a", NodeKind::Constant { value: 1.0 })], &[]);
+        t.triggers = graph(
+            vec![
+                ("a", NodeKind::Out {}),
+                ("b", NodeKind::Constant { value: 1.0 }),
+            ],
+            &[("b", "a", "when")],
+        );
+        assert!(t.merge_triggers());
+        assert!(t.triggers.nodes.is_empty());
+        let ids: Vec<_> = t.logic.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, ["a", "a-t", "b"]);
+        assert_eq!(t.logic.edges[0].to, "a-t");
+        assert!(!t.merge_triggers());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import {
   ChevronDown,
-  Zap,
+  Link2,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -804,8 +804,8 @@ export function Timeline({ fps, leftW, onAdd }: { fps: number; leftW: number; on
                     {moving ? (
                       <span className="mk-time">{formatTime(dragging.frame, fps)}</span>
                     ) : role === 'onair' ? (
-                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : m.resume?.type === 'triggers' ? t('Goes out when its Triggers say so') : t('Holds until Take out')}>
-                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' ? '⚡' : m.resume?.type === 'triggers' ? <Zap size={10} /> : '∞'}
+                      <span className="mk-hold" title={m.resume?.type === 'after' ? t('Goes out by itself after {s} s', { s: m.resume.seconds }) : m.resume?.type === 'trigger' ? t('Goes out on the trigger {name}', { name: m.resume.name }) : m.resume?.type === 'triggers' ? t('Goes out when its Logic says so') : t('Holds until Take out')}>
+                        {m.resume?.type === 'after' ? `${m.resume.seconds} s` : m.resume?.type === 'trigger' ? '⚡' : m.resume?.type === 'triggers' ? <Link2 size={10} /> : '∞'}
                       </span>
                     ) : (
                       <span>
@@ -867,16 +867,17 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
   const onAir = m.kind === 'out';
   const resume = m.resume ?? { type: 'manual' };
   // Its node in the Triggers: « Sortir (OUT) » for the IN/OUT point, « Reprendre la pause » for a pause.
-  const ownNode = (l: Template['triggers']) => l?.nodes.find((n) => (onAir ? n.type === 'out' : n.type === 'resume' && n.marker === id));
-  const events = (tpl.triggers?.nodes ?? []).filter((n) => n.type === 'event').length;
+  const ownNode = (l: Template['logic']) => l?.nodes.find((n) => (onAir ? n.type === 'out' : n.type === 'resume' && n.marker === id));
+  const graphNodes = [...(tpl.logic?.nodes ?? []), ...(tpl.triggers?.nodes ?? [])];
+  const events = graphNodes.filter((n) => n.type === 'event' || n.type === 'triggerIn' || n.type === 'continue').length;
   const toLogic = () =>
     st.update((tt) => {
       const x = tt.markers.find((y) => y.id === id);
       if (x) x.resume = { type: 'triggers' };
-      tt.triggers ??= { nodes: [], edges: [] };
-      if (!ownNode(tt.triggers)) {
-        const right = Math.max(400, ...tt.triggers.nodes.map((n) => n.x + 280));
-        tt.triggers.nodes.push(onAir ? { id: newId(), type: 'out', x: right, y: 60 } : { id: newId(), type: 'resume', marker: id, x: right, y: 200 });
+      tt.logic ??= { nodes: [], edges: [] };
+      if (!ownNode(tt.logic) && !ownNode(tt.triggers)) {
+        const right = Math.max(400, ...tt.logic.nodes.map((n) => n.x + 280));
+        tt.logic.nodes.push(onAir ? { id: newId(), type: 'out', x: right, y: 60 } : { id: newId(), type: 'resume', marker: id, x: right, y: 200 });
       }
     });
   return createPortal(
@@ -943,7 +944,7 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
                   {tc('trigger', 'Name')}
                 </button>
                 <button className={resume.type === 'triggers' ? 'on' : ''} onClick={() => resume.type !== 'triggers' && toLogic()}>
-                  {t('Triggers')}
+                  {t('Logic')}
                 </button>
               </div>
             </div>
@@ -958,12 +959,12 @@ function MarkerEditor({ id, fps, pos, onClose }: { id: string; fps: number; pos:
             <button
               className="me-logic"
               onClick={() => {
-                if (!ownNode(tpl.triggers)) toLogic();
+                if (!ownNode(tpl.logic) && !ownNode(tpl.triggers)) toLogic();
                 window.dispatchEvent(new Event('strata:open-triggers'));
                 onClose();
               }}
             >
-              <Zap size={14} /> {t('Open the Triggers')}
+              <Link2 size={14} /> {t('Open the Logic')}
               <small>{tn(events, '{n} event', '{n} events')}</small>
             </button>
           )}

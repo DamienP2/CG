@@ -1,4 +1,4 @@
-import { Copy, GripVertical, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X, Zap } from 'lucide-react';
+import { Copy, GripVertical, Link2, Plus, Redo2, Trash2, Undo2, UploadCloud, X } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../ui/Dropdown';
@@ -443,14 +443,13 @@ export const Designer = memo(function Designer() {
   useEffect(() => setTopSlot(document.getElementById('topbar-slot')), []);
   const [showZones, setShowZones] = useDisplayPref('designer.zones', true);
   const [logicOpen, setLogicOpen] = useState(false);
-  const [triggersOpen, setTriggersOpen] = useState(false);
-  // A marker set to « Déclencheurs » opens them.
+  // A marker set to « Logique » opens it.
   useEffect(() => {
-    const open = () => setTriggersOpen(true);
+    const open = () => setLogicOpen(true);
     window.addEventListener('strata:open-triggers', open);
     return () => window.removeEventListener('strata:open-triggers', open);
   }, []);
-  const logicCount = useDesigner((s) => s.template?.logic?.nodes.length ?? 0);
+  const logicCount = useDesigner((s) => (s.template?.logic?.nodes.length ?? 0) + (s.template?.triggers?.nodes.length ?? 0));
   // Panel sizes, adjustable with the splitters.
   const [layout, setLayout] = useLayout('designer.layout', {
     left: 320,
@@ -592,11 +591,8 @@ export const Designer = memo(function Designer() {
           <div className="spacer" />
           {template && (
             <>
-              <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Relations between values: a box that follows a text, conditions…')}>
+              <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Values, conditions and what happens on air: events, triggers, actions, variables')}>
                 <Link2 size={13} /> {t('Logic')}
-              </button>
-              <button className={`btn small ${template.triggers?.nodes.length ? 'has' : ''}`} onClick={() => setTriggersOpen(true)} title={t('What happens on air: events, out, a pause playing on…')}>
-                <Zap size={13} /> {t('Triggers')}
               </button>
               <DataCanvasButton />
             </>
@@ -632,7 +628,6 @@ export const Designer = memo(function Designer() {
       </div>
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
-      {triggersOpen && <LogicEditor graph="triggers" onClose={() => setTriggersOpen(false)} />}
       <DataCanvas />
       <TableEditor />
       <PasteDialog />

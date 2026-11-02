@@ -1706,6 +1706,36 @@ impl Template {
         changed
     }
 
+    /// The Triggers graph of older templates goes into the Logic (one graph
+    /// now). Returns true if anything changed.
+    pub fn merge_triggers(&mut self) -> bool {
+        if self.triggers.nodes.is_empty() && self.triggers.edges.is_empty() {
+            return false;
+        }
+        let taken: std::collections::HashSet<String> =
+            self.logic.nodes.iter().map(|n| n.id.clone()).collect();
+        let mut t = std::mem::take(&mut self.triggers);
+        // A node id already in the Logic gets another one (its wires follow).
+        for n in &mut t.nodes {
+            if taken.contains(&n.id) {
+                let old = n.id.clone();
+                let new = format!("{old}-t");
+                for e in &mut t.edges {
+                    if e.from == old {
+                        e.from = new.clone();
+                    }
+                    if e.to == old {
+                        e.to = new.clone();
+                    }
+                }
+                n.id = new;
+            }
+        }
+        self.logic.nodes.extend(t.nodes);
+        self.logic.edges.extend(t.edges);
+        true
+    }
+
     /// Layers of widgets that are gone become their replacement. Returns
     /// true if anything changed.
     pub fn upgrade_layers(&mut self) -> bool {
@@ -2280,6 +2310,7 @@ impl Project {
         for t in self.templates.iter_mut().chain(self.drafts.iter_mut()) {
             changed |= t.normalize_markers();
             changed |= t.upgrade_layers();
+            changed |= t.merge_triggers();
         }
         // "Hold anyway" is gone: those graphics now wait for the operator.
         for r in self.rundown.iter_mut().filter(|r| r.hold) {

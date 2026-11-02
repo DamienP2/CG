@@ -85,7 +85,7 @@ export const Program = memo(function Program({ project, live, width, height, max
         const fade = item.fade ? Math.min(item.fade.length, item.fade.frame + since * fps) : null;
         // Values a data source changed: counting, sliding or turning over in the layers showing them.
         const moves = movesAt(item, since * fps);
-        const shown = withPresence(shownData(item.data, moves), t);
+        const shown = withPresence(shownData(item.vals ? { ...item.data, ...item.vals } : item.data, moves), t);
         const turning = movingLayers(t, moves);
         // The graphic replaced in a « Fade » zone, fading out under the new one.
         const going = item.leaving;
