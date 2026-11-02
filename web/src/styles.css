@@ -21354,6 +21354,9 @@ textarea.tx-grow {
   font-size: var(--fs-12);
 }
 .cr-table th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-align: left;
   font-weight: 600;
   font-size: var(--fs-11);

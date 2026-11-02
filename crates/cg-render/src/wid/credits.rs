@@ -1,8 +1,9 @@
 //! Credits: drawing (same picture as `web/src/widgets/credits.tsx`).
 
 use cg_core::wid::credits::{
-    blocks, cards, crawl_items, crawl_logo_h, entries, ls, nominal, progress, styled, travel,
-    Align, Block, Body, Config, End, Layout, Mode, Start, State, Style,
+    blocks, cards, crawl_items, crawl_logo_h, entries, ls, nominal, progress, qr_caption_h, styled,
+    travel, Align, Block, Body, Config, End, Layout, Mode, SpaceStyle, Start, State, Style,
+    QR_CAPTION_GAP,
 };
 use cg_core::wid::table::Overflow;
 use cg_core::{Color, LayerKind, TextAlign};
@@ -90,6 +91,80 @@ fn draw_logo(d: &mut Draw, src: &str, x: f32, y: f32, h: f32, m: Option<&Mask>) 
     }
 }
 
+/// A QR code of `link`: white with a 2-module quiet zone, `side` px square.
+fn draw_qr(d: &mut Draw, link: &str, x: f32, y: f32, side: f32, m: Option<&Mask>) {
+    rect(d, x, y, side, side, side * 0.04, Color::WHITE, m);
+    let Some((n, mods)) = crate::qr_modules(link.trim()) else {
+        return;
+    };
+    let cell = side / (n + 4) as f32;
+    let mut pb = PathBuilder::new();
+    for (i, dark) in mods.iter().enumerate() {
+        if *dark {
+            let (cx, cy) = ((i % n) as f32, (i / n) as f32);
+            if let Some(r) = tiny_skia::Rect::from_xywh(
+                x + (cx + 2.0) * cell,
+                y + (cy + 2.0) * cell,
+                cell + 0.02,
+                cell + 0.02,
+            ) {
+                pb.push_rect(r);
+            }
+        }
+    }
+    if let Some(p) = pb.finish() {
+        d.fill(&p, Color::BLACK, FillRule::Winding, m);
+    }
+}
+
+/// A space's mark (`len` long, centred on `cx`, `cy`; across when `vertical`).
+#[allow(clippy::too_many_arguments)]
+fn draw_space(
+    d: &mut Draw,
+    st: SpaceStyle,
+    cx: f32,
+    cy: f32,
+    len: f32,
+    vertical: bool,
+    col: Color,
+    m: Option<&Mask>,
+) {
+    let th = 2.0;
+    let mut pb = PathBuilder::new();
+    match st {
+        SpaceStyle::Empty => return,
+        SpaceStyle::Line => {
+            let r = if vertical {
+                tiny_skia::Rect::from_xywh(cx - th / 2.0, cy - len / 2.0, th, len)
+            } else {
+                tiny_skia::Rect::from_xywh(cx - len / 2.0, cy - th / 2.0, len, th)
+            };
+            if let Some(r) = r {
+                pb.push_rect(r);
+            }
+        }
+        SpaceStyle::Dots => {
+            let step = 9.0;
+            let k = (len / step).floor().max(1.0) as usize;
+            let start = -(k as f32 - 1.0) * step / 2.0;
+            for i in 0..k {
+                let o = start + i as f32 * step;
+                let (px, py) = if vertical { (cx, cy + o) } else { (cx + o, cy) };
+                pb.push_circle(px, py, 1.6);
+            }
+        }
+        SpaceStyle::Dot => pb.push_circle(cx, cy, 3.5),
+    }
+    if let Some(p) = pb.finish() {
+        d.fill(&p, col, FillRule::Winding, m);
+    }
+}
+
+/// Length of a space's rule in the roll / pages.
+fn space_len(w: f32) -> f32 {
+    (w * 0.3).min(320.0)
+}
+
 fn ta(a: Align) -> TextAlign {
     match a {
         Align::Left => TextAlign::Left,
@@ -132,8 +207,44 @@ fn draw_block(d: &mut Draw, c: &Config, b: &Block, y0: f32, m: Option<&Mask>) {
     let w = d.w;
     let (ss, rs, ns) = (&c.st.section, &c.st.role, &c.st.name);
     let al = ta(c.align);
+    let place = |bw: f32| match c.align {
+        Align::Left => 0.0,
+        Align::Center => (w - bw) / 2.0,
+        Align::Right => w - bw,
+    };
     match &b.body {
-        Body::Space => {}
+        Body::Space(st) => {
+            let len = space_len(w);
+            let x = place(len);
+            draw_space(
+                d,
+                *st,
+                x + len / 2.0,
+                y0 + b.h / 2.0,
+                len,
+                false,
+                Draw::hex(&rs.color),
+                m,
+            );
+        }
+        Body::Qr(link, caption) => {
+            let x = place(c.logo_h);
+            draw_qr(d, link, x, y0, c.logo_h, m);
+            let ch = qr_caption_h(c, caption);
+            if ch > 0.0 {
+                let rh = (rs.size * 1.3).round();
+                line(
+                    d,
+                    &c.font,
+                    rs,
+                    caption,
+                    al,
+                    (0.0, y0 + c.logo_h + ch - rh, w, rh),
+                    true,
+                    m,
+                );
+            }
+        }
         Body::Section(t) => line(
             d,
             &c.font,
@@ -311,6 +422,32 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                         zm,
                     ),
                     Body::Logo(s) => draw_logo(d, s, x, (h - lh) / 2.0, lh, zm),
+                    Body::Qr(link, caption) => {
+                        draw_qr(d, link, x, (h - lh) / 2.0, lh, zm);
+                        if !caption.trim().is_empty() {
+                            let cx = x + lh + QR_CAPTION_GAP;
+                            line(
+                                d,
+                                &c.font,
+                                &c.st.role,
+                                caption,
+                                TextAlign::Left,
+                                (cx, 0.0, it.w - (cx - x) + 4.0, h),
+                                false,
+                                zm,
+                            );
+                        }
+                    }
+                    Body::Space(sp) => draw_space(
+                        d,
+                        *sp,
+                        x + it.w / 2.0,
+                        h / 2.0,
+                        lh * 0.5,
+                        true,
+                        Draw::hex(&c.st.role.color),
+                        zm,
+                    ),
                     Body::Lines(row) => {
                         let (role, name) = &row[0];
                         if !role.is_empty() {
@@ -336,7 +473,6 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
                             zm,
                         );
                     }
-                    Body::Space => {}
                 }
             }
         }

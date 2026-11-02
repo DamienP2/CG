@@ -2,14 +2,15 @@
 // logos, spaces) with an import from text, 1 / 2 / 3 columns, styles per level, speed from a total duration or
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useReducer, useState } from 'react';
 import { Flag, GripVertical, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward, Trash2, X } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
-import { parseDuration } from '../engine/widgets';
+import { onQrLoaded, parseDuration, qrModules } from '../engine/widgets';
 import type { Data, PlayoutItem } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
+import { AssetPicker } from '../designer/AssetPicker';
 import { confirmDialog } from '../ui/dialogs';
 import { loadFonts, useFonts } from '../engine/fonts';
 import { clamp, findCol, headerRows, ColorPick, Content, defineWidget, ExposeSetting, hex, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
@@ -18,7 +19,10 @@ import { familyCss, FitLine, FONT, OpField, tw, useLiveTime } from './table-text
 import { layerTime } from './ticker';
 import { t, tc, tl } from '../i18n';
 
-type Kind = 'section' | 'line' | 'logo' | 'space';
+type Kind = 'section' | 'line' | 'logo' | 'space' | 'qr';
+/** How a space shows (its `a`): nothing, a rule, a dotted rule, a dot. */
+type SpaceStyle = '' | 'line' | 'dots' | 'dot';
+const spaceStyle = (a: string): SpaceStyle => (a === 'line' || a === 'dots' || a === 'dot' ? a : '');
 export interface Entry {
   kind?: Kind;
   a?: string;
@@ -129,6 +133,12 @@ export function parse(text: string): E[] {
       out.push({ kind: 'logo', a: v || 'PULSE TV', b: '' });
       continue;
     }
+    if (l.toLowerCase().startsWith('[qr') && l.endsWith(']')) {
+      const v = l.slice(3, -1);
+      const bar = v.indexOf('|');
+      out.push({ kind: 'qr', a: (bar < 0 ? v : v.slice(0, bar)).trim(), b: bar < 0 ? '' : v.slice(bar + 1).trim() });
+      continue;
+    }
     const parts = line.split(/[|;\t]/);
     if (parts.length > 1)
       out.push({
@@ -144,7 +154,7 @@ export function parse(text: string): E[] {
   }
   return out;
 }
-export const toText = (es: E[]) => es.map((e) => (e.kind === 'section' ? `# ${e.a}` : e.kind === 'logo' ? `[logo ${e.a}]` : e.kind === 'space' ? '' : e.a ? `${e.a} | ${e.b}` : e.b)).join('\n');
+export const toText = (es: E[]) => es.map((e) => (e.kind === 'section' ? `# ${e.a}` : e.kind === 'logo' ? `[logo ${e.a}]` : e.kind === 'qr' ? (e.b ? `[qr ${e.a} | ${e.b}]` : `[qr ${e.a}]`) : e.kind === 'space' ? '' : e.a ? `${e.a} | ${e.b}` : e.b)).join('\n');
 /** Entries from a table (a data set): its section / logo / role / name columns, else the first two columns as role and name. */
 function tableEntries(head: string[], rows: string[][]): E[] {
   const section = findCol(head, ['section']);
@@ -192,7 +202,7 @@ export function entriesOf(k: K, data: Data): E[] {
 }
 
 // -------------------------------------------------------------- layout --
-type Body = { t: 'section'; s: string } | { t: 'logo'; s: string } | { t: 'space' } | { t: 'lines'; row: [string, string][] };
+type Body = { t: 'section'; s: string } | { t: 'logo'; s: string } | { t: 'space'; style: SpaceStyle } | { t: 'qr'; link: string; caption: string } | { t: 'lines'; row: [string, string][] };
 interface Block {
   body: Body;
   gap: number;
@@ -201,6 +211,10 @@ interface Block {
   roleH: number;
 }
 const R = Math.round;
+/** Height of a QR code's caption row (gap included), 0 without one (mirrors qr_caption_h). */
+const qrCaptionH = (k: K, caption: string) => (caption.trim() ? R(k.st.role.size * 0.5) + R(k.st.role.size * 1.3) : 0);
+/** Between a QR code and its caption, in the crawl (QR_CAPTION_GAP). */
+const QR_CAPTION_GAP = 14;
 export function blocks(k: K, es: E[]): [Block[], number] {
   const { section: s, role: rs, name: ns } = k.st;
   const out: Block[] = [];
@@ -210,7 +224,8 @@ export function blocks(k: K, es: E[]): [Block[], number] {
     const first = !out.length;
     if (e.kind === 'section') (out.push({ body: { t: 'section', s: e.a }, gap: first ? 0 : k.sectionGap, y: 0, h: R(s.size * 1.3) + R(k.lineGap * 1.5), roleH: 0 }), i++);
     else if (e.kind === 'logo') (out.push({ body: { t: 'logo', s: e.a }, gap: first ? 0 : k.sectionGap, y: 0, h: k.logoH, roleH: 0 }), i++);
-    else if (e.kind === 'space') (out.push({ body: { t: 'space' }, gap: 0, y: 0, h: k.spaceH, roleH: 0 }), i++);
+    else if (e.kind === 'qr') (out.push({ body: { t: 'qr', link: e.a, caption: e.b }, gap: first ? 0 : k.sectionGap, y: 0, h: k.logoH + qrCaptionH(k, e.b), roleH: 0 }), i++);
+    else if (e.kind === 'space') (out.push({ body: { t: 'space', style: spaceStyle(e.a) }, gap: 0, y: 0, h: k.spaceH, roleH: 0 }), i++);
     else if (k.layout === 'three') {
       const row: [string, string][] = [];
       while (i < es.length && es[i].kind === 'line' && row.length < 3) (row.push([es[i].a, es[i].b]), i++);
@@ -241,7 +256,7 @@ export function cards(bl: Block[], boxH: number): Card[] {
   for (const b of bl) {
     const cur = cs[cs.length - 1];
     if (b.body.t === 'space' && (!cur || !cur.blocks.length)) continue;
-    if (!cur || b.body.t === 'section' || b.body.t === 'logo' || cur.h + b.h > max) cs.push({ blocks: [], h: 0 });
+    if (!cur || b.body.t === 'section' || b.body.t === 'logo' || b.body.t === 'qr' || cur.h + b.h > max) cs.push({ blocks: [], h: 0 });
     const c = cs[cs.length - 1];
     const yy = c.blocks.length ? c.h + b.gap : 0;
     c.blocks.push({ ...b, y: yy });
@@ -288,7 +303,16 @@ export function crawlItems(k: K, es: E[], h: number): [CItem[], number] {
     } else if (e.kind === 'logo') {
       if (out.length) gap = k.sectionGap * 2;
       it = { body: { t: 'logo', s: e.a }, w: lh * ratioOf(e.a), roleW: 0 };
+    } else if (e.kind === 'qr') {
+      if (out.length) gap = k.sectionGap * 2;
+      it = { body: { t: 'qr', link: e.a, caption: e.b }, w: lh + (e.b.trim() ? QR_CAPTION_GAP + mw(e.b, k.st.role, k.font) : 0), roleW: 0 };
     } else if (e.kind === 'space') {
+      const style = spaceStyle(e.a);
+      // Marked: drawn halfway between its neighbours.
+      if (style) {
+        x += gap;
+        out.push({ body: { t: 'space', style }, x, w: k.spaceH, roleW: 0 });
+      }
       x += k.spaceH;
       continue;
     } else {
@@ -365,6 +389,44 @@ function Logo({ src, x, y, h }: { src: string; x: number; y: number; h: number }
     </svg>
   );
 }
+/** A QR code of `link` (modules from the server, as the Rust renderer): white, 2-module quiet zone. */
+function QrBox({ link, x, y, side }: { link: string; x: number; y: number; side: number }) {
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onQrLoaded(rerender), []);
+  const qr = link.trim() ? qrModules(link.trim()) : null;
+  const n = (qr?.size ?? 21) + 4;
+  const rects: React.ReactNode[] = [];
+  if (qr) for (let i = 0; i < qr.modules.length; i++) if (qr.modules[i] === '1') rects.push(<rect key={i} x={(i % qr.size) + 2} y={Math.floor(i / qr.size) + 2} width={1.02} height={1.02} />);
+  return (
+    <svg style={{ position: 'absolute', left: x, top: y }} width={side} height={side} viewBox={`0 0 ${n} ${n}`} shapeRendering="crispEdges">
+      <rect width={n} height={n} rx={n * 0.04} fill="#fff" />
+      <g fill="#000">{rects}</g>
+    </svg>
+  );
+}
+/** A space's mark, `len` long centred on (cx, cy), across when `vertical` (mirrors draw_space). */
+function SpaceMark({ style, cx, cy, len, vertical, color }: { style: SpaceStyle; cx: number; cy: number; len: number; vertical?: boolean; color: string }) {
+  if (!style) return null;
+  const pad = 4;
+  const [bw, bh] = vertical ? [pad * 2, len + pad * 2] : [len + pad * 2, pad * 2];
+  const box = { position: 'absolute' as const, left: cx - bw / 2, top: cy - bh / 2 };
+  let shapes: React.ReactNode;
+  if (style === 'line') shapes = vertical ? <rect x={pad - 1} y={pad} width={2} height={len} /> : <rect x={pad} y={pad - 1} width={len} height={2} />;
+  else if (style === 'dot') shapes = <circle cx={bw / 2} cy={bh / 2} r={3.5} />;
+  else {
+    const step = 9;
+    const n = Math.max(1, Math.floor(len / step));
+    const start = -((n - 1) * step) / 2;
+    shapes = Array.from({ length: n }, (_, i) => <circle key={i} cx={bw / 2 + (vertical ? 0 : start + i * step)} cy={bh / 2 + (vertical ? start + i * step : 0)} r={1.6} />);
+  }
+  return (
+    <svg style={box} width={bw} height={bh} fill={color}>
+      {shapes}
+    </svg>
+  );
+}
+/** Length of a space's rule in the roll / pages (space_len). */
+const spaceLen = (w: number) => Math.min(w * 0.3, 320);
 function TextBox({ s, t, align, box, cut, family }: { s: St; t: string; align: 'left' | 'center' | 'right'; box: [number, number, number, number]; cut?: boolean; family: string }) {
   if (!t.trim()) return null;
   return <FitLine text={styled(s, t)} size={s.size} weight={s.weight} ls={lsOf(s)} align={align} box={box} color={hex(s.color, '#fff')} family={family} fit={cut ? { overflow: 'ellipsis', minSize: s.size, minSqueeze: 100 } : undefined} />;
@@ -373,7 +435,21 @@ function TextBox({ s, t, align, box, cut, family }: { s: St; t: string; align: '
 const BlockView = memo(function BlockView({ k, b, y0, w }: { k: K; b: Block; y0: number; w: number }) {
   const { section: ss, role: rs, name: ns } = k.st;
   const al = k.align;
-  if (b.body.t === 'space') return null;
+  const place = (bw: number) => (al === 'left' ? 0 : al === 'center' ? (w - bw) / 2 : w - bw);
+  if (b.body.t === 'space') {
+    const len = spaceLen(w);
+    return <SpaceMark style={b.body.style} cx={place(len) + len / 2} cy={y0 + b.h / 2} len={len} color={hex(rs.color, '#fff')} />;
+  }
+  if (b.body.t === 'qr') {
+    const ch = qrCaptionH(k, b.body.caption);
+    const rh = R(rs.size * 1.3);
+    return (
+      <>
+        <QrBox link={b.body.link} x={place(k.logoH)} y={y0} side={k.logoH} />
+        {ch > 0 && <TextBox family={k.font} s={rs} t={b.body.caption} align={al} box={[0, y0 + k.logoH + ch - rh, w, rh]} cut />}
+      </>
+    );
+  }
   if (b.body.t === 'section') return <TextBox family={k.font} s={ss} t={b.body.s} align={al} box={[0, y0, w, R(ss.size * 1.3)]} />;
   if (b.body.t === 'logo') {
     const lw = k.logoH * ratioOf(b.body.s);
@@ -438,6 +514,14 @@ function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: n
       if (x > w || x + it.w < 0) return;
       if (it.body.t === 'section') out.push(<TextBox family={k.font} key={i} s={k.st.section} t={it.body.s} align="left" box={[x, 0, it.w + 4, h]} />);
       else if (it.body.t === 'logo') out.push(<Logo key={i} src={it.body.s} x={x} y={(h - lh) / 2} h={lh} />);
+      else if (it.body.t === 'qr')
+        out.push(
+          <span key={i}>
+            <QrBox link={it.body.link} x={x} y={(h - lh) / 2} side={lh} />
+            {it.body.caption.trim() && <TextBox family={k.font} s={k.st.role} t={it.body.caption} align="left" box={[x + lh + QR_CAPTION_GAP, 0, it.w - lh - QR_CAPTION_GAP + 4, h]} />}
+          </span>,
+        );
+      else if (it.body.t === 'space') out.push(<SpaceMark key={i} style={it.body.style} cx={x + it.w / 2} cy={h / 2} len={lh * 0.5} vertical color={hex(k.st.role.color, '#fff')} />);
       else if (it.body.t === 'lines') {
         const [role, name] = it.body.row[0];
         out.push(
@@ -575,8 +659,17 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
     { value: 'section', label: t('Section') },
     { value: 'line', label: t('Line') },
     { value: 'logo', label: t('Logo') },
+    { value: 'qr', label: t('QR code') },
     { value: 'space', label: t('Space') },
   ];
+  const spaces: { value: SpaceStyle; label: string }[] = [
+    { value: '', label: tc('space', 'Empty') },
+    { value: 'line', label: tc('space', 'Rule') },
+    { value: 'dots', label: tc('space', 'Dotted') },
+    { value: 'dot', label: tc('space', 'Dot') },
+  ];
+  // A space keeps its style in `a`: its values start again when the type changes to or from it.
+  const setKind = (i: number, e: Entry, kind: Kind) => put(i, (e.kind ?? 'line') === 'space' || kind === 'space' ? { kind, a: '', b: '' } : { kind });
   const put = (i: number, patch: Partial<Entry>) => onChange(value.map((e, j) => (j === i ? { ...e, ...patch } : e)));
   // Rows moved by their grip: the one dragged, and where it would go (before row `at`).
   const [from, setFrom] = useState<number | null>(null);
@@ -598,8 +691,8 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
           <tr>
             <th />
             <th>{t('Type')}</th>
-            <th>{t('Role / title / logo')}</th>
-            <th>{t('Name')}</th>
+            <th>{t('Role / title / logo / link')}</th>
+            <th>{t('Name / caption')}</th>
             <th />
           </tr>
         </thead>
@@ -643,10 +736,24 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
                   <GripVertical size={13} />
                 </td>
                 <td className="cr-kind">
-                  <Dropdown value={kind} options={kinds} onChange={(v) => put(i, { kind: v as Kind })} />
+                  <Dropdown value={kind} options={kinds} onChange={(v) => setKind(i, e, v as Kind)} />
                 </td>
-                <td>{kind !== 'space' && <input value={e.a ?? ''} placeholder={kind === 'logo' ? '/assets/…' : ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { a: ev.target.value })} />}</td>
-                <td>{kind === 'line' && <input value={e.b ?? ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { b: ev.target.value })} />}</td>
+                {kind === 'logo' ? (
+                  <td colSpan={2}>
+                    <AssetPicker value={e.a ?? ''} title={t('Logo')} clearable={false} onChange={(v) => put(i, { a: v })} />
+                  </td>
+                ) : kind === 'space' ? (
+                  <td colSpan={2}>
+                    <Segmented value={spaceStyle(e.a ?? '')} options={spaces} onChange={(v) => put(i, { a: v })} />
+                  </td>
+                ) : (
+                  <>
+                    <td>
+                      <input value={e.a ?? ''} placeholder={kind === 'qr' ? 'https://…' : ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { a: ev.target.value })} />
+                    </td>
+                    <td>{(kind === 'line' || kind === 'qr') && <input value={e.b ?? ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { b: ev.target.value })} />}</td>
+                  </>
+                )}
                 <td className="cr-x">
                   <button title={t('Remove')} onClick={() => onChange(value.filter((_, j) => j !== i))}>
                     <X size={13} />

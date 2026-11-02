@@ -32,10 +32,34 @@ pub enum Kind {
     Line,
     Logo,
     Space,
+    Qr,
+}
+
+/// How a space shows: nothing, a rule, a dotted rule or a dot.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SpaceStyle {
+    #[default]
+    Empty,
+    Line,
+    Dots,
+    Dot,
+}
+
+impl SpaceStyle {
+    /// From a space entry's `a` ("", "line", "dots", "dot").
+    pub fn parse(s: &str) -> Self {
+        match s.trim() {
+            "line" => Self::Line,
+            "dots" => Self::Dots,
+            "dot" => Self::Dot,
+            _ => Self::Empty,
+        }
+    }
 }
 
 /// An entry: section (`a` = title), line (`a` = role, `b` = name), logo
-/// (`a` = picture asset path, or a name for a plate), space.
+/// (`a` = picture asset path, or a name for a plate), space (`a` = its
+/// style, see [`SpaceStyle`]), QR code (`a` = its link, `b` = a caption under it).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Entry {
@@ -259,6 +283,16 @@ pub fn parse(text: &str) -> Vec<Entry> {
             });
             continue;
         }
+        if low.starts_with("[qr") && l.ends_with(']') {
+            let v = &l[3..l.len() - 1];
+            let (link, caption) = v.split_once('|').unwrap_or((v, ""));
+            out.push(Entry {
+                kind: Kind::Qr,
+                a: link.trim().to_string(),
+                b: caption.trim().to_string(),
+            });
+            continue;
+        }
         let parts: Vec<&str> = line.split(['|', ';', '\t']).collect();
         if parts.len() > 1 {
             out.push(Entry {
@@ -290,6 +324,8 @@ pub fn to_text(es: &[Entry]) -> String {
             Kind::Section => format!("# {}", e.a),
             Kind::Logo => format!("[logo {}]", e.a),
             Kind::Space => String::new(),
+            Kind::Qr if e.b.is_empty() => format!("[qr {}]", e.a),
+            Kind::Qr => format!("[qr {} | {}]", e.a, e.b),
             Kind::Line if e.a.is_empty() => e.b.clone(),
             Kind::Line => format!("{} | {}", e.a, e.b),
         })
@@ -414,9 +450,26 @@ pub fn entries(c: &Config, data: &Data) -> Vec<Entry> {
 pub enum Body {
     Section(String),
     Logo(String),
-    Space,
+    Space(SpaceStyle),
+    /// A QR code: its link, its caption.
+    Qr(String, String),
     /// Role, name per column (one, or up to three).
     Lines(Vec<(String, String)>),
+}
+
+impl Body {
+    pub fn is_space(&self) -> bool {
+        matches!(self, Body::Space(_))
+    }
+}
+
+/// Height of a QR code's caption row (gap included), 0 without one.
+pub fn qr_caption_h(c: &Config, caption: &str) -> f32 {
+    if caption.trim().is_empty() {
+        0.0
+    } else {
+        (c.st.role.size * 0.5).round() + (c.st.role.size * 1.3).round()
+    }
 }
 
 /// A block of the roll / pages, `y` from the top of the content.
@@ -463,10 +516,20 @@ pub fn blocks(c: &Config, es: &[Entry]) -> (Vec<Block>, f32) {
                     role_h: 0.0,
                 }
             }
+            Kind::Qr => {
+                i += 1;
+                Block {
+                    body: Body::Qr(e.a.clone(), e.b.clone()),
+                    gap: if first { 0.0 } else { c.section_gap },
+                    y: 0.0,
+                    h: c.logo_h + qr_caption_h(c, &e.b),
+                    role_h: 0.0,
+                }
+            }
             Kind::Space => {
                 i += 1;
                 Block {
-                    body: Body::Space,
+                    body: Body::Space(SpaceStyle::parse(&e.a)),
                     gap: 0.0,
                     y: 0.0,
                     h: c.space_h,
@@ -520,7 +583,7 @@ pub fn blocks(c: &Config, es: &[Entry]) -> (Vec<Block>, f32) {
         };
         out.push(b);
     }
-    while out.last().is_some_and(|b| b.body == Body::Space) {
+    while out.last().is_some_and(|b| b.body.is_space()) {
         out.pop();
     }
     let mut y = 0.0;
@@ -545,11 +608,11 @@ pub fn cards(bl: &[Block], box_h: f32) -> Vec<Card> {
     let mut cs: Vec<Card> = Vec::new();
     for b in bl {
         let cur_empty = cs.last().is_none_or(|c| c.blocks.is_empty());
-        if b.body == Body::Space && cur_empty {
+        if b.body.is_space() && cur_empty {
             continue;
         }
         let brk = cs.is_empty()
-            || matches!(b.body, Body::Section(_) | Body::Logo(_))
+            || matches!(b.body, Body::Section(_) | Body::Logo(_) | Body::Qr(..))
             || cs.last().unwrap().h + b.h > max;
         if brk {
             cs.push(Card {
@@ -567,7 +630,7 @@ pub fn cards(bl: &[Block], box_h: f32) -> Vec<Card> {
         cur.h = yy + b.h;
     }
     for c in &mut cs {
-        while c.blocks.last().is_some_and(|b| b.body == Body::Space) {
+        while c.blocks.last().is_some_and(|b| b.body.is_space()) {
             let b = c.blocks.pop().unwrap();
             c.h -= b.h;
         }
@@ -606,6 +669,9 @@ pub fn ls(s: &Style) -> f32 {
     }
 }
 
+/// Between a QR code and its caption, in the crawl.
+pub const QR_CAPTION_GAP: f32 = 14.0;
+
 /// Logo height in the crawl.
 pub fn crawl_logo_h(c: &Config, box_h: f32) -> f32 {
     c.logo_h.min(box_h * 0.7)
@@ -637,7 +703,29 @@ pub fn crawl_items(
                 }
                 (Body::Logo(e.a.clone()), logo_w(&e.a, lh), 0.0)
             }
+            Kind::Qr => {
+                if !out.is_empty() {
+                    gap = c.section_gap * 2.0;
+                }
+                let cw = if e.b.trim().is_empty() {
+                    0.0
+                } else {
+                    QR_CAPTION_GAP + mw(&e.b, &c.st.role)
+                };
+                (Body::Qr(e.a.clone(), e.b.clone()), lh + cw, 0.0)
+            }
             Kind::Space => {
+                let st = SpaceStyle::parse(&e.a);
+                if st != SpaceStyle::Empty {
+                    // Drawn halfway between its neighbours.
+                    x += gap;
+                    out.push(CrawlItem {
+                        body: Body::Space(st),
+                        x,
+                        w: c.space_h,
+                        role_w: 0.0,
+                    });
+                }
                 x += c.space_h;
                 continue;
             }
@@ -1184,6 +1272,39 @@ mod tests {
         assert_eq!(es[3].kind, Kind::Space);
         assert_eq!(es.last().unwrap().a, "/assets/logo.png");
         assert_eq!(parse(&to_text(&es)), es);
+    }
+
+    #[test]
+    fn qr_codes_and_styled_spaces() {
+        let es = parse("[qr https://ina.fr | Revoir le film]\n[qr https://a.b]");
+        assert_eq!(
+            (es[0].kind, es[0].a.as_str(), es[0].b.as_str()),
+            (Kind::Qr, "https://ina.fr", "Revoir le film")
+        );
+        assert_eq!(es[1].b, "");
+        assert_eq!(parse(&to_text(&es)), es);
+        let mut c = Config::default();
+        let space = |a: &str| Entry {
+            kind: Kind::Space,
+            a: a.into(),
+            b: String::new(),
+        };
+        let es = vec![es[0].clone(), space("dots"), es[1].clone(), space("line")];
+        let (bl, _) = blocks(&c, &es);
+        // Caption under the code; the last space (a rule at the end) is dropped.
+        assert_eq!(bl[0].h, c.logo_h + qr_caption_h(&c, "Revoir le film"));
+        assert_eq!(bl[1].body, Body::Space(SpaceStyle::Dots));
+        assert_eq!(bl[2].h, c.logo_h);
+        assert_eq!(bl.len(), 3);
+        // The crawl: a code and its caption, the marked space between.
+        c.mode = Mode::Crawl;
+        let mut mw = |t: &str, _: &Style| t.len() as f32 * 10.0;
+        let mut lw = |_: &str, h: f32| h * 3.0;
+        let (items, _) = crawl_items(&c, &es, 200.0, &mut mw, &mut lw);
+        let lh = crawl_logo_h(&c, 200.0);
+        assert_eq!(items[0].w, lh + QR_CAPTION_GAP + 140.0);
+        assert_eq!(items[1].body, Body::Space(SpaceStyle::Dots));
+        assert_eq!(items.len(), 4);
     }
 
     #[test]
