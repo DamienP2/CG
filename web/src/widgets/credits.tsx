@@ -2,7 +2,7 @@
 // logos, spaces) with an import from text, 1 / 2 / 3 columns, styles per level, speed from a total duration or
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
-import { memo, useEffect, useMemo, useReducer, useState } from 'react';
+import { memo, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Flag, GripVertical, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward, Trash2, X } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import { onQrLoaded, parseDuration, qrModules } from '../engine/widgets';
@@ -13,8 +13,8 @@ import { Dropdown } from '../ui/Dropdown';
 import { AssetPicker } from '../designer/AssetPicker';
 import { confirmDialog } from '../ui/dialogs';
 import { loadFonts, useFonts } from '../engine/fonts';
-import { clamp, findCol, headerRows, ColorPick, Content, defineWidget, ExposeSetting, hex, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
-import { Centre, StartRow, WaitsContinue, WaitsTrigger, type Line2Item } from './centre';
+import { clamp, findCol, headerRows, ColorPick, Content, defineWidget, ExposeSetting, hex, Num, Row, Section, Seg, Text, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
+import { Centre, ExposedFilter, startMode, WaitsContinue, WaitsTrigger, type Line2Item } from './centre';
 import { familyCss, FitLine, FONT, OpField, tw, useLiveTime } from './table-text';
 import { layerTime } from './ticker';
 import { t, tc, tl } from '../i18n';
@@ -355,16 +355,23 @@ export function nominal(k: K, x: number) {
   if (k.mode === 'pages') return 1 / (Math.max(0.3, k.cardDur) * x);
   return Math.max(1, k.pxs) / x;
 }
-const optim = (k: K, v: number) => (k.optimised && k.mode !== 'pages' ? Math.max(1, Math.round(v / k.fps)) * k.fps : v);
+/** The speed as a whole number of px per frame (no shimmer of the text) when that keeps the duration within 3 %, else null (mirrors snapped()). */
+function snapped(k: K, v: number): number | null {
+  if (!k.optimised || k.mode === 'pages' || v <= 0) return null;
+  const w = Math.max(1, Math.round(v / k.fps)) * k.fps;
+  return Math.abs(w - v) <= v * 0.03 ? w : null;
+}
 export function progress(k: K, st: State, x: number, now: number, age: number) {
   const rate = st.rate ?? nominal(k, x);
   const [base, dt] = !st.started ? [0, Math.max(0, age)] : st.running ? [st.base ?? 0, Math.max(0, now - (st.anchor ?? 0)) / 1000] : [st.base ?? 0, 0];
-  const adv = k.optimised && k.mode !== 'pages' && x > 0 ? ((optim(k, rate * x) / k.fps) * Math.floor(dt * k.fps)) / x : rate * dt;
+  const v = x > 0 ? snapped(k, rate * x) : null;
+  const adv = v != null ? ((v / k.fps) * Math.floor(dt * k.fps)) / x : rate * dt;
   return clamp(base + adv, 0, 1);
 }
 function realRate(k: K, st: State, x: number) {
   const rate = st.rate ?? nominal(k, x);
-  return k.optimised && k.mode !== 'pages' && x > 0 ? optim(k, rate * x) / x : rate;
+  const v = x > 0 ? snapped(k, rate * x) : null;
+  return v != null ? v / x : rate;
 }
 export const remaining = (k: K, st: State, x: number, now: number, age: number) => (1 - progress(k, st, x, now, age)) / Math.max(1e-9, realRate(k, st, x));
 
@@ -561,11 +568,6 @@ function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: n
 }
 
 // ------------------------------------------------------------ inspector --
-const pad2 = (v: number) => String(Math.floor(v)).padStart(2, '0');
-const fmtDur = (sec: number) => {
-  const v = Math.max(0, Number.isFinite(sec) ? sec : 0);
-  return `${pad2(v / 60)}:${pad2(v % 60)}.${Math.floor((v * 10) % 10)}`;
-};
 /** A time of day, hh:mm:ss, in the server's zone (the end time is read there). */
 const fmtClock = (ms: number, tz?: string) => {
   try {
@@ -579,35 +581,13 @@ const mss = (sec: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-const TEXT0 = `# Presented by
+const TEXT0 = `# Directed by
 Presenter | Claire Martin
-Co-host | Julien Moreau
-
-# Editorial
-Editor-in-chief | Sophie Laurent
-Senior editor | Karim Benali
-Reporters | Léa Dubois
- | Thomas Petit
- | Inès Garnier
-Fact-checking | Hugo Lefèvre
+Director | Paul Fontaine
 
 # Production
-Executive producer | Nathalie Roux
-Producer | Antoine Girard
-Production manager | Camille Bonnet
-Production assistant | Yanis Mercier
-
-# Technical crew
-Director | Paul Fontaine
-Vision mixer | Emma Chevalier
-Graphics | Lucas Perrin
-Sound engineer | Chloé Robin
-Camera operators | Maxime Faure
- | Sarah Blanc
- | Nicolas Henry
-Lighting | Manon Gauthier
-
-[logo PULSE TV]`;
+Production | Strata Studio
+Thanks | City of Lyon`;
 
 type CL = Config & { id: string; name?: string; props: Record<string, unknown>; manualStart?: boolean; startOn?: 'continue' | 'trigger'; startTrigger?: string };
 const sizeOf = (l: CL, r?: Record<string, unknown>) => [num((r?.width as number) ?? (l.props.width as number) ?? 1100), num((r?.height as number) ?? (l.props.height as number) ?? 1000)];
@@ -620,9 +600,9 @@ function warningsOf(l: CL, data: Data, state: unknown, w: number, h: number): Wa
   const out: Warning[] = [];
   const live = !!st.started;
   if (k.mode !== 'pages') {
-    const v = optim(k, (live && st.rate ? st.rate : nominal(k, g.x)) * g.x);
+    const v0 = (live && st.rate ? st.rate : nominal(k, g.x)) * g.x;
+    const v = snapped(k, v0) ?? v0;
     if (v > k.maxPxs) out.push({ level: 'error', text: t('Speed {speed} px/s is above the readable threshold ({max} px/s): at least {secs} s needed.', { speed: v.toFixed(0), max: k.maxPxs, secs: Math.ceil(g.x / k.maxPxs) }), op: true });
-    if (k.optimised) out.push({ level: 'info', text: t('Optimised speed: {perFrame} px/frame at {fps} fps ({speed} px/s), the duration follows: {duration}.', { perFrame: Math.round(v / k.fps), fps: +k.fps.toFixed(2), speed: v.toFixed(0), duration: fmtDur(g.x / Math.max(1, v)) }) });
   } else {
     const per = 1 / Math.max(1e-6, (live && st.rate ? st.rate : nominal(k, g.x)) * Math.max(1, g.x));
     if (per < 1.5) out.push({ level: 'error', text: t('{secs} s per card is too short to read (min 1.5 s).', { secs: per.toFixed(1) }), op: true });
@@ -801,11 +781,232 @@ function useRun({ layer, state, data, time }: OpP) {
   return { l, k, st, g, f, rem, status, now, travel: { travel: g.x } };
 }
 
+/** Pictograms of the Motion choices (a frame, its lines, where they go). */
+const Box = ({ children }: { children: ReactNode }) => (
+  <svg viewBox="0 0 44 30" width={44} height={30} aria-hidden>
+    {children}
+  </svg>
+);
+const frame = <rect x="8" y="2" width="28" height="26" rx="2" fill="none" stroke="currentColor" strokeOpacity=".5" />;
+const up = <path d="M40 20V8m-3 3 3-3 3 3" stroke="var(--accent)" strokeWidth="1.6" fill="none" />;
+const ICON = {
+  roll: (
+    <Box>
+      {frame}
+      <path d="M14 9h16M14 15h16M14 21h16" stroke="currentColor" strokeWidth="2" />
+      {up}
+    </Box>
+  ),
+  crawl: (
+    <Box>
+      <rect x="2" y="8" width="40" height="14" rx="2" fill="none" stroke="currentColor" strokeOpacity=".5" />
+      <path d="M6 15h12M22 15h10" stroke="currentColor" strokeWidth="2" />
+      <path d="M34 26H10m3-3-3 3 3 3" stroke="var(--accent)" strokeWidth="1.6" fill="none" />
+    </Box>
+  ),
+  pages: (
+    <Box>
+      <rect x="4" y="6" width="22" height="18" rx="2" fill="none" stroke="currentColor" strokeOpacity=".5" />
+      <rect x="18" y="3" width="22" height="18" rx="2" fill="var(--panel-2)" stroke="currentColor" />
+      <path d="M23 10h12M23 14h9" stroke="currentColor" strokeWidth="2" />
+    </Box>
+  ),
+  in: (
+    <Box>
+      <rect x="6" y="7" width="32" height="16" rx="3" fill="none" stroke="currentColor" strokeOpacity=".5" />
+      <text x="22" y="19" textAnchor="middle" fontSize="9" fontWeight="700" fill="currentColor">
+        IN
+      </text>
+    </Box>
+  ),
+  continue: (
+    <Box>
+      <path d="M12 8l8 7-8 7M22 8l8 7-8 7" stroke="currentColor" strokeWidth="2" fill="none" />
+    </Box>
+  ),
+  trigger: (
+    <Box>
+      <path d="M24 4 14 17h8l-2 9 10-13h-8z" fill="currentColor" />
+    </Box>
+  ),
+  off: (
+    <Box>
+      <rect x="8" y="2" width="28" height="18" rx="2" fill="none" stroke="currentColor" strokeOpacity=".5" />
+      <path d="M14 24h16M14 28h16" stroke="currentColor" strokeWidth="2" />
+    </Box>
+  ),
+  on: (
+    <Box>
+      {frame}
+      <path d="M14 9h16M14 15h16" stroke="currentColor" strokeWidth="2" />
+    </Box>
+  ),
+  exit: (
+    <Box>
+      <rect x="8" y="8" width="28" height="20" rx="2" fill="none" stroke="currentColor" strokeOpacity=".5" />
+      <path d="M14 2h16M14 5h16" stroke="currentColor" strokeWidth="2" />
+    </Box>
+  ),
+  stop: (
+    <Box>
+      {frame}
+      <path d="M14 15h16" stroke="currentColor" strokeWidth="2" />
+      <path d="M39 12v6" stroke="var(--accent)" strokeWidth="2" />
+    </Box>
+  ),
+  still: (
+    <Box>
+      {frame}
+      <path d="M14 12h16M14 18h16" stroke="currentColor" strokeWidth="2" />
+    </Box>
+  ),
+  rolls: (
+    <Box>
+      {frame}
+      <path d="M14 8h16M14 14h16" stroke="currentColor" strokeWidth="2" />
+      {up}
+    </Box>
+  ),
+  auto: (
+    <Box>
+      <circle cx="22" cy="15" r="10" fill="none" stroke="currentColor" strokeOpacity=".5" />
+      <path d="M22 15V8M22 15l5 3" stroke="currentColor" strokeWidth="2" />
+    </Box>
+  ),
+  out: (
+    <Box>
+      <rect x="8" y="8" width="28" height="14" rx="3" fill="var(--live)" />
+      <text x="22" y="18.5" textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff">
+        OUT
+      </text>
+    </Box>
+  ),
+};
+
+/** A choice shown as pictures, its label above (with its expose button). */
+function Pics<V extends string>({ label, value, options, onChange, n = 2, expose, exposeValue }: { label: string; value: V; options: [V, string, ReactNode][]; onChange: (v: V) => void; n?: number; expose?: string[]; exposeValue?: unknown }) {
+  const mode = useCentreMode();
+  const filter = useContext(ExposedFilter);
+  // In the Operator: only when exposed.
+  if (filter && expose && !filter(expose)) return null;
+  return (
+    <div className="cr-pics">
+      <div className="cr-pics-h">
+        <span>{label}</span>
+        {expose && mode === 'designer' && !filter && <ExposeSetting paths={expose} label={label} value={exposeValue} />}
+      </div>
+      <div className="cr-pics-g" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+        {options.map(([v, text, icon]) => (
+          <button key={v} type="button" className={`cr-pic ${v === value ? 'on' : ''}`} onClick={() => onChange(v)}>
+            {icon}
+            <span>{text}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** How the credits start on air (exposable): at the In, on Continue (F2), on a trigger. */
+function StartChoice({ layer }: { layer: { manualStart?: boolean; startOn?: 'continue' | 'trigger'; startTrigger?: string } }) {
+  const b = useBound();
+  const m = startMode(layer);
+  return (
+    <>
+      <Pics
+        label={tc('cc', 'Start')}
+        value={m}
+        n={3}
+        expose={['manualStart', 'startOn']}
+        exposeValue={{ manualStart: !!layer.manualStart, startOn: layer.startOn ?? '' }}
+        onChange={(v) => {
+          b.set('manualStart', v !== 'in' ? true : undefined);
+          b.set('startOn', v === 'trigger' ? 'trigger' : undefined);
+        }}
+        options={[
+          ['in', tc('cc', 'At the In'), ICON.in],
+          ['continue', tc('cc', 'Continue F2'), ICON.continue],
+          ['trigger', tc('cc', 'Trigger'), ICON.trigger],
+        ]}
+      />
+      {m === 'trigger' && <Text label={tc('cc', 'Trigger name')} path="startTrigger" value="" />}
+    </>
+  );
+}
+
+/** The whole roll's duration, m:ss on a slider (exposable). */
+function DurationRow({ value, onChange }: { value: number; onChange: (s: number) => void }) {
+  const [drag, setDrag] = useState<number | null>(null);
+  const shown = drag ?? value;
+  const done = () => {
+    if (drag !== null && drag !== value) onChange(drag);
+    setDrag(null);
+  };
+  return (
+    <Row label={t('Duration')} expose="duration" exposeValue={value}>
+      <span className="cr-slide">
+        <input type="range" min={5} max={600} step={1} value={clamp(Math.round(shown), 5, 600)} onChange={(e) => setDrag(+e.target.value)} onPointerUp={done} onKeyUp={done} onBlur={done} onKeyDown={(e) => e.stopPropagation()} />
+        <OpField
+          width={58}
+          title={t('Duration')}
+          value={mss(Math.round(shown))}
+          placeholder="m:ss"
+          onSubmit={(v) => {
+            const s = parseDuration(v);
+            if (s != null && s > 0) onChange(Math.round(s));
+          }}
+        />
+      </span>
+    </Row>
+  );
+}
+
+/** Where the credits are, from the start to the end: dragging moves them there (Designer). */
+function PositionRow({ f, total, onSeek }: { f: number; total: number; onSeek: (f: number) => void }) {
+  const [drag, setDrag] = useState<number | null>(null);
+  const last = useRef(0);
+  const shown = drag ?? f;
+  const seek = (v: number, force = false) => {
+    setDrag(v);
+    // At most one move every 80 ms while dragging, the last one always.
+    const now = performance.now();
+    if (force || now - last.current > 80) {
+      last.current = now;
+      onSeek(v);
+    }
+  };
+  return (
+    <Row label={tc('credits', 'Position')}>
+      <span className="cr-slide">
+        <input
+          type="range"
+          min={0}
+          max={1000}
+          step={1}
+          value={Math.round(shown * 1000)}
+          onChange={(e) => seek(+e.target.value / 1000)}
+          onPointerUp={(e) => (seek(+(e.target as HTMLInputElement).value / 1000, true), setDrag(null))}
+          onKeyUp={(e) => (seek(+(e.target as HTMLInputElement).value / 1000, true), setDrag(null))}
+          onKeyDown={(e) => e.stopPropagation()}
+        />
+        <span className="cr-slide-v">{mss(Math.round(shown * total))}</span>
+      </span>
+    </Row>
+  );
+}
+
+/** Whole pixels a frame at the project's rate (credits.rs `snapped`): the roll does not shimmer. */
+const smooth = (set: (path: string, v: unknown) => void) => {
+  const fr = useApp.getState().project?.frameRate;
+  set('optimised', true);
+  if (fr) set('fps', fr.num / fr.den);
+};
+
 /**
- * The control centre of the credits (web/src/widgets/centre.tsx). Line 1: the time left, when
- * it ends (or its state), its start on air. Line 2: play / pause, next card (pages), finish,
- * reset, ∓10 s of the time left. Line 3: how it starts (Designer), the duration of the whole
- * roll (the template's in the Designer, the air's in the Operator), the end time (Operator).
+ * The control centre of the credits (web/src/widgets/centre.tsx). Line 1: the time left, when it
+ * ends (or its state), its start on air. Line 2: play / pause, reset (the Designer); the Operator
+ * also has next card (pages), finish and ∓10 s. Line 3: the duration of the whole roll (exposable),
+ * where it is (Designer), its start (Operator, when exposed) and the end time (Operator).
  */
 function CreditsBar(p: OpP) {
   const { act } = p;
@@ -815,10 +1016,10 @@ function CreditsBar(p: OpP) {
   const designer = mode === 'designer';
   const l0 = p.layer as CL;
   const time = layerTime(l0, item, p.time, !!(p.state as State | undefined)?.started);
-  const { l, k, st, g, rem, status, now, travel } = useRun({ ...p, time });
+  const { l, k, st, g, f, rem, status, now, travel } = useRun({ ...p, time });
   const tz = time.defaultTz || undefined;
   const running = status === 'running';
-  const play = () => act(status === 'paused' ? 'resume' : 'start', travel);
+  const play = () => act(status === 'paused' || (status === 'idle' && f > 0) ? 'resume' : 'start', travel);
   // Space stays the Operator's CONTINUE.
   useKeys({
     s: () => act('start', travel),
@@ -830,29 +1031,32 @@ function CreditsBar(p: OpP) {
   const waiting = !!item && !!l.manualStart && !st.started;
   const status1 = waiting ? l.startOn === 'trigger' ? <WaitsTrigger name={l.startTrigger ?? ''} /> : <WaitsContinue /> : undefined;
   const resetMsg = item ? t('{name} is on air: back to the start of the credits?', { name: l.name ?? '' }) : undefined;
-  const actions: Line2Item[] = [
-    running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause', travel) } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play },
-    k.mode === 'pages' && { icon: SkipForward, label: tc('credits', 'Next card'), key: '→', onClick: () => act('next', travel) },
-    { icon: Flag, label: t('Finish'), disabled: status === 'done', onClick: () => act('finish', travel) },
-    { icon: RotateCcw, label: tc('cc', 'Reset'), confirm: resetMsg, onClick: () => act('reset') },
-    { icon: Minus, text: '−10 s', label: t('Remaining −10 s'), onClick: () => act('adjust', { seconds: -10, ...travel }) },
-    { icon: Plus, text: '+10 s', label: t('Remaining +10 s'), onClick: () => act('adjust', { seconds: 10, ...travel }) },
-  ];
-  // The time of the whole roll: the template's speed in the Designer, the air's in the Operator (what is left takes its share).
-  const total = designer ? 1 / Math.max(1e-9, nominal(k, g.x)) : 1 / Math.max(1e-9, realRate(k, st, g.x));
-  const setTotal = (v: string) => {
-    const s = parseDuration(v);
-    // Not a duration: the field shows the current one again.
-    if (s == null || s <= 0) return;
-    if (!designer) return act('duration', { seconds: s, ...travel });
-    b.set('speedMode', 'duration');
-    b.set('duration', Math.round(s));
+  const playPause: Line2Item = running ? { icon: Pause, label: tc('cc', 'Pause'), key: 'P', main: true, onClick: () => act('pause', travel) } : { icon: Play, label: tc('cc', 'Play'), key: 'P', main: true, onClick: play };
+  const reset: Line2Item = { icon: RotateCcw, label: tc('cc', 'Reset'), confirm: resetMsg, onClick: () => act('reset') };
+  const actions: Line2Item[] = designer
+    ? [playPause, reset]
+    : [
+        playPause,
+        k.mode === 'pages' && { icon: SkipForward, label: tc('credits', 'Next card'), key: '→', onClick: () => act('next', travel) },
+        { icon: Flag, label: t('Finish'), disabled: status === 'done', onClick: () => act('finish', travel) },
+        reset,
+        { icon: Minus, text: '−10 s', label: t('Remaining −10 s'), onClick: () => act('adjust', { seconds: -10, ...travel }) },
+        { icon: Plus, text: '+10 s', label: t('Remaining +10 s'), onClick: () => act('adjust', { seconds: 10, ...travel }) },
+      ];
+  // The time of the whole roll: the template's (Designer, or the take's when exposed).
+  const total = 1 / Math.max(1e-9, nominal(k, g.x));
+  const setDuration = (s: number) => {
+    b.set('duration', Math.max(1, Math.round(s)));
+    if (designer) {
+      if (k.speedMode !== 'duration') b.set('speedMode', 'duration');
+      if (!k.optimised) smooth(b.set);
+    }
   };
   return (
     <Centre name={l.name} readout={{ v: mss(rem), sub }} status={status1} actions={actions}>
-      <Row label={t('Duration')} title={t('The whole roll, mm:ss')}>
-        <OpField width={70} title={t('Duration')} value={mss(Math.round(total))} placeholder="mm:ss" onSubmit={setTotal} />
-      </Row>
+      <DurationRow value={Math.round(total)} onChange={setDuration} />
+      {designer && <PositionRow f={f} total={total} onSeek={(x) => act('seek', { fraction: x, ...travel })} />}
+      {!designer && <StartChoice layer={l} />}
       {!designer && (
         <Row label={t('End at')}>
           <OpField width={84} title={t('End at')} value={status === 'done' ? '' : fmtClock(now + rem * 1000, tz)} placeholder="hh:mm:ss" onSubmit={(v) => act('endAt', { time: v, ...(tz ? { tz } : {}), ...travel })} />
@@ -900,10 +1104,14 @@ export default defineWidget({
   create: () => {
     // The sample credits in the project's language.
     const text = tl(useApp.getState().project?.language, TEXT0);
-    return { entries: parse(text), importText: text, fade: false, panel: false, props: { width: 1100, height: 1000 } };
+    // Whole pixels a frame at the project's rate (credits.rs `snapped`).
+    const fr = useApp.getState().project?.frameRate;
+    return { entries: parse(text), importText: text, fade: false, panel: false, optimised: true, ...(fr ? { fps: fr.num / fr.den } : {}), props: { width: 1100, height: 1000 } };
   },
   ownsLook: true,
   content: ['entries', 'link'],
+  // Exposed, they are settings of its control centre (duration, start), not values.
+  controlSettings: ['duration', 'manualStart', 'startOn'],
   live: () => true,
   ageOnly: true,
   Render: ({ layer, w, h, data, time, state }) => <CreditsRender layer={layer} w={w} h={h} data={data} time={time} state={state} />,
@@ -977,108 +1185,58 @@ export default defineWidget({
           {k.fade && <Num label={t('Size')} path="fadeSize" value={k.fadeSize} min={1} max={1000} unit="px" />}
         </Section>
         <Section id="credits-motion" title={t('Motion')}>
-          <Seg
+          <Pics
             label={t('Mode')}
-            path="mode"
             value={k.mode}
+            n={3}
+            onChange={(v) => set((c) => void (c.mode = v))}
             options={[
-              ['roll', t('Roll'), t('Vertical')],
-              ['crawl', t('Crawl'), t('Horizontal')],
-              ['pages', t('Pages'), t('Cards')],
+              ['roll', t('Vertical'), ICON.roll],
+              ['crawl', t('Horizontal'), ICON.crawl],
+              ['pages', t('Pages'), ICON.pages],
             ]}
           />
-          {k.mode === 'pages' ? (
-            <>
-              <Seg
-                expose="speedMode"
-                exposeValue={k.speedMode}
-                exposeOptions={[
-                  ['duration', t('Total')],
-                  ['card', t('Per card')],
-                ]}
-                label={t('Speed by')}
-                value={k.speedMode === 'pxs' ? 'card' : k.speedMode}
-                onChange={(x) => set((c) => void (c.speedMode = x))}
-                options={[
-                  ['duration', t('Total')],
-                  ['card', t('Per card')],
-                ]}
-              />
-              {k.speedMode === 'duration' ? <Num label={t('Total')} path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label={t('Per card')} path="cardDur" value={k.cardDur} min={0.5} max={600} step={0.5} precision={1} unit="s" />}
-            </>
-          ) : (
-            <>
-              <Seg
-                expose="speedMode"
-                exposeValue={k.speedMode}
-                exposeOptions={[
-                  ['duration', t('Duration')],
-                  ['pxs', 'px/s'],
-                ]}
-                label={t('Speed by')}
-                value={k.speedMode === 'card' ? 'pxs' : k.speedMode}
-                onChange={(x) => set((c) => void (c.speedMode = x))}
-                options={[
-                  ['duration', t('Duration')],
-                  ['pxs', 'px/s'],
-                ]}
-              />
-              {k.speedMode === 'duration' ? <Num label={t('Duration')} path="duration" value={k.duration} min={1} max={3600} unit="s" /> : <Num label={t('Speed')} path="pxs" value={k.pxs} min={1} max={5000} unit="px/s" />}
-              <Num label={t('Max speed')} path="maxPxs" value={k.maxPxs} min={10} max={5000} step={10} unit="px/s" />
-              <Toggle
-                label={t('Whole px')}
-                value={k.optimised}
-                text={t('per frame')}
-                onChange={(v) =>
-                  edit((l) => {
-                    (l as Config).optimised = v;
-                    // At the project's frame rate.
-                    const fr = useApp.getState().project?.frameRate;
-                    if (v && fr) (l as Config).fps = fr.num / fr.den;
-                  })
-                }
-              />
-            </>
-          )}
-          <StartRow layer={l} />
-          <Seg
-            label={tc('credits', 'Going out')}
-            path="autoOut"
-            value={k.autoOut}
-            options={[
-              [true, t('Auto')],
-              [false, tc('credits', 'Manual')],
-            ]}
-          />
-          <Seg
-            label={t('Start')}
-            path="start"
-            value={k.start}
-            options={[
-              ['off', t('Off screen')],
-              ['on', t('On screen')],
-            ]}
-          />
-          <Seg
-            label={t('End')}
-            path="end"
-            value={k.end}
-            options={[
-              ['exit', t('Exit')],
-              ['stop', t('Stop')],
-            ]}
-          />
+          <StartChoice layer={l} />
           {k.mode !== 'pages' && (
-            <Seg
-              label={t('If short')}
-              path="shortMode"
-              value={k.shortMode}
+            <Pics
+              label={tc('credits', 'At the start')}
+              value={k.start}
+              onChange={(v) => set((c) => void (c.start = v))}
               options={[
-                ['center', t('Centre')],
-                ['exit', t('Exit')],
+                ['off', tc('credits', 'Off frame, comes in'), ICON.off],
+                ['on', tc('credits', 'Already shown'), ICON.on],
               ]}
             />
           )}
+          <Pics
+            label={tc('credits', 'At the end')}
+            value={k.end}
+            onChange={(v) => set((c) => void (c.end = v))}
+            options={[
+              ['exit', k.mode === 'pages' ? tc('credits', 'Last card fades out') : tc('credits', 'Goes out of frame'), ICON.exit],
+              ['stop', k.mode === 'pages' ? tc('credits', 'Last card stays') : tc('credits', 'Last line centred'), ICON.stop],
+            ]}
+          />
+          {k.mode !== 'pages' && (
+            <Pics
+              label={tc('credits', 'If it fits in the frame')}
+              value={k.shortMode}
+              onChange={(v) => set((c) => void (c.shortMode = v))}
+              options={[
+                ['center', tc('credits', 'Centred, still'), ICON.still],
+                ['exit', tc('credits', 'Rolls anyway'), ICON.rolls],
+              ]}
+            />
+          )}
+          <Pics
+            label={tc('credits', 'Graphic goes out')}
+            value={k.autoOut ? 'auto' : 'manual'}
+            onChange={(v) => set((c) => void (c.autoOut = v === 'auto'))}
+            options={[
+              ['auto', tc('credits', 'Auto, at the end'), ICON.auto],
+              ['manual', tc('credits', 'Manual'), ICON.out],
+            ]}
+          />
         </Section>
       </>
     );

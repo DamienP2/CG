@@ -18453,6 +18453,76 @@ button.ux1-pill.lost:hover {
   align-content: start;
   gap: 8px;
 }
+/* Credits, Motion: choices shown as pictures, their label above. */
+.cr-pics {
+  display: grid;
+  gap: 6px;
+  padding: 2px 0;
+}
+.cr-pics-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  color: var(--text-2);
+  font-size: var(--fs-12);
+}
+.cr-pics-g {
+  display: grid;
+  gap: 6px;
+}
+.cr-pic {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 7px 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-11);
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+.cr-pic:hover {
+  border-color: var(--line-2);
+  color: var(--text);
+}
+.cr-pic.on {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  color: var(--text);
+}
+.cr-pic svg {
+  display: block;
+}
+/* Credits' control centre: a slider and its value. */
+.cr-slide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.cr-slide input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+.cr-slide-v {
+  min-width: 42px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: var(--fs-12);
+  color: var(--text);
+}
+/* The credits' table in the Operator's values: the whole row, no tile. */
+.opx-cr {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 .opx-vt {
   display: flex;
   flex-direction: column;

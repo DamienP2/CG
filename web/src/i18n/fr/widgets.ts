@@ -466,7 +466,6 @@ export const widgets: Record<string, string> = {
   'DONE': 'TERMINÉ',
   'IDLE': 'INACTIF',
   'Speed {speed} px/s is above the readable threshold ({max} px/s): at least {secs} s needed.': 'La vitesse de {speed} px/s dépasse le seuil de lisibilité ({max} px/s) : il faut au moins {secs} s.',
-  'Optimised speed: {perFrame} px/frame at {fps} fps ({speed} px/s), the duration follows: {duration}.': 'Vitesse optimisée : {perFrame} px/image à {fps} fps ({speed} px/s), la durée suit : {duration}.',
   '{secs} s per card is too short to read (min 1.5 s).': '{secs} s par carton, c’est trop court pour lire (min 1,5 s).',
   'Content shorter than the screen: it stops centred — no empty scroll.': 'Contenu plus court que l’écran : il s’arrête au centre, pas de défilement à vide.',
   'Content shorter than the screen: it passes and exits — no empty scroll.': 'Contenu plus court que l’écran : il passe et sort, pas de défilement à vide.',

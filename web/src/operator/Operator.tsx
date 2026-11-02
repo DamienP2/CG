@@ -1282,6 +1282,11 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
                   <FieldInput field={f} value={draft[f.key] ?? ''} rich={richField(template, f.key) && /<\/?[bisuc]\b|<c=|<img=/.test(draft[f.key] ?? '')} onChange={(v) => onDraft({ [f.key]: v })} />
                 </div>
               </div>
+            ) : f.kind === 'credits' && !fromData(f) ? (
+              // The credits' table alone, full width: no tile nor second title (the group's is enough).
+              <div key={f.key} className={`opx-cr ${changed.has(f.key) ? 'chg' : ''}`}>
+                <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />
+              </div>
             ) : (
             <div key={f.key} className={`opx-vt ${size(f)} ${changed.has(f.key) ? 'chg' : ''}`}>
               <div className="opx-vt-h">

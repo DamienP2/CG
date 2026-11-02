@@ -26,7 +26,7 @@ import { TemplatePublish } from './Collab';
 import { layerIcon } from './LayersPanel';
 import { widgetOf } from '../widgets';
 import { Bound, CentreModeContext, FirstSection, Row as KitRow, Section as SpecSection, setPath, SliderNum, Toggle, Warnings, wiredKeys } from '../widgets/kit';
-import { makeMask, maskFolderOf, stopMasking } from './masks';
+import { maskFolderOf } from './masks';
 import { t, tc, tn } from '../i18n';
 import { useDisplayPref } from '../displayPrefs';
 import { START_MODES, startMode } from '../widgets/centre';
@@ -296,12 +296,13 @@ function DrivenValue({ value, display = 1, suffix, precision = 0, label }: { val
 }
 
 /** A property row: ◀ ◆ ▶, name, animate, its fields (X / Y…). */
-/** A layer as a mask: on, it is the first row of a folder; the layers dragged in are seen in its shape (or outside). */
+/** A layer used as a mask (turned on in the timeline): the settings of its mask; nothing otherwise. */
 function MaskGroup({ layer }: { layer: Layer }) {
   const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   if (!template) return null;
   const folder = layer.type === 'group' && layer.mask ? layer : maskFolderOf(template, layer.id);
   const mask = folder?.type === 'group' ? folder.mask : undefined;
+  if (!mask) return null;
   const set = (fn: (m: GroupMask) => void) =>
     folder &&
     update((tpl) => {
@@ -313,11 +314,6 @@ function MaskGroup({ layer }: { layer: Layer }) {
       id="mask"
       title={t('Mask')}
       defaultOpen
-      actions={
-        <button className={`wk-tog pp-head-tog ${mask ? 'on' : ''}`} aria-label={t('Use as mask')} onClick={() => (folder ? stopMasking(folder.id) : makeMask([layer.id], false))}>
-          <i />
-        </button>
-      }
     >
       {mask && (
         <div className="pp-general">

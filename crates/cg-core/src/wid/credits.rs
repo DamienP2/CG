@@ -112,8 +112,10 @@ impl Default for Style {
     }
 }
 
+/// The three levels. A level that sets only some values (its size alone…)
+/// keeps that level's own defaults for the others, as the web renderer does.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(from = "StylesIn", rename_all = "camelCase")]
 pub struct Styles {
     pub section: Style,
     pub role: Style,
@@ -126,6 +128,46 @@ impl Default for Styles {
             section: Style::new(30.0, "#a594ff", 900, true),
             role: Style::new(26.0, "#a3a9bd", 600, true),
             name: Style::new(38.0, "#ffffff", 800, false),
+        }
+    }
+}
+
+/// A level as stored: any of its values.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct StyleIn {
+    size: Option<f32>,
+    color: Option<String>,
+    weight: Option<u16>,
+    upper: Option<bool>,
+}
+
+impl StyleIn {
+    fn over(self, d: Style) -> Style {
+        Style {
+            size: self.size.unwrap_or(d.size),
+            color: self.color.unwrap_or(d.color),
+            weight: self.weight.unwrap_or(d.weight),
+            upper: self.upper.unwrap_or(d.upper),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct StylesIn {
+    section: StyleIn,
+    role: StyleIn,
+    name: StyleIn,
+}
+
+impl From<StylesIn> for Styles {
+    fn from(s: StylesIn) -> Self {
+        let d = Styles::default();
+        Self {
+            section: s.section.over(d.section),
+            role: s.role.over(d.role),
+            name: s.name.over(d.name),
         }
     }
 }
@@ -833,13 +875,22 @@ fn fps(c: &Config) -> f64 {
     }
 }
 
-/// Optimised speed: a whole number of px per frame.
-pub fn optim(c: &Config, px_s: f64) -> f64 {
-    if c.optimised && c.mode != Mode::Pages {
-        (px_s / fps(c)).round().max(1.0) * fps(c)
-    } else {
-        px_s
+/// How far a whole number of px per frame may move the duration (3 %).
+const SNAP_TOLERANCE: f64 = 0.03;
+
+/// The speed as a whole number of px per frame (no shimmer of the text),
+/// when that keeps the duration within [`SNAP_TOLERANCE`]; else None.
+pub fn snapped(c: &Config, px_s: f64) -> Option<f64> {
+    if !c.optimised || c.mode == Mode::Pages || px_s <= 0.0 {
+        return None;
     }
+    let v = (px_s / fps(c)).round().max(1.0) * fps(c);
+    ((v - px_s).abs() <= px_s * SNAP_TOLERANCE).then_some(v)
+}
+
+/// Optimised speed: a whole number of px per frame when it barely changes the duration.
+pub fn optim(c: &Config, px_s: f64) -> f64 {
+    snapped(c, px_s).unwrap_or(px_s)
 }
 
 // ----------------------------------------------------------------- state --
@@ -867,11 +918,9 @@ pub fn progress(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> f
     } else {
         (st.base, 0.0)
     };
-    let adv = if c.optimised && c.mode != Mode::Pages && x > 0.0 {
-        let v = optim(c, rate * x as f64);
-        (v / fps(c)) * (dt * fps(c)).floor() / x as f64
-    } else {
-        rate * dt
+    let adv = match snapped(c, rate * x as f64).filter(|_| x > 0.0) {
+        Some(v) => (v / fps(c)) * (dt * fps(c)).floor() / x as f64,
+        None => rate * dt,
     };
     (base + adv).clamp(0.0, 1.0)
 }
@@ -880,7 +929,7 @@ pub fn progress(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> f
 pub fn remaining(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> f64 {
     let f = progress(c, st, x, now_ms, age_secs);
     let rate = st.rate.unwrap_or_else(|| nominal(c, x));
-    let rate = if c.optimised && c.mode != Mode::Pages && x > 0.0 {
+    let rate = if x > 0.0 {
         optim(c, rate * x as f64) / x as f64
     } else {
         rate
@@ -961,7 +1010,7 @@ fn prop(layer: &Layer, p: crate::model::Prop, d: f64) -> f32 {
 
 /// Applies an operator action (`op`, with its `args`) to the state.
 /// start · pause · resume · reset · next (card) · remaining {seconds, travel?} ·
-/// duration {seconds} (the whole roll) · adjust {seconds: ±} ·
+/// duration {seconds} (the whole roll) · adjust {seconds: ±} · seek {fraction} ·
 /// endAt {time: "hh:mm[:ss]", tz?} · finish {seconds?: 3}
 /// (to the end in a few seconds, from where it is).
 /// `travel`: px measured by the caller (a crawl's width needs fonts; else estimated).
@@ -1018,6 +1067,21 @@ pub fn act(
         Ok(())
     };
     match op {
+        "seek" => {
+            // Somewhere between the start and the end (0 → 1), running on from there if it ran.
+            let to = args
+                .get("fraction")
+                .and_then(|v| v.as_f64())
+                .ok_or("fraction needed")?
+                .clamp(0.0, 1.0);
+            // Not started yet: it waits there (Play runs it on).
+            if !st.started {
+                st.running = false;
+            }
+            st.started = true;
+            st.base = to;
+            st.anchor = now;
+        }
         "start" => {
             *st = State {
                 started: true,
@@ -1272,6 +1336,79 @@ mod tests {
         assert_eq!(es[3].kind, Kind::Space);
         assert_eq!(es.last().unwrap().a, "/assets/logo.png");
         assert_eq!(parse(&to_text(&es)), es);
+    }
+
+    #[test]
+    fn a_level_keeps_its_own_defaults() {
+        // Only the section's size set (exposed, or older saves): still its colour, weight, caps.
+        let c: Config =
+            serde_json::from_str(r##"{"st":{"section":{"size":44},"name":{"color":"#ff0000"}}}"##)
+                .unwrap();
+        let d = Styles::default();
+        assert_eq!(
+            c.st.section,
+            Style {
+                size: 44.0,
+                ..d.section.clone()
+            }
+        );
+        assert_eq!(c.st.name.color, "#ff0000");
+        assert_eq!(c.st.role, d.role);
+        // Saved again, read again: the same.
+        let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.st, c.st);
+    }
+
+    #[test]
+    fn seek_and_whole_pixels_that_keep_the_duration() {
+        let mut c = Config {
+            optimised: true,
+            fps: 25.0,
+            duration: 40.0,
+            ..Config::default()
+        };
+        // 3000 px in 40 s = 75 px/s = 3 px a frame: whole already.
+        assert_eq!(snapped(&c, 75.0), Some(75.0));
+        // 2.4 px a frame: 2 would take 20 % longer, so the exact speed stays.
+        assert_eq!(snapped(&c, 60.0), None);
+        // 3.04 px a frame: 3 changes the duration by about 1 %.
+        assert_eq!(snapped(&c, 76.0), Some(75.0));
+        c.optimised = false;
+        assert_eq!(snapped(&c, 75.0), None);
+        let l = layer(c);
+        let d = Data::new();
+        let mut st = State::default();
+        act(
+            &l,
+            &mut st,
+            "seek",
+            &serde_json::json!({"fraction": 0.25, "travel": 3000.0}),
+            &ctx(&d, 5_000),
+        )
+        .unwrap();
+        assert!(st.started && !st.running);
+        let LayerKind::Credits { x: c } = &l.kind else {
+            panic!()
+        };
+        assert!((progress(c, &st, 3000.0, 5_000, 0.0) - 0.25).abs() < 1e-9);
+        act(
+            &l,
+            &mut st,
+            "pause",
+            &serde_json::json!({"travel": 3000.0}),
+            &ctx(&d, 5_000),
+        )
+        .unwrap();
+        act(
+            &l,
+            &mut st,
+            "seek",
+            &serde_json::json!({"fraction": 2.0, "travel": 3000.0}),
+            &ctx(&d, 6_000),
+        )
+        .unwrap();
+        assert!(!st.running);
+        assert_eq!(progress(c, &st, 3000.0, 9_000, 0.0), 1.0);
     }
 
     #[test]
