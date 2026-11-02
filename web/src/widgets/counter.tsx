@@ -412,7 +412,8 @@ function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resol
   const mem = (memRef.current ??= { target: null, anim: null, age: 0, seen: 0 });
   // The Operator's still preview: the intro done (on air it runs on from the take).
   const age = time.settled ? Math.max(time.ageSecs, p.duration) : time.ageSecs;
-  const [v, anim, isIntro] = display(p, st, data, now, age, mem);
+  // Still, its time does not run: a new value shows at once (no roll stopped half-way).
+  const [v, anim, isIntro] = display(p, st, data, now, age, time.settled ? null : mem);
   const cv: Curve = isIntro ? 'out' : c.easing;
   const fill = cssColor(col(r.fill));
   const tc = colorFor(c, v, anim, now);

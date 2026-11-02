@@ -21365,3 +21365,14 @@ textarea.tx-grow {
   gap: 4px;
   font-size: var(--fs-12);
 }
+
+/* A content with its chips under it (Exposed to the Operator, Lorem…): its label level with the field, not with the whole block. */
+.wk-row:has(> .wk-ctl > .wk-content > .wk-content-tools) {
+  align-items: start;
+}
+.wk-row:has(> .wk-ctl > .wk-content > .wk-content-tools) > .prop-label {
+  padding-top: 8px;
+}
+.wk-row:has(> .wk-ctl > .wk-content > .wk-content-tools) > :not(.prop-label):not(.wk-ctl) {
+  margin-top: 5px;
+}
