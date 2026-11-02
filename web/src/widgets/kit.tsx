@@ -122,6 +122,8 @@ export interface WidgetDef<T extends LayerType = LayerType> {
   Operator?: (p: OperatorProps<T>) => ReactNode;
   /** It waits for Continue (F2) on air: its next page, step, view, its start… (the Operator's Continue then serves it first). */
   waits?: (l: LayerOf<T>, state: unknown, data: Data, item: PlayoutItem) => boolean;
+  /** Settings whose exposure gives the Operator buttons of its control centre (− / +, freeze…), not values to type. */
+  controlSettings?: string[];
   /** It has controls with these settings (default: when it has Operator controls). */
   controls?: (l: LayerOf<T>, data: Data) => boolean;
   /**

@@ -47,9 +47,13 @@ export function exposedFields(fields: Field[], layers: Layer[]): { content: Fiel
       const f = k ? byKey.get(k) : undefined;
       if (f) at.set(`@${p}`, f);
     }
+    const buttons = widgetOf(l)?.controlSettings ?? [];
     for (const [p, k] of Object.entries(l.settingBindings ?? {})) {
       const f = byKey.get(k);
-      if (f && !CONTENT_SETTINGS.has(p) && f.kind !== 'table' && f.kind !== 'credits') at.set(p, f);
+      if (!f) continue;
+      // Buttons of its control centre: neither a value nor a property.
+      if (buttons.includes(p)) owned.add(f.key);
+      else if (!CONTENT_SETTINGS.has(p) && f.kind !== 'table' && f.kind !== 'credits') at.set(p, f);
     }
     if (!at.size) continue;
     for (const f of at.values()) owned.add(f.key);

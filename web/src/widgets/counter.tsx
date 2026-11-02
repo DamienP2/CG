@@ -7,13 +7,13 @@
 // seconds (as older counters did); every later value rolls from the value
 // displayed. The operator's value holds until the source sends another one;
 // the freeze holds the display while the source keeps being read.
-import { useRef, type CSSProperties, type ReactNode } from 'react';
+import { useContext, useRef, type CSSProperties, type ReactNode } from 'react';
 import { Hash, Minus, Plus, RotateCcw } from 'lucide-react';
 import { col, cssColor, interpolateText, num, type Resolved } from '../engine/evaluate';
 import type { Data, FontStyle, Layer, PlayoutItem } from '../engine/types';
 import { ColorGroupRow, FontControls, GroupRow } from '../designer/Inspector';
 import { clamp, ColorPick, Content, defineWidget, hex, ListEditor, Num, Section, Seg, Select, Text, Toggle, useKeys, type LayerOf, type Warning, withDefaults } from './kit';
-import { Centre, GAP, type Line2Item } from './centre';
+import { Centre, ExposedFilter, GAP, useCentreMode, type Line2Item } from './centre';
 import { fontCss, measure } from './text';
 import { useLiveTime } from './table-text';
 import { confirmDialog } from '../ui/dialogs';
@@ -632,13 +632,18 @@ type OpP = { layer: CLayer; state: unknown; data: Data; act: (op: string, args?:
 
 /**
  * The control centre of the counter (web/src/widgets/centre.tsx). Line 1: the value shown, on air
- * or frozen. Line 2: − / + the step, the extra steps, a value to set, reset. Line 3: freeze the
- * display (a value from data; the Operator sees it when exposed), the step and the extra steps
- * (exposable).
+ * or frozen. Line 2: − / + the step, the extra steps, reset. Line 3 (Designer): each row exposes
+ * its buttons to the Operator — « − / + buttons » (with the step), « More + buttons », « Freeze
+ * the display » (a value from data). The Operator gets only the buttons exposed; the value itself
+ * is set (and exposed) once, in the Value section.
  */
 function CounterBar(p: OpP) {
   const { layer, state, data, act, item, time } = p;
   const { now, age } = useLiveTime(time);
+  const mode = useCentreMode();
+  const filter = useContext(ExposedFilter);
+  // The Designer tries every button; the Operator has the exposed ones.
+  const has = (path: string) => !filter || filter([path]);
   const st = (state ?? {}) as State;
   const pt = partsOf(layer);
   // The readout: the value the number settles at (not the roll towards it).
@@ -647,41 +652,35 @@ function CounterBar(p: OpP) {
   const plain = { ...pt.fmt, plus: false, compact: false };
   const stepTxt = format(plain, pt.c.step);
   const wired = /\{\{\w+\}\}/.test(layer.to);
+  const steps = has('step');
+  const freeze = wired && has('opFreeze');
   const resetMsg = item ? t('{name} is on air: back to the initial value?', { name: layer.name }) : undefined;
   // ↑ / ↓ stay the rundown's. Confirmations only on air (a key does as its button).
   useKeys({
-    '+': () => act('inc'),
-    '-': () => act('dec'),
-    f: () => wired && act('freeze'),
+    '+': () => steps && act('inc'),
+    '-': () => steps && act('dec'),
+    f: () => freeze && act('freeze'),
     x: async () => {
+      if (!steps) return;
       if (resetMsg && !(await confirmDialog({ title: resetMsg, confirm: t('Yes') }))) return;
       act('reset');
     },
   });
   const value = format(pt.fmt, v);
   const actions: Line2Item[] = [
-    { icon: Minus, text: `− ${stepTxt}`, label: `− ${stepTxt}`, key: '−', onClick: () => act('dec') },
-    { icon: Plus, text: `+ ${stepTxt}`, label: `+ ${stepTxt}`, key: '+', onClick: () => act('inc') },
-    ...extraSteps(pt.c).map((x) => ({ icon: Plus, text: `+ ${format(plain, x)}`, label: `+ ${format(plain, x)}`, onClick: () => act('inc', { by: x }) })),
-    {
-      field: true,
-      placeholder: t('Value'),
-      title: t('Set value'),
-      width: 64,
-      onSet: (x) => {
-        if (parseNum(x) == null) return t('“{value}” is not a number', { value: x });
-        act('set', { value: x });
-      },
-    },
-    GAP,
-    { icon: RotateCcw, label: tc('cc', 'Reset'), key: 'X', confirm: resetMsg, onClick: () => act('reset') },
+    steps && { icon: Minus, text: `− ${stepTxt}`, label: `− ${stepTxt}`, key: '−', onClick: () => act('dec') },
+    steps && { icon: Plus, text: `+ ${stepTxt}`, label: `+ ${stepTxt}`, key: '+', onClick: () => act('inc') },
+    ...(has('extraSteps') ? extraSteps(pt.c) : []).map((x) => ({ icon: Plus, text: `+ ${format(plain, x)}`, label: `+ ${format(plain, x)}`, onClick: () => act('inc', { by: x }) })),
+    steps && GAP,
+    steps && { icon: RotateCcw, label: tc('cc', 'Reset'), key: 'X', confirm: resetMsg, onClick: () => act('reset') },
   ];
   const sub = st.frozen ? tc('cc', 'frozen') : item ? tc('cc', 'on air') : undefined;
+  const designer = mode === 'designer';
   return (
     <Centre name={layer.name} readout={{ v: value, sub }} actions={actions}>
+      {designer && <Num label={t('− / + buttons')} path="step" value={1} min={0.001} step={1} precision={3} />}
+      {designer && <Text label={t('More + buttons')} path="extraSteps" value="" placeholder="2, 5" />}
       {wired && <Toggle label={t('Freeze the display')} expose="opFreeze" exposeValue={true} value={!!st.frozen} onChange={() => act('freeze')} />}
-      <Num label={tc('cc', 'Step')} path="step" value={1} min={0.001} step={1} precision={3} />
-      <Text label={tc('cc', 'Extra steps')} path="extraSteps" value="" placeholder="2, 3" />
     </Centre>
   );
 }
@@ -838,6 +837,9 @@ function alertText(s: string): string {
   return s;
 }
 
+/** Settings exposing buttons of the Operator (− / +, more +, freeze). */
+const CONTROL_SETTINGS = ['step', 'extraSteps', 'opFreeze'];
+
 export default defineWidget({
   id: 'counter',
   type: 'counter',
@@ -863,6 +865,9 @@ export default defineWidget({
   ownsLook: true,
   live: () => true,
   content: ['to'],
+  controlSettings: CONTROL_SETTINGS,
+  // Only the buttons the Designer exposed: none, no control centre (the number alone).
+  controls: (l) => CONTROL_SETTINGS.some((p) => !!l.settingBindings?.[p] && (p !== 'opFreeze' || /\{\{\w+\}\}/.test(l.to))),
   Render: ({ layer, r, w, h, data, time, state }) => <Render layer={layer} r={r} w={w} h={h} data={data} time={time} state={state} />,
   Inspector: ({ layer, edit }) => <Inspector layer={layer} edit={edit} />,
   Operator: ({ layer, state, data, act, time, item }) => <CounterBar layer={layer} state={state} data={data} act={act} time={time} item={item} />,
