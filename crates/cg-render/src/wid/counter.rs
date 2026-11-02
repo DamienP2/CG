@@ -277,14 +277,14 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             TextAlign::Center => (avail - total) / 2.0,
             TextAlign::Right => avail - total,
         };
-    let line_h = size * tx::LINE_HEIGHT;
-    let top = match font.vertical_align {
-        VerticalAlign::Top => 0.0,
-        VerticalAlign::Middle => (d.h - line_h) / 2.0,
-        VerticalAlign::Bottom => d.h - line_h,
+    // The figures' ink placed in the box (a number has no accents above it to make room for).
+    let fig = tx::figure_height(&main, size);
+    let (asc, _) = tx::metrics(&main, size);
+    let baseline = match font.vertical_align {
+        VerticalAlign::Top => fig,
+        VerticalAlign::Middle => (d.h + fig) / 2.0,
+        VerticalAlign::Bottom => d.h,
     };
-    let (asc, desc) = tx::metrics(&main, size);
-    let baseline = top + (line_h - (asc - desc)) / 2.0 + asc;
     let num_x = x0
         + pre_w
         + match font.align {

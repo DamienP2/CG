@@ -379,20 +379,22 @@ const placeFrac = (v: number, p: number) => (p <= 0 ? 1 : clamp((Math.log10(Math
 // --------------------------------------------------------------- render --
 
 let mctx: CanvasRenderingContext2D | null = null;
-const asc = new Map<string, [number, number]>();
-/** Ascent and descent of a CSS font (as the Rust renderer's font metrics). */
-function metrics(font: string, size: number): [number, number] {
+const asc = new Map<string, [number, number, number]>();
+/** Ascent, descent and figure height (the ink of « 0 ») of a CSS font (as the Rust renderer's font metrics). */
+function metrics(font: string, size: number): [number, number, number] {
   let m = asc.get(font);
   if (!m) {
     mctx ??= document.createElement('canvas').getContext('2d');
-    if (!mctx) return [size * 0.97, size * 0.24];
+    if (!mctx) return [size * 0.97, size * 0.24, size * 0.7];
     mctx.font = font;
     const t = mctx.measureText('0');
-    m = [t.fontBoundingBoxAscent / size, t.fontBoundingBoxDescent / size];
-    if (!(m[0] > 0)) m = [0.96875, 0.2421875];
-    asc.set(font, m);
+    m = [t.fontBoundingBoxAscent / size, t.fontBoundingBoxDescent / size, t.actualBoundingBoxAscent / size];
+    if (!(m[0] > 0)) m = [0.96875, 0.2421875, 0.7];
+    if (!(m[2] > 0)) m[2] = 0.7;
+    // Measured with a fallback while the font loads: measured again once it is there.
+    if (typeof document === 'undefined' || document.fonts.check(font)) asc.set(font, m);
   }
-  return [m[0] * size, m[1] * size];
+  return [m[0] * size, m[1] * size, m[2] * size];
 }
 
 /** A piece of text with its baseline at `b` (line box of 1.2, as the Rust renderer). */
@@ -464,10 +466,9 @@ function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resol
   const avail = w - 2 * pad;
   const total = preW + boxW + sufW;
   const x0 = pad + (layer.align === 'center' ? (avail - total) / 2 : layer.align === 'right' ? avail - total : 0);
-  const lineH = size * 1.2;
-  const top = layer.verticalAlign === 'top' ? 0 : layer.verticalAlign === 'bottom' ? h - lineH : (h - lineH) / 2;
-  const [a, dsc] = metrics(font, size);
-  const baseline = top + (lineH - (a + dsc)) / 2 + a;
+  // The figures' ink placed in the box (a number has no accents above it to make room for), as counter.rs.
+  const [a, , fig] = metrics(font, size);
+  const baseline = layer.verticalAlign === 'top' ? fig : layer.verticalAlign === 'bottom' ? h : (h + fig) / 2;
   const numX = x0 + preW + (layer.align === 'center' ? (boxW - numW) / 2 : layer.align === 'right' ? boxW - numW : 0);
   const affB = c.affixRaise === 'top' ? baseline - 0.727 * (size - asize) : baseline;
   const acol = c.affixColor.trim() ? hex(c.affixColor) : fill;

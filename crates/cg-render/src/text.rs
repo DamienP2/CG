@@ -900,6 +900,16 @@ pub fn metrics(font: &FontArc, size: f32) -> (f32, f32) {
     (sf.ascent(), sf.descent())
 }
 
+/// Height of the figures above the baseline (the ink of « 0 »): what a
+/// number is centred on, rather than the line's ascent (room for accents).
+pub fn figure_height(font: &FontArc, size: f32) -> f32 {
+    let sf = font.as_scaled(scale_of(font, size));
+    font.outline(font.glyph_id('0'))
+        .map(|o| o.bounds.max.y * sf.v_scale_factor())
+        .filter(|h| *h > 0.0)
+        .unwrap_or(size * 0.7)
+}
+
 /// Visual order of a line for right-to-left text (no shaping: Arabic
 /// letters stay in their isolated forms): right-to-left runs reversed,
 /// left-to-right runs (Latin, numbers) kept.
