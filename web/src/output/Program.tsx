@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { movesAt, movingLayers, oldData, shownData, ValueMotionContext } from '../engine/valueMotion';
 import { formatFor, inFormat } from '../engine/formats';
 import { LiveTime, useTicker } from '../engine/LiveTime';
@@ -21,7 +21,9 @@ export const Program = memo(function Program({ project, live, width, height, max
   const templates = useMemo(() => new Map<string, Template>(project.templates.map((t) => [t.id, inFormat(t, format.id)])), [project, format.id]);
   const items = Object.entries(live?.state.layers ?? {}).sort(([a], [b]) => Number(a) - Number(b));
   // Redrawn on each frame while a timeline or a fade moves; the widgets that move by themselves (a ticker…) redraw alone.
-  const now = useTicker(items.some(([, item]) => moving(item)), maxFps);
+  // A presence on air still gliding (« On air » nodes of the Logic, seen at the last frame): redrawn too.
+  const [gliding, setGliding] = useState(false);
+  const now = useTicker(items.some(([, item]) => moving(item)) || gliding, maxFps);
   const fps = project.frameRate.num / project.frameRate.den || 1;
   // Frames shown last, by playout layer: never step back when a state
   // arrives a little behind what was extrapolated.
@@ -43,13 +45,20 @@ export const Program = memo(function Program({ project, live, width, height, max
     const x = templates.get(id);
     return x ? holdFrame(x) : 0;
   };
+  let glides = false;
   const withPresence = (d: Record<string, string>, t: Template) => {
     const watched = onAirWatched(t.logic);
     if (!watched.length) return d;
     const out = { ...d };
-    for (const [id, tr] of watched) out[onAirKey(id)] = presence(air, holdOf, id, tr, fps, since).toFixed(4);
+    for (const [id, tr] of watched) {
+      const k = presence(air, holdOf, id, tr, fps, since);
+      if (k > 0 && k < 1) glides = true;
+      out[onAirKey(id)] = k.toFixed(4);
+    }
     return out;
   };
+  // After this frame: still gliding or not (decides the redraws above).
+  useEffect(() => setGliding((g) => (g === glides ? g : glides)));
   const scale = Math.min(width / format.width, height / format.height);
   const zoneOf = (layer: number) => {
     const z = project.zones.find((x) => x.layer === layer);
