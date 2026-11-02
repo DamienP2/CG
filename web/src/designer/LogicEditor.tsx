@@ -1,4 +1,4 @@
-import { Ampersand, ArrowDown, ArrowLeftRight, Calculator, Crosshair, Diamond, Hash, Link2, Pause, Play, Rows3, Split, Square, SquareStack, Target, TextCursorInput, Timer, Trash2, Type, Zap } from 'lucide-react';
+import { Ampersand, ArrowDown, Radio, ArrowLeftRight, Calculator, Crosshair, Diamond, Hash, Link2, Pause, Play, Rows3, Split, Square, SquareStack, Target, TextCursorInput, Timer, Trash2, Type, Zap } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMemo, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
@@ -12,7 +12,7 @@ import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { PROP_LABELS } from './Inspector';
 import { useDesigner } from './designerStore';
-import { t } from '../i18n';
+import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
 
 /*
@@ -40,6 +40,7 @@ export const KINDS: { type: LogicNode['type']; ev?: TriggerEvent['kind']; label:
   { type: 'field', label: 'Data field', cat: 'input', icon: TextCursorInput, in: ['logic', 'triggers'] },
   { type: 'text', label: 'Text', cat: 'input', icon: Type, in: ['logic', 'triggers'] },
   { type: 'constant', label: 'Number', cat: 'input', icon: Hash, in: ['logic', 'triggers'] },
+  { type: 'onAir', label: 'On air', cat: 'input', icon: Radio, in: ['logic'] },
   { type: 'math', label: 'Math', cat: 'op', icon: Calculator, in: ['logic'] },
   { type: 'clamp', label: 'Clamp', cat: 'op', icon: Split, in: ['logic'] },
   { type: 'condition', label: 'Condition', cat: 'op', icon: Split, in: ['logic', 'triggers'] },
@@ -160,6 +161,8 @@ export function makeNode(type: LogicNode['type'], t: Template, x: number, y: num
       return { ...base, type, name: '' };
     case 'nextRow':
       return { ...base, type, dataset: t.datasets?.[0]?.key ?? '' };
+    case 'onAir':
+      return { ...base, type, template: '', transition: 0.4, test: false };
     case 'event': {
       const of = (f: (l: Layer) => boolean) => t.layers.find(f)?.id ?? '';
       const on: TriggerEvent =
@@ -235,6 +238,8 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
       );
     case 'constant':
       return <NumberField value={n.value} onChange={(v) => setNode(n.id, { value: v }, `logic-v-${n.id}`)} />;
+    case 'onAir':
+      return <OnAirBody n={n} template={template} setNode={setNode} />;
     case 'math':
       return <Dropdown value={n.op} options={MATH.map((o) => ({ ...o, label: t(o.label) }))} onChange={(op) => setNode(n.id, { op })} />;
     case 'clamp':
@@ -294,6 +299,31 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
     case 'nextRow':
       return <Dropdown value={n.dataset} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => setNode(n.id, { dataset })} />;
   }
+}
+
+/** « On air »: the graphic watched, how long its presence glides (s), its value in the Designer. */
+function OnAirBody({ n, template, setNode }: { n: Extract<LogicNode, { type: 'onAir' }>; template: Template; setNode: (id: string, patch: Partial<LogicNode>, key?: string) => void }) {
+  const project = useApp((s) => s.project);
+  return (
+    <>
+      <Dropdown value={n.template} placeholder={t('Choose a graphic')} options={(project?.templates ?? []).filter((x) => x.id !== template.id).map((x) => ({ value: x.id, label: x.name }))} onChange={(id) => setNode(n.id, { template: id } as Partial<LogicNode>)} />
+      <label className="ln-row">
+        <span>{t('Transition')}</span>
+        <NumberField value={n.transition ?? 0} min={0} max={10} step={0.1} precision={1} suffix="s" onChange={(v) => setNode(n.id, { transition: Math.max(0, v) } as Partial<LogicNode>, `logic-v-${n.id}`)} />
+      </label>
+      <label className="ln-row">
+        <span>{tc('logic', 'Try')}</span>
+        <Segmented
+          value={n.test ? '1' : '0'}
+          onChange={(v) => setNode(n.id, { test: v === '1' } as Partial<LogicNode>)}
+          options={[
+            { value: '0', label: t('No') },
+            { value: '1', label: t('Yes') },
+          ]}
+        />
+      </label>
+    </>
+  );
 }
 
 /** What an event node watches: its layer, data set, value or graphic, and its settings. */

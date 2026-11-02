@@ -22,6 +22,7 @@ export const INPUTS: Record<LogicNode['type'], string[]> = {
   target: ['in'],
   text: [],
   event: [],
+  onAir: [],
   bool: ['a', 'b'],
   out: ['when'],
   resume: ['when'],
@@ -141,6 +142,11 @@ class Graph {
       // Watched on air by the server: not yet happened here.
       case 'event':
         return 0;
+      // On air the renderer gives its presence; in the Designer, its test value.
+      case 'onAir': {
+        const v = parseFloat(data[onAirKey(n.template)] ?? '');
+        return Number.isFinite(v) ? v : n.test ? 1 : 0;
+      }
       case 'bool': {
         const a = truthy(input('a'));
         const b = truthy(input('b'));
@@ -156,6 +162,31 @@ class Graph {
 }
 
 /** Applies the targets to `values` in dependency order (cycles skipped). */
+/** The data key of a graphic's presence on air, 0 → 1 (cg_core::logic::on_air_key). */
+export const onAirKey = (template: string) => `__onair_${template}`;
+
+/** The graphics whose presence the graph reads, with their transition (s). */
+export const onAirWatched = (logic: Logic | undefined): [string, number][] => (logic?.nodes ?? []).flatMap((n) => (n.type === 'onAir' ? [[n.template, n.transition ?? 0] as [string, number]] : []));
+
+/**
+ * How much `template` is on air among `items` (cg_core::playout::presence): in over `transition` s
+ * from its take, out over as many once it goes out (eased); the most present counts.
+ */
+export function presence(items: { templateId: string; phase: string; age?: number; frame: number }[], holdOf: (template: string) => number, template: string, transition: number, fps: number, extraSecs = 0): number {
+  const ease = (k: number) => {
+    const x = Math.min(1, Math.max(0, k));
+    return x * x * (3 - 2 * x);
+  };
+  let best = 0;
+  for (const i of items) {
+    if (i.templateId !== template) continue;
+    const going = i.phase === 'out' || i.phase === 'outHold';
+    const v = transition <= 0 ? (going ? 0 : 1) : going ? 1 - ease(Math.max(0, i.frame - holdOf(template)) / fps / transition) : ease(((i.age ?? 0) / fps + extraSecs) / transition);
+    best = Math.max(best, v);
+  }
+  return best;
+}
+
 export function applyLogic(logic: Logic | undefined, values: Map<string, Resolved>, data: Data, measure: Measure) {
   if (!logic?.nodes.length) return;
   const g = new Graph(logic);

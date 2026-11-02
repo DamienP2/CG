@@ -141,6 +141,17 @@ pub enum NodeKind {
     Event {
         on: crate::model::TriggerEvent,
     },
+    /// 1 while the graphic `template` is on air, 0 otherwise, gliding over
+    /// `transition` seconds as it comes in and goes out. On air the
+    /// renderers put its presence in the data ([`on_air_key`]); elsewhere
+    /// (the Designer) it is `test`.
+    OnAir {
+        template: String,
+        #[serde(default)]
+        transition: f64,
+        #[serde(default)]
+        test: bool,
+    },
     /// Inputs `a` and `b`: 1 when both (and) or either (or) are true.
     Bool {
         op: BoolOp,
@@ -366,6 +377,11 @@ impl<'a> Graph<'a> {
             NodeKind::Target { .. } => input("in").unwrap_or(LVal::Num(0.0)),
             NodeKind::Text { value } => LVal::Text(value.clone()),
             NodeKind::Event { on } => LVal::Num(if events(id, on) { 1.0 } else { 0.0 }),
+            NodeKind::OnAir { template, test, .. } => LVal::Num(
+                data.get(&on_air_key(template))
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                    .unwrap_or(if *test { 1.0 } else { 0.0 }),
+            ),
             NodeKind::Bool { op } => {
                 let a = input("a").is_some_and(|v| truthy(&v));
                 let b = input("b").is_some_and(|v| truthy(&v));
@@ -421,6 +437,27 @@ pub fn air_actions(logic: &Logic, data: &Data, events: &mut Events) -> Vec<AirAc
         }
     }
     out
+}
+
+/// The data key of a graphic's presence on air (0 → 1), read by [`NodeKind::OnAir`].
+pub fn on_air_key(template: &str) -> String {
+    format!("__onair_{template}")
+}
+
+/// The graphics whose presence the graph reads, with their transition (s).
+pub fn on_air_watched(logic: &Logic) -> Vec<(&str, f64)> {
+    logic
+        .nodes
+        .iter()
+        .filter_map(|n| match &n.kind {
+            NodeKind::OnAir {
+                template,
+                transition,
+                ..
+            } => Some((template.as_str(), *transition)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The graph has « On air » nodes (the server evaluates it on air).
@@ -640,6 +677,52 @@ mod tests {
         assert_eq!(v["plate"][&Prop::Width], Value::Number(200.0));
         let v = run("");
         assert_eq!(v["plate"][&Prop::Opacity], Value::Number(0.0));
+    }
+
+    #[test]
+    fn moves_up_while_another_graphic_is_on_air() {
+        // y + presence(ticker) × −120
+        let logic = Logic {
+            nodes: vec![
+                node(
+                    "air",
+                    NodeKind::OnAir {
+                        template: "ticker".into(),
+                        transition: 0.4,
+                        test: false,
+                    },
+                ),
+                node("k", NodeKind::Constant { value: -120.0 }),
+                node("mul", NodeKind::Math { op: MathOp::Mul }),
+                node(
+                    "y",
+                    NodeKind::Target {
+                        layer: "plate".into(),
+                        prop: Prop::Y,
+                        mode: TargetMode::Add,
+                    },
+                ),
+            ],
+            edges: vec![
+                edge("air", "mul", "a"),
+                edge("k", "mul", "b"),
+                edge("mul", "y", "in"),
+            ],
+        };
+        assert_eq!(on_air_watched(&logic), vec![("ticker", 0.4)]);
+        let run = |data: &Data| {
+            let mut values: Values = HashMap::new();
+            values.insert("plate".into(), [(Prop::Y, Value::Number(900.0))].into());
+            apply(&logic, &mut values, data, &mut |_, _, _| 0.0);
+            values["plate"][&Prop::Y]
+        };
+        let mut d = Data::new();
+        // Not on air (nor its presence given): stays.
+        assert_eq!(run(&d), Value::Number(900.0));
+        d.insert(on_air_key("ticker"), "0.5000".into());
+        assert_eq!(run(&d), Value::Number(840.0));
+        d.insert(on_air_key("ticker"), "1".into());
+        assert_eq!(run(&d), Value::Number(780.0));
     }
 
     #[test]

@@ -210,6 +210,43 @@ pub fn count_value(from: &str, to: &str, k: f64) -> Option<String> {
     Some(if comma { v.replace('.', ",") } else { v })
 }
 
+/// How much the graphic `template` is on air among `items` (0 → 1): it
+/// glides in over `transition` seconds from its take and out over as many
+/// once it goes out (eased); the most present one counts.
+pub fn presence<'a>(
+    items: impl IntoIterator<Item = &'a PlayoutItem>,
+    project: &Project,
+    template: &str,
+    transition: f64,
+    fps: f64,
+) -> f64 {
+    let fps = fps.max(1.0);
+    let ease = |k: f64| {
+        let k = k.clamp(0.0, 1.0);
+        k * k * (3.0 - 2.0 * k)
+    };
+    items
+        .into_iter()
+        .filter(|i| i.template_id == template)
+        .map(|i| {
+            let going = matches!(i.phase, Phase::Out | Phase::OutHold);
+            if transition <= 0.0 {
+                return if going { 0.0 } else { 1.0 };
+            }
+            if going {
+                // Seconds since it left its on-air point.
+                let hold = project
+                    .template(template)
+                    .map(|t| t.hold_frame())
+                    .unwrap_or(i.frame);
+                1.0 - ease((i.frame - hold).max(0.0) / fps / transition)
+            } else {
+                ease(i.age / fps / transition)
+            }
+        })
+        .fold(0.0, f64::max)
+}
+
 /// The data a graphic shows now: its counting values on their way.
 pub fn shown_data(item: &PlayoutItem) -> std::borrow::Cow<'_, crate::anim::Data> {
     if !item.changes.iter().any(|c| c.kind == ValueChange::Count) {

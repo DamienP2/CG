@@ -285,6 +285,27 @@ fn value_tf(
 /// Values of the layers changed by a template's logic graph, by layer id.
 type Logic = HashMap<String, std::collections::BTreeMap<Prop, Value>>;
 
+/// `data` with the presence on air (0 → 1) of the graphics its Logic reads
+/// (« On air » nodes): see `cg_core::logic::on_air_key`.
+fn with_presence<'a, 'b>(
+    data: std::borrow::Cow<'a, cg_core::anim::Data>,
+    t: &Template,
+    project: &Project,
+    items: impl Iterator<Item = &'b cg_core::playout::PlayoutItem> + Clone,
+    fps: f64,
+) -> std::borrow::Cow<'a, cg_core::anim::Data> {
+    let watched = cg_core::logic::on_air_watched(&t.logic);
+    if watched.is_empty() {
+        return data;
+    }
+    let mut d = data.into_owned();
+    for (id, transition) in watched {
+        let k = cg_core::playout::presence(items.clone(), project, id, transition, fps);
+        d.insert(cg_core::logic::on_air_key(id), format!("{k:.4}"));
+    }
+    std::borrow::Cow::Owned(d)
+}
+
 /// A graphic on air, prepared for drawing only when it is drawn (or planned).
 struct OnAir<'p> {
     layer: u32,
@@ -798,7 +819,13 @@ impl Renderer {
                     set: Default::default(),
                     logic: Default::default(),
                     key: Default::default(),
-                    data: cg_core::playout::shown_data(item),
+                    data: with_presence(
+                        cg_core::playout::shown_data(item),
+                        t,
+                        project,
+                        state.layers.values(),
+                        fps,
+                    ),
                 })
             })
             .collect();

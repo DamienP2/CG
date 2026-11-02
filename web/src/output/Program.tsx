@@ -4,6 +4,8 @@ import { formatFor, inFormat } from '../engine/formats';
 import { LiveTime, useTicker } from '../engine/LiveTime';
 import { Scene } from '../engine/Scene';
 import { layerAgeFrames } from '../engine/widgets';
+import { onAirKey, onAirWatched, presence } from '../engine/logic';
+import { holdFrame } from '../engine/evaluate';
 import { areaClip, zoneArea } from '../engine/zones';
 import type { Layer, PlayoutItem, Project, Template } from '../engine/types';
 import type { Live } from '../store';
@@ -35,6 +37,19 @@ export const Program = memo(function Program({ project, live, width, height, max
     shown.current.set(layer, { templateId: item.templateId, frame: f });
     return f;
   };
+  // The presence on air of the graphics a Logic reads (« On air » nodes), as the Rust renderer gives it.
+  const air = items.map(([, i]) => i);
+  const holdOf = (id: string) => {
+    const x = templates.get(id);
+    return x ? holdFrame(x) : 0;
+  };
+  const withPresence = (d: Record<string, string>, t: Template) => {
+    const watched = onAirWatched(t.logic);
+    if (!watched.length) return d;
+    const out = { ...d };
+    for (const [id, tr] of watched) out[onAirKey(id)] = presence(air, holdOf, id, tr, fps, since).toFixed(4);
+    return out;
+  };
   const scale = Math.min(width / format.width, height / format.height);
   const zoneOf = (layer: number) => {
     const z = project.zones.find((x) => x.layer === layer);
@@ -61,7 +76,7 @@ export const Program = memo(function Program({ project, live, width, height, max
         const fade = item.fade ? Math.min(item.fade.length, item.fade.frame + since * fps) : null;
         // Values a data source changed: counting, sliding or turning over in the layers showing them.
         const moves = movesAt(item, since * fps);
-        const shown = shownData(item.data, moves);
+        const shown = withPresence(shownData(item.data, moves), t);
         const turning = movingLayers(t, moves);
         // The graphic replaced in a « Fade » zone, fading out under the new one.
         const going = item.leaving;

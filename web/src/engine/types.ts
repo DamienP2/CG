@@ -376,6 +376,8 @@ export type LogicNodeKind =
   | { type: 'target'; layer: string; prop: Prop; mode: TargetMode }
   | { type: 'text'; value: string }
   | { type: 'event'; on: TriggerEvent }
+  /** 1 while the graphic `template` is on air, gliding over `transition` s (cg_core::logic::NodeKind::OnAir); `test` in the Designer. */
+  | { type: 'onAir'; template: string; transition?: number; test?: boolean }
   | { type: 'bool'; op: 'and' | 'or' }
   | { type: 'out' }
   | { type: 'resume'; marker: string }
