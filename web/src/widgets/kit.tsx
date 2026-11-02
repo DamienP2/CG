@@ -277,7 +277,7 @@ export function Row({ label, children, title, lead, tail, expose, exposeValue, e
 }
 
 /** The radio button exposing settings of the layer to the Operator: one click exposes, one click stops. */
-export function ExposeSetting({ paths, label, value, options, range }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][]; range?: [number, number] }) {
+export function ExposeSetting({ paths, label, value, options, range, text }: { paths: readonly string[]; label?: string; value?: unknown; options?: [string, string][]; range?: [number, number]; /** A button with this text (else the row's small icon). */ text?: ReactNode }) {
   const { obj } = useContext(BindContext);
   const { template, update } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update })));
   const layer = obj as Layer | undefined;
@@ -311,6 +311,12 @@ export function ExposeSetting({ paths, label, value, options, range }: { paths: 
       }
     });
   const names = fields.filter(Boolean).map((f) => f!.label);
+  if (text)
+    return (
+      <button className={`btn small pp-op-btn ${on ? 'on' : ''}`} title={on ? t('Exposed to the Operator ({fields}) · click to stop', { fields: names.join(', ') }) : undefined} onClick={toggle}>
+        <Radio size={13} /> {text}
+      </button>
+    );
   return (
     <button className={`pp-op ${on ? 'on' : ''}`} title={on ? t('Exposed to the Operator ({fields}) · click to stop', { fields: names.join(', ') }) : t('Expose to the Operator')} onClick={toggle}>
       <Radio size={13} />

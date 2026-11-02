@@ -34,6 +34,8 @@ export function formatSetting(v: unknown): string {
 
 /** Field kind for a setting value. */
 export function settingKind(v: unknown, path: string): FieldKind {
+  // The entries of credits: a table.
+  if (path === 'entries') return 'credits';
   if (typeof v === 'number') return 'number';
   if (typeof v === 'boolean') return 'boolean';
   if (typeof v === 'string' && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(v)) return 'color';
@@ -67,7 +69,10 @@ export function withSettings(t: Template, data: Data): Template {
       const c = structuredClone(l) as unknown as Record<string, unknown>;
       for (const [path, key] of Object.entries(l.settingBindings!)) {
         if (data[key] === undefined) continue;
-        const v = parseSetting(data[key], readPath(c, path));
+        const cur = readPath(c, path);
+        // Empty for a setting the layer leaves at its default: the default stays.
+        if (cur == null && !data[key].trim()) continue;
+        const v = parseSetting(data[key], cur);
         if (v !== undefined) writePath(c, path, v);
       }
       return c as unknown as Layer;
@@ -82,8 +87,12 @@ export function syncSettingDefaults(t: Template) {
   for (const l of t.layers)
     for (const [path, key] of Object.entries(l.settingBindings ?? {})) {
       const f: Field | undefined = t.fields.find((x) => x.key === key);
-      if (f && !f.binding?.source) {
-        const v = formatSetting(readPath(l, path));
+      const cur = readPath(l, path);
+      // A setting at the widget's default (not in the layer): its field keeps the value it was exposed with.
+      // Credits exposed before their table: edited as one now.
+      if (f && path === 'entries' && Array.isArray(cur) && f.kind !== 'credits') f.kind = 'credits';
+      if (f && !f.binding?.source && cur !== undefined) {
+        const v = formatSetting(cur);
         if (f.default !== v) f.default = v;
       }
     }

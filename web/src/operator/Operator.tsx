@@ -1,7 +1,7 @@
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Eraser, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -22,6 +22,7 @@ import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKe
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
 import { shownText } from '../widgets/text';
+import { creditsLeft, EntriesTable, type Entry } from '../widgets/credits';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { DataWarning } from './DataWarning';
 import { navigate, projectPath } from '../router';
@@ -59,6 +60,16 @@ function Empty({ icon: Icon, text, children }: { icon: LucideIcon; text: string;
     </div>
   );
 }
+
+/** Credits entries from a field's JSON (none when it is not). */
+const entriesOf = (v: string): Entry[] => {
+  try {
+    const x = JSON.parse(v);
+    return Array.isArray(x) ? x : [];
+  } catch {
+    return [];
+  }
+};
 
 /** The control of an exposed value, as in the Designer (text, choices, number, colour, picture, on / off). */
 export function FieldInput({ field, value, onChange, rich, maxLength }: { field: Field; value: string; onChange: (v: string) => void; rich?: boolean; /** Most characters (a Text's « Max characters »). */ maxLength?: number }) {
@@ -106,6 +117,8 @@ export function FieldInput({ field, value, onChange, rich, maxLength }: { field:
       return <AssetPicker value={value} onChange={onChange} />;
     case 'table':
       return <TableRowsField value={value} onChange={onChange} />;
+    case 'credits':
+      return <EntriesTable value={entriesOf(value)} onChange={(v) => onChange(JSON.stringify(v))} />;
     default:
       return <TextInput autoGrow value={value} onChange={onChange} maxLength={maxLength} />;
   }
@@ -200,6 +213,13 @@ function autoStep(project: Project, p: PlayoutItem & { advanced?: boolean }, liv
   const steps: AutoStep[] = [];
   const out = t.markers.find((m) => m.kind === 'out');
   if (out?.resume?.type === 'after') steps.push(step('out', out.resume.seconds));
+  // Credits set to go out by themselves: out when they have gone all the way.
+  const nowMs = liveAt + useApp.getState().serverOffset;
+  for (const l of t.layers) {
+    if (l.type !== 'credits') continue;
+    const c = creditsLeft(l, p.widgets?.[l.id], p.data, nowMs, (p.age ?? 0) / fps);
+    if (c) steps.push({ kind: 'out', secs: c.total, at: liveAt + c.left * 1000 });
+  }
   const r = p.rundownId ? project.rundown.find((x) => x.id === p.rundownId) : undefined;
   if (!p.advanced && r?.autoSecs !== undefined && project.playlists.some((x) => x.id === r.playlist && x.autoNext)) steps.push(step('next', r.autoSecs));
   return steps.sort((a, b) => a.at - b.at)[0] ?? null;
@@ -1108,6 +1128,15 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
             <button onClick={run(duplicate)}>
               <Copy size={13} /> {t('Duplicate')}
             </button>
+            <button
+              disabled={!count}
+              onClick={run(async () => {
+                if (await confirmDialog({ title: t('Empty the playlist “{name}”?', { name: p.name }), message: tn(count, 'Its {n} graphic is removed.', 'Its {n} graphics are removed.'), confirm: t('Empty'), danger: true }))
+                  await useApp.getState().saveRundown(project.rundown.filter((r) => r.playlist !== id));
+              })}
+            >
+              <Eraser size={13} /> {t('Empty…')}
+            </button>
             {project.playlists.length > 1 && (
               <>
                 <div className="menu-sep" />
@@ -1220,7 +1249,9 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
     </div>
   );
   // A text with a style toolbar, several lines or a table takes the whole row of tiles.
-  const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || f.kind === 'table';
+  // A table (a table's rows, credits) takes the whole row, in a tile.
+  const grid = (f: Field) => f.kind === 'table' || f.kind === 'credits';
+  const wide = (f: Field) => richField(template, f.key) || f.kind === 'multiline' || grid(f);
   // Bento: a number, a colour or a switch takes one cell, a text, an image or a read value two.
   const size = (f: Field) => (wide(f) ? 'wide' : live(f) || f.kind === 'text' || f.kind === 'image' ? 'w2' : '');
   const groups = fieldGroups(fields, names);
@@ -1232,15 +1263,15 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
         <Fragment key={g.title}>
           {g.title && <div className="opx-vt-group">{g.title}</div>}
           {g.fields.map(({ f, label }) =>
-            f.kind !== 'table' && fromData(f) && !byHand(f.key) ? (
+            !grid(f) && fromData(f) && !byHand(f.key) ? (
               linkedRow(f.key, label, boundDraft[f.key] ?? draft[f.key] ?? '', (f.binding!.path || bindingLabel(f.binding!)).split('.').pop()!.replace(/\[.*$/, ''), 'live', `src:${f.binding!.source}`, handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? ''))
-            ) : f.kind !== 'table' && fromData(f) ? (
+            ) : !grid(f) && fromData(f) ? (
               handRow(f.key, label, <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />, handToggle([f.key], (k) => draft[k] ?? ''))
-            ) : f.kind !== 'table' && columnOf(f.key) && !byHand(f.key) ? (
+            ) : !grid(f) && columnOf(f.key) && !byHand(f.key) ? (
               linkedRow(f.key, label, previewData[f.key] ?? '', f.key.slice(columnOf(f.key)!.key.length + 1), 'ds', f.key, handToggle([f.key], (k) => previewData[k] ?? ''))
-            ) : f.kind !== 'table' && columnOf(f.key) ? (
+            ) : !grid(f) && columnOf(f.key) ? (
               handRow(f.key, label, <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />, handToggle([f.key], (k) => previewData[k] ?? ''))
-            ) : f.kind !== 'table' ? (
+            ) : !grid(f) ? (
               // A variable as in the Designer: its dot, its name (set in the Designer), its value.
               <div key={f.key} className={`opx-var ${changed.has(f.key) ? 'chg' : ''}`}>
                 <i className="opx-var-dot" />
@@ -1261,7 +1292,7 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
                     {byHand(f.key) ? <PenLine size={11} /> : <Database size={11} />} {byHand(f.key) ? t('Typed by hand') : sourceName(f.binding!.source)}
                   </span>
                 )}
-                {fromData(f) && f.kind !== 'table' && handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
+                {fromData(f) && !grid(f) && handToggle([f.key], (k) => boundDraft[k] ?? draft[k] ?? '')}
               </div>
               {live(f) ? <span className="opx-bound">{boundDraft[f.key] ?? draft[f.key] ?? '…'}</span> : <FieldInput field={f} value={draft[f.key] ?? ''} onChange={(v) => onDraft({ [f.key]: v })} />}
             </div>

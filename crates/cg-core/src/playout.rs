@@ -1604,6 +1604,24 @@ impl ChannelState {
             let Some(t) = project.template(&item.template_id) else {
                 continue;
             };
+            // Credits set to go out by themselves: out once they have gone all the way.
+            if item.phase == Phase::Holding
+                && item.frame >= t.hold_frame() - 1e-6
+                && crate::wid::credits::auto_out_done(
+                    t,
+                    &item.widgets,
+                    &shown_data(item),
+                    now,
+                    item.age / fps,
+                    m,
+                )
+            {
+                done.push(t.name.clone());
+                if !begin_out(project, item) {
+                    gone.push(*layer);
+                }
+                continue;
+            }
             if !crate::logic::drives_air(&t.triggers) {
                 continue;
             }

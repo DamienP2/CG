@@ -176,7 +176,7 @@ export type TriggerEvent =
 /** Marker model of templates made by this version (see Template.markerModel). */
 export const MARKER_MODEL = 2;
 
-export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean' | 'table';
+export type FieldKind = 'text' | 'multiline' | 'number' | 'color' | 'image' | 'boolean' | 'table' | 'credits';
 
 export interface Field {
   key: string;

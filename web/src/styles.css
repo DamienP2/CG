@@ -21292,3 +21292,76 @@ textarea.tx-grow {
   font-weight: 400;
   font-size: 13px;
 }
+
+/* Credits: the entries as a table (Designer content, Operator when exposed). */
+.cr-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 0 6px;
+}
+.btn.pp-op-btn.on {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--accent-soft);
+}
+.cr-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cr-table table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--fs-12);
+}
+.cr-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--fs-11);
+  color: var(--text-3);
+  padding: 4px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.cr-table th:first-child {
+  width: 96px;
+}
+.cr-table th:last-child {
+  width: 26px;
+}
+.cr-table td {
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.cr-table td input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 7px;
+  font-size: var(--fs-12);
+}
+.cr-table .cr-x button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.cr-table .cr-x button:hover {
+  color: var(--live);
+  background: var(--panel-3);
+}
+.cr-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-12);
+}

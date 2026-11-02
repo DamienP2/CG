@@ -176,6 +176,8 @@ pub struct Config {
     pub card_dur: f64,
     pub start: Start,
     pub end: End,
+    /// The graphic goes out by itself once the credits have gone all the way (else the operator's OUT).
+    pub auto_out: bool,
     pub short_mode: Short,
     pub fade: bool,
     pub fade_size: f32,
@@ -208,6 +210,7 @@ impl Default for Config {
             card_dur: 4.0,
             start: Start::On,
             end: End::Stop,
+            auto_out: false,
             short_mode: Short::Center,
             fade: true,
             fade_size: 140.0,
@@ -832,6 +835,31 @@ pub fn ended(
     Some(progress(c, st, t.x, now_ms, age_secs) >= 1.0 - 1e-6)
 }
 
+/// Credits of `t` set to go out by itself (Config::auto_out) that have gone all the way.
+pub fn auto_out_done(
+    t: &crate::model::Template,
+    widgets: &std::collections::BTreeMap<String, serde_json::Value>,
+    data: &Data,
+    now_ms: i64,
+    age_secs: f64,
+    m: &mut dyn crate::playout::TextWidth,
+) -> bool {
+    t.layers.iter().any(|l| {
+        config(l).is_ok_and(|c| c.auto_out)
+            && ended(
+                l,
+                &widgets
+                    .get(&l.id)
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default(),
+                data,
+                now_ms,
+                age_secs,
+                m,
+            ) == Some(true)
+    })
+}
+
 fn config(layer: &Layer) -> Result<&Config, String> {
     match &layer.kind {
         LayerKind::Credits { x } => Ok(x),
@@ -1065,6 +1093,32 @@ mod tests {
             fps: 50.0,
             data: d,
         }
+    }
+
+    #[test]
+    fn credits_set_to_go_out_by_themselves_say_so_once_ended() {
+        let d = Data::new();
+        let mut t: crate::model::Template =
+            serde_json::from_str(r#"{"id":"t","name":"T","duration":50,"layers":[]}"#).unwrap();
+        t.layers.push(layer(Config {
+            entries: parse(TEXT),
+            duration: 10.0,
+            auto_out: true,
+            ..Default::default()
+        }));
+        let w = std::collections::BTreeMap::new();
+        let mut m = crate::playout::EstimatedWidth;
+        assert!(!auto_out_done(&t, &w, &d, 0, 5.0, &mut m), "still rolling");
+        assert!(
+            auto_out_done(&t, &w, &d, 0, 11.0, &mut m),
+            "gone all the way"
+        );
+        // Out by the operator's OUT only: never by itself.
+        let LayerKind::Credits { x } = &mut t.layers[0].kind else {
+            panic!()
+        };
+        x.auto_out = false;
+        assert!(!auto_out_done(&t, &w, &d, 0, 11.0, &mut m));
     }
 
     #[test]

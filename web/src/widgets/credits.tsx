@@ -2,8 +2,8 @@
 // logos, spaces) with an import from text, 1 / 2 / 3 columns, styles per level, speed from a total duration or
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
-import { memo, useEffect, useMemo, useState } from 'react';
-import { Flag, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward } from 'lucide-react';
+import { memo, useEffect, useMemo } from 'react';
+import { Flag, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward, Trash2, X } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import { parseDuration } from '../engine/widgets';
 import type { Data, PlayoutItem } from '../engine/types';
@@ -12,7 +12,7 @@ import { ColorField, NumberField, Segmented } from '../ui/fields';
 import { Dropdown } from '../ui/Dropdown';
 import { confirmDialog } from '../ui/dialogs';
 import { loadFonts, useFonts } from '../engine/fonts';
-import { Btns, clamp, findCol, headerRows, ColorPick, Content, defineWidget, hex, ListEditor, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
+import { clamp, findCol, headerRows, ColorPick, Content, defineWidget, ExposeSetting, hex, Num, Row, Section, Seg, Toggle, useBound, useCentreMode, useKeys, type Warning } from './kit';
 import { Centre, StartRow, WaitsContinue, WaitsTrigger, type Line2Item } from './centre';
 import { familyCss, FitLine, FONT, OpField, tw, useLiveTime } from './table-text';
 import { layerTime } from './ticker';
@@ -55,6 +55,8 @@ export interface Config {
   cardDur?: number;
   start?: 'off' | 'on';
   end?: 'exit' | 'stop';
+  /** The graphic goes out by itself once the credits have gone all the way (else the operator's OUT). */
+  autoOut?: boolean;
   shortMode?: 'center' | 'exit';
   fade?: boolean;
   fadeSize?: number;
@@ -96,6 +98,7 @@ export function cfg(c: Config) {
     cardDur: c.cardDur ?? 4,
     start: c.start ?? 'on',
     end: c.end ?? 'stop',
+    autoOut: c.autoOut ?? false,
     shortMode: c.shortMode ?? 'center',
     fade: c.fade ?? true,
     fadeSize: c.fadeSize ?? 140,
@@ -564,13 +567,68 @@ function FamilyRow({ value }: { value: string }) {
   );
 }
 
-/** The text pasted in the import box (several lines). */
-function PasteBox({ init, onChange }: { init: string; onChange: (v: string) => void }) {
-  const [v, setV] = useState(init);
-  return <textarea rows={14} value={v} placeholder={'# Section\nRole | Name'} style={{ width: '100%', minWidth: 360, fontFamily: 'var(--mono, monospace)', fontSize: 12 }} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => (setV(e.target.value), onChange(e.target.value))} />;
+type OpP = { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz?: string; fps?: number; held?: boolean } };
+
+/** The entries as a table (type · role / title · name): the Designer's content and the Operator's when exposed. */
+export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v: Entry[]) => void }) {
+  const kinds: { value: Kind; label: string }[] = [
+    { value: 'section', label: t('Section') },
+    { value: 'line', label: t('Line') },
+    { value: 'logo', label: t('Logo') },
+    { value: 'space', label: t('Space') },
+  ];
+  const put = (i: number, patch: Partial<Entry>) => onChange(value.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+  return (
+    <div className="cr-table">
+      <table>
+        <thead>
+          <tr>
+            <th>{t('Type')}</th>
+            <th>{t('Role / title / logo')}</th>
+            <th>{t('Name')}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {value.map((e, i) => {
+            const kind = e.kind ?? 'line';
+            return (
+              <tr key={i}>
+                <td className="cr-kind">
+                  <Dropdown value={kind} options={kinds} onChange={(v) => put(i, { kind: v as Kind })} />
+                </td>
+                <td>{kind !== 'space' && <input value={e.a ?? ''} placeholder={kind === 'logo' ? '/assets/…' : ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { a: ev.target.value })} />}</td>
+                <td>{kind === 'line' && <input value={e.b ?? ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { b: ev.target.value })} />}</td>
+                <td className="cr-x">
+                  <button title={t('Remove')} onClick={() => onChange(value.filter((_, j) => j !== i))}>
+                    <X size={13} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <button className="link-btn cr-add" onClick={() => onChange([...value, { kind: 'line', a: '', b: '' }])}>
+        <Plus size={13} /> {t('Entry')}
+      </button>
+    </div>
+  );
 }
 
-type OpP = { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz?: string; fps?: number; held?: boolean } };
+/** Credits set to go out by themselves (Config.autoOut), on air: seconds left and the whole roll; null when they do not. */
+export function creditsLeft(layer: unknown, state: unknown, data: Data, nowMs: number, ageSecs: number): { left: number; total: number } | null {
+  const l = layer as CL;
+  const k = cfg(l);
+  if (!k.autoOut) return null;
+  const st = (state ?? {}) as State;
+  // Waiting for its manual start: not counting yet.
+  if (l.manualStart && !st.started) return null;
+  const [w, h] = sizeOf(l);
+  const g = geo(k, entriesOf(k, data), w, h);
+  const left = Math.max(0, remaining(k, st, g.x, nowMs, st.started ? 0 : Math.max(0, ageSecs)));
+  return { left, total: 1 / Math.max(1e-9, realRate(k, st, g.x)) };
+}
 
 /** Where the credits are now, for the Operator's controls. */
 function useRun({ layer, state, data, time }: OpP) {
@@ -637,7 +695,6 @@ function CreditsBar(p: OpP) {
   };
   return (
     <Centre name={l.name} readout={{ v: mss(rem), sub }} status={status1} actions={actions}>
-      <StartRow layer={designer ? (b.obj as CL) : l} />
       <Row label={t('Duration')} title={t('The whole roll, mm:ss')}>
         <OpField width={70} title={t('Duration')} value={mss(Math.round(total))} placeholder="mm:ss" onSubmit={setTotal} />
       </Row>
@@ -702,44 +759,24 @@ export default defineWidget({
     return (
       <>
         <Section id="credits-content" title={t('Content')}>
-          <Content label={t('Source')} path="link" placeholder="{{key}}" />
-          {!k.link.trim() && (
+          {k.link.trim() ? (
+            // Fed by the Data canvas: its source, not the table.
+            <Content label={t('Source')} path="link" placeholder="{{key}}" />
+          ) : (
             <>
-              <Row expose="entries" exposeValue={k.entries}>
-                <ListEditor
-                  path="entries"
-                  fields={[
-                    {
-                      key: 'kind',
-                      options: [
-                        ['section', t('Section')],
-                        ['line', t('Line')],
-                        ['logo', t('Logo')],
-                        ['space', t('Space')],
-                      ],
-                      w: 82,
-                    },
-                    { key: 'a', placeholder: t('Role / title / logo') },
-                    { key: 'b', placeholder: t('Name') },
-                  ]}
-                  add={() => ({ kind: 'line', a: 'Role', b: 'Name' })}
-                  addLabel={t('Entry')}
-                />
-              </Row>
-              <Btns
-                label={t('Import')}
-                list={[
-                  {
-                    label: t('Paste a text…'),
-                    title: t('Paste a text (# Section, Role | Name)'),
-                    onClick: async () => {
-                      let text = toText(k.entries);
-                      const ok = await confirmDialog({ title: t('Paste a text (# Section, Role | Name)'), message: <PasteBox init={text} onChange={(v) => (text = v)} />, confirm: t('Replace') });
-                      if (ok && text.trim()) set((x) => void ((x.entries = parse(text)), (x.importText = text)));
-                    },
-                  },
-                ]}
-              />
+              <div className="cr-tools">
+                <ExposeSetting paths={['entries']} label={t('Content')} value={k.entries} text={t('Expose to the Operator')} />
+                <button
+                  className="btn small"
+                  disabled={!k.entries.length}
+                  onClick={async () => {
+                    if (await confirmDialog({ title: t('Clear the whole credits?'), confirm: t('Clear all'), danger: true })) set((x) => void (x.entries = []));
+                  }}
+                >
+                  <Trash2 size={13} /> {t('Clear all')}
+                </button>
+              </div>
+              <EntriesTable value={k.entries} onChange={(v) => set((x) => void (x.entries = v))} />
             </>
           )}
         </Section>
@@ -848,6 +885,16 @@ export default defineWidget({
               />
             </>
           )}
+          <StartRow layer={l} />
+          <Seg
+            label={tc('credits', 'Going out')}
+            path="autoOut"
+            value={k.autoOut}
+            options={[
+              [true, t('Auto')],
+              [false, tc('credits', 'Manual')],
+            ]}
+          />
           <Seg
             label={t('Start')}
             path="start"

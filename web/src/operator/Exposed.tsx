@@ -49,7 +49,7 @@ export function exposedFields(fields: Field[], layers: Layer[]): { content: Fiel
     }
     for (const [p, k] of Object.entries(l.settingBindings ?? {})) {
       const f = byKey.get(k);
-      if (f && !CONTENT_SETTINGS.has(p) && f.kind !== 'table') at.set(p, f);
+      if (f && !CONTENT_SETTINGS.has(p) && f.kind !== 'table' && f.kind !== 'credits') at.set(p, f);
     }
     if (!at.size) continue;
     for (const f of at.values()) owned.add(f.key);

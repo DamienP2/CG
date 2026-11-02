@@ -1120,6 +1120,8 @@ pub enum FieldKind {
     Boolean,
     /// Rows of a table typed or imported by the operator (JSON `[[header…], [cells…], …]`).
     Table,
+    /// Entries of credits (JSON `[{"kind", "a", "b"}…]`), edited as a table.
+    Credits,
 }
 
 /// A data input exposed to the operator (a field of the template).
@@ -2571,11 +2573,16 @@ mod tests {
 /// the type of the value already there (number, true/false, text, JSON).
 fn set_setting(root: &mut serde_json::Value, path: &str, raw: &str) {
     use serde_json::Value as J;
-    let mut cur = root;
     let parts: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
     let Some((last, head)) = parts.split_last() else {
         return;
     };
+    // Empty for a setting the layer leaves at its default: the default stays.
+    let pointer = format!("/{}", parts.join("/"));
+    if raw.trim().is_empty() && root.pointer(&pointer).is_none_or(J::is_null) {
+        return;
+    }
+    let mut cur = root;
     for part in head {
         cur = match cur {
             J::Array(a) => match part.parse::<usize>().ok().and_then(|i| a.get_mut(i)) {
@@ -2686,6 +2693,9 @@ mod setting_tests {
         set_setting(&mut j, "teams.0.logo", "b.png");
         set_setting(&mut j, "radius", "oops");
         set_setting(&mut j, "missing.deep", "3");
+        // Empty for a setting the layer leaves at its default: nothing written.
+        set_setting(&mut j, "st.section.color", "");
+        set_setting(&mut j, "st.section.color", " ");
         assert_eq!(
             j,
             serde_json::json!({"mask": "circle", "radius": 40, "crop": {"l": 0.25}, "on": true, "teams": [{"logo": "b.png"}], "missing": {"deep": 3}})
