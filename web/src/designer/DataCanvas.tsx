@@ -1,12 +1,12 @@
 import { widgetOf } from '../widgets';
 import { HexColorField } from '../ui/fields';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Repeat, Rows3, Timer, ToggleLeft, Trash2, Type, Variable, Wand2, X, Zap, Blend, Pause, ChevronsUp, FlipVertical2 } from 'lucide-react';
+import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Calculator, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Repeat, Rows3, Timer, ToggleLeft, Trash2, Type, Variable, Wand2, X, Zap, Blend, Pause, ChevronsUp, FlipVertical2 } from 'lucide-react';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, measureLayer } from '../engine/logic';
+import { applyLogic, INPUTS, measureLayer, nodeValues } from '../engine/logic';
 import { api, useApp } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type LiveChange, type Logic, type LogicNode, type Prop, type Template, type ValueChange } from '../engine/types';
 import { isTimed } from '../engine/widgets';
@@ -17,6 +17,7 @@ import { findLayer, useDesigner } from './designerStore';
 import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
 import { layerIcon } from './LayersPanel';
 import { WidgetRunButtons } from './WidgetRun';
+import { fmt, inputLabel, LogicNodeBody, makeNode } from './LogicEditor';
 import { BuildCard, TableNodeInfo } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
 import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
@@ -565,6 +566,16 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     applyLogic(template.logic, m, values, measureLayer(template.layers, values, interpolateText));
     return m;
   }, [template, frame, values]);
+  // The Calculate nodes (the Logic's math): their results at the playhead.
+  const calcs = (template.logic?.nodes ?? []).filter((n) => n.type === 'math');
+  const logicValues = useMemo(() => nodeValues(template.logic ?? { nodes: [], edges: [] }, resolved, values, measureLayer(template.layers, values, interpolateText)), [template.logic, template.layers, resolved, values]);
+  /** Properties a Calculate node sets (through the Logic's Set property). */
+  const calcTargets = (l: Layer): string[] => {
+    const lg = template.logic;
+    if (!lg) return [];
+    const ids = new Set(calcs.map((n) => n.id));
+    return lg.nodes.filter((n): n is LogicNode & { type: 'target' } => n.type === 'target' && n.layer === l.id && lg.edges.some((e) => e.to === n.id && ids.has(e.from))).map((n) => n.prop);
+  };
 
   // ---- What the canvas shows and where.
   /** The keys from a source or a data set wired at a port of `l` (its new values can move on air). */
@@ -572,7 +583,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const keys = contentOf(l).includes(port) ? [...contentValue(l, port).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]) : port.startsWith('s:') ? [l.settingBindings?.[port.slice(2)] ?? ''] : [l.bindings[port as Prop] ?? ''];
     return [...new Set(keys.filter((k) => k && fedKey(template, k)))];
   };
-  const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))), ...settingPortsOf(l)]);
+  const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))), ...settingPortsOf(l), ...calcTargets(l)]);
   /** Properties with a port: the usual ones, and any other one set from the data (anchor, crop… exposed in the Inspector). */
   const propPortsOf = (l: Layer) => [...portsOf(l), ...(Object.entries(l.bindings) as [Prop, string][]).filter(([p, k]) => k && !portsOf(l).includes(p)).map(([p]) => p)];
   /** Content ports always; the settings set from the data; properties when unfolded (or wired). */
@@ -646,6 +657,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     return spot(`i:l:${l.id}:${port}`, { x: p.x, y: p.y + top + ROW / 2 });
   };
   const logicOut = (n: LogicNode) => ({ x: n.x + widthOf(n.id, W.logic), y: n.y + HEAD / 2 });
+  const logicIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + INPUTS[n.type].indexOf(port) * ROW + ROW / 2 });
 
   // ---- Editing the template.
   const editLogic = (fn: (l: Logic) => void, key?: string) =>
@@ -740,6 +752,20 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       }
     }
   const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
+  // Wires into and out of the Calculate nodes (a variable or another result in, a layer's value out).
+  logic.edges.forEach((e, i) => {
+    const a = nodes.get(e.from);
+    const b = nodes.get(e.to);
+    if (!a || !b || (a.type !== 'math' && b.type !== 'math')) return;
+    const from = a.type === 'field' ? keyOut(a.key) : a.type === 'math' ? logicOut(a) : null;
+    let to: Pt | null = null;
+    if (b.type === 'target') {
+      const l = template.layers.find((x) => x.id === b.layer);
+      to = l ? layerIn(l, b.prop) : null;
+    } else if (b.type === 'math') to = logicIn(b, e.port);
+    if (!from || !to) return;
+    wires.push({ d: curve(from, to), title: t('Click to remove'), onClick: () => editLogic((l) => void l.edges.splice(i, 1)) });
+  });
 
   /**
    * Lays the nodes out from left to right: sources first, the layers last,
@@ -1095,6 +1121,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             );
           })}
 
+          <div className="dc-pal-title">{t('Operations')}</div>
+          <button className="kind-math" onPointerDown={(e) => fromPalette(e, t('Math'), (at) => editLogic((l) => void l.nodes.push(makeNode('math', template, at.x, at.y))), W.logic)}>
+            <Calculator size={14} />
+            <span>
+              <strong>{t('Math')}</strong>
+            </span>
+          </button>
+
           <div className="dc-pal-title">{t('Into the graphic')}</div>
           <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, t('Data set'), addDataset, W.source)}>
             <Rows3 size={14} />
@@ -1253,6 +1287,40 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                 </div>
               );
             })}
+
+            {/* Calculate: A op B, from variables or other results, into a layer's value */}
+            {calcs.map((n) => (
+              <div key={n.id} data-node-id={n.id} className="logic-node dc-node kind-math" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.logic) }} onPointerDown={(e) => dragNode(e, n.id, 'logic')}>
+                <div className="ln-head" style={{ height: HEAD }}>
+                  <Calculator size={12} />
+                  <span>{t('Math')}</span>
+                  <span className="ln-value">{fmt(logicValues.get(n.id))}</span>
+                  <button
+                    className="ln-del"
+                    title={t('Delete')}
+                    onClick={() =>
+                      editLogic((l) => {
+                        l.nodes = l.nodes.filter((x) => x.id !== n.id);
+                        l.edges = l.edges.filter((x) => x.from !== n.id && x.to !== n.id);
+                      })
+                    }
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                  <span className="port out" title={t("Drag to a layer's value or to another calculation")} onPointerDown={(e) => startWire(e, { kind: 'logic', id: n.id })} />
+                </div>
+                {INPUTS[n.type].map((port) => (
+                  <div key={port} className="ln-input" style={{ height: ROW }}>
+                    <span className="port in" data-logic={n.id} data-port={port} />
+                    <span>{inputLabel(n, port)}</span>
+                  </div>
+                ))}
+                <div className="ln-body">
+                  <LogicNodeBody n={n} template={template} setNode={setNode} />
+                </div>
+                {resizer(n.id, false)}
+              </div>
+            ))}
 
             {/* Layers: what they show (text, picture); their properties folded */}
             {template.layers.map((l) => {

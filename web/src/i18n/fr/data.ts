@@ -314,6 +314,7 @@ export const data: Record<string, string> = {
   'value': 'valeur',
   'in': 'entrée',
   'Click to remove': 'Cliquez pour retirer',
+  "Drag to a layer's value or to another calculation": 'Glisser vers une valeur d’un calque ou un autre calcul',
   'Delete (Del)': 'Supprimer (Suppr)',
   'Drag to an input': 'Glissez vers une entrée',
   'No relation yet.': 'Aucune relation pour l’instant.',
