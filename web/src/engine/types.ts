@@ -386,6 +386,8 @@ export type LogicNodeKind =
   | { type: 'setVar'; name: string; value: string; transition?: number }
   /** The variable (0 until set on air; `test` in the Designer). */
   | { type: 'var'; name: string; test?: number }
+  /** Writes its input into the data value `key`: a text showing {{key}} shows the result (cg_core::logic::with_outputs). */
+  | { type: 'setField'; key: string }
   | { type: 'bool'; op: 'and' | 'or' }
   | { type: 'out' }
   | { type: 'resume'; marker: string }

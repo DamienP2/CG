@@ -27,6 +27,7 @@ export const INPUTS: Record<LogicNode['type'], string[]> = {
   continue: [],
   setVar: ['when'],
   var: [],
+  setField: ['in'],
   bool: ['a', 'b'],
   out: ['when'],
   resume: ['when'],
@@ -171,11 +172,33 @@ class Graph {
       case 'nextRow':
       case 'setVar':
         return input('when') ?? 0;
+      case 'setField':
+        return input('in') ?? '';
     }
   }
 }
 
 /** Applies the targets to `values` in dependency order (cycles skipped). */
+/** A number as a text shows it: whole, or with at most 2 decimals (cg_core::logic::format_number). */
+export const formatNumber = (x: number) => (Number.isFinite(x) ? String(Math.round(x * 100) / 100) : '');
+
+/**
+ * `data` with the values the graph writes (« Set field »: a calculation shown in a text), from the
+ * layers at `frame` (cg_core::logic::with_outputs); the same `data` when it writes none.
+ */
+export function withOutputs(t: { logic?: Logic; layers: Layer[] }, frame: number, data: Data, hold: number, resolve: (l: Layer, frame: number, data: Data, hold: number) => Resolved): Data {
+  const outs = (t.logic?.nodes ?? []).filter((n): n is LogicNode & { type: 'setField' } => n.type === 'setField');
+  if (!outs.length || !t.logic) return data;
+  const values = new Map(t.layers.map((l) => [l.id, resolve(l, frame, data, hold)]));
+  const v = nodeValues(t.logic, values, data, () => 0);
+  const out = { ...data };
+  for (const n of outs) {
+    const x = v.get(n.id);
+    out[n.key] = typeof x === 'number' ? formatNumber(x) : (x ?? '');
+  }
+  return out;
+}
+
 /** The data key of what an event, trigger or Continue node saw on air (cg_core::logic::event_key). */
 export const evKey = (node: string) => `__ev_${node}`;
 /** The data key of a variable (cg_core::logic::var_key). */

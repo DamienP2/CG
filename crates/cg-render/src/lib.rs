@@ -285,6 +285,19 @@ fn value_tf(
 /// Values of the layers changed by a template's logic graph, by layer id.
 type Logic = HashMap<String, std::collections::BTreeMap<Prop, Value>>;
 
+/// `data` with the results of the calculations its Logic shows in texts
+/// (`cg_core::logic::with_outputs`).
+fn with_calculations<'a>(
+    data: std::borrow::Cow<'a, cg_core::anim::Data>,
+    t: &Template,
+    frame: f64,
+) -> std::borrow::Cow<'a, cg_core::anim::Data> {
+    match cg_core::logic::with_outputs(t, frame, &data) {
+        Some(d) => std::borrow::Cow::Owned(d),
+        None => data,
+    }
+}
+
 /// `data` with the presence on air (0 → 1) of the graphics its Logic reads
 /// (« On air » nodes): see `cg_core::logic::on_air_key`.
 fn with_presence<'a, 'b>(
@@ -819,12 +832,16 @@ impl Renderer {
                     set: Default::default(),
                     logic: Default::default(),
                     key: Default::default(),
-                    data: with_presence(
-                        cg_core::playout::shown_data(item),
+                    data: with_calculations(
+                        with_presence(
+                            cg_core::playout::shown_data(item),
+                            t,
+                            project,
+                            state.layers.values(),
+                            fps,
+                        ),
                         t,
-                        project,
-                        state.layers.values(),
-                        fps,
+                        item.frame,
                     ),
                 })
             })
@@ -1220,6 +1237,9 @@ impl Renderer {
             default_tz: "",
             fps: project.frame_rate.as_f64().max(1.0),
         };
+        // The results of the calculations its Logic shows in texts.
+        let computed = cg_core::logic::with_outputs(template, frame, data);
+        let data = computed.as_ref().unwrap_or(data);
         let logic = self.logic_values(template, frame, data);
         let ctx = Ctx {
             template,

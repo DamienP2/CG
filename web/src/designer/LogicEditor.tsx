@@ -52,6 +52,8 @@ export const KINDS: { type: LogicNode['type']; ev?: TriggerEvent['kind']; label:
   { type: 'resume', label: 'Resume the pause', cat: 'action', icon: Pause, can: (h) => h.t.markers.some((m) => m.kind === 'pause') },
   { type: 'nextRow', label: 'Next row', cat: 'action', icon: ArrowDown, can: (h) => (h.t.datasets?.length ?? 0) > 0 },
   { type: 'fire', label: 'Fire a trigger', cat: 'action', icon: Send },
+  // Made by the Data canvas (a calculation wired into a text).
+  { type: 'setField', label: 'Show in a text', cat: 'action', icon: Type, can: () => false },
   { type: 'setVar', label: 'Set a variable', cat: 'var', icon: Variable },
   { type: 'var', label: 'Read a variable', cat: 'var', icon: Variable },
 ];
@@ -174,6 +176,8 @@ export function makeNode(type: LogicNode['type'], t: Template, x: number, y: num
       return { ...base, type, name: varNames(t)[0] ?? 'var1', value: '1', transition: 0 };
     case 'var':
       return { ...base, type, name: varNames(t)[0] ?? '', test: 0 };
+    case 'setField':
+      return { ...base, type, key: `calc_${base.id}` };
     case 'event': {
       const of = (f: (l: Layer) => boolean) => t.layers.find(f)?.id ?? '';
       const on: TriggerEvent =
@@ -255,6 +259,8 @@ export function LogicNodeBody({ n, template, setNode }: { n: LogicNode; template
       return <TextInput value={n.name} placeholder={t('goal, next, line2…')} onChange={(v) => setNode(n.id, { name: v } as Partial<LogicNode>, `logic-v-${n.id}`)} />;
     case 'continue':
       return null;
+    case 'setField':
+      return <span className="ln-note">{`{{${n.key}}}`}</span>;
     case 'setVar':
       return (
         <>

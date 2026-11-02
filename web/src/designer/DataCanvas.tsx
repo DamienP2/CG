@@ -6,7 +6,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { create } from 'zustand';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
 import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, INPUTS, measureLayer, nodeValues } from '../engine/logic';
+import { applyLogic, INPUTS, measureLayer, nodeValues, withOutputs } from '../engine/logic';
 import { api, useApp } from '../store';
 import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type LiveChange, type Logic, type LogicNode, type Prop, type Template, type ValueChange } from '../engine/types';
 import { isTimed } from '../engine/widgets';
@@ -509,7 +509,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const sources = useSources();
   const offered = useProjectSources(projectId);
   const bound = useBoundData(template, previewData);
-  const values = useMemo(() => ({ ...previewData, ...bound }), [previewData, bound]);
+  const values = useMemo(() => withOutputs(template, frame, { ...previewData, ...bound }, holdFrame(template), resolveLayer), [template, frame, previewData, bound]);
   const cv = useCanvasView(`data.${template.id}`, '.logic-node', { onArrange: () => arrange() });
   const [layout, setLayoutState] = useState<Layout>(() => loadLayout(template.id));
   const [drag, setDrag] = useState<{ wire: Wire; x: number; y: number } | null>(null);
@@ -713,7 +713,19 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       for (const k of [tableKey(n.key), linesKey(n.key), ...(dsColumns[n.id] ?? []).map((c) => columnKey(n.key, c))]) columnNode.set(k, n.id);
     }
   /** Where a value wired by key starts: a variable, or a data set column. */
-  const keyOut = (key: string): Pt | null => (nodePos.has(`f:${key}`) ? outOf(`f:${key}`, widthOf(`f:${key}`, W.field)) : (columnPorts.get(key) ?? null));
+  // Calculations shown in texts ({{calc_…}}): their key, from the Calculate node feeding it.
+  const calcNode = new Map<string, string>();
+  for (const n of template.logic?.nodes ?? [])
+    if (n.type === 'setField') {
+      const from = template.logic!.edges.find((e) => e.to === n.id && e.port === 'in')?.from;
+      if (from && calcs.some((c) => c.id === from)) calcNode.set(n.key, from);
+    }
+  const keyOut = (key: string): Pt | null => {
+    if (nodePos.has(`f:${key}`)) return outOf(`f:${key}`, widthOf(`f:${key}`, W.field));
+    const calc = calcNode.get(key);
+    const n = calc && calcs.find((c) => c.id === calc);
+    return n ? logicOut(n) : (columnPorts.get(key) ?? null);
+  };
 
   // ---- Wires of the template.
   const wires: { d: string; title: string; onClick: () => void; data?: boolean; edge?: number }[] = [];
@@ -734,9 +746,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       const content = contentOf(l).includes(port);
       const setting = port.startsWith('s:') ? port.slice(2) : null;
       // From a variable or a data set column (an exposed value is in the node itself: no wire).
-      const keys = (content ? [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]]).filter((k): k is string => !!k && !!keyOut(k));
+      const keys = (content ? [...template.fields.map((f) => f.key), ...columnPorts.keys(), ...calcNode.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]]).filter((k): k is string => !!k && !!keyOut(k));
       for (const key of keys) {
-        links.push({ from: nodePos.has(`f:${key}`) ? `f:${key}` : (columnNode.get(key) ?? ''), to: `l:${l.id}` });
+        links.push({ from: nodePos.has(`f:${key}`) ? `f:${key}` : (columnNode.get(key) ?? calcNode.get(key) ?? ''), to: `l:${l.id}` });
         wires.push({
           d: curve(keyOut(key)!, to),
           data: columnPorts.has(key),
@@ -891,6 +903,19 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       // All rows into a table with no columns yet: offer to build it.
       const l = findLayer(template, layerId);
       if (l?.type === 'table' && takesTable(l, p) && w.key.endsWith('__table') && !(l as { cols?: unknown[] }).cols?.length) setBuilding(layerId);
+    } else if (w.kind === 'logic' && contentOf(findLayer(template, layerId)!).includes(p)) {
+      // A calculation into a text: its result as a value the text shows ({{calc_…}}).
+      update((t) => {
+        const lg = (t.logic ??= { nodes: [], edges: [] });
+        let out = lg.nodes.find((n): n is LogicNode & { type: 'setField' } => n.type === 'setField' && lg.edges.some((e) => e.from === w.id && e.to === n.id));
+        if (!out) {
+          const src = lg.nodes.find((n) => n.id === w.id);
+          out = { id: newId(), type: 'setField', key: `calc_${w.id}`, x: (src?.x ?? 0) + 260, y: src?.y ?? 0 };
+          lg.nodes.push(out);
+          lg.edges.push({ from: w.id, to: out.id, port: 'in' });
+        }
+        wireContent(findLayer(t, layerId)!, p, out.key);
+      });
     } else if (w.kind === 'logic' && !contentOf(findLayer(template, layerId)!).includes(p)) {
       editLogic((l) => {
         let to = l.nodes.find((n) => n.type === 'target' && n.layer === layerId && n.prop === p)?.id;

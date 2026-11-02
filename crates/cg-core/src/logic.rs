@@ -195,6 +195,11 @@ pub enum NodeKind {
         #[serde(default)]
         test: f64,
     },
+    /// Writes input `in` into the data value `key`: a text showing `{{key}}`
+    /// shows the result of a calculation (see [`with_outputs`]).
+    SetField {
+        key: String,
+    },
 }
 
 /// The data key of what an event, trigger or Continue node saw on air (`1`
@@ -456,6 +461,7 @@ impl<'a> Graph<'a> {
             | NodeKind::Fire { .. }
             | NodeKind::NextRow { .. }
             | NodeKind::SetVar { .. } => input("when").unwrap_or(LVal::Num(0.0)),
+            NodeKind::SetField { .. } => input("in").unwrap_or(LVal::Text(String::new())),
         }
     }
 }
@@ -509,6 +515,70 @@ pub fn air_actions(logic: &Logic, data: &Data, events: &mut Events) -> Vec<AirAc
         }
     }
     out
+}
+
+/// A number as a text shows it: whole, or with at most 2 decimals.
+pub fn format_number(x: f64) -> String {
+    if !x.is_finite() {
+        return String::new();
+    }
+    let r = (x * 100.0).round() / 100.0;
+    if r.fract() == 0.0 {
+        format!("{}", r as i64)
+    } else {
+        let s = format!("{r:.2}");
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    }
+}
+
+/// `data` with the values the graph writes (« Set field » nodes: a
+/// calculation shown in a text), from the layers at `frame`; None when the
+/// template's graph writes none.
+pub fn with_outputs(t: &crate::model::Template, frame: f64, data: &Data) -> Option<Data> {
+    let outs: Vec<&Node> = t
+        .logic
+        .nodes
+        .iter()
+        .filter(|n| matches!(n.kind, NodeKind::SetField { .. }))
+        .collect();
+    if outs.is_empty() {
+        return None;
+    }
+    let hold = t.hold_frame();
+    let values: Values = t
+        .layers
+        .iter()
+        .map(|l| {
+            (
+                l.id.clone(),
+                crate::anim::resolve_layer(l, frame, data, hold).values,
+            )
+        })
+        .collect();
+    let g = Graph::new(&t.logic);
+    let mut measure = |_: &str, _: &BTreeMap<Prop, Value>, _: TextMetric| 0.0;
+    let mut out = data.clone();
+    for n in outs {
+        let NodeKind::SetField { key } = &n.kind else {
+            continue;
+        };
+        let v = g.eval(
+            &n.id,
+            &values,
+            data,
+            &mut measure,
+            &mut |id, _| data.get(&event_key(id)).is_some_and(|v| v == "1"),
+            0,
+        );
+        out.insert(
+            key.clone(),
+            match v {
+                LVal::Num(x) => format_number(x),
+                LVal::Text(s) => s,
+            },
+        );
+    }
+    Some(out)
 }
 
 /// The data key of a graphic's presence on air (0 → 1), read by [`NodeKind::OnAir`].
@@ -809,6 +879,43 @@ mod tests {
         assert_eq!(run(&d), Value::Number(840.0));
         d.insert(on_air_key("ticker"), "1".into());
         assert_eq!(run(&d), Value::Number(780.0));
+    }
+
+    #[test]
+    fn a_calculation_shown_in_a_text() {
+        let mut t: crate::model::Template =
+            serde_json::from_str(r#"{"id":"t","name":"T","duration":50,"layers":[]}"#).unwrap();
+        let mut d = Data::new();
+        d.insert("score".into(), "12".into());
+        assert!(with_outputs(&t, 0.0, &d).is_none());
+        t.logic = Logic {
+            nodes: vec![
+                node(
+                    "f",
+                    NodeKind::Field {
+                        key: "score".into(),
+                    },
+                ),
+                node("k", NodeKind::Constant { value: 2.5 }),
+                node("m", NodeKind::Math { op: MathOp::Mul }),
+                node(
+                    "out",
+                    NodeKind::SetField {
+                        key: "calc_m".into(),
+                    },
+                ),
+            ],
+            edges: vec![
+                edge("f", "m", "a"),
+                edge("k", "m", "b"),
+                edge("m", "out", "in"),
+            ],
+        };
+        assert_eq!(with_outputs(&t, 0.0, &d).unwrap()["calc_m"], "30");
+        d.insert("score".into(), "1,1".into());
+        assert_eq!(with_outputs(&t, 0.0, &d).unwrap()["calc_m"], "2.75");
+        assert_eq!(format_number(1.0 / 3.0), "0.33");
+        assert_eq!(format_number(-4.0), "-4");
     }
 
     #[test]

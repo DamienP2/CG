@@ -12,7 +12,7 @@ import { TimeContext, useLayerTime, type Motion } from './LiveTime';
 import { col, cssColor, holdFrame, interpolateText, num, transformText, parseHex, resolveLayer, type Resolved } from './evaluate';
 import type { Data, FontStyle, GroupMask, Layer, LayerType, Template, TextAlign, VerticalAlign } from './types';
 import * as W from './widgets';
-import { applyLogic, measureLayer } from './logic';
+import { applyLogic, measureLayer, withOutputs } from './logic';
 import { fitText, type Fitted } from './textFit';
 import { applyMotion } from './motion';
 import { useFonts } from './fonts';
@@ -561,6 +561,9 @@ export function childrenMap(layers: Layer[], includeHidden = false): Map<string 
 export const Scene = memo(function Scene({ template, frame, data, interactive }: SceneProps) {
   // Settings exposed to the Operator, set from the data.
   template = withSettings(template, data);
+  // The results of the calculations its Logic shows in texts ({{calc_…}}).
+  const computed = useMemo(() => withOutputs(template, frame, data, holdFrame(template), resolveLayer), [template, frame, data]);
+  data = computed;
   // Kept from one frame to the next: the layers that do not change are not drawn again.
   const childrenOf = useMemo(() => childrenMap(template.layers), [template.layers]);
   const framed = useMemo(() => framedLayers(template.layers, childrenOf, template.logic), [template.layers, childrenOf, template.logic]);

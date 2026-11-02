@@ -321,6 +321,7 @@ export const data: Record<string, string> = {
   'Continue (F2)': 'Continuer (F2)',
   'Set a variable': 'Définir une variable',
   'Read a variable': 'Lire une variable',
+  'Show in a text': 'Afficher dans un texte',
   'Choose a variable': 'Choisir une variable',
   'Open the Logic': 'Ouvrir la Logique',
   'Values, conditions and what happens on air: events, triggers, actions, variables': 'Valeurs, conditions et ce qui se passe à l’antenne : événements, déclencheurs, actions, variables',
