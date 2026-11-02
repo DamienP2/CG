@@ -21362,7 +21362,32 @@ textarea.tx-grow {
   border-bottom: 1px solid var(--line);
 }
 .cr-table th:first-child {
+  width: 20px;
+}
+.cr-table th:nth-child(2) {
   width: 96px;
+}
+.cr-table td.cr-grip {
+  padding: 0;
+  color: var(--text-3);
+  cursor: grab;
+  text-align: center;
+}
+.cr-table td.cr-grip:hover {
+  color: var(--text);
+}
+.cr-table td.cr-grip svg {
+  display: block;
+  margin: auto;
+}
+.cr-table tr.cr-dragging {
+  opacity: 0.4;
+}
+.cr-table tr.cr-drop-before td {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.cr-table tr.cr-drop-after td {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 .cr-table th:last-child {
   width: 26px;

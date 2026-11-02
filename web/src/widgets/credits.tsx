@@ -2,8 +2,8 @@
 // logos, spaces) with an import from text, 1 / 2 / 3 columns, styles per level, speed from a total duration or
 // px/s (optimised: whole px per frame), start off / on screen, end exit / stop on the last element, fades.
 // Same picture as crates/cg-render/src/wid/credits.rs; layout and progress mirror crates/cg-core/src/wid/credits.rs.
-import { memo, useEffect, useMemo } from 'react';
-import { Flag, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward, Trash2, X } from 'lucide-react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { Flag, GripVertical, Minus, Pause, Play, Plus, RotateCcw, ScrollText, SkipForward, Trash2, X } from 'lucide-react';
 import { interpolateText, num, parseHex, toHex } from '../engine/evaluate';
 import { parseDuration } from '../engine/widgets';
 import type { Data, PlayoutItem } from '../engine/types';
@@ -578,11 +578,25 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
     { value: 'space', label: t('Space') },
   ];
   const put = (i: number, patch: Partial<Entry>) => onChange(value.map((e, j) => (j === i ? { ...e, ...patch } : e)));
+  // Rows moved by their grip: the one dragged, and where it would go (before row `at`).
+  const [from, setFrom] = useState<number | null>(null);
+  const [at, setAt] = useState<number | null>(null);
+  const stop = () => (setFrom(null), setAt(null));
+  const drop = () => {
+    if (from != null && at != null && at !== from && at !== from + 1) {
+      const rows = value.slice();
+      const [e] = rows.splice(from, 1);
+      rows.splice(at > from ? at - 1 : at, 0, e);
+      onChange(rows);
+    }
+    stop();
+  };
   return (
     <div className="cr-table">
       <table>
         <thead>
           <tr>
+            <th />
             <th>{t('Type')}</th>
             <th>{t('Role / title / logo')}</th>
             <th>{t('Name')}</th>
@@ -593,7 +607,41 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
           {value.map((e, i) => {
             const kind = e.kind ?? 'line';
             return (
-              <tr key={i}>
+              <tr
+                key={i}
+                className={`${from === i ? 'cr-dragging' : ''} ${from != null && at === i ? 'cr-drop-before' : ''} ${from != null && at === i + 1 && i === value.length - 1 ? 'cr-drop-after' : ''}`}
+                onDragOver={(ev) => {
+                  if (from == null) return;
+                  // Ours only: the rundown's and playlists' drops stay theirs.
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  ev.dataTransfer.dropEffect = 'move';
+                  const r = ev.currentTarget.getBoundingClientRect();
+                  setAt(ev.clientY > r.top + r.height / 2 ? i + 1 : i);
+                }}
+                onDrop={(ev) => {
+                  if (from == null) return;
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  drop();
+                }}
+              >
+                <td
+                  className="cr-grip"
+                  draggable
+                  title={t('Drag to reorder')}
+                  onDragStart={(ev) => {
+                    ev.stopPropagation();
+                    ev.dataTransfer.effectAllowed = 'move';
+                    ev.dataTransfer.setData('application/x-strata-credit', String(i));
+                    const row = ev.currentTarget.parentElement;
+                    if (row) ev.dataTransfer.setDragImage(row, 12, row.offsetHeight / 2);
+                    setFrom(i);
+                  }}
+                  onDragEnd={stop}
+                >
+                  <GripVertical size={13} />
+                </td>
                 <td className="cr-kind">
                   <Dropdown value={kind} options={kinds} onChange={(v) => put(i, { kind: v as Kind })} />
                 </td>
