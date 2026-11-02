@@ -20,6 +20,8 @@ export interface TimeCtx {
   widgetState?: (layerId: string) => unknown;
   /** The Operator's preview holds this widget until its Play (none of its controls used yet): its time stands still. */
   held?: boolean;
+  /** The Operator's preview, still (no control used yet): what moves by itself on its own shows where it settles (a counter's intro done). */
+  settled?: boolean;
   /** Project frame rate. */
   fps?: number;
   /** Project language (texts' hyphenation and spaces). */

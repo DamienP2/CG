@@ -55,6 +55,7 @@ export function LiveTime({
   widgetState,
   fps,
   lang,
+  settled,
   children,
 }: {
   ageSecs: number;
@@ -68,17 +69,19 @@ export function LiveTime({
   widgetState?: (layerId: string) => unknown;
   fps?: number;
   lang?: string;
+  /** The Operator's still preview (TimeCtx.settled). */
+  settled?: boolean;
   children: React.ReactNode;
 }) {
   const offset = useApp((s) => s.serverOffset);
   const tz = useApp((s) => s.timezone);
   const at = (now: number): TimeCtx => {
     const age = since === undefined ? ageSecs : ageSecs + Math.max(0, now - since) / 1000;
-    return { nowMs: now + offset, ageSecs: age, defaultTz: tz, layerAge: layerAge && ((l) => layerAge(l, age, now)), clocked, widgetState, fps, lang };
+    return { nowMs: now + offset, ageSecs: age, defaultTz: tz, layerAge: layerAge && ((l) => layerAge(l, age, now)), clocked, widgetState, fps, lang, settled };
   };
-  const clock = useMemo<Clock>(() => ({ at, drawnAt, ticking, maxFps }), [ageSecs, since, drawnAt, ticking, maxFps, layerAge, clocked, widgetState, fps, lang, offset, tz]); // eslint-disable-line react-hooks/exhaustive-deps
+  const clock = useMemo<Clock>(() => ({ at, drawnAt, ticking, maxFps }), [ageSecs, since, drawnAt, ticking, maxFps, layerAge, clocked, widgetState, fps, lang, offset, tz, settled]); // eslint-disable-line react-hooks/exhaustive-deps
   // What does not move reads this one: kept while the time alone changes, so it is not drawn again.
-  const time = useMemo(() => clock.at(drawnAt), [layerAge, clocked, widgetState, fps, lang, offset, tz]); // eslint-disable-line react-hooks/exhaustive-deps
+  const time = useMemo(() => clock.at(drawnAt), [layerAge, clocked, widgetState, fps, lang, offset, tz, settled]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <ClockContext.Provider value={clock}>
       <TimeContext.Provider value={time}>{children}</TimeContext.Provider>

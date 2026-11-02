@@ -18736,6 +18736,11 @@ a.opx-html5 {
 .opx-pvrow .cc.air .cc-sq {
   width: 30px;
 }
+.opx-pvrow .cc.air .cc-sq.txt {
+  width: auto;
+  padding: 0 9px;
+  white-space: nowrap;
+}
 .opx-pvrow .cc.air .cc-ob {
   flex: none;
   padding: 0 12px;

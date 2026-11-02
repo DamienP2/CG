@@ -402,7 +402,7 @@ function At({ x, b, font, size, color, children, style }: { x: number; b: number
   return <div style={{ position: 'absolute', left: x, top: b - L / 2 - (a - d) / 2, height: L, lineHeight: `${L}px`, font, whiteSpace: 'pre', color, ...style }}>{children}</div>;
 }
 
-function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resolved; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number }; state: unknown }) {
+function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resolved; w: number; h: number; data: Data; time: { nowMs: number; ageSecs: number; settled?: boolean }; state: unknown }) {
   const st = (state ?? {}) as State;
   const p = partsOf(layer);
   const c = p.c;
@@ -410,7 +410,9 @@ function Render({ layer, r, w, h, data, time, state }: { layer: CLayer; r: Resol
   // Its own memory on each picture (the preview and the on-air monitor show the same layer with other values).
   const memRef = useRef<Mem | null>(null);
   const mem = (memRef.current ??= { target: null, anim: null, age: 0, seen: 0 });
-  const [v, anim, isIntro] = display(p, st, data, now, time.ageSecs, mem);
+  // The Operator's still preview: the intro done (on air it runs on from the take).
+  const age = time.settled ? Math.max(time.ageSecs, p.duration) : time.ageSecs;
+  const [v, anim, isIntro] = display(p, st, data, now, age, mem);
   const cv: Curve = isIntro ? 'out' : c.easing;
   const fill = cssColor(col(r.fill));
   const tc = colorFor(c, v, anim, now);

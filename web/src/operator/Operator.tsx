@@ -1384,7 +1384,7 @@ const PreviewScene = memo(function PreviewScene({ template: base, format, data, 
   const clocked = useCallback((l: Layer) => heldAt(run, l, data, holdSecs) !== undefined || (run.active && (!!run.clocks[l.id] || !!l.manualStart)), [run, data, holdSecs]);
   const widgetState = useMemo(() => (run.active ? (id: string) => run.widgets[id] : undefined), [run]);
   return (
-    <LiveTime ageSecs={holdSecs} since={run.active ? run.since : undefined} ticking={run.active ? 'all' : false} layerAge={layerAge} clocked={clocked} widgetState={widgetState} fps={fps} lang={lang}>
+    <LiveTime ageSecs={holdSecs} since={run.active ? run.since : undefined} ticking={run.active ? 'all' : false} layerAge={layerAge} clocked={clocked} widgetState={widgetState} fps={fps} lang={lang} settled={!run.active}>
       <Scene template={template} frame={hold} data={data} />
     </LiveTime>
   );
