@@ -590,6 +590,8 @@ export interface ChannelInfo {
   slate?: string;
   /** The design shown while no project is loaded ("custom": the still picture). */
   slateStyle?: string;
+  /** Its HTML5 pages (/output/<path>): the picture each plays and its background. */
+  html5?: { path: string; picture: string; background: string }[];
 }
 
 export type Role = 'admin' | 'designer' | 'operator' | 'viewer';

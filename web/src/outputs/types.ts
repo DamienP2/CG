@@ -45,6 +45,8 @@ export interface NdiOutput {
 export interface Html5Output {
   id: string;
   name: string;
+  /** Its address: /output/<path> (letters, digits, - or _; unique). */
+  path?: string;
   background: string;
 }
 

@@ -27,6 +27,11 @@ export const ux3: Record<string, string> = {
   'Every NDI output needs a name': 'Chaque sortie NDI doit avoir un nom',
   'Name already used': 'Nom déjà utilisé',
   'Name required': 'Nom obligatoire',
+  'Address required': 'Adresse obligatoire',
+  'Address already used': 'Adresse déjà utilisée',
+  'Letters, digits, - or _ only': 'Lettres, chiffres, - ou _ seulement',
+  'Web address “{name}” already used': 'Adresse web « {name} » déjà utilisée',
+  'Web address: letters, digits, - or _ only': 'Adresse web : lettres, chiffres, - ou _ seulement',
   'Port {port} already in use': 'Port {port} déjà utilisé',
   // Projects
   'Modified just now': 'Modifié à l’instant',

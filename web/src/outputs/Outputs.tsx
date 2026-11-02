@@ -183,7 +183,30 @@ const formatLabel = (ch: ChannelConfig) => {
 /** "1080i 50", "720p 59.94": a source's format, named like the video formats. */
 const sourceFormatName = (f: { h: number; fps: number; interlaced: boolean }) => `${f.h}${f.interlaced ? 'i' : 'p'} ${+f.fps.toFixed(2)}`;
 
-const outputUrl = (channel: string, picture: string, bg: string) => `${location.origin}/output/${encodeURIComponent(channel)}${picture === 'main' ? '' : `/${encodeURIComponent(picture)}`}${bg ? `?bg=${encodeURIComponent(bg)}` : ''}`;
+/** The web page of an HTML5 output (its background is its own). */
+const outputUrl = (path: string) => `${location.origin}/output/${encodeURIComponent(path)}`;
+
+/** Addresses of the HTML5 outputs (lower case), but `except`. */
+const html5Paths = (all: ServerConfig, except?: Html5Output) =>
+  new Set(all.channels.flatMap((x) => [...pictures(x).map((p) => p.outputs), x.unwired].flatMap((o) => (o?.html5 ?? []).filter((h) => h !== except && h.path).map((h) => h.path!.toLowerCase()))));
+
+/** Why an HTML5 output's address cannot be used ("" when it can), as crates/cg-server/src/config.rs checks it. */
+const pathError = (all: ServerConfig, ch: ChannelConfig, o: Html5Output) => {
+  const p = (o.path ?? '').trim();
+  if (!p) return t('Address required');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(p)) return t('Letters, digits, - or _ only');
+  if (html5Paths(all, o).has(p.toLowerCase()) || all.channels.some((x) => x.id !== ch.id && x.id === p)) return t('Address already used');
+  return '';
+};
+
+/** A free address from `base` (base, base-2…). */
+const freePath = (all: ServerConfig, ch: string, base: string) => {
+  const taken = html5Paths(all);
+  const free = (p: string) => !taken.has(p.toLowerCase()) && (p === ch || !all.channels.some((x) => x.id === p));
+  let p = base;
+  for (let n = 2; !free(p); n++) p = `${base}-${n}`;
+  return p;
+};
 
 const slug = (s: string) =>
   s
@@ -551,7 +574,7 @@ export function Outputs({ mode }: { mode: Mode }) {
         while ([...urls].some((u) => u.endsWith(`:${port}`) || u.includes(`:${port}/`) || u.includes(`:${port}?`))) port++;
         (picOutputs.streams ??= []).push({ id, name: t('Stream {n}', { n }), protocol: 'srt', url: `srt://0.0.0.0:${port}`, listen: true, bitrate: 8000, codec: 'h264', background: '#000000', audio: true });
       } else {
-        (picOutputs.html5 ??= []).push({ id, name: t('Web page'), background: '' });
+        (picOutputs.html5 ??= []).push({ id, name: t('Web page'), path: freePath(all, c.id, !picture || p.id === 'main' ? c.id : `${c.id}-${p.id}`), background: '' });
       }
     });
     if (at) setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), [id]: at } }));
@@ -693,7 +716,7 @@ export function Outputs({ mode }: { mode: Mode }) {
     const id = `channel-${n}`;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
-      c.channels.push({ id, name: t('Channel {n}', { n }), width: first?.width ?? 1920, height: first?.height ?? 1080, frameRate: first?.frameRate ?? { num: 50, den: 1 }, projectId: null, location: loc, outputs: { st2110: [], sdi: [], ndi: [], html5: [{ id: 'html5-1', name: t('Web page'), background: '' }], streams: [] }, renditions: [] });
+      c.channels.push({ id, name: t('Channel {n}', { n }), width: first?.width ?? 1920, height: first?.height ?? 1080, frameRate: first?.frameRate ?? { num: 50, den: 1 }, projectId: null, location: loc, outputs: { st2110: [], sdi: [], ndi: [], html5: [{ id: 'html5-1', name: t('Web page'), path: freePath(c, id, id), background: '' }], streams: [] }, renditions: [] });
     });
     setCurrent(id);
     setSel('program');
@@ -1413,11 +1436,19 @@ export function Outputs({ mode }: { mode: Mode }) {
                   {selDest?.kind === 'html5' &&
                     (() => {
                       const o = selDest.value as Html5Output;
-                      const url = outputUrl(ch.id, selDest.picture, o.background);
+                      const url = outputUrl(o.path ?? '');
+                      const err = pathError(cfg, ch, o);
                       return (
                         <>
                           <Field label={t('Name')}>
                             <input value={o.name} onChange={(e) => editDest<Html5Output>((d) => void (d.name = e.target.value))} />
+                          </Field>
+                          <Field label={t('Address')}>
+                            <div className="oc-path">
+                              <span>{location.host}/output/</span>
+                              <input value={o.path ?? ''} aria-invalid={!!err} spellCheck={false} onChange={(e) => editDest<Html5Output>((d) => void (d.path = e.target.value.replace(/\s+/g, '-')))} />
+                            </div>
+                            {err && <span className="set-error">{err}</span>}
                           </Field>
                           <Field label={t('Background')}>
                             <select value={o.background} onChange={(e) => editDest<Html5Output>((d) => void (d.background = e.target.value))}>
@@ -1827,7 +1858,7 @@ function destSub(d: Dest, ch: ChannelConfig, hw: HardwareConfig): string {
     case 'html5': {
       const o = d.value as Html5Output;
       const bg = BACKGROUNDS.find((b) => b.value === o.background);
-      return `/output/${ch.id}${d.picture === 'main' ? '' : `/${d.picture}`}\n${bg ? t(bg.label) : o.background}`;
+      return `/output/${o.path ?? ''}\n${bg ? t(bg.label) : o.background}`;
     }
     case 'sdi': {
       const o = d.value as SdiOutput;

@@ -3298,15 +3298,15 @@ async fn ws_upgrade(
     if user.is_none() && !(s.config.public_outputs && q.channel.is_some()) {
         return (StatusCode::UNAUTHORIZED, "login required").into_response();
     }
-    if let Some(c) = &q.channel {
-        if s.channel(c).is_none() || user.as_ref().is_some_and(|u| !u.sees_channel(c)) {
-            return not_found("channel").into_response();
-        }
-    }
-    let viewer = Viewer {
-        user,
-        channel: q.channel,
+    // An output page: the address of an HTML5 output, or a channel's id.
+    let channel = match &q.channel {
+        Some(at) => match s.output_channel(at) {
+            Some(c) if !user.as_ref().is_some_and(|u| !u.sees_channel(&c)) => Some(c),
+            _ => return not_found("channel").into_response(),
+        },
+        None => None,
     };
+    let viewer = Viewer { user, channel };
     ws.on_upgrade(move |socket| ws_session(s, socket, viewer))
 }
 

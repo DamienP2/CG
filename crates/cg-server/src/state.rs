@@ -192,6 +192,18 @@ pub struct ChannelInfo {
     pub slate: String,
     /// The design shown while no project is loaded.
     pub slate_style: SlateStyle,
+    /// Its HTML5 pages (`/output/<path>`).
+    pub html5: Vec<Html5Info>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Html5Info {
+    pub path: String,
+    /// "main" or a rendition's id.
+    pub picture: String,
+    /// CSS background ("" = transparent).
+    pub background: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -336,6 +348,17 @@ impl ChannelRt {
                 .collect(),
             slate: c.slate.clone(),
             slate_style: slate_style(c.slate_style, &c.slate),
+            html5: c
+                .pictures()
+                .into_iter()
+                .flat_map(|(picture, _, _, o)| {
+                    o.html5.iter().map(move |h| Html5Info {
+                        path: h.path.clone(),
+                        picture: picture.to_string(),
+                        background: h.background.clone(),
+                    })
+                })
+                .collect(),
         }
     }
 }
@@ -465,6 +488,21 @@ impl AppState {
 
     pub fn channel(&self, id: &str) -> Option<&Arc<ChannelRt>> {
         self.channels.get(id)
+    }
+
+    /// The channel an output page `/output/<at>` plays: the one of the HTML5
+    /// output at that address, else the channel of that id (older links).
+    pub fn output_channel(&self, at: &str) -> Option<String> {
+        self.channels
+            .values()
+            .find(|c| {
+                c.config
+                    .pictures()
+                    .iter()
+                    .any(|(_, _, _, o)| o.html5.iter().any(|h| h.path.eq_ignore_ascii_case(at)))
+            })
+            .map(|c| c.config.id.clone())
+            .or_else(|| self.channels.contains_key(at).then(|| at.to_string()))
     }
 
     pub async fn project(&self, id: &str) -> Option<Arc<Project>> {

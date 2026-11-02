@@ -87,9 +87,20 @@ pub struct Html5Config {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    /// Its address: `/output/<path>` (letters, digits, - or _; unique).
+    #[serde(default)]
+    pub path: String,
     /// CSS background of the page ("" = transparent).
     #[serde(default)]
     pub background: String,
+}
+
+/// An HTML5 output's path is made of these (one segment of an address).
+pub fn valid_output_path(p: &str) -> bool {
+    !p.is_empty()
+        && p.len() <= 64
+        && p.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// A place the channels belong to (a studio, a gallery, a truck…).
@@ -197,6 +208,20 @@ pub fn slate_style(style: Option<SlateStyle>, image: &str) -> SlateStyle {
 impl ChannelConfig {
     /// (rendition id, width, height, outputs): the main picture ("main")
     /// then the extra renditions.
+    /// Every HTML5 output of the channel with its picture (the unwired ones too).
+    pub fn all_html5(&self) -> impl Iterator<Item = (&str, &Html5Config)> {
+        self.outputs
+            .html5
+            .iter()
+            .map(|o| ("main", o))
+            .chain(
+                self.renditions
+                    .iter()
+                    .flat_map(|r| r.outputs.html5.iter().map(|o| (r.id.as_str(), o))),
+            )
+            .chain(self.unwired.html5.iter().map(|o| ("", o)))
+    }
+
     pub fn pictures(&self) -> Vec<(&str, u32, u32, &OutputsConfig)> {
         std::iter::once(("main", self.width, self.height, &self.outputs))
             .chain(
@@ -481,6 +506,7 @@ impl ServerConfig {
                     ch.outputs.html5.push(Html5Config {
                         id: String::new(),
                         name: "Web page".into(),
+                        path: String::new(),
                         background: String::new(),
                     });
                 }
@@ -489,6 +515,7 @@ impl ServerConfig {
         for ch in &mut self.channels {
             ch.ensure_ids();
         }
+        self.ensure_output_paths();
         // Inputs: `input-1`, `input-2`…, unique.
         let mut taken = HashSet::new();
         for i in &mut self.inputs {
@@ -641,6 +668,55 @@ impl ServerConfig {
         std::fs::rename(tmp, data_dir.join(FILE))
     }
 
+    /// Gives every HTML5 output without one its address: the channel's id
+    /// for the first page of its main picture (the links of older versions),
+    /// else `<channel>-<picture>`, `-2`, `-3`… — never another's.
+    fn ensure_output_paths(&mut self) {
+        let channels: HashSet<String> = self.channels.iter().map(|c| c.id.clone()).collect();
+        let mut taken: HashSet<String> = self
+            .channels
+            .iter()
+            .flat_map(|c| c.all_html5())
+            .filter(|(_, o)| !o.path.is_empty())
+            .map(|(_, o)| o.path.to_lowercase())
+            .collect();
+        for ch in &mut self.channels {
+            let id = ch.id.clone();
+            let mut fill = |picture: &str, o: &mut Html5Config| {
+                if !o.path.is_empty() {
+                    return;
+                }
+                let base = if picture == "main" {
+                    id.clone()
+                } else {
+                    format!("{id}-{picture}")
+                };
+                let free = |p: &str| {
+                    !taken.contains(&p.to_lowercase()) && (p == id || !channels.contains(p))
+                };
+                let mut path = base.clone();
+                let mut n = 2;
+                while !free(&path) {
+                    path = format!("{base}-{n}");
+                    n += 1;
+                }
+                taken.insert(path.to_lowercase());
+                o.path = path;
+            };
+            for o in &mut ch.outputs.html5 {
+                fill("main", o);
+            }
+            for r in &mut ch.renditions {
+                for o in &mut r.outputs.html5 {
+                    fill(&r.id, o);
+                }
+            }
+            for o in &mut ch.unwired.html5 {
+                fill("main", o);
+            }
+        }
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("the server name cannot be empty".into());
@@ -679,6 +755,24 @@ impl ServerConfig {
         }
         self.validate_hardware()?;
         let mut ndi_names = HashSet::new();
+        let mut paths = HashSet::new();
+        for ch in &self.channels {
+            for (_, o) in ch.all_html5() {
+                if !valid_output_path(&o.path) {
+                    return Err(format!(
+                        "HTML5 output address: letters, digits, - or _ only (`{}`)",
+                        o.path
+                    ));
+                }
+                let other = self
+                    .channels
+                    .iter()
+                    .any(|c| c.id != ch.id && c.id == o.path);
+                if other || !paths.insert(o.path.to_lowercase()) {
+                    return Err(format!("HTML5 output address already used: `{}`", o.path));
+                }
+            }
+        }
         let mut ids = HashSet::new();
         for ch in &self.channels {
             let valid_id = !ch.id.is_empty()
@@ -842,6 +936,42 @@ mod tests {
         }
         c.normalize();
         assert!(c.validate().unwrap_err().contains("used by two"));
+    }
+
+    #[test]
+    fn html5_outputs_get_unique_addresses() {
+        let mut c = ServerConfig::default();
+        let page = |path: &str| Html5Config {
+            id: String::new(),
+            name: "Web".into(),
+            path: path.into(),
+            background: String::new(),
+        };
+        let mut ch: ChannelConfig = serde_json::from_str(
+            r#"{"id":"a","name":"A","width":1920,"height":1080,"frameRate":{"num":25,"den":1},
+            "renditions":[{"id":"v","name":"9:16","width":1080,"height":1920}]}"#,
+        )
+        .unwrap();
+        ch.outputs.html5 = vec![page(""), page("")];
+        ch.renditions[0].outputs.html5 = vec![page("")];
+        c.channels.push(ch);
+        c.channels.push(ChannelConfig::new("b", "B"));
+        c.normalize();
+        let paths: Vec<_> = c.channels[0]
+            .all_html5()
+            .map(|(_, o)| o.path.clone())
+            .collect();
+        assert_eq!(paths, ["a", "a-2", "a-v"]);
+        assert!(c.validate().is_ok());
+        // Chosen by hand: unique, and not another channel's old link.
+        c.channels[0].outputs.html5[1].path = "A".into();
+        assert!(c.validate().unwrap_err().contains("already used"));
+        c.channels[0].outputs.html5[1].path = "b".into();
+        assert!(c.validate().unwrap_err().contains("already used"));
+        c.channels[0].outputs.html5[1].path = "obs/1".into();
+        assert!(c.validate().unwrap_err().contains("letters"));
+        c.channels[0].outputs.html5[1].path = "obs-plateau".into();
+        assert!(c.validate().is_ok());
     }
 
     #[test]

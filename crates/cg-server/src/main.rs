@@ -613,7 +613,7 @@ pub async fn serve(
             .layer(CorsLayer::permissive())
             .with_state(shared.clone());
 
-        tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 output: /output/<channel>");
+        tracing::info!("listening on http://{bind} — designer: /designer, operator: /operator, settings: /settings, HTML5 outputs: /output/<address>");
         let stop = state::until_true(stop_rx.clone());
         let cycle = shared.clone();
         let loopback = local.map(|l| {

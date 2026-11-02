@@ -25,7 +25,7 @@ export const home: Record<string, string> = {
   'Automatic check': 'Vérification automatique',
   'Back to {version}': 'Revenir à {version}',
   'Body': 'Corps',
-  'Browser sources (OBS, vMix, CasparCG) can play /output/<channel> without logging in.': 'Les sources navigateur (OBS, vMix, CasparCG) peuvent lire /output/<canal> sans se connecter.',
+  'Browser sources (OBS, vMix, CasparCG) can play the HTML5 outputs (/output/<address>) without logging in.': 'Les sources navigateur (OBS, vMix, CasparCG) peuvent lire les sorties HTML5 (/output/<adresse>) sans se connecter.',
   'Built in': 'Intégrées',
   'CPU threads': 'Threads CPU',
   'Cannot reach the server: {error}': 'Serveur injoignable : {error}',

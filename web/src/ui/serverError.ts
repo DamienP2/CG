@@ -43,6 +43,8 @@ export function friendlyError(raw: string | null | undefined): string {
   if (/NDI runtime refused to start/i.test(s)) return t('NDI runtime refused to start');
   if ((m = s.match(/^NDI name already used: `(.+)`$/))) return t('NDI name “{name}” already used', { name: m[1] });
   if (/^every NDI output needs a name/i.test(s)) return t('Every NDI output needs a name');
+  if ((m = s.match(/^HTML5 output address already used: `(.+)`$/))) return t('Web address “{name}” already used', { name: m[1] });
+  if (/^HTML5 output address: letters/.test(s)) return t('Web address: letters, digits, - or _ only');
   return s;
 }
 

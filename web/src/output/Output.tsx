@@ -7,25 +7,30 @@ import { OutputDebug } from './OutputDebug';
 /**
  * HTML5 output of one channel picture: a transparent, chrome-less page meant
  * for browser sources (OBS, vMix, CasparCG HTML producer…).
- * URL: /output/<channel>[/<rendition>]. Query params: `scale=fit|1`
- * (default fit), `bg=<css color>` for checks, `debug` for motion measures.
+ * URL: /output/<path> (an HTML5 output's address: its picture and background),
+ * or /output/<channel>[/<rendition>]. Query params: `scale=fit|1` (default
+ * fit), `bg=<css color>` for checks, `debug` for motion measures.
  */
-export function Output({ channelId, rendition }: { channelId: string; rendition?: string | null }) {
+export function Output({ channelId: at, rendition: asked }: { channelId: string; rendition?: string | null }) {
   const { connect, channels, full, live } = useApp();
+  // The address of an HTML5 output (else a channel's id, older links).
+  const page = asked ? undefined : channels.flatMap((c) => (c.html5 ?? []).map((h) => ({ c, h }))).find((x) => x.h.path.toLowerCase() === at.toLowerCase());
+  const channelId = page?.c.id ?? at;
+  const rendition = page ? (page.h.picture === 'main' ? null : page.h.picture) : asked;
   const params = new URLSearchParams(location.search);
   const fixed = params.get('scale') === '1';
-  const bg = params.get('bg') ?? 'transparent';
+  const bg = params.get('bg') ?? (page?.h.background || 'transparent');
   // Measures of the page's motion where it runs (vMix, OBS…).
   const debug = params.has('debug');
   const [size, setSize] = useState({ w: innerWidth, h: innerHeight });
 
   useEffect(() => {
     document.documentElement.classList.add('output-mode');
-    connect(channelId);
+    connect(at);
     const onResize = () => setSize({ w: innerWidth, h: innerHeight });
     addEventListener('resize', onResize);
     return () => removeEventListener('resize', onResize);
-  }, [connect, channelId]);
+  }, [connect, at]);
 
   const channel = channels.find((c) => c.id === channelId);
   if (!channel) return null;
