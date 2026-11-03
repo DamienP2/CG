@@ -606,4 +606,7 @@ export const data: Record<string, string> = {
   'No flow': 'Aucun flux',
   'Flows of logic': 'Flux de logique',
   'Any layer': 'Calque',
+  'Layers of the template': 'Calques du modèle',
+  'Remove from the canvas': 'Retirer du canvas',
+  'Into a layer': 'Dans un calque',
 };

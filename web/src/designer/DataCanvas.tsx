@@ -252,13 +252,15 @@ interface Layout {
   pos: Record<string, { x: number; y: number }>;
   size: Record<string, { w: number; h?: number }>;
   collapsed: Record<string, boolean>;
+  /** Layers put on the canvas (a wired layer is there anyway). */
+  shown: string[];
 }
 
 function loadLayout(id: string): Layout {
-  const empty: Layout = { pos: {}, size: {}, collapsed: {} };
+  const empty: Layout = { pos: {}, size: {}, collapsed: {}, shown: [] };
   try {
     const l = JSON.parse(localStorage.getItem(`pulse.dataCanvas.${id}`) ?? '{}');
-    return { pos: l.pos ?? {}, size: l.size ?? {}, collapsed: l.collapsed ?? {} };
+    return { pos: l.pos ?? {}, size: l.size ?? {}, collapsed: l.collapsed ?? {}, shown: Array.isArray(l.shown) ? l.shown : [] };
   } catch {
     return empty;
   }
@@ -522,6 +524,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const [dsColumns, setDsColumns] = useState<Record<string, string[]>>({});
   // The Table whose "Build the table" card is open.
   const [building, setBuilding] = useState<string | null>(null);
+  // A wire dropped in the void: the layers it can go into.
+  const [dropMenu, setDropMenu] = useState<{ sx: number; sy: number; at: Pt; wire: Wire } | null>(null);
+  const [layerQuery, setLayerQuery] = useState('');
   // Where each port's dot is in its node, measured once drawn: the wires start and end on the dots,
   // whatever the rows, sizes and fonts of the node.
   const spaceRef = useRef<HTMLDivElement>(null);
@@ -633,9 +638,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     COLS.field,
     shownFields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
   );
+  /** The layers on the canvas: those wired (or with a value the Operator types), and those put there. */
+  const dcLayers = template.layers.filter((l) => layout.shown.includes(l.id) || wiredPorts(l).size > 0 || [...folded.values()].some((e) => e.layer === l.id));
   stack(
     COLS.layer,
-    template.layers.map((l) => [`l:${l.id}`, layerHeight(l)]),
+    dcLayers.map((l) => [`l:${l.id}`, layerHeight(l)]),
   );
   for (const n of flow.nodes) nodePos.set(n.id, { x: n.x, y: n.y });
   // A data set is drawn as wide as a source.
@@ -746,7 +753,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     links.push({ from: a.id, to: e.to.startsWith('field:') ? `f:${e.to.slice(6)}` : e.to });
     wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: t('Data (click to remove · drop a Filter, Sort or Transform on it)'), onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
   });
-  for (const l of template.layers)
+  for (const l of dcLayers)
     for (const port of [...contentOf(l), ...settingPortsOf(l), ...propPortsOf(l)]) {
       const to = layerIn(l, port);
       if (!to) continue;
@@ -792,7 +799,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
    */
   const arrange = () => {
     const size = measureNodes(cv.ref.current);
-    const all = [...flow.nodes.map((n) => n.id), ...shownFields.map((f) => `f:${f.key}`), ...template.layers.map((l) => `l:${l.id}`)];
+    const all = [...flow.nodes.map((n) => n.id), ...shownFields.map((f) => `f:${f.key}`), ...dcLayers.map((l) => `l:${l.id}`)];
     const at = autoLayout(
       all.map((id) => ({ id, ...(size[id] ?? { w: W.step, h: 160 }), side: id.startsWith('l:') ? ('end' as const) : flow.nodes.some((n) => n.id === id && n.type === 'source') ? ('start' as const) : undefined })),
       links,
@@ -951,7 +958,14 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setDrag(null);
-      connect(wire, document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null, point(ev.clientX, ev.clientY));
+      const target = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
+      // A value dropped in the void: which layer it goes into.
+      if (wire.kind !== 'flow' && !target?.closest('.dc-node, .logic-node, .port, .logic-palette')) {
+        const vr = cv.ref.current?.getBoundingClientRect();
+        if (vr) setDropMenu({ sx: ev.clientX - vr.left, sy: ev.clientY - vr.top, at: point(ev.clientX, ev.clientY), wire });
+        return;
+      }
+      connect(wire, target, point(ev.clientX, ev.clientY));
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -1094,6 +1108,23 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       <CanvasHeader icon={<Database size={15} />} title={t('Data')} subject={template.name} onClose={onClose} />
       <div className="logic-body">
         <aside className="logic-palette">
+          <div className="dc-pal-title">{t('Layers of the template')}</div>
+          {template.layers.length > 8 && <input className="dc-layer-search" value={layerQuery} placeholder={t('Search')} onChange={(e) => setLayerQuery(e.target.value)} />}
+          <div className="dc-layer-list">
+            {template.layers
+              .filter((l) => !layerQuery.trim() || l.name.toLowerCase().includes(layerQuery.trim().toLowerCase()))
+              .map((l) => {
+                const on = dcLayers.includes(l);
+                const Icon = layerIcon(l);
+                return (
+                  <button key={l.id} className={`kind-layer ${on ? 'placed' : ''}`} disabled={on} onClick={() => setLayout((s) => ({ ...s, shown: [...s.shown.filter((x) => x !== l.id), l.id] }))}>
+                    <Icon size={13} />
+                    <strong>{l.name}</strong>
+                    <em>{on ? t('placed') : '+'}</em>
+                  </button>
+                );
+              })}
+          </div>
           <button
             className="kind-field"
             onPointerDown={(e) =>
@@ -1175,7 +1206,10 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           </button>
         </aside>
 
-        <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`}>
+        <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`} onPointerDown={(e) => {
+            if (dropMenu && !(e.target as HTMLElement).closest('.dc-drop')) setDropMenu(null);
+            cv.viewport.onPointerDown(e);
+          }}>
           <div className="logic-space" ref={spaceRef} data-canvas-void style={cv.spaceStyle}>
             <svg className="logic-wires">
               {wires.map((w, i) => (
@@ -1365,7 +1399,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             ))}
 
             {/* Layers: what they show (text, picture); their properties folded */}
-            {template.layers.map((l) => {
+            {dcLayers.map((l) => {
               const p = nodePos.get(`l:${l.id}`)!;
               const Icon = layerIcon(l);
               const wired = wiredPorts(l);
@@ -1376,6 +1410,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                   <div className="ln-head" style={{ height: HEAD }}>
                     <Icon size={12} />
                     <span>{l.name}</span>
+                    {!wired.size && (
+                      <button className="ln-del" title={t('Remove from the canvas')} onClick={() => setLayout((s) => ({ ...s, shown: s.shown.filter((x) => x !== l.id) }))}>
+                        <X size={11} />
+                      </button>
+                    )}
                   </div>
                   {ports(l).map((port) => {
                     const content = contentOf(l).includes(port);
@@ -1490,7 +1529,35 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             })()}
           </div>
           {/* Nothing yet: a small icon and a word, centred (as in the Operator). */}
-          {!flow.nodes.length && !shownFields.length && !template.layers.length && <CanvasVoid icon={Database} text={t('No data')} />}
+          {dropMenu && (
+            <div className="lx-quick dc-drop" style={{ left: dropMenu.sx, top: dropMenu.sy }} onPointerDown={(e) => e.stopPropagation()}>
+              <div className="lx-qh">{t('Into a layer')}</div>
+              <div className="lx-qlist">
+                {template.layers
+                  .filter((l) => contentOf(l).length > 0)
+                  .map((l) => (
+                    <button
+                      key={l.id}
+                      onClick={() => {
+                        const port = contentOf(l)[0];
+                        setLayout((s) => ({ ...s, shown: [...s.shown.filter((x) => x !== l.id), l.id] }));
+                        // As if dropped on the layer's first content port.
+                        const el = document.createElement('span');
+                        el.className = 'port in';
+                        el.dataset.layer = l.id;
+                        el.dataset.port = port;
+                        connect(dropMenu.wire, el, dropMenu.at);
+                        setDropMenu(null);
+                      }}
+                    >
+                      {l.name}
+                      <em>{CONTENT_LABEL[contentOf(l)[0]] ? t(CONTENT_LABEL[contentOf(l)[0]]) : contentOf(l)[0]}</em>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+          {!flow.nodes.length && !shownFields.length && !dcLayers.length && <CanvasVoid icon={Database} text={t('No data')} />}
           {cv.controls}
         </div>
       </div>

@@ -22531,3 +22531,53 @@ textarea.tx-grow {
   gap: 8px;
   font-size: 12.5px;
 }
+/* Data canvas: the layers put on the canvas */
+.dc-layer-list {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+.logic-palette .dc-layer-list button {
+  align-items: center;
+  padding: 6px 8px;
+  border-left: 3px solid #8fa3ff;
+}
+.logic-palette .dc-layer-list button strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.logic-palette .dc-layer-list button em {
+  font-style: normal;
+  color: var(--accent);
+  font-weight: 700;
+}
+.logic-palette .dc-layer-list button.placed {
+  opacity: 0.5;
+  cursor: default;
+}
+.logic-palette .dc-layer-list button.placed em {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.dc-layer-search {
+  flex: none;
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.dc-drop .lx-qlist button {
+  justify-content: flex-start;
+}
