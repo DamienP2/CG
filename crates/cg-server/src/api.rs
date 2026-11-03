@@ -84,6 +84,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/projects/{id}/playlists", put(put_playlists))
         .route("/api/projects/{id}/formats", put(put_formats))
         .route("/api/projects/{id}/guides", put(put_guides))
+        .route("/api/projects/{id}/logic", put(put_logic))
         .route("/api/projects/{id}/design-order", put(put_design_order))
         .route("/api/projects/{id}/publish", post(publish_project))
         .route(
@@ -635,6 +636,7 @@ async fn create_project(
             template_secs: None,
             colors: Vec::new(),
             logic_flows: Vec::new(),
+            logic: Default::default(),
             id: String::new(),
             name: String::new(),
             description: String::new(),
@@ -943,6 +945,7 @@ async fn import_create(
         template_secs: None,
         colors: Vec::new(),
         logic_flows: Vec::new(),
+        logic: Default::default(),
         id: cg_core::new_id(),
         name: c.name.trim().to_string(),
         description: String::new(),
@@ -1671,6 +1674,25 @@ async fn put_guides(
     }
     let mut p = (*visible_project(&s, &me, &id).await?).clone();
     p.guides = g;
+    s.save_project(p).await.map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The project's Logic (rules between its graphics and playlists): on air
+/// at once on the channels where the project is loaded.
+async fn put_logic(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    Path(id): Path<String>,
+    Json(logic): Json<cg_core::logic::Logic>,
+) -> ApiResult<StatusCode> {
+    let _edit = s.edits.lock().await;
+    require(me.can_design(&id))?;
+    if logic.nodes.len() > 2000 {
+        return Err(bad("too many nodes"));
+    }
+    let mut p = (*visible_project(&s, &me, &id).await?).clone();
+    p.logic = logic;
     s.save_project(p).await.map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }

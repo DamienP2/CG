@@ -261,6 +261,18 @@ pub enum NodeKind {
         key: String,
     },
 
+    // ── The project's Logic (see [`crate::playout::ChannelState::run_project`]) ──
+    /// A graphic of the project: flows `in` (it goes on air) and `out` (it
+    /// has gone out), value `onAir` (1 while on air).
+    Template {
+        template: String,
+    },
+    /// A playlist: flows `taken` (a row of it is taken) and `end` (its last
+    /// row has gone out).
+    Playlist {
+        playlist: String,
+    },
+
     // ── Flows: what starts them (output `out`) ─────────────────────────
     /// The event has happened on air (watched by the server).
     Event {
@@ -327,6 +339,19 @@ pub enum NodeKind {
         #[serde(default)]
         out: bool,
     },
+    /// Plays the playlist `playlist` on: the row after the last one taken
+    /// (the first when none was), on the playlist's outputs; its Auto next
+    /// goes on from there.
+    ResumePlaylist {
+        playlist: String,
+    },
+    /// The Auto next of the playlist `playlist` stops: its graphic on air
+    /// stays until taken out.
+    StopAuto {
+        playlist: String,
+    },
+    /// Takes everything out (as « Clear all »).
+    ClearAll {},
     /// Starts, pauses, resets… a widget of the graphic (`control`: start,
     /// pause, toggle, reset, restart).
     Widget {
@@ -374,6 +399,8 @@ impl NodeKind {
             | NodeKind::Continue {}
             | NodeKind::Start {}
             | NodeKind::Every { .. } => vec!["out".into()],
+            NodeKind::Template { .. } => vec!["in".into(), "out".into()],
+            NodeKind::Playlist { .. } => vec!["taken".into(), "end".into()],
             NodeKind::If { branches, .. } => (0..branches.len())
                 .map(|i| format!("b{i}"))
                 .chain(["else".to_string()])
@@ -403,6 +430,9 @@ impl NodeKind {
                 | NodeKind::NextRow { .. }
                 | NodeKind::SetVar { .. }
                 | NodeKind::Take { .. }
+                | NodeKind::ResumePlaylist { .. }
+                | NodeKind::StopAuto { .. }
+                | NodeKind::ClearAll {}
                 | NodeKind::Widget { .. }
         )
     }
@@ -669,6 +699,12 @@ impl<'a> Graph<'a> {
                     .unwrap_or(if *test { 1.0 } else { 0.0 }),
             ),
             NodeKind::SetField { .. } => self.input(id, "in", cx, depth).unwrap_or_else(empty),
+            NodeKind::Template { template } => LVal::Num(
+                cx.data
+                    .get(&on_air_key(template))
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                    .map_or(0.0, |v| (v > 0.5) as u8 as f64),
+            ),
             _ => LVal::Num(0.0),
         }
     }
@@ -858,6 +894,16 @@ pub fn patched(
 /// The data key of a graphic's presence on air (0 → 1), read by [`NodeKind::OnAir`].
 pub fn on_air_key(template: &str) -> String {
     format!("__onair_{template}")
+}
+
+/// The data key of what a playlist last took (changes at each take), read by [`NodeKind::Playlist`].
+pub fn played_key(playlist: &str) -> String {
+    format!("__played_{playlist}")
+}
+
+/// The data key of a playlist done (`1`: its last row has gone out).
+pub fn ended_key(playlist: &str) -> String {
+    format!("__ended_{playlist}")
 }
 
 /// The graphics whose presence the graph reads, with their transition (s).

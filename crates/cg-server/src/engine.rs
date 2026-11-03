@@ -1100,7 +1100,11 @@ async fn advance(
                     std::sync::Mutex::new(cg_render::TextWidths::new(state.assets_dir()))
                 });
                 let mut w = widths.lock().unwrap_or_else(|e| e.into_inner());
-                st.event_resumes(p, &state.config.timezone, &mut *w)
+                let mut fired = st.event_resumes(p, &state.config.timezone, &mut *w);
+                // The project's Logic, and the playlists a Logic resumes or stops (on their outputs).
+                let buses = |pl: &str| crate::state::list_buses(&ch.config, p, pl);
+                fired.extend(st.run_project(p, &buses));
+                fired
             };
             for name in fired {
                 crate::asrun::record(

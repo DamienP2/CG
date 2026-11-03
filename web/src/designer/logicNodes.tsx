@@ -43,8 +43,11 @@ import {
   Shrink,
   Spline,
   Hand,
+  ListVideo,
+  CircleSlash,
   type LucideIcon,
 } from 'lucide-react';
+import { useApp } from '../store';
 import { newId } from '../engine/evaluate';
 import { metricOf, rowType, type PortType } from '../engine/logic';
 import { COLOR_PROPS, PROPS, TEXT_LIKE, type Layer, type LayerRow, type LogicNode, type Prop, type Template, type TriggerEvent } from '../engine/types';
@@ -59,10 +62,12 @@ import { t } from '../i18n';
  * the labels of a Layer node's rows.
  */
 
-export type Fam = 'layer' | 'input' | 'math' | 'text' | 'cond' | 'time' | 'event' | 'trigger' | 'action' | 'var' | 'mine';
+export type Fam = 'layer' | 'graphic' | 'playlist' | 'input' | 'math' | 'text' | 'cond' | 'time' | 'event' | 'trigger' | 'action' | 'var' | 'mine';
 
 export const FAMS: { id: Fam; label: string }[] = [
   { id: 'layer', label: 'Layers' },
+  { id: 'graphic', label: 'Templates' },
+  { id: 'playlist', label: 'Playlists' },
   { id: 'input', label: 'Inputs' },
   { id: 'math', label: 'Maths' },
   { id: 'text', label: 'Text' },
@@ -90,6 +95,11 @@ export interface Entry {
   make: (t: Template, x: number, y: number) => LogicNode;
   can?: (h: Has) => boolean;
 }
+
+/** The id of the stand-in template the Logic canvas edits for the project's Logic. */
+export const PROJECT_LOGIC = '__project__';
+export const isProjectLogic = (t: Template | undefined) => t?.id === PROJECT_LOGIC;
+const hasPlaylists = () => (useApp.getState().project?.playlists.length ?? 0) > 0;
 
 /** Layers an event or an action can watch or drive. */
 export const timerLayer = (l: Layer) => l.type === 'clock' && !!((l as { timerMode?: string }).timerMode || ['countdown', 'stopwatch'].includes((l as { mode?: string }).mode ?? ''));
@@ -194,6 +204,43 @@ export const layerNode = (l: Layer, x: number, y: number, want?: { type: PortTyp
 
 /** The palette, for this template. */
 export function entries(tpl: Template): Entry[] {
+  return isProjectLogic(tpl) ? projectEntries(tpl) : templateEntries(tpl);
+}
+
+/** What a graphic's own Logic cannot do in the project's: its layers, its events, its pauses, its widgets. */
+const NOT_IN_PROJECT = new Set(['onAir', 'continue', 'out', 'resume', 'nextRow', 'widget', 'blink', 'osc']);
+
+/** The project's Logic: its graphics and playlists, and what acts on them. */
+function projectEntries(tpl: Template): Entry[] {
+  const p = useApp.getState().project;
+  const graphics = (p?.templates ?? []).map(
+    (x): Entry => ({ key: `tpl:${x.id}`, fam: 'graphic', label: x.name, icon: SquareStack, make: (_t, x0, y0) => ({ ...base(x0, y0), type: 'template', template: x.id }) }),
+  );
+  const lists = (p?.playlists ?? []).map(
+    (l): Entry => ({
+      key: `pl:${l.id}`,
+      fam: 'playlist',
+      label: l.name,
+      icon: ListVideo,
+      note: String((p?.rundown ?? []).filter((r) => r.playlist === l.id).length),
+      make: (_t, x0, y0) => ({ ...base(x0, y0), type: 'playlist', playlist: l.id }),
+    }),
+  );
+  const rest = templateEntries(tpl)
+    .filter((e) => e.fam !== 'layer' && !e.key.startsWith('ev:') && !NOT_IN_PROJECT.has(e.key))
+    .flatMap((e): Entry[] => {
+      if (e.key === 'start') return [{ ...e, label: 'Project loaded' }];
+      if (e.key === 'take')
+        return [
+          { ...e, label: 'Take a graphic', can: undefined },
+          { key: 'takeOut', fam: 'action', label: 'Take a graphic out', icon: Square, make: (_t, x, y) => ({ ...base(x, y), type: 'take', template: '', out: true }) },
+        ];
+      return [e];
+    });
+  return [...graphics, ...lists, ...rest, { key: 'clearAll', fam: 'action', label: 'Clear all', icon: CircleSlash, make: (_t, x, y) => ({ ...base(x, y), type: 'clearAll' }) }];
+}
+
+function templateEntries(tpl: Template): Entry[] {
   const fieldKey = tpl.fields[0]?.key ?? '';
   const of = (f: (l: Layer) => boolean) => tpl.layers.find(f)?.id ?? '';
   const ev = (key: string, label: string, icon: LucideIcon, on: () => TriggerEvent, can: (h: Has) => boolean): Entry => ({ key, fam: 'event', label, icon, can, make: (_t, x, y) => ({ ...base(x, y), type: 'event', on: on() }) });
@@ -265,6 +312,8 @@ export function entries(tpl: Template): Entry[] {
     { key: 'nextRow', fam: 'action', label: 'Next row', icon: ArrowDown, can: (h) => (h.t.datasets?.length ?? 0) > 0, make: (tt, x, y) => ({ ...base(x, y), type: 'nextRow', dataset: tt.datasets?.[0]?.key ?? '' }) },
     { key: 'fire', fam: 'action', label: 'Fire a trigger', icon: Send, make: (_t, x, y) => ({ ...base(x, y), type: 'fire', name: '' }) },
     { key: 'take', fam: 'action', label: 'Take another graphic', icon: SquareStack, can: (h) => h.others > 0, make: (_t, x, y) => ({ ...base(x, y), type: 'take', template: '' }) },
+    { key: 'resumePlaylist', fam: 'action', label: 'Resume a playlist', icon: ListVideo, can: hasPlaylists, make: (_t, x, y) => ({ ...base(x, y), type: 'resumePlaylist', playlist: '' }) },
+    { key: 'stopAuto', fam: 'action', label: 'Stop the Auto', icon: Pause, can: hasPlaylists, make: (_t, x, y) => ({ ...base(x, y), type: 'stopAuto', playlist: '' }) },
     { key: 'widget', fam: 'action', label: 'Widget control', icon: Hand, can: (h) => h.t.layers.some(timedLayer), make: (tt, x, y) => ({ ...base(x, y), type: 'widget', layer: tt.layers.find(timedLayer)?.id ?? '', control: 'start' }) },
     // Variables
     { key: 'setVar', fam: 'var', label: 'Set a variable', icon: Variable, make: (tt, x, y) => ({ ...base(x, y), type: 'setVar', name: varNames(tt)[0] ?? 'var1', value: '1', transition: 0 }) },
@@ -290,6 +339,15 @@ export function kindOf(n: LogicNode, tpl: Template): { fam: Fam; label: string; 
     return { fam: preset?.fam ?? 'math', label: n.title ? t(n.title) : t('Calculation'), icon: preset?.icon ?? (n.title ? WandSparkles : e.icon) };
   }
   if (n.type === 'setField') return { fam: 'text', label: t('Show in a text'), icon: Type };
+  if (n.type === 'template') {
+    const x = useApp.getState().project?.templates.find((g) => g.id === n.template);
+    return { fam: 'graphic', label: x?.name ?? t('Missing graphic'), icon: SquareStack };
+  }
+  if (n.type === 'playlist') {
+    const l = useApp.getState().project?.playlists.find((g) => g.id === n.playlist);
+    return { fam: 'playlist', label: l?.name ?? t('Missing playlist'), icon: ListVideo };
+  }
+  if (n.type === 'take' && n.out && isProjectLogic(tpl)) return { fam: 'action', label: t('Take a graphic out'), icon: Square };
   if (n.type === 'field') {
     // A variable, or a column of a data set (its name without the set's).
     const f = tpl.fields.find((x) => x.key === n.key);

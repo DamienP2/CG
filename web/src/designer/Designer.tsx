@@ -588,12 +588,14 @@ export const Designer = memo(function Designer() {
             )}
           <FormatBar project={project} />
           <div className="spacer" />
-          {template && (
-            <>
-              <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Values, conditions and what happens on air: events, triggers, actions, variables')}>
-                <Link2 size={13} /> {t('Logic')}
-              </button>
-            </>
+          {template ? (
+            <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Values, conditions and what happens on air: events, triggers, actions, variables')}>
+              <Link2 size={13} /> {t('Logic')}
+            </button>
+          ) : (
+            <button className={`btn small ${project.logic?.nodes.length ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Rules between the graphics and the playlists, while the project is loaded')}>
+              <Link2 size={13} /> {t('Logic · project')}
+            </button>
           )}
           <DisplayMenu
             project={project}

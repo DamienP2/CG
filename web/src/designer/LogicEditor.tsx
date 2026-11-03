@@ -18,9 +18,11 @@ import { settingLabel } from '../engine/settingPorts';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
+import { useProjectLogic } from './projectLogic';
+import type { StoreApi, UseBoundStore } from 'zustand';
 import { t, tc } from '../i18n';
 import { displayPref, setDisplayPref } from '../displayPrefs';
-import { entries, FAMS, kindOf, layerNode, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, type Entry, type Fam } from './logicNodes';
+import { entries, FAMS, isProjectLogic, kindOf, layerNode, rowLabel, rowsFor, scrollLayer, timedLayer, timerLayer, varNames, videoLayer, type Entry, type Fam } from './logicNodes';
 
 /*
  * The Logic canvas. Every node has its inputs on the left and its outputs on the right; value
@@ -238,13 +240,39 @@ function fits(n: LogicNode, want: { type: PortType; side: 'in' | 'out' }): Port 
 /** The Logic: what the graphic draws (values, conditions) and what happens on air (events, triggers, actions, variables), one graph. */
 export function LogicEditor({ onClose }: { onClose: () => void }) {
   const id = useDesigner((s) => s.template?.id);
-  if (!id) return null;
-  return <LogicCanvas key={id} onClose={onClose} />;
+  const project = useApp((s) => s.project);
+  const projectTpl = useProjectLogic((s) => s.template);
+  // No graphic selected: the project's Logic.
+  useEffect(() => {
+    if (!id && project && !projectTpl) useProjectLogic.getState().open(project);
+  }, [id, project, projectTpl]);
+  useEffect(() => () => useProjectLogic.setState({ template: null }), []);
+  if (id)
+    return (
+      <SrcCtx.Provider value={useDesigner as unknown as LogicSource}>
+        <LogicCanvas key={id} onClose={onClose} />
+      </SrcCtx.Provider>
+    );
+  if (!projectTpl) return null;
+  return (
+    <SrcCtx.Provider value={useProjectLogic as unknown as LogicSource}>
+      <LogicCanvas key="project" onClose={onClose} />
+    </SrcCtx.Provider>
+  );
 }
 
+/** Where the canvas edits: a graphic (the Designer), or the project's Logic. */
+type LogicSource = UseBoundStore<
+  StoreApi<{ template: Template | null; update: (recipe: (t: Template) => void, key?: string) => void; frame: number; previewData: Record<string, string>; lastCoalesce: unknown }>
+>;
+const SrcCtx = createContext<LogicSource>(useDesigner as unknown as LogicSource);
+
 function LogicCanvas({ onClose }: { onClose: () => void }) {
-  const { template: tpl, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
+  const src = useContext(SrcCtx);
+  const { template: tpl, update, frame, previewData } = src(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
   const template = tpl!;
+  // The project's Logic: no layers, no data of its own.
+  const proj = isProjectLogic(template);
   const cv = useCanvasView(`logic.${template.id}`, '.lx-node, .lx-frame, .lx-pill, .dc-node', { onArrange: () => arrange() });
   const sizesKey = `logic.sizes.${template?.id ?? ''}`;
   const [sizes, setSizesState] = useState<Record<string, number>>(() => displayPref(sizesKey, {}));
@@ -273,6 +301,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
   const user = useApp((s) => s.auth?.user);
   const projectId = useApp((s) => s.project?.id);
   const projectFlows = useApp((s) => s.project?.logicFlows) ?? [];
+  const projectLists = useApp((s) => s.project?.playlists);
   const toast = useApp((s) => s.toast);
   const shared = useLogicFlows((s) => s.shared);
   const flowsLoaded = useLogicFlows((s) => s.loaded);
@@ -390,7 +419,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
    */
   const keepDataLeft = (align: boolean) => {
     const b = data.bounds();
-    const ns = (useDesigner.getState().template?.logic?.nodes ?? []).filter((n) => !hiddenField(n));
+    const ns = (src.getState().template?.logic?.nodes ?? []).filter((n) => !hiddenField(n));
     if (!b || !ns.length) return;
     const size = measureNodes(cv.ref.current);
     const lx0 = Math.min(...ns.map((n) => n.x));
@@ -416,7 +445,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
   // On opening: a Layer node for each layer the data sets (the wires need one), and the data nodes
   // moved out of the logic's way (a template from when they had a canvas each).
   useEffect(() => {
-    const tpl = useDesigner.getState().template;
+    const tpl = src.getState().template;
     if (!tpl) return;
     const have = new Set((tpl.logic?.nodes ?? []).flatMap((n) => (n.type === 'layer' ? [n.layer] : [])));
     const missing = tpl.layers.filter((l) => !have.has(l.id) && data.boundRows(l).length);
@@ -429,8 +458,8 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     }
     // What the two canvases had twice: a Layer node the Data canvas made for a layer the Logic already
     // has a node for (merged into it), a « Show in a text » no text shows any more (removed).
-    const lg = useDesigner.getState().template?.logic;
-    const json = JSON.stringify(useDesigner.getState().template?.layers ?? []);
+    const lg = src.getState().template?.logic;
+    const json = JSON.stringify(src.getState().template?.layers ?? []);
     const made = (lg?.nodes ?? []).filter((n) => n.type === 'layer' && n.title === DC_MADE && lg!.nodes.some((o) => o.type === 'layer' && o.id !== n.id && o.layer === n.layer && o.title !== DC_MADE));
     const orphans = (lg?.nodes ?? []).filter((n) => n.type === 'setField' && !json.includes(`{{${n.key}}}`) && !lg!.nodes.some((o) => o.type === 'field' && o.key === n.key));
     if (made.length || orphans.length)
@@ -487,7 +516,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       links,
       { tightSources: true },
     );
-    useDesigner.setState({ lastCoalesce: null });
+    src.setState({ lastCoalesce: null });
     data.arrange();
     alignData.current = true;
     edit((l) => {
@@ -551,7 +580,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     setSelFrame(null);
     const start = toWorld(e.clientX, e.clientY);
     const base = new Map(logic.nodes.filter((x) => ids.has(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
-    useDesigner.setState({ lastCoalesce: null });
+    src.setState({ lastCoalesce: null });
     const key = `lx-move-${newId()}`;
     const move = (ev: PointerEvent) => {
       const p = toWorld(ev.clientX, ev.clientY);
@@ -582,7 +611,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     const start = toWorld(e.clientX, e.clientY);
     const fb = { x: f.x, y: f.y };
     const base = new Map(logic.nodes.filter((n) => n.frame === f.id).map((n) => [n.id, { x: n.x, y: n.y }]));
-    useDesigner.setState({ lastCoalesce: null });
+    src.setState({ lastCoalesce: null });
     const key = `lx-frame-${newId()}`;
     const move = (ev: PointerEvent) => {
       const p = toWorld(ev.clientX, ev.clientY);
@@ -613,7 +642,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     e.stopPropagation();
     const start = toWorld(e.clientX, e.clientY);
     const base = data.nodesIn({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });
-    useDesigner.setState({ lastCoalesce: null });
+    src.setState({ lastCoalesce: null });
     const key = `lx-dframe-${newId()}`;
     const move = (ev: PointerEvent) => {
       const p = toWorld(ev.clientX, ev.clientY);
@@ -634,7 +663,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     e.stopPropagation();
     const start = toWorld(e.clientX, e.clientY);
     const fb = { w: f.w, h: f.h };
-    useDesigner.setState({ lastCoalesce: null });
+    src.setState({ lastCoalesce: null });
     const key = `lx-fsize-${newId()}`;
     const move = (ev: PointerEvent) => {
       const p = toWorld(ev.clientX, ev.clientY);
@@ -802,7 +831,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
 
   /** A variable (or a data set column) into an input: a Layer row takes it as data, another node through a Field node. */
   const keyInto = (key: string, node: string, port: string) => {
-    const n = logic.nodes.find((x) => x.id === node) ?? useDesigner.getState().template?.logic?.nodes.find((x) => x.id === node);
+    const n = logic.nodes.find((x) => x.id === node) ?? src.getState().template?.logic?.nodes.find((x) => x.id === node);
     if (!n) return;
     if (n.type === 'layer') {
       if (!metricOf(port)) data.bind(n.layer, port, key);
@@ -1392,6 +1421,36 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         return flowRows(<Dropdown value={n.dataset} placeholder={t('Choose a data set')} options={(template.datasets ?? []).map((d) => ({ value: d.key, label: d.name }))} onChange={(dataset) => set({ dataset } as Partial<LogicNode>)} />);
       case 'take':
         return flowRows(<TakeBody n={n} template={template} set={set} />);
+      case 'resumePlaylist':
+      case 'stopAuto':
+        return flowRows(<Dropdown value={n.playlist} placeholder={t('Choose a playlist')} options={(projectLists ?? []).map((l) => ({ value: l.id, label: l.name }))} onChange={(playlist) => set({ playlist } as Partial<LogicNode>)} />);
+      case 'clearAll':
+        return flowRows();
+      case 'template':
+        return (
+          <>
+            <Row n={n} outP={pOut(n, 'in')}>
+              <span className="lx-lab right">{t('Goes in')}</span>
+            </Row>
+            <Row n={n} outP={pOut(n, 'out')}>
+              <span className="lx-lab right">{t('Goes out')}</span>
+            </Row>
+            <Row n={n} outP={pOut(n, 'onAir')}>
+              <span className="lx-lab right">{t('On air')}</span>
+            </Row>
+          </>
+        );
+      case 'playlist':
+        return (
+          <>
+            <Row n={n} outP={pOut(n, 'taken')}>
+              <span className="lx-lab right">{t('Row taken')}</span>
+            </Row>
+            <Row n={n} outP={pOut(n, 'end')}>
+              <span className="lx-lab right">{t('End of playlist')}</span>
+            </Row>
+          </>
+        );
       case 'widget':
         return flowRows(
           <>
@@ -1436,7 +1495,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
 
   /** The value a node shows in its header (its main output). */
   const headValue = (n: LogicNode) => {
-    if (n.type === 'layer' || n.type === 'if' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter') return undefined;
+    if (n.type === 'layer' || n.type === 'if' || n.type === 'expr' || n.type === 'lookup' || n.type === 'var' || n.type === 'onAir' || n.type === 'counter' || n.type === 'template') return undefined;
     const out = portsOf(n).outs.find((p) => p.type !== 'flow');
     return out ? values.get(`${n.id}|${out.id}`) : undefined;
   };
@@ -1484,7 +1543,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     if (q && !fold(`${t(e.label)} ${e.label} ${e.note ?? ''} ${t(FAMS.find((f) => f.id === e.fam)!.label)}`).includes(q)) return false;
     return true;
   });
-  const placed = new Set(logic.nodes.flatMap((n) => (n.type === 'layer' ? [`layer:${n.layer}`] : [])));
+  const placed = new Set(logic.nodes.flatMap((n) => (n.type === 'layer' ? [`layer:${n.layer}`] : n.type === 'template' ? [`tpl:${n.template}`] : n.type === 'playlist' ? [`pl:${n.playlist}`] : [])));
   const toggleFav = (key: string) => {
     const next = favs.includes(key) ? favs.filter((x) => x !== key) : [...favs, key];
     setFavs(next);
@@ -1537,7 +1596,8 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
   return (
     <PortCtx.Provider value={{ wiredIn, wiredOut, startWire }}>
     <div className={`logic-editor lx view-${view}`} onKeyDown={(e) => e.stopPropagation()}>
-      <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={template.name} onClose={onClose}>
+      <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={proj ? t('Project · {name}', { name: template.name }) : template.name} onClose={onClose}>
+        {!proj && (
         <div className="segmented lx-view">
           {(['all', 'data', 'logic'] as const).map((v) => (
             <button key={v} className={view === v ? 'on' : ''} onClick={() => setView(v)}>
@@ -1545,6 +1605,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+        )}
         <div className="spacer" />
         <button className="lx-tool" onClick={makeFrame} title={t('Frame the selected nodes (F)')}>
           <BoxSelect size={13} /> {t('Frame')} <kbd>F</kbd>
@@ -1555,12 +1616,16 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         <button className="lx-tool" onClick={paste} disabled={!canPaste} title={t('Paste (⌘V)')}>
           <ClipboardPaste size={13} /> {t('Paste')}
         </button>
-        <button className="lx-tool" onClick={askSave} disabled={!sel.size && !selFrame} title={t('Save the selection in the library')}>
-          <BookMarked size={13} /> {t('Save')}
-        </button>
-        <button className="lx-tool" onClick={() => setModal({ kind: 'presets' })}>
-          <Sparkles size={13} /> {t('Presets')}
-        </button>
+        {!proj && (
+          <>
+            <button className="lx-tool" onClick={askSave} disabled={!sel.size && !selFrame} title={t('Save the selection in the library')}>
+              <BookMarked size={13} /> {t('Save')}
+            </button>
+            <button className="lx-tool" onClick={() => setModal({ kind: 'presets' })}>
+              <Sparkles size={13} /> {t('Presets')}
+            </button>
+          </>
+        )}
       </CanvasHeader>
       <div className="logic-body">
         <aside className="lx-pal">
@@ -1589,7 +1654,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
-          {scope !== 'fav' && !typeFilter && (!q || /donn|data|sourc|variab|filtr|tri|sort|transf|jeu/.test(q)) && (
+          {!proj && scope !== 'fav' && !typeFilter && (!q || /donn|data|sourc|variab|filtr|tri|sort|transf|jeu/.test(q)) && (
             <div className="lx-fam fam-data">
               <button className="lx-famhead" onClick={() => toggleFold('data')}>
                 {!folded.includes('data') || q ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
@@ -1617,7 +1682,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                     <div key={e.key} className={`lx-entry ${placed.has(e.key) ? 'placed' : ''}`}>
                       <button onClick={() => addEntry(e)} title={t('Add')}>
                         <e.icon size={13} />
-                        <strong>{e.fam === 'layer' ? e.label : t(e.label)}</strong>
+                        <strong>{e.fam === 'layer' || e.fam === 'graphic' || e.fam === 'playlist' ? e.label : t(e.label)}</strong>
                         {placed.has(e.key) ? <em>{t('placed')}</em> : e.note ? <em>{e.note}</em> : null}
                       </button>
                       <button className={`lx-star ${favs.includes(e.key) ? 'on' : ''}`} title={t('Favourite')} onClick={() => toggleFav(e.key)}>
@@ -1657,7 +1722,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         </aside>
         <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`} tabIndex={0} onPointerDown={onCanvasDown} onKeyDown={onKey}>
           <div className="logic-space" ref={spaceRef} data-canvas-void style={cv.spaceStyle}>
-            {dataBox && (
+            {dataBox && !proj && (
               <div className="lx-frame lx-dframe" style={{ left: dataBox.x0 - 28, top: dataBox.y0 - 44, width: dataBox.x1 - dataBox.x0 + 56, height: dataBox.y1 - dataBox.y0 + 72 }}>
                 <div className="lx-fhead" onPointerDown={dragDataFrame}>
                   <Database size={12} />
@@ -1709,7 +1774,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                 </div>
               ),
             )}
-            {data.space}
+            {!proj && data.space}
             <svg className="logic-wires">
               {dataWires.map((w, i) => (
                 <path
@@ -1820,7 +1885,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           {cv.controls}
         </div>
       </div>
-      {data.overlays}
+      {!proj && data.overlays}
       {modal?.kind === 'presets' && (
         <PresetsModal
           template={template}

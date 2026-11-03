@@ -412,7 +412,18 @@ export type LogicNodeKind =
   /** Sets the variable (or to input `value`); a number glides over `transition` s. */
   | { type: 'setVar'; name: string; value: string; transition?: number }
   | { type: 'take'; template: string; out?: boolean }
-  | { type: 'widget'; layer: string; control: string };
+  | { type: 'widget'; layer: string; control: string }
+  /** Plays the playlist on: the row after the last one taken, on its outputs; its Auto goes on. */
+  | { type: 'resumePlaylist'; playlist: string }
+  /** The Auto of the playlist stops (its graphic on air stays). */
+  | { type: 'stopAuto'; playlist: string }
+  /** Takes everything out. */
+  | { type: 'clearAll' }
+  // The project's Logic
+  /** A graphic: flows `in` / `out`, value `onAir`. */
+  | { type: 'template'; template: string }
+  /** A playlist: flows `taken` (a row taken) / `end` (its last row gone out). */
+  | { type: 'playlist'; playlist: string };
 
 export type LogicNode = LogicNodeKind & { id: string; x: number; y: number; frame?: string; title?: string };
 
@@ -527,6 +538,8 @@ export interface Project {
   colors?: NamedColor[];
   /** The project's own flows of logic (Library › Logic). */
   logicFlows?: LogicFlow[];
+  /** The project's Logic: rules between its graphics and playlists, run while it is loaded. */
+  logic?: Logic;
   templates: Template[];
   rundown: RundownItem[];
   zones: Zone[];

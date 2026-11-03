@@ -1154,6 +1154,31 @@ pub fn channel_buses(cfg: &crate::config::ChannelConfig) -> Vec<u32> {
         .collect()
 }
 
+/// The outputs the playlist `playlist` sends its graphics to (« main » or
+/// an unknown one: the antenne).
+pub fn list_buses(
+    cfg: &crate::config::ChannelConfig,
+    project: &Project,
+    playlist: &str,
+) -> Vec<u32> {
+    let Some(list) = project.playlists.iter().find(|p| p.id == playlist) else {
+        return Vec::new();
+    };
+    let mut out: Vec<u32> = list
+        .outputs
+        .iter()
+        .map(|o| {
+            cfg.renditions
+                .iter()
+                .find(|r| &r.id == o)
+                .map_or(0, |r| r.bus)
+        })
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// The outputs a rundown item's playlist sends its graphics to (ids of the
 /// channel's outputs; « main » or an unknown one: the antenne).
 pub fn playlist_buses(

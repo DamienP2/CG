@@ -88,7 +88,14 @@ export function portsOf(n: LogicNode): { ins: Port[]; outs: Port[] } {
     case 'nextRow':
     case 'take':
     case 'widget':
+    case 'resumePlaylist':
+    case 'stopAuto':
+    case 'clearAll':
       return { ins: [run], outs: [next] };
+    case 'template':
+      return { ins: [], outs: [{ id: 'in', label: 'Goes in', type: 'flow' }, { id: 'out', label: 'Goes out', type: 'flow' }, { id: 'onAir', label: 'On air', type: 'bool' }] };
+    case 'playlist':
+      return { ins: [], outs: [{ id: 'taken', label: 'Row taken', type: 'flow' }, { id: 'end', label: 'End of playlist', type: 'flow' }] };
   }
   return { ins: [], outs: [] };
 }

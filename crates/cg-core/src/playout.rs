@@ -825,6 +825,53 @@ pub enum PlayoutError {
 #[serde(rename_all = "camelCase")]
 pub struct ChannelState {
     pub layers: BTreeMap<u32, PlayoutItem>,
+    /// What each playlist last took (playlist id → its row): where
+    /// « Resume a playlist » plays on from.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub played: BTreeMap<String, Played>,
+    /// The project's Logic on this channel (see [`Self::run_project`]).
+    #[serde(skip)]
+    pub run: Scratch<ProjectRun>,
+}
+
+/// What a playlist last took: its row, and how many rows so far (a change
+/// the project's Logic sees even when the same row is taken again).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Played {
+    pub row: String,
+    #[serde(default)]
+    pub n: u64,
+}
+
+/// What the project's Logic remembers on a channel, and the playlist
+/// actions a graphic's Logic asked (done on the playlists' outputs).
+#[derive(Debug, Clone, Default)]
+pub struct ProjectRun {
+    pub project: String,
+    /// When the project was found loaded (ms).
+    pub since: i64,
+    pub watch: BTreeMap<String, String>,
+    pub vals: BTreeMap<String, String>,
+    pub asked: Vec<PlaylistAsk>,
+}
+
+/// A playlist action asked by a Logic.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlaylistAsk {
+    Resume(String),
+    StopAuto(String),
+}
+
+/// Working state kept beside the channel's state: never sent, never
+/// compared (a change of it alone is not a change on air).
+#[derive(Debug, Clone, Default)]
+pub struct Scratch<T>(pub T);
+
+impl<T> PartialEq for Scratch<T> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 /// The outputs of a channel (the antenne, an « Écran plateau »…) each have
@@ -1156,6 +1203,7 @@ impl ChannelState {
                 .range(base..base + BUS_STRIDE)
                 .map(|(k, v)| (k - base, v.clone()))
                 .collect(),
+            ..Default::default()
         }
     }
 
@@ -1203,6 +1251,15 @@ impl ChannelState {
                         .map(|z| z.layer)
                         .ok_or(PlayoutError::NoZone)?,
                 });
+                // Where its playlist is: « Resume a playlist » plays on after it.
+                if let Some(r) = rundown_id
+                    .as_deref()
+                    .and_then(|id| project.rundown.iter().find(|r| r.id == id))
+                {
+                    let p = self.played.entry(r.playlist.clone()).or_default();
+                    p.row = r.id.clone();
+                    p.n += 1;
+                }
                 let mut merged = t.default_data();
                 merged.extend(data.unwrap_or_default());
                 let take = QueuedTake {
@@ -1282,6 +1339,7 @@ impl ChannelState {
                 for item in self.layers.values_mut() {
                     item.watch.insert(trigger_flag(&name), "1".into());
                 }
+                self.run.0.watch.insert(trigger_flag(&name), "1".into());
                 // Values set by hand until this trigger let go.
                 for item in self.layers.values_mut() {
                     release_manual(&mut item.data, |m| {
@@ -1626,6 +1684,299 @@ impl ChannelState {
         changed
     }
 
+    /// The playable rows of a playlist, in order.
+    fn playlist_rows<'a>(project: &'a Project, playlist: &str) -> Vec<&'a RundownItem> {
+        project
+            .rundown
+            .iter()
+            .filter(|r| r.playlist == playlist)
+            .filter(|r| {
+                project
+                    .template(&r.template_id)
+                    .is_some_and(|t| t.playable())
+            })
+            .collect()
+    }
+
+    /// A row of the playlist is on air (not going out).
+    fn playlist_on_air(&self, rows: &[&RundownItem]) -> bool {
+        self.layers.values().any(|it| {
+            !matches!(it.phase, Phase::Out | Phase::OutHold)
+                && it
+                    .rundown_id
+                    .as_deref()
+                    .is_some_and(|id| rows.iter().any(|r| r.id == id))
+        })
+    }
+
+    /// « Resume a playlist »: takes, on the outputs `buses` (none: the
+    /// antenne), the row of the playlist after the last one taken (the
+    /// first when none was; past the end, the first when it loops). Nothing
+    /// while a row of it is on air. Returns the playlist's name when a row
+    /// was taken.
+    pub fn resume_playlist(
+        &mut self,
+        project: &Project,
+        playlist: &str,
+        buses: &[u32],
+    ) -> Option<String> {
+        let list = project.playlists.iter().find(|p| p.id == playlist)?;
+        let rows = Self::playlist_rows(project, &list.id);
+        if rows.is_empty() || self.playlist_on_air(&rows) {
+            return None;
+        }
+        let all: Vec<&RundownItem> = project
+            .rundown
+            .iter()
+            .filter(|r| r.playlist == list.id)
+            .collect();
+        let from = self
+            .played
+            .get(&list.id)
+            .and_then(|p| all.iter().position(|r| r.id == p.row))
+            .map_or(0, |at| at + 1);
+        let n = all[from.min(all.len())..]
+            .iter()
+            .find(|r| rows.iter().any(|x| x.id == r.id))
+            .or(if list.looping || from == 0 {
+                rows.first()
+            } else {
+                None
+            })
+            .map(|r| (*r).clone())?;
+        let t = project.template(&n.template_id)?;
+        let mut data = t.default_data();
+        data.extend(n.data.clone());
+        let zone = if n.zone.is_empty() {
+            t.zone.clone()
+        } else {
+            n.zone.clone()
+        };
+        let buses: &[u32] = if buses.is_empty() { &[0] } else { buses };
+        let mut taken = false;
+        for &bus in buses {
+            taken |= self
+                .apply_on(
+                    project,
+                    Command::Take {
+                        zone: (!zone.is_empty()).then(|| zone.clone()),
+                        layer: None,
+                        template_id: n.template_id.clone(),
+                        data: Some(data.clone()),
+                        rundown_id: Some(n.id.clone()),
+                    },
+                    bus,
+                )
+                .is_ok();
+        }
+        taken.then(|| list.name.clone())
+    }
+
+    /// « Stop Auto »: the graphics of the playlist on air no longer take the
+    /// next one by themselves. Returns the playlist's name when one was.
+    pub fn stop_auto(&mut self, project: &Project, playlist: &str) -> Option<String> {
+        let list = project.playlists.iter().find(|p| p.id == playlist)?;
+        let rows = Self::playlist_rows(project, &list.id);
+        let mut stopped = false;
+        for it in self.layers.values_mut() {
+            if !it.advanced
+                && it
+                    .rundown_id
+                    .as_deref()
+                    .is_some_and(|id| rows.iter().any(|r| r.id == id))
+            {
+                it.advanced = true;
+                stopped = true;
+            }
+        }
+        stopped.then(|| list.name.clone())
+    }
+
+    /// The project's Logic, each tick while the project is loaded: its
+    /// Template nodes see the graphics come in and go out (on any output),
+    /// its Playlist nodes the rows taken and the end; its actions take and
+    /// take out graphics (on the antenne), fire triggers, set variables,
+    /// clear everything, and resume or stop playlists (on their outputs:
+    /// `buses` of a playlist id). The playlist actions a graphic's Logic
+    /// asked are done here too. Returns what was done (for the as-run log).
+    pub fn run_project(
+        &mut self,
+        project: &Project,
+        buses: &dyn Fn(&str) -> Vec<u32>,
+    ) -> Vec<String> {
+        use crate::logic::{ended_key, event_key, on_air_key, played_key, var_key, NodeKind};
+        let now = now_ms();
+        let mut done = Vec::new();
+        let mut asks = std::mem::take(&mut self.run.0.asked);
+        let mut acts = Vec::new();
+        if !project.logic.nodes.is_empty() {
+            if self.run.0.project != project.id {
+                self.run.0 = ProjectRun {
+                    project: project.id.clone(),
+                    since: now,
+                    ..Default::default()
+                };
+            }
+            let graph = crate::logic::current(&project.logic);
+            let on_air: std::collections::HashSet<&str> = self
+                .layers
+                .values()
+                .filter(|i| !matches!(i.phase, Phase::Out | Phase::OutHold))
+                .map(|i| i.template_id.as_str())
+                .collect();
+            let mut data: crate::anim::Data = self.run.0.vals.clone();
+            for n in &graph.nodes {
+                match &n.kind {
+                    NodeKind::Template { template } => {
+                        let v = if on_air.contains(template.as_str()) {
+                            "1"
+                        } else {
+                            "0"
+                        };
+                        data.insert(on_air_key(template), v.into());
+                    }
+                    NodeKind::OnAir { template, .. } => {
+                        let v = if on_air.contains(template.as_str()) {
+                            "1"
+                        } else {
+                            "0"
+                        };
+                        data.insert(on_air_key(template), v.into());
+                    }
+                    NodeKind::Playlist { playlist } => {
+                        let played = self.played.get(playlist);
+                        data.insert(
+                            played_key(playlist),
+                            played.map_or(String::new(), |p| p.n.to_string()),
+                        );
+                        // Done: its last row was taken and nothing of it is on air.
+                        let rows = Self::playlist_rows(project, playlist);
+                        let ended = played
+                            .is_some_and(|p| rows.last().is_some_and(|l| l.id == p.row))
+                            && !self.playlist_on_air(&rows);
+                        data.insert(ended_key(playlist), if ended { "1" } else { "0" }.into());
+                    }
+                    NodeKind::TriggerIn { name } => {
+                        let v = self.run.0.watch.contains_key(&trigger_flag(name));
+                        data.insert(event_key(&n.id), if v { "1" } else { "0" }.into());
+                    }
+                    NodeKind::SetVar { name, .. } | NodeKind::Var { name, .. } => {
+                        self.run
+                            .0
+                            .vals
+                            .entry(var_key(name))
+                            .or_insert_with(|| "0".into());
+                    }
+                    _ => {}
+                }
+            }
+            let run = &mut self.run.0;
+            acts = crate::logic::flow::run(
+                &graph,
+                &crate::logic::flow::Tick {
+                    data: &data,
+                    secs: (now - run.since).max(0) as f64 / 1000.0,
+                    now_ms: now,
+                },
+                &mut run.watch,
+                &mut run.vals,
+            );
+        }
+        // Received once: gone after this tick.
+        self.run.0.watch.retain(|k, _| !is_pulse(k));
+        for a in acts {
+            use crate::logic::flow::Act;
+            match a {
+                Act::Take(template) => {
+                    let ok = self
+                        .apply_on(
+                            project,
+                            Command::Take {
+                                zone: None,
+                                layer: None,
+                                template_id: template.clone(),
+                                data: None,
+                                rundown_id: None,
+                            },
+                            0,
+                        )
+                        .is_ok();
+                    if ok {
+                        done.push(format!(
+                            "{} ↑",
+                            project
+                                .template(&template)
+                                .map_or(template.clone(), |t| t.name.clone())
+                        ));
+                    }
+                }
+                Act::TakeOut(template) => {
+                    let layers: Vec<u32> = self
+                        .layers
+                        .iter()
+                        .filter(|(_, i)| {
+                            i.template_id == template
+                                && !matches!(i.phase, Phase::Out | Phase::OutHold)
+                        })
+                        .map(|(l, _)| *l)
+                        .collect();
+                    for l in &layers {
+                        let _ = self.apply_on(
+                            project,
+                            Command::TakeOut {
+                                zone: None,
+                                layer: Some(*l),
+                            },
+                            0,
+                        );
+                    }
+                    if !layers.is_empty() {
+                        done.push(format!(
+                            "{} ↓",
+                            project
+                                .template(&template)
+                                .map_or(template.clone(), |t| t.name.clone())
+                        ));
+                    }
+                }
+                Act::Fire(name) => {
+                    if self
+                        .apply(project, Command::Trigger { name: name.clone() })
+                        .is_ok()
+                    {
+                        done.push(format!("⚡ {name}"));
+                    }
+                }
+                Act::SetVar { name, value, .. } => {
+                    self.run.0.vals.insert(var_key(&name), value);
+                }
+                Act::ResumePlaylist(p) => asks.push(PlaylistAsk::Resume(p)),
+                Act::StopAuto(p) => asks.push(PlaylistAsk::StopAuto(p)),
+                Act::ClearAll => {
+                    self.layers.clear();
+                    done.push("✕".into());
+                }
+                // A graphic's own actions: none in the project's Logic.
+                Act::Out | Act::Resume(_) | Act::NextRow(_) | Act::Widget { .. } => {}
+            }
+        }
+        for ask in asks {
+            match ask {
+                PlaylistAsk::Resume(p) => {
+                    if let Some(name) = self.resume_playlist(project, &p, &buses(&p)) {
+                        done.push(format!("▶ {name}"));
+                    }
+                }
+                PlaylistAsk::StopAuto(p) => {
+                    if let Some(name) = self.stop_auto(project, &p) {
+                        done.push(format!("■ {name}"));
+                    }
+                }
+            }
+        }
+        done
+    }
+
     /// Auto next between graphics: a graphic of a playlist set to auto next
     /// that has been on air for its seconds takes the next graphic of the
     /// playlist (the first after the last when it loops); it goes out unless
@@ -1799,6 +2150,8 @@ impl ChannelState {
         // Another graphic in or out, on the output of the one whose Logic says so.
         let mut takes: Vec<(String, bool, u32)> = Vec::new();
         let mut widgets: Vec<(u32, String, WidgetControl)> = Vec::new();
+        let mut asks: Vec<PlaylistAsk> = Vec::new();
+        let mut clear_all = false;
         for (layer, item) in self.layers.iter_mut() {
             if matches!(item.phase, Phase::Out) {
                 continue;
@@ -1902,6 +2255,9 @@ impl ChannelState {
                     } => set_var(item, &name, &value, transition, fps),
                     Act::Take(template) => takes.push((template, false, bus_of(*layer))),
                     Act::TakeOut(template) => takes.push((template, true, bus_of(*layer))),
+                    Act::ResumePlaylist(p) => asks.push(PlaylistAsk::Resume(p)),
+                    Act::StopAuto(p) => asks.push(PlaylistAsk::StopAuto(p)),
+                    Act::ClearAll => clear_all = true,
                     Act::Widget { layer: l, control } => {
                         if let Ok(control) = serde_json::from_value::<WidgetControl>(
                             serde_json::Value::String(control),
@@ -1974,6 +2330,13 @@ impl ChannelState {
                     format!("{name} ↑")
                 });
             }
+        }
+        // Done by run_project, on the playlists' outputs.
+        self.run.0.asked.extend(asks);
+        if clear_all {
+            self.layers.clear();
+            done.push("✕".into());
+            return done;
         }
         for (layer, target, control) in widgets {
             let _ = self.apply(
@@ -2119,6 +2482,7 @@ mod tests {
             template_secs: None,
             colors: Vec::new(),
             logic_flows: Vec::new(),
+            logic: Default::default(),
             id: "p".into(),
             name: "p".into(),
             description: String::new(),
@@ -3599,5 +3963,105 @@ mod tests {
             "{:?}",
             ch.layers.keys()
         );
+    }
+
+    #[test]
+    fn project_logic_resumes_the_playlist_after_a_synthe() {
+        use crate::model::{Playlist, RundownItem};
+        let mut p = project();
+        p.templates[0].markers.retain(|m| m.kind == MarkerKind::Out);
+        let mut s = p.templates[0].clone();
+        s.id = "s".into();
+        p.templates.push(s);
+        for (id, auto) in [("pl", true), ("sy", false)] {
+            p.playlists.push(Playlist {
+                id: id.into(),
+                name: id.into(),
+                auto_next: auto,
+                looping: false,
+                outputs: vec![],
+            });
+        }
+        let item = |id: &str, t: &str, pl: &str| RundownItem {
+            id: id.into(),
+            name: id.into(),
+            template_id: t.into(),
+            zone: String::new(),
+            playlist: pl.into(),
+            layer: 0,
+            data: Default::default(),
+            read: Default::default(),
+            auto_secs: None,
+            hold: false,
+        };
+        p.rundown = vec![
+            item("a", "t", "pl"),
+            item("b", "t", "pl"),
+            item("c", "t", "pl"),
+            item("s1", "s", "sy"),
+        ];
+        // When the synthé goes out, the Auto playlist plays on.
+        p.logic = serde_json::from_value(serde_json::json!({
+            "nodes": [
+                { "id": "n1", "type": "template", "template": "s", "x": 0, "y": 0 },
+                { "id": "n2", "type": "resumePlaylist", "playlist": "pl", "x": 300, "y": 0 }
+            ],
+            "edges": [ { "from": "n1", "fromPort": "out", "to": "n2", "port": "run" } ]
+        }))
+        .unwrap();
+        let mut ch = ChannelState::default();
+        let take = |ch: &mut ChannelState, t: &str, rid: &str| {
+            let mut c = Command::take("z", t);
+            if let Command::Take { rundown_id, .. } = &mut c {
+                *rundown_id = Some(rid.into());
+            }
+            ch.apply(&p, c).unwrap();
+        };
+        let none = |_: &str| Vec::new();
+        let run = |ch: &mut ChannelState, n: usize| {
+            let mut done = Vec::new();
+            for _ in 0..n {
+                ch.tick(1.0);
+                ch.auto_resume(&p);
+                done.extend(ch.run_project(&p, &none));
+            }
+            done
+        };
+        let on_air = |ch: &ChannelState| {
+            ch.layers
+                .values()
+                .find(|i| !matches!(i.phase, Phase::Out))
+                .and_then(|i| i.rundown_id.clone())
+        };
+        take(&mut ch, "t", "a");
+        assert!(run(&mut ch, 120).is_empty(), "nothing on the first look");
+        // The synthé replaces it in the zone.
+        take(&mut ch, "s", "s1");
+        assert!(run(&mut ch, 200).is_empty());
+        assert_eq!(on_air(&ch).as_deref(), Some("s1"));
+        // Out: the playlist plays on with the row after the one cut.
+        ch.apply(
+            &p,
+            Command::TakeOut {
+                zone: Some("z".into()),
+                layer: None,
+            },
+        )
+        .unwrap();
+        let done = run(&mut ch, 300);
+        assert_eq!(done, vec!["▶ pl".to_string()]);
+        assert_eq!(on_air(&ch).as_deref(), Some("b"));
+        // Its row on air: nothing more.
+        assert!(ch.resume_playlist(&p, "pl", &[]).is_none());
+    }
+
+    #[test]
+    fn a_graphic_logic_asks_the_playlist_actions() {
+        let mut ch = ChannelState::default();
+        ch.run.0.asked.push(PlaylistAsk::Resume("nope".into()));
+        let p = project();
+        // An unknown playlist: nothing, and the ask is gone.
+        assert!(ch.run_project(&p, &|_| Vec::new()).is_empty());
+        assert!(ch.run.0.asked.is_empty());
     }
 }

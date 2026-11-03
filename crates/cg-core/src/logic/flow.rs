@@ -13,7 +13,8 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::{
-    count_key, event_key, expr, format_number, Cx, Graph, LVal, Logic, NodeKind, TextMetric, Values,
+    count_key, ended_key, event_key, expr, format_number, on_air_key, played_key, Cx, Graph, LVal,
+    Logic, NodeKind, TextMetric, Values,
 };
 use crate::anim::Data;
 use crate::model::{Prop, Value};
@@ -32,6 +33,9 @@ pub enum Act {
     },
     Take(String),
     TakeOut(String),
+    ResumePlaylist(String),
+    StopAuto(String),
+    ClearAll,
     Widget {
         layer: String,
         control: String,
@@ -111,6 +115,39 @@ pub fn run(
                 let now = tick.data.get(&event_key(id)).is_some_and(|v| v == "1");
                 if rising(watch, format!("fl:lv:{id}"), now) {
                     fire(&mut queue, id, "out");
+                }
+            }
+            // A graphic in / out: on its change (not on the first look).
+            NodeKind::Template { template } => {
+                let now = tick
+                    .data
+                    .get(&on_air_key(template))
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                    .is_some_and(|v| v > 0.5);
+                let now = if now { "1" } else { "0" };
+                let k = format!("fl:tpl:{id}");
+                let was = watch.insert(k, now.into());
+                if was.is_some_and(|w| w != now) {
+                    fire(&mut queue, id, if now == "1" { "in" } else { "out" });
+                }
+            }
+            NodeKind::Playlist { playlist } => {
+                let took = tick
+                    .data
+                    .get(&played_key(playlist))
+                    .cloned()
+                    .unwrap_or_default();
+                let k = format!("fl:pl:{id}");
+                let was = watch.insert(k, took.clone());
+                if was.is_some_and(|w| w != took) {
+                    fire(&mut queue, id, "taken");
+                }
+                let ended = tick
+                    .data
+                    .get(&ended_key(playlist))
+                    .is_some_and(|v| v == "1");
+                if rising(watch, format!("fl:end:{id}"), ended) {
+                    fire(&mut queue, id, "end");
                 }
             }
             NodeKind::Start {} => {
@@ -267,6 +304,13 @@ pub fn run(
                 },
                 &mut queue,
             ),
+            NodeKind::ResumePlaylist { playlist } if !playlist.is_empty() => {
+                act(Act::ResumePlaylist(playlist.clone()), &mut queue)
+            }
+            NodeKind::StopAuto { playlist } if !playlist.is_empty() => {
+                act(Act::StopAuto(playlist.clone()), &mut queue)
+            }
+            NodeKind::ClearAll {} => act(Act::ClearAll, &mut queue),
             NodeKind::Widget { layer, control } => act(
                 Act::Widget {
                     layer: layer.clone(),
