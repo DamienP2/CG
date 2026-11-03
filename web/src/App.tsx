@@ -78,7 +78,7 @@ export function App() {
         <EmbedPreview />
       </Suspense>
     );
-  if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} rendition={route.rendition} />;
+  if (route.page === 'output') return <Output channelId={route.channelId ?? 'main'} rendition={route.rendition} path={route.path} />;
   return <Studio route={route} />;
 }
 

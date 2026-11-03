@@ -2323,7 +2323,7 @@ function TopControls({ channelId, channelInfo }: { channelId: string | null; cha
     <div className="opx-top">
       <OutputSelect channelId={channelId} />
       {channelInfo && (
-        <a className="opx-btn small opx-html5" href={`/output/${encodeURIComponent(channelInfo.html5?.find((h) => h.picture === 'main')?.path ?? channelInfo.id)}`} target="_blank" rel="noreferrer">
+        <a className="opx-btn small opx-html5" href={`/output/${(channelInfo.html5?.find((h) => h.picture === 'main')?.path ?? channelInfo.id).split('/').map(encodeURIComponent).join('/')}`} target="_blank" rel="noreferrer">
           HTML5 ↗
         </a>
       )}

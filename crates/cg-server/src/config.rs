@@ -87,7 +87,8 @@ pub struct Html5Config {
     pub id: String,
     #[serde(default)]
     pub name: String,
-    /// Its address: `/output/<path>` (letters, digits, - or _; unique).
+    /// Its address: `/output/<path>` (letters, digits, - or _, in parts
+    /// split by /; unique). By default `<program>/<ratio>/<n>`.
     #[serde(default)]
     pub path: String,
     /// CSS background of the page ("" = transparent).
@@ -95,12 +96,62 @@ pub struct Html5Config {
     pub background: String,
 }
 
-/// An HTML5 output's path is made of these (one segment of an address).
+/// An HTML5 output's path: parts of letters, digits, - or _, split by /.
 pub fn valid_output_path(p: &str) -> bool {
     !p.is_empty()
-        && p.len() <= 64
-        && p.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        && p.len() <= 128
+        && p.split('/').all(|part| {
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        })
+}
+
+/// A name in an address: lower case, no accents, `-` for the rest.
+pub fn path_slug(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars().flat_map(char::to_lowercase) {
+        let c = match c {
+            'à' | 'â' | 'ä' | 'á' | 'ã' | 'å' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' | 'í' | 'ì' => 'i',
+            'ô' | 'ö' | 'ó' | 'ò' | 'õ' => 'o',
+            'ù' | 'û' | 'ü' | 'ú' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            'œ' => 'o',
+            'æ' => 'a',
+            c => c,
+        };
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+        if out.len() >= 40 {
+            break;
+        }
+    }
+    let out = out.trim_end_matches('-').to_string();
+    if out.is_empty() {
+        "output".into()
+    } else {
+        out
+    }
+}
+
+/// The shape of a picture in an address: `16-9`, `9-16`, `1-1`…
+pub fn ratio_slug(width: u32, height: u32) -> String {
+    fn gcd(a: u32, b: u32) -> u32 {
+        if b == 0 {
+            a
+        } else {
+            gcd(b, a % b)
+        }
+    }
+    let g = gcd(width, height).max(1);
+    format!("{}-{}", width / g, height / g)
 }
 
 /// A place the channels belong to (a studio, a gallery, a truck…).
@@ -690,6 +741,8 @@ impl ServerConfig {
     /// Gives every HTML5 output without one its address: the channel's id
     /// for the first page of its main picture (the links of older versions),
     /// else `<channel>-<picture>`, `-2`, `-3`… — never another's.
+    /// An address for the HTML5 outputs without one: `<program>/<ratio>/<n>`
+    /// (an output of its own: its name for the ratio), `n` the first free.
     fn ensure_output_paths(&mut self) {
         let channels: HashSet<String> = self.channels.iter().map(|c| c.id.clone()).collect();
         let mut taken: HashSet<String> = self
@@ -700,38 +753,37 @@ impl ServerConfig {
             .map(|(_, o)| o.path.to_lowercase())
             .collect();
         for ch in &mut self.channels {
-            let id = ch.id.clone();
-            let mut fill = |picture: &str, o: &mut Html5Config| {
+            let program = path_slug(&ch.name);
+            let main = ratio_slug(ch.width, ch.height);
+            let mut fill = |shape: &str, o: &mut Html5Config| {
                 if !o.path.is_empty() {
                     return;
                 }
-                let base = if picture == "main" {
-                    id.clone()
-                } else {
-                    format!("{id}-{picture}")
-                };
-                let free = |p: &str| {
-                    !taken.contains(&p.to_lowercase()) && (p == id || !channels.contains(p))
-                };
-                let mut path = base.clone();
-                let mut n = 2;
+                let free = |p: &str| !taken.contains(&p.to_lowercase()) && !channels.contains(p);
+                let mut n = 1;
+                let mut path = format!("{program}/{shape}/{n}");
                 while !free(&path) {
-                    path = format!("{base}-{n}");
                     n += 1;
+                    path = format!("{program}/{shape}/{n}");
                 }
                 taken.insert(path.to_lowercase());
                 o.path = path;
             };
             for o in &mut ch.outputs.html5 {
-                fill("main", o);
+                fill(&main, o);
             }
             for r in &mut ch.renditions {
+                let shape = if r.bus > 0 {
+                    path_slug(&r.name)
+                } else {
+                    ratio_slug(r.width, r.height)
+                };
                 for o in &mut r.outputs.html5 {
-                    fill(&r.id, o);
+                    fill(&shape, o);
                 }
             }
             for o in &mut ch.unwired.html5 {
-                fill("main", o);
+                fill(&main, o);
             }
         }
     }
@@ -779,7 +831,7 @@ impl ServerConfig {
             for (_, o) in ch.all_html5() {
                 if !valid_output_path(&o.path) {
                     return Err(format!(
-                        "HTML5 output address: letters, digits, - or _ only (`{}`)",
+                        "HTML5 output address: letters, digits, - or _ only, in parts split by / (`{}`)",
                         o.path
                     ));
                 }
@@ -967,12 +1019,14 @@ mod tests {
             background: String::new(),
         };
         let mut ch: ChannelConfig = serde_json::from_str(
-            r#"{"id":"a","name":"A","width":1920,"height":1080,"frameRate":{"num":25,"den":1},
-            "renditions":[{"id":"v","name":"9:16","width":1080,"height":1920}]}"#,
+            r#"{"id":"a","name":"Plateau Élysée","width":1920,"height":1080,"frameRate":{"num":25,"den":1},
+            "renditions":[{"id":"v","name":"9:16","width":1080,"height":1920},
+                          {"id":"s","name":"Écran plateau","width":1920,"height":1080,"bus":1}]}"#,
         )
         .unwrap();
         ch.outputs.html5 = vec![page(""), page("")];
         ch.renditions[0].outputs.html5 = vec![page("")];
+        ch.renditions[1].outputs.html5 = vec![page("")];
         c.channels.push(ch);
         c.channels.push(ChannelConfig::new("b", "B"));
         c.normalize();
@@ -980,15 +1034,29 @@ mod tests {
             .all_html5()
             .map(|(_, o)| o.path.clone())
             .collect();
-        assert_eq!(paths, ["a", "a-2", "a-v"]);
+        // `<program>/<ratio>/<n>`; an output of its own: its name for the ratio.
+        assert_eq!(
+            paths,
+            [
+                "plateau-elysee/16-9/1",
+                "plateau-elysee/16-9/2",
+                "plateau-elysee/9-16/1",
+                "plateau-elysee/ecran-plateau/1"
+            ]
+        );
         assert!(c.validate().is_ok());
         // Chosen by hand: unique, and not another channel's old link.
-        c.channels[0].outputs.html5[1].path = "A".into();
+        c.channels[0].outputs.html5[1].path = "Plateau-Elysee/16-9/1".into();
         assert!(c.validate().unwrap_err().contains("already used"));
         c.channels[0].outputs.html5[1].path = "b".into();
         assert!(c.validate().unwrap_err().contains("already used"));
-        c.channels[0].outputs.html5[1].path = "obs/1".into();
+        c.channels[0].outputs.html5[1].path = "obs//1".into();
         assert!(c.validate().unwrap_err().contains("letters"));
+        c.channels[0].outputs.html5[1].path = "obs 1".into();
+        assert!(c.validate().unwrap_err().contains("letters"));
+        // Changed by hand, in parts.
+        c.channels[0].outputs.html5[1].path = "regie/obs/1".into();
+        assert!(c.validate().is_ok());
         c.channels[0].outputs.html5[1].path = "obs-plateau".into();
         assert!(c.validate().is_ok());
     }

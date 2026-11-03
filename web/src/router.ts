@@ -26,7 +26,8 @@ export type Route =
   | { page: 'legacyOperator'; channelId: string | null }
   | { page: 'mosPlugin' }
   | { page: 'embedPreview' }
-  | { page: 'output'; channelId: string | null; rendition: string | null };
+  /** `path`: all after /output/ (an HTML5 output's address, in parts); else a channel and its rendition (older links). */
+  | { page: 'output'; channelId: string | null; rendition: string | null; path: string };
 
 const SUBS: ProjectPage[] = ['designer', 'operator', 'social', 'data', 'media'];
 
@@ -76,6 +77,7 @@ export function parseRoute(path = location.pathname): Route {
         page: 'output',
         channelId: second ?? null,
         rendition: third ?? null,
+        path: path.split('/').filter(Boolean).slice(1).map(decodeURIComponent).join('/'),
       };
     default:
       return { page: 'projects' };

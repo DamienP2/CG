@@ -29,7 +29,7 @@ export const ux3: Record<string, string> = {
   'Name required': 'Nom obligatoire',
   'Address required': 'Adresse obligatoire',
   'Address already used': 'Adresse déjà utilisée',
-  'Letters, digits, - or _ only': 'Lettres, chiffres, - ou _ seulement',
+  'Letters, digits, - or _, in parts split by /': 'Lettres, chiffres, - ou _, en parties séparées par /',
   'Web address “{name}” already used': 'Adresse web « {name} » déjà utilisée',
   'Web address: letters, digits, - or _ only': 'Adresse web : lettres, chiffres, - ou _ seulement',
   'Port {port} already in use': 'Port {port} déjà utilisé',

@@ -11,10 +11,12 @@ import { OutputDebug } from './OutputDebug';
  * or /output/<channel>[/<rendition>]. Query params: `scale=fit|1` (default
  * fit), `bg=<css color>` for checks, `debug` for motion measures.
  */
-export function Output({ channelId: at, rendition: asked }: { channelId: string; rendition?: string | null }) {
+export function Output({ channelId: first, rendition: second, path = '' }: { channelId: string; rendition?: string | null; /** All after /output/. */ path?: string }) {
   const { connect, channels, full, live } = useApp();
-  // The address of an HTML5 output (else a channel's id, older links).
-  const page = asked ? undefined : channels.flatMap((c) => (c.html5 ?? []).map((h) => ({ c, h }))).find((x) => x.h.path.toLowerCase() === at.toLowerCase());
+  // The address of an HTML5 output (« plateau-a/16-9/1 »), else a channel's id and its rendition (older links).
+  const page = channels.flatMap((c) => (c.html5 ?? []).map((h) => ({ c, h }))).find((x) => x.h.path.toLowerCase() === (path || first).toLowerCase());
+  const at = page ? page.c.id : first;
+  const asked = page ? null : second;
   const channelId = page?.c.id ?? at;
   const rendition = page ? (page.h.picture === 'main' ? null : page.h.picture) : asked;
   const params = new URLSearchParams(location.search);
@@ -26,11 +28,12 @@ export function Output({ channelId: at, rendition: asked }: { channelId: string;
 
   useEffect(() => {
     document.documentElement.classList.add('output-mode');
-    connect(at);
+    // The address as asked (the server knows the HTML5 outputs' addresses).
+    connect(path || first);
     const onResize = () => setSize({ w: innerWidth, h: innerHeight });
     addEventListener('resize', onResize);
     return () => removeEventListener('resize', onResize);
-  }, [connect, at]);
+  }, [connect, path, first]);
 
   const channel = channels.find((c) => c.id === channelId);
   if (!channel) return null;

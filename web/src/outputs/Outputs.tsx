@@ -188,7 +188,7 @@ const formatLabel = (ch: ChannelConfig) => {
 const sourceFormatName = (f: { h: number; fps: number; interlaced: boolean }) => `${f.h}${f.interlaced ? 'i' : 'p'} ${+f.fps.toFixed(2)}`;
 
 /** The web page of an HTML5 output (its background is its own). */
-const outputUrl = (path: string) => `${location.origin}/output/${encodeURIComponent(path)}`;
+const outputUrl = (path: string) => `${location.origin}/output/${path.split('/').map(encodeURIComponent).join('/')}`;
 
 /** Addresses of the HTML5 outputs (lower case), but `except`. */
 const html5Paths = (all: ServerConfig, except?: Html5Output) =>
@@ -198,18 +198,26 @@ const html5Paths = (all: ServerConfig, except?: Html5Output) =>
 const pathError = (all: ServerConfig, ch: ChannelConfig, o: Html5Output) => {
   const p = (o.path ?? '').trim();
   if (!p) return t('Address required');
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(p)) return t('Letters, digits, - or _ only');
+  if (p.length > 128 || !/^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/.test(p)) return t('Letters, digits, - or _, in parts split by /');
   if (html5Paths(all, o).has(p.toLowerCase()) || all.channels.some((x) => x.id !== ch.id && x.id === p)) return t('Address already used');
   return '';
 };
 
-/** A free address from `base` (base, base-2…). */
-const freePath = (all: ServerConfig, ch: string, base: string) => {
+/** The shape of a picture in an address: `16-9`, `9-16`… (crates/cg-server/src/config.rs ratio_slug). */
+const ratioSlug = (w: number, h: number) => {
+  const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+  const g = Math.max(1, gcd(w, h));
+  return `${w / g}-${h / g}`;
+};
+
+/** The address a new HTML5 page gets: `<program>/<ratio>/<n>` (an output of its own: its name for the ratio), `n` the first free; it can be changed. */
+const defaultPath = (all: ServerConfig, ch: ChannelConfig, p?: Picture) => {
   const taken = html5Paths(all);
-  const free = (p: string) => !taken.has(p.toLowerCase()) && (p === ch || !all.channels.some((x) => x.id === p));
-  let p = base;
-  for (let n = 2; !free(p); n++) p = `${base}-${n}`;
-  return p;
+  const shape = p && (p.bus ?? 0) > 0 ? slug(p.name) : ratioSlug(p?.width ?? ch.width, p?.height ?? ch.height);
+  const base = `${slug(ch.name)}/${shape}`;
+  let n = 1;
+  while (taken.has(`${base}/${n}`.toLowerCase())) n++;
+  return `${base}/${n}`;
 };
 
 const slug = (s: string) =>
@@ -583,7 +591,7 @@ export function Outputs({ mode }: { mode: Mode }) {
         while ([...urls].some((u) => u.endsWith(`:${port}`) || u.includes(`:${port}/`) || u.includes(`:${port}?`))) port++;
         (picOutputs.streams ??= []).push({ id, name: t('Stream {n}', { n }), protocol: 'srt', url: `srt://0.0.0.0:${port}`, listen: true, bitrate: 8000, codec: 'h264', background: '#000000', audio: true });
       } else {
-        (picOutputs.html5 ??= []).push({ id, name: t('Web page'), path: freePath(all, c.id, !picture || p.id === 'main' ? c.id : `${c.id}-${p.id}`), background: '' });
+        (picOutputs.html5 ??= []).push({ id, name: t('Web page'), path: defaultPath(all, c, picture ? p : undefined), background: '' });
       }
     });
     if (at) setLayout((l) => ({ ...l, [ch.id]: { ...(l[ch.id] ?? {}), [id]: at } }));
@@ -734,7 +742,9 @@ export function Outputs({ mode }: { mode: Mode }) {
     const id = `channel-${n}`;
     edit((c) => {
       c.locations = c.locations?.length ? c.locations : [...locations];
-      c.channels.push({ id, name: t('Channel {n}', { n }), width: first?.width ?? 1920, height: first?.height ?? 1080, frameRate: first?.frameRate ?? { num: 50, den: 1 }, projectId: null, location: loc, outputs: { st2110: [], sdi: [], ndi: [], html5: [{ id: 'html5-1', name: t('Web page'), path: freePath(c, id, id), background: '' }], streams: [] }, renditions: [] });
+      const made: ChannelConfig = { id, name: t('Channel {n}', { n }), width: first?.width ?? 1920, height: first?.height ?? 1080, frameRate: first?.frameRate ?? { num: 50, den: 1 }, projectId: null, location: loc, outputs: { st2110: [], sdi: [], ndi: [], html5: [], streams: [] }, renditions: [] };
+      made.outputs.html5!.push({ id: 'html5-1', name: t('Web page'), path: defaultPath(c, made), background: '' });
+      c.channels.push(made);
     });
     setCurrent(id);
     setSel('program');
