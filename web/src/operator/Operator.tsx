@@ -1727,6 +1727,18 @@ interface RowMenuItem {
 /** A rundown row's menu (« … » or right-click), kept in the window; Esc or a click elsewhere closes it. */
 function RowMenu({ at, items, onClose }: { at: { x: number; y: number }; items: (RowMenuItem | null)[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  // Where it fits, from its real size: under the click, else above it, always in the window.
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    const m = 8;
+    const left = Math.max(m, Math.min(at.x, window.innerWidth - width - m));
+    const below = at.y + height + m <= window.innerHeight;
+    const top = below ? at.y : Math.max(m, Math.min(at.y - height, window.innerHeight - height - m));
+    setPos({ left, top });
+  }, [at.x, at.y, items.length]);
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && (e.preventDefault(), onClose());
     const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && onClose();
@@ -1740,7 +1752,7 @@ function RowMenu({ at, items, onClose }: { at: { x: number; y: number }; items: 
     };
   }, [onClose]);
   return createPortal(
-    <div ref={ref} className="menu project-menu clip-menu opx-row-menu" style={{ position: 'fixed', left: Math.max(8, Math.min(at.x, window.innerWidth - 240)), top: Math.max(8, Math.min(at.y, window.innerHeight - 240)), right: 'auto' }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+    <div ref={ref} className="menu project-menu clip-menu opx-row-menu" style={{ position: 'fixed', left: pos?.left ?? at.x, top: pos?.top ?? at.y, right: 'auto', maxHeight: 'calc(100vh - 16px)', overflowY: 'auto', visibility: pos ? undefined : 'hidden' }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
       {items.map((it, i) =>
         it ? (
           <button key={i} className={it.danger ? 'danger' : ''} disabled={it.disabled} onClick={() => (onClose(), void it.run())}>
