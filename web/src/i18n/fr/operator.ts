@@ -108,7 +108,7 @@ export const operator: Record<string, string> = {
   'never read': 'jamais lu',
   'read {n} s ago': 'lu il y a {n} s',
   'read {n} min ago': 'lu il y a {n} min',
-  'No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).': 'Aucune source de données : l’opérateur saisit les valeurs. Liez une variable à une source dans le Designer (canevas Données).',
+  'No data source: the operator types the values. Link a variable to a source in the Designer (Data canvas).': 'Aucune source de données : l’opérateur saisit les valeurs. Liez une variable à une source dans le Designer (canevas Logique).',
   'Read the data': 'Lire les données',
   '{name} checked every': '{name} vérifiée toutes les',
   'How often the server reads the source (for every graphic using it)': 'Fréquence de lecture de la source par le serveur (pour tous les habillages qui l’utilisent)',

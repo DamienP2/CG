@@ -1,33 +1,24 @@
 import { widgetOf } from '../widgets';
 import { HexColorField } from '../ui/fields';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Calculator, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Radio, Repeat, Rows3, Timer, ToggleLeft, Trash2, Type, Variable, Wand2, X, Zap, Blend, Pause, ChevronsUp, FlipVertical2 } from 'lucide-react';
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { create } from 'zustand';
+import { ArrowDown, ArrowDownUp, ArrowLeft, ArrowRight, ArrowUp, Database, Filter, Hash, Image as ImageIcon, Palette, Plus, Rows3, ToggleLeft, Trash2, Type, Variable, Wand2, X, } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { isTable, pipeline, useBoundData, useData, useProjectSources, useSources, type Stage } from '../data/dataStore';
-import { col, holdFrame, interpolateText, newId, num, parseHex, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, clockAt, fromPortOf, measureLayer, nodeValues, withOutputs } from '../engine/logic';
-import { names, parse } from '../engine/expr';
+import { holdFrame, interpolateText, newId, parseHex, resolveLayer, toHex } from '../engine/evaluate';
+import { withOutputs } from '../engine/logic';
 import { api, useApp } from '../store';
-import { columnKey, linesKey, rowKey, tableKey, TEXT_LIKE, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type LiveChange, type Logic, type LogicNode, type Prop, type Template, type ValueChange } from '../engine/types';
-import { isTimed } from '../engine/widgets';
+import { columnKey, linesKey, rowKey, tableKey, type CondOp, type DataSet, type Data, type DataFilter, type DataFlow, type DataStep, type Field, type FieldKind, type FlowNode, type Layer, type Logic, type LogicNode, type Prop, type Template } from '../engine/types';
 import { navigate, projectPath } from '../router';
 import { autoLayout, measureNodes, type LayoutEdge } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { findLayer, useDesigner } from './designerStore';
-import { AssetPicker, fieldKey, PROP_LABELS } from './Inspector';
-import { layerIcon } from './LayersPanel';
-import { WidgetRunButtons } from './WidgetRun';
-import { ExprInput, fmt } from './LogicEditor';
-import { BuildCard, TableNodeInfo } from './TableBuild';
+import { AssetPicker, fieldKey } from './Inspector';
+import { BuildCard } from './TableBuild';
 import { unexposeRows } from '../widgets/table-rows';
-import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
-import { fedKey } from '../engine/valueMotion';
 import { getPath, setPath } from '../widgets/kit';
-import { isColorValue, settingLabel, settingPorts } from '../engine/settingPorts';
 import { fieldUsed, forgetKeys, formatSetting, settingKind } from '../engine/settings';
-import { lang, t, tc, tn } from '../i18n';
+import { t, tn } from '../i18n';
 
 /*
  * Data canvas. The data goes through as tables:
@@ -43,7 +34,6 @@ import { lang, t, tc, tn } from '../i18n';
  * the nodes, are a per-browser layout.
  */
 
-export const useDataCanvas = create<{ open: boolean; set: (open: boolean) => void }>((set) => ({ open: false, set: (open) => set({ open }) }));
 
 /** Content edited by hand only (a data set's table goes into the widget's source next to it). */
 const HAND_ONLY = new Set(['grid', 'entries']);
@@ -61,7 +51,6 @@ const takesTable = (l: Layer, port: string) => TABLE_PORTS[l.type] === port;
 export const tablePortOf = (l: Layer): string | undefined => TABLE_PORTS[l.type];
 /** The layer's items are one text (the social wall's JSON), not a list (the ticker's). */
 const textItems = (l: Layer) => l.type === 'socialWall';
-const CONTENT_LABEL: Record<string, string> = { src: 'Picture', text: 'Text', link: 'Rows', csv: 'Rows', items: 'Items', 'title.text': 'Title' };
 type Item = { cat?: string; text?: string; on?: boolean };
 const contentValue = (l: Layer, port: string) => {
   // The ticker's items are a list (the social wall's are a text).
@@ -69,17 +58,6 @@ const contentValue = (l: Layer, port: string) => {
   if (port === 'items' && Array.isArray(items)) return (items as Item[]).map((i) => i.text ?? '').join('\n');
   return String(getPath(l, port) ?? '');
 };
-/** "12 rows · Team, Pts…" for a data set's whole table. */
-function tableSummary(v: string): string | null {
-  if (!v.startsWith('[[')) return null;
-  try {
-    const a = JSON.parse(v) as string[][];
-    const head = a[0] ?? [];
-    return tn(a.length - 1, '{n} row · {columns}', '{n} rows · {columns}', { columns: `${head.slice(0, 3).join(', ')}${head.length > 3 ? '…' : ''}` });
-  } catch {
-    return null;
-  }
-}
 /** Wires `{{key}}` into a layer's content port (`x` is the draft layer). */
 function wireContent(x: Layer, port: string, key: string) {
   // A data set's rows into a text or a typewriter: a line per row (or only the current one, in the Operator).
@@ -185,21 +163,6 @@ function dropField(t: Template, key: string) {
   t.fields = t.fields.filter((f) => f.key !== key);
 }
 
-/** Properties a layer exposes as ports. */
-function portsOf(l: Layer): string[] {
-  const props: Prop[] = ['x', 'y', 'width', 'height', 'scaleX', 'scaleY', 'rotation', 'opacity'];
-  if (l.type !== 'image' && l.type !== 'slideshow') props.push('fill');
-  if (l.type !== 'image' && l.type !== 'slideshow' && l.type !== 'progress' && l.type !== 'qrCode') props.push('stroke', 'strokeWidth');
-  if (l.type === 'rect' || l.type === 'group' || l.type === 'progress') props.push('cornerRadius');
-  if (TEXT_LIKE.has(l.type)) props.push('fontSize', 'letterSpacing');
-  if (l.type === 'image') props.push('cropLeft', 'cropRight', 'cropTop', 'cropBottom');
-  if (l.type === 'ellipse') props.push('arcStart', 'arcEnd', 'innerRadius');
-  if (l.type === 'pen') props.push('drawStart', 'drawEnd');
-  if (l.type === 'rect') props.push('cornerTl', 'cornerTr', 'cornerBr', 'cornerBl');
-  if (['rect', 'ellipse', 'polygon', 'pen', 'text'].includes(l.type)) props.push('fill2');
-  return props;
-}
-const isColor = (p: string) => p === 'fill' || p === 'stroke' || p === 'fill2';
 
 /** Text operations of a Transform node. */
 const TRANSFORMS: { make: () => DataFilter; label: string }[] = [
@@ -244,8 +207,6 @@ const CONDITIONS: { op: CondOp; label: string; value: boolean }[] = [
 
 const W = { source: 360, step: 320, field: 250, logic: 210, layer: 260 };
 const HEAD = 34;
-const ROW = 24;
-const CROW = 52;
 const COLS = { source: 40, field: 1640, logic: 1940, layer: 2220 };
 
 interface Layout {
@@ -346,58 +307,8 @@ function migrate(t: Template): DataFlow {
   return flow;
 }
 
-/** How a new value shows on air (Layer.liveChanges). */
-const VALUE_CHANGES: { value: ValueChange; label: string; Icon: typeof Zap }[] = [
-  { value: 'hold', label: 'No automatic update', Icon: Pause },
-  { value: 'cut', label: 'Cut', Icon: Zap },
-  { value: 'fade', label: 'Fade', Icon: Blend },
-  { value: 'slide', label: 'Slide', Icon: ChevronsUp },
-  { value: 'flip', label: 'Flip', Icon: FlipVertical2 },
-  { value: 'count', label: 'Count up', Icon: Hash },
-  { value: 'outIn', label: 'Out, then in again', Icon: Repeat },
-];
 
-/** Height of the transition rows under a port (LiveRows). */
-const LIVE_H = 50;
 
-/** Under a layer's port fed by a source or a data set: how a new value of the keys wired there shows on air (icons), and its length (slider). */
-function LiveRows({ template, layer, keys }: { template: Template; layer: Layer; keys: string[] }) {
-  const update = useDesigner((s) => s.update);
-  // Set on the variable before it was the layers'.
-  const onVariable = (k: string): LiveChange | undefined => {
-    const b = template.fields.find((f) => f.key === k)?.binding;
-    return b?.change ? { kind: b.change, secs: b.changeSecs } : undefined;
-  };
-  const cur = layer.liveChanges?.[keys[0]] ?? onVariable(keys[0]);
-  const kind = cur?.kind ?? 'cut';
-  const secs = cur?.secs ?? 0.6;
-  const set = (v: LiveChange, coalesce?: string) =>
-    update((t) => {
-      const l = findLayer(t, layer.id)!;
-      const all = (l.liveChanges ??= {});
-      for (const k of keys) {
-        if (v.kind !== 'cut' || onVariable(k)) all[k] = v;
-        else delete all[k];
-      }
-      if (!Object.keys(all).length) delete l.liveChanges;
-    }, coalesce);
-  return (
-    <div className="dc-live" style={{ height: LIVE_H }} title={t('When the value changes on air')} onPointerDown={(e) => e.stopPropagation()}>
-      <div className="dc-live-icons">
-        {VALUE_CHANGES.map((o) => (
-          <button key={o.value} className={o.value === kind ? 'on' : ''} title={tc('value change', o.label)} onClick={() => set({ kind: o.value, secs: cur?.secs })}>
-            <o.Icon size={12} />
-          </button>
-        ))}
-      </div>
-      <div className={`dc-live-secs ${kind === 'cut' || kind === 'hold' ? 'off' : ''}`} title={t('Duration')}>
-        <Timer size={11} />
-        <input type="range" min={0.1} max={3} step={0.1} value={secs} disabled={kind === 'cut' || kind === 'hold'} onChange={(e) => set({ kind, secs: +e.target.value }, `live-${layer.id}-${keys[0]}`)} />
-        <span>{secs.toFixed(1).replace('.', lang() === 'fr' ? ',' : '.')} s</span>
-      </div>
-    </div>
-  );
-}
 
 /** The fields' bindings from the graph. */
 function compile(t: Template, flow: DataFlow) {
@@ -501,14 +412,24 @@ export function unfeedTable(t: Template, l: Layer) {
 /** The title of the Layer nodes this canvas makes in the Logic (they go when unwired). */
 const DC_MADE = 'Data canvas';
 
-export function DataCanvas() {
-  const { open, set: setOpen } = useDataCanvas();
-  const template = useDesigner((s) => s.template);
-  if (!open || !template) return null;
-  return <Canvas key={template.id} template={template} onClose={() => setOpen(false)} />;
+/** What the Logic canvas gives its Données layer. */
+export interface DataLayerOpts {
+  template: Template;
+  cv: ReturnType<typeof useCanvasView>;
+  spaceRef: React.RefObject<HTMLDivElement | null>;
+  /** A variable (or a data set column) dropped on an input of a Logic node. */
+  onKeyIntoLogic: (key: string, node: string, port: string) => void;
+  /** A variable dropped in the void (screen point in the viewport, point in the space). */
+  onKeyVoid: (key: string, sx: number, sy: number, at: Pt) => void;
 }
 
-function Canvas({ template, onClose }: { template: Template; onClose: () => void }) {
+/**
+ * The Données layer of the Logic canvas: data sources, the steps on the way (filter, sort,
+ * transform), data sets and variables, with their palette; and what the Logic's Layer nodes
+ * need to bind a variable to a layer (its content as {{key}}, a property, a setting).
+ */
+export function useDataLayer(o: DataLayerOpts) {
+  const { template } = o;
   const { update, previewData, frame } = useDesigner(useShallow((s) => ({ update: s.update, previewData: s.previewData, frame: s.frame })));
   const projectId = useApp((s) => s.project?.id);
   // Lookups by id: every source; the palette: this project's and the shared ones.
@@ -516,7 +437,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const offered = useProjectSources(projectId);
   const bound = useBoundData(template, previewData);
   const values = useMemo(() => withOutputs(template, frame, { ...previewData, ...bound }, holdFrame(template), resolveLayer), [template, frame, previewData, bound]);
-  const cv = useCanvasView(`data.${template.id}`, '.logic-node', { onArrange: () => arrange() });
+  const cv = o.cv;
   const [layout, setLayoutState] = useState<Layout>(() => loadLayout(template.id));
   const [drag, setDrag] = useState<{ wire: Wire; x: number; y: number } | null>(null);
   const [ghost, setGhost] = useState<{ label: string; x: number; y: number } | null>(null);
@@ -524,12 +445,9 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   const [dsColumns, setDsColumns] = useState<Record<string, string[]>>({});
   // The Table whose "Build the table" card is open.
   const [building, setBuilding] = useState<string | null>(null);
-  // A wire dropped in the void: the layers it can go into.
-  const [dropMenu, setDropMenu] = useState<{ sx: number; sy: number; at: Pt; wire: Wire } | null>(null);
-  const [layerQuery, setLayerQuery] = useState('');
   // Where each port's dot is in its node, measured once drawn: the wires start and end on the dots,
   // whatever the rows, sizes and fonts of the node.
-  const spaceRef = useRef<HTMLDivElement>(null);
+  const spaceRef = o.spaceRef;
   const [portAt, setPortAt] = useState<Record<string, PortSpot>>({});
   useLayoutEffect(() => {
     const space = spaceRef.current;
@@ -553,7 +471,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     for (const n of space.querySelectorAll('.logic-node')) ro.observe(n);
     return () => ro.disconnect();
   });
-  const logic: Logic = template.logic ?? { nodes: [], edges: [] };
   const migrated = useMemo(() => (template.dataflow ? null : migrate(template)), [template]);
   const flow: DataFlow = template.dataflow ?? migrated!;
 
@@ -568,51 +485,18 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       return next;
     });
 
-  // Values at the playhead: layer properties and logic nodes.
-  const resolved = useMemo(() => {
-    const hold = holdFrame(template);
-    const m = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, values, hold)]));
-    applyLogic(template.logic, m, values, measureLayer(template.layers, values, interpolateText));
-    return m;
-  }, [template, frame, values]);
   // The Calculate nodes (the Logic's math): their results at the playhead.
   const calcs = (template.logic?.nodes ?? []).filter((n): n is LogicNode & { type: 'expr' } => n.type === 'expr');
-  const logicValues = useMemo(() => nodeValues(template.logic ?? { nodes: [], edges: [] }, resolved, values, measureLayer(template.layers, values, interpolateText), clockAt(frame)), [template.logic, template.layers, resolved, values, frame]);
-  /** Properties a Calculate node sets (a wire into a row of a Layer node of the Logic). */
-  const calcTargets = (l: Layer): string[] => {
-    const lg = template.logic;
-    if (!lg) return [];
-    const ids = new Set(calcs.map((n) => n.id));
-    const layerNodes = new Set(lg.nodes.filter((n) => n.type === 'layer' && n.layer === l.id).map((n) => n.id));
-    return lg.edges.filter((e) => layerNodes.has(e.to) && ids.has(e.from) && !e.port.includes('.')).map((e) => e.port);
-  };
 
-  // ---- What the canvas shows and where.
-  /** The keys from a source or a data set wired at a port of `l` (its new values can move on air). */
-  const liveKeys = (l: Layer, port: string): string[] => {
-    const keys = contentOf(l).includes(port) ? [...contentValue(l, port).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]) : port.startsWith('s:') ? [l.settingBindings?.[port.slice(2)] ?? ''] : [l.bindings[port as Prop] ?? ''];
-    return [...new Set(keys.filter((k) => k && fedKey(template, k)))];
-  };
-  const wiredPorts = (l: Layer) => new Set<string>([...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p), ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))), ...settingPortsOf(l), ...calcTargets(l)]);
-  /** Properties with a port: the usual ones, and any other one set from the data (anchor, crop… exposed in the Inspector). */
-  const propPortsOf = (l: Layer) => [...portsOf(l), ...(Object.entries(l.bindings) as [Prop, string][]).filter(([p, k]) => k && !portsOf(l).includes(p)).map(([p]) => p)];
-  /** Content ports always; the settings set from the data; properties when unfolded (or wired). */
-  const ports = (l: Layer) => {
-    const wired = wiredPorts(l);
-    return [...contentOf(l), ...settingPortsOf(l), ...propPortsOf(l).filter((p) => layout.collapsed[l.id] === false || wired.has(p))];
-  };
-  /** The keys from a source or a data set wired at a port (not typed by the Operator): its transition rows under it. */
-  const liveAt = (l: Layer, port: string): string[] => (wiredPorts(l).has(port) && !exposureAt(l, port) ? liveKeys(l, port) : []);
-  const portHeight = (l: Layer, port: string) => (contentOf(l).includes(port) ? CROW : ROW) + (liveAt(l, port).length ? LIVE_H : 0);
-  const portTop = (l: Layer, port: string) => {
-    let y = HEAD;
-    for (const p of ports(l)) {
-      if (p === port) return y;
-      y += portHeight(l, p);
-    }
-    return -1;
-  };
-  const layerHeight = (l: Layer) => HEAD + ports(l).reduce((h, p) => h + portHeight(l, p), 0) + 30 + 26 + (isTimed(l) ? 40 : 0);
+
+  /** The rows of a Logic Layer node the data sets for `l` (`content.text`, `width`, `setting.x`). */
+  const boundRows = (l: Layer): string[] => [
+    ...contentOf(l).filter((c) => /\{\{\w+\}\}/.test(contentValue(l, c))).map((c) => `content.${c}`),
+    ...(Object.entries(l.bindings) as [Prop, string][]).filter(([, k]) => k).map(([p]) => p as string),
+    ...settingPortsOf(l).map((p) => `setting.${p.slice(2)}`),
+  ];
+
+
 
   const widthOf = (id: string, def: number) => layout.size[id]?.w ?? def;
   const nodePos = new Map<string, Pt>();
@@ -638,12 +522,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     COLS.field,
     shownFields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
   );
-  /** The layers on the canvas: those wired (or with a value the Operator types), and those put there. */
-  const dcLayers = template.layers.filter((l) => layout.shown.includes(l.id) || wiredPorts(l).size > 0 || [...folded.values()].some((e) => e.layer === l.id));
-  stack(
-    COLS.layer,
-    dcLayers.map((l) => [`l:${l.id}`, layerHeight(l)]),
-  );
   for (const n of flow.nodes) nodePos.set(n.id, { x: n.x, y: n.y });
   // A data set is drawn as wide as a source.
   const flowWidth = (n: FlowNode) => widthOf(n.id, n.type === 'source' || n.type === 'dataset' ? W.source : W.step);
@@ -662,24 +540,16 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     const p = nodePos.get(id)!;
     return spot(`i:${id}`, { x: p.x, y: p.y + HEAD / 2 });
   };
-  const layerIn = (l: Layer, port: string): Pt | null => {
-    const p = nodePos.get(`l:${l.id}`);
-    const top = portTop(l, port);
-    if (!p || top < 0) return null;
-    return spot(`i:l:${l.id}:${port}`, { x: p.x, y: p.y + top + ROW / 2 });
-  };
   const logicOut = (n: LogicNode) => ({ x: n.x + widthOf(n.id, W.logic), y: n.y + HEAD / 2 });
-  const logicIn = (n: LogicNode, port: string) => ({ x: n.x, y: n.y + HEAD + (n.type === 'expr' ? n.inputs.indexOf(port) : 0) * ROW + ROW / 2 });
 
   // ---- Editing the template.
   const editLogic = (fn: (l: Logic) => void, key?: string) =>
     update((t) => {
       t.logic ??= { nodes: [], edges: [] };
       fn(t.logic);
-      // Field nodes, and the Layer nodes made here, only exist through their wires.
+      // Field nodes only exist through their wires.
       const lg = t.logic;
-      for (const n of lg.nodes) if (n.type === 'layer' && n.title === DC_MADE) n.rows = n.rows.filter((r) => lg.edges.some((e) => e.to === n.id && e.port === r.key));
-      lg.nodes = lg.nodes.filter((n) => (n.type === 'field' ? lg.edges.some((e) => e.from === n.id) : n.type === 'layer' && n.title === DC_MADE ? n.rows.length > 0 : true));
+      lg.nodes = lg.nodes.filter((n) => (n.type === 'field' ? lg.edges.some((e) => e.from === n.id) : true));
       if (!t.logic.nodes.length) delete t.logic;
     }, key);
   const setNode = (id: string, patch: Partial<LogicNode>, key?: string) =>
@@ -753,53 +623,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     links.push({ from: a.id, to: e.to.startsWith('field:') ? `f:${e.to.slice(6)}` : e.to });
     wires.push({ d: curve(outOf(a.id, flowWidth(a)), to), data: true, edge: i, title: t('Data (click to remove · drop a Filter, Sort or Transform on it)'), onClick: () => editFlow((f) => void f.edges.splice(i, 1)) });
   });
-  for (const l of dcLayers)
-    for (const port of [...contentOf(l), ...settingPortsOf(l), ...propPortsOf(l)]) {
-      const to = layerIn(l, port);
-      if (!to) continue;
-      const content = contentOf(l).includes(port);
-      const setting = port.startsWith('s:') ? port.slice(2) : null;
-      // From a variable or a data set column (an exposed value is in the node itself: no wire).
-      const keys = (content ? [...template.fields.map((f) => f.key), ...columnPorts.keys(), ...calcNode.keys()].filter((k) => tokensIn(l, port, k)) : [setting ? l.settingBindings?.[setting] : l.bindings[port as Prop]]).filter((k): k is string => !!k && !!keyOut(k));
-      for (const key of keys) {
-        links.push({ from: nodePos.has(`f:${key}`) ? `f:${key}` : (columnNode.get(key) ?? calcNode.get(key) ?? ''), to: `l:${l.id}` });
-        wires.push({
-          d: curve(keyOut(key)!, to),
-          data: columnPorts.has(key),
-          title: t('{key} → {layer} {port} (click to remove)', { key, layer: l.name, port: content ? port : setting ? settingLabel(l, setting, t).label : t(PROP_LABELS[port as Prop]) }),
-          onClick: () =>
-            update((t) => {
-              const x = findLayer(t, l.id)!;
-              if (content) unwireContent(x, port, key);
-              else if (setting) unbindSetting(x, setting);
-              else delete x.bindings[port as Prop];
-            }),
-        });
-      }
-    }
-  const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
-  // Wires into and out of the Calculate nodes (a variable or another result in, a layer's value out).
-  logic.edges.forEach((e, i) => {
-    const a = nodes.get(e.from);
-    const b = nodes.get(e.to);
-    if (!a || !b || (a.type !== 'expr' && b.type !== 'expr') || fromPortOf(e) !== 'out') return;
-    const from = a.type === 'field' ? keyOut(a.key) : a.type === 'expr' ? logicOut(a) : null;
-    let to: Pt | null = null;
-    if (b.type === 'layer') {
-      const l = template.layers.find((x) => x.id === b.layer);
-      to = l && !e.port.includes('.') ? layerIn(l, e.port) : null;
-    } else if (b.type === 'expr') to = logicIn(b, e.port);
-    if (!from || !to) return;
-    wires.push({ d: curve(from, to), title: t('Click to remove'), onClick: () => editLogic((l) => void l.edges.splice(i, 1)) });
-  });
-
   /**
    * Lays the nodes out from left to right: sources first, the layers last,
    * the steps, data sets and variables in between where their wires go.
    */
   const arrange = () => {
     const size = measureNodes(cv.ref.current);
-    const all = [...flow.nodes.map((n) => n.id), ...shownFields.map((f) => `f:${f.key}`), ...dcLayers.map((l) => `l:${l.id}`)];
+    const all = [...flow.nodes.map((n) => n.id), ...shownFields.map((f) => `f:${f.key}`)];
     const at = autoLayout(
       all.map((id) => ({ id, ...(size[id] ?? { w: W.step, h: 160 }), side: id.startsWith('l:') ? ('end' as const) : flow.nodes.some((n) => n.id === id && n.type === 'source') ? ('start' as const) : undefined })),
       links,
@@ -821,8 +651,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       return n ? outOf(n.id, flowWidth(n)) : null;
     }
     if (w.kind === 'field') return keyOut(w.key);
-    const n = nodes.get(w.id);
-    return n ? logicOut(n) : null;
+    return null;
   };
 
   const connect = (w: Wire, target: HTMLElement | null, at: Pt) => {
@@ -853,7 +682,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           if (y && kind && y.kind === 'text' && kind !== 'text') y.kind = kind;
         });
         const lp = nodePos.get(`l:${l.id}`)!;
-        const place = freeSpot(document.querySelector('.data-canvas .logic-canvas'), { x: lp.x - W.field - 80, y: at.y - HEAD / 2 }, W.field);
+        const place = freeSpot(document.querySelector('.logic-editor .logic-canvas'), { x: lp.x - W.field - 80, y: at.y - HEAD / 2 }, W.field);
         setLayout((s) => ({ ...s, pos: { ...s.pos, [`f:${x.key}`]: place } }));
       } else if (!target?.closest('.dc-node')) {
         // Dropped on empty space: a new variable fed from here.
@@ -864,7 +693,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
           linkFlow(f, w.id, `field:${made}`);
           compile(t, f);
         });
-        const spot = freeSpot(document.querySelector('.data-canvas .logic-canvas'), { x: at.x, y: at.y - HEAD / 2 });
+        const spot = freeSpot(document.querySelector('.logic-editor .logic-canvas'), { x: at.x, y: at.y - HEAD / 2 });
         setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${made}`]: spot } }));
       }
       return;
@@ -959,10 +788,13 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       window.removeEventListener('pointerup', up);
       setDrag(null);
       const target = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
-      // A value dropped in the void: which layer it goes into.
-      if (wire.kind !== 'flow' && !target?.closest('.dc-node, .logic-node, .port, .logic-palette')) {
+      // A value on an input of the Logic: there.
+      const lx = target?.closest<HTMLElement>('.lx-port.in');
+      if (wire.kind === 'field' && lx) return o.onKeyIntoLogic(wire.key, lx.dataset.node!, lx.dataset.port!);
+      // A value dropped in the void: what it can go into.
+      if (wire.kind === 'field' && !target?.closest('.dc-node, .lx-node, .logic-node, .port, .lx-port, .lx-pal')) {
         const vr = cv.ref.current?.getBoundingClientRect();
-        if (vr) setDropMenu({ sx: ev.clientX - vr.left, sy: ev.clientY - vr.top, at: point(ev.clientX, ev.clientY), wire });
+        if (vr) o.onKeyVoid(wire.key, ev.clientX - vr.left, ev.clientY - vr.top, point(ev.clientX, ev.clientY));
         return;
       }
       connect(wire, target, point(ev.clientX, ev.clientY));
@@ -976,7 +808,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
     if (e.button !== 0 || (e.target as HTMLElement).closest('select, input, button, .port, textarea, label, [data-scroll], .cv-resize')) return;
     e.preventDefault();
     const start = point(e.clientX, e.clientY);
-    const base = nodePos.get(id) ?? { x: nodes.get(id)!.x, y: nodes.get(id)!.y };
+    const base = nodePos.get(id)!;
     useDesigner.setState({ lastCoalesce: null });
     document.body.classList.add('cv-moving');
     const move = (ev: PointerEvent) => {
@@ -1004,7 +836,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   };
   /** The first free place in view (from the top left) for a node `w` wide; below the others when the view is full. */
   const freeInView = (w: number, h = 120): Pt => {
-    const world = document.querySelector('.data-canvas .logic-canvas');
+    const world = document.querySelector('.logic-editor .logic-canvas');
     const rects = [...(world?.querySelectorAll<HTMLElement>('.logic-node') ?? [])].map((el) => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }));
     const free = (x: number, y: number) => !rects.some((r) => x < r.x + r.w + 24 && x + w + 24 > r.x && y < r.y + r.h + 24 && y + h + 24 > r.y);
     const v = cv.visible();
@@ -1014,7 +846,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
   };
   /** A node already on the canvas: brought into view and flashed. */
   const focusNode = (id: string) => {
-    const el = document.querySelector<HTMLElement>(`.data-canvas [data-node-id="${CSS.escape(id)}"]`);
+    const el = document.querySelector<HTMLElement>(`.logic-editor [data-node-id="${CSS.escape(id)}"]`);
     const vp = cv.ref.current;
     if (!el || !vp) return;
     const v = cv.visible();
@@ -1044,7 +876,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setGhost(null);
-      const world = document.querySelector('.data-canvas .logic-canvas');
+      const world = document.querySelector('.logic-editor .logic-canvas');
       if (!moved) return onClick ? onClick() : add(freeInView(width));
       const el = document.elementFromPoint(ev.clientX, ev.clientY) as Element | null;
       if (!el?.closest('.logic-canvas')) return;
@@ -1103,28 +935,66 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
       if (into) for (const to of outs) f.edges.push({ from: into, to });
     });
 
-  return (
-    <div className="logic-editor data-canvas" onKeyDown={(e) => e.stopPropagation()}>
-      <CanvasHeader icon={<Database size={15} />} title={t('Data')} subject={template.name} onClose={onClose} />
-      <div className="logic-body">
-        <aside className="logic-palette">
-          <div className="dc-pal-title">{t('Layers of the template')}</div>
-          {template.layers.length > 8 && <input className="dc-layer-search" value={layerQuery} placeholder={t('Search')} onChange={(e) => setLayerQuery(e.target.value)} />}
-          <div className="dc-layer-list">
-            {template.layers
-              .filter((l) => !layerQuery.trim() || l.name.toLowerCase().includes(layerQuery.trim().toLowerCase()))
-              .map((l) => {
-                const on = dcLayers.includes(l);
-                const Icon = layerIcon(l);
-                return (
-                  <button key={l.id} className={`kind-layer ${on ? 'placed' : ''}`} disabled={on} onClick={() => setLayout((s) => ({ ...s, shown: [...s.shown.filter((x) => x !== l.id), l.id] }))}>
-                    <Icon size={13} />
-                    <strong>{l.name}</strong>
-                    <em>{on ? t('placed') : '+'}</em>
-                  </button>
-                );
-              })}
-          </div>
+  // ---- What the Logic canvas asks of it.
+  /** The place its nodes take (null: none). */
+  const bounds = (): { x0: number; y0: number; x1: number; y1: number } | null => {
+    const size = measureNodes(cv.ref.current);
+    const boxes = [...flow.nodes.map((n) => ({ id: n.id, ...nodePos.get(n.id)! })), ...shownFields.map((f) => ({ id: `f:${f.key}`, ...nodePos.get(`f:${f.key}`)! }))].filter((b) => b.x !== undefined);
+    if (!boxes.length) return null;
+    const w = (id: string) => size[id]?.w ?? widthOf(id, id.startsWith('f:') ? W.field : W.source);
+    const h = (id: string) => size[id]?.h ?? 140;
+    return { x0: Math.min(...boxes.map((b) => b.x)), y0: Math.min(...boxes.map((b) => b.y)), x1: Math.max(...boxes.map((b) => b.x + w(b.id))), y1: Math.max(...boxes.map((b) => b.y + h(b.id))) };
+  };
+  /** Its nodes whose corner is in a box (a frame), with where they are. */
+  const nodesIn = (r: { x: number; y: number; w: number; h: number }) =>
+    [...nodePos.entries()].filter(([id, p]) => (id.startsWith('f:') || flow.nodes.some((n) => n.id === id)) && p.x >= r.x && p.y >= r.y && p.x <= r.x + r.w && p.y <= r.y + r.h).map(([id, p]) => ({ id, x: p.x, y: p.y }));
+  /** Moves its nodes (one step to undo for the data graph). */
+  const place = (at: Record<string, Pt>, key?: string) => {
+    const flowIds = Object.keys(at).filter((id) => flow.nodes.some((n) => n.id === id));
+    if (flowIds.length)
+      editFlow((f) => {
+        for (const n of f.nodes) if (at[n.id]) Object.assign(n, at[n.id]);
+      }, key);
+    const fields = Object.entries(at).filter(([id]) => id.startsWith('f:'));
+    if (fields.length) setLayout((l) => ({ ...l, pos: { ...l.pos, ...Object.fromEntries(fields) } }));
+  };
+  /** A Layer row (`content.text`, `width`, `setting.x`) as this canvas names the port (`text`, `width`, `s:x`). */
+  const portOf = (row: string) => (row.startsWith('content.') ? row.slice(8) : row.startsWith('setting.') ? `s:${row.slice(8)}` : row);
+  /** The variables (or data set columns) a row of a layer takes. */
+  const keysAt = (l: Layer, row: string): string[] => {
+    const port = portOf(row);
+    if (row.startsWith('content.')) return [...template.fields.map((f) => f.key), ...columnPorts.keys()].filter((k) => tokensIn(l, port, k));
+    const k = port.startsWith('s:') ? l.settingBindings?.[port.slice(2)] : l.bindings[port as Prop];
+    return k ? [k] : [];
+  };
+  /** A variable into a row: in the text ({{key}}), the property or the setting. */
+  const bind = (layerId: string, row: string, key: string) => {
+    const el = document.createElement('span');
+    el.className = 'port in';
+    el.dataset.layer = layerId;
+    el.dataset.port = portOf(row);
+    connect({ kind: 'field', key }, el, { x: 0, y: 0 });
+  };
+  const unbind = (layerId: string, row: string, key: string) =>
+    update((t) => {
+      const x = findLayer(t, layerId)!;
+      const port = portOf(row);
+      if (row.startsWith('content.')) unwireContent(x, port, key);
+      else if (port.startsWith('s:')) unbindSetting(x, port.slice(2));
+      else delete x.bindings[port as Prop];
+    });
+  /** The value the Operator types at a row, and stopping it. */
+  const exposure = (l: Layer, row: string) => {
+    const f = exposureAt(l, portOf(row));
+    return f ? { label: f.label, stop: () => unexpose(l, portOf(row), f.key) } : undefined;
+  };
+  /** What a content row shows with the data (its {{keys}} filled in). */
+  const preview = (l: Layer, row: string) => interpolateText(contentValue(l, portOf(row)), values);
+
+  return {
+    /** Its families, at the top of the Logic palette. */
+    palette: (
+      <div className="logic-palette lx-datapal">
           <button
             className="kind-field"
             onPointerDown={(e) =>
@@ -1189,14 +1059,6 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
             );
           })}
 
-          <div className="dc-pal-title">{t('Operations')}</div>
-          <button className="kind-math" onPointerDown={(e) => fromPalette(e, t('Math'), (at) => editLogic((l) => void l.nodes.push({ id: newId(), type: 'expr', expr: 'a + b', inputs: ['a', 'b'], x: at.x, y: at.y })), W.logic)}>
-            <Calculator size={14} />
-            <span>
-              <strong>{t('Math')}</strong>
-            </span>
-          </button>
-
           <div className="dc-pal-title">{t('Into the graphic')}</div>
           <button className="kind-dataset" onPointerDown={(e) => fromPalette(e, t('Data set'), addDataset, W.source)}>
             <Rows3 size={14} />
@@ -1204,13 +1066,11 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               <strong>{t('Data set')}</strong>
             </span>
           </button>
-        </aside>
-
-        <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`} onPointerDown={(e) => {
-            if (dropMenu && !(e.target as HTMLElement).closest('.dc-drop')) setDropMenu(null);
-            cv.viewport.onPointerDown(e);
-          }}>
-          <div className="logic-space" ref={spaceRef} data-canvas-void style={cv.spaceStyle}>
+      </div>
+    ),
+    /** Its nodes and wires, in the Logic canvas's space. */
+    space: (
+      <>
             <svg className="logic-wires">
               {wires.map((w, i) => (
                 <g key={i} className="wire-g">
@@ -1321,7 +1181,7 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
                     >
                       <Trash2 size={11} />
                     </button>
-                    <span className="port out" data-wire={`o:f:${f.key}`} title={t("Drag to a layer's value or to an operation")} onPointerDown={(e) => startWire(e, { kind: 'field', key: f.key })} />
+                    <span className="port out" data-wire={`o:f:${f.key}`} data-pk={`key:${f.key}`} title={t("Drag to a layer's value or to an operation")} onPointerDown={(e) => startWire(e, { kind: 'field', key: f.key })} />
                   </div>
                   <div className="ln-body">
                     <div className="row">
@@ -1359,215 +1219,34 @@ function Canvas({ template, onClose }: { template: Template; onClose: () => void
               );
             })}
 
-            {/* Calculate: A op B, from variables or other results, into a layer's value */}
-            {calcs.map((n) => (
-              <div key={n.id} data-node-id={n.id} className="logic-node dc-node kind-math" style={{ left: n.x, top: n.y, width: widthOf(n.id, W.logic) }} onPointerDown={(e) => dragNode(e, n.id, 'logic')}>
-                <div className="ln-head" style={{ height: HEAD }}>
-                  <Calculator size={12} />
-                  <span>{t('Math')}</span>
-                  <span className="ln-value">{fmt(logicValues.get(`${n.id}|out`))}</span>
-                  <button
-                    className="ln-del"
-                    title={t('Delete')}
-                    onClick={() =>
-                      editLogic((l) => {
-                        l.nodes = l.nodes.filter((x) => x.id !== n.id);
-                        l.edges = l.edges.filter((x) => x.from !== n.id && x.to !== n.id);
-                      })
-                    }
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                  <span className="port out" title={t("Drag to a layer's value or to another calculation")} onPointerDown={(e) => startWire(e, { kind: 'logic', id: n.id })} />
-                </div>
-                {n.inputs.map((port) => (
-                  <div key={port} className="ln-input" style={{ height: ROW }}>
-                    <span className="port in" data-logic={n.id} data-port={port} />
-                    <span>{port}</span>
-                  </div>
-                ))}
-                <div className="ln-body">
-                  <ExprInput value={n.expr} k={`dc-${n.id}-e`} placeholder="a + b" onChange={(x, key) => setNode(n.id, { expr: x } as Partial<LogicNode>, key)} />
-                  {names(parse(n.expr)).some((x) => !n.inputs.includes(x)) && (
-                    <button className="dc-addfilter" onClick={() => setNode(n.id, { inputs: [...n.inputs, ...names(parse(n.expr)).filter((x) => !n.inputs.includes(x))] } as Partial<LogicNode>)}>
-                      + {names(parse(n.expr)).filter((x) => !n.inputs.includes(x)).join(', ')}
-                    </button>
-                  )}
-                </div>
-                {resizer(n.id, false)}
-              </div>
-            ))}
-
-            {/* Layers: what they show (text, picture); their properties folded */}
-            {dcLayers.map((l) => {
-              const p = nodePos.get(`l:${l.id}`)!;
-              const Icon = layerIcon(l);
-              const wired = wiredPorts(l);
-              const r = resolved.get(l.id);
-              const hidden = portsOf(l).filter((x) => !ports(l).includes(x)).length;
-              return (
-                <div key={l.id} data-node={`l:${l.id}`} data-node-id={`l:${l.id}`} className="logic-node dc-node kind-layer" style={{ left: p.x, top: p.y, width: widthOf(`l:${l.id}`, W.layer) }} onPointerDown={(e) => dragNode(e, `l:${l.id}`, 'layout')}>
-                  <div className="ln-head" style={{ height: HEAD }}>
-                    <Icon size={12} />
-                    <span>{l.name}</span>
-                    {!wired.size && (
-                      <button className="ln-del" title={t('Remove from the canvas')} onClick={() => setLayout((s) => ({ ...s, shown: s.shown.filter((x) => x !== l.id) }))}>
-                        <X size={11} />
-                      </button>
-                    )}
-                  </div>
-                  {ports(l).map((port) => {
-                    const content = contentOf(l).includes(port);
-                    // A value the Operator types (exposed in the Inspector): here, with its (•) to stop.
-                    const op = exposureAt(l, port);
-                    const opMark = op && <OperatorMark field={op} onStop={() => unexpose(l, port, op.key)} />;
-                    const live = liveAt(l, port);
-                    const liveRows = live.length > 0 && <LiveRows template={template} layer={l} keys={live} />;
-                    if (content) {
-                      const raw = contentValue(l, port);
-                      const isWired = wired.has(port) && !op;
-                      const result = interpolateText(raw, values);
-                      return (
-                        <div key={port} className={`ln-content ${wired.has(port) ? 'wired' : ''}`} style={{ height: CROW + (live.length ? LIVE_H : 0) }}>
-                          <div className="ln-input" style={{ height: ROW }}>
-                            <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={takesTable(l, port) ? t("Drop a data set's All rows here (or a variable)") : t('Drop a variable here')} />
-                            {port === 'src' ? <ImageIcon size={11} /> : takesTable(l, port) ? <Rows3 size={11} /> : <Type size={11} />} {CONTENT_LABEL[port] ? t(CONTENT_LABEL[port]) : port}
-                            {isWired && <span className="dc-from">{t('from data')}</span>}
-                            {op && (
-                              <span className="dc-from" style={{ marginRight: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t('Key: {key}', { key: op.key })}>
-                                {op.label}
-                              </span>
-                            )}
-                            {opMark}
-                          </div>
-                          {op ? (
-                            op.kind === 'multiline' || op.kind === 'table' || op.default.includes('\n') ? (
-                              <span className="dc-value live" title={op.default}>
-                                {tableSummary(op.default) ?? (op.default.length > 60 ? `${op.default.slice(0, 60)}…` : op.default.replace(/\n/g, ' ⏎ '))}
-                              </span>
-                            ) : (
-                              <input className="dc-content-input" value={op.default} title={t('Value until the operator types another one')} onChange={(e) => editField(op.key, (x) => void (x.default = e.target.value), `default-${op.key}`)} />
-                            )
-                          ) : isWired && port === 'src' && cellType(result) === 'image' ? (
-                            <span className="dc-value live dc-pic" title={result}>
-                              <img src={result} alt="" /> {result.split('/').pop()}
-                            </span>
-                          ) : isWired ? (
-                            <span className="dc-value live" title={t('Result: {value}', { value: result })}>
-                              {result === '' ? t('(empty)') : (tableSummary(result) ?? (result.length > 60 ? `${result.slice(0, 60)}…` : result.replace(/\n/g, ' ⏎ ')))}
-                            </span>
-                          ) : port === 'items' && !textItems(l) ? (
-                            <span className="dc-value">{raw ? tn(raw.split('\n').length, '{n} item (Inspector)', '{n} items (Inspector)') : t('No items')}</span>
-                          ) : (
-                            <input
-                              className="dc-content-input"
-                              value={raw}
-                              placeholder={takesTable(l, port) ? t("A data set's All rows") : undefined}
-                              title={t('Default value (until a variable is wired)')}
-                              onChange={(e) => update((t) => setPath(findLayer(t, l.id), port, e.target.value), `content-${l.id}-${port}`)}
-                            />
-                          )}
-                          {liveRows}
-                        </div>
-                      );
-                    }
-                    if (port.startsWith('s:')) {
-                      const path = port.slice(2);
-                      const key = l.settingBindings?.[path];
-                      const sv = key !== undefined && values[key] !== undefined ? values[key] : getPath(l, path);
-                      return (
-                        <Fragment key={port}>
-                        <div className="ln-input wired dc-setting" style={{ height: ROW }}>
-                          <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={t('Drop a variable or a data set column here')} />
-                          <span title={path}>{settingLabel(l, path, t).label.replace(`${t('General')} · `, '')}</span>
-                          <span className="dc-port-value live" title={op ? t('Value until the operator types another one') : t('Value it gets from the data')}>
-                            {isColorValue(sv) ? <span className="dc-swatch" style={{ background: String(sv) }} /> : String(sv ?? '').slice(0, 14)}
-                          </span>
-                          {opMark || (
-                            <button className="dc-unset" title={t('Stop setting it from the data')} onClick={() => update((t) => unbindSetting(findLayer(t, l.id)!, path))}>
-                              ×
-                            </button>
-                          )}
-                        </div>
-                        {liveRows}
-                        </Fragment>
-                      );
-                    }
-                    const v = r ? r[port as Prop] : undefined;
-                    return (
-                      <Fragment key={port}>
-                      <div className={`ln-input ${wired.has(port) ? 'wired' : ''}`} style={{ height: ROW }}>
-                        <span className="port in" data-layer={l.id} data-port={port} data-wire={`i:l:${l.id}:${port}`} title={t('Drop a variable or an operation here')} />
-                        <span>{PROP_LABELS[port as Prop] ? t(PROP_LABELS[port as Prop]) : port}</span>
-                        <span className={`dc-port-value ${wired.has(port) ? 'live' : ''}`} title={op ? t('Value until the operator types another one') : wired.has(port) ? t('Value it gets from the data') : t('Value in Properties')}>
-                          {v === undefined ? '' : isColor(port) ? <span className="dc-swatch" style={{ background: toHex(col(v), true) }} /> : +num(v).toFixed(2)}
-                        </span>
-                        {opMark}
-                      </div>
-                      {liveRows}
-                      </Fragment>
-                    );
-                  })}
-                  <SettingAdd layer={l} onPick={(path) => update((t) => void ((findLayer(t, l.id)!.settingBindings ??= {})[path] ??= ''))} />
-                  <button className="dc-props-toggle" onClick={() => setLayout((x) => ({ ...x, collapsed: { ...x.collapsed, [l.id]: x.collapsed[l.id] === false ? true : false } }))} title={t('Position, size, colours… (Properties)')}>
-                    {hidden ? tn(hidden, '+ {n} property', '+ {n} properties') : t('− Fold the properties')}
-                  </button>
-                  {isTimed(l) && (
-                    <div className="ln-body">
-                      <WidgetRunButtons layer={l} compact />
-                    </div>
-                  )}
-                  {l.type === 'table' && <TableNodeInfo layer={l} values={values} onBuild={() => setBuilding(l.id)} />}
-                  {resizer(`l:${l.id}`, false)}
-                </div>
-              );
-            })}
             {(() => {
               const l = building ? template.layers.find((x) => x.id === building) : undefined;
               if (!l) return null;
               return <BuildCard key={l.id} layer={l} template={template} values={values} onClose={() => setBuilding(null)} />;
             })()}
-          </div>
-          {/* Nothing yet: a small icon and a word, centred (as in the Operator). */}
-          {dropMenu && (
-            <div className="lx-quick dc-drop" style={{ left: dropMenu.sx, top: dropMenu.sy }} onPointerDown={(e) => e.stopPropagation()}>
-              <div className="lx-qh">{t('Into a layer')}</div>
-              <div className="lx-qlist">
-                {template.layers
-                  .filter((l) => contentOf(l).length > 0)
-                  .map((l) => (
-                    <button
-                      key={l.id}
-                      onClick={() => {
-                        const port = contentOf(l)[0];
-                        setLayout((s) => ({ ...s, shown: [...s.shown.filter((x) => x !== l.id), l.id] }));
-                        // As if dropped on the layer's first content port.
-                        const el = document.createElement('span');
-                        el.className = 'port in';
-                        el.dataset.layer = l.id;
-                        el.dataset.port = port;
-                        connect(dropMenu.wire, el, dropMenu.at);
-                        setDropMenu(null);
-                      }}
-                    >
-                      {l.name}
-                      <em>{CONTENT_LABEL[contentOf(l)[0]] ? t(CONTENT_LABEL[contentOf(l)[0]]) : contentOf(l)[0]}</em>
-                    </button>
-                  ))}
-              </div>
-            </div>
-          )}
-          {!flow.nodes.length && !shownFields.length && !dcLayers.length && <CanvasVoid icon={Database} text={t('No data')} />}
-          {cv.controls}
-        </div>
-      </div>
+      </>
+    ),
+    /** Over everything (a node being dragged from the palette). */
+    overlays: <>
       {ghost && (
         <div className="cv-ghost" style={{ left: ghost.x, top: ghost.y }}>
           {ghost.label}
         </div>
       )}
-    </div>
-  );
+    </>,
+    bounds,
+    nodesIn,
+    place,
+    arrange,
+    keysAt,
+    bind,
+    unbind,
+    exposure,
+    preview,
+    boundRows,
+    build: (layer: string) => setBuilding(layer),
+    empty: !flow.nodes.length && !shownFields.length,
+  };
 }
 
 /** Latest value of a data source, for the tables and the sort's lists. */
@@ -1906,7 +1585,7 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
         <Rows3 size={11} className="dc-type" />
         <span className="ds-name">{t('All rows')}</span>
         <span className="ds-val">{tbl ? t('{rows} × {columns} table', { rows: total, columns: cols.length }) : ''}</span>
-        <span className="port out" style={DS_DOT} data-wire={`o:k:${tableKey(node.key)}`} title={t('Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
+        <span className="port out" style={DS_DOT} data-wire={`o:k:${tableKey(node.key)}`} data-pk={`key:${tableKey(node.key)}`} title={t('Drag to a Table, Credits, Ticker or Chart: the whole table (key {key})', { key: tableKey(node.key) })} onPointerDown={(e) => startWire(e, tableKey(node.key))} />
       </div>
       {cols.map((c, i) => {
         const Icon = TYPE_ICON[types[i]];
@@ -1918,7 +1597,7 @@ function DataSetBody({ node, chain, data, onColumns, onRow, startWire }: { node:
             <span className="ds-val" title={v}>
               <Cell v={v} />
             </span>
-            <span className="port out" style={DS_DOT} data-wire={`o:k:${columnKey(node.key, c)}`} title={t("Drag {column} to a layer's value (key {key})", { column: c, key: columnKey(node.key, c) })} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
+            <span className="port out" style={DS_DOT} data-wire={`o:k:${columnKey(node.key, c)}`} data-pk={`key:${columnKey(node.key, c)}`} title={t("Drag {column} to a layer's value (key {key})", { column: c, key: columnKey(node.key, c) })} onPointerDown={(e) => startWire(e, columnKey(node.key, c))} />
           </div>
         );
       })}
@@ -2106,75 +1785,5 @@ function DefaultEditor({ field: f, onChange }: { field: Field; onChange: (fn: (f
   }
 }
 
-/** The (•) of a value exposed to the Operator, as in the Inspector: one click stops. */
-function OperatorMark({ field, onStop }: { field: Field; onStop: () => void }) {
-  return (
-    <button className="pp-op on" style={{ flex: 'none', width: 20, height: 20, marginRight: 4 }} title={t('Exposed to the Operator ({fields}) · click to stop', { fields: field.label })} onClick={onStop}>
-      <Radio size={12} />
-    </button>
-  );
-}
 
-export function DataCanvasButton({ className = 'btn small' }: { className?: string }) {
-  const open = useDataCanvas((s) => s.set);
-  // What the canvas holds: its nodes and the fields fed by a source.
-  const count = useDesigner((s) => (s.template?.dataflow?.nodes.length ?? 0) + (s.template?.fields.filter((f) => f.binding?.source).length ?? 0));
-  return (
-    <button className={`${className} ${count ? 'has' : ''}`} onClick={() => open(true)} title={t("Sources, filters, variables, operations and the layers' values, on a canvas")}>
-      <Database size={13} /> {t('Data')}
-    </button>
-  );
-}
 
-/** "+ Setting from data": picks a setting of the layer to give a port (then wire a variable or a column into it). */
-function SettingAdd({ layer, onPick }: { layer: Layer; onPick: (path: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [open]);
-  const taken = new Set(Object.keys(layer.settingBindings ?? {}));
-  const all = open ? settingPorts(layer, t).filter((s) => !taken.has(s.path) && !contentOf(layer).includes(s.path)) : [];
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const list = all.filter((s) => words.every((w) => s.label.toLowerCase().includes(w)));
-  const groups = [...new Set(list.map((s) => s.group))];
-  return (
-    <div className="dc-setadd" ref={ref}>
-      <button className="dc-props-toggle" onClick={() => setOpen(!open)} title={t('A colour, a size, a switch… of this widget set from the data')}>
-        <Plus size={11} /> {t('Setting from data')}
-      </button>
-      {open && (
-        <div className="dc-setmenu" data-scroll onWheel={(e) => e.stopPropagation()}>
-          <input autoFocus placeholder={t('Search a setting (colour, title…)')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)} />
-          <div className="dc-setlist">
-            {groups.map((g) => (
-              <div key={g}>
-                <div className="dc-setgroup">{g}</div>
-                {list
-                  .filter((s) => s.group === g)
-                  .map((s) => (
-                    <button
-                      key={s.path}
-                      onClick={() => {
-                        onPick(s.path);
-                        setOpen(false);
-                        setQ('');
-                      }}
-                    >
-                      {isColorValue(s.value) ? <span className="dc-swatch" style={{ background: String(s.value) }} /> : <span className="dc-setv">{s.value === undefined ? '' : String(s.value).slice(0, 10)}</span>}
-                      <span>{s.label.slice(g.length + 3) || s.label}</span>
-                    </button>
-                  ))}
-              </div>
-            ))}
-            {!list.length && <em className="dc-setnone">{t('No setting')}</em>}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

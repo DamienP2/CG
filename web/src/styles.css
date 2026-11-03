@@ -6461,7 +6461,7 @@ a.btn {
   text-transform: uppercase;
   color: var(--text-3);
 }
-.data-canvas .ln-head .port.in {
+.dc-node .ln-head .port.in {
   left: -7px;
 }
 .dc-title {
@@ -6506,7 +6506,7 @@ a.btn {
 .dc-value.live {
   color: var(--pvw);
 }
-.data-canvas .ln-input {
+.dc-node .ln-input {
   gap: 6px;
 }
 .dc-port-del {
@@ -6519,7 +6519,7 @@ a.btn {
   padding: 2px;
   display: none;
 }
-.data-canvas .ln-input:hover .dc-port-del {
+.dc-node .ln-input:hover .dc-port-del {
   display: inline-flex;
 }
 .live-dot.err {
@@ -7511,11 +7511,11 @@ a.btn {
   height: 20px;
   cursor: pointer;
 }
-.data-canvas .ln-input.wired {
+.dc-node .ln-input.wired {
   color: var(--text);
   font-weight: 600;
 }
-.data-canvas .ln-input.wired .port {
+.dc-node .ln-input.wired .port {
   background: var(--kind);
 }
 .dc-port-value {
@@ -22580,4 +22580,73 @@ textarea.tx-grow {
 }
 .dc-drop .lx-qlist button {
   justify-content: flex-start;
+}
+
+/* ---- Logic canvas: the data part (sources, steps, data sets, variables) ---- */
+.lx .fam-data { --fam: #34d399; }
+.lx-dframe {
+  --fc: #34d399;
+  pointer-events: none;
+}
+.lx-dframe .lx-fhead {
+  pointer-events: auto;
+  cursor: grab;
+  color: var(--text);
+}
+.lx-dframe .lx-fhead svg {
+  color: var(--fc);
+}
+.lx-view {
+  margin-left: 12px;
+}
+.lx.view-data .lx-node,
+.lx.view-data .lx-pill,
+.lx.view-data .lx-frame:not(.lx-dframe),
+.lx.view-logic .dc-node,
+.lx.view-logic .lx-dframe {
+  opacity: 0.22;
+  transition: opacity 0.15s;
+}
+.lx.view-data .lx-node:hover,
+.lx.view-logic .dc-node:hover {
+  opacity: 0.7;
+}
+.lx.view-data .logic-wires .wire:not(.data-key),
+.lx.view-logic .logic-wires .wire.data-key {
+  opacity: 0.15;
+}
+.lx .logic-wires .wire.data-key {
+  stroke: #34d399;
+  stroke-dasharray: 6 4;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.lx-datapal {
+  display: grid;
+  gap: 6px;
+  padding: 2px 0 6px;
+}
+.lx-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 50%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid color-mix(in srgb, var(--pvw) 50%, transparent);
+  color: var(--pvw);
+  border-radius: 10px;
+  padding: 0 4px 0 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.lx-op button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  line-height: 1;
 }

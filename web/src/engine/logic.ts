@@ -26,6 +26,7 @@ export const metricOf = (key: string): TextMetric | undefined => METRIC_KEYS[key
 /** The type of a Layer row. */
 export function rowType(key: string): PortType {
   if (metricOf(key)) return 'num';
+  if (key.startsWith('setting.')) return 'any';
   if (key === 'content.src' || key.endsWith('.src') || key === 'content.image') return 'img';
   if (key.startsWith('content.')) return key === 'content.link' || key === 'content.items' || key === 'content.csv' ? 'list' : 'text';
   return COLOR_PROPS.has(key as Prop) ? 'color' : 'num';
@@ -261,7 +262,7 @@ function targetsOf(logic: Logic, g: Graph) {
   const out: { node: string; layer: string; key: string; mode: string }[] = [];
   for (const n of logic.nodes) {
     if (n.type !== 'layer' || !g.acts(n.id)) continue;
-    for (const r of n.rows) if (!metricOf(r.key) && !r.key.startsWith('content.') && g.inputs.has(`${n.id}|${r.key}`)) out.push({ node: n.id, layer: n.layer, key: r.key, mode: r.mode ?? 'set' });
+    for (const r of n.rows) if (!metricOf(r.key) && !r.key.includes('.') && g.inputs.has(`${n.id}|${r.key}`)) out.push({ node: n.id, layer: n.layer, key: r.key, mode: r.mode ?? 'set' });
   }
   return out;
 }

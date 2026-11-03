@@ -1,4 +1,4 @@
-import { BookMarked, BoxSelect, ChevronDown, ChevronRight, ClipboardPaste, Copy, Link2, Plus, Search, Sparkles, Star, Trash2, X } from 'lucide-react';
+import { BookMarked, BoxSelect, ChevronDown, ChevronRight, ClipboardPaste, Copy, Database, Link2, Plus, Search, Sparkles, Star, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
@@ -11,6 +11,8 @@ import { HexColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { can, useApp } from '../store';
 import { useLogicFlows } from '../logicFlows';
 import { InsertModal, needsOf, PresetsModal, SaveFlowModal, type Needs } from './logicLibrary';
+import { useDataLayer } from './DataCanvas';
+import { settingLabel } from '../engine/settingPorts';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
@@ -233,8 +235,15 @@ function fits(n: LogicNode, want: { type: PortType; side: 'in' | 'out' }): Port 
 
 /** The Logic: what the graphic draws (values, conditions) and what happens on air (events, triggers, actions, variables), one graph. */
 export function LogicEditor({ onClose }: { onClose: () => void }) {
-  const { template, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
-  const cv = useCanvasView(`logic.${template?.id ?? ''}`, '.lx-node, .lx-frame, .lx-pill', { onArrange: () => arrange() });
+  const id = useDesigner((s) => s.template?.id);
+  if (!id) return null;
+  return <LogicCanvas key={id} onClose={onClose} />;
+}
+
+function LogicCanvas({ onClose }: { onClose: () => void }) {
+  const { template: tpl, update, frame, previewData } = useDesigner(useShallow((s) => ({ template: s.template, update: s.update, frame: s.frame, previewData: s.previewData })));
+  const template = tpl!;
+  const cv = useCanvasView(`logic.${template.id}`, '.lx-node, .lx-frame, .lx-pill, .dc-node', { onArrange: () => arrange() });
   const sizesKey = `logic.sizes.${template?.id ?? ''}`;
   const [sizes, setSizesState] = useState<Record<string, number>>(() => displayPref(sizesKey, {}));
   const setSize = (id: string, w: number) =>
@@ -270,6 +279,16 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   }, [flowsLoaded]);
   const searchRef = useRef<HTMLInputElement>(null);
   const spaceRef = useRef<HTMLDivElement>(null);
+  // The Données layer: sources, steps, data sets, variables (and binding them to layers).
+  const keyHandlers = useRef<{ into: (key: string, node: string, port: string) => void; void: (key: string, sx: number, sy: number, at: { x: number; y: number }) => void } | null>(null);
+  const data = useDataLayer({
+    template,
+    cv,
+    spaceRef,
+    onKeyIntoLogic: (k, n, p) => keyHandlers.current?.into(k, n, p),
+    onKeyVoid: (k, sx, sy, at) => keyHandlers.current?.void(k, sx, sy, at),
+  });
+  const [view, setView] = useState<'all' | 'data' | 'logic'>('all');
   const logic: Logic = template?.logic ?? { nodes: [], edges: [] };
   const frames = logic.frames ?? [];
   const projectTemplates = useApp((s) => s.project?.templates.length ?? 0);
@@ -312,10 +331,23 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     if (JSON.stringify(next) !== JSON.stringify(pos)) setPos(next);
   });
 
-  if (!template) return null;
   const nodes = new Map(logic.nodes.map((n) => [n.id, n]));
+  /** A Logic « field » node whose variable is on the canvas: the variable stands for it. */
+  const hiddenField = (n: LogicNode | undefined) => n?.type === 'field' && !!pos[`key:${n.key}`];
   const collapsedOf = (n: LogicNode | undefined) => (n?.frame ? frames.find((f) => f.id === n.frame && f.collapsed) : undefined);
   const wiredIn = new Set(logic.edges.map((e) => `${e.to}|${e.port}`));
+  /** The « Show in a text » nodes whose value a content row shows ({{calc_…}} in it). */
+  const shownBy = (l: Layer, row: string) => {
+    if (!row.startsWith('content.')) return [];
+    const raw = String((l as unknown as Record<string, unknown>)[row.slice(8)] ?? '');
+    return logic.nodes.filter((x): x is LogicNode & { type: 'setField' } => x.type === 'setField' && raw.includes(`{{${x.key}}}`));
+  };
+  // A row of a Layer node fed by the data shows as wired.
+  for (const n of logic.nodes)
+    if (n.type === 'layer') {
+      const l = template.layers.find((x) => x.id === n.layer);
+      if (l) for (const r of n.rows) if (!metricOf(r.key) && (data.keysAt(l, r.key).length || shownBy(l, r.key).length)) wiredIn.add(`${n.id}|${r.key}`);
+    }
   const wiredOut = new Set(logic.edges.map((e) => `${e.from}|${fromPortOf(e)}`));
   const others = projectTemplates - 1;
 
@@ -338,6 +370,51 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     }, key);
   const toWorld = cv.toWorld;
 
+  /**
+   * Puts the data nodes left of the logic ones: always (`align`, after Arrange: side by side, tops
+   * level), or only when they overlap (a template from before the two canvases were one).
+   */
+  const keepDataLeft = (align: boolean) => {
+    const b = data.bounds();
+    const ns = (useDesigner.getState().template?.logic?.nodes ?? []).filter((n) => !hiddenField(n));
+    if (!b || !ns.length) return;
+    const size = measureNodes(cv.ref.current);
+    const lx0 = Math.min(...ns.map((n) => n.x));
+    const ly0 = Math.min(...ns.map((n) => n.y));
+    const ly1 = Math.max(...ns.map((n) => n.y + (size[n.id]?.h ?? 120)));
+    const apart = b.x1 + 120 <= lx0 || b.y0 > ly1 || b.y1 < ly0;
+    if (!align && apart) return;
+    const dx = lx0 - 160 - b.x1;
+    const dy = align ? ly0 - b.y0 : 0;
+    if (!dx && !dy) return;
+    const moved = data.nodesIn({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });
+    data.place(Object.fromEntries(moved.map((n) => [n.id, { x: n.x + dx, y: n.y + dy }])));
+  };
+  // After Arrange, once the data nodes are laid out too.
+  const alignData = useRef(false);
+  useLayoutEffect(() => {
+    if (!alignData.current) return;
+    alignData.current = false;
+    keepDataLeft(true);
+  });
+  // On opening: a Layer node for each layer the data sets (the wires need one), and the data nodes
+  // moved out of the logic's way (a template from when they had a canvas each).
+  useEffect(() => {
+    const tpl = useDesigner.getState().template;
+    if (!tpl) return;
+    const have = new Set((tpl.logic?.nodes ?? []).flatMap((n) => (n.type === 'layer' ? [n.layer] : [])));
+    const missing = tpl.layers.filter((l) => !have.has(l.id) && data.boundRows(l).length);
+    if (missing.length) {
+      const ns = tpl.logic?.nodes ?? [];
+      const x = ns.length ? Math.max(...ns.map((n) => n.x + widthOf(n))) + 120 : 600;
+      edit((l) => {
+        missing.forEach((ly, i) => l.nodes.push({ id: newId(), type: 'layer', layer: ly.id, rows: data.boundRows(ly).map((key) => ({ key })), x, y: i * 150 }));
+      });
+    }
+    const id = requestAnimationFrame(() => keepDataLeft(false));
+    return () => cancelAnimationFrame(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** The frame a node at this place falls in (the last one drawn, open). */
   const frameAt = (fs: LogicFrame[], x: number, y: number) => [...fs].reverse().find((f) => !f.collapsed && x >= f.x && x <= f.x + f.w && y >= f.y && y <= f.y + f.h);
   /** Puts nodes in the frame they are over (or out of any). */
@@ -355,12 +432,24 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   /** Lays the nodes out from left to right (one step to undo). */
   const arrange = () => {
     const size = measureNodes(cv.ref.current);
+    const links = [
+      ...logic.edges.map((e) => ({ from: e.from, to: e.to })),
+      // A « Show in a text » before the Layer node of the text that shows it.
+      ...logic.nodes.flatMap((n) => {
+        const l = n.type === 'layer' ? template.layers.find((x) => x.id === n.layer) : undefined;
+        return n.type === 'layer' && l ? n.rows.flatMap((r) => shownBy(l, r.key).map((sf) => ({ from: sf.id, to: n.id }))) : [];
+      }),
+    ];
+    // The last column: what ends a chain (actions, a Layer it sets), not what feeds another node.
+    const feeds = new Set(links.map((e) => e.from));
     const at = autoLayout(
-      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: portsOf(n).outs.every((p) => p.type === 'flow') && portsOf(n).ins.length ? ('end' as const) : undefined })),
-      logic.edges.map((e) => ({ from: e.from, to: e.to })),
+      logic.nodes.map((n) => ({ id: n.id, ...(size[n.id] ?? { w: widthOf(n), h: 120 }), side: !feeds.has(n.id) && portsOf(n).outs.every((p) => p.type === 'flow') && portsOf(n).ins.length ? ('end' as const) : undefined })),
+      links,
       { tightSources: true },
     );
     useDesigner.setState({ lastCoalesce: null });
+    data.arrange();
+    alignData.current = true;
     edit((l) => {
       for (const n of l.nodes) if (at[n.id]) Object.assign(n, at[n.id]);
       // The frames follow their nodes.
@@ -467,6 +556,30 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
           if (b) Object.assign(n, { x: b.x + dx, y: b.y + dy });
         }
       }, key);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  /** The « Données » frame: dragging it moves the data nodes (sources, steps, data sets, variables). */
+  const dragDataFrame = (e: React.PointerEvent) => {
+    const b = data.bounds();
+    if (e.button !== 0 || !b) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const start = toWorld(e.clientX, e.clientY);
+    const base = data.nodesIn({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });
+    useDesigner.setState({ lastCoalesce: null });
+    const key = `lx-dframe-${newId()}`;
+    const move = (ev: PointerEvent) => {
+      const p = toWorld(ev.clientX, ev.clientY);
+      const dx = Math.round(p.x - start.x);
+      const dy = Math.round(p.y - start.y);
+      data.place(Object.fromEntries(base.map((n) => [n.id, { x: n.x + dx, y: n.y + dy }])), key);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -647,11 +760,39 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   };
   const askSave = () => setModal({ kind: 'save', name: frames.find((f) => f.id === selFrame)?.name ?? t('Flow') });
 
+  /** A variable (or a data set column) into an input: a Layer row takes it as data, another node through a Field node. */
+  const keyInto = (key: string, node: string, port: string) => {
+    const n = logic.nodes.find((x) => x.id === node) ?? useDesigner.getState().template?.logic?.nodes.find((x) => x.id === node);
+    if (!n) return;
+    if (n.type === 'layer') {
+      if (!metricOf(port)) data.bind(n.layer, port, key);
+      return;
+    }
+    edit((l) => {
+      let f = l.nodes.find((x): x is LogicNode & { type: 'field' } => x.type === 'field' && x.key === key);
+      if (!f) {
+        f = { id: newId(), type: 'field', key, x: n.x - 260, y: n.y };
+        l.nodes.push(f);
+      }
+      l.edges = l.edges.filter((e) => !(e.to === node && e.port === port));
+      l.edges.push({ from: f.id, to: node, port });
+    });
+  };
+  keyHandlers.current = {
+    into: keyInto,
+    void: (key, sx, sy, p) => {
+      setQSearch('');
+      setQuick({ sx, sy, wx: Math.round(p.x), wy: Math.round(p.y), from: { node: `key:${key}`, port: 'out', dir: 'out', type: 'text' } });
+    },
+  };
+
   // ── Wires ─────────────────────────────────────────────────────────────
   const portRef = (el: HTMLElement): PortRef => ({ node: el.dataset.node!, port: el.dataset.port!, dir: el.dataset.dir as 'in' | 'out', type: el.dataset.type as PortType });
   const connect = (a: PortRef, b: PortRef) => {
     const [from, to] = a.dir === 'out' ? [a, b] : [b, a];
     if (from.dir !== 'out' || to.dir !== 'in' || from.node === to.node || !accepts(from.type, to.type)) return;
+    if (from.node.startsWith('key:')) return keyInto(from.node.slice(4), to.node, to.port);
+    if (to.port.startsWith('setting.')) return;
     edit((l) => {
       // An input takes one wire.
       l.edges = l.edges.filter((x) => !(x.to === to.node && x.port === to.port));
@@ -769,6 +910,9 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const pk = (node: string, dir: 'in' | 'out', port: string) => `${node}|${dir}|${port}`;
   /** Where a wire ends: its port, or the folded frame its node is in. */
   const at = (node: string, dir: 'in' | 'out', port: string) => {
+    if (node.startsWith('key:')) return pos[node];
+    const hn = nodes.get(node);
+    if (hiddenField(hn) && hn?.type === 'field') return pos[`key:${hn.key}`];
     const f = collapsedOf(nodes.get(node));
     return f ? pos[`frame:${f.id}|${dir}`] : pos[pk(node, dir, port)];
   };
@@ -849,20 +993,32 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
       case 'layer': {
         const l = template.layers.find((x) => x.id === n.layer);
         const have = new Set(n.rows.map((r) => r.key));
+        const label = (key: string) => (key.startsWith('setting.') && l ? settingLabel(l, key.slice(8), t).label : rowLabel(key));
         const options = rowsFor(l)
           .filter((r) => !have.has(r.key))
-          .map((r) => ({ value: r.key, label: rowLabel(r.key), group: t(r.group) }));
+          .map((r) => ({ value: r.key, label: label(r.key), group: t(r.group) }));
         return (
           <>
             {n.rows.map((r) => {
               const inP = metricOf(r.key) ? undefined : pIn(n, r.key);
               const outP = r.key.startsWith('content.') ? undefined : pOut(n, r.key);
-              const wired = wiredIn.has(`${n.id}|${r.key}`);
-              const shown = wired ? v(n, `in:${r.key}`) : v(n, r.key);
+              const logicIn = logic.edges.some((e) => e.to === n.id && e.port === r.key);
+              const keys = l && !metricOf(r.key) ? data.keysAt(l, r.key) : [];
+              const op = l && !metricOf(r.key) ? data.exposure(l, r.key) : undefined;
+              const wired = logicIn || keys.length > 0;
+              const shown = logicIn ? v(n, `in:${r.key}`) : keys.length && l && r.key.startsWith('content.') ? data.preview(l, r.key) : v(n, r.key);
               return (
                 <Row key={r.key} n={n} inP={inP} outP={outP} className={wired ? 'set' : ''}>
-                  <span className="lx-lab">{rowLabel(r.key)}</span>
-                  {wired && rowType(r.key) === 'num' && (
+                  <span className="lx-lab">{label(r.key)}</span>
+                  {op && (
+                    <span className="lx-op" title={t('Typed by the Operator')}>
+                      {op.label}
+                      <button title={t('Stop: the Operator no longer types it')} onClick={op.stop}>
+                        ×
+                      </button>
+                    </span>
+                  )}
+                  {logicIn && rowType(r.key) === 'num' && (
                     <button
                       className="lx-mode"
                       title={t('How the value is set: replaced, added to the animation, or multiplying it')}
@@ -1224,6 +1380,35 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     return out ? values.get(`${n.id}|${out.id}`) : undefined;
   };
 
+  // Variables (and data set columns) into the rows of the Layer nodes: the data's wires.
+  const dataWires: { a: { x: number; y: number }; b: { x: number; y: number }; layer: string; row: string; key: string }[] = [];
+  {
+    const seen = new Set<string>();
+    for (const n of logic.nodes) {
+      if (n.type !== 'layer') continue;
+      const l = template.layers.find((x) => x.id === n.layer);
+      if (!l) continue;
+      for (const r of n.rows) {
+        if (metricOf(r.key) || seen.has(`${n.layer}|${r.key}`)) continue;
+        seen.add(`${n.layer}|${r.key}`);
+        for (const key of data.keysAt(l, r.key)) {
+          const a = pos[`key:${key}`];
+          const b = at(n.id, 'in', r.key);
+          if (a && b) dataWires.push({ a, b, layer: n.layer, row: r.key, key });
+        }
+        // From a « Show in a text » node: out of its right side.
+        for (const sf of shownBy(l, r.key)) {
+          const p = at(sf.id, 'in', 'in');
+          const b = at(n.id, 'in', r.key);
+          if (p && b && !collapsedOf(sf)) dataWires.push({ a: { x: sf.x + (sizes[sf.id] ?? widthOf(sf)), y: p.y }, b, layer: n.layer, row: r.key, key: sf.key });
+        }
+      }
+    }
+  }
+
+  // Where the data nodes are (the « Données » frame around them).
+  const dataBox = data.bounds();
+
   // ── Palette ───────────────────────────────────────────────────────────
   const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const q = fold(search.trim());
@@ -1289,8 +1474,16 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
 
   return (
     <PortCtx.Provider value={{ wiredIn, wiredOut, startWire }}>
-    <div className="logic-editor lx" onKeyDown={(e) => e.stopPropagation()}>
+    <div className={`logic-editor lx view-${view}`} onKeyDown={(e) => e.stopPropagation()}>
       <CanvasHeader icon={<Link2 size={15} />} title={t('Logic')} subject={template.name} onClose={onClose}>
+        <div className="segmented lx-view">
+          {(['all', 'data', 'logic'] as const).map((v) => (
+            <button key={v} className={view === v ? 'on' : ''} onClick={() => setView(v)}>
+              {v === 'all' ? t('All') : v === 'data' ? t('Data') : t('Logic')}
+            </button>
+          ))}
+        </div>
+        <div className="spacer" />
         <button className="lx-tool" onClick={makeFrame} title={t('Frame the selected nodes (F)')}>
           <BoxSelect size={13} /> {t('Frame')} <kbd>F</kbd>
         </button>
@@ -1334,6 +1527,16 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+          {scope !== 'fav' && !typeFilter && (!q || /donn|data|sourc|variab|filtr|tri|sort|transf|jeu/.test(q)) && (
+            <div className="lx-fam fam-data">
+              <button className="lx-famhead" onClick={() => toggleFold('data')}>
+                {!folded.includes('data') || q ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                <i />
+                {t('Data')}
+              </button>
+              {(!folded.includes('data') || !!q) && data.palette}
+            </div>
+          )}
           {FAMS.map((f) => {
             const list = shown.filter((e) => e.fam === f.id);
             const total = all.filter((e) => e.fam === f.id).length;
@@ -1392,6 +1595,14 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
         </aside>
         <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`} tabIndex={0} onPointerDown={onCanvasDown} onKeyDown={onKey}>
           <div className="logic-space" ref={spaceRef} data-canvas-void style={cv.spaceStyle}>
+            {dataBox && (
+              <div className="lx-frame lx-dframe" style={{ left: dataBox.x0 - 28, top: dataBox.y0 - 44, width: dataBox.x1 - dataBox.x0 + 56, height: dataBox.y1 - dataBox.y0 + 72 }}>
+                <div className="lx-fhead" onPointerDown={dragDataFrame}>
+                  <Database size={12} />
+                  <strong>{t('Data')}</strong>
+                </div>
+              </div>
+            )}
             {frames.map((f) =>
               f.collapsed ? (
                 <div key={f.id} className={`lx-pill ${f.off ? 'off' : ''} ${selFrame === f.id ? 'sel' : ''}`} style={{ left: f.x, top: f.y, ['--fc' as string]: f.color }} onPointerDown={(e) => dragFrame(e, f)}>
@@ -1436,7 +1647,21 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                 </div>
               ),
             )}
+            {data.space}
             <svg className="logic-wires">
+              {dataWires.map((w, i) => (
+                <path
+                  key={`d${i}`}
+                  d={curve(w.a, w.b)}
+                  className="wire t-text data-key"
+                  onPointerDown={(ev) => {
+                    ev.stopPropagation();
+                    data.unbind(w.layer, w.row, w.key);
+                  }}
+                >
+                  <title>{t('Click to remove')}</title>
+                </path>
+              ))}
               {logic.edges.map((e, i) => {
                 const a = at(e.from, 'out', fromPortOf(e));
                 const b = at(e.to, 'in', e.port);
@@ -1463,7 +1688,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
               )}
             </svg>
             {logic.nodes.map((n) => {
-              if (collapsedOf(n)) return null;
+              if (collapsedOf(n) || hiddenField(n)) return null;
               const k = kindOf(n, template);
               const off = !!n.frame && frames.some((f) => f.id === n.frame && f.off);
               return (
@@ -1527,10 +1752,11 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
               <div className="v" style={{ left: (mini.vis.x - mini.x0) * mini.k, top: (mini.vis.y - mini.y0) * mini.k, width: mini.vis.w * mini.k, height: mini.vis.h * mini.k }} />
             </div>
           )}
-          {!logic.nodes.length && !frames.length && <CanvasVoid icon={Link2} text={t('No relation')} />}
+          {!logic.nodes.length && !frames.length && data.empty && <CanvasVoid icon={Link2} text={t('No relation')} />}
           {cv.controls}
         </div>
       </div>
+      {data.overlays}
       {modal?.kind === 'presets' && (
         <PresetsModal
           template={template}

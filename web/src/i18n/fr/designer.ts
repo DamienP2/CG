@@ -20,7 +20,7 @@ export const designer: Record<string, string> = {
   'Expose to the Operator': 'Exposer à l’Opérateur',
   'Exposed to the Operator ({fields}) · click to stop': 'Exposé à l’Opérateur ({fields}) · cliquez pour arrêter',
   'Exposed to the Operator ({fields}) · fed by a data source · click to stop': 'Exposé à l’Opérateur ({fields}) · alimenté par une source de données · cliquez pour arrêter',
-  'Set by data (Data canvas): read only': 'Réglé par les données (canevas Données) : lecture seule',
+  'Set by data (Data canvas): read only': 'Réglé par les données (canevas Logique) : lecture seule',
   'Proportions locked (click to unlock)': 'Proportions verrouillées (cliquez pour déverrouiller)',
   'Lock the proportions': 'Verrouiller les proportions',
   'Changed in this format — click to use the main layout again': 'Modifié dans ce format : cliquez pour reprendre la mise en page principale',

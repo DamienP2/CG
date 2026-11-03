@@ -16,7 +16,6 @@ import { Timeline } from './Timeline';
 import { clearSelectedKeys, copyLayers, cutLayers, pasteClipboard } from './clipboard';
 import { useZoneEdit, ZonesPanel } from './ZoneEditor';
 import { LogicEditor } from './LogicEditor';
-import { DataCanvas, DataCanvasButton } from './DataCanvas';
 import { TableEditor } from '../widgets/table-editor';
 import { exposeRows } from '../widgets/table-rows';
 import { useGuidesView } from './Guides';
@@ -594,7 +593,6 @@ export const Designer = memo(function Designer() {
               <button className={`btn small ${logicCount ? 'has' : ''}`} onClick={() => setLogicOpen(true)} title={t('Values, conditions and what happens on air: events, triggers, actions, variables')}>
                 <Link2 size={13} /> {t('Logic')}
               </button>
-              <DataCanvasButton />
             </>
           )}
           <DisplayMenu
@@ -628,7 +626,6 @@ export const Designer = memo(function Designer() {
       </div>
       {lock.state.status === 'held' && <LockOverlay holder={lock.state.holder} template={template?.name ?? ''} onTakeOver={lock.takeOver} />}
       {logicOpen && <LogicEditor onClose={() => setLogicOpen(false)} />}
-      <DataCanvas />
       <TableEditor />
       <PasteDialog />
       <AnimationsDialog />

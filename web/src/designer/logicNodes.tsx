@@ -49,6 +49,7 @@ import { newId } from '../engine/evaluate';
 import { metricOf, rowType, type PortType } from '../engine/logic';
 import { COLOR_PROPS, PROPS, TEXT_LIKE, type Layer, type LayerRow, type LogicNode, type Prop, type Template, type TriggerEvent } from '../engine/types';
 import { widgetOf } from '../widgets';
+import { settingPorts } from '../engine/settingPorts';
 import { PROP_LABELS } from './Inspector';
 import { t } from '../i18n';
 
@@ -135,6 +136,10 @@ export function rowsFor(l: Layer | undefined): { key: string; group: string }[] 
     ...contentOf(l).map((p) => ({ key: `content.${p}`, group: 'Content' })),
     ...(l.type === 'text' ? ['text.width', 'text.height', 'text.lines', 'text.chars'].map((key) => ({ key, group: 'Measured text' })) : []),
     ...propsOf(l).map((p) => ({ key: p as string, group: COLOR_PROPS.has(p) ? 'Colours' : 'Properties' })),
+    // The widget's settings the data can set (a colour of a team, a speed…).
+    ...settingPorts(l)
+      .filter((sp) => !['grid', 'entries'].includes(sp.path) && !contentOf(l).includes(sp.path))
+      .map((sp) => ({ key: `setting.${sp.path}`, group: 'Settings' })),
   ];
 }
 
@@ -204,7 +209,6 @@ export function entries(tpl: Template): Entry[] {
       }),
     ),
     // Inputs
-    { key: 'field', fam: 'input', label: 'Data field', icon: Rows3, can: (h) => h.t.fields.length > 0, make: (_t, x, y) => ({ ...base(x, y), type: 'field', key: fieldKey }) },
     { key: 'constant', fam: 'input', label: 'Number', icon: Hash, make: (_t, x, y) => ({ ...base(x, y), type: 'constant', value: 0 }) },
     { key: 'text', fam: 'input', label: 'Text', icon: Type, make: (_t, x, y) => ({ ...base(x, y), type: 'text', value: '' }) },
     { key: 'color', fam: 'input', label: 'Colour', icon: Palette, make: (_t, x, y) => ({ ...base(x, y), type: 'color', value: '#ffffff' }) },
@@ -286,6 +290,12 @@ export function kindOf(n: LogicNode, tpl: Template): { fam: Fam; label: string; 
     return { fam: preset?.fam ?? 'math', label: n.title ? t(n.title) : t('Calculation'), icon: preset?.icon ?? (n.title ? WandSparkles : e.icon) };
   }
   if (n.type === 'setField') return { fam: 'text', label: t('Show in a text'), icon: Type };
+  if (n.type === 'field') {
+    // A variable, or a column of a data set (its name without the set's).
+    const f = tpl.fields.find((x) => x.key === n.key);
+    const ds = (tpl.datasets ?? []).find((d) => n.key.startsWith(`${d.key}_`));
+    return { fam: 'input', label: f?.label || (ds ? n.key.slice(ds.key.length + 1) : n.key), icon: Rows3 };
+  }
   const e = all.find((x) => x.key === n.type);
   return e ? { fam: e.fam, label: t(n.title || e.label), icon: e.icon } : { fam: 'math', label: n.type, icon: Calculator };
 }
