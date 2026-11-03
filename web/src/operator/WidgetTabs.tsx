@@ -115,6 +115,21 @@ export function widgetParts(tpl: Template): Parts {
   return out;
 }
 
+const thinCache = new WeakMap<Parts, { key: string; out: Parts }>();
+/** Without the data sets of one row (nothing to choose): a widget with nothing else left has no tab. */
+export function withoutSingleRow(parts: Parts, single: Set<string>): Parts {
+  if (!single.size) return parts;
+  const key = [...single].sort().join('|');
+  const hit = thinCache.get(parts);
+  if (hit?.key === key) return hit.out;
+  const widgets = parts.widgets
+    .map((p) => (p.datasets.some((d) => single.has(d.key)) ? { ...p, datasets: p.datasets.filter((d) => !single.has(d.key)) } : p))
+    .filter((p) => p.datasets.length > 0 || p.fields.length > 0 || !!p.exposed || p.fed.length > 0 || p.bound.length > 0 || p.controls);
+  const out = { shared: parts.shared, widgets };
+  thinCache.set(parts, { key, out });
+  return out;
+}
+
 /** The keys Update sends that belong to a widget: its values, and the row it shows of a data set feeding Texts. */
 export function partKeys(tpl: Template, p: Pick<WidgetPart, 'fields' | 'exposed' | 'fed'>): string[] {
   return [...p.fields.map((f) => f.key), ...[...(p.exposed?.at.values() ?? [])].map((f) => f.key), ...p.fed.flatMap((d) => (datasetUse(tpl, d).source ? [rowKey(d.key), oneKey(d.key)] : []))];

@@ -1109,7 +1109,7 @@ export function useDataLayer(o: DataLayerOpts) {
                   </path>
                 </g>
               ))}
-              {drag && dragFrom && <path d={curve(dragFrom, drag)} className="wire live" />}
+              {drag && dragFrom && <path d={curve(dragFrom, drag)} className="wire live data" />}
             </svg>
 
             {/* The data graph: sources and steps */}

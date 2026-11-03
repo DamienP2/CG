@@ -87,6 +87,41 @@ export function useDatasetRows(
   return stage;
 }
 
+/** Rows of each data set's source last read (by source, list and steps): no flicker from one graphic to the next. */
+const countCache = new Map<string, number>();
+
+/** The data sets with one row at most (from their source and added by hand): nothing to choose, the Operator does not show them. */
+export function useSingleRowSets(sets: DataSet[], draft: Data): Set<string> {
+  const versions = useData((s) => s.versions);
+  const ids = sets.map((ds) => {
+    const used = JSON.stringify(ds.steps ?? []).match(/\{(\w+)\}/g)?.map((m) => m.slice(1, -1)) ?? [];
+    const sub = Object.fromEntries(used.map((k) => [k, draft[k] ?? ""]));
+    return { ds, sub, id: JSON.stringify([ds.source, ds.list, ds.steps ?? [], sub]) };
+  });
+  const key = JSON.stringify(ids.map((x) => [x.id, versions[x.ds.source] ?? 0]));
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    for (const x of ids)
+      void pipeline(x.ds.source, x.ds.list, x.ds.steps ?? [], x.sub).then((r) => {
+        const n = r?.stages[r.stages.length - 1]?.rows.length;
+        if (n === undefined || countCache.get(x.id) === n) return;
+        countCache.set(x.id, n);
+        if (live) setTick((v) => v + 1);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const out = new Set<string>();
+  for (const x of ids) {
+    const n = countCache.get(x.id);
+    if (n !== undefined && n + parseAdded(draft[addedKey(x.ds.key)]).length <= 1) out.add(x.ds.key);
+  }
+  return out;
+}
+
 /** The table with the rows added by hand (as the server does), and which entry each row is. */
 function withAdded(
   t: Stage,

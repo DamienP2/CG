@@ -20,8 +20,8 @@ import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { KeyScope, SliderNum } from '../widgets/kit';
-import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets } from './DataSets';
-import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, type PreviewRun, type WidgetPart } from './WidgetTabs';
+import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets, useSingleRowSets } from './DataSets';
+import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, withoutSingleRow, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
 import { shownText } from '../widgets/text';
 import { creditsLeft, EntriesTable, type Entry } from '../widgets/credits';
@@ -370,6 +370,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const item = rundown.find((r) => r.id === cued && playable(r.templateId)) ?? null;
   const template = item ? project?.templates.find((t) => t.id === item.templateId) : undefined;
   const readMode: ReadMode = item?.read ?? 'live';
+  // Its data sets with one row at most: nothing to choose, no block for them.
+  const singleRow = useSingleRowSets(template ? usedDatasets(template) : [], draft);
 
   useEffect(() => {
     if (!cued || !items.some((r) => r.id === cued)) setCued(items.length ? items[0].id : null);
@@ -520,7 +522,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const fps = project.frameRate.num / project.frameRate.den || 1;
   const lang = project.language || 'fr';
   // The selected graphic widget by widget (a tab each when there are several).
-  const parts = template ? widgetParts(template) : { shared: [], widgets: [] };
+  const parts = template ? withoutSingleRow(widgetParts(template), singleRow) : { shared: [], widgets: [] };
   // The fields outside the widget layers live in their own tab (Texts) once widgets have tabs.
   const sharedSel = !!item && tabOf[item.id] === SHARED_TAB && parts.shared.length > 0 && parts.widgets.length > 0;
   const part = sharedSel ? undefined : ((item && parts.widgets.find((p) => p.layer.id === tabOf[item.id])) ?? parts.widgets[0]);
