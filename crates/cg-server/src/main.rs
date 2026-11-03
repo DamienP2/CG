@@ -13,6 +13,7 @@ mod decklink;
 mod engine;
 mod examples;
 mod firewall;
+mod guard;
 mod hardware;
 mod health;
 mod iconlib;
@@ -598,7 +599,12 @@ pub async fn serve(
         let app = api::router()
             .route("/fonts/{name}", get(web::font))
             .merge(premiere::router())
-            .nest_service("/assets", ServeDir::new(data_dir.join("assets")))
+            .nest_service(
+                "/assets",
+                axum::Router::new()
+                    .fallback_service(ServeDir::new(data_dir.join("assets")))
+                    .layer(axum::middleware::from_fn(guard::uploaded_files)),
+            )
             // HLS stream outputs (index.m3u8 and its segments).
             .nest_service("/hls", ServeDir::new(data_dir.join("hls")));
         let app = match &args.web_dir {
@@ -612,6 +618,12 @@ pub async fn serve(
         let app = app
             // JSON and text gzipped for clients that take it (web.rs).
             .layer(axum::middleware::from_fn(web::compress))
+            // Pages of other sites never act with a user's cookie.
+            .layer(axum::middleware::from_fn_with_state(
+                shared.clone(),
+                guard::csrf,
+            ))
+            .layer(axum::middleware::from_fn(guard::every_answer))
             .layer(CorsLayer::permissive())
             .with_state(shared.clone());
 

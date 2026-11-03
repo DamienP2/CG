@@ -169,6 +169,28 @@ async fn answer(s: &Shared, line: &str, ip: IpAddr) -> Reply {
     }
 }
 
+/// An HTTP request line or header: a web page made the browser connect here.
+fn from_a_browser(line: &str) -> bool {
+    let l = line.trim();
+    let mut w = l.split_whitespace();
+    let request = matches!(
+        (w.next(), w.next(), w.next()),
+        (Some(m), Some(_), Some(v)) if v.starts_with("HTTP/") && m.chars().all(|c| c.is_ascii_uppercase())
+    );
+    let lower = l.to_ascii_lowercase();
+    request
+        || [
+            "host:",
+            "origin:",
+            "user-agent:",
+            "sec-fetch-",
+            "content-type:",
+            "referer:",
+        ]
+        .iter()
+        .any(|h| lower.starts_with(h))
+}
+
 async fn session(s: &Shared, sock: TcpStream, ip: IpAddr) {
     let _connected = Connected::new();
     let (rd, mut wr) = sock.into_split();
@@ -195,6 +217,9 @@ async fn session(s: &Shared, sock: TcpStream, ip: IpAddr) {
     loop {
         let reply = tokio::select! {
             line = lines.recv() => match line {
+                // A web page cannot speak this protocol: what a browser
+                // sends here (`POST / HTTP/1.1`…) closes the connection.
+                Some(Some(line)) if from_a_browser(&line) => break,
                 Some(Some(line)) => answer(s, line.trim(), ip).await,
                 Some(None) => {
                     let _ = wr.write_all(b"ERR line too long\n").await;
@@ -233,6 +258,14 @@ async fn session(s: &Shared, sock: TcpStream, ip: IpAddr) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browser_requests_are_recognised() {
+        assert!(from_a_browser("POST /x HTTP/1.1\r\n"));
+        assert!(from_a_browser("Origin: http://evil.example"));
+        assert!(!from_a_browser("TAKE 1"));
+        assert!(!from_a_browser("{\"cmd\":\"take\"}"));
+    }
 
     #[test]
     fn apiv1_tcp_lines() {

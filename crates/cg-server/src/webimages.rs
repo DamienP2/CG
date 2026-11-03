@@ -81,14 +81,14 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     let tls = ureq::tls::TlsConfig::builder()
         .root_certs(ureq::tls::RootCerts::PlatformVerifier)
         .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .tls_config(tls)
         .timeout_global(Some(Duration::from_secs(15)))
         .max_redirects(5)
         .http_status_as_error(false)
         .user_agent(concat!("strata-graphics/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .into();
+        .build();
+    let agent = crate::webproxy::agent_only(config, crate::webproxy::not_link_local);
     let mut res = agent
         .get(url)
         .call()

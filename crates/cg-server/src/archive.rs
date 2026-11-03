@@ -11,6 +11,9 @@ pub const PROJECT_FILE: &str = "project.strata.json";
 const ASSETS: &str = "assets/";
 /// Largest file read back from an archive.
 const MAX_FILE: u64 = 1024 * 1024 * 1024;
+/// All the files of an archive together, once uncompressed.
+const MAX_TOTAL: u64 = 4 * 1024 * 1024 * 1024;
+const MAX_ENTRIES: usize = 50_000;
 
 /// The asset paths (after `/assets/`) the project's JSON uses, wherever they are
 /// (a picture's `src`, a text's inline image, a field's default…).
@@ -83,8 +86,12 @@ pub struct Unpacked {
 pub fn unpack(bytes: &[u8]) -> Result<Unpacked, String> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| format!("invalid archive: {e}"))?;
+    if zip.len() > MAX_ENTRIES {
+        return Err("too many files in this archive".into());
+    }
     let mut project = None;
     let mut files = Vec::new();
+    let mut total = 0u64;
     for i in 0..zip.len() {
         let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
         if f.is_dir() {
@@ -93,9 +100,13 @@ pub fn unpack(bytes: &[u8]) -> Result<Unpacked, String> {
         let name = f.name().map_err(|e| e.to_string())?.into_owned();
         let mut out = Vec::new();
         (&mut f)
-            .take(MAX_FILE)
+            .take(MAX_FILE.min(MAX_TOTAL - total))
             .read_to_end(&mut out)
             .map_err(|e| e.to_string())?;
+        total += out.len() as u64;
+        if total >= MAX_TOTAL {
+            return Err("this archive is too large once uncompressed".into());
+        }
         if name == PROJECT_FILE
             || (project.is_none() && name.ends_with(".strata.json") && !name.contains('/'))
         {

@@ -25,7 +25,7 @@ export function Login() {
       if (firstRun) await setup(username.trim(), password, displayName.trim());
       else await login(username.trim(), password);
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 401 ? t('Wrong user name or password.') : (err as Error).message);
+      setError(err instanceof ApiError && err.status === 401 ? t('Wrong user name or password.') : err instanceof ApiError && err.status === 429 ? t('Too many tries: wait a moment, then try again.') : (err as Error).message);
     } finally {
       setBusy(false);
     }

@@ -324,12 +324,13 @@ fn login_response(token: String, user: &User) -> Response {
 async fn auth_setup(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(c): Json<Credentials>,
 ) -> ApiResult<Response> {
     if !s.auth.needs_setup() {
         return Err((StatusCode::CONFLICT, "already set up".into()));
     }
-    if !peer.ip().is_loopback() {
+    if !crate::guard::this_machine(&peer, &headers) {
         return Err((StatusCode::FORBIDDEN, "the first admin must be created on the server itself (http://localhost) or with `strata-server user add`".into()));
     }
     let input = UserInput {
@@ -349,18 +350,43 @@ async fn auth_setup(
     Ok(login_response(token, &user))
 }
 
-async fn auth_login(State(s): State<Shared>, Json(c): Json<Credentials>) -> ApiResult<Response> {
+static LOGINS: std::sync::LazyLock<crate::guard::Logins> =
+    std::sync::LazyLock::new(crate::guard::Logins::new);
+/// Password checks at the same time (each takes memory and CPU on purpose).
+static CHECKING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+async fn auth_login(
+    State(s): State<Shared>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(c): Json<Credentials>,
+) -> ApiResult<Response> {
+    let ip = peer.ip();
+    let name = c.username.clone();
+    if let Some(w) = LOGINS.wait(ip, &name) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            format!("too many tries: wait {} s", w.as_secs().max(1)),
+        ));
+    }
+    let _turn = CHECKING.acquire().await.map_err(internal)?;
     let auth = s.auth.clone();
     // Argon2 is deliberately slow: keep it off the async workers.
     let res = tokio::task::spawn_blocking(move || auth.login(&c.username, &c.password))
         .await
         .map_err(internal)?;
     match res {
-        Some((token, user)) => Ok(login_response(token, &user)),
-        None => Err((
-            StatusCode::UNAUTHORIZED,
-            "wrong user name or password".into(),
-        )),
+        Some((token, user)) => {
+            LOGINS.succeeded(ip, &name);
+            Ok(login_response(token, &user))
+        }
+        None => {
+            LOGINS.failed(ip, &name);
+            tracing::warn!(%ip, user = %name, "failed login");
+            Err((
+                StatusCode::UNAUTHORIZED,
+                "wrong user name or password".into(),
+            ))
+        }
     }
 }
 
@@ -951,7 +977,18 @@ async fn import_file(
         "webm" => "video/webm",
         _ => "application/octet-stream",
     };
-    Ok(([(header::CONTENT_TYPE, mime)], bytes).into_response())
+    // An SVG opened on its own never runs as a page of this site.
+    Ok((
+        [
+            (header::CONTENT_TYPE, mime),
+            (
+                header::CONTENT_SECURITY_POLICY,
+                "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'",
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
@@ -2724,9 +2761,10 @@ async fn output_redirect(State(s): State<Shared>) -> Response {
 async fn post_restart(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     MaybeUser(me): MaybeUser,
 ) -> ApiResult<StatusCode> {
-    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
+    require(crate::guard::this_machine(&peer, &headers) || me.is_some_and(|u| u.is_admin()))?;
     s.restart.notify_one();
     Ok(StatusCode::ACCEPTED)
 }
@@ -2736,8 +2774,9 @@ async fn post_restart(
 async fn tray_info(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
 ) -> ApiResult<Json<serde_json::Value>> {
-    require(peer.ip().is_loopback())?;
+    require(crate::guard::this_machine(&peer, &headers))?;
     let port = s.bind.port();
     let interfaces: Vec<serde_json::Value> = tokio::task::spawn_blocking(crate::hardware::detect)
         .await
@@ -2794,9 +2833,10 @@ async fn tray_info(
 /// no password from the tray. Admins, or the server itself.
 async fn post_restart_server(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     MaybeUser(me): MaybeUser,
 ) -> ApiResult<StatusCode> {
-    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
+    require(crate::guard::this_machine(&peer, &headers) || me.is_some_and(|u| u.is_admin()))?;
     tracing::info!("restart asked from the menu bar app");
     crate::update::restart_soon();
     Ok(StatusCode::ACCEPTED)
@@ -2804,8 +2844,11 @@ async fn post_restart_server(
 
 /// Stops the server as the service manager would (SIGTERM: a clean exit it
 /// does not restart). macOS and Linux; the server itself only.
-async fn post_stop(ConnectInfo(peer): ConnectInfo<SocketAddr>) -> ApiResult<StatusCode> {
-    require(peer.ip().is_loopback())?;
+async fn post_stop(
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> ApiResult<StatusCode> {
+    require(crate::guard::this_machine(&peer, &headers))?;
     #[cfg(unix)]
     {
         tracing::info!("stop asked from the menu bar app");
@@ -2841,10 +2884,11 @@ struct NetworkRolesInput {
 async fn put_network_roles(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     MaybeUser(me): MaybeUser,
     Json(i): Json<NetworkRolesInput>,
 ) -> ApiResult<StatusCode> {
-    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
+    require(crate::guard::this_machine(&peer, &headers) || me.is_some_and(|u| u.is_admin()))?;
     let known = |n: &str| n.is_empty() || crate::hardware::interface_ip(n).is_some();
     for n in [&i.control, &i.ndi].into_iter().flatten() {
         if !known(n) {
@@ -2934,6 +2978,13 @@ async fn list_sources(
                 (Some(_), _) if q.shared => false,
                 (Some(p), Some(want)) => p == want && me.sees_project(p),
                 (Some(p), None) => me.sees_project(p),
+            })
+            .map(|mut x| {
+                // Header values (tokens, passwords) only for who may change them.
+                if may_edit_source(&me, &x.source.project).is_err() {
+                    x.source.kind.hide_secrets();
+                }
+                x
             })
             .collect(),
     )
@@ -3111,9 +3162,10 @@ struct LookupQuery {
 /// Resolves a binding path against a source's current value.
 async fn data_lookup(
     State(s): State<Shared>,
-    CurrentUser(_me): CurrentUser,
+    CurrentUser(me): CurrentUser,
     Json(q): Json<LookupQuery>,
 ) -> ApiResult<Json<BTreeMap<&'static str, Option<String>>>> {
+    visible_source(&s, &me, &q.source)?;
     let v = s
         .data
         .value(&q.source)
@@ -3162,9 +3214,10 @@ struct PipelineResult {
 /// Runs a table pipeline on a source's current value (Data canvas previews).
 async fn data_pipeline(
     State(s): State<Shared>,
-    CurrentUser(_me): CurrentUser,
+    CurrentUser(me): CurrentUser,
     Json(q): Json<PipelineQuery>,
 ) -> ApiResult<Json<PipelineResult>> {
+    visible_source(&s, &me, &q.source)?;
     let v = s
         .data
         .value(&q.source)
@@ -3279,9 +3332,10 @@ async fn update_settings(
 async fn update_check(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     MaybeUser(me): MaybeUser,
 ) -> ApiResult<Json<Option<crate::update::Release>>> {
-    require(peer.ip().is_loopback() || me.is_some_and(|u| u.is_admin()))?;
+    require(crate::guard::this_machine(&peer, &headers) || me.is_some_and(|u| u.is_admin()))?;
     let dir = s.data_dir.clone();
     tokio::task::spawn_blocking(move || crate::update::check(&dir))
         .await
@@ -3302,11 +3356,12 @@ struct InstallQuery {
 async fn update_install(
     State(s): State<Shared>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     MaybeUser(me): MaybeUser,
     Query(q): Query<InstallQuery>,
 ) -> ApiResult<StatusCode> {
     let admin = me.as_ref().filter(|u| u.is_admin());
-    require(peer.ip().is_loopback() || admin.is_some())?;
+    require(crate::guard::this_machine(&peer, &headers) || admin.is_some())?;
     tracing::warn!(
         user = admin.map_or("menu bar app", |u| u.username.as_str()),
         version = q.version.as_deref().unwrap_or("latest"),
@@ -3384,6 +3439,9 @@ struct WsQuery {
 /// What a socket may see.
 struct Viewer {
     user: Option<User>,
+    /// What the user logged in with, looked at again before each command (a
+    /// disabled account, a changed password or role takes effect at once).
+    token: Option<String>,
     /// Output pages follow one channel.
     channel: Option<String>,
 }
@@ -3414,8 +3472,16 @@ async fn ws_upgrade(
     State(s): State<Shared>,
     MaybeUser(user): MaybeUser,
     Query(q): Query<WsQuery>,
+    uri: axum::http::Uri,
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
+    let token = {
+        let (mut parts, _) = axum::http::Request::new(()).into_parts();
+        parts.uri = uri;
+        parts.headers = headers;
+        auth::token_from(&parts)
+    };
     if user.is_none() && !(s.config.public_outputs && q.channel.is_some()) {
         return (StatusCode::UNAUTHORIZED, "login required").into_response();
     }
@@ -3427,7 +3493,11 @@ async fn ws_upgrade(
         },
         None => None,
     };
-    let viewer = Viewer { user, channel };
+    let viewer = Viewer {
+        user,
+        token,
+        channel,
+    };
     ws.on_upgrade(move |socket| ws_session(s, socket, viewer))
 }
 
@@ -3595,10 +3665,18 @@ async fn ws_session_on(s: &Shared, socket: WebSocket, viewer: &Viewer, socket_id
             msg = rx.next() => match msg {
                 Some(Ok(Message::Text(text))) => {
                     let reply = match serde_json::from_str::<ClientMessage>(&text) {
-                        Ok(ClientMessage::Command { channel_id, command, buses }) => match &viewer.user {
-                            Some(u) if u.can_operate(&channel_id) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
-                            _ => Some("you do not have the rights to operate this channel".into()),
-                        },
+                        Ok(ClientMessage::Command { channel_id, command, buses }) => {
+                            let now = viewer.token.as_deref().and_then(|t| s.auth.user_for_token(t));
+                            if viewer.user.is_some() && now.is_none() {
+                                // Logged out meanwhile (account disabled, new password).
+                                let _ = send(&mut tx, &Event::Error { message: "login required".into() }).await;
+                                break;
+                            }
+                            match &now {
+                                Some(u) if u.can_operate(&channel_id) => s.command_on(&channel_id, command, buses, &crate::antenna::Actor::user(u)).await.err(),
+                                _ => Some("you do not have the rights to operate this channel".into()),
+                            }
+                        }
                         Ok(ClientMessage::Presence { channel_id }) => {
                             let at = viewer.user.as_ref().zip(channel_id.filter(|c| viewer.sees_channel(c))).map(|(u, c)| crate::antenna::Present {
                                 user_id: u.id.clone(),

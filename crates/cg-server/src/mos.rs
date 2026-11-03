@@ -668,6 +668,22 @@ async fn connection(state: Shared, mut sock: TcpStream) -> std::io::Result<()> {
             return Ok(());
         }
         buf.extend_from_slice(&tmp[..n]);
+        // A web page made a browser connect here (`POST / HTTP/1.1`…).
+        if enc.is_none()
+            && [
+                &b"GET "[..],
+                b"POST ",
+                b"PUT ",
+                b"HEAD ",
+                b"OPTIONS ",
+                b"DELETE ",
+                b"PATCH ",
+            ]
+            .iter()
+            .any(|m| buf.starts_with(m))
+        {
+            return Ok(());
+        }
         if enc.is_none() {
             enc = detect(&buf);
         }

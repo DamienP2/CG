@@ -473,7 +473,8 @@ impl Auth {
             return Err("at least one active admin is required".into());
         }
         self.save(list).map_err(|e| e.to_string())?;
-        if updated.disabled {
+        // Disabled, or a new password: everywhere logged in is logged out.
+        if updated.disabled || !input.password.is_empty() {
             self.drop_sessions_of(&updated.id);
         }
         Ok(updated)
@@ -687,7 +688,10 @@ impl Auth {
             .find(|u| u.username.eq_ignore_ascii_case(username))
             .ok_or("no such user")?;
         u.password_hash = hash_password(password).map_err(|e| e.to_string())?;
-        self.save(list).map_err(|e| e.to_string())
+        let id = u.id.clone();
+        self.save(list).map_err(|e| e.to_string())?;
+        self.drop_sessions_of(&id);
+        Ok(())
     }
 
     fn drop_sessions_of(&self, user_id: &str) {

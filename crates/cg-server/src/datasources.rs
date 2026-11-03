@@ -86,6 +86,15 @@ pub enum PushFormat {
 }
 
 impl Kind {
+    /// Header values replaced by a mark (they often hold tokens).
+    pub fn hide_secrets(&mut self) {
+        if let Kind::Json { headers, .. } | Kind::Xml { headers, .. } = self {
+            for v in headers.values_mut() {
+                *v = "••••".into();
+            }
+        }
+    }
+
     fn url(&self) -> Option<&str> {
         match self {
             Kind::Json { url, .. }
@@ -269,6 +278,12 @@ impl Hub {
         std::fs::create_dir_all(&self.dir)?;
         let tmp = self.dir.join("sources.json.tmp");
         std::fs::write(&tmp, serde_json::to_vec_pretty(list)?)?;
+        // Their headers may hold tokens: readable by the server only.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+        }
         std::fs::rename(tmp, self.dir.join("sources.json"))?;
         Ok(())
     }
@@ -426,14 +441,16 @@ fn agent() -> ureq::Agent {
     let tls = ureq::tls::TlsConfig::builder()
         .root_certs(ureq::tls::RootCerts::PlatformVerifier)
         .build();
-    ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .tls_config(tls)
         .timeout_global(Some(Duration::from_secs(15)))
         .max_redirects(5)
         .http_status_as_error(false)
         .user_agent(concat!("strata-graphics/", env!("CARGO_PKG_VERSION")))
-        .build()
-        .into()
+        .build();
+    // The local network is fine (in-house feeds); a cloud machine's own
+    // secrets address is not.
+    crate::webproxy::agent_only(config, crate::webproxy::not_link_local)
 }
 
 pub fn fetch(s: &Source) -> Result<(Json, usize), String> {

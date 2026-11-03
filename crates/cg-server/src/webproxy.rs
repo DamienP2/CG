@@ -30,8 +30,16 @@ pub struct ProxyQuery {
     transparent: Option<String>,
 }
 
-/// `GET /api/web/proxy?url=…[&transparent=1]`
-pub async fn proxy(Query(q): Query<ProxyQuery>) -> Response {
+/// `GET /api/web/proxy?url=…[&transparent=1]`: logged-in users, or anyone
+/// when HTML5 outputs play without logging in (their Iframe widgets).
+pub async fn proxy(
+    axum::extract::State(s): axum::extract::State<crate::state::Shared>,
+    crate::auth::MaybeUser(me): crate::auth::MaybeUser,
+    Query(q): Query<ProxyQuery>,
+) -> Response {
+    if me.is_none() && !s.config.public_outputs {
+        return (StatusCode::UNAUTHORIZED, "login required").into_response();
+    }
     let clear = q.transparent.as_deref().is_some_and(|v| v != "0");
     match tokio::task::spawn_blocking(move || fetch(&q.url, clear)).await {
         Ok(Ok(page)) => page.into_response(),
@@ -172,11 +180,74 @@ fn local_name(host: &str) -> bool {
         || !h.contains('.')
 }
 
+/// Resolves names like ureq does, keeping public addresses only: the address
+/// connected to is the one checked (a name that changes its answer between
+/// the check and the fetch never leads to the local network).
+#[derive(Debug)]
+pub struct Only {
+    resolver: ureq::unversioned::resolver::DefaultResolver,
+    allowed: fn(IpAddr) -> bool,
+}
+
+impl Only {
+    /// Addresses `allowed` says yes to (checked as connected, redirects too).
+    pub fn new(allowed: fn(IpAddr) -> bool) -> Self {
+        Self {
+            resolver: Default::default(),
+            allowed,
+        }
+    }
+}
+
+/// An agent made with `config` that connects only where `allowed` says.
+pub fn agent_only(config: ureq::config::Config, allowed: fn(IpAddr) -> bool) -> ureq::Agent {
+    ureq::Agent::with_parts(
+        config,
+        ureq::unversioned::transport::DefaultConnector::new(),
+        Only::new(allowed),
+    )
+}
+
+/// Anywhere but link-local addresses (169.254.0.0/16, fe80::/10), where
+/// cloud machines answer with their secrets.
+pub fn not_link_local(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => !v4.is_link_local(),
+        IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => !v4.is_link_local(),
+            None => (v6.segments()[0] & 0xffc0) != 0xfe80,
+        },
+    }
+}
+
+impl ureq::unversioned::resolver::Resolver for Only {
+    fn resolve(
+        &self,
+        uri: &Uri,
+        config: &ureq::config::Config,
+        timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> Result<ureq::unversioned::resolver::ResolvedSocketAddrs, ureq::Error> {
+        let all = self.resolver.resolve(uri, config, timeout)?;
+        // Behind a web proxy the address resolved is the proxy's.
+        if behind_proxy() {
+            return Ok(all);
+        }
+        let mut out = self.empty();
+        for a in all.iter().filter(|a| (self.allowed)(a.ip())) {
+            out.push(*a);
+        }
+        if out.is_empty() {
+            return Err(ureq::Error::HostNotFound);
+        }
+        Ok(out)
+    }
+}
+
 fn agent() -> ureq::Agent {
     let tls = ureq::tls::TlsConfig::builder()
         .root_certs(ureq::tls::RootCerts::PlatformVerifier)
         .build();
-    ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .tls_config(tls)
         .timeout_global(Some(Duration::from_secs(15)))
         // Each hop is checked here.
@@ -186,8 +257,8 @@ fn agent() -> ureq::Agent {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) \
              Chrome/124.0 Safari/537.36 Strata",
         )
-        .build()
-        .into()
+        .build();
+    agent_only(config, public)
 }
 
 fn fetch(url: &str, clear: bool) -> Result<Page, String> {

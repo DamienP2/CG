@@ -51,9 +51,18 @@ fn listed(s: &Shared) -> Vec<Listed> {
         .collect()
 }
 
-/// Any signed-in user.
-async fn list(State(s): State<Shared>, CurrentUser(_): CurrentUser) -> Json<Vec<Listed>> {
-    Json(listed(&s))
+/// Any signed-in user (the token of a webhook address only for who may
+/// change the connection).
+async fn list(State(s): State<Shared>, CurrentUser(me): CurrentUser) -> Json<Vec<Listed>> {
+    let mut list = listed(&s);
+    if !me.can_create_projects() {
+        for l in &mut list {
+            if let Some(t) = l.info.source.settings.get_mut("hookToken") {
+                *t = "••••".into();
+            }
+        }
+    }
+    Json(list)
 }
 
 /// Calls the platform makes (`hookToken`: the token of its address).

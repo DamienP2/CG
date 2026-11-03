@@ -461,6 +461,11 @@ pub struct ServerConfig {
     /// without logging in.
     #[serde(default = "yes")]
     pub public_outputs: bool,
+    /// Addresses of other sites whose pages may act with a user's session
+    /// (`https://newsroom.example.org`); the server's own address, however
+    /// it is reached (another PC, a reverse proxy), never needs to be here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trusted_origins: Vec<String>,
     /// Default IANA time zone of clocks ("" = the server's zone).
     #[serde(default)]
     pub timezone: String,
@@ -505,6 +510,7 @@ impl Default for ServerConfig {
             name: default_name(),
             bind: None,
             public_outputs: true,
+            trusted_origins: Vec::new(),
             timezone: String::new(),
             time: Default::default(),
             ndi_library: String::new(),

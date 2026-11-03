@@ -271,6 +271,7 @@ export const home: Record<string, string> = {
   'What uses it — e.g. Companion control room A': 'Ce qui l’utilise, p. ex. Companion régie A',
   'What’s new in {version}': 'Nouveautés de {version}',
   'Wrong user name or password.': 'Nom d’utilisateur ou mot de passe incorrect.',
+  'Too many tries: wait a moment, then try again.': 'Trop d’essais : patientez un instant, puis réessayez.',
   'You have unsaved changes.': 'Des modifications ne sont pas enregistrées.',
   'and {n} more': 'et {n} autres',
   'as {user} ({role})': 'en tant que {user} ({role})',

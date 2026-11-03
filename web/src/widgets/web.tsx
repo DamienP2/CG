@@ -8,6 +8,16 @@ import { Content, defineWidget, Num, RangeNum, Section, Seg, Toggle, useKeys, ty
 import { Centre } from './centre';
 import { t, tc } from '../i18n';
 
+/** A page of this server itself: never framed with its rights (the session). */
+function sameOrigin(src: string | undefined): boolean {
+  if (!src) return false;
+  try {
+    return new URL(src, location.href).origin === location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export interface Config {
   source?: 'url' | 'html';
   url?: string;
@@ -168,7 +178,7 @@ function View({ layer, w, h, data, state, nowMs, designer }: { layer: WebLayer; 
       ref={(el) => void (el ? frames.current.set(f.key, el) : frames.current.delete(f.key))}
       title={layer.id}
       onLoad={() => loaded(f)}
-      {...(f.doc != null ? { srcDoc: f.doc, sandbox: 'allow-scripts' } : { src: f.src, sandbox: k.proxy ? 'allow-scripts allow-forms allow-popups' : 'allow-scripts allow-same-origin allow-forms allow-popups', referrerPolicy: 'no-referrer' as const })}
+      {...(f.doc != null ? { srcDoc: f.doc, sandbox: 'allow-scripts' } : { src: f.src, sandbox: k.proxy || sameOrigin(f.src) ? 'allow-scripts allow-forms allow-popups' : 'allow-scripts allow-same-origin allow-forms allow-popups', referrerPolicy: 'no-referrer' as const })}
       // The error page is for the Designer: on air the frame stays empty (the Operator's dot says why).
       style={style(hidden || (!designer && failed.current.has(f.key)))}
     />
