@@ -6567,6 +6567,20 @@ a.btn {
 .splitter.y.opx-gap {
   height: 1px;
 }
+/* Hovered or dragged: a thin blue glow (the two preview / on-air handles move together, both glow). */
+.splitter.opx-gap {
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+.splitter.opx-gap:hover,
+body.resizing-x .splitter.x.opx-gap:active,
+body.resizing-y .splitter.y.opx-gap:active,
+.opl-page:has(.splitter.opx-pv:hover) .splitter.opx-pv,
+body.resizing-y .opl-page:has(.splitter.opx-pv:active) .splitter.opx-pv {
+  background: var(--accent);
+  box-shadow: 0 0 5px 1px rgba(143, 163, 255, 0.55);
+}
 .opx-pane {
   background: var(--panel);
   display: flex;
@@ -22706,4 +22720,25 @@ textarea.tx-grow {
 .lx .logic-wires .wire-g:hover .wire.data {
   --tc: var(--live);
   opacity: 1;
+}
+
+/* On air, by playlist: its tabs (a count, a red dot for a playlist on air). */
+.opx-airtabs .opx-wtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.opx-airtab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+}
+.opx-airtab-n {
+  font-style: normal;
+  font-size: 10.5px;
+  background: var(--panel-3, var(--panel-2));
+  border-radius: 9px;
+  padding: 0 6px;
+  color: var(--text-2);
 }

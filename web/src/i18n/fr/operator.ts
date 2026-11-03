@@ -537,4 +537,5 @@ export const operator: Record<string, string> = {
   'Send to': 'Envoyer vers',
   'Output {n}': 'Sortie {n}',
   'Add an output of its own (a screen on set…): it shows the playlists sent to it': 'Ajouter une sortie à part (un écran plateau…) : elle montre les playlists qu’on lui envoie',
+  Playlist: 'Playlist',
 };

@@ -20,7 +20,7 @@ import { api, can, thumbnailUrl, useApp, type Live } from '../store';
 import { Program } from '../output/Program';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { KeyScope, SliderNum } from '../widgets/kit';
-import { AirRows, DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets, useSingleRowSets } from './DataSets';
+import { DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownData, sourcePatch, steppedDatasets, useSingleRowSets } from './DataSets';
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, withoutSingleRow, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
 import { shownText } from '../widgets/text';
@@ -334,6 +334,9 @@ export function Operator({ channelId }: { channelId: string | null }) {
   const rundown = project?.rundown ?? [];
   const playlists = project?.playlists ?? [];
   const activeList = playlists.find((p) => p.id === playlistId)?.id ?? playlists[0]?.id ?? '';
+  // The On air tab chosen (none: the one of the playlist open on the left).
+  const [airTab, setAirTab] = useState<string | null>(null);
+  useEffect(() => setAirTab(null), [activeList]);
   // An empty template (or one that became empty) is not part of the rundown.
   const playable = (id: string) => !!project?.templates.find((t) => t.id === id)?.layers.some((l) => l.visible !== false);
   const items = rundown.filter((r) => (r.playlist === activeList || !playlists.some((p) => p.id === r.playlist)) && playable(r.templateId));
@@ -471,8 +474,19 @@ export function Operator({ channelId }: { channelId: string | null }) {
   // On air, front-most zone first; the internal controls show one of them.
   const zones = useMemo(() => [...(project?.zones ?? [])].sort((a, b) => b.layer - a.layer), [project?.zones]);
   const busy = zones.filter((z) => channel.layers[String(z.layer)]);
-  const airList = useRef<HTMLDivElement>(null);
-  useAirBento(airList, busy.length > 0);
+  // On air, by playlist: tabs once graphics of two playlists (or more) are on air.
+  const airList = (z: Zone) => {
+    const rid = channel.layers[String(z.layer)]?.rundownId;
+    return (rid && project?.rundown.find((r) => r.id === rid)?.playlist) || '';
+  };
+  const airGroups = [...new Set(busy.map(airList))];
+  const airTabs = airGroups.length > 1;
+  // The tab follows the playlist open on the left, until another one is chosen.
+  const shownAir = !airTabs ? 'all' : (airTab ?? (airGroups.includes(activeList) ? activeList : 'all'));
+  const airTabOn = shownAir === 'all' || airGroups.includes(shownAir) ? shownAir : 'all';
+  const busyShown = airTabOn === 'all' ? busy : busy.filter((z) => airList(z) === airTabOn);
+  const airListRef = useRef<HTMLDivElement>(null);
+  useAirBento(airListRef, busyShown.length > 0);
   // CONTINUE / OUT drive the front-most graphic on air.
   const selZone = busy[0];
 
@@ -737,7 +751,7 @@ export function Operator({ channelId }: { channelId: string | null }) {
               </div>
               )}
             </section>
-            {mon.preview && <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
+            {mon.preview && <Splitter axis="y" className="opx-gap opx-pv" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
         </>
         <section className="opx-pane grow">
           {item && template ? (
@@ -847,7 +861,8 @@ export function Operator({ channelId }: { channelId: string | null }) {
         </section>
       </div>
 
-      <Splitter axis="x" className="opx-gap" sign={-1} value={layout.right} min={320} max={1100} reset={620} onChange={(v) => setLayout('right', v)} />
+      {/* Double-click: the preview and the on-air columns get the same width. */}
+      <Splitter axis="x" className="opx-gap" sign={-1} value={layout.right} min={320} max={1100} resetTo={(h) => ((h.parentElement?.clientWidth ?? 0) - layout.left - 2) / 2} onChange={(v) => setLayout('right', v)} />
 
       {/* Right: on air (the same size as the preview), then the controls of the graphics on air. */}
       <div className="opx-col">
@@ -888,12 +903,27 @@ export function Operator({ channelId }: { channelId: string | null }) {
               </div>
               )}
             </section>
-            {mon.air && <Splitter axis="y" className="opx-gap" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
+            {mon.air && <Splitter axis="y" className="opx-gap opx-pv" value={layout.preview} min={160} max={900} reset={400} onChange={(v) => setLayout('preview', v)} />}
         </>
         <section className="opx-pane grow">
+          {airTabs && (
+            <div className="opx-head opx-tabs opx-wtabs opx-airtabs">
+              <button className={`opx-wtab ${airTabOn === 'all' ? 'on' : ''}`} onClick={() => setAirTab('all')}>
+                <span>{t('All')}</span>
+                <em className="opx-airtab-n">{busy.length}</em>
+              </button>
+              {airGroups.map((g) => (
+                <button key={g || '-'} className={`opx-wtab ${airTabOn === g ? 'on' : ''}`} onClick={() => setAirTab(g)}>
+                  <i className="opx-airtab-dot" />
+                  <span>{g ? (playlists.find((p) => p.id === g)?.name ?? t('Playlist')) : t('Other')}</span>
+                  <em className="opx-airtab-n">{busy.filter((z) => airList(z) === g).length}</em>
+                </button>
+              ))}
+            </div>
+          )}
           {busy.length ? (
-            <div className="opx-airlist" ref={airList}>
-              {busy.map((z) => {
+            <div className="opx-airlist" ref={airListRef}>
+              {busyShown.map((z) => {
                 const p = channel.layers[String(z.layer)];
                 return (
                   <AirCard
@@ -2188,7 +2218,7 @@ function AirCard({ project, zone, item, liveAt, operate, lockedBy, takeOver, com
   );
 }
 
-function AirControls({ project, zone, item, command, nextRowOf, widget, bare, lead }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets; bare?: boolean; /** Tiles before the controls: Continue, Out. */ lead?: React.ReactNode }) {
+function AirControls({ project, zone, item, command, widget, bare, lead }: { project: Project; zone: Zone; item: PlayoutItem; command: (c: Command) => void; nextRowOf?: (dataset: string) => number | undefined; widget: AirWidgets; bare?: boolean; /** Tiles before the controls: Continue, Out. */ lead?: React.ReactNode }) {
   const tpl = project.templates.find((x) => x.id === item.templateId);
   const target = { zone: zone.id };
   // Deleted (or unpublished) while on air: it can still be taken out.
@@ -2228,7 +2258,6 @@ function AirControls({ project, zone, item, command, nextRowOf, widget, bare, le
           </button>
         </div>
       )}
-      {!!steppedDatasets(tpl).length && <AirRows sets={steppedDatasets(tpl)} item={item} command={command} zone={zone.id} nextRowOf={nextRowOf} />}
       {tpl.layers
         .filter((l) => l.visible && !!widgetOf(l)?.Operator && hasControls(l, item.data))
         .map((l) => {

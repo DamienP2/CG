@@ -36,6 +36,7 @@ export function Splitter({
   max,
   sign = 1,
   reset,
+  resetTo,
   className = '',
 }: {
   axis: 'x' | 'y';
@@ -45,6 +46,8 @@ export function Splitter({
   max: number;
   sign?: 1 | -1;
   reset?: number;
+  /** The size a double-click restores, worked out from the handle (instead of `reset`). */
+  resetTo?: (handle: HTMLElement) => number;
   className?: string;
 }) {
   const start = (e: React.PointerEvent) => {
@@ -64,5 +67,8 @@ export function Splitter({
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
-  return <div className={`splitter ${axis} ${className}`} onPointerDown={start} onMouseDown={(e) => e.preventDefault()} onDoubleClick={() => reset !== undefined && onChange(reset)} title={t('Drag to resize — double-click to reset')} />;
+  return <div className={`splitter ${axis} ${className}`} onPointerDown={start} onMouseDown={(e) => e.preventDefault()} onDoubleClick={(e) => {
+        const v = resetTo ? resetTo(e.currentTarget) : reset;
+        if (v !== undefined) onChange(Math.round(Math.min(max, Math.max(min, v))));
+      }} title={t('Drag to resize — double-click to reset')} />;
 }
