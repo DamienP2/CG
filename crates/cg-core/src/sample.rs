@@ -1093,6 +1093,7 @@ fn demo_project_layers() -> Project {
         language: "fr".into(),
         template_secs: None,
         colors: Vec::new(),
+        logic_flows: Vec::new(),
         id: "demo".into(),
         name: "Demo show".into(),
         description: String::new(),

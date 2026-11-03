@@ -425,6 +425,26 @@ export interface LogicEdge {
   port: string;
 }
 
+/** Nodes, their wires and frames, and the layers and fields they stand for (copied, saved, inserted). */
+export interface LogicClip {
+  v: 1;
+  nodes: LogicNode[];
+  edges: LogicEdge[];
+  frames: LogicFrame[];
+  layers: { id: string; name: string; type: string }[];
+  /** The data fields its Field nodes read (to find them again in another template). */
+  fields?: string[];
+}
+
+/** A flow of logic kept in the Library: a project's own, or shared by every project. */
+export interface LogicFlow {
+  id: string;
+  name: string;
+  author?: string;
+  created?: number;
+  clip: LogicClip;
+}
+
 /** A function of the graph: a dashed frame its nodes are in; switched off, they no longer act. */
 export interface LogicFrame {
   id: string;
@@ -505,6 +525,8 @@ export interface Project {
   templateSecs?: number;
   /** The project's own palette (the shared ones are in the Library). */
   colors?: NamedColor[];
+  /** The project's own flows of logic (Library › Logic). */
+  logicFlows?: LogicFlow[];
   templates: Template[];
   rundown: RundownItem[];
   zones: Zone[];

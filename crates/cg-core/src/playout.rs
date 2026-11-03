@@ -2009,6 +2009,7 @@ mod tests {
             language: "fr".into(),
             template_secs: None,
             colors: Vec::new(),
+            logic_flows: Vec::new(),
             id: "p".into(),
             name: "p".into(),
             description: String::new(),

@@ -154,6 +154,14 @@ pub fn router() -> Router<Shared> {
             get(crate::colors::list).put(crate::colors::put),
         )
         .route("/api/projects/{id}/colors", put(crate::colors::put_project))
+        .route(
+            "/api/logic-flows",
+            get(crate::logicflows::list).put(crate::logicflows::put),
+        )
+        .route(
+            "/api/projects/{id}/logic-flows",
+            put(crate::logicflows::put_project),
+        )
         .route("/api/fonts", get(list_fonts))
         .route("/api/fonts/file/{family}/{weight}", get(font_file))
         .route(
@@ -626,6 +634,7 @@ async fn create_project(
             language: "fr".into(),
             template_secs: None,
             colors: Vec::new(),
+            logic_flows: Vec::new(),
             id: String::new(),
             name: String::new(),
             description: String::new(),
@@ -933,6 +942,7 @@ async fn import_create(
         language: "fr".into(),
         template_secs: None,
         colors: Vec::new(),
+        logic_flows: Vec::new(),
         id: cg_core::new_id(),
         name: c.name.trim().to_string(),
         description: String::new(),

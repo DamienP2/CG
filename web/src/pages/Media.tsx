@@ -1,4 +1,4 @@
-import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, Palette as PaletteIcon, Plus, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
+import { Check, Copy, Download, File, FileAudio, Film, HardDrive, Image as ImageIcon, LayoutGrid, Link2, Palette as PaletteIcon, Plus, Search, Trash2, Type, Upload, UploadCloud } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, can, mediaName, mediaUrl, uploadAsset, useApp, useChanged, type MediaFile } from '../store';
 import { confirmDialog } from '../ui/dialogs';
@@ -7,6 +7,8 @@ import { locale, t, tn } from '../i18n';
 import { NavItem, NavSection, PageHead, SidePage } from './SidePage';
 import { addPalette, ColorsPanel } from './ColorsPanel';
 import { useColors } from '../colors';
+import { LogicFlowsPanel } from './LogicFlowsPanel';
+import { useLogicFlows } from '../logicFlows';
 
 type Kind = MediaFile['kind'];
 
@@ -115,7 +117,13 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
   useEffect(() => {
     if (!families.length) void loadFonts();
   }, [families.length]);
-  const [kind, setKind] = useState<Kind | 'all' | 'colors'>('all');
+  const [kind, setKind] = useState<Kind | 'all' | 'colors' | 'logic'>('all');
+  const sharedFlows = useLogicFlows((s) => s.shared.length);
+  const flowsLoaded = useLogicFlows((s) => s.loaded);
+  useEffect(() => {
+    if (!flowsLoaded) void useLogicFlows.getState().load();
+  }, [flowsLoaded]);
+  const projectFlows = useApp((s) => (projectId ? (s.full[projectId]?.logicFlows?.length ?? 0) : 0));
   const palettes = useColors((s) => s.palettes);
   const loadColors = useColors((s) => s.load);
   const colorsLoaded = useColors((s) => s.loaded);
@@ -199,6 +207,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
     .sort((a, b) => (sort === 'date' ? b.modified - a.modified : sort === 'size' ? b.size - a.size : 0) || a.name.localeCompare(b.name));
   const fonts = kind === 'font';
   const colors = kind === 'colors';
+  const logic = kind === 'logic';
   const label = KINDS.find((k) => k.kind === kind)?.label ?? 'All files';
 
   const nav = (
@@ -211,6 +220,8 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       <NavItem on={kind === 'font'} icon={<Type size={15} />} label={t('Fonts')} count={families.length} onClick={() => setKind('font')} />
       <NavSection>{t('Colours')}</NavSection>
       <NavItem on={colors} icon={<PaletteIcon size={15} />} label={t('Colours')} count={palettes.reduce((n, p) => n + p.colors.length, projectColors)} onClick={() => setKind('colors')} />
+      <NavSection>{t('Logic')}</NavSection>
+      <NavItem on={logic} icon={<Link2 size={15} />} label={t('Flows of logic')} count={sharedFlows + projectFlows} onClick={() => setKind('logic')} />
       <div className="lib-nav-foot">
         <HardDrive size={13} /> {files ? `${tn(files.length, '{n} file', '{n} files')} · ${formatSize(total)}` : '…'}
       </div>
@@ -249,15 +260,15 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
       }
     >
       <PageHead
-        title={colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
-        sub={colors ? undefined : fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
+        title={logic ? t('Flows of logic') : colors ? t('Colours') : fonts ? t('Fonts') : kind === 'all' ? (projectId ? t('Media of the project') : t('Shared media')) : t(label)}
+        sub={colors || logic ? undefined : fonts ? t('Fonts are shared by every project. Built-in ones work offline and look the same on every output.') : tn(shown.length, '{n} file', '{n} files')}
       >
         {colors && canDelete && (
           <button className="btn primary" onClick={addPalette}>
             <Plus size={14} /> {t('Palette')}
           </button>
         )}
-        {!colors && canUpload && (
+        {!colors && !logic && canUpload && (
           <label className="btn primary">
             <Upload size={14} /> {fonts ? t('Add fonts') : t('Upload')}
             <input type="file" multiple hidden accept={fonts ? '.ttf,.otf,.woff,.woff2,.ttc' : undefined} onChange={(e) => e.target.files && void upload(e.target.files)} />
@@ -265,7 +276,7 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         )}
       </PageHead>
 
-      {!fonts && !colors && (
+      {!fonts && !colors && !logic && (
         <div className="media-toolbar">
           <label className="search">
             <Search size={14} />
@@ -305,7 +316,9 @@ export function MediaLibrary({ projectId }: { projectId?: string }) {
         </div>
       )}
 
-      {colors ? (
+      {logic ? (
+        <LogicFlowsPanel projectId={projectId} canEdit={canDelete} />
+      ) : colors ? (
         <ColorsPanel projectId={projectId} canEdit={canDelete} />
       ) : fonts ? (
         <FontsPanel canEdit={canDelete} />

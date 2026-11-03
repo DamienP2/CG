@@ -1,14 +1,16 @@
-import { BoxSelect, ChevronDown, ChevronRight, ClipboardPaste, Copy, Link2, Plus, Search, Star, Trash2, X } from 'lucide-react';
+import { BookMarked, BoxSelect, ChevronDown, ChevronRight, ClipboardPaste, Copy, Link2, Plus, Search, Sparkles, Star, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { holdFrame, interpolateText, newId, resolveLayer } from '../engine/evaluate';
 import { accepts, clockAt, fromPortOf, measureLayer, metricOf, nodeValues, portsOf, rowType, type LVal, type Port, type PortType } from '../engine/logic';
 import { exprError, names, parse } from '../engine/expr';
-import type { Layer, Logic, LogicEdge, LogicFrame, LogicNode, Template, TriggerEvent } from '../engine/types';
+import type { Layer, Logic, LogicClip, LogicEdge, LogicFlow, LogicFrame, LogicNode, Template, TriggerEvent } from '../engine/types';
 import { CanvasHeader, CanvasVoid } from '../ui/CanvasHeader';
 import { Dropdown } from '../ui/Dropdown';
 import { HexColorField, NumberField, Segmented, TextInput } from '../ui/fields';
-import { useApp } from '../store';
+import { can, useApp } from '../store';
+import { useLogicFlows } from '../logicFlows';
+import { InsertModal, needsOf, PresetsModal, SaveFlowModal, type Needs } from './logicLibrary';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
 import { useDesigner } from './designerStore';
@@ -47,15 +49,8 @@ interface PortRef {
   type: PortType;
 }
 
-/** What is copied: nodes, the wires between them, their frames. */
-interface Clip {
-  v: 1;
-  nodes: LogicNode[];
-  edges: LogicEdge[];
-  frames: LogicFrame[];
-  /** The layers its Layer nodes stand for (to find them again in another template). */
-  layers: { id: string; name: string; type: string }[];
-}
+/** What is copied: nodes, the wires between them, their frames, the layers and fields they stand for. */
+type Clip = LogicClip;
 
 export const fmt = (v: LVal | undefined) => (v === undefined ? '' : typeof v === 'number' ? String(+v.toFixed(2)) : `“${v.length > 18 ? `${v.slice(0, 18)}…` : v}”`);
 
@@ -263,6 +258,16 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
   const [typeFilter, setTypeFilter] = useState<PortType | null>(null);
   const [favs, setFavs] = useState<string[]>(() => displayPref('logic.favs', []));
   const [folded, setFolded] = useState<string[]>(() => displayPref('logic.folded', []));
+  const [modal, setModal] = useState<{ kind: 'presets' } | { kind: 'save'; name: string } | { kind: 'insert'; clip: Clip; name: string; needs: Needs; framed: boolean } | null>(null);
+  const user = useApp((s) => s.auth?.user);
+  const projectId = useApp((s) => s.project?.id);
+  const projectFlows = useApp((s) => s.project?.logicFlows) ?? [];
+  const toast = useApp((s) => s.toast);
+  const shared = useLogicFlows((s) => s.shared);
+  const flowsLoaded = useLogicFlows((s) => s.loaded);
+  useEffect(() => {
+    if (!flowsLoaded) void useLogicFlows.getState().load();
+  }, [flowsLoaded]);
   const searchRef = useRef<HTMLInputElement>(null);
   const spaceRef = useRef<HTMLDivElement>(null);
   const logic: Logic = template?.logic ?? { nodes: [], edges: [] };
@@ -542,6 +547,7 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
       edges: structuredClone(logic.edges.filter((e) => keep.has(e.from) && keep.has(e.to))),
       frames: structuredClone(frames.filter((f) => frameIds.has(f.id) || ns.some((n) => n.frame === f.id))),
       layers: template.layers.filter((l) => used.has(l.id)).map((l) => ({ id: l.id, name: l.name, type: l.type })),
+      fields: [...new Set(ns.flatMap((n) => (n.type === 'field' && n.key ? [n.key] : [])))],
     };
   };
   const copy = () => {
@@ -555,11 +561,12 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     navigator.clipboard?.writeText(JSON.stringify(c)).catch(() => {});
   };
   /** Puts a clip in this template: new ids, its layers found again here (same id, same name, same type). */
-  const insertClip = (c: Clip, at?: { x: number; y: number }) => {
+  const insertClip = (c: Clip, at?: { x: number; y: number }, map?: { layers: Record<string, string>; fields: Record<string, string> }, frameName?: string) => {
     const ids = new Map<string, string>();
     for (const n of c.nodes) ids.set(n.id, newId());
     for (const f of c.frames) ids.set(f.id, newId());
     const mapLayer = (id: string) => {
+      if (map?.layers[id]) return map.layers[id];
       if (template.layers.some((l) => l.id === id)) return id;
       const was = c.layers.find((l) => l.id === id);
       return (was && (template.layers.find((l) => l.name === was.name) ?? template.layers.find((l) => l.type === was.type))?.id) ?? id;
@@ -572,9 +579,32 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
       if (m.frame) m.frame = ids.get(m.frame);
       if (!m.frame) delete m.frame;
       if (m.type === 'layer' || m.type === 'widget') m.layer = mapLayer(m.layer);
+      if (m.type === 'field') m.key = map?.fields[m.key] ?? m.key;
+      // What the clip leaves to choose: the template's first one.
+      const first = (f: (l: Layer) => boolean) => template.layers.find(f)?.id ?? '';
+      if (m.type === 'nextRow' && !m.dataset) m.dataset = template.datasets?.[0]?.key ?? '';
+      if (m.type === 'widget' && !m.layer) m.layer = first(timedLayer);
+      if (m.type === 'event') {
+        const on = m.on;
+        if (on.kind === 'lastRow' && !on.dataset) on.dataset = template.datasets?.[0]?.key ?? '';
+        if ((on.kind === 'timerZero' || on.kind === 'timerAt') && !on.layer) on.layer = first(timerLayer);
+        if (on.kind === 'scrollEnd' && !on.layer) on.layer = first(scrollLayer);
+        if (on.kind === 'videoEnd' && !on.layer) on.layer = first(videoLayer);
+        if (on.kind === 'dataChange' && !on.key) on.key = template.fields[0]?.key ?? '';
+      }
       return m;
     });
     const fs: LogicFrame[] = c.frames.map((f) => ({ ...f, id: ids.get(f.id)!, x: f.x + o.x, y: f.y + o.y }));
+    // A preset goes in its own frame.
+    if (frameName && !fs.length && ns.length) {
+      const x0 = Math.min(...ns.map((n) => n.x)) - 24;
+      const y0 = Math.min(...ns.map((n) => n.y)) - 44;
+      const x1 = Math.max(...ns.map((n) => n.x + widthOf(n))) + 24;
+      const y1 = Math.max(...ns.map((n) => n.y + 170)) + 24;
+      const f: LogicFrame = { id: newId(), name: frameName, color: FRAME_COLORS[(frames.length + 1) % FRAME_COLORS.length], x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      fs.push(f);
+      for (const n of ns) n.frame = f.id;
+    }
     const es: LogicEdge[] = c.edges.map((e) => ({ ...e, from: ids.get(e.from)!, to: ids.get(e.to)! }));
     edit((l) => {
       l.nodes.push(...ns);
@@ -598,6 +628,24 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
     const v = cv.visible();
     insertClip(c, { x: Math.round(v.x + 60), y: Math.round(v.y + 60) });
   };
+
+  /** A flow from the Library or a preset: its layers and fields matched first when the template has other ones. */
+  const startInsert = (clip: Clip, name: string, framed: boolean) => {
+    const needs = needsOf(clip, template);
+    const v = cv.visible();
+    const at = { x: Math.round(v.x + 80), y: Math.round(v.y + 80) };
+    if (needs.layers.length || needs.fields.length) setModal({ kind: 'insert', clip, name, needs, framed });
+    else insertClip(clip, at, undefined, framed ? name : undefined);
+  };
+  const saveFlow = async (name: string, scope: 'project' | 'shared') => {
+    const clip = clipOf(sel, new Set(selFrame ? [selFrame] : []));
+    if (!clip.nodes.length) return;
+    const flow: LogicFlow = { id: newId(), name, author: user?.displayName || user?.username || '', created: Date.now(), clip };
+    const ok = scope === 'shared' ? await useLogicFlows.getState().saveShared([...shared, flow]) : projectId ? await useLogicFlows.getState().saveProject(projectId, [...projectFlows, flow]) : false;
+    if (ok) toast(t('Saved in the library'));
+    setModal(null);
+  };
+  const askSave = () => setModal({ kind: 'save', name: frames.find((f) => f.id === selFrame)?.name ?? t('Flow') });
 
   // ── Wires ─────────────────────────────────────────────────────────────
   const portRef = (el: HTMLElement): PortRef => ({ node: el.dataset.node!, port: el.dataset.port!, dir: el.dataset.dir as 'in' | 'out', type: el.dataset.type as PortType });
@@ -1252,6 +1300,12 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
         <button className="lx-tool" onClick={paste} disabled={!canPaste} title={t('Paste (⌘V)')}>
           <ClipboardPaste size={13} /> {t('Paste')}
         </button>
+        <button className="lx-tool" onClick={askSave} disabled={!sel.size && !selFrame} title={t('Save the selection in the library')}>
+          <BookMarked size={13} /> {t('Save')}
+        </button>
+        <button className="lx-tool" onClick={() => setModal({ kind: 'presets' })}>
+          <Sparkles size={13} /> {t('Presets')}
+        </button>
       </CanvasHeader>
       <div className="logic-body">
         <aside className="lx-pal">
@@ -1309,6 +1363,31 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
               </div>
             );
           })}
+          {(() => {
+            const mine: (LogicFlow & { scope: string })[] = [...projectFlows.map((f) => ({ ...f, scope: t('project') })), ...shared.map((f) => ({ ...f, scope: t('shared flow') }))].filter((f) => scope !== 'fav' && !typeFilter && (!q || fold(f.name).includes(q)));
+            if (!mine.length) return null;
+            const open = !folded.includes('mine') || !!q;
+            return (
+              <div className="lx-fam fam-mine">
+                <button className="lx-famhead" onClick={() => toggleFold('mine')}>
+                  {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                  <i />
+                  {t('My flows')}
+                  <em>{mine.length}</em>
+                </button>
+                {open &&
+                  mine.map((f) => (
+                    <div key={f.id} className="lx-entry">
+                      <button onClick={() => startInsert(f.clip, f.name, false)} title={t('Insert')}>
+                        <BookMarked size={13} />
+                        <strong>{f.name}</strong>
+                        <em>{f.scope}</em>
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            );
+          })()}
           {!shown.length && <div className="lx-none">{t('No node')}</div>}
         </aside>
         <div {...cv.viewport} className={`logic-canvas ${cv.viewport.className}`} tabIndex={0} onPointerDown={onCanvasDown} onKeyDown={onKey}>
@@ -1345,6 +1424,9 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
                         <Copy size={11} /> {t('Copy')}
                       </button>
                       <button onClick={() => insertClip(clipOf(new Set(), new Set([f.id])))}>{t('Duplicate')}</button>
+                      <button onClick={askSave}>
+                        <BookMarked size={11} /> {t('Save in the library')}
+                      </button>
                       <button onClick={() => (removeFrame(f.id), setSelFrame(null))} title={t('Remove the frame (its nodes stay)')}>
                         <Trash2 size={11} />
                       </button>
@@ -1449,6 +1531,30 @@ export function LogicEditor({ onClose }: { onClose: () => void }) {
           {cv.controls}
         </div>
       </div>
+      {modal?.kind === 'presets' && (
+        <PresetsModal
+          template={template}
+          onClose={() => setModal(null)}
+          onPick={(p) => {
+            setModal(null);
+            startInsert(p.clip, t(p.name), true);
+          }}
+        />
+      )}
+      {modal?.kind === 'save' && <SaveFlowModal name={modal.name} canShare={can.design(user)} onClose={() => setModal(null)} onSave={(n, sc) => void saveFlow(n, sc)} />}
+      {modal?.kind === 'insert' && (
+        <InsertModal
+          name={modal.name}
+          needs={modal.needs}
+          template={template}
+          onClose={() => setModal(null)}
+          onInsert={(layers, fields) => {
+            const v = cv.visible();
+            insertClip(modal.clip, { x: Math.round(v.x + 80), y: Math.round(v.y + 80) }, { layers, fields }, modal.framed ? modal.name : undefined);
+            setModal(null);
+          }}
+        />
+      )}
     </div>
     </PortCtx.Provider>
   );

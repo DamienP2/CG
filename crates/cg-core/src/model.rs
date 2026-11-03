@@ -2242,6 +2242,27 @@ pub struct Project {
     /// The project's own palette (the shared ones are in the Library).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub colors: Vec<NamedColor>,
+    /// The project's own flows of logic (the shared ones are in the Library).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub logic_flows: Vec<LogicFlow>,
+}
+
+/// A flow of logic kept in the Library (Library › Logic): nodes, their
+/// wires and frames, and the layers they stand for, as the Logic canvas
+/// copies them (`clip`, kept as it is).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogicFlow {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub author: String,
+    /// When it was saved (ms since 1970).
+    #[serde(default)]
+    pub created: i64,
+    #[serde(default)]
+    pub clip: serde_json::Value,
 }
 
 /// A colour of a palette: the layers using its value follow it when it
