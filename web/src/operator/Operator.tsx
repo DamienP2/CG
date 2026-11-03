@@ -2,7 +2,7 @@ import { withSettings } from '../engine/settings';
 import { RichInput } from '../ui/RichText';
 import { plain, richField } from '../engine/rich';
 import { AssetPicker } from '../designer/AssetPicker';
-import { ChevronsRight, CircleStop, Eraser, Clock, Copy, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { ChevronsRight, CircleStop, Eraser, Clock, Copy, CopyPlus, Eye, EyeOff, Radio, Database, Layers, MoreHorizontal, Pause, PenLine, Pencil, Play, Plus, RefreshCw, Repeat, RotateCcw, Rows3, SkipForward, Square, Timer, Trash2, Type, Undo2, X, Zap, GripVertical, ChevronDown, ChevronLeft, ChevronRight, ListPlus, MousePointerClick, Unplug, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { busItems, busOf } from '../engine/buses';
 import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
@@ -665,6 +665,13 @@ export function Operator({ channelId }: { channelId: string | null }) {
                   const next = [...rundown];
                   next.splice(rundown.indexOf(r) + 1, 0, { ...structuredClone(r), id: newId(), name: t('{name} copy', { name: r.name }) });
                   saveRundown(next);
+                }}
+                lists={playlists.filter((p) => p.id !== r.playlist).map((p) => ({ id: p.id, name: p.name }))}
+                onDuplicateTo={(pl) => {
+                  // At the end of the other playlist, its values and settings with it (same name).
+                  const name = playlists.find((p) => p.id === pl)?.name ?? '';
+                  saveRundown([...rundown, { ...structuredClone(r), id: newId(), playlist: pl }]);
+                  toast(t('“{name}” duplicated into {list}', { name: r.name, list: name }));
                 }}
                 onDelete={async () => {
                   if (!(await confirmDialog({ title: t('Remove “{name}”?', { name: r.name }), message: t('It leaves the playlist (the template stays).'), confirm: t('Remove'), danger: true }))) return;
@@ -1580,6 +1587,9 @@ function GraphicRow(props: {
   autoNext: boolean;
   onAuto: (patch: Partial<RundownItem>) => void;
   onDuplicate: () => void;
+  /** The other playlists of the project, to duplicate it into. */
+  lists: { id: string; name: string }[];
+  onDuplicateTo: (playlist: string) => void;
   onDelete: () => void;
   drag: { over: 'before' | 'after' | null; onStart: (e: React.DragEvent) => void; onOver: (e: React.DragEvent) => void; onDrop: (e: React.DragEvent) => void; onEnd: () => void };
 }) {
@@ -1693,6 +1703,7 @@ function GraphicRow(props: {
             null,
             { icon: <Pencil size={13} />, label: t('Rename…'), disabled: !props.editable, run: () => setRenaming(true) },
             { icon: <Copy size={13} />, label: t('Duplicate'), disabled: !props.editable, run: props.onDuplicate },
+            ...props.lists.map((l) => ({ icon: <CopyPlus size={13} />, label: t('Duplicate into {list}', { list: l.name }), disabled: !props.editable, run: () => props.onDuplicateTo(l.id) })),
             null,
             { icon: <Trash2 size={13} />, label: t('Remove…'), disabled: !props.editable, run: props.onDelete, danger: true },
           ]}

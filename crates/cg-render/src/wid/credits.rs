@@ -1,9 +1,9 @@
 //! Credits: drawing (same picture as `web/src/widgets/credits.tsx`).
 
 use cg_core::wid::credits::{
-    blocks, cards, crawl_items, crawl_logo_h, entries, ls, nominal, progress, qr_caption_h, styled,
-    travel, Align, Block, Body, Config, End, Layout, Mode, SpaceStyle, Start, State, Style,
-    QR_CAPTION_GAP,
+    blocks, cards, crawl_items, crawl_logo_h, entries, ls, nominal, progress, progress_smooth,
+    qr_caption_h, styled, travel, Align, Block, Body, Config, End, Layout, Mode, SpaceStyle, Start,
+    State, Style, QR_CAPTION_GAP,
 };
 use cg_core::wid::table::Overflow;
 use cg_core::{Color, LayerKind, TextAlign};
@@ -361,7 +361,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
         Mode::Roll => {
             let (bl, len) = blocks(&c, &es);
             let t = travel(&c, len, bl.last().map(|b| b.y + b.h / 2.0), h);
-            let p = progress(&c, st, t.x, now, age) as f32 * t.x;
+            let p = progress_smooth(&c, st, t.x, now, age) as f32 * t.x;
             let off = t.a - p;
             if !roll_strip(d, &c, &bl, len, off, zm) {
                 for b in &bl {
@@ -402,7 +402,7 @@ pub(crate) fn draw(d: &mut Draw, st: &State) -> bool {
             };
             let (items, len) = crawl_items(&c, &es, h, &mut mw, &mut lwf);
             let t = travel(&c, len, items.last().map(|i| i.x + i.w / 2.0), w);
-            let p = progress(&c, st, t.x, now, age) as f32 * t.x;
+            let p = progress_smooth(&c, st, t.x, now, age) as f32 * t.x;
             let off = t.a - p;
             let lh = crawl_logo_h(&c, h);
             for it in &items {

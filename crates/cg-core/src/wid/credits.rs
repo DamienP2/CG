@@ -947,10 +947,38 @@ pub fn progress(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> f
         (st.base, 0.0)
     };
     let adv = match snapped(c, rate * x as f64).filter(|_| x > 0.0) {
-        Some(v) => (v / fps(c)) * (dt * fps(c)).floor() / x as f64,
+        // Whole frames (a hair of tolerance: 29 frames summed in floats may come out as 28.999…).
+        Some(v) => (v / fps(c)) * (dt * fps(c) + 1e-3).floor() / x as f64,
         None => rate * dt,
     };
     (base + adv).clamp(0.0, 1.0)
+}
+
+/// [`progress`] for drawing a frame: the same speed, continuous in time, so
+/// the roll moves on each of the output's own frames (50i fields, 59.94, a
+/// 60 Hz screen…) instead of standing still on some and jumping on the next.
+/// At the project's rate it lands on the same whole pixels as [`progress`].
+pub fn progress_smooth(c: &Config, st: &State, x: f32, now_ms: i64, age_secs: f64) -> f64 {
+    let rate = st.rate.unwrap_or_else(|| nominal(c, x));
+    let (base, dt) = if !st.started {
+        (0.0, age_secs.max(0.0))
+    } else if st.running {
+        (st.base, (now_ms - st.anchor).max(0) as f64 / 1000.0)
+    } else {
+        (st.base, 0.0)
+    };
+    let speed = match snapped(c, rate * x as f64).filter(|_| x > 0.0) {
+        Some(v) => v / x as f64,
+        None => rate,
+    };
+    // Whole frames of the project: on its own rate, exactly the stepped position.
+    let frames = dt * fps(c);
+    let dt = if (frames - frames.round()).abs() < 1e-3 {
+        frames.round() / fps(c)
+    } else {
+        dt
+    };
+    (base + speed * dt).clamp(0.0, 1.0)
 }
 
 /// Seconds left.
@@ -1613,5 +1641,31 @@ mod tests {
         assert!(bl
             .iter()
             .all(|b| !matches!(&b.body, Body::Lines(r) if r.iter().any(|(a, _)| !a.is_empty()))));
+    }
+
+    #[test]
+    fn smooth_progress_lands_on_the_frames_and_moves_between_them() {
+        let c = Config {
+            optimised: true,
+            fps: 50.0,
+            duration: 10.0,
+            ..Config::default()
+        };
+        let st = State::default();
+        let x = 3500.0_f32;
+        // On the project's frames: the same whole pixels as the stepped progress.
+        for f in 0..200 {
+            let age = f as f64 / 50.0;
+            let a = progress(&c, &st, x, 0, age) * x as f64;
+            let b = progress_smooth(&c, &st, x, 0, age) * x as f64;
+            assert!((a - b).abs() < 1e-6, "frame {f}: {a} vs {b}");
+        }
+        // Between them (a 60 Hz screen): it moves, where the stepped one stands still.
+        let (a0, a1) = (
+            progress(&c, &st, x, 0, 1.0 / 60.0),
+            progress(&c, &st, x, 0, 0.0),
+        );
+        assert_eq!(a0, a1);
+        assert!(progress_smooth(&c, &st, x, 0, 1.0 / 60.0) > 0.0);
     }
 }

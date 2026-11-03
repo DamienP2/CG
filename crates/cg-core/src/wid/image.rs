@@ -324,7 +324,7 @@ pub fn seq(c: &Config, st: &State, manual: bool, now_ms: i64, age_secs: f64) -> 
         PlayMode::Count => Some(c.loops.max(1) as u64),
     };
     let fps = c.fps.clamp(0.1, 120.0) as f64;
-    let mut f = (el * fps).floor() as u64;
+    let mut f = (el * fps + 1e-3).floor() as u64;
     let mut ended = false;
     if let Some(l) = loops {
         if f >= n * l {

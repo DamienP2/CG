@@ -252,7 +252,7 @@ const RATES: [number, number][] = [
 const rateName = ([n, d]: [number, number]) => (d === 1 ? `${n}` : (n / d).toFixed(2).replace('.', ','));
 
 /** Import of an After Effects, MOGRT, Photoshop or SVG file: what each layer becomes, the animations, what is left out; then a new project. */
-export function ImportModal({ file: first, onClose, onCreated, onProject, into, onImported }: { file?: File; onClose: () => void; onCreated?: (p: ProjectSummary) => void; /** A Strata project (.strata.json). */ onProject?: (f: File) => void; /** Templates added to this project (from the Designer), laid out for its format. */ into?: Project; onImported?: (ids: string[]) => void }) {
+export function ImportModal({ file: first, onClose, onCreated, onProject, into, onImported }: { file?: File; onClose: () => void; onCreated?: (p: ProjectSummary) => void; /** A Strata project (.strata.json, or .strata.zip with its pictures). */ onProject?: (f: File) => void; /** Templates added to this project (from the Designer), laid out for its format. */ into?: Project; onImported?: (ids: string[]) => void }) {
   const toast = useApp((s) => s.toast);
   const [file, setFile] = useState<File | undefined>(first);
   const [busy, setBusy] = useState(false);
@@ -342,7 +342,8 @@ export function ImportModal({ file: first, onClose, onCreated, onProject, into, 
   const setOn = (layer: string, v: boolean) => comp && setO({ ...o, on: { ...o.on, [comp.id]: { ...o.on[comp.id], [layer]: v } } });
   const pick = (f?: File) => {
     if (!f) return;
-    if (f.name.toLowerCase().endsWith('.json')) return into ? undefined : onProject?.(f);
+    // A Strata project: its .json, or a full export (.strata.zip, with its pictures).
+    if (/\.json$|\.strata\.zip$/i.test(f.name)) return into ? undefined : onProject?.(f);
     setFile(f);
   };
 

@@ -138,7 +138,7 @@ export function seqInfo(c: Config, st: State | undefined, nowMs: number, ageSecs
   const el = Math.max(0, !driven ? ageSecs : st?.playing ? (nowMs - (st.atMs ?? 0)) / 1000 : (st?.pausedEl ?? 0));
   const loops = k.playMode === 'loop' ? Infinity : k.playMode === 'once' ? 1 : Math.max(1, k.loops);
   const fps = clamp(k.fps, 0.1, 120);
-  let f = Math.floor(el * fps);
+  let f = Math.floor(el * fps + 1e-3);
   let ended = false;
   if (f >= n * loops) ((f = n * loops - 1), (ended = true));
   const lap = n / fps;

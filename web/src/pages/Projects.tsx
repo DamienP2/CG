@@ -437,7 +437,8 @@ export function Projects() {
   const importFile = async (file: File) => {
     setImporting(false);
     try {
-      const p = await api<ProjectSummary>('POST', '/api/projects/import', JSON.parse(await file.text()));
+      // A full export (zip): the project with its pictures and media.
+      const p = /\.zip$/i.test(file.name) ? await api<ProjectSummary>('POST', '/api/projects/import-archive', file) : await api<ProjectSummary>('POST', '/api/projects/import', JSON.parse(await file.text()));
       if (view.kind === 'folder') moveTo(p.id, view.name);
       toast(t('Imported “{name}”', { name: p.name }));
     } catch (e) {
@@ -760,8 +761,11 @@ export function Projects() {
                               {page('data', <Database size={13} />, t('Data'), design)}
                               {page('media', <LibraryIcon size={13} />, t('Library'), can.operate(user))}
                               <div className="menu-sep" />
-                              <a href={`/api/projects/${encodeURIComponent(p.id)}/export`} onClick={() => setMenu(null)}>
+                              <a href={`/api/projects/${encodeURIComponent(p.id)}/export?full=true`} onClick={() => setMenu(null)}>
                                 <Download size={13} /> {t('Export')}
+                              </a>
+                              <a href={`/api/projects/${encodeURIComponent(p.id)}/export`} onClick={() => setMenu(null)}>
+                                <Download size={13} /> {t('Export without the pictures')}
                               </a>
                               {design && (
                                 <>

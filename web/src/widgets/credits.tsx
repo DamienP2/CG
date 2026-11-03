@@ -375,8 +375,21 @@ export function progress(k: K, st: State, x: number, now: number, age: number) {
   const rate = st.rate ?? nominal(k, x);
   const [base, dt] = !st.started ? [0, Math.max(0, age)] : st.running ? [st.base ?? 0, Math.max(0, now - (st.anchor ?? 0)) / 1000] : [st.base ?? 0, 0];
   const v = x > 0 ? snapped(k, rate * x) : null;
-  const adv = v != null ? ((v / k.fps) * Math.floor(dt * k.fps)) / x : rate * dt;
+  // Whole frames (a hair of tolerance: 29 frames summed in floats may come out as 28.999…).
+  const adv = v != null ? ((v / k.fps) * Math.floor(dt * k.fps + 1e-3)) / x : rate * dt;
   return clamp(base + adv, 0, 1);
+}
+/** progress() for drawing a frame: the same speed, continuous in time, so the roll moves on each of
+ * the screen's frames (a 60 Hz or 120 Hz display) instead of standing still on some (credits.rs progress_smooth). */
+export function progressSmooth(k: K, st: State, x: number, now: number, age: number) {
+  const rate = st.rate ?? nominal(k, x);
+  const [base, dt0] = !st.started ? [0, Math.max(0, age)] : st.running ? [st.base ?? 0, Math.max(0, now - (st.anchor ?? 0)) / 1000] : [st.base ?? 0, 0];
+  const v = x > 0 ? snapped(k, rate * x) : null;
+  const speed = v != null ? v / x : rate;
+  // Whole frames of the project: on its own rate, exactly the stepped position.
+  const frames = dt0 * k.fps;
+  const dt = Math.abs(frames - Math.round(frames)) < 1e-3 ? Math.round(frames) / k.fps : dt0;
+  return clamp(base + speed * dt, 0, 1);
 }
 function realRate(k: K, st: State, x: number) {
   const rate = st.rate ?? nominal(k, x);
@@ -510,19 +523,26 @@ function CreditsRender({ layer, w, h, data, time, state }: { layer: Config; w: n
   const mask = k.fade ? `linear-gradient(${vert ? '180deg' : '90deg'},transparent 0,#000 ${f}px,#000 calc(100% - ${f}px),transparent 100%)` : undefined;
   const band = Math.min(h, R(Math.max(k.st.name.size, k.st.section.size, Math.min(k.logoH, h * 0.7)) * 1.6));
   const out: React.ReactNode[] = [];
-  const p = progress(k, st, g.x, time.nowMs, time.ageSecs);
+  // Cards keep the project's steps; a roll or a crawl moves on each frame shown.
+  const p = k.mode === 'pages' ? progress(k, st, g.x, time.nowMs, time.ageSecs) : progressSmooth(k, st, g.x, time.nowMs, time.ageSecs);
   if (k.mode === 'roll') {
     const off = g.a - p * g.x;
+    const rows: React.ReactNode[] = [];
     g.bl.forEach((b, i) => {
       const y = off + b.y;
       if (y > h || y + b.h < 0) return;
-      // Slid as one (a transform): on each frame nothing is laid out again.
-      out.push(
-        <div key={i} style={{ transform: `translateY(${y}px)` }}>
+      rows.push(
+        <div key={i} style={{ position: 'absolute', left: 0, right: 0, top: 0, transform: `translateY(${b.y}px)` }}>
           <BlockView k={k} b={b} y0={0} w={w} />
         </div>,
       );
     });
+    // The whole roll slides as one layer of the graphics card: on each frame only its offset changes.
+    out.push(
+      <div key="roll" style={{ position: 'absolute', inset: 0, transform: `translate3d(0, ${off}px, 0)`, willChange: 'transform' }}>
+        {rows}
+      </div>,
+    );
   } else if (k.mode === 'crawl') {
     const off = g.a - p * g.x;
     const lh = crawlLogoH(k, h);

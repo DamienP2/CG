@@ -766,4 +766,5 @@ export const home: Record<string, string> = {
   'Pick a colour on the screen': 'Prélever une couleur à l\'écran',
   'Add this colour': 'Ajouter cette couleur',
   'Recent colours': 'Récentes',
+  'Export without the pictures': 'Exporter sans les images',
 };

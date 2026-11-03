@@ -2,6 +2,7 @@ mod ae_import;
 mod antenna;
 mod api;
 mod apiv1;
+mod archive;
 mod asrun;
 mod auth;
 mod colors;

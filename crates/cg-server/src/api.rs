@@ -65,6 +65,11 @@ pub fn router() -> Router<Shared> {
         .route("/api/examples/{id}/cover.png", get(example_cover))
         .route("/api/projects/import", post(import_project))
         .route(
+            "/api/projects/import-archive",
+            post(import_archive)
+                .layer(axum::extract::DefaultBodyLimit::max(4 * 1024 * 1024 * 1024)),
+        )
+        .route(
             "/api/import/analyze",
             post(import_analyze).layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024)),
         )
@@ -831,6 +836,49 @@ async fn import_project(
     Ok(Json(ProjectSummary::from(p.as_ref())))
 }
 
+/// A full export (zip): the project and its pictures and media. A project
+/// whose id is taken here gets a new one, and its own folder of assets with it.
+async fn import_archive(
+    State(s): State<Shared>,
+    CurrentUser(me): CurrentUser,
+    body: Bytes,
+) -> ApiResult<Json<ProjectSummary>> {
+    require(me.can_create_projects())?;
+    let u = tokio::task::spawn_blocking(move || crate::archive::unpack(&body))
+        .await
+        .map_err(internal)?
+        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, e))?;
+    let _edit = s.edits.lock().await;
+    let mut p: Project = serde_json::from_str(&u.project).map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("invalid project: {e}"),
+        )
+    })?;
+    check_format(p.width, p.height, p.frame_rate)?;
+    let old = p.id.clone();
+    if !valid_id(&p.id) || s.project(&p.id).await.is_some() {
+        p.id = cg_core::new_id();
+        // Its own pictures move with it.
+        if valid_id(&old) {
+            let text = u.project.replace(
+                &format!("/assets/projects/{old}/"),
+                &format!("/assets/projects/{}/", p.id),
+            );
+            let id = p.id.clone();
+            p = serde_json::from_str(&text).map_err(internal)?;
+            p.id = id;
+        }
+    }
+    let (assets, new_id) = (s.assets_dir(), p.id.clone());
+    tokio::task::spawn_blocking(move || crate::archive::restore(&u.files, &assets, &old, &new_id))
+        .await
+        .map_err(internal)?
+        .map_err(internal)?;
+    let p = s.save_project(p).await.map_err(internal)?;
+    Ok(Json(ProjectSummary::from(p.as_ref())))
+}
+
 #[derive(Deserialize)]
 struct AnalyzeQuery {
     /// The file's name (its extension tells the format).
@@ -1070,10 +1118,18 @@ async fn import_into(
     Ok(Json(ids))
 }
 
+#[derive(Deserialize)]
+struct ExportQuery {
+    /// With its pictures and media: a zip (`project.strata.json` + `assets/…`).
+    #[serde(default)]
+    full: bool,
+}
+
 async fn export_project(
     State(s): State<Shared>,
     CurrentUser(me): CurrentUser,
     Path(id): Path<String>,
+    Query(q): Query<ExportQuery>,
 ) -> ApiResult<Response> {
     let p = visible_project(&s, &me, &id).await?;
     let name: String = p
@@ -1081,8 +1137,26 @@ async fn export_project(
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect();
-    let disposition = format!("attachment; filename=\"{name}.strata.json\"");
     let body = serde_json::to_vec_pretty(p.as_ref()).map_err(internal)?;
+    if q.full {
+        let assets = s.assets_dir();
+        let zip = tokio::task::spawn_blocking(move || crate::archive::export(&body, &assets))
+            .await
+            .map_err(internal)?
+            .map_err(internal)?;
+        return Ok((
+            [
+                (header::CONTENT_TYPE, "application/zip".to_string()),
+                (
+                    header::CONTENT_DISPOSITION,
+                    format!("attachment; filename=\"{name}.strata.zip\""),
+                ),
+            ],
+            zip,
+        )
+            .into_response());
+    }
+    let disposition = format!("attachment; filename=\"{name}.strata.json\"");
     Ok((
         [
             (header::CONTENT_TYPE, "application/json".to_string()),
