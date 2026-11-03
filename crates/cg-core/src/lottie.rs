@@ -1267,6 +1267,13 @@ impl Converter {
         } else {
             p.rsplit('.').next().unwrap_or("png").to_lowercase()
         };
+        // Only a picture's own extension: never a path (`data:image/x/../../f;…`).
+        let ext = match ext.to_ascii_lowercase().as_str() {
+            e @ ("png" | "jpg" | "webp" | "gif" | "svg") => e.to_string(),
+            "svg+xml" => "svg".into(),
+            "jpeg" => "jpg".into(),
+            _ => "png".into(),
+        };
         let stem: String = id
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })

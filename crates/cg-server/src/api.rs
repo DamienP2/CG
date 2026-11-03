@@ -1014,6 +1014,10 @@ async fn import_create(
     let dir = crate::media::project_dir(&s, &p.id);
     let mut wrote = false;
     for (name, bytes) in &files {
+        // A file name only (never a path out of the project's folder).
+        if !valid_asset_name(name) {
+            continue;
+        }
         if json.contains(&format!("{stage}{name}")) {
             tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
             tokio::fs::write(dir.join(name), bytes)
@@ -1074,6 +1078,10 @@ async fn import_into(
     let dir = crate::media::project_dir(&s, &p.id);
     let mut wrote = false;
     for (name, bytes) in &files {
+        // A file name only (never a path out of the project's folder).
+        if !valid_asset_name(name) {
+            continue;
+        }
         if json.contains(&format!("{stage}{name}")) {
             tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
             tokio::fs::write(dir.join(name), bytes)
@@ -1563,6 +1571,10 @@ async fn import_after_effects(
         let dir = crate::media::project_dir(&s, &id);
         tokio::fs::create_dir_all(&dir).await.map_err(internal)?;
         for (name, bytes) in &out.files {
+            // A file name only (never a path out of the project's folder).
+            if !valid_asset_name(name) {
+                continue;
+            }
             tokio::fs::write(dir.join(name), bytes)
                 .await
                 .map_err(internal)?;
