@@ -22696,3 +22696,12 @@ textarea.tx-grow {
   border-right: none;
   transform: translateY(-1px) rotate(-45deg);
 }
+/* The data's own wires (source → steps → data set → variable), in the Logic canvas. */
+.lx .logic-wires .wire.data {
+  --tc: #34d399;
+  opacity: 0.75;
+}
+.lx .logic-wires .wire-g:hover .wire.data {
+  --tc: var(--live);
+  opacity: 1;
+}

@@ -11,7 +11,9 @@ import { HexColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { can, useApp } from '../store';
 import { useLogicFlows } from '../logicFlows';
 import { InsertModal, needsOf, PresetsModal, SaveFlowModal, type Needs } from './logicLibrary';
-import { useDataLayer } from './DataCanvas';
+import { DC_MADE, useDataLayer } from './DataCanvas';
+import { useBoundData } from '../data/dataStore';
+import { settingDefaults } from '../engine/settings';
 import { settingLabel } from '../engine/settingPorts';
 import { autoLayout, measureNodes } from '../ui/autoLayout';
 import { freeSpot, ResizeCorner, useCanvasView } from '../ui/canvasView';
@@ -298,12 +300,15 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
   }, [hasTriggers, update]);
 
   // Live values at the playhead.
+  // The values the stage shows: the data the template is bound to (its sources, its data sets' rows).
+  const bound = useBoundData(template, previewData);
+  const liveData = useMemo(() => ({ ...bound, ...settingDefaults(template) }), [bound, template]);
   const values = useMemo(() => {
     if (!template) return new Map<string, LVal>();
     const hold = holdFrame(template);
-    const resolved = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, previewData, hold)]));
-    return nodeValues(logic, resolved, previewData, measureLayer(template.layers, previewData, interpolateText), clockAt(frame));
-  }, [template, frame, previewData]); // eslint-disable-line react-hooks/exhaustive-deps
+    const resolved = new Map(template.layers.map((l) => [l.id, resolveLayer(l, frame, liveData, hold)]));
+    return nodeValues(logic, resolved, liveData, measureLayer(template.layers, liveData, interpolateText), clockAt(frame));
+  }, [template, frame, liveData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const all = useMemo(() => (template ? entries(template) : []), [template]);
   // The ports of each entry, for the type filter.
@@ -342,6 +347,15 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     const raw = String((l as unknown as Record<string, unknown>)[row.slice(8)] ?? '');
     return logic.nodes.filter((x): x is LogicNode & { type: 'setField' } => x.type === 'setField' && raw.includes(`{{${x.key}}}`));
   };
+  /** The « Show in a text » nodes a text shows: not drawn, their value goes straight to the text's row. */
+  const shownSets = new Set<string>();
+  for (const n of logic.nodes)
+    if (n.type === 'layer') {
+      const l = template.layers.find((x) => x.id === n.layer);
+      if (l) for (const r of n.rows) for (const sf of shownBy(l, r.key)) shownSets.add(sf.id);
+    }
+  /** What feeds a « Show in a text » node (its wire's start). */
+  const feedOf = (sf: string) => logic.edges.find((e) => e.to === sf && e.port === 'in');
   // A row of a Layer node fed by the data shows as wired.
   for (const n of logic.nodes)
     if (n.type === 'layer') {
@@ -383,9 +397,11 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     const ly0 = Math.min(...ns.map((n) => n.y));
     const ly1 = Math.max(...ns.map((n) => n.y + (size[n.id]?.h ?? 120)));
     const apart = b.x1 + 120 <= lx0 || b.y0 > ly1 || b.y1 < ly0;
-    if (!align && apart) return;
+    // Far away (a canvas left wide open): brought back beside the logic.
+    const far = b.x1 < lx0 - 800 || b.y0 > ly1 + 800 || b.y1 < ly0 - 800;
+    if (!align && apart && !far) return;
     const dx = lx0 - 160 - b.x1;
-    const dy = align ? ly0 - b.y0 : 0;
+    const dy = align || b.y0 > ly1 + 800 || b.y1 < ly0 - 800 ? ly0 - b.y0 : 0;
     if (!dx && !dy) return;
     const moved = data.nodesIn({ x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 });
     data.place(Object.fromEntries(moved.map((n) => [n.id, { x: n.x + dx, y: n.y + dy }])));
@@ -411,6 +427,30 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
         missing.forEach((ly, i) => l.nodes.push({ id: newId(), type: 'layer', layer: ly.id, rows: data.boundRows(ly).map((key) => ({ key })), x, y: i * 150 }));
       });
     }
+    // What the two canvases had twice: a Layer node the Data canvas made for a layer the Logic already
+    // has a node for (merged into it), a « Show in a text » no text shows any more (removed).
+    const lg = useDesigner.getState().template?.logic;
+    const json = JSON.stringify(useDesigner.getState().template?.layers ?? []);
+    const made = (lg?.nodes ?? []).filter((n) => n.type === 'layer' && n.title === DC_MADE && lg!.nodes.some((o) => o.type === 'layer' && o.id !== n.id && o.layer === n.layer && o.title !== DC_MADE));
+    const orphans = (lg?.nodes ?? []).filter((n) => n.type === 'setField' && !json.includes(`{{${n.key}}}`) && !lg!.nodes.some((o) => o.type === 'field' && o.key === n.key));
+    if (made.length || orphans.length)
+      edit((l) => {
+        for (const d of made) {
+          if (d.type !== 'layer') continue;
+          const o = l.nodes.find((x): x is LogicNode & { type: 'layer' } => x.type === 'layer' && x.id !== d.id && x.layer === d.layer && x.title !== DC_MADE)!;
+          for (const r of d.rows) if (!o.rows.some((x) => x.key === r.key)) o.rows.push(r);
+          for (const e of l.edges) {
+            if (e.to === d.id) e.to = o.id;
+            if (e.from === d.id) e.from = o.id;
+          }
+        }
+        const gone = new Set([...made, ...orphans].map((n) => n.id));
+        l.nodes = l.nodes.filter((n) => !gone.has(n.id));
+        l.edges = l.edges.filter((e) => !gone.has(e.to) && !gone.has(e.from));
+        // One wire into an input.
+        const seen = new Set<string>();
+        l.edges = l.edges.filter((e) => !seen.has(`${e.to}|${e.port}`) && (seen.add(`${e.to}|${e.port}`), true));
+      });
     const id = requestAnimationFrame(() => keepDataLeft(false));
     return () => cancelAnimationFrame(id);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -437,7 +477,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
       // A « Show in a text » before the Layer node of the text that shows it.
       ...logic.nodes.flatMap((n) => {
         const l = n.type === 'layer' ? template.layers.find((x) => x.id === n.layer) : undefined;
-        return n.type === 'layer' && l ? n.rows.flatMap((r) => shownBy(l, r.key).map((sf) => ({ from: sf.id, to: n.id }))) : [];
+        return n.type === 'layer' && l ? n.rows.flatMap((r) => shownBy(l, r.key).map((sf) => ({ from: feedOf(sf.id)?.from ?? sf.id, to: n.id }))) : [];
       }),
     ];
     // The last column: what ends a chain (actions, a Layer it sets), not what feeds another node.
@@ -793,6 +833,27 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
     if (from.dir !== 'out' || to.dir !== 'in' || from.node === to.node || !accepts(from.type, to.type)) return;
     if (from.node.startsWith('key:')) return keyInto(from.node.slice(4), to.node, to.port);
     if (to.port.startsWith('setting.')) return;
+    // A value into a layer's content (a text, a picture): shown through its key ({{calc_…}}), like the
+    // data, so the inspector and the Operator show it too.
+    const target = nodes.get(to.node);
+    if (target?.type === 'layer' && to.port.startsWith('content.') && from.type !== 'flow') {
+      const tl = template.layers.find((x) => x.id === target.layer);
+      // A value already shown there: replaced.
+      for (const sf of tl ? shownBy(tl, to.port) : []) data.unbind(target.layer, to.port, sf.key);
+      const key = `calc_${from.node}${from.port !== 'out' ? `_${from.port}` : ''}`;
+      edit((l) => {
+        let sf = l.nodes.find((x): x is LogicNode & { type: 'setField' } => x.type === 'setField' && x.key === key);
+        if (!sf) {
+          const src = l.nodes.find((x) => x.id === from.node);
+          sf = { id: newId(), type: 'setField', key, x: (src?.x ?? 0) + 260, y: src?.y ?? 0 };
+          l.nodes.push(sf);
+        }
+        l.edges = l.edges.filter((e) => !(e.to === sf!.id && e.port === 'in') && !(e.to === to.node && e.port === to.port));
+        l.edges.push({ from: from.node, ...(from.port !== 'out' ? { fromPort: from.port } : {}), to: sf.id, port: 'in' });
+      });
+      data.bind(target.layer, to.port, key);
+      return;
+    }
     edit((l) => {
       // An input takes one wire.
       l.edges = l.edges.filter((x) => !(x.to === to.node && x.port === to.port));
@@ -1381,7 +1442,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
   };
 
   // Variables (and data set columns) into the rows of the Layer nodes: the data's wires.
-  const dataWires: { a: { x: number; y: number }; b: { x: number; y: number }; layer: string; row: string; key: string }[] = [];
+  const dataWires: { a: { x: number; y: number }; b: { x: number; y: number }; layer: string; row: string; key: string; set?: string }[] = [];
   {
     const seen = new Set<string>();
     for (const n of logic.nodes) {
@@ -1396,11 +1457,12 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
           const b = at(n.id, 'in', r.key);
           if (a && b) dataWires.push({ a, b, layer: n.layer, row: r.key, key });
         }
-        // From a « Show in a text » node: out of its right side.
+        // A value shown in the text ({{calc_…}}): from what computes it, straight to the row.
         for (const sf of shownBy(l, r.key)) {
-          const p = at(sf.id, 'in', 'in');
+          const src = feedOf(sf.id);
+          const a = src && at(src.from, 'out', fromPortOf(src));
           const b = at(n.id, 'in', r.key);
-          if (p && b && !collapsedOf(sf)) dataWires.push({ a: { x: sf.x + (sizes[sf.id] ?? widthOf(sf)), y: p.y }, b, layer: n.layer, row: r.key, key: sf.key });
+          if (a && b) dataWires.push({ a, b, layer: n.layer, row: r.key, key: sf.key, set: sf.id });
         }
       }
     }
@@ -1657,6 +1719,8 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
                   onPointerDown={(ev) => {
                     ev.stopPropagation();
                     data.unbind(w.layer, w.row, w.key);
+                    // Its « Show in a text » goes with it.
+                    if (w.set) edit((l) => void ((l.nodes = l.nodes.filter((x) => x.id !== w.set)), (l.edges = l.edges.filter((e) => e.to !== w.set && e.from !== w.set))));
                   }}
                 >
                   <title>{t('Click to remove')}</title>
@@ -1688,7 +1752,7 @@ function LogicCanvas({ onClose }: { onClose: () => void }) {
               )}
             </svg>
             {logic.nodes.map((n) => {
-              if (collapsedOf(n) || hiddenField(n)) return null;
+              if (collapsedOf(n) || hiddenField(n) || shownSets.has(n.id)) return null;
               const k = kindOf(n, template);
               const off = !!n.frame && frames.some((f) => f.id === n.frame && f.off);
               return (

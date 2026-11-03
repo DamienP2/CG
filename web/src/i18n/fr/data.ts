@@ -554,6 +554,7 @@ export const data: Record<string, string> = {
   'Switched off: its nodes do nothing': 'Coupé : ses nœuds ne font rien',
   'Switch off': 'Couper',
   'Typed by the Operator': 'Saisi par l’Opérateur',
+  'Place this variable on the canvas': 'Poser cette variable sur le canvas',
   'Stop: the Operator no longer types it': 'Arrêter : l’Opérateur ne le saisit plus',
   'Fold': 'Replier',
   'Remove the frame (its nodes stay)': 'Supprimer le cadre (ses nœuds restent)',

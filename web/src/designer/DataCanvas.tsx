@@ -282,6 +282,8 @@ function chainOf(flow: DataFlow, id: string): { source: FlowNode & { type: 'sour
  */
 function migrate(t: Template): DataFlow {
   const flow: DataFlow = { nodes: [], edges: [] };
+  // One node per source (and list): the variables reading it share it.
+  const sources = new Map<string, FlowNode>();
   let y = 40;
   for (const f of t.fields) {
     const b = f.binding;
@@ -289,7 +291,10 @@ function migrate(t: Template): DataFlow {
     const m = b.path.match(/^([\w.]*?)(?:\[(-?\d+|\*)\])?(?:\.?([\w.]+))?$/);
     if (!m || /length$/.test(b.path)) continue;
     const [, list = '', idx, column] = m;
-    const chain: FlowNode[] = [{ id: newId(), x: COLS.source, y, type: 'source', source: b.source, list: idx === undefined ? '' : list }];
+    const srcKey = `${b.source}|${idx === undefined ? '' : list}`;
+    const shared = sources.get(srcKey);
+    const chain: FlowNode[] = [shared ?? { id: newId(), x: COLS.source, y, type: 'source', source: b.source, list: idx === undefined ? '' : list }];
+    if (!shared) sources.set(srcKey, chain[0]);
     const col = idx === undefined ? (b.path ? b.path : '') : (column ?? '');
     if (b.sort?.by && b.sort.list === list) chain.push({ id: newId(), x: 0, y, type: 'sort', keys: [{ column: b.sort.by, descending: b.sort.descending, numeric: b.sort.numeric }] });
     if (idx !== undefined || col) {
@@ -298,11 +303,13 @@ function migrate(t: Template): DataFlow {
     }
     if (b.filters?.length) chain.push({ id: newId(), x: 0, y, type: 'transform', columns: [], ops: b.filters });
     chain.forEach((n, i) => {
-      n.x = COLS.source + i * (W.step + 50) + (i ? 40 : 0);
-      flow.nodes.push(n);
+      if (!(i === 0 && shared)) {
+        n.x = COLS.source + i * (W.step + 50) + (i ? 40 : 0);
+        flow.nodes.push(n);
+      }
       flow.edges.push({ from: n.id, to: chain[i + 1]?.id ?? `field:${f.key}` });
     });
-    y += 380;
+    y += chain.length > 1 || !shared ? 380 : 0;
   }
   return flow;
 }
@@ -410,7 +417,7 @@ export function unfeedTable(t: Template, l: Layer) {
 }
 
 /** The title of the Layer nodes this canvas makes in the Logic (they go when unwired). */
-const DC_MADE = 'Data canvas';
+export const DC_MADE = 'Data canvas';
 
 /** What the Logic canvas gives its Données layer. */
 export interface DataLayerOpts {
@@ -500,8 +507,8 @@ export function useDataLayer(o: DataLayerOpts) {
 
   const widthOf = (id: string, def: number) => layout.size[id]?.w ?? def;
   const nodePos = new Map<string, Pt>();
-  const stack = (x: number, items: [string, number][]) => {
-    let y = 40;
+  const stack = (x: number, items: [string, number][], y0 = 40) => {
+    let y = y0;
     for (const [id, h] of items) {
       nodePos.set(id, layout.pos[id] ?? { x, y });
       y += h + 24;
@@ -516,11 +523,23 @@ export function useDataLayer(o: DataLayerOpts) {
     for (const [k, e] of folded) if (e.layer === l.id && e.port === port) return template.fields.find((f) => f.key === k);
     return undefined;
   };
-  const shownFields = template.fields.filter((f) => !exposed.has(f.key) && !folded.has(f.key));
+  /** A variable this template uses: fed by the data, shown by a layer, read by the Logic, or placed here. */
+  const inUse = (f: Field) =>
+    !!f.binding?.source ||
+    flow.edges.some((e) => e.to === `field:${f.key}`) ||
+    fieldUsed(template, f.key) ||
+    (template.logic?.nodes ?? []).some((n) => n.type === 'field' && n.key === f.key) ||
+    !!layout.pos[`f:${f.key}`];
+  const shownFields = template.fields.filter((f) => !exposed.has(f.key) && !folded.has(f.key) && inUse(f));
+  /** Variables of the template not on the canvas (nothing uses them): in the palette, to place. */
+  const spareFields = template.fields.filter((f) => !exposed.has(f.key) && !folded.has(f.key) && !inUse(f));
   const fieldHeight = (f: Field) => HEAD + (f.binding ? 90 : f.kind === 'number' ? 130 : f.kind === 'image' ? 150 : 96);
+  // The variables come after the sources, steps and data sets (not in a column of their own far away).
+  const flowRight = flow.nodes.length ? Math.max(...flow.nodes.map((n) => n.x + (layout.size[n.id]?.w ?? (n.type === 'source' || n.type === 'dataset' ? W.source : W.step)))) + 80 : COLS.field;
   stack(
-    COLS.field,
+    flowRight,
     shownFields.map((f) => [`f:${f.key}`, fieldHeight(f)]),
+    flow.nodes.length ? Math.min(...flow.nodes.map((n) => n.y)) : 40,
   );
   for (const n of flow.nodes) nodePos.set(n.id, { x: n.x, y: n.y });
   // A data set is drawn as wide as a source.
@@ -1015,6 +1034,15 @@ export function useDataLayer(o: DataLayerOpts) {
               <strong>{t('Variable')}</strong>
             </span>
           </button>
+          {/* The template's variables nothing uses yet: placed on the canvas when needed. */}
+          {spareFields.map((f) => (
+            <button key={f.key} className="kind-field dc-spare" title={t('Place this variable on the canvas')} onPointerDown={(e) => fromPalette(e, f.label || f.key, (at) => setLayout((l) => ({ ...l, pos: { ...l.pos, [`f:${f.key}`]: at } })), W.field)}>
+              <Variable size={14} />
+              <span>
+                <strong>{f.label || f.key}</strong>
+              </span>
+            </button>
+          ))}
 
           <div className="dc-pal-title">{t('Data sources')}</div>
           {offered.map((s, i) => (
