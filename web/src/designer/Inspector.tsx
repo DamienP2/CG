@@ -8,9 +8,9 @@ import { fieldUsed } from '../engine/settings';
 import { Check, Database, Radio, RotateCcw, AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronLeft, ChevronRight, Diamond, Link as LinkIcon, Link2, LayoutTemplate, Settings2, Sparkles, Unlink } from 'lucide-react';
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { applyEasing, col, holdFrame, interpolateText, num, parseHex, propValue, resolveLayer, toHex } from '../engine/evaluate';
-import { applyLogic, drivenProps, measureLayer } from '../engine/logic';
+import { applyLogic, clockAt, drivenProps, measureLayer, withOutputs } from '../engine/logic';
 import { useBoundData } from '../data/dataStore';
-import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type GroupMask, type Layer, type LayerType, type Prop, type Template, type Value } from '../engine/types';
+import { MAIN_FORMAT, rowKey, TEXT_LIKE, usedDatasets, type DataSet, type TextOverflow, type Easing, type FontStyle, type GroupMask, type Layer, type LayerType, type Prop, type Template, type Value, type Data } from '../engine/types';
 import { useApp } from '../store';
 import { ColorField, NumberField, Segmented, TextInput } from '../ui/fields';
 import { useZoneEdit } from './ZoneEditor';
@@ -833,9 +833,16 @@ function WiredValue({ value, multiline }: { value: string; multiline?: boolean }
   );
 }
 
+/** The values the stage shows: the bound data and what the Logic computes into texts ({{calc_…}}). */
+function useShownData(template: Template | null, previewData: Data): Data {
+  const frame = useDesigner((s) => s.frame);
+  const bound = useBoundData(template, previewData);
+  return useMemo(() => (template ? withOutputs(template, frame, bound, holdFrame(template), resolveLayer, clockAt(frame)) : bound), [template, frame, bound]);
+}
+
 function LayerGeneral({ layer }: { layer: Layer }) {
   const { update, template, previewData } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template, previewData: s.previewData })));
-  const data = useBoundData(template, previewData);
+  const data = useShownData(template, previewData);
   if (!template) return null;
   const edit = (fn: (l: Layer) => void, key?: string) => update((t) => fn(findLayer(t, layer.id)!), key);
   const set = (key: string, v: unknown, coalesce?: boolean) => edit((l) => void ((l as unknown as Attrs)[key] = v), coalesce ? `${key}-${layer.id}` : undefined);
@@ -990,7 +997,7 @@ function LottieSource({ layer }: { layer: Layer }) {
 /** Settings of a spec widget (web/src/widgets) and its warnings. */
 function SpecInspector({ layer }: { layer: Layer }) {
   const { update, template, previewData } = useDesigner(useShallow((s) => ({ update: s.update, template: s.template, previewData: s.previewData })));
-  const data = useBoundData(template, previewData);
+  const data = useShownData(template, previewData);
   const state = useDesigner((s) => s.widgetState[layer.id]);
   const actWidget = useDesigner((s) => s.actWidget);
   if (!template) return null;
@@ -1021,7 +1028,7 @@ function SpecInspector({ layer }: { layer: Layer }) {
 /** The control centre of a widget (web/src/widgets/centre.tsx), to try in the Designer: under its name, always shown. */
 function OperatorPreview({ layer }: { layer: Layer }) {
   const { template, previewData, update } = useDesigner(useShallow((s) => ({ template: s.template, previewData: s.previewData, update: s.update })));
-  const data = useBoundData(template, previewData);
+  const data = useShownData(template, previewData);
   const state = useDesigner((s) => s.widgetState[layer.id]);
   const actWidget = useDesigner((s) => s.actWidget);
   // Its settings (line 3) edit the layer, as the inspector's rows do.
@@ -1342,7 +1349,7 @@ const OVERFLOWS: { value: TextOverflow; label: string; hint: string }[] = [
 /** What a text does when it is too long for its box, and how it does now with the preview values. */
 function TextFitControls({ layer, edit }: { layer: Layer & { type: 'text' }; edit: (fn: (l: Layer) => void, key?: string) => void }) {
   const { frame, previewData, template } = useDesigner(useShallow((s) => ({ frame: s.frame, previewData: s.previewData, template: s.template })));
-  const data = useBoundData(template, previewData);
+  const data = useShownData(template, previewData);
   const mode = layer.overflow ?? 'fit';
   const fit = fitLayer(layer, resolveLayer(layer, frame, data, template ? holdFrame(template) : 0), layerText(layer, data));
   const pct = (v: number) => `${Math.round(v * 100)} %`;

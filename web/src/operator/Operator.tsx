@@ -6,7 +6,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { createPortal } from 'react-dom';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Scene, Viewport } from '../engine/Scene';
-import { defaultData, holdFrame, interpolateText, newId, parseHex, toHex } from '../engine/evaluate';
+import { defaultData, holdFrame, interpolateText, newId, parseHex, resolveLayer, toHex } from '../engine/evaluate';
+import { clockAt, withOutputs } from '../engine/logic';
 import { oneKey, rowKey, usedDatasets, type Command, type DataSet, type Field, type Layer, type Marker, type Phase, type PlayoutItem, type Playlist, type Project, type ReadMode, type RundownItem, type Template, type Zone, type ChannelInfo } from '../engine/types';
 import { isTimed, layerAgeFrames } from '../engine/widgets';
 import { widgetOf } from '../widgets';
@@ -1164,6 +1165,11 @@ const PlaylistRow = memo(function PlaylistRow({ project, id, active, editable, o
  * by layer, with the Designer's controls and sections.
  */
 function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draft, boundDraft, readMode, sourceName, previewData, onDraft }: { template: Template; fields: Field[]; /** A widget's only value: its layer's name, not the label set at import (often the text itself). */ names: Map<string, string>; exposed: ExposedLayer[]; fedLayers: Layer[]; changed: Set<string>; draft: Record<string, string>; boundDraft: Record<string, string>; readMode: ReadMode; sourceName: (id: string) => string; previewData: Record<string, string>; onDraft: (patch: Record<string, string>) => void }) {
+  // With what its Logic computes into texts ({{calc_…}}), as on air.
+  const shownData = useMemo(() => {
+    const hold = holdFrame(template);
+    return withOutputs(template, hold, previewData, hold, resolveLayer, clockAt(hold));
+  }, [template, previewData]);
   // Typed by hand over the data, until the operator goes back to it.
   const byHand = (k: string) => !!draft[manualKey(k)]?.trim();
   const fromData = (f: Field) => !!f.binding?.source && readMode !== 'manual';
@@ -1310,7 +1316,7 @@ function ValuesPane({ template, fields, names, exposed, fedLayers, changed, draf
               if (!cols.length)
                 return (
                   <div key={layer.id} className="opx-vt wide">
-                    <FedText label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, previewData) : layer.type === 'typewriter' ? interpolateText(layer.text, previewData) : ''} title={title} />
+                    <FedText label={dot(fedChanged, layer.name)} value={layer.type === 'text' ? shownText(layer, shownData) : layer.type === 'typewriter' ? interpolateText(layer.text, shownData) : ''} title={title} />
                   </div>
                 );
               return own.map((k) => {
