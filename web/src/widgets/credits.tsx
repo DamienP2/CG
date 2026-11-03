@@ -40,6 +40,8 @@ export interface Config {
   link?: string;
   importText?: string;
   layout?: 'one' | 'two' | 'three';
+  /** Lines as role + name (default), or one text each (false: the name only, in one column). */
+  roles?: boolean;
   align?: 'left' | 'center' | 'right';
   /** One font for the whole credits (the channel's), Inter by default. */
   font?: string;
@@ -84,7 +86,9 @@ export function cfg(c: Config) {
     entries: (c.entries ?? []).map((e) => ({ kind: e.kind ?? 'line', a: e.a ?? '', b: e.b ?? '' })),
     link: c.link ?? '',
     importText: c.importText ?? '',
-    layout: c.layout ?? 'two',
+    // Without roles: one column (credits.rs Config::lay).
+    layout: c.roles === false ? 'one' : (c.layout ?? 'two'),
+    roles: c.roles !== false,
     align: c.align ?? 'center',
     font: c.font?.trim() || FONT,
     gutter: c.gutter ?? 40,
@@ -172,6 +176,12 @@ function tableEntries(head: string[], rows: string[][]): E[] {
   return out;
 }
 export function entriesOf(k: K, data: Data): E[] {
+  const es = rawEntries(k, data);
+  // Without roles: one text a line (a role alone, from a table of one column, is that text) — as credits.rs.
+  return k.roles ? es : es.map((e) => (e.kind === 'line' ? { ...e, a: '', b: e.b.trim() ? e.b : e.a } : e));
+}
+
+function rawEntries(k: K, data: Data): E[] {
   if (k.link.trim()) {
     const v = interpolateText(k.link, data);
     if (v.trim().startsWith('[')) {
@@ -634,7 +644,7 @@ function FamilyRow({ value }: { value: string }) {
 type OpP = { layer: unknown; state: unknown; data: Data; act: (op: string, args?: unknown) => void; item?: unknown; time: { nowMs: number; ageSecs: number; defaultTz?: string; fps?: number; held?: boolean } };
 
 /** The entries as a table (type · role / title · name): the Designer's content and the Operator's when exposed. */
-export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v: Entry[]) => void }) {
+export function EntriesTable({ value, onChange, roles = true }: { value: Entry[]; onChange: (v: Entry[]) => void; /** false: one text a line (no role column). */ roles?: boolean }) {
   const kinds: { value: Kind; label: string }[] = [
     { value: 'section', label: t('Section') },
     { value: 'line', label: t('Line') },
@@ -671,8 +681,14 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
           <tr>
             <th />
             <th>{t('Type')}</th>
-            <th>{t('Role / title / logo / link')}</th>
-            <th>{t('Name / caption')}</th>
+            {roles ? (
+              <>
+                <th>{t('Role / title / logo / link')}</th>
+                <th>{t('Name / caption')}</th>
+              </>
+            ) : (
+              <th colSpan={2}>{t('Text')}</th>
+            )}
             <th />
           </tr>
         </thead>
@@ -726,6 +742,14 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
                   <td colSpan={2}>
                     <Segmented value={spaceStyle(e.a ?? '')} options={spaces} onChange={(v) => put(i, { a: v })} />
                   </td>
+                ) : !roles && kind === 'line' ? (
+                  <td colSpan={2}>
+                    <input value={e.b || e.a || ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { a: '', b: ev.target.value })} />
+                  </td>
+                ) : !roles && kind === 'section' ? (
+                  <td colSpan={2}>
+                    <input value={e.a ?? ''} onKeyDown={(ev) => ev.stopPropagation()} onChange={(ev) => put(i, { a: ev.target.value })} />
+                  </td>
                 ) : (
                   <>
                     <td>
@@ -749,6 +773,13 @@ export function EntriesTable({ value, onChange }: { value: Entry[]; onChange: (v
       </button>
     </div>
   );
+}
+
+/** The credits a value feeds (its content exposed) show roles: false when they show one text a line. */
+export function rolesFor(fieldKey: string): boolean {
+  for (const tpl of useApp.getState().project?.templates ?? [])
+    for (const l of tpl.layers) if (l.type === 'credits' && (l as { settingBindings?: Record<string, string> }).settingBindings?.entries === fieldKey) return (l as Config).roles !== false;
+  return true;
 }
 
 /** Credits set to go out by themselves (Config.autoOut), on air: seconds left and the whole roll; null when they do not. */
@@ -1131,6 +1162,8 @@ export default defineWidget({
     return (
       <>
         <Section id="credits-content" title={t('Content')}>
+          {/* Role + name a line, or one text. */}
+          <Toggle label={t('Roles')} path="roles" value={k.roles} />
           {k.link.trim() ? (
             // Fed by the Data canvas: its source, not the table.
             <Content label={t('Source')} path="link" placeholder="{{key}}" />
@@ -1148,13 +1181,14 @@ export default defineWidget({
                   <Trash2 size={13} /> {t('Clear all')}
                 </button>
               </div>
-              <EntriesTable value={k.entries} onChange={(v) => set((x) => void (x.entries = v))} />
+              <EntriesTable value={k.entries} roles={k.roles} onChange={(v) => set((x) => void (x.entries = v))} />
             </>
           )}
         </Section>
         <Section id="credits-layout" title={t('Layout')}>
           {k.mode !== 'crawl' && (
             <>
+              {k.roles && (
               <Seg
                 label={t('Columns')}
                 path="layout"
@@ -1165,6 +1199,7 @@ export default defineWidget({
                   ['three', '3'],
                 ]}
               />
+              )}
               <Seg
                 label={t('Align')}
                 path="align"

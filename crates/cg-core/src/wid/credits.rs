@@ -221,6 +221,8 @@ pub struct Config {
     /// Text of the import box (Designer only).
     pub import_text: String,
     pub layout: Layout,
+    /// Lines as role + name (true), or one text each (false: the name only, in one column).
+    pub roles: bool,
     pub align: Align,
     /// One font for the whole credits (the channel's), Inter by default.
     pub font: String,
@@ -259,6 +261,7 @@ impl Default for Config {
             link: String::new(),
             import_text: String::new(),
             layout: Layout::Two,
+            roles: true,
             align: Align::Center,
             font: "Inter".into(),
             gutter: 40.0,
@@ -282,6 +285,17 @@ impl Default for Config {
             fade_size: 140.0,
             panel: true,
             panel_color: "#060812c7".into(),
+        }
+    }
+}
+
+impl Config {
+    /// The layout drawn: one column when the lines have no role.
+    pub fn lay(&self) -> Layout {
+        if self.roles {
+            self.layout
+        } else {
+            Layout::One
         }
     }
 }
@@ -431,6 +445,20 @@ fn table_entries(head: &[String], rows: &[Vec<String>]) -> Vec<Entry> {
 /// The entries shown: the linked value (credits text, or JSON rows
 /// {section?, role, name}), else the entries with their `{{key}}` filled.
 pub fn entries(c: &Config, data: &Data) -> Vec<Entry> {
+    let mut es = raw_entries(c, data);
+    // Without roles: one text a line (a role alone, from a table of one column, is that text).
+    if !c.roles {
+        for e in es.iter_mut().filter(|e| e.kind == Kind::Line) {
+            if e.b.trim().is_empty() {
+                e.b = std::mem::take(&mut e.a);
+            }
+            e.a.clear();
+        }
+    }
+    es
+}
+
+fn raw_entries(c: &Config, data: &Data) -> Vec<Entry> {
     if !c.link.trim().is_empty() {
         let v = interpolate_text(&c.link, data);
         let t = v.trim();
@@ -578,7 +606,7 @@ pub fn blocks(c: &Config, es: &[Entry]) -> (Vec<Block>, f32) {
                     role_h: 0.0,
                 }
             }
-            Kind::Line => match c.layout {
+            Kind::Line => match c.lay() {
                 Layout::Three => {
                     let mut row = Vec::new();
                     while i < es.len() && es[i].kind == Kind::Line && row.len() < 3 {
@@ -1563,5 +1591,27 @@ mod tests {
         act(&l, &mut st, "start", &serde_json::Value::Null, &ctx(&d, 0)).unwrap();
         act(&l, &mut st, "next", &serde_json::Value::Null, &ctx(&d, 100)).unwrap();
         assert!((st.base * n as f64 - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn without_roles_one_text_a_line() {
+        let c = Config {
+            roles: false,
+            entries: parse("# Crew\nDirector | Ann\nBob\nOnly a role | "),
+            ..Config::default()
+        };
+        assert_eq!(c.lay(), Layout::One);
+        let es = entries(&c, &Data::new());
+        let lines: Vec<(&str, &str)> = es
+            .iter()
+            .filter(|e| e.kind == Kind::Line)
+            .map(|e| (e.a.as_str(), e.b.as_str()))
+            .collect();
+        assert_eq!(lines, vec![("", "Ann"), ("", "Bob"), ("", "Only a role")]);
+        let (bl, _) = blocks(&c, &es);
+        // No role row: a line is as tall as a name.
+        assert!(bl
+            .iter()
+            .all(|b| !matches!(&b.body, Body::Lines(r) if r.iter().any(|(a, _)| !a.is_empty()))));
     }
 }

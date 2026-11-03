@@ -24,7 +24,7 @@ import { DataSetHand, DataSetPanel, DataSetSource, datasetUse, manualKey, shownD
 import { changedKeys, hasControls, heldAt, newPreviewRun, partKeys, PreviewControls, widgetParts, widgetWaits, withoutSingleRow, type PreviewRun, type WidgetPart } from './WidgetTabs';
 import { FedText, LayerProperties, type ExposedLayer, type FieldIO } from './Exposed';
 import { shownText } from '../widgets/text';
-import { creditsLeft, EntriesTable, type Entry } from '../widgets/credits';
+import { creditsLeft, EntriesTable, rolesFor, type Entry } from '../widgets/credits';
 import { bindingLabel, readBinding, useBoundData, useSources } from '../data/dataStore';
 import { DataWarning } from './DataWarning';
 import { navigate, projectPath } from '../router';
@@ -120,7 +120,7 @@ export function FieldInput({ field, value, onChange, rich, maxLength }: { field:
     case 'table':
       return <TableRowsField value={value} onChange={onChange} />;
     case 'credits':
-      return <EntriesTable value={entriesOf(value)} onChange={(v) => onChange(JSON.stringify(v))} />;
+      return <EntriesTable value={entriesOf(value)} roles={rolesFor(field.key)} onChange={(v) => onChange(JSON.stringify(v))} />;
     default:
       return <TextInput autoGrow value={value} onChange={onChange} maxLength={maxLength} />;
   }

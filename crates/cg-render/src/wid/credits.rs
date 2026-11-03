@@ -264,7 +264,7 @@ fn draw_block(d: &mut Draw, c: &Config, b: &Block, y0: f32, m: Option<&Mask>) {
             };
             draw_logo(d, src, x, y0, c.logo_h, m);
         }
-        Body::Lines(row) => match c.layout {
+        Body::Lines(row) => match c.lay() {
             Layout::Two => {
                 let (role, name) = &row[0];
                 let split = match c.align {
@@ -296,7 +296,7 @@ fn draw_block(d: &mut Draw, c: &Config, b: &Block, y0: f32, m: Option<&Mask>) {
                 );
             }
             _ => {
-                let n = if c.layout == Layout::Three { 3.0 } else { 1.0 };
+                let n = if c.lay() == Layout::Three { 3.0 } else { 1.0 };
                 let cw = if n > 1.0 {
                     (w - 2.0 * c.gutter) / 3.0
                 } else {
